@@ -1,0 +1,957 @@
+<title>SeaTunnel Agent Features</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+:root {
+  --c-bg: #F5F6F8;
+  --c-surface: #FFFFFF;
+  --c-text: #1E2430;
+  --c-text-2: #4A5267;
+  --c-text-3: #7B829A;
+  --c-border: #D8DCE5;
+  --c-teal: #0A7E82;
+  --c-teal-dim: #E6F5F5;
+  --c-amber: #D49A2A;
+  --c-amber-dim: #FFF7E6;
+  --c-red: #C5392F;
+  --c-red-dim: #FDECEB;
+  --c-green: #1A8754;
+  --c-green-dim: #E8F7EF;
+  --c-code-bg: #ECEEF3;
+  --c-code-text: #3B4259;
+  --c-card-shadow: 0 1px 3px rgba(30,36,48,0.06);
+  --c-nav-active: #0A7E82;
+  --c-nav-text: #4A5267;
+  --c-badge-bg: #0A7E82;
+  --c-badge-text: #FFFFFF;
+  --font-display: 'DM Sans', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --c-bg: #14171E;
+    --c-surface: #1C2029;
+    --c-text: #DFE2EA;
+    --c-text-2: #A4AABE;
+    --c-text-3: #6D748E;
+    --c-border: #2E3342;
+    --c-teal: #2EC4B6;
+    --c-teal-dim: #152D2C;
+    --c-amber: #F0B84D;
+    --c-amber-dim: #2C2517;
+    --c-red: #EF6E63;
+    --c-red-dim: #2E1917;
+    --c-green: #3CC97C;
+    --c-green-dim: #162B1E;
+    --c-code-bg: #232834;
+    --c-code-text: #C5CAD9;
+    --c-card-shadow: 0 1px 3px rgba(0,0,0,0.25);
+    --c-nav-active: #2EC4B6;
+    --c-nav-text: #A4AABE;
+    --c-badge-bg: #2EC4B6;
+    --c-badge-text: #0E1117;
+  }
+}
+:root[data-theme="dark"] {
+  --c-bg: #14171E;
+  --c-surface: #1C2029;
+  --c-text: #DFE2EA;
+  --c-text-2: #A4AABE;
+  --c-text-3: #6D748E;
+  --c-border: #2E3342;
+  --c-teal: #2EC4B6;
+  --c-teal-dim: #152D2C;
+  --c-amber: #F0B84D;
+  --c-amber-dim: #2C2517;
+  --c-red: #EF6E63;
+  --c-red-dim: #2E1917;
+  --c-green: #3CC97C;
+  --c-green-dim: #162B1E;
+  --c-code-bg: #232834;
+  --c-code-text: #C5CAD9;
+  --c-card-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  --c-nav-active: #2EC4B6;
+  --c-nav-text: #A4AABE;
+  --c-badge-bg: #2EC4B6;
+  --c-badge-text: #0E1117;
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.7;
+  padding-block: 0;
+  margin: 0;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Layout */
+.page-wrapper {
+  display: flex;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+  gap: 40px;
+}
+.toc-rail {
+  position: sticky;
+  top: 24px;
+  width: 220px;
+  flex-shrink: 0;
+  height: fit-content;
+  padding-top: 32px;
+  align-self: flex-start;
+}
+.main-content {
+  flex: 1;
+  min-width: 0;
+  max-width: 760px;
+  padding-block: 32px 80px;
+}
+
+/* TOC */
+.toc-rail nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.toc-section-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--c-text-3);
+  padding: 10px 12px 4px;
+}
+.toc-link {
+  display: block;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--c-nav-text);
+  text-decoration: none;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border-left: 2px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.toc-link:hover {
+  background: var(--c-teal-dim);
+  color: var(--c-teal);
+}
+.toc-link.active {
+  color: var(--c-nav-active);
+  border-left-color: var(--c-nav-active);
+  font-weight: 500;
+}
+
+/* Header */
+.page-header {
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--c-border);
+  margin-bottom: 40px;
+}
+.page-header h1 {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 8px;
+  text-wrap: balance;
+}
+.page-header .subtitle {
+  font-size: 15px;
+  color: var(--c-text-2);
+  margin: 0;
+}
+.page-header .meta-row {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+.meta-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--c-text-3);
+  background: var(--c-code-bg);
+  padding: 3px 10px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+}
+.meta-tag .num {
+  color: var(--c-teal);
+  font-weight: 600;
+}
+
+/* Section */
+.feature-section {
+  margin-bottom: 48px;
+  scroll-margin-top: 24px;
+}
+.feature-section h2 {
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.section-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  background: var(--c-badge-bg);
+  color: var(--c-badge-text);
+  padding: 2px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.03em;
+}
+.feature-section .section-desc {
+  color: var(--c-text-2);
+  margin: 0 0 20px;
+  font-size: 14.5px;
+  max-width: 65ch;
+}
+
+/* Cards */
+.detail-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  padding: 20px 22px;
+  margin-bottom: 16px;
+  box-shadow: var(--c-card-shadow);
+}
+.detail-card h3 {
+  font-family: var(--font-display);
+  font-size: 15px;
+  font-weight: 600;
+  margin: 0 0 10px;
+  color: var(--c-text);
+}
+.detail-card p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  color: var(--c-text-2);
+}
+.detail-card p:last-child { margin-bottom: 0; }
+
+/* Code blocks */
+pre {
+  background: var(--c-code-bg);
+  color: var(--c-code-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.65;
+  padding: 14px 18px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 12px 0;
+  white-space: pre;
+}
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  background: var(--c-code-bg);
+  color: var(--c-code-text);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+pre code {
+  background: none;
+  padding: 0;
+}
+
+/* Flow diagram */
+.flow-diagram {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  padding: 24px;
+  margin: 16px 0;
+  overflow-x: auto;
+  box-shadow: var(--c-card-shadow);
+}
+.flow-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.flow-box {
+  border: 1.5px solid var(--c-teal);
+  color: var(--c-teal);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.flow-box.accent {
+  background: var(--c-teal);
+  color: var(--c-badge-text);
+}
+.flow-arrow {
+  color: var(--c-text-3);
+  font-size: 16px;
+}
+
+/* Table */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 12px 0;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+th {
+  text-align: left;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--c-text-3);
+  padding: 8px 12px;
+  border-bottom: 2px solid var(--c-border);
+  white-space: nowrap;
+}
+td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--c-border);
+  color: var(--c-text-2);
+  vertical-align: top;
+}
+td:first-child {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--c-text);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Status badges */
+.pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-family: var(--font-mono);
+}
+.pill-teal { background: var(--c-teal-dim); color: var(--c-teal); }
+.pill-amber { background: var(--c-amber-dim); color: var(--c-amber); }
+.pill-green { background: var(--c-green-dim); color: var(--c-green); }
+.pill-red { background: var(--c-red-dim); color: var(--c-red); }
+
+/* Grid for template cards */
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+  margin: 12px 0;
+}
+.tpl-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  box-shadow: var(--c-card-shadow);
+}
+.tpl-card .tpl-name {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-teal);
+  margin: 0 0 4px;
+}
+.tpl-card .tpl-desc {
+  font-size: 12.5px;
+  color: var(--c-text-2);
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+.tpl-card .tpl-cat {
+  font-size: 11px;
+}
+
+/* Context tracking list */
+.ctx-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+  padding: 0;
+  list-style: none;
+}
+.ctx-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13.5px;
+  color: var(--c-text-2);
+}
+.ctx-list li::before {
+  content: '';
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--c-teal);
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+
+/* Test coverage */
+.test-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+.test-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  box-shadow: var(--c-card-shadow);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.test-card .mod-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--c-text);
+  font-weight: 500;
+}
+.test-card .test-count {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--c-green);
+}
+
+/* Divider */
+.section-divider {
+  border: none;
+  border-top: 1px solid var(--c-border);
+  margin: 40px 0;
+}
+
+/* Responsive */
+@media (max-width: 820px) {
+  .toc-rail { display: none; }
+  .page-wrapper { padding: 0 16px; }
+  .main-content { max-width: 100%; }
+  .template-grid { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="page-wrapper">
+  <aside class="toc-rail" id="toc">
+    <nav>
+      <div class="toc-section-label">Architecture</div>
+      <a class="toc-link" href="#react-loop">ReAct Agent Loop</a>
+      <a class="toc-link" href="#tools">9 Built-in Tools</a>
+
+      <div class="toc-section-label">Core Features</div>
+      <a class="toc-link" href="#templates">Template Library</a>
+      <a class="toc-link" href="#connection">Connection Testing</a>
+      <a class="toc-link" href="#memory">Session Memory</a>
+      <a class="toc-link" href="#diff">Config Diff</a>
+
+      <div class="toc-section-label">UI / UX</div>
+      <a class="toc-link" href="#progress">Progress Visualization</a>
+      <a class="toc-link" href="#streaming">Event-driven Streaming</a>
+      <a class="toc-link" href="#stop">Stop Control</a>
+      <a class="toc-link" href="#export">Session Export</a>
+      <a class="toc-link" href="#darkmode">Dark Mode</a>
+      <a class="toc-link" href="#i18n">Bilingual i18n</a>
+      <a class="toc-link" href="#history">History Management</a>
+
+      <div class="toc-section-label">Quality</div>
+      <a class="toc-link" href="#tests">Test Coverage</a>
+    </nav>
+  </aside>
+
+  <main class="main-content">
+    <header class="page-header">
+      <h1>SeaTunnel Pipeline Builder Agent</h1>
+      <p class="subtitle">AI-powered data pipeline configuration, validation, and diagnostics — built on the ReAct reasoning pattern with 9 specialized tools.</p>
+      <div class="meta-row">
+        <span class="meta-tag"><span class="num">9</span> tools</span>
+        <span class="meta-tag"><span class="num">6</span> templates</span>
+        <span class="meta-tag"><span class="num">195</span> tests</span>
+        <span class="meta-tag">Gradio UI</span>
+        <span class="meta-tag">EN / ZH</span>
+      </div>
+    </header>
+
+    <!-- ═══════════ ReAct Loop ═══════════ -->
+    <section class="feature-section" id="react-loop">
+      <h2><span class="section-badge">CORE</span> ReAct Agent Loop</h2>
+      <p class="section-desc">The agent follows a Reason → Act → Observe loop. Each iteration, the LLM reasons about the task, selects a tool, executes it, and observes the result — up to 20 iterations per task, with automatic retry tracking.</p>
+
+      <div class="flow-diagram">
+        <div class="flow-row">
+          <span class="flow-box accent">User Task</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-box">THINK</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-box">ACT (tool call)</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-box">OBSERVE (result)</span>
+          <span class="flow-arrow">→</span>
+          <span class="flow-box accent">Answer</span>
+        </div>
+      </div>
+
+      <div class="detail-card">
+        <h3>Entry Points</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Method</th><th>Description</th><th>System Prompt Hint</th></tr></thead>
+            <tbody>
+              <tr><td>agent.run(task)</td><td>Natural language task, fresh conversation</td><td>run — suggests templates, connection tests</td></tr>
+              <tr><td>agent.chat(msg)</td><td>Continue multi-turn conversation</td><td>run — preserves message history</td></tr>
+              <tr><td>agent.run_with_config(path)</td><td>Run a specific config, auto-fix on failure</td><td>run_config — targets existing file</td></tr>
+              <tr><td>agent.validate_only(path)</td><td>Validate config without running</td><td>validate — blocks job execution</td></tr>
+              <tr><td>agent.diagnose_log(path)</td><td>Analyze log file for root cause</td><td>diagnose — focus on errors</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="detail-card">
+        <h3>Retry &amp; Safety Limits</h3>
+        <p>When <code>run_seatunnel_job</code> fails, the retry counter increments. After <code>max_retries</code> (default 3) consecutive failures, the agent is forced to stop and summarize what it tried. A successful run resets the counter. The loop itself caps at 20 iterations.</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Tools ═══════════ -->
+    <section class="feature-section" id="tools">
+      <h2><span class="section-badge">CORE</span> 9 Built-in Tools</h2>
+      <p class="section-desc">Each tool has a JSON schema the LLM sees and a Python executor function. The agent picks which tools to call based on the task.</p>
+
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Tool</th><th>Purpose</th><th>Key Safety</th></tr></thead>
+          <tbody>
+            <tr><td>run_seatunnel_job</td><td>Execute a pipeline via SeaTunnel CLI (120s timeout)</td><td>Binary existence check, retry tracking</td></tr>
+            <tr><td>write_config</td><td>Write HOCON config file, auto-backup <code>.bak</code></td><td>Path traversal check via <code>is_relative_to(cwd)</code>, extension whitelist</td></tr>
+            <tr><td>read_config</td><td>Read a config file's contents</td><td>File existence check</td></tr>
+            <tr><td>validate_config</td><td>Syntax + structure check (source/sink sections)</td><td>Reports all errors, doesn't execute</td></tr>
+            <tr><td>read_log</td><td>Read last N lines of a log file (<code>auto</code> finds latest)</td><td>Permission check, encoding fallback</td></tr>
+            <tr><td>list_connectors</td><td>List installed SeaTunnel connectors</td><td>Graceful fallback if not installed</td></tr>
+            <tr><td>test_connection</td><td>TCP connectivity test to host:port</td><td>5-second timeout, latency measurement</td></tr>
+            <tr><td>list_templates</td><td>List available pipeline templates, filter by category</td><td>Read-only</td></tr>
+            <tr><td>use_template</td><td>Generate config from template with custom parameters</td><td>Same path traversal as write_config</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="detail-card">
+        <h3>Path Traversal Protection</h3>
+        <p><code>write_config</code> and <code>use_template</code> resolve the target path and verify it stays within the current working directory using <code>Path.resolve().is_relative_to(cwd)</code>. Any attempt to write outside (e.g., <code>../../../etc/evil.conf</code>) returns an error instead of writing.</p>
+        <pre><code>resolved = Path(config_path).resolve()
+cwd = Path.cwd().resolve()
+if not resolved.is_relative_to(cwd):
+    return {"error": "Path is outside the working directory"}</code></pre>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Templates ═══════════ -->
+    <section class="feature-section" id="templates">
+      <h2><span class="section-badge">F1</span> Configuration Template Library</h2>
+      <p class="section-desc">Six built-in templates for common pipeline patterns. The LLM selects a template, fills in parameters, and writes the config — faster and more reliable than generating from scratch.</p>
+
+      <div class="template-grid">
+        <div class="tpl-card">
+          <div class="tpl-name">fake_to_console</div>
+          <div class="tpl-desc">FakeSource → Console, zero dependencies</div>
+          <span class="pill pill-green">testing</span>
+        </div>
+        <div class="tpl-card">
+          <div class="tpl-name">mysql_to_console</div>
+          <div class="tpl-desc">MySQL-CDC → Console, real-time capture</div>
+          <span class="pill pill-teal">database</span>
+        </div>
+        <div class="tpl-card">
+          <div class="tpl-name">mysql_to_mysql</div>
+          <div class="tpl-desc">Jdbc → Jdbc, batch database migration</div>
+          <span class="pill pill-teal">database</span>
+        </div>
+        <div class="tpl-card">
+          <div class="tpl-name">kafka_to_console</div>
+          <div class="tpl-desc">Kafka → Console, stream monitoring</div>
+          <span class="pill pill-amber">streaming</span>
+        </div>
+        <div class="tpl-card">
+          <div class="tpl-name">localfile_to_console</div>
+          <div class="tpl-desc">LocalFile → Console, read CSV/JSON/Parquet</div>
+          <span class="pill pill-red">file</span>
+        </div>
+        <div class="tpl-card">
+          <div class="tpl-name">mysql_to_kafka</div>
+          <div class="tpl-desc">MySQL-CDC → Kafka, change events to MQ</div>
+          <span class="pill pill-amber">streaming</span>
+        </div>
+      </div>
+
+      <div class="detail-card">
+        <h3>Template Rendering</h3>
+        <p>Templates use Python's <code>string.Template</code> with <code>${placeholder}</code> syntax. The <code>render_template(name, params)</code> function merges user-provided values with defaults, so only overrides are required.</p>
+        <pre><code># Template parameters are merged with defaults
+merged = {p["name"]: p["default"] for p in template.parameters}
+merged.update(user_params)
+# safe_substitute leaves unknown placeholders as-is
+return Template(content).safe_substitute(merged)</code></pre>
+      </div>
+
+      <div class="detail-card">
+        <h3>UI Integration</h3>
+        <p>The sidebar includes a template dropdown. Selecting a template auto-fills the input box with a prompt like <code>"Create a pipeline config using the mysql_to_console template (hostname=localhost, port=3306, ...)"</code>. The dropdown labels and prompt text adapt to the current language.</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Connection Testing ═══════════ -->
+    <section class="feature-section" id="connection">
+      <h2><span class="section-badge">F2</span> Connection Testing</h2>
+      <p class="section-desc">TCP connectivity probe for databases, Kafka, and other services. The agent tests connections before generating configs to avoid write-run-fail-fix cycles.</p>
+
+      <div class="detail-card">
+        <h3>How It Works</h3>
+        <p><code>socket.create_connection((host, port), timeout=5)</code> tests raw TCP reachability. The result includes latency in milliseconds and an optional service type label.</p>
+        <pre><code># Tool input
+{"host": "mysql-prod.internal", "port": 3306, "service_type": "MySQL"}
+
+# Success response
+{"reachable": true, "latency_ms": 4.2,
+ "message": "MySQL at mysql-prod.internal:3306 is reachable (4.2ms)"}
+
+# Failure response
+{"reachable": false,
+ "message": "Cannot reach mysql-prod.internal:3306 — Connection refused"}</code></pre>
+      </div>
+
+      <div class="detail-card">
+        <h3>UI Display</h3>
+        <p>Connection results render with semantic badges: <span class="pill pill-green">&#x2705; Reachable</span> or <span class="pill pill-red">&#x274c; Unreachable</span>, making success/failure visible at a glance without reading JSON.</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Session Memory ═══════════ -->
+    <section class="feature-section" id="memory">
+      <h2><span class="section-badge">F3</span> Session Context Memory</h2>
+      <p class="section-desc">The agent tracks what it has done in the current session: configs created, validation results, connection tests, and job outcomes. This context is injected into every LLM call so the agent can resolve references like "run the config again" or "fix that error".</p>
+
+      <div class="detail-card">
+        <h3>Tracked State</h3>
+        <ul class="ctx-list">
+          <li><strong>last_config_path</strong> — most recently written or read config file path</li>
+          <li><strong>created_configs</strong> — all config files written this session (no duplicates)</li>
+          <li><strong>validated_configs</strong> — all config files that passed validation</li>
+          <li><strong>last_job_success</strong> — whether the last job run succeeded</li>
+          <li><strong>last_job_error</strong> — truncated error from the last failed run</li>
+          <li><strong>last_connection_test</strong> — most recent host:port test result</li>
+          <li><strong>last_template_lookup</strong> — whether templates were listed</li>
+        </ul>
+      </div>
+
+      <div class="detail-card">
+        <h3>Context Injection</h3>
+        <p><code>_build_context_hint()</code> always produces a <code>## Session Context</code> block appended to the system prompt — even when the session is empty (showing "No config files have been created or read yet"). This section includes an explicit instruction: <em>"Do NOT guess file paths — only use paths listed here or ask the user."</em></p>
+      </div>
+
+      <div class="detail-card">
+        <h3>Persistence</h3>
+        <p>Context is saved alongside chat history in <code>Session.agent_context</code>. When the user loads a previous session from the history dropdown, the agent's context dict is restored so it can continue intelligently. The field defaults to <code>{}</code> for backward compatibility with sessions saved before this feature.</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Config Diff ═══════════ -->
+    <section class="feature-section" id="diff">
+      <h2><span class="section-badge">F4</span> Configuration Diff Display</h2>
+      <p class="section-desc">When the agent overwrites an existing config, the diff between old and new content is computed and displayed, so the user can see exactly what changed.</p>
+
+      <div class="detail-card">
+        <h3>Implementation</h3>
+        <p><code>write_config</code> reads the old file before overwriting. If content differs, <code>difflib.unified_diff()</code> produces a diff included in the JSON response alongside <code>"had_changes": true</code>. When content is identical, <code>"had_changes": false</code> is returned with no diff. New files return neither field.</p>
+        <pre><code># Response when overwriting with changes
+{"success": true, "had_changes": true,
+ "diff": "--- job.conf.bak\n+++ job.conf\n@@ -1,2 +1,2 @@\n-rows = 10\n+rows = 100"}
+
+# Response when content is identical
+{"success": true, "had_changes": false}
+
+# Response for new file
+{"success": true}</code></pre>
+      </div>
+
+      <div class="detail-card">
+        <h3>UI Rendering</h3>
+        <p>The chat formats diff output as a fenced <code>```diff</code> code block (truncated to 800 characters). When <code>had_changes</code> is false, the result shows "Success (no changes)" to prevent confusion.</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Progress ═══════════ -->
+    <section class="feature-section" id="progress">
+      <h2><span class="section-badge">F5</span> Real-time Progress Visualization</h2>
+      <p class="section-desc">The UI shows what the agent is doing at each moment: which reasoning step it's on, what tool it's calling, and the streaming text response.</p>
+
+      <div class="detail-card">
+        <h3>Event Types</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>Event</th><th>Rendered As</th><th>Source</th></tr></thead>
+            <tbody>
+              <tr><td>step</td><td><code>&#x23f3; Step 3 — Thinking...</code></td><td>Agent loop iteration start + tool execution phase</td></tr>
+              <tr><td>thinking</td><td><code>&#x1f4ad; Thinking</code> + preview (600 chars max)</td><td>Extended thinking / chain-of-thought</td></tr>
+              <tr><td>tool_call</td><td>Emoji + tool name + truncated args</td><td>Before each tool execution</td></tr>
+              <tr><td>tool_result</td><td>Badge (&#x2705;/&#x274c;) + formatted result</td><td>After each tool execution</td></tr>
+              <tr><td>text_delta</td><td>Accumulated text + <code>&#x258c;</code> cursor</td><td>LLM streaming tokens</td></tr>
+              <tr><td>text</td><td>Complete response text (replaces deltas)</td><td>LLM finished generating</td></tr>
+              <tr><td>final_answer</td><td>Not rendered (signals completion)</td><td>Agent loop exit</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="detail-card">
+        <h3>Streaming Text Buffer</h3>
+        <p><code>text_delta</code> events accumulate in a buffer. The buffer is flushed to a chat message with a blinking cursor (<code>&#x258c;</code>) when a non-delta event arrives. A <code>text</code> event clears the buffer entirely — it represents the complete response and replaces any partial deltas.</p>
+      </div>
+
+      <div class="detail-card">
+        <h3>Step Display</h3>
+        <p>Step numbers show without a denominator (e.g., "Step 3" not "Step 3/20") to avoid implying the agent will use all 20 iterations. Phase labels translate internal states: <code>thinking</code> → "Thinking...", <code>executing_tools</code> → "Executing tools...".</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Event-driven Streaming ═══════════ -->
+    <section class="feature-section" id="streaming">
+      <h2><span class="section-badge">F6</span> Event-driven Streaming</h2>
+      <p class="section-desc">The UI refreshes immediately when new events arrive, replacing the original 300ms polling interval with a <code>threading.Event</code> signal.</p>
+
+      <div class="detail-card">
+        <h3>EventCollector</h3>
+        <p>Thread-safe event buffer with a signaling mechanism. The agent thread calls <code>on_event()</code> to append events and signal the UI thread; the UI thread calls <code>wait_for_event(timeout=0.3)</code> which returns immediately when signaled or after the timeout.</p>
+        <pre><code>class EventCollector:
+    def __init__(self):
+        self.events = []
+        self.lock = threading.Lock()
+        self.done = False
+        self._new_event = threading.Event()     # signal
+
+    def on_event(self, event_type, data):
+        with self.lock:
+            self.events.append({"type": event_type, **data})
+            if event_type == "final_answer":
+                self.done = True
+        self._new_event.set()                   # wake UI thread
+
+    def wait_for_event(self, timeout=0.3):
+        self._new_event.wait(timeout)           # block until signal or timeout
+        self._new_event.clear()</code></pre>
+      </div>
+
+      <div class="detail-card">
+        <h3>Why Not Polling</h3>
+        <p>The original <code>time.sleep(0.3)</code> loop introduced up to 300ms latency on every event. With <code>threading.Event</code>, the UI wakes within microseconds of a new event. The 0.3s timeout remains as a fallback — if no event arrives, the loop still checks <code>collector.done</code> to avoid hanging.</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Stop ═══════════ -->
+    <section class="feature-section" id="stop">
+      <h2><span class="section-badge">F7</span> Stop Control</h2>
+      <p class="section-desc">Users can interrupt a running agent mid-task. The stop button injects a <code>final_answer</code> event into the collector, causing the streaming loop to exit gracefully.</p>
+
+      <div class="detail-card">
+        <h3>Mechanism</h3>
+        <p>The <code>collector_holder</code> dict gives the stop button access to the active <code>EventCollector</code>. Clicking the stop button calls <code>collector.on_event("final_answer", ...)</code>, which sets <code>done = True</code> and signals the UI thread. The agent's background thread continues running (daemon thread) but no further output is displayed.</p>
+        <pre><code>def _handle_stop(lang):
+    c = collector_holder.get("current")
+    if c and not c.done:
+        c.on_event("final_answer", {"text": _t(lang, "stopped")})
+    return show_send_btn, hide_stop_btn</code></pre>
+      </div>
+
+      <div class="detail-card">
+        <h3>UI Behavior</h3>
+        <p>When a task starts, the Send button hides and the Stop button <code>[&#x25a0;]</code> appears. On stop or completion, they swap back. The stopped message is localized: "Agent stopped by user." (EN) / "已被用户中断。" (ZH).</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Export ═══════════ -->
+    <section class="feature-section" id="export">
+      <h2><span class="section-badge">F8</span> Session Export</h2>
+      <p class="section-desc">Export the current conversation as a ZIP archive containing a Markdown report and all generated config files.</p>
+
+      <div class="detail-card">
+        <h3>ZIP Contents</h3>
+        <div class="table-wrapper">
+          <table>
+            <thead><tr><th>File</th><th>Content</th></tr></thead>
+            <tbody>
+              <tr><td>report.md</td><td>Title, session ID, timestamp, model name, provider, full conversation</td></tr>
+              <tr><td>configs/*.conf</td><td>All config files created during the session (from <code>created_configs</code>)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="detail-card">
+        <h3>TextMessage Normalization</h3>
+        <p>Before export, <code>_normalize_chat()</code> processes the chat history to unwrap Gradio's <code>ChatMessage</code> objects and strip <code>{'text': '...', 'type': 'text'}</code> wrappers that appear in some Gradio versions. This uses <code>ast.literal_eval</code> for safe parsing and recurses to handle double-wrapped values.</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Dark Mode ═══════════ -->
+    <section class="feature-section" id="darkmode">
+      <h2><span class="section-badge">F9</span> Dark Mode</h2>
+      <p class="section-desc">The Gradio UI adapts to the user's OS theme preference via <code>@media (prefers-color-scheme: dark)</code>. All UI components — chatbot, input area, buttons, sidebar, hint cards, code blocks — have dark variants.</p>
+
+      <div class="detail-card">
+        <h3>Coverage</h3>
+        <p>The dark mode CSS targets: <code>.gradio-container</code> background, chatbot message bubbles, user message rows, code blocks within messages, input textarea, input row, demo buttons, empty-state placeholder, hint cards, docs links, sidebar controls, and the language dropdown. Colors are hardcoded in the custom CSS block since Gradio's theming applies separately.</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ i18n ═══════════ -->
+    <section class="feature-section" id="i18n">
+      <h2><span class="section-badge">F10</span> Bilingual Interface (EN/ZH)</h2>
+      <p class="section-desc">Every UI label, placeholder, and status message supports English and Chinese. The language dropdown in the top bar switches all text dynamically without page reload.</p>
+
+      <div class="detail-card">
+        <h3>Architecture</h3>
+        <p>The <code>_I18N</code> dict maps language codes to key-value pairs. The <code>_t(lang, key)</code> helper looks up the key in the current language, falling back to English. When the language changes, <code>_switch_lang()</code> returns <code>gr.update()</code> calls for all 11 language-sensitive components.</p>
+        <pre><code># Localized keys include:
+# title, subtitle, mode labels, input placeholders,
+# button text, history labels, status messages,
+# demo messages, template labels, stop/stopped,
+# export labels, empty-state text</code></pre>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ History ═══════════ -->
+    <section class="feature-section" id="history">
+      <h2><span class="section-badge">F11</span> Chat History Management</h2>
+      <p class="section-desc">Sessions persist as JSON files. Users can create, rename, delete, and switch between sessions. Each session stores chat messages, agent messages, agent context, and timestamps.</p>
+
+      <div class="detail-card">
+        <h3>Session Data Model</h3>
+        <pre><code>@dataclass
+class Session:
+    session_id: str                     # 12-char random ID
+    title: str                          # extracted from first user message
+    created_at: str                     # ISO timestamp, preserved on updates
+    updated_at: str                     # ISO timestamp, refreshed on save
+    chat_messages: list[dict]           # UI-facing conversation
+    agent_messages: list[dict]          # LLM API messages (with tool calls)
+    agent_context: dict = field(...)    # session memory (F3)</code></pre>
+      </div>
+
+      <div class="detail-card">
+        <h3>History Dropdown</h3>
+        <p>The sidebar dropdown shows sessions sorted by <code>updated_at</code> (newest first). Each entry includes the timestamp, title, and message count (e.g., "2026-09-12 14:30  Create MySQL pipeline (5 msgs)"). Selecting a session restores both the chat view and the agent's internal state for seamless multi-turn continuation.</p>
+      </div>
+    </section>
+
+    <hr class="section-divider">
+
+    <!-- ═══════════ Tests ═══════════ -->
+    <section class="feature-section" id="tests">
+      <h2><span class="section-badge">QA</span> Test Coverage</h2>
+      <p class="section-desc">195 unit tests across 10 modules, covering all tools, agent logic, UI formatting, history persistence, prompt building, and utility functions.</p>
+
+      <div class="test-grid">
+        <div class="test-card"><span class="mod-name">test_tools</span><span class="test-count">25</span></div>
+        <div class="test-card"><span class="mod-name">test_agent</span><span class="test-count">22</span></div>
+        <div class="test-card"><span class="mod-name">test_ui_format</span><span class="test-count">38</span></div>
+        <div class="test-card"><span class="mod-name">test_history</span><span class="test-count">24</span></div>
+        <div class="test-card"><span class="mod-name">test_prompts</span><span class="test-count">12</span></div>
+        <div class="test-card"><span class="mod-name">test_config</span><span class="test-count">10</span></div>
+        <div class="test-card"><span class="mod-name">test_llm</span><span class="test-count">18</span></div>
+        <div class="test-card"><span class="mod-name">test_templates</span><span class="test-count">20</span></div>
+        <div class="test-card"><span class="mod-name">test_utils</span><span class="test-count">13</span></div>
+        <div class="test-card"><span class="mod-name">test_cli</span><span class="test-count">13</span></div>
+      </div>
+
+      <div class="detail-card">
+        <h3>Key Test Strategies</h3>
+        <ul class="ctx-list">
+          <li><strong>Tools</strong> — real file I/O with <code>tmp_path</code>, monkeypatched <code>socket.create_connection</code> for connection tests, path traversal attack verification</li>
+          <li><strong>Agent</strong> — context tracking after simulated tool results, context hint formatting, retry counter behavior, entry point message construction</li>
+          <li><strong>UI</strong> — event formatting for all 7 event types, TextMessage unwrapping with nested wrappers, EventCollector thread safety with 50-event producer, export ZIP structure and content</li>
+          <li><strong>History</strong> — save/load roundtrip, backward compatibility (missing <code>agent_context</code> field), message count in list, corrupt file handling</li>
+        </ul>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+(function() {
+  const links = document.querySelectorAll('.toc-link');
+  const sections = [];
+  links.forEach(link => {
+    const id = link.getAttribute('href').slice(1);
+    const el = document.getElementById(id);
+    if (el) sections.push({ el, link });
+  });
+
+  function updateActive() {
+    let current = sections[0];
+    for (const s of sections) {
+      if (s.el.getBoundingClientRect().top <= 60) current = s;
+    }
+    links.forEach(l => l.classList.remove('active'));
+    if (current) current.link.classList.add('active');
+  }
+
+  window.addEventListener('scroll', updateActive, { passive: true });
+  updateActive();
+})();
+</script>

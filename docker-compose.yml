@@ -1,0 +1,10 @@
+services:
+  agent:
+    build: .
+    ports:
+      - "7860:7860"
+    env_file:
+      - .env
+    volumes:
+      - ./examples:/app/examples
+      - ./chat_history:/app/chat_history

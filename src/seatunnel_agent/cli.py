@@ -84,9 +84,36 @@ def diagnose(ctx: click.Context, log: str) -> None:
 
 
 @cli.command()
+@click.pass_context
+def chat(ctx: click.Context) -> None:
+    """Start an interactive multi-turn chat session with the Agent."""
+    agent = _make_agent()
+    console.print("[green]SeaTunnel Agent — interactive chat (type 'exit' or 'quit' to stop)[/green]\n")
+    try:
+        while True:
+            try:
+                msg = input("You: ").strip()
+            except EOFError:
+                break
+            if not msg:
+                continue
+            if msg.lower() in ("exit", "quit"):
+                break
+            try:
+                result = agent.chat(msg)
+                console.print(f"\n[bold]Agent:[/bold] {result}\n")
+            except Exception as e:
+                _handle_error(e, ctx.obj.get("verbose", False))
+    except KeyboardInterrupt:
+        pass
+    console.print("\n[yellow]Chat session ended.[/yellow]")
+
+
+@cli.command()
 @click.option("--port", "-p", type=int, default=7860, help="Port for the web UI")
+@click.option("--host", "-h", type=str, default="127.0.0.1", help="Host to bind (0.0.0.0 for LAN access)")
 @click.option("--share", is_flag=True, help="Create a public Gradio link")
-def ui(port: int, share: bool) -> None:
+def ui(port: int, host: str, share: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     try:
         from .ui import create_ui, launch_app
@@ -98,8 +125,8 @@ def ui(port: int, share: bool) -> None:
         sys.exit(1)
 
     app = create_ui()
-    console.print(f"[green]Starting web UI on http://127.0.0.1:{port}[/green]")
-    launch_app(app, port=port, share=share)
+    console.print(f"[green]Starting web UI on http://{host}:{port}[/green]")
+    launch_app(app, port=port, host=host, share=share)
 
 
 # ------------------------------------------------------------------
@@ -116,50 +143,43 @@ def _make_agent():
 
 
 def _handle_error(e: Exception, verbose: bool) -> None:
+    handled = False
+
     try:
         import anthropic
         if isinstance(e, anthropic.AuthenticationError):
             console.print("[red]Authentication failed.[/red] Check your API_KEY in .env")
-            if verbose:
-                console.print_exception()
-            sys.exit(1)
+            handled = True
         elif isinstance(e, anthropic.RateLimitError):
             console.print("[red]Rate limited.[/red] Wait a moment and try again.")
-            if verbose:
-                console.print_exception()
-            sys.exit(1)
+            handled = True
         elif isinstance(e, anthropic.APIError):
             console.print(f"[red]Anthropic API error:[/red] {e}")
-            if verbose:
-                console.print_exception()
-            sys.exit(1)
+            handled = True
     except ImportError:
         pass
 
-    try:
-        import openai
-        if isinstance(e, openai.AuthenticationError):
-            console.print("[red]Authentication failed.[/red] Check your API_KEY in .env")
-            if verbose:
-                console.print_exception()
-            sys.exit(1)
-        elif isinstance(e, openai.RateLimitError):
-            console.print("[red]Rate limited.[/red] Wait a moment and try again.")
-            if verbose:
-                console.print_exception()
-            sys.exit(1)
-        elif isinstance(e, openai.APIError):
-            console.print(f"[red]API error:[/red] {e}")
-            if verbose:
-                console.print_exception()
-            sys.exit(1)
-    except ImportError:
-        pass
+    if not handled:
+        try:
+            import openai
+            if isinstance(e, openai.AuthenticationError):
+                console.print("[red]Authentication failed.[/red] Check your API_KEY in .env")
+                handled = True
+            elif isinstance(e, openai.RateLimitError):
+                console.print("[red]Rate limited.[/red] Wait a moment and try again.")
+                handled = True
+            elif isinstance(e, openai.APIError):
+                console.print(f"[red]API error:[/red] {e}")
+                handled = True
+        except ImportError:
+            pass
 
-    if isinstance(e, RuntimeError):
-        console.print(f"[red]Configuration error:[/red] {e}")
-    else:
-        console.print(f"[red]Unexpected error:[/red] {e}")
+    if not handled:
+        if isinstance(e, RuntimeError):
+            console.print(f"[red]Configuration error:[/red] {e}")
+        else:
+            console.print(f"[red]Unexpected error:[/red] {e}")
+
     if verbose:
         console.print_exception()
     sys.exit(1)

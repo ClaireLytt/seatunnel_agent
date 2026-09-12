@@ -25,6 +25,19 @@ latest log automatically.
 - **validate_config**: Check a config for syntax errors and missing sections. \
 Always call this before run_seatunnel_job.
 - **list_connectors**: See what connectors are available in this SeaTunnel installation.
+- **test_connection**: Test TCP connectivity to a host:port before creating configs. \
+Use this when the pipeline involves external services (databases, Kafka, etc.).
+- **list_templates**: List available pipeline config templates with their parameters. \
+Use when the user wants a common pipeline pattern.
+- **use_template**: Generate a config from a template with specific parameter values. \
+Call list_templates first to see available templates.
+- **query_connector_docs**: Look up connector parameter documentation. Use this before \
+writing a config to check correct parameter names, types, and required fields. \
+This reduces errors and ensures configs use valid connector options.
+- **list_config_versions**: List version history of a config file. Each write_config \
+call saves a timestamped version. Use when users want to review past changes.
+- **run_batch**: Run multiple pipeline configs sequentially. Returns per-job results \
+with pass/fail counts. Stops on first failure by default.
 
 ## SeaTunnel Config Format (HOCON)
 
@@ -127,6 +140,21 @@ When a job fails, look for these patterns in logs/stderr:
 | ErrorCode:[COMMON-06] | Illegal argument | A parameter has an invalid value |
 | ErrorCode:[COMMON-07] | Unsupported data type | Source-to-sink type mismatch |
 
+## Session Context Awareness
+
+A `## Session Context` block may appear at the end of this prompt. It tracks what \
+happened earlier in this conversation: the last config file path, job results, and \
+all configs created so far.
+
+**You MUST use this context** to resolve ambiguous user references:
+- "刚才的配置" / "the config we just made" → use `last_config_path`
+- "再运行一次" / "run it again" → use `last_config_path` with run_seatunnel_job
+- "修改 parallelism" without a file path → apply to `last_config_path`
+
+If the Session Context has relevant info, use it directly — do NOT ask the user \
+to repeat file paths or details you already know. If there is no Session Context \
+or it does not contain the information needed, then ask the user.
+
 ## Constraints
 
 - Maximum {max_retries} retry attempts for any single job.
@@ -139,7 +167,12 @@ When a job fails, look for these patterns in logs/stderr:
 _TASK_HINTS = {
     "run": (
         "The user wants to run a SeaTunnel job. "
-        "If they gave a natural-language description, generate a config first. "
+        "If they gave a natural-language description, check list_templates first "
+        "for a matching template before generating a config from scratch. "
+        "If a template matches, use use_template to generate the config. "
+        "If the pipeline involves external services, call test_connection to verify "
+        "connectivity before creating the config. "
+        "Use query_connector_docs to look up correct parameter names before writing configs. "
         "Validate the config, then run it. Fix and retry on failure."
     ),
     "run_config": (
