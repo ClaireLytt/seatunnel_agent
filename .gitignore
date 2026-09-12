@@ -37,10 +37,13 @@ Thumbs.db
 # SeaTunnel logs and backups
 *.log
 *.bak
+$SEATUNNEL_HOME/
+
+# Gradio temp files
+_tmp_gradio*
 
 # Chat history (user data)
 chat_history/
 
 # Local scripts
-sync-main.sh
-push-branch.sh
+scripts/

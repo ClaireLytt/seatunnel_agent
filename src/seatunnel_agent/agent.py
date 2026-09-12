@@ -30,6 +30,16 @@ class SeaTunnelAgent:
         self.retry_count = 0
         self.console = Console()
         self._on_event = on_event
+        self.context: dict[str, Any] = {
+            "last_config_path": None,
+            "last_job_success": None,
+            "last_job_error": None,
+            "created_configs": [],
+            "validated_configs": [],
+            "last_doc_lookup": None,
+            "last_job_metrics": None,
+            "last_batch_result": None,
+        }
 
     def _emit(self, event_type: str, data: dict[str, Any]) -> None:
         if self._on_event:
@@ -97,11 +107,22 @@ class SeaTunnelAgent:
 
     def _agent_loop(self, system_prompt: str) -> str:
         for iteration in range(MAX_LOOP_ITERATIONS):
+            self._emit("step", {
+                "iteration": iteration + 1,
+                "max": MAX_LOOP_ITERATIONS,
+                "phase": "thinking",
+            })
+
+            effective_prompt = system_prompt
+            context_hint = self._build_context_hint()
+            if context_hint:
+                effective_prompt = system_prompt + context_hint
+
             text_delta_cb = None
             if self._on_event:
                 def text_delta_cb(chunk: str) -> None:
                     self._emit("text_delta", {"text": chunk})
-            resp = self.llm.chat(system_prompt, self.messages, on_text_delta=text_delta_cb)
+            resp = self.llm.chat(effective_prompt, self.messages, on_text_delta=text_delta_cb)
 
             self.messages.append(self.llm.append_assistant(resp.raw_content))
 
@@ -113,6 +134,13 @@ class SeaTunnelAgent:
                 self._emit("final_answer", {"text": final})
                 return final
 
+            self._emit("step", {
+                "iteration": iteration + 1,
+                "max": MAX_LOOP_ITERATIONS,
+                "phase": "executing_tools",
+                "tool_count": len(resp.tool_calls),
+            })
+
             tool_results = []
             for tc in resp.tool_calls:
                 self._display_tool_call(tc.name, tc.input)
@@ -122,6 +150,8 @@ class SeaTunnelAgent:
 
                 self._display_tool_result(tc.name, result)
                 self._emit("tool_result", {"name": tc.name, "result": result})
+
+                self._update_context(tc.name, tc.input, result)
 
                 if tc.name == "run_seatunnel_job":
                     self._track_retry(result)
@@ -154,6 +184,95 @@ class SeaTunnelAgent:
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _update_context(self, tool_name: str, tool_input: dict[str, Any], result: str) -> None:
+        try:
+            data = json.loads(result)
+        except (json.JSONDecodeError, TypeError):
+            return
+
+        if tool_name in ("write_config", "use_template") and data.get("success"):
+            path = data.get("config_path") or tool_input.get("config_path")
+            if path:
+                self.context["last_config_path"] = path
+                if path not in self.context["created_configs"]:
+                    self.context["created_configs"].append(path)
+        elif tool_name == "read_config" and data.get("content"):
+            self.context["last_config_path"] = tool_input.get("config_path")
+        elif tool_name == "run_seatunnel_job":
+            self.context["last_job_success"] = data.get("success")
+            if not data.get("success"):
+                self.context["last_job_error"] = (
+                    data.get("error") or data.get("stderr", "")[:200]
+                )
+            else:
+                self.context["last_job_error"] = None
+            if data.get("metrics"):
+                self.context["last_job_metrics"] = data["metrics"]
+        elif tool_name == "validate_config":
+            path = tool_input.get("config_path")
+            if path and path not in self.context["validated_configs"]:
+                self.context["validated_configs"].append(path)
+        elif tool_name == "list_templates":
+            self.context["last_template_lookup"] = True
+        elif tool_name == "test_connection":
+            host = tool_input.get("host", "")
+            port = tool_input.get("port", "")
+            reachable = data.get("reachable", False)
+            self.context["last_connection_test"] = (
+                f"{host}:{port} → {'reachable' if reachable else 'unreachable'}"
+            )
+        elif tool_name == "query_connector_docs":
+            self.context["last_doc_lookup"] = tool_input.get("connector_name")
+        elif tool_name == "run_batch":
+            self.context["last_batch_result"] = {
+                "total": data.get("total"),
+                "passed": data.get("passed"),
+                "failed": data.get("failed"),
+            }
+
+    def _build_context_hint(self) -> str:
+        lines: list[str] = []
+        ctx = self.context
+        if ctx.get("last_config_path"):
+            lines.append(f"- **Last config path**: `{ctx['last_config_path']}`")
+        else:
+            lines.append("- **No config files have been created or read yet in this session.**")
+        if ctx.get("last_job_success") is not None:
+            status = "Success" if ctx["last_job_success"] else "Failed"
+            err = f" — {ctx['last_job_error']}" if ctx.get("last_job_error") else ""
+            lines.append(f"- **Last job result**: {status}{err}")
+        if ctx.get("created_configs"):
+            paths = ", ".join(f"`{p}`" for p in ctx["created_configs"])
+            lines.append(f"- **Configs created this session**: {paths}")
+        if ctx.get("validated_configs"):
+            paths = ", ".join(f"`{p}`" for p in ctx["validated_configs"])
+            lines.append(f"- **Validated configs**: {paths}")
+        if ctx.get("last_connection_test"):
+            lines.append(f"- **Last connection test**: {ctx['last_connection_test']}")
+        if ctx.get("last_doc_lookup"):
+            lines.append(f"- **Last doc lookup**: `{ctx['last_doc_lookup']}`")
+        if ctx.get("last_job_metrics"):
+            m = ctx["last_job_metrics"]
+            parts = []
+            if "total_read_count" in m:
+                parts.append(f"Read: {m['total_read_count']} rows")
+            if "total_write_count" in m:
+                parts.append(f"Written: {m['total_write_count']} rows")
+            if "duration_ms" in m:
+                parts.append(f"Duration: {m['duration_ms']}ms")
+            if parts:
+                lines.append(f"- **Last job metrics**: {', '.join(parts)}")
+        if ctx.get("last_batch_result"):
+            b = ctx["last_batch_result"]
+            lines.append(f"- **Last batch run**: {b['passed']}/{b['total']} passed, {b['failed']} failed")
+        return (
+            "\n\n## Session Context\n\n"
+            "Use this information to resolve user references like "
+            "\"刚才的配置\", \"the config\", \"run it again\", etc. "
+            "Do NOT guess file paths — only use paths listed here or ask the user.\n\n"
+            + "\n".join(lines) + "\n"
+        )
 
     def _track_retry(self, result: str) -> None:
         try:
@@ -199,6 +318,12 @@ class SeaTunnelAgent:
             "read_log": "blue",
             "validate_config": "blue",
             "list_connectors": "blue",
+            "test_connection": "cyan",
+            "list_templates": "blue",
+            "use_template": "yellow",
+            "query_connector_docs": "blue",
+            "list_config_versions": "blue",
+            "run_batch": "green",
         }
         color = style_map.get(name, "white")
         args_str = ", ".join(

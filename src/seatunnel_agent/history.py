@@ -21,13 +21,14 @@ class Session:
     updated_at: str
     chat_messages: list[dict[str, str]] = field(default_factory=list)
     agent_messages: list[dict[str, Any]] = field(default_factory=list)
+    agent_context: dict[str, Any] = field(default_factory=dict)
 
 
 def new_session_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
-def _now_iso() -> str:
+def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
 
@@ -45,7 +46,7 @@ def _session_path(session_id: str) -> Path:
 
 def save_session(session: Session) -> None:
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    session.updated_at = _now_iso()
+    session.updated_at = now_iso()
     data = asdict(session)
     _session_path(session.session_id).write_text(
         json.dumps(data, ensure_ascii=False, indent=2),
@@ -86,10 +87,12 @@ def list_sessions() -> list[dict[str, str]]:
     for f in HISTORY_DIR.glob("*.json"):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
+            msg_count = len(data.get("chat_messages", []))
             sessions.append({
                 "id": data["session_id"],
                 "title": data.get("title", "Untitled"),
                 "updated_at": data.get("updated_at", ""),
+                "msg_count": msg_count,
             })
         except (json.JSONDecodeError, KeyError):
             continue

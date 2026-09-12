@@ -163,3 +163,74 @@ class TestNewSessionId:
     def test_unique(self):
         ids = {new_session_id() for _ in range(100)}
         assert len(ids) == 100
+
+
+class TestAgentContext:
+    def test_roundtrip_with_context(self):
+        s = _make_session(agent_context={"last_config_path": "/tmp/x.conf", "created_configs": ["/tmp/x.conf"]})
+        save_session(s)
+        loaded = load_session(s.session_id)
+        assert loaded.agent_context["last_config_path"] == "/tmp/x.conf"
+        assert "/tmp/x.conf" in loaded.agent_context["created_configs"]
+
+    def test_default_empty_context(self):
+        s = _make_session()
+        save_session(s)
+        loaded = load_session(s.session_id)
+        assert loaded.agent_context == {}
+
+    def test_backward_compat_no_context_field(self, _use_tmp_dir):
+        import json as _json
+        data = {
+            "session_id": "old123",
+            "title": "Old session",
+            "created_at": "2026-01-01T00:00:00",
+            "updated_at": "2026-01-01T00:00:00",
+            "chat_messages": [],
+            "agent_messages": [],
+        }
+        (_use_tmp_dir / "old123.json").write_text(
+            _json.dumps(data), encoding="utf-8"
+        )
+        loaded = load_session("old123")
+        assert loaded is not None
+        assert loaded.agent_context == {}
+
+
+class TestListSessionsMsgCount:
+    def test_msg_count_included(self, _use_tmp_dir):
+        import json as _json
+        data = {
+            "session_id": "cnt1",
+            "title": "Counting",
+            "created_at": "2026-09-12T00:00:00",
+            "updated_at": "2026-09-12T00:00:00",
+            "chat_messages": [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "hello"},
+                {"role": "user", "content": "bye"},
+            ],
+            "agent_messages": [],
+        }
+        (_use_tmp_dir / "cnt1.json").write_text(
+            _json.dumps(data), encoding="utf-8"
+        )
+        sessions = list_sessions()
+        assert len(sessions) == 1
+        assert sessions[0]["msg_count"] == 3
+
+    def test_empty_messages_count_zero(self, _use_tmp_dir):
+        import json as _json
+        data = {
+            "session_id": "cnt2",
+            "title": "Empty",
+            "created_at": "2026-09-12T00:00:00",
+            "updated_at": "2026-09-12T00:00:00",
+            "chat_messages": [],
+            "agent_messages": [],
+        }
+        (_use_tmp_dir / "cnt2.json").write_text(
+            _json.dumps(data), encoding="utf-8"
+        )
+        sessions = list_sessions()
+        assert sessions[0]["msg_count"] == 0

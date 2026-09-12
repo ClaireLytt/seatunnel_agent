@@ -92,6 +92,8 @@ class LLMClient:
         on_text_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         if self.provider == "anthropic":
+            if on_text_delta:
+                return self._call_anthropic_stream(system_prompt, messages, on_text_delta)
             return self._call_anthropic(system_prompt, messages)
         else:
             if on_text_delta:
@@ -100,7 +102,7 @@ class LLMClient:
 
     def build_tool_result_message(
         self, tool_results: list[dict[str, Any]]
-    ) -> dict[str, Any]:
+    ) -> dict[str, Any] | list[dict[str, Any]]:
         if self.provider == "anthropic":
             return {"role": "user", "content": tool_results}
         else:
@@ -171,6 +173,69 @@ class LLMClient:
             thinking_text=thinking,
             reply_text=text,
             raw_content=response.content,
+        )
+
+    def _call_anthropic_stream(
+        self,
+        system_prompt: str,
+        messages: list,
+        on_text_delta: Callable[[str], None],
+    ) -> LLMResponse:
+        thinking = ""
+        text_parts: list[str] = []
+        tool_calls: list[ToolCall] = []
+        raw_content: list[Any] = []
+
+        current_tool_id = ""
+        current_tool_name = ""
+        current_tool_json = ""
+
+        with self._client.messages.stream(
+            model=self.settings.model_name,
+            max_tokens=self.settings.max_tokens,
+            system=system_prompt,
+            tools=TOOL_DEFINITIONS,
+            messages=messages,
+            thinking={"type": "adaptive"},
+        ) as stream:
+            for event in stream:
+                if event.type == "content_block_start":
+                    block = event.content_block
+                    if block.type == "tool_use":
+                        current_tool_id = block.id
+                        current_tool_name = block.name
+                        current_tool_json = ""
+                elif event.type == "content_block_delta":
+                    delta = event.delta
+                    if delta.type == "thinking_delta":
+                        thinking += delta.thinking
+                    elif delta.type == "text_delta":
+                        text_parts.append(delta.text)
+                        on_text_delta(delta.text)
+                    elif delta.type == "input_json_delta":
+                        current_tool_json += delta.partial_json
+                elif event.type == "content_block_stop":
+                    if current_tool_name:
+                        try:
+                            args = json.loads(current_tool_json) if current_tool_json else {}
+                        except json.JSONDecodeError:
+                            args = {}
+                        tool_calls.append(ToolCall(
+                            id=current_tool_id,
+                            name=current_tool_name,
+                            input=args,
+                        ))
+                        current_tool_name = ""
+
+            raw_content = stream.get_final_message().content
+
+        full_text = "".join(text_parts)
+        return LLMResponse(
+            wants_tool_use=len(tool_calls) > 0,
+            tool_calls=tool_calls,
+            thinking_text=thinking,
+            reply_text=full_text,
+            raw_content=raw_content,
         )
 
     # ------------------------------------------------------------------

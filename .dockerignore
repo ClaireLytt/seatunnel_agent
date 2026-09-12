@@ -1,0 +1,12 @@
+.env
+.claude/
+.git/
+.pytest_cache/
+__pycache__/
+*.egg-info/
+chat_history/
+scripts/
+_tmp_gradio*
+$SEATUNNEL_HOME/
+.venv/
+venv/

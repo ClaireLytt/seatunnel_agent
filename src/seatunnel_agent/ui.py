@@ -7,8 +7,12 @@ Or:        seatunnel-agent ui
 from __future__ import annotations
 
 import json
+import tempfile
 import threading
 import time
+import zipfile
+from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import gradio as gr
@@ -20,6 +24,49 @@ from .history import (
     load_session, new_session_id, rename_session, save_session,
 )
 from .tools import execute_tool
+
+
+def _extract_text_part(part: Any) -> str:
+    """Extract plain text from a TextMessage, dict, or string."""
+    if isinstance(part, dict):
+        raw = part.get("text", part)
+    else:
+        raw = getattr(part, "text", None)
+        if raw is None:
+            raw = part
+    return _unwrap_textmsg_str(str(raw))
+
+
+def _unwrap_textmsg_str(s: str) -> str:
+    """Recursively strip ``{'text': '...', 'type': 'text'}`` wrappers."""
+    import ast
+    stripped = s.strip()
+    if stripped.startswith("{") and "'text':" in stripped and "'type':" in stripped:
+        try:
+            parsed = ast.literal_eval(stripped)
+            if isinstance(parsed, dict) and "text" in parsed:
+                return _unwrap_textmsg_str(str(parsed["text"]))
+        except (ValueError, SyntaxError):
+            pass
+    return s
+
+
+def _normalize_chat(chat_history: list) -> list[dict[str, str]]:
+    """Convert Gradio ChatMessage objects to plain dicts."""
+    out: list[dict[str, str]] = []
+    for msg in chat_history:
+        if isinstance(msg, dict):
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+        else:
+            role = getattr(msg, "role", "")
+            content = getattr(msg, "content", "")
+        if isinstance(content, list):
+            content = "".join(_extract_text_part(part) for part in content)
+        else:
+            content = _unwrap_textmsg_str(str(content))
+        out.append({"role": str(role), "content": content})
+    return out
 
 
 # ------------------------------------------------------------------
@@ -71,6 +118,12 @@ _I18N: dict[str, dict[str, str]] = {
         "placeholder_hint1": "Generate 10 fake rows to console",
         "placeholder_hint2": "Sync MySQL users table to Console",
         "placeholder_hint3": "Validate examples/fake_to_console.conf",
+        "export": "Export",
+        "export_empty": "No conversation to export",
+        "templates": "TEMPLATES",
+        "tpl_none": "-- Select a template --",
+        "stop": "Stop",
+        "stopped": "Agent stopped by user.",
     },
     "zh": {
         "title": "SeaTunnel 数据管道构建器",
@@ -116,12 +169,46 @@ _I18N: dict[str, dict[str, str]] = {
         "placeholder_hint1": "生成 10 条假数据到控制台",
         "placeholder_hint2": "同步 MySQL 用户表到 Console",
         "placeholder_hint3": "验证 examples/fake_to_console.conf",
+        "export": "导出",
+        "export_empty": "没有可导出的对话",
+        "templates": "配置模板",
+        "tpl_none": "-- 选择模板 --",
+        "stop": "停止",
+        "stopped": "已被用户中断。",
     },
 }
 
 
 def _t(lang: str, key: str) -> str:
     return _I18N.get(lang, _I18N["en"]).get(key, _I18N["en"].get(key, key))
+
+
+def _build_template_choices(lang: str) -> list[tuple[str, str]]:
+    from .templates import TEMPLATES
+    none_label = _t(lang, "tpl_none")
+    choices: list[tuple[str, str]] = [(none_label, "")]
+    for t in TEMPLATES:
+        params = ", ".join(p["name"] for p in t.parameters[:3])
+        if len(t.parameters) > 3:
+            params += ", ..."
+        label = f"{t.name}  ({t.description})"
+        choices.append((label, t.name))
+    return choices
+
+
+def _template_to_prompt(template_name: str, lang: str) -> str:
+    if not template_name:
+        return ""
+    from .templates import get_template
+    tpl = get_template(template_name)
+    if tpl is None:
+        return ""
+    params_hint = ", ".join(
+        f"{p['name']}={p['default']}" for p in tpl.parameters if p.get("default")
+    )
+    if lang == "zh":
+        return f"使用 {tpl.name} 模板创建管道配置（{params_hint}）"
+    return f"Create a pipeline config using the {tpl.name} template ({params_hint})"
 
 
 # ------------------------------------------------------------------
@@ -249,12 +336,18 @@ class EventCollector:
         self.events: list[dict[str, Any]] = []
         self.lock = threading.Lock()
         self.done = False
+        self._new_event = threading.Event()
 
     def on_event(self, event_type: str, data: dict[str, Any]) -> None:
         with self.lock:
             self.events.append({"type": event_type, **data})
             if event_type == "final_answer":
                 self.done = True
+        self._new_event.set()
+
+    def wait_for_event(self, timeout: float = 0.3) -> None:
+        self._new_event.wait(timeout)
+        self._new_event.clear()
 
     def snapshot(self) -> list[dict[str, Any]]:
         with self.lock:
@@ -265,11 +358,51 @@ class EventCollector:
 # Format events -> chat messages
 # ------------------------------------------------------------------
 
+_TOOL_EMOJI = {
+    "run_seatunnel_job": "\U0001f680",
+    "write_config": "✏️",
+    "read_config": "\U0001f4d6",
+    "read_log": "\U0001f4cb",
+    "validate_config": "✅",
+    "list_connectors": "\U0001f50c",
+    "test_connection": "\U0001f50c",
+    "list_templates": "\U0001f4cb",
+    "use_template": "\U0001f4dd",
+    "query_connector_docs": "\U0001f4d6",
+    "list_config_versions": "\U0001f4dc",
+    "run_batch": "\U0001f4e6",
+}
+
+
 def _format_events_as_chat(events: list[dict[str, Any]]) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
+    delta_buffer: list[str] = []
+
+    def _flush_delta() -> None:
+        if delta_buffer:
+            accumulated = "".join(delta_buffer)
+            if accumulated.strip():
+                messages.append({"role": "assistant", "content": accumulated + " ▌"})
+            delta_buffer.clear()
+
     for ev in events:
         t = ev["type"]
-        if t == "thinking":
+
+        if t == "text_delta":
+            delta_buffer.append(ev.get("text", ""))
+            continue
+        if t == "text":
+            delta_buffer.clear()
+        elif delta_buffer:
+            _flush_delta()
+
+        if t == "step":
+            iteration = ev.get("iteration", "?")
+            phase = ev.get("phase", "")
+            label = {"thinking": "Thinking...", "executing_tools": "Executing tools..."}.get(phase, phase)
+            messages.append({"role": "assistant",
+                             "content": f"⏳ **Step {iteration}** — {label}"})
+        elif t == "thinking":
             text = ev.get("text", "")
             if text:
                 preview = text[:600] + ("..." if len(text) > 600 else "")
@@ -281,8 +414,7 @@ def _format_events_as_chat(events: list[dict[str, Any]]) -> list[dict[str, str]]
         elif t == "tool_call":
             name = ev.get("name", "?")
             inp = ev.get("input", {})
-            emoji = {"run_seatunnel_job": "\U0001f680", "write_config": "✏️", "read_config": "\U0001f4d6",
-                     "read_log": "\U0001f4cb", "validate_config": "✅", "list_connectors": "\U0001f50c"}.get(name, "\U0001f527")
+            emoji = _TOOL_EMOJI.get(name, "\U0001f527")
             args_lines = "\n".join(f"  {k}: {repr(v)[:120]}" for k, v in inp.items() if k != "content")
             if "content" in inp:
                 args_lines += f"\n  content: ({len(inp['content'])} chars)"
@@ -295,10 +427,43 @@ def _format_events_as_chat(events: list[dict[str, Any]]) -> list[dict[str, str]]
                 data = json.loads(raw)
             except (json.JSONDecodeError, TypeError):
                 data = {"raw": raw[:500]}
+
             if data.get("error"):
                 badge, summary = "❌", f"Error: {data['error'][:300]}"
+            elif data.get("reachable") is True:
+                badge, summary = "✅", data.get("message", "Reachable")
+            elif data.get("reachable") is False:
+                badge, summary = "❌", data.get("message", "Unreachable")
+            elif "stdout" in data:
+                badge = "✅" if data.get("success") else "❌"
+                parts = []
+                if data.get("metrics"):
+                    m = data["metrics"]
+                    metric_lines = []
+                    if "total_read_count" in m:
+                        metric_lines.append(f"Read: **{m['total_read_count']:,}** rows")
+                    if "total_write_count" in m:
+                        metric_lines.append(f"Written: **{m['total_write_count']:,}** rows")
+                    if "total_read_bytes" in m:
+                        metric_lines.append(f"Read: **{m['total_read_bytes']:,}** bytes")
+                    if "duration_ms" in m:
+                        secs = m["duration_ms"] / 1000
+                        metric_lines.append(f"Duration: **{secs:.1f}s**")
+                    if metric_lines:
+                        parts.append("**Metrics:**\n" + "\n".join(metric_lines))
+                if data.get("stdout"):
+                    parts.append(f"stdout:\n```\n{data['stdout'][:400]}\n```")
+                if data.get("stderr"):
+                    parts.append(f"stderr:\n```\n{data['stderr'][:300]}\n```")
+                summary = "\n".join(parts) or "(no output)"
             elif data.get("success") is True:
                 badge, summary = "✅", "Success"
+                if data.get("version"):
+                    summary += f" (version {data['version']})"
+                if data.get("diff"):
+                    summary += f"\n\n**Changes:**\n```diff\n{data['diff'][:800]}\n```"
+                elif data.get("had_changes") is False:
+                    summary += " (no changes)"
             elif data.get("valid") is True:
                 badge, summary = "✅", "Config is valid"
                 if data.get("warnings"):
@@ -309,18 +474,60 @@ def _format_events_as_chat(events: list[dict[str, Any]]) -> list[dict[str, str]]
             elif "content" in data:
                 c = data["content"]
                 badge, summary = "\U0001f4c4", f"```\n{c[:400]}{'...' if len(c)>400 else ''}\n```"
-            elif "stdout" in data:
-                badge = "✅" if data.get("success") else "❌"
-                parts = []
-                if data.get("stdout"):
-                    parts.append(f"stdout:\n```\n{data['stdout'][:400]}\n```")
-                if data.get("stderr"):
-                    parts.append(f"stderr:\n```\n{data['stderr'][:300]}\n```")
-                summary = "\n".join(parts) or "(no output)"
+            elif "templates" in data:
+                tpls = data["templates"]
+                lines = [f"  - **{t['name']}**: {t['description']}" for t in tpls[:10]]
+                badge, summary = "\U0001f4cb", f"Found {data.get('count', len(tpls))} templates:\n" + "\n".join(lines)
+            elif "required_params" in data or "param_detail" in data:
+                badge = "\U0001f4d6"
+                if "param_detail" in data:
+                    p = data["param_detail"]
+                    summary = f"**{p['name']}** ({p['type']})\n{p['description']}\nExample: `{p['example']}`"
+                else:
+                    req = data.get("required_params", [])
+                    opt = data.get("optional_params", [])
+                    lines_r = [f"**{data.get('connector_name', '')}** — {data.get('description', '')}"]
+                    if req:
+                        lines_r.append(f"\nRequired ({len(req)}):")
+                        for p in req[:10]:
+                            lines_r.append(f"  - `{p['name']}` ({p['type']}): {p['description']}")
+                    if opt:
+                        lines_r.append(f"\nOptional ({len(opt)}):")
+                        for p in opt[:5]:
+                            lines_r.append(f"  - `{p['name']}` ({p['type']}): {p['description']}")
+                    summary = "\n".join(lines_r)
+            elif "versions" in data and isinstance(data["versions"], list):
+                badge = "\U0001f4dc"
+                vers = data["versions"]
+                if not vers:
+                    summary = "No version history found for this config."
+                else:
+                    lines_v = [f"**{data.get('config_path', 'Config')}** — {len(vers)} version(s):"]
+                    for v in vers[-10:]:
+                        size_kb = v.get("size_bytes", 0) / 1024
+                        lines_v.append(f"  - v{v['version']} — {v['timestamp']} ({size_kb:.1f} KB)")
+                    summary = "\n".join(lines_v)
+            elif "results" in data and "passed" in data and "failed" in data:
+                badge = "✅" if data["failed"] == 0 else "❌"
+                header = f"**Batch Run**: {data['passed']}/{data['total']} passed"
+                if data.get("stopped_early"):
+                    header += " (stopped early)"
+                batch_lines = [header, ""]
+                for r in data.get("results", []):
+                    status_icon = "✅" if r.get("success") else "❌"
+                    line = f"{status_icon} `{r['config_path']}`"
+                    if r.get("error"):
+                        line += f" — {r['error'][:100]}"
+                    batch_lines.append(line)
+                summary = "\n".join(batch_lines)
             else:
                 badge = "\U0001f4e6"
                 summary = f"```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:500]}\n```"
             messages.append({"role": "assistant", "content": f"{badge} **Result: `{name}`**\n\n{summary}"})
+
+    if delta_buffer:
+        _flush_delta()
+
     return messages
 
 
@@ -328,8 +535,12 @@ def _format_events_as_chat(events: list[dict[str, Any]]) -> list[dict[str, str]]
 # Streaming runner
 # ------------------------------------------------------------------
 
-def _run_agent_streaming(user_message, chat_history, mode, config_path, settings, agent_holder):
+def _run_agent_streaming(user_message, chat_history, mode, config_path, settings, agent_holder,
+                         collector_holder=None):
+    chat_history = _normalize_chat(chat_history)
     collector = EventCollector()
+    if collector_holder is not None:
+        collector_holder["current"] = collector
     is_first = agent_holder.get("agent") is None
     if is_first:
         agent = SeaTunnelAgent(settings, on_event=collector.on_event)
@@ -362,11 +573,11 @@ def _run_agent_streaming(user_message, chat_history, mode, config_path, settings
     thread.start()
     prev_count = 0
     while not collector.done:
+        collector.wait_for_event(timeout=0.3)
         events = collector.snapshot()
         if len(events) > prev_count:
             prev_count = len(events)
             yield chat_history + [{"role": "user", "content": user_message}] + _format_events_as_chat(events)
-        time.sleep(0.3)
     thread.join(timeout=5)
     final = _format_events_as_chat(collector.snapshot())
     if error_msg:
@@ -384,7 +595,9 @@ def _build_history_choices() -> list[tuple[str, str]]:
     for s in sessions:
         ts = s.get("updated_at", "")[:16].replace("T", " ")
         title = s.get("title", "Untitled")
-        label = f"{ts}  {title}" if ts else title
+        n = s.get("msg_count", 0)
+        count_tag = f" ({n} msgs)" if n else ""
+        label = f"{ts}  {title}{count_tag}" if ts else f"{title}{count_tag}"
         choices.append((label, s["id"]))
     return choices
 
@@ -394,21 +607,26 @@ def _save_current_session(
     chat_history: list[dict[str, str]],
     agent_holder: dict[str, Any],
 ) -> str:
+    chat_history = _normalize_chat(chat_history)
     if not chat_history:
         return session_id
     if not session_id:
         session_id = new_session_id()
     agent = agent_holder.get("agent")
     agent_msgs = agent.messages if agent else []
-    from .history import _now_iso
+    from .history import now_iso
     title = extract_title(chat_history)
+    agent_ctx = agent.context if agent else {}
+    existing = load_session(session_id)
+    created = existing.created_at if existing else now_iso()
     session = Session(
         session_id=session_id,
         title=title,
-        created_at=_now_iso(),
-        updated_at=_now_iso(),
+        created_at=created,
+        updated_at=now_iso(),
         chat_messages=chat_history,
         agent_messages=agent_msgs,
+        agent_context=agent_ctx,
     )
     save_session(session)
     return session_id
@@ -433,6 +651,66 @@ def _build_placeholder(lang: str) -> str:
 </div>'''
 
 
+def _export_session(
+    chat_history: list[dict[str, str]],
+    session_id: str,
+    created_configs: list[str] | None = None,
+    settings: Settings | None = None,
+) -> str | None:
+    chat_history = _normalize_chat(chat_history)
+    if not chat_history:
+        return None
+
+    title = extract_title(chat_history)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    md_lines = [
+        "# SeaTunnel Agent Session Report",
+        "",
+        f"- **Title**: {title}",
+        f"- **Session ID**: {session_id}",
+        f"- **Exported at**: {timestamp}",
+    ]
+    if settings:
+        md_lines.append(f"- **Model**: {settings.model_name}")
+        md_lines.append(f"- **Provider**: {settings.llm_provider}")
+    md_lines += [
+        "",
+        "---",
+        "",
+    ]
+
+    for msg in chat_history:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+        header = "## User" if role == "user" else "## Assistant"
+        md_lines.append(f"{header}\n\n{content}\n")
+
+    config_files: list[Path] = []
+    for p in (created_configs or []):
+        fp = Path(p)
+        if fp.is_file():
+            config_files.append(fp)
+
+    if config_files:
+        md_lines.append("\n---\n\n## Generated Config Files\n")
+        for fp in config_files:
+            md_lines.append(f"- `{fp.name}`")
+
+    report_md = "\n".join(md_lines)
+
+    export_dir = Path(tempfile.gettempdir()) / "seatunnel_exports"
+    export_dir.mkdir(exist_ok=True)
+    zip_name = f"seatunnel_session_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+    zip_path = export_dir / zip_name
+
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("report.md", report_md)
+        for fp in config_files:
+            zf.write(fp, f"configs/{fp.name}")
+
+    return str(zip_path)
+
+
 # ------------------------------------------------------------------
 # Build UI
 # ------------------------------------------------------------------
@@ -448,6 +726,7 @@ _MODE_MAP = {
 def create_ui() -> gr.Blocks:
     settings_holder: dict[str, Settings | None] = {"current": None}
     agent_holder: dict[str, SeaTunnelAgent | None] = {"agent": None}
+    collector_holder: dict[str, EventCollector | None] = {"current": None}
 
     lang = "en"
 
@@ -482,7 +761,7 @@ def create_ui() -> gr.Blocks:
             return
         mode_key = _MODE_MAP.get(mode_text, "run")
         final_chat = history
-        for update in _run_agent_streaming(msg, history, mode_key, cfg, settings, agent_holder):
+        for update in _run_agent_streaming(msg, history, mode_key, cfg, settings, agent_holder, collector_holder):
             final_chat = update
             yield update, sid, no_save
         sid = _save_current_session(sid, final_chat, agent_holder)
@@ -517,6 +796,8 @@ def create_ui() -> gr.Blocks:
             if settings:
                 agent = SeaTunnelAgent(settings, on_event=lambda *_: None)
                 agent.messages = list(session.agent_messages)
+                if session.agent_context:
+                    agent.context = dict(session.agent_context)
                 agent_holder["agent"] = agent
         return session.chat_messages, selected_sid
 
@@ -563,6 +844,8 @@ def create_ui() -> gr.Blocks:
             gr.update(value=_t(lang, "new_chat")),
             gr.update(label=_t(lang, "history")),
             gr.update(placeholder=_build_placeholder(lang)),
+            gr.update(label=_t(lang, "export")),
+            gr.update(choices=_build_template_choices(lang), value="", label=_t(lang, "templates")),
         )
 
     # ── Layout ──
@@ -645,6 +928,13 @@ def create_ui() -> gr.Blocks:
                 placeholder=_t(lang, "config_placeholder"),
                 elem_classes=["st-sidebar-control"],
             )
+            template_dd = gr.Dropdown(
+                choices=_build_template_choices(lang),
+                value="",
+                label=_t(lang, "templates"),
+                interactive=True,
+                elem_classes=["st-sidebar-control"],
+            )
             load_btn = gr.Button(
                 _t(lang, "connect"),
                 variant="secondary",
@@ -657,6 +947,12 @@ def create_ui() -> gr.Blocks:
                 value=_t(lang, "status_default"),
                 elem_classes=["st-sidebar-status"],
             )
+            export_btn = gr.DownloadButton(
+                _t(lang, "export"),
+                variant="secondary",
+                size="sm",
+                elem_classes=["st-connect-btn"],
+            )
 
         # ── Main area ──
         with gr.Row(elem_classes=["st-topbar-row"]):
@@ -666,7 +962,7 @@ def create_ui() -> gr.Blocks:
                 value="English",
                 show_label=False,
                 container=False,
-                min_width=100,
+                min_width=140,
                 elem_classes=["st-lang-dd"],
             )
 
@@ -702,12 +998,32 @@ def create_ui() -> gr.Blocks:
                 min_width=48,
                 elem_classes=["st-btn-send"],
             )
+            stop_btn = gr.Button(
+                "■",
+                variant="stop",
+                size="sm",
+                scale=0,
+                min_width=48,
+                visible=False,
+                elem_classes=["st-btn-stop"],
+            )
 
         # ── Connect wiring ──
         load_btn.click(
             fn=_load_settings_safe,
             inputs=lang_state,
             outputs=status_box,
+        )
+
+        # ── Template selection ──
+        def _on_template_select(tpl_name, lang):
+            prompt = _template_to_prompt(tpl_name, lang)
+            return gr.update(value=prompt)
+
+        template_dd.change(
+            fn=_on_template_select,
+            inputs=[template_dd, lang_state],
+            outputs=user_input,
         )
 
         # ── Lang switch wiring ──
@@ -729,17 +1045,45 @@ def create_ui() -> gr.Blocks:
                 new_chat_btn,
                 history_dd,
                 chatbot,
+                export_btn,
+                template_dd,
             ],
         )
 
+        # ── Stop handler ──
+        def _handle_stop(lang):
+            c = collector_holder.get("current")
+            if c and not c.done:
+                c.on_event("final_answer", {"text": _t(lang, "stopped")})
+            return gr.update(visible=True), gr.update(visible=False)
+
+        stop_btn.click(
+            fn=_handle_stop,
+            inputs=[lang_state],
+            outputs=[send_btn, stop_btn],
+        )
+
         # ── Action wiring ──
+        def _show_stop():
+            return gr.update(visible=False), gr.update(visible=True)
+
+        def _show_send():
+            return gr.update(visible=True), gr.update(visible=False)
+
         submit_io = dict(
             fn=_handle_submit,
             inputs=[user_input, chatbot, mode, config_path, lang_state, session_state],
             outputs=[chatbot, session_state, history_dd],
         )
-        send_btn.click(**submit_io).then(fn=lambda: "", outputs=user_input)
-        user_input.submit(**submit_io).then(fn=lambda: "", outputs=user_input)
+        def _post_submit():
+            return "", gr.update(value=""), gr.update(visible=True), gr.update(visible=False)
+
+        send_btn.click(fn=_show_stop, outputs=[send_btn, stop_btn]) \
+            .then(**submit_io) \
+            .then(fn=_post_submit, outputs=[user_input, template_dd, send_btn, stop_btn])
+        user_input.submit(fn=_show_stop, outputs=[send_btn, stop_btn]) \
+            .then(**submit_io) \
+            .then(fn=_post_submit, outputs=[user_input, template_dd, send_btn, stop_btn])
 
         demo_btn.click(
             fn=_handle_demo,
@@ -787,6 +1131,25 @@ def create_ui() -> gr.Blocks:
             outputs=[action_row, rename_row],
         )
 
+        def _handle_export(chat_history, sid, lang):
+            if not chat_history:
+                raise gr.Error(_t(lang, "export_empty"))
+            agent = agent_holder.get("agent")
+            configs = list(agent.context.get("created_configs", [])) if agent else []
+            path = _export_session(
+                chat_history, sid or "export", configs,
+                settings=settings_holder.get("current"),
+            )
+            if not path:
+                raise gr.Error(_t(lang, "export_empty"))
+            return path
+
+        export_btn.click(
+            fn=_handle_export,
+            inputs=[chatbot, session_state, lang_state],
+            outputs=export_btn,
+        )
+
         # ── Page load ──
         app.load(fn=_on_page_load, outputs=history_dd)
 
@@ -819,6 +1182,19 @@ footer { display: none !important; }
     font-size: 13px !important;
     line-height: 1.65 !important;
     padding: 8px 24px !important;
+}
+/* ── User message: right-aligned with left space ── */
+.st-chatbot .user-row {
+    margin-left: 22% !important;
+    margin-top: 18px !important;
+    margin-bottom: 18px !important;
+    background: #fff7ed !important;
+    border: 1px solid #fed7aa !important;
+    border-radius: 16px 16px 4px 16px !important;
+    padding: 10px 16px !important;
+}
+.st-chatbot .user-row .message {
+    padding: 0 !important;
 }
 .st-chatbot .message code {
     font-size: 12px !important;
@@ -875,6 +1251,23 @@ footer { display: none !important; }
     flex-shrink: 0 !important;
 }
 .st-btn-send:hover { background: #e8590c !important; }
+.st-btn-stop {
+    border-radius: 50% !important;
+    width: 40px !important;
+    height: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    background: #dc2626 !important;
+    color: #fff !important;
+    border: none !important;
+    font-size: 14px !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+}
+.st-btn-stop:hover { background: #b91c1c !important; }
 .st-btn-demo {
     background: #fff !important;
     border: 1.5px solid #e5e7eb !important;
@@ -1027,13 +1420,13 @@ footer { display: none !important; }
     display: none !important;
 }
 .st-lang-dd {
-    max-width: 110px !important;
-    min-width: 90px !important;
+    max-width: 140px !important;
+    min-width: 120px !important;
 }
 .st-lang-dd select,
 .st-lang-dd input {
     font-size: 12px !important;
-    padding: 4px 10px !important;
+    padding: 4px 28px 4px 10px !important;
     border-radius: 8px !important;
     border: 1px solid #e5e7eb !important;
     background: #f9fafb !important;
@@ -1048,12 +1441,68 @@ footer { display: none !important; }
 /* ── Responsive sizing ── */
 button { font-size: 12px !important; }
 label { font-size: 11px !important; }
+
+/* ── Dark mode ── */
+@media (prefers-color-scheme: dark) {
+    .gradio-container { background: #1a1a2e !important; color: #e2e8f0 !important; }
+    .st-chatbot { background: #1a1a2e !important; }
+    .st-chatbot .message { color: #e2e8f0 !important; }
+    .st-chatbot .user-row {
+        background: #2d2416 !important;
+        border-color: #92400e !important;
+    }
+    .st-chatbot .message code {
+        background: #2d3748 !important;
+        color: #e2e8f0 !important;
+    }
+    .st-input textarea {
+        background: #2d3748 !important;
+        border-color: #4a5568 !important;
+        color: #e2e8f0 !important;
+    }
+    .st-input-row { border-top-color: #2d3748 !important; }
+    .st-btn-demo {
+        background: #2d3748 !important;
+        border-color: #4a5568 !important;
+        color: #e2e8f0 !important;
+    }
+    .st-btn-demo:hover {
+        background: #3d2e1a !important;
+        border-color: #f76707 !important;
+        color: #f76707 !important;
+    }
+    .st-empty-state { color: #a0aec0 !important; }
+    .st-empty-title { color: #e2e8f0 !important; }
+    .st-hint-card {
+        background: #2d3748 !important;
+        border-color: #4a5568 !important;
+        color: #a0aec0 !important;
+    }
+    .st-hint-card:hover { border-color: #f76707 !important; color: #f76707 !important; }
+    .st-docs-link {
+        background: #2d3748 !important;
+        border-color: #4a5568 !important;
+        color: #a0aec0 !important;
+    }
+    .st-docs-link:hover {
+        background: #3d2e1a !important;
+        border-color: #f76707 !important;
+        color: #f76707 !important;
+    }
+    .st-sidebar-control label { color: #a0aec0 !important; }
+    .st-lang-dd select,
+    .st-lang-dd input {
+        border-color: #4a5568 !important;
+        background: #2d3748 !important;
+        color: #e2e8f0 !important;
+    }
+}
 """
 
 
-def launch_app(app: gr.Blocks, port: int = 7860, share: bool = False) -> None:
+def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False) -> None:
     app.launch(
-        server_name="127.0.0.1",
+        server_name=host,
         server_port=port,
         share=share,
         inbrowser=True,
