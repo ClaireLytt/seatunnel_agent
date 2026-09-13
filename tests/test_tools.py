@@ -84,7 +84,8 @@ def test_validate_config_nonexistent():
 # --- read_config / write_config ---
 
 
-def test_read_config(tmp_path):
+def test_read_config(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     config = tmp_path / "job.conf"
     content = 'env { job.mode = "BATCH" }'
     config.write_text(content)
@@ -496,3 +497,336 @@ def test_run_batch_continue_on_failure():
     assert result["executed"] == 2
     assert result["stopped_early"] is False
     assert result["failed"] == 2
+
+
+def test_run_batch_exception_in_job(monkeypatch):
+    """If _run_seatunnel_job raises, batch catches it instead of crashing."""
+    from seatunnel_agent import tools as _tools_mod
+    def _boom(*a, **kw):
+        raise RuntimeError("seatunnel_bin is not set")
+    monkeypatch.setattr(_tools_mod, "_run_seatunnel_job", _boom)
+    result = json.loads(execute_tool(
+        "run_batch",
+        {"config_paths": ["a.conf", "b.conf"], "stop_on_failure": False},
+        FAKE_SETTINGS,
+    ))
+    assert result["failed"] == 2
+    assert result["executed"] == 2
+
+
+# --- restore_config_version ---
+
+
+def test_restore_config_version(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "job.conf"
+    execute_tool("write_config", {"config_path": str(config), "content": "v1 content"}, FAKE_SETTINGS)
+    execute_tool("write_config", {"config_path": str(config), "content": "v2 content"}, FAKE_SETTINGS)
+    assert config.read_text() == "v2 content"
+    result = json.loads(execute_tool(
+        "restore_config_version",
+        {"config_path": str(config), "version": 1},
+        FAKE_SETTINGS,
+    ))
+    assert result["success"] is True
+    assert result["version"] >= 1
+    assert config.read_text() == "v1 content"
+
+
+def test_restore_config_version_not_found(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "job.conf"
+    execute_tool("write_config", {"config_path": str(config), "content": "v1"}, FAKE_SETTINGS)
+    result = json.loads(execute_tool(
+        "restore_config_version",
+        {"config_path": str(config), "version": 99},
+        FAKE_SETTINGS,
+    ))
+    assert "error" in result
+
+
+def test_restore_config_version_no_history(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = json.loads(execute_tool(
+        "restore_config_version",
+        {"config_path": "nonexistent.conf", "version": 1},
+        FAKE_SETTINGS,
+    ))
+    assert "error" in result
+
+
+# --- delete_config ---
+
+
+def test_delete_config(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "job.conf"
+    config.write_text("content")
+    result = json.loads(execute_tool(
+        "delete_config",
+        {"config_path": str(config)},
+        FAKE_SETTINGS,
+    ))
+    assert result["success"] is True
+    assert not config.exists()
+
+
+def test_delete_config_nonexistent(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = json.loads(execute_tool(
+        "delete_config",
+        {"config_path": str(tmp_path / "no.conf")},
+        FAKE_SETTINGS,
+    ))
+    assert "error" in result
+
+
+def test_delete_config_bad_extension(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    bad = tmp_path / "bad.txt"
+    bad.write_text("x")
+    result = json.loads(execute_tool(
+        "delete_config",
+        {"config_path": str(bad)},
+        FAKE_SETTINGS,
+    ))
+    assert "error" in result
+
+
+def test_delete_config_path_traversal(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = json.loads(execute_tool(
+        "delete_config",
+        {"config_path": "../../../etc/evil.conf"},
+        FAKE_SETTINGS,
+    ))
+    assert "error" in result
+
+
+# --- compare_config_versions ---
+
+
+def test_compare_config_versions(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "job.conf"
+    execute_tool("write_config", {"config_path": str(config), "content": "version 1"}, FAKE_SETTINGS)
+    execute_tool("write_config", {"config_path": str(config), "content": "version 2"}, FAKE_SETTINGS)
+    result = json.loads(execute_tool(
+        "compare_config_versions",
+        {"config_path": str(config), "version_a": 1, "version_b": 2},
+        FAKE_SETTINGS,
+    ))
+    assert "diff" in result
+    assert "version 1" in result["diff"]
+    assert "version 2" in result["diff"]
+
+
+def test_compare_config_versions_same(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "job.conf"
+    execute_tool("write_config", {"config_path": str(config), "content": "same"}, FAKE_SETTINGS)
+    execute_tool("write_config", {"config_path": str(config), "content": "same"}, FAKE_SETTINGS)
+    result = json.loads(execute_tool(
+        "compare_config_versions",
+        {"config_path": str(config), "version_a": 1, "version_b": 2},
+        FAKE_SETTINGS,
+    ))
+    assert result["diff"] == "(no differences)"
+
+
+def test_compare_config_versions_not_found(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "job.conf"
+    execute_tool("write_config", {"config_path": str(config), "content": "v1"}, FAKE_SETTINGS)
+    result = json.loads(execute_tool(
+        "compare_config_versions",
+        {"config_path": str(config), "version_a": 1, "version_b": 99},
+        FAKE_SETTINGS,
+    ))
+    assert "error" in result
+
+
+# --- explain_config ---
+
+
+def test_explain_config(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "job.conf"
+    config.write_text(
+        'env { job.mode = "BATCH"\n  parallelism = 2 }\n'
+        "source { FakeSource { rows = 10 } }\n"
+        "transform {}\n"
+        "sink { Console {} }\n"
+    )
+    result = json.loads(execute_tool(
+        "explain_config",
+        {"config_path": str(config)},
+        FAKE_SETTINGS,
+    ))
+    assert result["config_path"] == str(config)
+    assert result["job_mode"] == "BATCH"
+    assert result["parallelism"] == 2
+    assert "FakeSource" in str(result.get("source", {}))
+    assert "Console" in str(result.get("sink", {}))
+
+
+def test_explain_config_nonexistent(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = json.loads(execute_tool(
+        "explain_config",
+        {"config_path": "/no/such/config.conf"},
+        FAKE_SETTINGS,
+    ))
+    assert "error" in result
+
+
+def test_explain_config_invalid_hocon(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "bad.conf"
+    config.write_text("this is {{ not valid")
+    result = json.loads(execute_tool(
+        "explain_config",
+        {"config_path": str(config)},
+        FAKE_SETTINGS,
+    ))
+    assert "error" in result
+
+
+# --- Optimization tests: version collision fix ---
+
+
+class TestVersionCollisionFix:
+    def test_version_after_gap(self, tmp_path, monkeypatch):
+        """Deleting a version file should not cause collision."""
+        monkeypatch.chdir(tmp_path)
+        config = tmp_path / "gap.conf"
+        config.write_text("v1")
+        execute_tool("write_config", {"config_path": str(config), "content": "v1"}, FAKE_SETTINGS)
+        config.write_text("v2")
+        execute_tool("write_config", {"config_path": str(config), "content": "v2"}, FAKE_SETTINGS)
+        # Delete v1 from history
+        history_dir = list((tmp_path / ".config_history").iterdir())[0]
+        v1_files = [f for f in history_dir.iterdir() if f.name.startswith("v1_")]
+        for f in v1_files:
+            f.unlink()
+        # Write v3 — should be v3, not v2
+        config.write_text("v3")
+        result = json.loads(execute_tool(
+            "write_config", {"config_path": str(config), "content": "v3"}, FAKE_SETTINGS
+        ))
+        assert result["version"] >= 3
+
+
+# --- Optimization tests: _read_config path traversal guard ---
+
+
+class TestReadConfigPathGuard:
+    def test_read_outside_cwd_blocked(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        outside = tmp_path.parent / "outside.conf"
+        outside.write_text("env {}")
+        try:
+            result = json.loads(execute_tool(
+                "read_config", {"config_path": str(outside)}, FAKE_SETTINGS
+            ))
+            assert "error" in result
+            assert "outside" in result["error"].lower()
+        finally:
+            if outside.exists():
+                outside.unlink()
+
+    def test_read_inside_cwd_allowed(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        config = tmp_path / "ok.conf"
+        config.write_text("env {}")
+        result = json.loads(execute_tool(
+            "read_config", {"config_path": str(config)}, FAKE_SETTINGS
+        ))
+        assert "content" in result
+
+
+# --- Optimization tests: _validate_config_path helper ---
+
+
+class TestValidateConfigPath:
+    def test_rejects_bad_extension(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = json.loads(execute_tool(
+            "write_config", {"config_path": "test.txt", "content": "x"}, FAKE_SETTINGS
+        ))
+        assert "error" in result
+
+    def test_rejects_path_traversal(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = json.loads(execute_tool(
+            "delete_config", {"config_path": "../../../etc/evil.conf"}, FAKE_SETTINGS
+        ))
+        assert "error" in result
+
+
+class TestReadConfigExtensionGuard:
+    """read_config now uses _validate_config_path and rejects non-config extensions."""
+
+    def test_read_env_file_blocked(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        env_file = tmp_path / ".env"
+        env_file.write_text("API_KEY=secret")
+        result = json.loads(execute_tool(
+            "read_config", {"config_path": str(env_file)}, FAKE_SETTINGS
+        ))
+        assert "error" in result
+        assert "extension" in result["error"].lower()
+
+    def test_read_py_file_blocked(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        py_file = tmp_path / "script.py"
+        py_file.write_text("print('hello')")
+        result = json.loads(execute_tool(
+            "read_config", {"config_path": str(py_file)}, FAKE_SETTINGS
+        ))
+        assert "error" in result
+
+    def test_read_conf_file_allowed(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        conf = tmp_path / "job.conf"
+        conf.write_text("env {}")
+        result = json.loads(execute_tool(
+            "read_config", {"config_path": str(conf)}, FAKE_SETTINGS
+        ))
+        assert "content" in result
+
+
+class TestVersionToolsPathValidation:
+    """Version-related tools now validate paths before operating."""
+
+    def test_list_versions_rejects_bad_extension(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = json.loads(execute_tool(
+            "list_config_versions", {"config_path": "data.csv"}, FAKE_SETTINGS
+        ))
+        assert "error" in result
+
+    def test_restore_version_rejects_traversal(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = json.loads(execute_tool(
+            "restore_config_version",
+            {"config_path": "../../../etc/evil.conf", "version": 1},
+            FAKE_SETTINGS,
+        ))
+        assert "error" in result
+
+    def test_compare_versions_rejects_bad_extension(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = json.loads(execute_tool(
+            "compare_config_versions",
+            {"config_path": "data.txt", "version_a": 1, "version_b": 2},
+            FAKE_SETTINGS,
+        ))
+        assert "error" in result
+
+    def test_explain_config_rejects_bad_extension(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = json.loads(execute_tool(
+            "explain_config", {"config_path": "script.py"}, FAKE_SETTINGS
+        ))
+        assert "error" in result

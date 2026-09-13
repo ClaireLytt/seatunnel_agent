@@ -234,6 +234,252 @@ sink {
 }
 """,
     ),
+    PipelineTemplate(
+        name="csv_to_mysql",
+        description="LocalFile CSV -> Jdbc MySQL (load CSV files into MySQL)",
+        category="file",
+        parameters=[
+            {"name": "file_path", "default": "/data/input", "description": "Path to CSV files"},
+            {"name": "delimiter", "default": ",", "description": "CSV field delimiter"},
+            {"name": "mysql_url", "default": "jdbc:mysql://localhost:3306/mydb", "description": "MySQL JDBC URL"},
+            {"name": "mysql_user", "default": "root", "description": "MySQL username"},
+            {"name": "mysql_password", "default": "", "description": "MySQL password"},
+            {"name": "table_name", "default": "", "description": "Target MySQL table name"},
+        ],
+        content="""\
+env {
+  job.mode = "BATCH"
+  parallelism = 1
+}
+
+source {
+  LocalFile {
+    path = "${file_path}"
+    file_format_type = "csv"
+    field_delimiter = "${delimiter}"
+  }
+}
+
+transform {}
+
+sink {
+  Jdbc {
+    url = "${mysql_url}"
+    driver = "com.mysql.cj.jdbc.Driver"
+    user = "${mysql_user}"
+    password = "${mysql_password}"
+    table = "${table_name}"
+    generate_sink_sql = true
+  }
+}
+""",
+    ),
+    PipelineTemplate(
+        name="mysql_to_csv",
+        description="Jdbc MySQL -> LocalFile CSV (export MySQL data to CSV files)",
+        category="file",
+        parameters=[
+            {"name": "mysql_url", "default": "jdbc:mysql://localhost:3306/mydb", "description": "MySQL JDBC URL"},
+            {"name": "mysql_user", "default": "root", "description": "MySQL username"},
+            {"name": "mysql_password", "default": "", "description": "MySQL password"},
+            {"name": "query", "default": "SELECT * FROM users", "description": "SQL query to export"},
+            {"name": "output_path", "default": "/data/output", "description": "Output directory for CSV files"},
+        ],
+        content="""\
+env {
+  job.mode = "BATCH"
+  parallelism = 1
+}
+
+source {
+  Jdbc {
+    url = "${mysql_url}"
+    driver = "com.mysql.cj.jdbc.Driver"
+    user = "${mysql_user}"
+    password = "${mysql_password}"
+    query = "${query}"
+  }
+}
+
+transform {}
+
+sink {
+  LocalFile {
+    path = "${output_path}"
+    file_format_type = "csv"
+  }
+}
+""",
+    ),
+    PipelineTemplate(
+        name="kafka_to_mysql",
+        description="Kafka -> Jdbc MySQL (stream Kafka messages into MySQL)",
+        category="streaming",
+        parameters=[
+            {"name": "bootstrap_servers", "default": "localhost:9092", "description": "Kafka bootstrap servers"},
+            {"name": "topic", "default": "", "description": "Kafka topic name"},
+            {"name": "group_id", "default": "seatunnel-group", "description": "Kafka consumer group ID"},
+            {"name": "mysql_url", "default": "jdbc:mysql://localhost:3306/mydb", "description": "MySQL JDBC URL"},
+            {"name": "mysql_user", "default": "root", "description": "MySQL username"},
+            {"name": "mysql_password", "default": "", "description": "MySQL password"},
+            {"name": "table_name", "default": "", "description": "Target MySQL table name"},
+        ],
+        content="""\
+env {
+  job.mode = "STREAMING"
+  parallelism = 1
+}
+
+source {
+  Kafka {
+    bootstrap.servers = "${bootstrap_servers}"
+    topic = "${topic}"
+    format = "json"
+    consumer.group = "${group_id}"
+    start_mode = "latest"
+  }
+}
+
+transform {}
+
+sink {
+  Jdbc {
+    url = "${mysql_url}"
+    driver = "com.mysql.cj.jdbc.Driver"
+    user = "${mysql_user}"
+    password = "${mysql_password}"
+    table = "${table_name}"
+    generate_sink_sql = true
+  }
+}
+""",
+    ),
+    PipelineTemplate(
+        name="fake_to_clickhouse",
+        description="FakeSource -> ClickHouse (testing data ingestion into ClickHouse)",
+        category="testing",
+        parameters=[
+            {"name": "rows", "default": "10", "description": "Number of rows to generate"},
+            {"name": "ch_host", "default": "localhost:8123", "description": "ClickHouse host:port"},
+            {"name": "ch_database", "default": "default", "description": "ClickHouse database name"},
+            {"name": "ch_table", "default": "", "description": "ClickHouse table name"},
+            {"name": "ch_username", "default": "default", "description": "ClickHouse username"},
+            {"name": "ch_password", "default": "", "description": "ClickHouse password"},
+        ],
+        content="""\
+env {
+  job.mode = "BATCH"
+  parallelism = 1
+}
+
+source {
+  FakeSource {
+    schema = {
+      fields {
+        name = "string"
+        age = "int"
+        email = "string"
+      }
+    }
+    rows = ${rows}
+  }
+}
+
+transform {}
+
+sink {
+  ClickHouse {
+    host = "${ch_host}"
+    database = "${ch_database}"
+    table = "${ch_table}"
+    username = "${ch_username}"
+    password = "${ch_password}"
+  }
+}
+""",
+    ),
+    PipelineTemplate(
+        name="mysql_to_starrocks",
+        description="Jdbc MySQL -> StarRocks (batch migration from MySQL to StarRocks)",
+        category="database",
+        parameters=[
+            {"name": "mysql_url", "default": "jdbc:mysql://localhost:3306/mydb", "description": "MySQL JDBC URL"},
+            {"name": "mysql_user", "default": "root", "description": "MySQL username"},
+            {"name": "mysql_password", "default": "", "description": "MySQL password"},
+            {"name": "query", "default": "SELECT * FROM users", "description": "SQL query to export"},
+            {"name": "sr_node_urls", "default": "localhost:8030", "description": "StarRocks FE node addresses"},
+            {"name": "sr_database", "default": "", "description": "StarRocks database name"},
+            {"name": "sr_table", "default": "", "description": "StarRocks table name"},
+            {"name": "sr_username", "default": "root", "description": "StarRocks username"},
+            {"name": "sr_password", "default": "", "description": "StarRocks password"},
+        ],
+        content="""\
+env {
+  job.mode = "BATCH"
+  parallelism = 2
+}
+
+source {
+  Jdbc {
+    url = "${mysql_url}"
+    driver = "com.mysql.cj.jdbc.Driver"
+    user = "${mysql_user}"
+    password = "${mysql_password}"
+    query = "${query}"
+  }
+}
+
+transform {}
+
+sink {
+  StarRocks {
+    nodeUrls = ["${sr_node_urls}"]
+    database = "${sr_database}"
+    table = "${sr_table}"
+    username = "${sr_username}"
+    password = "${sr_password}"
+  }
+}
+""",
+    ),
+    PipelineTemplate(
+        name="fake_to_console_with_transform",
+        description="FakeSource -> SQL Transform -> Console (testing with data transformation)",
+        category="testing",
+        parameters=[
+            {"name": "rows", "default": "10", "description": "Number of rows to generate"},
+            {"name": "sql_query", "default": "SELECT id, name, age * 2 AS double_age FROM fake", "description": "SQL transformation query"},
+        ],
+        content="""\
+env {
+  job.mode = "BATCH"
+  parallelism = 1
+}
+
+source {
+  FakeSource {
+    schema = {
+      fields {
+        id = "int"
+        name = "string"
+        age = "int"
+      }
+    }
+    rows = ${rows}
+  }
+}
+
+transform {
+  SQL {
+    query = "${sql_query}"
+  }
+}
+
+sink {
+  Console {}
+}
+""",
+    ),
 ]
 
 _TEMPLATE_MAP: dict[str, PipelineTemplate] = {t.name: t for t in TEMPLATES}

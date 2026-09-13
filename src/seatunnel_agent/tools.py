@@ -255,6 +255,87 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": ["config_paths"],
         },
     },
+    {
+        "name": "restore_config_version",
+        "description": (
+            "Restore a config file to a previous version from its version history. "
+            "Use list_config_versions first to see available versions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "config_path": {
+                    "type": "string",
+                    "description": "Path to the config file to restore",
+                },
+                "version": {
+                    "type": "integer",
+                    "description": "Version number to restore (from list_config_versions)",
+                },
+            },
+            "required": ["config_path", "version"],
+        },
+    },
+    {
+        "name": "delete_config",
+        "description": (
+            "Delete a SeaTunnel config file. "
+            "Version history is preserved and can still be listed/restored."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "config_path": {
+                    "type": "string",
+                    "description": "Path to the config file to delete",
+                },
+            },
+            "required": ["config_path"],
+        },
+    },
+    {
+        "name": "compare_config_versions",
+        "description": (
+            "Compare two versions of a config file and show the diff. "
+            "Use list_config_versions first to see available version numbers."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "config_path": {
+                    "type": "string",
+                    "description": "Path to the config file",
+                },
+                "version_a": {
+                    "type": "integer",
+                    "description": "First version number to compare",
+                },
+                "version_b": {
+                    "type": "integer",
+                    "description": "Second version number to compare",
+                },
+            },
+            "required": ["config_path", "version_a", "version_b"],
+        },
+    },
+    {
+        "name": "explain_config",
+        "description": (
+            "Parse and explain a SeaTunnel config file in structured form. "
+            "Returns job mode, parallelism, source/transform/sink details. "
+            "Use when the user wants to understand an existing config."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "config_path": {
+                    "type": "string",
+                    "description": "Path to the config file to explain",
+                },
+            },
+            "required": ["config_path"],
+        },
+    },
 ]
 
 
@@ -331,7 +412,7 @@ def _run_seatunnel_job(settings: Settings, config_path: str) -> str:
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=120,
+            timeout=settings.job_timeout,
         )
         result_data: dict[str, Any] = {
             "success": result.returncode == 0,
@@ -347,7 +428,7 @@ def _run_seatunnel_job(settings: Settings, config_path: str) -> str:
         return safe_json({
             "success": False,
             "exit_code": -1,
-            "error": "SeaTunnel job timed out after 120 seconds",
+            "error": f"SeaTunnel job timed out after {settings.job_timeout} seconds",
         })
     except OSError as e:
         return safe_json({
@@ -381,8 +462,12 @@ def _read_log(settings: Settings, log_path: str, tail_lines: int = 100) -> str:
 
 
 def _read_config(settings: Settings, config_path: str) -> str:
+    err = _validate_config_path(config_path)
+    if err:
+        return safe_json({"error": err})
+    path = Path(config_path)
     try:
-        content = Path(config_path).read_text(encoding="utf-8")
+        content = path.read_text(encoding="utf-8")
         return safe_json({
             "config_path": config_path,
             "content": content,
@@ -393,46 +478,59 @@ def _read_config(settings: Settings, config_path: str) -> str:
         return safe_json({"error": f"Permission denied reading: {config_path}"})
 
 
-def _save_config_version(config_path: Path, content: str) -> int:
-    """Save a versioned copy. Returns version number."""
+_ALLOWED_EXTENSIONS = {".conf", ".hocon", ".config", ".json"}
+
+
+def _validate_config_path(config_path: str) -> str | None:
+    """Return an error string if the path is invalid, else None."""
+    path = Path(config_path)
+    if not path.suffix or path.suffix not in _ALLOWED_EXTENSIONS:
+        return (
+            f"Refusing to operate on {config_path} — "
+            "expected a .conf, .hocon, .config, or .json file extension"
+        )
+    try:
+        resolved = path.resolve()
+        cwd = Path.cwd().resolve()
+        if not resolved.is_relative_to(cwd):
+            return f"Refusing to operate on {config_path} — path is outside the current working directory"
+    except (OSError, ValueError):
+        return f"Invalid path: {config_path}"
+    return None
+
+
+def _history_dir(config_path: Path) -> Path:
+    """Return the version-history directory for a config file."""
     try:
         rel = config_path.resolve().relative_to(Path.cwd().resolve())
     except ValueError:
         rel = config_path
     safe_key = str(rel).replace("\\", "/").replace("/", "_")
-    history_dir = Path(".config_history") / safe_key
-    history_dir.mkdir(parents=True, exist_ok=True)
-    existing = sorted(history_dir.glob("v*_*.*"))
-    version = len(existing) + 1
+    return Path(".config_history") / safe_key
+
+
+def _save_config_version(config_path: Path, content: str) -> int:
+    """Save a versioned copy. Returns version number."""
+    history = _history_dir(config_path)
+    history.mkdir(parents=True, exist_ok=True)
+    existing = sorted(history.glob("v*_*.*"))
+    max_ver = 0
+    for f in existing:
+        m = re.match(r"v(\d+)_", f.name)
+        if m:
+            max_ver = max(max_ver, int(m.group(1)))
+    version = max_ver + 1
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    version_file = history_dir / f"v{version}_{timestamp}{config_path.suffix}"
+    version_file = history / f"v{version}_{timestamp}{config_path.suffix}"
     version_file.write_text(content, encoding="utf-8")
     return version
 
 
 def _write_config(settings: Settings, config_path: str, content: str) -> str:
     path = Path(config_path)
-
-    if not path.suffix or path.suffix not in (".conf", ".hocon", ".config", ".json"):
-        return safe_json({
-            "error": (
-                f"Refusing to write to {config_path} — "
-                "expected a .conf, .hocon, .config, or .json file extension"
-            ),
-        })
-
-    try:
-        resolved = path.resolve()
-        cwd = Path.cwd().resolve()
-        if not resolved.is_relative_to(cwd):
-            return safe_json({
-                "error": (
-                    f"Refusing to write to {config_path} — "
-                    "path is outside the current working directory"
-                ),
-            })
-    except (OSError, ValueError):
-        return safe_json({"error": f"Invalid path: {config_path}"})
+    err = _validate_config_path(config_path)
+    if err:
+        return safe_json({"error": err})
 
     old_content = None
     if path.exists():
@@ -629,17 +727,15 @@ def _query_connector_docs(settings: Settings, connector_name: str, param_name: s
 
 
 def _list_config_versions(settings: Settings, config_path: str) -> str:
+    err = _validate_config_path(config_path)
+    if err:
+        return safe_json({"error": err})
     path = Path(config_path)
-    try:
-        rel = path.resolve().relative_to(Path.cwd().resolve())
-    except ValueError:
-        rel = path
-    safe_key = str(rel).replace("\\", "/").replace("/", "_")
-    history_dir = Path(".config_history") / safe_key
-    if not history_dir.is_dir():
+    hdir = _history_dir(path)
+    if not hdir.is_dir():
         return safe_json({"versions": [], "count": 0, "message": "No version history found"})
     versions = []
-    for f in sorted(history_dir.glob(f"v*_*{path.suffix}")):
+    for f in sorted(hdir.glob(f"v*_*{path.suffix}")):
         match = re.match(r"v(\d+)_(\d{8}_\d{6})", f.stem)
         if match:
             ver_num = int(match.group(1))
@@ -664,7 +760,10 @@ def _run_batch(settings: Settings, config_paths: list[str], stop_on_failure: boo
     failed = 0
     stopped_early = False
     for i, cp in enumerate(config_paths):
-        job_result_raw = _run_seatunnel_job(settings, cp)
+        try:
+            job_result_raw = _run_seatunnel_job(settings, cp)
+        except Exception as exc:
+            job_result_raw = safe_json({"success": False, "error": str(exc)})
         try:
             job_data = json.loads(job_result_raw)
         except (json.JSONDecodeError, TypeError):
@@ -698,6 +797,103 @@ def _run_batch(settings: Settings, config_paths: list[str], stop_on_failure: boo
     })
 
 
+def _get_version_file(config_path: str, version: int) -> Path | None:
+    path = Path(config_path)
+    hdir = _history_dir(path)
+    if not hdir.is_dir():
+        return None
+    for f in sorted(hdir.glob(f"v*_*{path.suffix}")):
+        match = re.match(r"v(\d+)_", f.name)
+        if match and int(match.group(1)) == version:
+            return f
+    return None
+
+
+def _restore_config_version(settings: Settings, config_path: str, version: int) -> str:
+    err = _validate_config_path(config_path)
+    if err:
+        return safe_json({"error": err})
+    vf = _get_version_file(config_path, version)
+    if vf is None:
+        return safe_json({"error": f"Version {version} not found for {config_path}"})
+    content = vf.read_text(encoding="utf-8")
+    return _write_config(settings, config_path, content)
+
+
+def _delete_config(settings: Settings, config_path: str) -> str:
+    path = Path(config_path)
+    err = _validate_config_path(config_path)
+    if err:
+        return safe_json({"error": err})
+    if not path.exists():
+        return safe_json({"error": f"File not found: {config_path}"})
+    path.unlink()
+    return safe_json({"success": True, "deleted": str(path)})
+
+
+def _compare_config_versions(settings: Settings, config_path: str, version_a: int, version_b: int) -> str:
+    err = _validate_config_path(config_path)
+    if err:
+        return safe_json({"error": err})
+    fa = _get_version_file(config_path, version_a)
+    fb = _get_version_file(config_path, version_b)
+    if fa is None:
+        return safe_json({"error": f"Version {version_a} not found for {config_path}"})
+    if fb is None:
+        return safe_json({"error": f"Version {version_b} not found for {config_path}"})
+    content_a = fa.read_text(encoding="utf-8")
+    content_b = fb.read_text(encoding="utf-8")
+    diff_lines = list(difflib.unified_diff(
+        content_a.splitlines(keepends=True),
+        content_b.splitlines(keepends=True),
+        fromfile=f"v{version_a}",
+        tofile=f"v{version_b}",
+    ))
+    return safe_json({
+        "config_path": config_path,
+        "version_a": version_a,
+        "version_b": version_b,
+        "diff": "".join(diff_lines) if diff_lines else "(no differences)",
+    })
+
+
+def _explain_config(settings: Settings, config_path: str) -> str:
+    err = _validate_config_path(config_path)
+    if err:
+        return safe_json({"error": err})
+    path = Path(config_path)
+    if not path.exists():
+        return safe_json({"error": f"Config file not found: {config_path}"})
+    try:
+        from pyhocon import ConfigFactory
+        conf = ConfigFactory.parse_file(str(path))
+    except Exception as e:
+        return safe_json({"error": f"Failed to parse config: {e}"})
+
+    result: dict[str, Any] = {"config_path": config_path}
+
+    env = conf.get("env", {})
+    result["job_mode"] = env.get("job.mode", "BATCH")
+    result["parallelism"] = env.get("parallelism", 1)
+
+    def _extract_block(block: Any, label: str = "connector") -> list[dict[str, Any]]:
+        items = []
+        for key in block:
+            params = {}
+            sub = block.get(key, {})
+            if hasattr(sub, "items"):
+                for pk, pv in sub.items():
+                    params[pk] = str(pv)[:200]
+            items.append({label: key, "params": params})
+        return items
+
+    for section in ("source", "sink"):
+        result[section] = _extract_block(conf.get(section, {}), "connector")
+    result["transforms"] = _extract_block(conf.get("transform", {}), "type")
+
+    return safe_json(result)
+
+
 # ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
@@ -715,6 +911,10 @@ _TOOL_MAP = {
     "query_connector_docs": _query_connector_docs,
     "list_config_versions": _list_config_versions,
     "run_batch": _run_batch,
+    "restore_config_version": _restore_config_version,
+    "delete_config": _delete_config,
+    "compare_config_versions": _compare_config_versions,
+    "explain_config": _explain_config,
 }
 
 

@@ -38,6 +38,15 @@ This reduces errors and ensures configs use valid connector options.
 call saves a timestamped version. Use when users want to review past changes.
 - **run_batch**: Run multiple pipeline configs sequentially. Returns per-job results \
 with pass/fail counts. Stops on first failure by default.
+- **restore_config_version**: Restore a config file to a previous version from its \
+history. Use list_config_versions first to find the version number, then restore.
+- **delete_config**: Delete a config file permanently. Does NOT delete version history, \
+so a restore is still possible if needed.
+- **compare_config_versions**: Show a unified diff between two versions of a config file. \
+Helps users understand what changed between edits.
+- **explain_config**: Parse a config file and return a structured summary: job mode, \
+parallelism, source/transform/sink connector names and key parameters. Use when users \
+ask "what does this config do?" or want a quick overview.
 
 ## SeaTunnel Config Format (HOCON)
 
@@ -120,6 +129,94 @@ LocalFile {
   file_format_type = "csv"
 }
 ```
+
+### Transform Examples
+
+Use the `transform` block to process data between source and sink.
+
+**SQL Transform** (filter, rename, compute columns):
+```
+transform {
+  SQL {
+    source_table_name = ["FakeSource"]
+    query = "SELECT name, age * 2 AS double_age FROM FakeSource WHERE age > 18"
+  }
+}
+```
+
+**Filter Transform** (row filtering by field conditions):
+```
+transform {
+  Filter {
+    fields = [
+      { field_name = "status", field_type = "string", field_value = ["active"] }
+    ]
+  }
+}
+```
+
+**Replace Transform** (string replacement in fields):
+```
+transform {
+  Replace {
+    replace_field = "name"
+    pattern = "old_value"
+    replacement = "new_value"
+    is_regex = false
+  }
+}
+```
+
+**Split Transform** (split one field into multiple):
+```
+transform {
+  Split {
+    separator = ","
+    split_field = "tags"
+    output_fields = ["tag1", "tag2", "tag3"]
+  }
+}
+```
+
+### Multi-Source and Multi-Sink Patterns
+
+SeaTunnel supports multiple sources and sinks in a single config. Use `result_table_name` \
+on sources and `source_table_name` on sinks/transforms to route data:
+
+```
+source {
+  Jdbc {
+    result_table_name = "orders"
+    url = "jdbc:mysql://host:3306/db"
+    query = "SELECT * FROM orders"
+  }
+  Jdbc {
+    result_table_name = "users"
+    url = "jdbc:mysql://host:3306/db"
+    query = "SELECT * FROM users"
+  }
+}
+
+sink {
+  Console {
+    source_table_name = ["orders"]
+  }
+  Console {
+    source_table_name = ["users"]
+  }
+}
+```
+
+### Streaming vs Batch Mode
+
+- Use `job.mode = "BATCH"` (default) for one-time data migration or ETL jobs. The job \
+reads all data, processes it, writes it, and exits.
+- Use `job.mode = "STREAMING"` for real-time / continuous data pipelines. The job runs \
+indefinitely, capturing changes as they happen. Required for CDC sources (MySQL-CDC, \
+PostgreSQL-CDC, MongoDB-CDC) and message queue sources (Kafka, Pulsar, RocketMQ).
+
+Rule of thumb: if the source connector name contains "CDC" or is a message queue, \
+use STREAMING. Otherwise, use BATCH.
 
 ## Error Diagnosis Reference
 

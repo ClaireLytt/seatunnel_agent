@@ -126,6 +126,9 @@ class SeaTunnelAgent:
 
             self.messages.append(self.llm.append_assistant(resp.raw_content))
 
+            if resp.usage:
+                self._emit("usage", resp.usage)
+
             self._emit_parsed_events(resp)
             self._display_parsed(resp)
 
@@ -176,6 +179,10 @@ class SeaTunnelAgent:
                         "Please summarize what you tried and suggest manual fixes."
                     ),
                 })
+                resp = self.llm.chat(system_prompt, self.messages)
+                final = resp.reply_text or "Maximum retry limit reached."
+                self._emit("final_answer", {"text": final})
+                return final
 
         msg = "Agent loop reached maximum iterations without completing."
         self._emit("final_answer", {"text": msg})
@@ -213,8 +220,6 @@ class SeaTunnelAgent:
             path = tool_input.get("config_path")
             if path and path not in self.context["validated_configs"]:
                 self.context["validated_configs"].append(path)
-        elif tool_name == "list_templates":
-            self.context["last_template_lookup"] = True
         elif tool_name == "test_connection":
             host = tool_input.get("host", "")
             port = tool_input.get("port", "")
@@ -224,6 +229,14 @@ class SeaTunnelAgent:
             )
         elif tool_name == "query_connector_docs":
             self.context["last_doc_lookup"] = tool_input.get("connector_name")
+        elif tool_name == "restore_config_version":
+            path = tool_input.get("config_path")
+            if path:
+                self.context["last_config_path"] = path
+        elif tool_name == "delete_config" and data.get("success"):
+            deleted = data.get("deleted") or tool_input.get("config_path")
+            if deleted and deleted in self.context["created_configs"]:
+                self.context["created_configs"].remove(deleted)
         elif tool_name == "run_batch":
             self.context["last_batch_result"] = {
                 "total": data.get("total"),
@@ -324,6 +337,10 @@ class SeaTunnelAgent:
             "query_connector_docs": "blue",
             "list_config_versions": "blue",
             "run_batch": "green",
+            "restore_config_version": "yellow",
+            "delete_config": "red",
+            "compare_config_versions": "blue",
+            "explain_config": "blue",
         }
         color = style_map.get(name, "white")
         args_str = ", ".join(

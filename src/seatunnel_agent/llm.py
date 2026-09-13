@@ -8,8 +8,12 @@ Supports two protocols:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import logging
+import time
+from dataclasses import dataclass, field
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 from .config import Settings
 from .tools import TOOL_DEFINITIONS
@@ -29,6 +33,7 @@ class LLMResponse:
     thinking_text: str
     reply_text: str
     raw_content: Any
+    usage: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -93,12 +98,14 @@ class LLMClient:
     ) -> LLMResponse:
         if self.provider == "anthropic":
             if on_text_delta:
-                return self._call_anthropic_stream(system_prompt, messages, on_text_delta)
-            return self._call_anthropic(system_prompt, messages)
+                fn = self._call_anthropic_stream
+                return self._call_with_retry(fn, system_prompt, messages, on_text_delta)
+            return self._call_with_retry(self._call_anthropic, system_prompt, messages)
         else:
             if on_text_delta:
-                return self._call_openai_stream(system_prompt, messages, on_text_delta)
-            return self._call_openai(system_prompt, messages)
+                fn = self._call_openai_stream
+                return self._call_with_retry(fn, system_prompt, messages, on_text_delta)
+            return self._call_with_retry(self._call_openai, system_prompt, messages)
 
     def build_tool_result_message(
         self, tool_results: list[dict[str, Any]]
@@ -138,11 +145,42 @@ class LLMClient:
             return msg
 
     # ------------------------------------------------------------------
+    # Retry helper
+    # ------------------------------------------------------------------
+
+    def _call_with_retry(
+        self,
+        fn: Callable[..., LLMResponse],
+        *args: Any,
+        max_retries: int = 3,
+        **kwargs: Any,
+    ) -> LLMResponse:
+        for attempt in range(max_retries):
+            try:
+                return fn(*args, **kwargs)
+            except Exception as exc:
+                status = (
+                    getattr(exc, "status_code", None)
+                    or getattr(getattr(exc, "response", None), "status_code", None)
+                    or getattr(exc, "http_status", None)
+                )
+                if isinstance(status, str):
+                    status = None
+                retryable = status in (429, 500, 502, 503, 529) or "rate" in str(exc).lower()
+                if not retryable or attempt == max_retries - 1:
+                    raise
+                wait = 2 ** attempt
+                logger.warning("Retryable error (attempt %d/%d), waiting %ds: %s",
+                               attempt + 1, max_retries, wait, exc)
+                time.sleep(wait)
+        raise RuntimeError("Unreachable")
+
+    # ------------------------------------------------------------------
     # Anthropic
     # ------------------------------------------------------------------
 
     def _call_anthropic(self, system_prompt: str, messages: list) -> LLMResponse:
-        response = self._client.messages.create(
+        kwargs: dict[str, Any] = dict(
             model=self.settings.model_name,
             max_tokens=self.settings.max_tokens,
             system=system_prompt,
@@ -150,6 +188,9 @@ class LLMClient:
             messages=messages,
             thinking={"type": "adaptive"},
         )
+        if self.settings.temperature > 0:
+            kwargs["temperature"] = self.settings.temperature
+        response = self._client.messages.create(**kwargs)
 
         thinking = ""
         text = ""
@@ -167,12 +208,20 @@ class LLMClient:
                     id=block.id, name=block.name, input=block.input,
                 ))
 
+        usage = {}
+        if hasattr(response, "usage") and response.usage:
+            usage = {
+                "input_tokens": getattr(response.usage, "input_tokens", 0),
+                "output_tokens": getattr(response.usage, "output_tokens", 0),
+            }
+
         return LLMResponse(
             wants_tool_use=(response.stop_reason == "tool_use"),
             tool_calls=tool_calls,
             thinking_text=thinking,
             reply_text=text,
             raw_content=response.content,
+            usage=usage,
         )
 
     def _call_anthropic_stream(
@@ -190,14 +239,17 @@ class LLMClient:
         current_tool_name = ""
         current_tool_json = ""
 
-        with self._client.messages.stream(
+        stream_kwargs: dict[str, Any] = dict(
             model=self.settings.model_name,
             max_tokens=self.settings.max_tokens,
             system=system_prompt,
             tools=TOOL_DEFINITIONS,
             messages=messages,
             thinking={"type": "adaptive"},
-        ) as stream:
+        )
+        if self.settings.temperature > 0:
+            stream_kwargs["temperature"] = self.settings.temperature
+        with self._client.messages.stream(**stream_kwargs) as stream:
             for event in stream:
                 if event.type == "content_block_start":
                     block = event.content_block
@@ -227,7 +279,15 @@ class LLMClient:
                         ))
                         current_tool_name = ""
 
-            raw_content = stream.get_final_message().content
+            final_msg = stream.get_final_message()
+            raw_content = final_msg.content
+
+        usage = {}
+        if hasattr(final_msg, "usage") and final_msg.usage:
+            usage = {
+                "input_tokens": getattr(final_msg.usage, "input_tokens", 0),
+                "output_tokens": getattr(final_msg.usage, "output_tokens", 0),
+            }
 
         full_text = "".join(text_parts)
         return LLMResponse(
@@ -236,6 +296,7 @@ class LLMClient:
             thinking_text=thinking,
             reply_text=full_text,
             raw_content=raw_content,
+            usage=usage,
         )
 
     # ------------------------------------------------------------------
@@ -249,13 +310,16 @@ class LLMClient:
         for msg in messages:
             oai_messages.extend(self._convert_message(msg))
 
+        oai_kwargs: dict[str, Any] = dict(
+            model=self.settings.model_name,
+            max_tokens=self.settings.max_tokens,
+            messages=oai_messages,
+            tools=_convert_tools_to_openai(),
+        )
+        if self.settings.temperature > 0:
+            oai_kwargs["temperature"] = self.settings.temperature
         try:
-            response = self._client.chat.completions.create(
-                model=self.settings.model_name,
-                max_tokens=self.settings.max_tokens,
-                messages=oai_messages,
-                tools=_convert_tools_to_openai(),
-            )
+            response = self._client.chat.completions.create(**oai_kwargs)
         except openai.APITimeoutError:
             raise RuntimeError("API request timed out. Check your network or try again.")
         except openai.APIConnectionError:
@@ -278,14 +342,24 @@ class LLMClient:
                     id=tc.id, name=tc.function.name, input=args,
                 ))
 
+        thinking = getattr(choice.message, "reasoning_content", "") or ""
+
+        usage = {}
+        if hasattr(response, "usage") and response.usage:
+            usage = {
+                "input_tokens": getattr(response.usage, "prompt_tokens", 0),
+                "output_tokens": getattr(response.usage, "completion_tokens", 0),
+            }
+
         raw = choice.message
 
         return LLMResponse(
             wants_tool_use=len(tool_calls) > 0,
             tool_calls=tool_calls,
-            thinking_text="",
+            thinking_text=thinking,
             reply_text=text,
             raw_content=raw,
+            usage=usage,
         )
 
     def _call_openai_stream(
@@ -300,14 +374,19 @@ class LLMClient:
         for msg in messages:
             oai_messages.extend(self._convert_message(msg))
 
+        stream_oai_kwargs: dict[str, Any] = dict(
+            model=self.settings.model_name,
+            max_tokens=self.settings.max_tokens,
+            messages=oai_messages,
+            tools=_convert_tools_to_openai(),
+            stream=True,
+        )
+        if self.settings.temperature > 0:
+            stream_oai_kwargs["temperature"] = self.settings.temperature
+        if not self.settings.llm_base_url:
+            stream_oai_kwargs["stream_options"] = {"include_usage": True}
         try:
-            stream = self._client.chat.completions.create(
-                model=self.settings.model_name,
-                max_tokens=self.settings.max_tokens,
-                messages=oai_messages,
-                tools=_convert_tools_to_openai(),
-                stream=True,
-            )
+            stream = self._client.chat.completions.create(**stream_oai_kwargs)
         except openai.APITimeoutError:
             raise RuntimeError("API request timed out. Check your network or try again.")
         except openai.APIConnectionError:
@@ -315,8 +394,14 @@ class LLMClient:
 
         text_parts: list[str] = []
         tc_builders: dict[int, dict[str, Any]] = {}
+        usage: dict[str, int] = {}
 
         for chunk in stream:
+            if hasattr(chunk, "usage") and chunk.usage:
+                usage = {
+                    "input_tokens": getattr(chunk.usage, "prompt_tokens", 0),
+                    "output_tokens": getattr(chunk.usage, "completion_tokens", 0),
+                }
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
@@ -360,6 +445,7 @@ class LLMClient:
             thinking_text="",
             reply_text=full_text,
             raw_content=raw,
+            usage=usage,
         )
 
     def _convert_message(self, msg: dict[str, Any]) -> list[dict[str, Any]]:

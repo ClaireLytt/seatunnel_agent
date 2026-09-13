@@ -287,3 +287,172 @@ class TestConvertMessage:
         msg = {"role": "tool", "tool_call_id": "t1", "content": "ok"}
         result = client._convert_message(msg)
         assert result == [msg]
+
+
+class TestLLMResponseUsage:
+    def test_default_usage_empty(self):
+        r = LLMResponse(
+            wants_tool_use=False, tool_calls=[], thinking_text="",
+            reply_text="hi", raw_content="hi",
+        )
+        assert r.usage == {}
+
+    def test_usage_from_anthropic(self):
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            client = LLMClient(ANTHROPIC_SETTINGS)
+
+        text_block = MagicMock()
+        text_block.type = "text"
+        text_block.text = "Done"
+        response = MagicMock()
+        response.content = [text_block]
+        response.stop_reason = "end_turn"
+        response.usage.input_tokens = 100
+        response.usage.output_tokens = 50
+        client._client.messages.create = MagicMock(return_value=response)
+
+        result = client._call_anthropic("system", [{"role": "user", "content": "hi"}])
+        assert result.usage["input_tokens"] == 100
+        assert result.usage["output_tokens"] == 50
+
+    def test_usage_from_openai(self):
+        mock_openai = MagicMock()
+        with patch.dict("sys.modules", {"openai": mock_openai}):
+            client = LLMClient(OPENAI_SETTINGS)
+
+        msg = MagicMock()
+        msg.content = "Hello"
+        msg.tool_calls = None
+        msg.reasoning_content = None
+        choice = MagicMock()
+        choice.message = msg
+        response = MagicMock()
+        response.choices = [choice]
+        response.usage.prompt_tokens = 200
+        response.usage.completion_tokens = 80
+        client._client.chat.completions.create = MagicMock(return_value=response)
+
+        result = client._call_openai("system", [{"role": "user", "content": "hi"}])
+        assert result.usage["input_tokens"] == 200
+        assert result.usage["output_tokens"] == 80
+
+
+class TestRetryLogic:
+    def test_call_with_retry_success(self):
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            client = LLMClient(ANTHROPIC_SETTINGS)
+
+        expected = LLMResponse(
+            wants_tool_use=False, tool_calls=[], thinking_text="",
+            reply_text="ok", raw_content="ok",
+        )
+        fn = MagicMock(return_value=expected)
+        result = client._call_with_retry(fn, "a", "b", max_retries=3)
+        assert result == expected
+        assert fn.call_count == 1
+
+    def test_call_with_retry_retries_on_429(self):
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            client = LLMClient(ANTHROPIC_SETTINGS)
+
+        expected = LLMResponse(
+            wants_tool_use=False, tool_calls=[], thinking_text="",
+            reply_text="ok", raw_content="ok",
+        )
+        err = Exception("rate limit")
+        err.status_code = 429
+        fn = MagicMock(side_effect=[err, expected])
+
+        with patch("seatunnel_agent.llm.time.sleep"):
+            result = client._call_with_retry(fn, "a", max_retries=3)
+        assert result == expected
+        assert fn.call_count == 2
+
+    def test_call_with_retry_raises_non_retryable(self):
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            client = LLMClient(ANTHROPIC_SETTINGS)
+
+        err = ValueError("bad request")
+        fn = MagicMock(side_effect=err)
+
+        with pytest.raises(ValueError, match="bad request"):
+            client._call_with_retry(fn, "a", max_retries=3)
+        assert fn.call_count == 1
+
+    def test_call_with_retry_exhausts_retries(self):
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            client = LLMClient(ANTHROPIC_SETTINGS)
+
+        err = Exception("server error")
+        err.status_code = 500
+        fn = MagicMock(side_effect=err)
+
+        with patch("seatunnel_agent.llm.time.sleep"):
+            with pytest.raises(Exception, match="server error"):
+                client._call_with_retry(fn, "a", max_retries=3)
+        assert fn.call_count == 3
+
+
+class TestDeepSeekThinking:
+    def test_reasoning_content_extracted(self):
+        mock_openai = MagicMock()
+        with patch.dict("sys.modules", {"openai": mock_openai}):
+            client = LLMClient(OPENAI_SETTINGS)
+
+        msg = MagicMock()
+        msg.content = "Final answer"
+        msg.tool_calls = None
+        msg.reasoning_content = "Let me think step by step..."
+        choice = MagicMock()
+        choice.message = msg
+        response = MagicMock()
+        response.choices = [choice]
+        response.usage.prompt_tokens = 10
+        response.usage.completion_tokens = 20
+        client._client.chat.completions.create = MagicMock(return_value=response)
+
+        result = client._call_openai("system", [{"role": "user", "content": "hi"}])
+        assert result.thinking_text == "Let me think step by step..."
+        assert result.reply_text == "Final answer"
+
+
+class TestRetryStringCodeIgnored:
+    """OpenAI errors with string `code` should not match int status codes."""
+
+    def test_string_code_not_retryable(self):
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            client = LLMClient(ANTHROPIC_SETTINGS)
+
+        err = Exception("invalid_api_key")
+        err.code = "invalid_api_key"
+        fn = MagicMock(side_effect=err)
+
+        with pytest.raises(Exception, match="invalid_api_key"):
+            client._call_with_retry(fn, "a", max_retries=3)
+        assert fn.call_count == 1
+
+    def test_response_status_code_retryable(self):
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            client = LLMClient(ANTHROPIC_SETTINGS)
+
+        expected = LLMResponse(
+            wants_tool_use=False, tool_calls=[], thinking_text="",
+            reply_text="ok", raw_content="ok",
+        )
+        err = Exception("server error")
+        resp_mock = MagicMock()
+        resp_mock.status_code = 502
+        err.response = resp_mock
+        fn = MagicMock(side_effect=[err, expected])
+
+        with patch("seatunnel_agent.llm.time.sleep"):
+            result = client._call_with_retry(fn, "a", max_retries=3)
+        assert result == expected
+        assert fn.call_count == 2
