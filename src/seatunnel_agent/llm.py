@@ -179,6 +179,10 @@ class LLMClient:
     # Anthropic
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _supports_thinking(model_name: str) -> bool:
+        return any(k in model_name for k in ("claude-sonnet", "claude-opus", "claude-fable"))
+
     def _call_anthropic(self, system_prompt: str, messages: list) -> LLMResponse:
         kwargs: dict[str, Any] = dict(
             model=self.settings.model_name,
@@ -186,8 +190,9 @@ class LLMClient:
             system=system_prompt,
             tools=TOOL_DEFINITIONS,
             messages=messages,
-            thinking={"type": "adaptive"},
         )
+        if self._supports_thinking(self.settings.model_name):
+            kwargs["thinking"] = {"type": "adaptive"}
         if self.settings.temperature > 0:
             kwargs["temperature"] = self.settings.temperature
         response = self._client.messages.create(**kwargs)
@@ -245,8 +250,9 @@ class LLMClient:
             system=system_prompt,
             tools=TOOL_DEFINITIONS,
             messages=messages,
-            thinking={"type": "adaptive"},
         )
+        if self._supports_thinking(self.settings.model_name):
+            stream_kwargs["thinking"] = {"type": "adaptive"}
         if self.settings.temperature > 0:
             stream_kwargs["temperature"] = self.settings.temperature
         with self._client.messages.stream(**stream_kwargs) as stream:

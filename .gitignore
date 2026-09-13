@@ -45,5 +45,3 @@ _tmp_gradio*
 # Chat history (user data)
 chat_history/
 
-# Local scripts
-scripts/

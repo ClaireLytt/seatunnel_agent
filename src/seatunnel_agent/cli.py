@@ -206,12 +206,25 @@ def _make_agent(model: str | None = None, provider: str | None = None):
     from .config import load_settings
     from .agent import SeaTunnelAgent
 
-    if model:
-        os.environ["MODEL_NAME"] = model
-    if provider:
-        os.environ["LLM_PROVIDER"] = provider
-
-    settings = load_settings()
+    old_model = os.environ.get("MODEL_NAME")
+    old_provider = os.environ.get("LLM_PROVIDER")
+    try:
+        if model:
+            os.environ["MODEL_NAME"] = model
+        if provider:
+            os.environ["LLM_PROVIDER"] = provider
+        settings = load_settings()
+    finally:
+        if model:
+            if old_model is None:
+                os.environ.pop("MODEL_NAME", None)
+            else:
+                os.environ["MODEL_NAME"] = old_model
+        if provider:
+            if old_provider is None:
+                os.environ.pop("LLM_PROVIDER", None)
+            else:
+                os.environ["LLM_PROVIDER"] = old_provider
     return SeaTunnelAgent(settings)
 
 

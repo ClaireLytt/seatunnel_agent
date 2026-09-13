@@ -7,4 +7,9 @@ services:
       - .env
     volumes:
       - ./examples:/app/examples
-      - ./chat_history:/root/.seatunnel-agent/chat_history
+      - agent-history:/root/.seatunnel-agent/chat_history
+      - agent-configs:/app/configs
+
+volumes:
+  agent-history:
+  agent-configs:

@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "seatunnel-agent"
 version = "0.2.0"
 description = "AI-powered SeaTunnel pipeline builder and debugger (supports Claude, DeepSeek, Kimi, and other LLMs)"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "click>=8.1",
@@ -27,6 +29,11 @@ dev = [
     "openai>=1.0",
     "gradio>=4.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/ClaireLytt/seatunnel_agent"
+Repository = "https://github.com/ClaireLytt/seatunnel_agent"
+"Bug Tracker" = "https://github.com/ClaireLytt/seatunnel_agent/issues"
 
 [project.scripts]
 seatunnel-agent = "seatunnel_agent.cli:cli"

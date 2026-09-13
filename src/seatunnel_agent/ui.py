@@ -125,8 +125,6 @@ _I18N: dict[str, dict[str, str]] = {
         "tpl_none": "-- Select a template --",
         "stop": "Stop",
         "stopped": "Agent stopped by user.",
-        "theme_light": "☀ Light",
-        "theme_dark": "🌙 Dark",
     },
     "zh": {
         "title": "SeaTunnel 数据管道构建器",
@@ -178,8 +176,6 @@ _I18N: dict[str, dict[str, str]] = {
         "tpl_none": "-- 选择模板 --",
         "stop": "停止",
         "stopped": "已被用户中断。",
-        "theme_light": "☀ 浅色",
-        "theme_dark": "🌙 深色",
     },
 }
 
@@ -854,9 +850,8 @@ def create_ui() -> gr.Blocks:
         choices = _build_history_choices()
         return gr.update(choices=choices, value=None)
 
-    def _switch_lang(lang, current_theme):
+    def _switch_lang(lang):
         modes = [_t(lang, k) for k in ("mode_nl", "mode_run", "mode_validate", "mode_diagnose")]
-        theme_label = _t(lang, "theme_light") if current_theme == "dark" else _t(lang, "theme_dark")
         return (
             gr.update(choices=modes, value=modes[0], label=_t(lang, "mode")),
             gr.update(label=_t(lang, "config_path"), placeholder=_t(lang, "config_placeholder")),
@@ -869,7 +864,6 @@ def create_ui() -> gr.Blocks:
             gr.update(placeholder=_build_placeholder(lang)),
             gr.update(label=_t(lang, "export")),
             gr.update(choices=_build_template_choices(lang), value="", label=_t(lang, "templates")),
-            gr.update(value=theme_label),
         )
 
     # ── Layout ──
@@ -981,13 +975,6 @@ def create_ui() -> gr.Blocks:
         # ── Main area ──
         with gr.Row(elem_classes=["st-topbar-row"]):
             gr.HTML('<div class="st-topbar-spacer"></div>')
-            theme_btn = gr.Button(
-                _t(lang, "theme_dark"),
-                size="sm",
-                scale=0,
-                min_width=80,
-                elem_classes=["st-theme-btn"],
-            )
             lang_dd = gr.Dropdown(
                 choices=["English", "中文"],
                 value="English",
@@ -1006,14 +993,15 @@ def create_ui() -> gr.Blocks:
             elem_classes=["st-chatbot"],
         )
 
-        file_upload = gr.File(
-            label="Upload Config",
-            file_types=[".conf", ".hocon", ".config", ".json"],
-            visible=True,
-            elem_classes=["st-file-upload"],
-        )
-
         with gr.Row(elem_classes=["st-input-row"]):
+            file_upload = gr.UploadButton(
+                "+",
+                file_types=[".conf", ".hocon", ".config", ".json"],
+                size="sm",
+                scale=0,
+                min_width=40,
+                elem_classes=["st-btn-upload"],
+            )
             user_input = gr.Textbox(
                 placeholder=_t(lang, "input_placeholder"),
                 show_label=False,
@@ -1064,17 +1052,14 @@ def create_ui() -> gr.Blocks:
             outputs=user_input,
         )
 
-        # ── Dark mode toggle ──
-        theme_state = gr.State("light")
-
         # ── Lang switch wiring ──
-        def _on_lang_change(choice, current_theme):
+        def _on_lang_change(choice):
             lang = "zh" if choice == "中文" else "en"
-            return (lang, *_switch_lang(lang, current_theme))
+            return (lang, *_switch_lang(lang))
 
         lang_dd.change(
             fn=_on_lang_change,
-            inputs=[lang_dd, theme_state],
+            inputs=[lang_dd],
             outputs=[
                 lang_state,
                 mode,
@@ -1088,27 +1073,7 @@ def create_ui() -> gr.Blocks:
                 chatbot,
                 export_btn,
                 template_dd,
-                theme_btn,
             ],
-        )
-
-        def _toggle_theme(current_theme, lang):
-            if current_theme == "light":
-                new_theme = "dark"
-                label = _t(lang, "theme_light")
-            else:
-                new_theme = "light"
-                label = _t(lang, "theme_dark")
-            return new_theme, gr.update(value=label)
-
-        theme_btn.click(
-            fn=_toggle_theme,
-            inputs=[theme_state, lang_state],
-            outputs=[theme_state, theme_btn],
-        ).then(
-            fn=None,
-            inputs=[theme_state],
-            js="(theme) => { document.documentElement.setAttribute('data-theme', theme); }",
         )
 
         # ── Stop handler ──
@@ -1224,7 +1189,7 @@ def create_ui() -> gr.Blocks:
             shutil.copy2(str(src), str(dest))
             return gr.update(value=str(dest))
 
-        file_upload.change(
+        file_upload.upload(
             fn=_handle_file_upload,
             inputs=file_upload,
             outputs=config_path,
@@ -1266,65 +1231,75 @@ _CUSTOM_CSS = """
 /* ── Global ── */
 .gradio-container {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif !important;
-    font-size: 13px !important;
+    font-size: 11px !important;
     max-width: 100% !important;
     background: #fff !important;
     padding: 0 !important;
+    height: 100vh !important;
+    overflow: hidden !important;
+}
+.gradio-container > .main > .wrap {
+    height: 100vh !important;
+    overflow: hidden !important;
 }
 footer { display: none !important; }
 
-/* ── Chatbot — borderless, full width ── */
+/* ── Chatbot — borderless, full width, fill viewport ── */
 .st-chatbot {
     border: none !important;
     background: #fff !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+    flex-grow: 1 !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
 }
 .st-chatbot .message {
-    font-size: 13px !important;
-    line-height: 1.65 !important;
-    padding: 8px 24px !important;
+    font-size: 11px !important;
+    line-height: 1.6 !important;
+    padding: 6px 20px !important;
 }
 /* ── User message: right-aligned with left space ── */
 .st-chatbot .user-row {
     margin-left: 22% !important;
-    margin-top: 18px !important;
-    margin-bottom: 18px !important;
+    margin-top: 14px !important;
+    margin-bottom: 14px !important;
     background: #fff7ed !important;
     border: 1px solid #fed7aa !important;
     border-radius: 16px 16px 4px 16px !important;
-    padding: 10px 16px !important;
+    padding: 8px 14px !important;
 }
 .st-chatbot .user-row .message {
     padding: 0 !important;
 }
 .st-chatbot .message code {
-    font-size: 12px !important;
+    font-size: 10px !important;
     background: #f3f4f6 !important;
-    padding: 1px 5px !important;
+    padding: 1px 4px !important;
     border-radius: 3px !important;
 }
 .st-chatbot .message pre {
     background: #1e1e2e !important;
     color: #cdd6f4 !important;
-    padding: 10px 14px !important;
+    padding: 8px 12px !important;
     border-radius: 6px !important;
-    font-size: 12px !important;
-    margin: 6px 0 !important;
+    font-size: 10px !important;
+    margin: 4px 0 !important;
     overflow-x: auto !important;
 }
 
 /* ── Input row — full width with padding ── */
 .st-input-row {
-    padding: 6px 24px 14px !important;
-    gap: 8px !important;
+    padding: 4px 20px 10px !important;
+    gap: 6px !important;
     align-items: flex-end !important;
     border-top: 1px solid #f0f0f0;
+    flex-shrink: 0 !important;
 }
 .st-input textarea {
     border-radius: 20px !important;
-    padding: 10px 18px !important;
-    font-size: 13px !important;
+    padding: 8px 14px !important;
+    font-size: 11px !important;
     border: 1px solid #d1d5db !important;
     background: #fff !important;
     box-shadow: 0 1px 3px rgba(0,0,0,.04) !important;
@@ -1338,28 +1313,11 @@ footer { display: none !important; }
 /* ── Buttons ── */
 .st-btn-send {
     border-radius: 50% !important;
-    width: 40px !important;
-    height: 40px !important;
-    min-width: 40px !important;
-    max-width: 40px !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
     background: #f76707 !important;
-    color: #fff !important;
-    border: none !important;
-    font-size: 16px !important;
-    padding: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex-shrink: 0 !important;
-}
-.st-btn-send:hover { background: #e8590c !important; }
-.st-btn-stop {
-    border-radius: 50% !important;
-    width: 40px !important;
-    height: 40px !important;
-    min-width: 40px !important;
-    max-width: 40px !important;
-    background: #dc2626 !important;
     color: #fff !important;
     border: none !important;
     font-size: 14px !important;
@@ -1369,16 +1327,54 @@ footer { display: none !important; }
     justify-content: center !important;
     flex-shrink: 0 !important;
 }
+.st-btn-send:hover { background: #e8590c !important; }
+.st-btn-stop {
+    border-radius: 50% !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    background: #dc2626 !important;
+    color: #fff !important;
+    border: none !important;
+    font-size: 12px !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+}
 .st-btn-stop:hover { background: #b91c1c !important; }
+.st-btn-upload {
+    border-radius: 50% !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    background: #f3f4f6 !important;
+    color: #374151 !important;
+    border: 1px solid #d1d5db !important;
+    font-size: 16px !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+}
+.st-btn-upload:hover {
+    background: #e5e7eb !important;
+    border-color: #f76707 !important;
+    color: #f76707 !important;
+}
 .st-btn-demo {
     background: #fff !important;
     border: 1.5px solid #e5e7eb !important;
     color: #374151 !important;
     font-weight: 500 !important;
     border-radius: 20px !important;
-    font-size: 12px !important;
-    height: 40px !important;
-    padding: 0 14px !important;
+    font-size: 10px !important;
+    height: 34px !important;
+    padding: 0 12px !important;
 }
 .st-btn-demo:hover {
     border-color: #f76707 !important;
@@ -1392,42 +1388,42 @@ footer { display: none !important; }
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 80px 20px 40px;
+    padding: 60px 16px 30px;
     color: #6b7280;
 }
 .st-empty-logo {
-    font-size: 28px;
+    font-size: 22px;
     font-weight: 800;
     background: #f76707;
     color: #fff;
-    width: 56px;
-    height: 56px;
-    border-radius: 14px;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
     letter-spacing: -1px;
 }
 .st-empty-title {
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 600;
     color: #1f2937;
-    margin-bottom: 28px;
+    margin-bottom: 20px;
 }
 .st-empty-hints {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     flex-wrap: wrap;
     justify-content: center;
-    max-width: 600px;
+    max-width: 540px;
 }
 .st-hint-card {
-    padding: 10px 16px;
+    padding: 7px 12px;
     background: #fff;
     border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    font-size: 13px;
+    border-radius: 8px;
+    font-size: 11px;
     color: #4b5563;
     cursor: default;
     transition: border-color .15s;
@@ -1438,12 +1434,12 @@ footer { display: none !important; }
 }
 .st-docs-link {
     display: inline-block;
-    margin-top: 20px;
-    padding: 10px 20px;
+    margin-top: 16px;
+    padding: 7px 16px;
     background: #f9fafb;
     border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    font-size: 13px;
+    border-radius: 8px;
+    font-size: 11px;
     color: #6b7280;
     text-decoration: none;
     transition: border-color .15s, color .15s, background .15s;
@@ -1465,9 +1461,9 @@ footer { display: none !important; }
     margin-top: 4px !important;
 }
 .st-action-btn {
-    font-size: 11px !important;
+    font-size: 10px !important;
     border-radius: 6px !important;
-    padding: 4px 8px !important;
+    padding: 3px 6px !important;
 }
 .st-rename-row {
     gap: 4px !important;
@@ -1475,33 +1471,33 @@ footer { display: none !important; }
     align-items: flex-end !important;
 }
 .st-rename-input textarea {
-    font-size: 12px !important;
-    padding: 6px 10px !important;
+    font-size: 10px !important;
+    padding: 4px 8px !important;
     border-radius: 6px !important;
 }
 .st-rename-ok, .st-rename-cancel {
-    font-size: 14px !important;
+    font-size: 12px !important;
     border-radius: 6px !important;
-    min-width: 36px !important;
-    height: 34px !important;
+    min-width: 32px !important;
+    height: 30px !important;
 }
 .st-delete-btn {
     border-radius: 6px !important;
 }
-.st-history-dd { font-size: 12px !important; }
+.st-history-dd { font-size: 10px !important; }
 .st-connect-btn {
     width: 100% !important;
     border-radius: 8px !important;
     margin-top: 2px !important;
 }
 .st-sidebar-control label {
-    font-size: 11px !important;
+    font-size: 10px !important;
     font-weight: 600 !important;
     color: #6b7280 !important;
 }
 .st-sidebar-control input,
-.st-sidebar-control select { font-size: 12px !important; }
-.st-sidebar-status input { font-size: 11px !important; }
+.st-sidebar-control select { font-size: 10px !important; }
+.st-sidebar-status input { font-size: 10px !important; }
 
 /* ── Top bar with language switcher (floating) ── */
 .st-topbar-row {
@@ -1527,12 +1523,12 @@ footer { display: none !important; }
 }
 .st-lang-dd select,
 .st-lang-dd input {
-    font-size: 12px !important;
-    padding: 4px 28px 4px 10px !important;
-    border-radius: 8px !important;
+    font-size: 10px !important;
+    padding: 3px 24px 3px 8px !important;
+    border-radius: 6px !important;
     border: 1px solid #e5e7eb !important;
     background: #f9fafb !important;
-    height: 30px !important;
+    height: 26px !important;
     cursor: pointer !important;
 }
 .st-lang-dd select:hover,
@@ -1540,94 +1536,23 @@ footer { display: none !important; }
     border-color: #f76707 !important;
 }
 
-/* ── File upload ── */
-.st-file-upload {
-    padding: 0 24px !important;
-    margin: 0 !important;
-}
-.st-file-upload .file-preview {
-    font-size: 12px !important;
+/* ── Upload button (inline "+") ── */
+.st-btn-upload {
+    border-radius: 50% !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    font-size: 16px !important;
+    padding: 0 !important;
+    flex-shrink: 0 !important;
 }
 
 /* ── Responsive sizing ── */
-button { font-size: 12px !important; }
-label { font-size: 11px !important; }
+button { font-size: 10px !important; }
+label { font-size: 10px !important; }
 
-/* ── Theme toggle button ── */
-.st-theme-btn {
-    background: #f3f4f6 !important;
-    border: 1px solid #e5e7eb !important;
-    border-radius: 8px !important;
-    color: #374151 !important;
-    font-size: 12px !important;
-    cursor: pointer !important;
-    height: 30px !important;
-}
-.st-theme-btn:hover {
-    border-color: #f76707 !important;
-    color: #f76707 !important;
-}
-
-/* ── Dark mode tokens ── */
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-        --st-bg: #1a1a2e; --st-text: #e2e8f0; --st-muted: #a0aec0;
-        --st-surface: #2d3748; --st-border: #4a5568;
-        --st-user-bg: #2d2416; --st-user-border: #92400e;
-        --st-hover-bg: #3d2e1a;
-    }
-}
-:root[data-theme="dark"] {
-    --st-bg: #1a1a2e; --st-text: #e2e8f0; --st-muted: #a0aec0;
-    --st-surface: #2d3748; --st-border: #4a5568;
-    --st-user-bg: #2d2416; --st-user-border: #92400e;
-    --st-hover-bg: #3d2e1a;
-}
-/* ── Dark mode component rules (generated to avoid duplication) ── */
 """
-
-_DARK_COMPONENT_RULES = [
-    (".gradio-container, {P} .st-chatbot", "background: var(--st-bg) !important; color: var(--st-text) !important;"),
-    (".st-chatbot .message", "color: var(--st-text) !important;"),
-    (".st-chatbot .user-row", "background: var(--st-user-bg) !important; border-color: var(--st-user-border) !important;"),
-    (".st-chatbot .message code", "background: var(--st-surface) !important; color: var(--st-text) !important;"),
-    (".st-input textarea", "background: var(--st-surface) !important; border-color: var(--st-border) !important; color: var(--st-text) !important;"),
-    (".st-input-row", "border-top-color: var(--st-surface) !important;"),
-    (".st-btn-demo", "background: var(--st-surface) !important; border-color: var(--st-border) !important; color: var(--st-text) !important;"),
-    (".st-btn-demo:hover", "background: var(--st-hover-bg) !important; border-color: #f76707 !important; color: #f76707 !important;"),
-    (".st-empty-state", "color: var(--st-muted) !important;"),
-    (".st-empty-title", "color: var(--st-text) !important;"),
-    (".st-hint-card", "background: var(--st-surface) !important; border-color: var(--st-border) !important; color: var(--st-muted) !important;"),
-    (".st-hint-card:hover", "border-color: #f76707 !important; color: #f76707 !important;"),
-    (".st-docs-link", "background: var(--st-surface) !important; border-color: var(--st-border) !important; color: var(--st-muted) !important;"),
-    (".st-docs-link:hover", "background: var(--st-hover-bg) !important; border-color: #f76707 !important; color: #f76707 !important;"),
-    (".st-sidebar-control label", "color: var(--st-muted) !important;"),
-    (".st-lang-dd select, {P} .st-lang-dd input", "border-color: var(--st-border) !important; background: var(--st-surface) !important; color: var(--st-text) !important;"),
-    (".st-theme-btn", "background: var(--st-surface) !important; border-color: var(--st-border) !important; color: var(--st-text) !important;"),
-]
-
-
-def _build_dark_css() -> str:
-    media_lines: list[str] = []
-    explicit_lines: list[str] = []
-    for selector, props in _DARK_COMPONENT_RULES:
-        media_sel = selector.replace("{P}", ":root:not([data-theme=\"light\"])")
-        if "{P}" not in selector:
-            media_sel = ":root:not([data-theme=\"light\"]) " + selector
-        media_lines.append(f"    {media_sel} {{ {props} }}")
-        exp_sel = selector.replace("{P}", ":root[data-theme=\"dark\"]")
-        if "{P}" not in selector:
-            exp_sel = ":root[data-theme=\"dark\"] " + selector
-        explicit_lines.append(f"{exp_sel} {{ {props} }}")
-    return (
-        "@media (prefers-color-scheme: dark) {\n"
-        + "\n".join(media_lines)
-        + "\n}\n"
-        + "\n".join(explicit_lines)
-    )
-
-
-_CUSTOM_CSS = _CUSTOM_CSS + _build_dark_css() + "\n"
 
 
 def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False) -> None:

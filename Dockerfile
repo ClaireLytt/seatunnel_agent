@@ -10,6 +10,8 @@ RUN pip install --no-cache-dir -e ".[all,ui]"
 COPY examples/ examples/
 COPY .env.example .env.example
 
+RUN mkdir -p configs
+
 EXPOSE 7860
 
 CMD ["seatunnel-agent", "ui", "--host", "0.0.0.0"]

@@ -31,12 +31,11 @@
 - **Config Diff Display**: When overwriting an existing config, the UI shows a unified diff of what changed
 - **Task Progress Visualization**: Real-time step counter with elapsed time and streaming text output with cursor indicator
 - **Token Usage Display**: Shows input/output token counts per LLM call for cost awareness
-- **File Upload**: Upload `.conf` files directly in the UI — auto-copies to configs directory
+- **File Upload**: Click the `+` button next to the input box to upload `.conf` files — auto-copies to configs directory
 - **Clickable Hint Cards**: Click the placeholder hints to auto-fill the input box
 - **Export to ZIP**: Download a session report (Markdown) + all generated config files as a ZIP archive
 - **Stop Button**: Interrupt a running agent at any time
 - **Web UI**: Real-time chat interface showing the Agent's thinking, tool calls, and results — with bilingual support (English / Chinese)
-- **Dark Mode**: Toggle dark/light theme with a button, or auto-adapt to system preference
 - **Multi-LLM Support**: Works with Claude, GPT-4o, DeepSeek, Kimi/Moonshot, Qwen, GLM, and any OpenAI-compatible API
 - **LLM Retry & Resilience**: Automatic retry with exponential backoff on rate-limit (429) and server errors (500+)
 - **DeepSeek Thinking Extraction**: Shows DeepSeek-R1's chain-of-thought reasoning in the UI thinking panel
@@ -220,7 +219,7 @@ seatunnel-agent ui --host 0.0.0.0
 │  MODE  ▼     │     └──────────────────────────┘        │
 │  CONFIG PATH │                                         │
 │  [Connect]   │  ┌──────────────────────────────────┐   │
-│  STATUS      │  │ [Message input] [Demo] [■] [Send]│   │
+│  STATUS      │  │ [+] [Message input] [Demo] [■] [➤]│   │
 │  [Export]    │  └──────────────────────────────────┘   │
 └──────────────┴─────────────────────────────────────────┘
 ```
@@ -365,6 +364,8 @@ Apache SeaTunnel (Data Integration Engine)
 seatunnel_agent/
 ├── pyproject.toml              # Project config & dependencies
 ├── .env.example                # Environment variable template
+├── Dockerfile                  # Docker image build
+├── docker-compose.yml          # Docker Compose with persistent volumes
 ├── src/seatunnel_agent/
 │   ├── config.py               # Config loading (.env → Settings)
 │   ├── llm.py                  # Multi-provider LLM abstraction
@@ -376,7 +377,10 @@ seatunnel_agent/
 │   ├── agent.py                # ReAct loop + session context tracking
 │   ├── history.py              # Chat session persistence
 │   ├── cli.py                  # Click CLI entry point
-│   └── ui.py                   # Gradio Web UI (bilingual, dark mode)
+│   └── ui.py                   # Gradio Web UI (bilingual)
+├── scripts/                    # Dev workflow scripts
+│   ├── ship.ps1                # Commit & push to current branch
+│   └── next.ps1                # Sync main, create new branch
 ├── tests/                      # 307 unit tests
 │   ├── test_config.py          # Settings & env loading
 │   ├── test_tools.py           # All 16 tools, path guards, version collision, metrics
@@ -432,7 +436,7 @@ Test coverage by module:
 | `429 / Rate limit` errors | The agent retries automatically with exponential backoff (1s → 2s → 4s). If it persists, wait a minute or switch to a model with higher rate limits. |
 | `ModuleNotFoundError: No module named 'gradio'` | Install with UI support: `pip install -e ".[ui]"` |
 | `ModuleNotFoundError: No module named 'anthropic'` | Install the LLM provider you need: `pip install anthropic` or `pip install openai` — or install all: `pip install -e ".[all]"` |
-| Chat history not persisted in Docker | Ensure the volume mount in `docker-compose.yml` points to `/root/.seatunnel-agent/chat_history` |
+| Chat history not persisted in Docker | Use `docker compose up` — the compose file uses named volumes (`agent-history`, `agent-configs`) for automatic persistence |
 
 ### License
 
@@ -463,12 +467,11 @@ MIT
 - **配置 Diff 展示**：覆盖已有配置时，UI 展示新旧配置的 unified diff
 - **任务进度可视化**：实时显示步骤计数（含耗时）和流式文本输出（带光标指示符）
 - **Token 用量显示**：每次 LLM 调用显示输入/输出 token 数，便于成本感知
-- **文件上传**：在 UI 中直接上传 `.conf` 文件，自动复制到 configs 目录
+- **文件上传**：点击输入框旁的 `+` 按钮上传 `.conf` 文件，自动复制到 configs 目录
 - **可点击提示卡片**：点击占位提示即可自动填充输入框
 - **导出 ZIP**：下载会话报告（Markdown）+ 所有生成的配置文件
 - **停止按钮**：随时中断正在运行的 Agent
 - **Web UI**：实时聊天界面，展示 Agent 的思考过程、工具调用和结果 —— 支持中英文双语
-- **暗色模式**：点击按钮切换暗色/亮色主题，或自动适配系统偏好
 - **多模型支持**：Claude、GPT-4o、DeepSeek、Kimi/Moonshot、通义千问、智谱 GLM，以及任何兼容 OpenAI API 的模型
 - **LLM 重试与容错**：API 限流 (429) 和服务错误 (500+) 自动指数退避重试
 - **DeepSeek 思维链提取**：在 UI 思考面板展示 DeepSeek-R1 的推理过程
@@ -651,7 +654,7 @@ seatunnel-agent ui --host 0.0.0.0
 │  模板 ▼      │     └──────────────────────────┘        │
 │  运行模式 ▼  │                                         │
 │  配置路径    │  ┌──────────────────────────────────┐   │
-│  [连接]      │  │ [输入框]        [演示] [■] [发送]│   │
+│  [连接]      │  │ [+] [输入框]    [演示] [■] [➤]│   │
 │  状态        │  └──────────────────────────────────┘   │
 │  [导出]      │                                         │
 └──────────────┴─────────────────────────────────────────┘
@@ -796,6 +799,8 @@ Apache SeaTunnel（数据集成引擎）
 seatunnel_agent/
 ├── pyproject.toml              # 项目配置与依赖
 ├── .env.example                # 环境变量模板
+├── Dockerfile                  # Docker 镜像构建
+├── docker-compose.yml          # Docker Compose（含持久化卷）
 ├── src/seatunnel_agent/
 │   ├── config.py               # 配置加载（.env → Settings）
 │   ├── llm.py                  # 多模型 LLM 抽象层
@@ -807,7 +812,10 @@ seatunnel_agent/
 │   ├── agent.py                # ReAct 循环 + 会话上下文追踪
 │   ├── history.py              # 对话历史持久化
 │   ├── cli.py                  # Click CLI 入口
-│   └── ui.py                   # Gradio Web UI（中英双语，暗色模式）
+│   └── ui.py                   # Gradio Web UI（中英双语）
+├── scripts/                    # 开发工作流脚本
+│   ├── ship.ps1                # 提交并推送到当前分支
+│   └── next.ps1                # 同步 main，创建新分支
 ├── tests/                      # 307 个单元测试
 │   ├── test_config.py          # Settings 与环境变量
 │   ├── test_tools.py           # 16 个工具、路径安全守卫、版本碰撞修复、指标解析、批量任务
@@ -863,7 +871,7 @@ pytest tests/ --cov=seatunnel_agent --cov-report=term-missing
 | `429 / Rate limit` 错误 | Agent 会自动指数退避重试（1s → 2s → 4s）。如持续出现，请等待一分钟或切换到限速更高的模型。 |
 | `ModuleNotFoundError: No module named 'gradio'` | 安装 UI 依赖：`pip install -e ".[ui]"` |
 | `ModuleNotFoundError: No module named 'anthropic'` | 安装对应的 LLM 依赖：`pip install anthropic` 或 `pip install openai`，或全部安装：`pip install -e ".[all]"` |
-| Docker 中聊天历史未持久化 | 确保 `docker-compose.yml` 中 volume 挂载目标为 `/root/.seatunnel-agent/chat_history` |
+| Docker 中聊天历史未持久化 | 使用 `docker compose up` —— compose 文件使用命名卷（`agent-history`、`agent-configs`）自动持久化 |
 
 ### 许可证
 

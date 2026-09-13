@@ -180,6 +180,7 @@ class SeaTunnelAgent:
                     ),
                 })
                 resp = self.llm.chat(system_prompt, self.messages)
+                self.messages.append(self.llm.append_assistant(resp.raw_content))
                 final = resp.reply_text or "Maximum retry limit reached."
                 self._emit("final_answer", {"text": final})
                 return final
