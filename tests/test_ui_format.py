@@ -446,3 +446,42 @@ class TestTemplateHelpers:
 
     def test_template_to_prompt_nonexistent(self):
         assert _template_to_prompt("no_such", "en") == ""
+
+
+class TestElapsedTimeDisplay:
+    def test_step_shows_elapsed(self):
+        import time as _time
+        start = _time.time() - 5.0
+        events = [{"type": "step", "iteration": 1, "max": 20, "phase": "thinking"}]
+        msgs = _format_events_as_chat(events, start_time=start)
+        assert len(msgs) == 1
+        assert "s)" in msgs[0]["content"]
+
+    def test_step_no_elapsed_without_start(self):
+        events = [{"type": "step", "iteration": 1, "max": 20, "phase": "thinking"}]
+        msgs = _format_events_as_chat(events)
+        assert len(msgs) == 1
+        assert "s)" not in msgs[0]["content"]
+
+
+class TestTokenUsageDisplay:
+    def test_usage_event_rendered(self):
+        events = [{"type": "usage", "input_tokens": 1500, "output_tokens": 300}]
+        msgs = _format_events_as_chat(events)
+        assert len(msgs) == 1
+        assert "1,500" in msgs[0]["content"]
+        assert "300" in msgs[0]["content"]
+
+    def test_usage_event_zero_skipped(self):
+        events = [{"type": "usage", "input_tokens": 0, "output_tokens": 0}]
+        msgs = _format_events_as_chat(events)
+        assert len(msgs) == 0
+
+
+class TestNewToolEmojis:
+    def test_restore_config_emoji(self):
+        from seatunnel_agent.ui import _TOOL_EMOJI
+        assert "restore_config_version" in _TOOL_EMOJI
+        assert "delete_config" in _TOOL_EMOJI
+        assert "compare_config_versions" in _TOOL_EMOJI
+        assert "explain_config" in _TOOL_EMOJI

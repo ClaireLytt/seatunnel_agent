@@ -44,3 +44,12 @@ class TestCliBasics:
         assert "port" in result.output.lower()
         assert "host" in result.output.lower()
         assert "share" in result.output.lower()
+
+    def test_chat_list_sessions(self):
+        result = runner.invoke(cli, ["chat", "--list-sessions"])
+        assert result.exit_code == 0
+
+    def test_batch_help(self):
+        result = runner.invoke(cli, ["batch", "--help"])
+        assert result.exit_code == 0
+        assert "configs" in result.output.lower()

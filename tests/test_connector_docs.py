@@ -111,3 +111,85 @@ class TestExecuteToolIntegration:
             FAKE_SETTINGS,
         ))
         assert "error" in result
+
+
+class TestNewConnectors:
+    """Tests for the 8 new connector docs added in Phase 3."""
+
+    def test_postgresql_cdc(self):
+        result = query_connector("PostgreSQL-CDC")
+        assert result["connector_type"] == "source"
+        req_names = [p["name"] for p in result["required_params"]]
+        assert "hostname" in req_names
+        assert "slot.name" in req_names
+
+    def test_mongodb(self):
+        result = query_connector("MongoDB")
+        assert result["connector_type"] == "source"
+        req_names = [p["name"] for p in result["required_params"]]
+        assert "uri" in req_names
+        assert "database" in req_names
+
+    def test_hdfsfile(self):
+        result = query_connector("HdfsFile")
+        assert result["connector_type"] == "both"
+        req_names = [p["name"] for p in result["required_params"]]
+        assert "path" in req_names
+        assert "fs.defaultFS" in req_names
+
+    def test_hive(self):
+        result = query_connector("Hive")
+        assert result["connector_type"] == "both"
+        req_names = [p["name"] for p in result["required_params"]]
+        assert "metastore_uri" in req_names
+
+    def test_starrocks(self):
+        result = query_connector("StarRocks")
+        assert result["connector_type"] == "sink"
+        req_names = [p["name"] for p in result["required_params"]]
+        assert "nodeUrls" in req_names
+        assert "database" in req_names
+
+    def test_redis(self):
+        result = query_connector("Redis")
+        assert result["connector_type"] == "both"
+        req_names = [p["name"] for p in result["required_params"]]
+        assert "host" in req_names
+        assert "data_type" in req_names
+
+    def test_paimon(self):
+        result = query_connector("Paimon")
+        assert result["connector_type"] == "both"
+        req_names = [p["name"] for p in result["required_params"]]
+        assert "warehouse" in req_names
+
+    def test_iceberg(self):
+        result = query_connector("Iceberg")
+        assert result["connector_type"] == "both"
+        req_names = [p["name"] for p in result["required_params"]]
+        assert "catalog_name" in req_names
+
+    def test_total_connector_count(self):
+        connectors = list_documented_connectors()
+        assert len(connectors) >= 19
+
+    def test_all_new_connectors_queryable_via_tool(self):
+        for name in ["PostgreSQL-CDC", "MongoDB", "HdfsFile", "Hive",
+                      "StarRocks", "Redis", "Paimon", "Iceberg"]:
+            result = json.loads(execute_tool(
+                "query_connector_docs",
+                {"connector_name": name},
+                FAKE_SETTINGS,
+            ))
+            assert result["connector_name"] == name, f"Failed for {name}"
+            assert "required_params" in result
+
+    def test_new_connector_param_lookup(self):
+        result = query_connector("StarRocks", "nodeUrls")
+        assert "param_detail" in result
+        assert result["param_detail"]["name"] == "nodeUrls"
+        assert result["param_detail"]["required"] is True
+
+    def test_new_connector_case_insensitive(self):
+        result = query_connector("starrocks")
+        assert result["connector_name"] == "StarRocks"

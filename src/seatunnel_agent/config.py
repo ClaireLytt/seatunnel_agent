@@ -20,6 +20,9 @@ class Settings:
     seatunnel_bin: str = ""
     llm_provider: str = "anthropic"
     llm_base_url: str = ""
+    job_timeout: int = 120
+    temperature: float = 0.0
+    config_dir: str = "configs"
 
     @property
     def anthropic_api_key(self) -> str:
@@ -47,7 +50,11 @@ def load_settings() -> Settings:
 
     max_retries = int(os.getenv("MAX_RETRIES", "3"))
     model_name = os.getenv("MODEL_NAME", "claude-opus-5")
+    max_tokens = int(os.getenv("MAX_TOKENS", "16000"))
     llm_base_url = os.getenv("LLM_BASE_URL", "")
+    job_timeout = int(os.getenv("JOB_TIMEOUT", "120"))
+    temperature = float(os.getenv("TEMPERATURE", "0.0"))
+    config_dir = os.getenv("CONFIG_DIR", "configs")
 
     seatunnel_bin = ""
     if seatunnel_home:
@@ -66,7 +73,11 @@ def load_settings() -> Settings:
         seatunnel_home=seatunnel_home,
         max_retries=max_retries,
         model_name=model_name,
+        max_tokens=max_tokens,
         seatunnel_bin=seatunnel_bin,
         llm_provider=llm_provider,
         llm_base_url=llm_base_url,
+        job_timeout=job_timeout,
+        temperature=temperature,
+        config_dir=config_dir,
     )

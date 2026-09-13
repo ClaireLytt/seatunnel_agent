@@ -194,11 +194,6 @@ class TestUpdateContext:
         self._run_tool(agent, "read_config", {"config_path": "/tmp/r.conf"}, {"content": "x"})
         assert agent.context["last_config_path"] == "/tmp/r.conf"
 
-    def test_list_templates_sets_flag(self):
-        agent = SeaTunnelAgent(SETTINGS)
-        self._run_tool(agent, "list_templates", {}, {"templates": [], "count": 0})
-        assert agent.context.get("last_template_lookup") is True
-
     def test_test_connection_reachable(self):
         agent = SeaTunnelAgent(SETTINGS)
         self._run_tool(

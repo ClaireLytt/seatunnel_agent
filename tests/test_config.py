@@ -93,3 +93,31 @@ def test_backward_compat_property():
     """Settings.anthropic_api_key property returns api_key."""
     s = Settings(api_key="sk-test", seatunnel_home="/tmp")
     assert s.anthropic_api_key == "sk-test"
+
+
+def test_load_settings_job_timeout(monkeypatch):
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.setenv("JOB_TIMEOUT", "300")
+    settings = load_settings()
+    assert settings.job_timeout == 300
+
+
+def test_load_settings_temperature(monkeypatch):
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.setenv("TEMPERATURE", "0.7")
+    settings = load_settings()
+    assert settings.temperature == 0.7
+
+
+def test_load_settings_config_dir(monkeypatch):
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.setenv("CONFIG_DIR", "/custom/configs")
+    settings = load_settings()
+    assert settings.config_dir == "/custom/configs"
+
+
+def test_load_settings_max_tokens(monkeypatch):
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.setenv("MAX_TOKENS", "32000")
+    settings = load_settings()
+    assert settings.max_tokens == 32000

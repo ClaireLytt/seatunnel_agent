@@ -1,6 +1,8 @@
 # SeaTunnel Pipeline Builder Agent
 
-> AI-powered Apache SeaTunnel pipeline builder — describe your data task in natural language, and the Agent generates configs, runs jobs, diagnoses errors, and fixes them automatically.
+> AI-powered [Apache SeaTunnel](https://seatunnel.apache.org/) pipeline builder — describe your data task in natural language, and the Agent generates configs, runs jobs, diagnoses errors, and fixes them automatically.
+>
+> Apache SeaTunnel is an open-source, high-performance data integration engine that supports 100+ connectors (databases, message queues, file systems, data lakes, etc.).
 
 [English](#english) | [中文](#中文)
 
@@ -16,20 +18,29 @@
 - **Auto-Diagnose & Fix**: When a job fails, the Agent reads the log, identifies the root cause, patches the config, and retries
 - **Config Validation**: Check any `.conf` file for syntax errors and missing sections without running the job
 - **Log Diagnosis**: Point the Agent at a SeaTunnel log file and get a structured root-cause analysis
-- **Config Template Library**: 6 built-in templates (FakeSource, MySQL-CDC, Jdbc, Kafka, LocalFile) — select a template and the Agent fills in parameters
+- **Config Template Library**: 12 built-in templates (FakeSource, MySQL-CDC, Jdbc, Kafka, LocalFile, CSV-MySQL, StarRocks, ClickHouse, Transform) — select a template and the Agent fills in parameters
 - **Connection Testing**: Test TCP connectivity to databases/services before generating configs, avoiding config-then-fail cycles
-- **Connector Documentation Query**: Look up connector parameters (types, required/optional, examples) for 11 connectors before writing configs — reduces hallucination and config errors
+- **Connector Documentation Query**: Look up connector parameters (types, required/optional, examples) for 19 connectors before writing configs — reduces hallucination and config errors
 - **Job Run Metrics**: Automatically parses SeaTunnel job output to display structured metrics (rows read/written, bytes, duration, status)
 - **Config Version History**: Every `write_config` call saves a timestamped version; browse and compare past versions of any config file
+- **Config Version Restore & Delete**: Restore any config to a previous version, or delete configs safely (version history preserved)
+- **Config Comparison**: Compare two versions of a config with unified diff output
+- **Config Explanation**: Parse a config and get a structured summary (job mode, connectors, parameters) — great for "what does this config do?"
 - **Batch Task Management**: Run multiple pipeline configs sequentially with per-job results and pass/fail summary; stops on first failure by default
 - **Multi-Turn Session Memory**: Agent remembers configs, job results, and connection tests across turns — say "run it again" and it knows which config
 - **Config Diff Display**: When overwriting an existing config, the UI shows a unified diff of what changed
-- **Task Progress Visualization**: Real-time step counter and streaming text output with cursor indicator
+- **Task Progress Visualization**: Real-time step counter with elapsed time and streaming text output with cursor indicator
+- **Token Usage Display**: Shows input/output token counts per LLM call for cost awareness
+- **File Upload**: Upload `.conf` files directly in the UI — auto-copies to configs directory
+- **Clickable Hint Cards**: Click the placeholder hints to auto-fill the input box
 - **Export to ZIP**: Download a session report (Markdown) + all generated config files as a ZIP archive
 - **Stop Button**: Interrupt a running agent at any time
 - **Web UI**: Real-time chat interface showing the Agent's thinking, tool calls, and results — with bilingual support (English / Chinese)
-- **Dark Mode**: Automatically adapts to system dark/light preference
+- **Dark Mode**: Toggle dark/light theme with a button, or auto-adapt to system preference
 - **Multi-LLM Support**: Works with Claude, GPT-4o, DeepSeek, Kimi/Moonshot, Qwen, GLM, and any OpenAI-compatible API
+- **LLM Retry & Resilience**: Automatic retry with exponential backoff on rate-limit (429) and server errors (500+)
+- **DeepSeek Thinking Extraction**: Shows DeepSeek-R1's chain-of-thought reasoning in the UI thinking panel
+- **CLI Enhancements**: `batch` command, `--model`/`--provider` overrides, `--output` flag, `chat --resume`
 - **Demo Mode**: Try the full Agent workflow without an API key
 
 ### Quick Start
@@ -94,6 +105,15 @@ MODEL_NAME=claude-opus-5
 
 # Max retry attempts for failed jobs (default: 3)
 # MAX_RETRIES=3
+
+# Job execution timeout in seconds (default: 120)
+# JOB_TIMEOUT=120
+
+# LLM temperature (default: 0.0 for deterministic output)
+# TEMPERATURE=0.0
+
+# Directory for generated configs (default: configs)
+# CONFIG_DIR=configs
 ```
 
 <details>
@@ -259,11 +279,25 @@ seatunnel-agent run --task "Generate 10 fake rows with id, name, age and print t
 # Run an existing config (auto-fix on failure)
 seatunnel-agent run --config examples/fake_to_console.conf
 
+# Save output to file
+seatunnel-agent run --task "..." --output result.txt
+
 # Validate a config file
 seatunnel-agent validate --config examples/fake_to_console.conf
 
 # Diagnose a log file
 seatunnel-agent diagnose --log /path/to/seatunnel.log
+
+# Batch run multiple configs
+seatunnel-agent batch -c config1.conf -c config2.conf --stop-on-failure
+
+# Interactive chat (with session resume)
+seatunnel-agent chat
+seatunnel-agent chat --list-sessions          # list saved sessions
+seatunnel-agent chat --resume <session_id>    # resume a specific session
+
+# Override model/provider at runtime
+seatunnel-agent --model deepseek-chat --provider openai run --task "..."
 
 # Verbose output
 seatunnel-agent -v run --task "..."
@@ -304,7 +338,7 @@ User Input (Natural Language)
 │   └────┬─────┘                       │
 │        │                             │
 │   ┌────▼─────────────────────────┐   │
-│   │        12 Tools              │   │
+│   │        16 Tools              │   │
 │   │  run_seatunnel_job           │   │
 │   │  read_config / write_config  │   │
 │   │  validate_config             │   │
@@ -314,6 +348,10 @@ User Input (Natural Language)
 │   │  query_connector_docs        │   │
 │   │  list_config_versions        │   │
 │   │  run_batch                   │   │
+│   │  restore_config_version      │   │
+│   │  delete_config               │   │
+│   │  compare_config_versions     │   │
+│   │  explain_config              │   │
 │   └──────────────────────────────┘   │
 └──────────────────────────────────────┘
     │
@@ -331,26 +369,26 @@ seatunnel_agent/
 │   ├── config.py               # Config loading (.env → Settings)
 │   ├── llm.py                  # Multi-provider LLM abstraction
 │   ├── utils.py                # Utility functions
-│   ├── tools.py                # 12 tool definitions + executor
-│   ├── templates.py            # Built-in pipeline config templates
-│   ├── connector_docs.py       # Connector parameter documentation (11 connectors)
-│   ├── prompts.py              # System prompt (SeaTunnel domain knowledge)
+│   ├── tools.py                # 16 tool definitions + executor
+│   ├── templates.py            # 12 built-in pipeline config templates
+│   ├── connector_docs.py       # Connector parameter documentation (19 connectors)
+│   ├── prompts.py              # System prompt (SeaTunnel domain knowledge + transform/streaming guidance)
 │   ├── agent.py                # ReAct loop + session context tracking
 │   ├── history.py              # Chat session persistence
 │   ├── cli.py                  # Click CLI entry point
 │   └── ui.py                   # Gradio Web UI (bilingual, dark mode)
-├── tests/                      # 233 unit tests
+├── tests/                      # 307 unit tests
 │   ├── test_config.py          # Settings & env loading
-│   ├── test_tools.py           # All 12 tools, metrics parser, version history, batch
+│   ├── test_tools.py           # All 16 tools, path guards, version collision, metrics
 │   ├── test_templates.py       # Template registry, rendering, tool integration
 │   ├── test_connector_docs.py  # Connector documentation query & lookup
 │   ├── test_agent.py           # ReAct loop, context tracking, entry points
-│   ├── test_history.py         # Session persistence, agent context roundtrip
-│   ├── test_llm.py             # LLM client (Anthropic + OpenAI providers)
+│   ├── test_history.py         # Session persistence, session_id sanitization
+│   ├── test_llm.py             # LLM client, retry logic, token usage, DeepSeek thinking
 │   ├── test_prompts.py         # System prompt, task hints, tool references
 │   ├── test_ui_format.py       # Event formatting, export, normalize, EventCollector
 │   ├── test_utils.py           # Utility functions (truncate, log resolution)
-│   └── test_cli.py             # CLI commands & help text
+│   └── test_cli.py             # CLI commands, batch, --list-sessions
 └── examples/                   # Example configs
     ├── fake_to_console.conf
     └── mysql_to_console.conf
@@ -359,7 +397,7 @@ seatunnel_agent/
 ### Testing
 
 ```bash
-# Run all 233 tests
+# Run all 307 tests
 pytest tests/ -v
 
 # Run a specific test file
@@ -373,17 +411,28 @@ Test coverage by module:
 
 | Module | Tests | Coverage |
 |--------|-------|----------|
-| `config.py` | 10 | Settings loading, env vars, provider validation |
-| `tools.py` | 38 | All 12 tools, path traversal security, diff, metrics parser, version history, batch |
-| `templates.py` | 10 | Template registry, rendering, tool integration |
-| `connector_docs.py` | 13 | Connector query, param detail, case-insensitive lookup, type validation |
-| `agent.py` | 22 | ReAct loop, context tracking (all 12 tools), retry logic, entry points |
-| `history.py` | 19 | Save/load, rename, delete, agent context roundtrip, msg count |
-| `llm.py` | 15 | Anthropic & OpenAI clients, tool result formatting |
-| `prompts.py` | 11 | System prompt content, task hints, tool references |
-| `ui.py` | 34 | Event formatting, export, TextMessage normalization, EventCollector, new tool rendering |
-| `utils.py` | 13 | truncate, find_latest_log, safe_json, resolve_log_path |
-| `cli.py` | 7 | CLI commands and help text |
+| `config.py` | 14 | Settings loading, env vars (JOB_TIMEOUT, TEMPERATURE, CONFIG_DIR, MAX_TOKENS), provider validation |
+| `tools.py` | 67 | All 16 tools, path traversal guards, extension validation, version collision fix, diff, metrics, batch, restore, delete, compare, explain |
+| `templates.py` | 25 | 12 templates: registry, rendering, categories, parameter validation, tool integration |
+| `connector_docs.py` | 25 | 19 connectors: query, param detail, case-insensitive lookup, type validation |
+| `agent.py` | 28 | ReAct loop, context tracking (all 16 tools), retry limit break, entry points |
+| `history.py` | 29 | Save/load, rename, delete, session_id sanitization, agent context roundtrip, path migration |
+| `llm.py` | 31 | Anthropic & OpenAI clients, retry logic (string code handling), token usage, DeepSeek thinking |
+| `prompts.py` | 13 | System prompt content, task hints, tool references |
+| `ui.py` | 49 | Event formatting, export, elapsed time, token usage display, tool emojis, EventCollector |
+| `utils.py` | 17 | truncate, find_latest_log, safe_json, resolve_log_path |
+| `cli.py` | 9 | CLI commands, batch, --list-sessions, help text |
+
+### Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| `RuntimeError: API_KEY is not set` | Create a `.env` file from `.env.example` and fill in your API key: `cp .env.example .env` |
+| `Warning: SeaTunnel binary not found` | Set `SEATUNNEL_HOME` in `.env` to your SeaTunnel installation path. This is only needed for `run` and `batch` commands — config generation, validation, and diagnosis work without it. |
+| `429 / Rate limit` errors | The agent retries automatically with exponential backoff (1s → 2s → 4s). If it persists, wait a minute or switch to a model with higher rate limits. |
+| `ModuleNotFoundError: No module named 'gradio'` | Install with UI support: `pip install -e ".[ui]"` |
+| `ModuleNotFoundError: No module named 'anthropic'` | Install the LLM provider you need: `pip install anthropic` or `pip install openai` — or install all: `pip install -e ".[all]"` |
+| Chat history not persisted in Docker | Ensure the volume mount in `docker-compose.yml` points to `/root/.seatunnel-agent/chat_history` |
 
 ### License
 
@@ -401,20 +450,29 @@ MIT
 - **自动诊断修复**：作业失败时，Agent 自动读取日志、定位错误、修改配置并重试
 - **配置验证**：检查 `.conf` 文件的语法错误和缺失部分，无需运行作业
 - **日志诊断**：将 SeaTunnel 日志文件交给 Agent，获取结构化的根因分析
-- **配置模板库**：内置 6 个常用模板（FakeSource、MySQL-CDC、Jdbc、Kafka、LocalFile），选择模板后 Agent 自动填充参数
+- **配置模板库**：内置 12 个常用模板（FakeSource、MySQL-CDC、Jdbc、Kafka、LocalFile、CSV-MySQL、StarRocks、ClickHouse、Transform），选择模板后 Agent 自动填充参数
 - **连接测试**：生成配置前先测试数据库/服务的 TCP 连通性，避免写完配置才发现连不上
-- **连接器文档查询**：查询 11 个连接器的参数文档（类型、必填/可选、示例值），在生成配置前确认正确的参数名和格式，减少幻觉和配置错误
+- **连接器文档查询**：查询 19 个连接器的参数文档（类型、必填/可选、示例值），在生成配置前确认正确的参数名和格式，减少幻觉和配置错误
 - **作业运行指标**：自动解析 SeaTunnel 作业输出，结构化展示运行指标（读取/写入行数、字节数、耗时、状态）
 - **配置版本历史**：每次 `write_config` 自动保存带时间戳的版本；可以浏览和比较任何配置文件的历史版本
+- **配置版本恢复与删除**：将配置恢复到任意历史版本，或安全删除配置文件（版本历史保留）
+- **配置版本对比**：对比两个版本的配置差异，输出 unified diff
+- **配置解读**：解析配置文件并生成结构化摘要（作业模式、连接器、参数），适合"这个配置做了什么？"的场景
 - **批量任务管理**：顺序执行多个管道配置，返回每个作业的结果和通过/失败汇总；默认遇到第一个失败即停止
 - **多轮会话记忆**：Agent 记住本次会话的配置路径、执行结果和连接测试，说"运行刚才的配置"就能直接执行
 - **配置 Diff 展示**：覆盖已有配置时，UI 展示新旧配置的 unified diff
-- **任务进度可视化**：实时显示步骤计数和流式文本输出（带光标指示符）
+- **任务进度可视化**：实时显示步骤计数（含耗时）和流式文本输出（带光标指示符）
+- **Token 用量显示**：每次 LLM 调用显示输入/输出 token 数，便于成本感知
+- **文件上传**：在 UI 中直接上传 `.conf` 文件，自动复制到 configs 目录
+- **可点击提示卡片**：点击占位提示即可自动填充输入框
 - **导出 ZIP**：下载会话报告（Markdown）+ 所有生成的配置文件
 - **停止按钮**：随时中断正在运行的 Agent
 - **Web UI**：实时聊天界面，展示 Agent 的思考过程、工具调用和结果 —— 支持中英文双语
-- **暗色模式**：自动适配系统暗色/亮色主题
+- **暗色模式**：点击按钮切换暗色/亮色主题，或自动适配系统偏好
 - **多模型支持**：Claude、GPT-4o、DeepSeek、Kimi/Moonshot、通义千问、智谱 GLM，以及任何兼容 OpenAI API 的模型
+- **LLM 重试与容错**：API 限流 (429) 和服务错误 (500+) 自动指数退避重试
+- **DeepSeek 思维链提取**：在 UI 思考面板展示 DeepSeek-R1 的推理过程
+- **CLI 增强**：`batch` 批量执行、`--model`/`--provider` 运行时覆盖、`--output` 输出到文件、`chat --resume` 恢复会话
 - **演示模式**：无需 API Key 即可体验完整的 Agent 工作流程
 
 ### 快速开始
@@ -479,6 +537,15 @@ MODEL_NAME=claude-opus-5
 
 # 失败重试次数（默认 3）
 # MAX_RETRIES=3
+
+# 作业执行超时（秒，默认 120）
+# JOB_TIMEOUT=120
+
+# LLM 温度（默认 0.0，确定性输出）
+# TEMPERATURE=0.0
+
+# 生成配置的目录（默认 configs）
+# CONFIG_DIR=configs
 ```
 
 <details>
@@ -644,11 +711,25 @@ seatunnel-agent run --task "生成 10 条假数据，字段为 id、name、age�
 # 运行已有配置（失败自动修复）
 seatunnel-agent run --config examples/fake_to_console.conf
 
+# 输出结果到文件
+seatunnel-agent run --task "..." --output result.txt
+
 # 验证配置文件
 seatunnel-agent validate --config examples/fake_to_console.conf
 
 # 诊断日志
 seatunnel-agent diagnose --log /path/to/seatunnel.log
+
+# 批量执行多个配置
+seatunnel-agent batch -c config1.conf -c config2.conf --stop-on-failure
+
+# 交互式对话（支持恢复会话）
+seatunnel-agent chat
+seatunnel-agent chat --list-sessions          # 列出已保存的会话
+seatunnel-agent chat --resume <session_id>    # 恢复指定会话
+
+# 运行时指定模型/提供商
+seatunnel-agent --model deepseek-chat --provider openai run --task "..."
 
 # 详细输出
 seatunnel-agent -v run --task "..."
@@ -688,7 +769,7 @@ seatunnel-agent -v run --task "..."
 │   └────┬─────┘                       │
 │        │                             │
 │   ┌────▼─────────────────────────┐   │
-│   │        12 个工具              │   │
+│   │        16 个工具              │   │
 │   │  run_seatunnel_job           │   │
 │   │  read_config / write_config  │   │
 │   │  validate_config             │   │
@@ -698,6 +779,10 @@ seatunnel-agent -v run --task "..."
 │   │  query_connector_docs        │   │
 │   │  list_config_versions        │   │
 │   │  run_batch                   │   │
+│   │  restore_config_version      │   │
+│   │  delete_config               │   │
+│   │  compare_config_versions     │   │
+│   │  explain_config              │   │
 │   └──────────────────────────────┘   │
 └──────────────────────────────────────┘
     │
@@ -715,26 +800,26 @@ seatunnel_agent/
 │   ├── config.py               # 配置加载（.env → Settings）
 │   ├── llm.py                  # 多模型 LLM 抽象层
 │   ├── utils.py                # 工具函数
-│   ├── tools.py                # 12 个工具定义 + 执行器
-│   ├── templates.py            # 内置管道配置模板库
-│   ├── connector_docs.py       # 连接器参数文档（11 个连接器）
-│   ├── prompts.py              # System Prompt（SeaTunnel 领域知识）
+│   ├── tools.py                # 16 个工具定义 + 执行器
+│   ├── templates.py            # 12 个内置管道配置模板
+│   ├── connector_docs.py       # 连接器参数文档（19 个连接器）
+│   ├── prompts.py              # System Prompt（SeaTunnel 领域知识 + Transform/流式处理指导）
 │   ├── agent.py                # ReAct 循环 + 会话上下文追踪
 │   ├── history.py              # 对话历史持久化
 │   ├── cli.py                  # Click CLI 入口
 │   └── ui.py                   # Gradio Web UI（中英双语，暗色模式）
-├── tests/                      # 233 个单元测试
+├── tests/                      # 307 个单元测试
 │   ├── test_config.py          # Settings 与环境变量
-│   ├── test_tools.py           # 12 个工具、路径安全、指标解析、版本历史、批量任务
-│   ├── test_templates.py       # 模板注册、渲染、工具集成
+│   ├── test_tools.py           # 16 个工具、路径安全守卫、版本碰撞修复、指标解析、批量任务
+│   ├── test_templates.py       # 模板注册、渲染、分类、工具集成
 │   ├── test_connector_docs.py  # 连接器文档查询与查找
-│   ├── test_agent.py           # ReAct 循环、上下文追踪（12 个工具）、重试逻辑、入口函数
-│   ├── test_history.py         # 会话持久化、上下文字段
-│   ├── test_llm.py             # LLM 客户端（Anthropic + OpenAI）
+│   ├── test_agent.py           # ReAct 循环、上下文追踪（全部 16 个工具）、重试上限退出
+│   ├── test_history.py         # 会话持久化、session_id 安全校验、上下文字段
+│   ├── test_llm.py             # LLM 客户端、重试逻辑（字符串状态码处理）、Token 用量、DeepSeek 思维链
 │   ├── test_prompts.py         # System Prompt 内容验证
-│   ├── test_ui_format.py       # 事件格式化、导出、TextMessage 处理、EventCollector、新工具渲染
+│   ├── test_ui_format.py       # 事件格式化、导出、耗时展示、Token 用量显示、工具 Emoji、EventCollector
 │   ├── test_utils.py           # 工具函数（truncate、日志解析）
-│   └── test_cli.py             # CLI 命令与帮助文本
+│   └── test_cli.py             # CLI 命令、批量任务、--list-sessions
 └── examples/                   # 示例配置
     ├── fake_to_console.conf
     └── mysql_to_console.conf
@@ -743,7 +828,7 @@ seatunnel_agent/
 ### 测试
 
 ```bash
-# 运行全部 233 个测试
+# 运行全部 307 个测试
 pytest tests/ -v
 
 # 运行特定测试文件
@@ -757,17 +842,28 @@ pytest tests/ --cov=seatunnel_agent --cov-report=term-missing
 
 | 模块 | 测试数 | 覆盖范围 |
 |------|--------|----------|
-| `config.py` | 10 | Settings 加载、环境变量、Provider 验证 |
-| `tools.py` | 38 | 全部 12 个工具、路径安全、Diff 生成、指标解析、版本历史、批量任务 |
-| `templates.py` | 10 | 模板注册、渲染、工具集成 |
-| `connector_docs.py` | 13 | 连接器查询、参数详情、大小写无关查找、类型验证 |
-| `agent.py` | 22 | ReAct 循环、上下文追踪（12 个工具）、重试逻辑、入口函数 |
-| `history.py` | 19 | 保存/加载、重命名、删除、上下文字段、消息计数 |
-| `llm.py` | 15 | Anthropic 与 OpenAI 客户端、工具结果格式化 |
-| `prompts.py` | 11 | System Prompt 内容、任务提示、工具引用 |
-| `ui.py` | 34 | 事件格式化、导出、TextMessage 标准化、EventCollector、新工具渲染 |
-| `utils.py` | 13 | truncate、find_latest_log、safe_json、resolve_log_path |
-| `cli.py` | 7 | CLI 命令和帮助文本 |
+| `config.py` | 14 | Settings 加载、环境变量（JOB_TIMEOUT、TEMPERATURE、CONFIG_DIR、MAX_TOKENS）、Provider 验证 |
+| `tools.py` | 67 | 全部 16 个工具、路径安全守卫、扩展名验证、版本碰撞修复、Diff 生成、指标解析、批量任务 |
+| `templates.py` | 25 | 12 个模板：注册、渲染、分类、参数验证、工具集成 |
+| `connector_docs.py` | 25 | 19 个连接器：查询、参数详情、大小写无关查找、类型验证 |
+| `agent.py` | 28 | ReAct 循环、上下文追踪（全部 16 个工具）、重试上限退出、入口函数 |
+| `history.py` | 29 | 保存/加载、重命名、删除、session_id 安全校验、上下文字段、路径迁移 |
+| `llm.py` | 31 | Anthropic 与 OpenAI 客户端、重试逻辑（字符串状态码）、Token 用量提取、DeepSeek 思维链 |
+| `prompts.py` | 13 | System Prompt 内容、任务提示、工具引用 |
+| `ui.py` | 49 | 事件格式化、导出、耗时展示、Token 用量显示、工具 Emoji、EventCollector |
+| `utils.py` | 17 | truncate、find_latest_log、safe_json、resolve_log_path |
+| `cli.py` | 9 | CLI 命令、批量任务、--list-sessions |
+
+### 常见问题
+
+| 问题 | 解决方法 |
+|------|----------|
+| `RuntimeError: API_KEY is not set` | 从 `.env.example` 创建 `.env` 文件并填入 API Key：`cp .env.example .env` |
+| `Warning: SeaTunnel binary not found` | 在 `.env` 中设置 `SEATUNNEL_HOME` 为 SeaTunnel 安装路径。仅 `run` 和 `batch` 命令需要安装 SeaTunnel，配置生成、验证、诊断功能不依赖 SeaTunnel。 |
+| `429 / Rate limit` 错误 | Agent 会自动指数退避重试（1s → 2s → 4s）。如持续出现，请等待一分钟或切换到限速更高的模型。 |
+| `ModuleNotFoundError: No module named 'gradio'` | 安装 UI 依赖：`pip install -e ".[ui]"` |
+| `ModuleNotFoundError: No module named 'anthropic'` | 安装对应的 LLM 依赖：`pip install anthropic` 或 `pip install openai`，或全部安装：`pip install -e ".[all]"` |
+| Docker 中聊天历史未持久化 | 确保 `docker-compose.yml` 中 volume 挂载目标为 `/root/.seatunnel-agent/chat_history` |
 
 ### 许可证
 

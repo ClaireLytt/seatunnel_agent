@@ -7,6 +7,7 @@ Or:        seatunnel-agent ui
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 import threading
 import time
@@ -124,6 +125,8 @@ _I18N: dict[str, dict[str, str]] = {
         "tpl_none": "-- Select a template --",
         "stop": "Stop",
         "stopped": "Agent stopped by user.",
+        "theme_light": "☀ Light",
+        "theme_dark": "🌙 Dark",
     },
     "zh": {
         "title": "SeaTunnel 数据管道构建器",
@@ -175,6 +178,8 @@ _I18N: dict[str, dict[str, str]] = {
         "tpl_none": "-- 选择模板 --",
         "stop": "停止",
         "stopped": "已被用户中断。",
+        "theme_light": "☀ 浅色",
+        "theme_dark": "🌙 深色",
     },
 }
 
@@ -371,10 +376,14 @@ _TOOL_EMOJI = {
     "query_connector_docs": "\U0001f4d6",
     "list_config_versions": "\U0001f4dc",
     "run_batch": "\U0001f4e6",
+    "restore_config_version": "\U0001f504",
+    "delete_config": "\U0001f5d1",
+    "compare_config_versions": "\U0001f500",
+    "explain_config": "\U0001f4cb",
 }
 
 
-def _format_events_as_chat(events: list[dict[str, Any]]) -> list[dict[str, str]]:
+def _format_events_as_chat(events: list[dict[str, Any]], start_time: float | None = None) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
     delta_buffer: list[str] = []
 
@@ -391,6 +400,13 @@ def _format_events_as_chat(events: list[dict[str, Any]]) -> list[dict[str, str]]
         if t == "text_delta":
             delta_buffer.append(ev.get("text", ""))
             continue
+        if t == "usage":
+            inp = ev.get("input_tokens", 0)
+            out = ev.get("output_tokens", 0)
+            if inp or out:
+                messages.append({"role": "assistant",
+                                 "content": f"📊 Tokens: {inp:,} in / {out:,} out"})
+            continue
         if t == "text":
             delta_buffer.clear()
         elif delta_buffer:
@@ -400,8 +416,11 @@ def _format_events_as_chat(events: list[dict[str, Any]]) -> list[dict[str, str]]
             iteration = ev.get("iteration", "?")
             phase = ev.get("phase", "")
             label = {"thinking": "Thinking...", "executing_tools": "Executing tools..."}.get(phase, phase)
+            elapsed_str = ""
+            if start_time is not None:
+                elapsed_str = f" ({time.time() - start_time:.1f}s)"
             messages.append({"role": "assistant",
-                             "content": f"⏳ **Step {iteration}** — {label}"})
+                             "content": f"⏳ **Step {iteration}** — {label}{elapsed_str}"})
         elif t == "thinking":
             text = ev.get("text", "")
             if text:
@@ -550,6 +569,7 @@ def _run_agent_streaming(user_message, chat_history, mode, config_path, settings
         agent._on_event = collector.on_event
 
     error_msg = None
+    start_time = time.time()
 
     def _worker():
         nonlocal error_msg
@@ -577,11 +597,13 @@ def _run_agent_streaming(user_message, chat_history, mode, config_path, settings
         events = collector.snapshot()
         if len(events) > prev_count:
             prev_count = len(events)
-            yield chat_history + [{"role": "user", "content": user_message}] + _format_events_as_chat(events)
+            yield chat_history + [{"role": "user", "content": user_message}] + _format_events_as_chat(events, start_time)
     thread.join(timeout=5)
-    final = _format_events_as_chat(collector.snapshot())
+    elapsed = time.time() - start_time
+    final = _format_events_as_chat(collector.snapshot(), start_time)
     if error_msg:
         final.append({"role": "assistant", "content": f"⚠️ **Error**: {error_msg}"})
+    final.append({"role": "assistant", "content": f"⏱️ Completed in {elapsed:.1f}s"})
     yield chat_history + [{"role": "user", "content": user_message}] + final
 
 
@@ -832,8 +854,9 @@ def create_ui() -> gr.Blocks:
         choices = _build_history_choices()
         return gr.update(choices=choices, value=None)
 
-    def _switch_lang(lang):
+    def _switch_lang(lang, current_theme):
         modes = [_t(lang, k) for k in ("mode_nl", "mode_run", "mode_validate", "mode_diagnose")]
+        theme_label = _t(lang, "theme_light") if current_theme == "dark" else _t(lang, "theme_dark")
         return (
             gr.update(choices=modes, value=modes[0], label=_t(lang, "mode")),
             gr.update(label=_t(lang, "config_path"), placeholder=_t(lang, "config_placeholder")),
@@ -846,6 +869,7 @@ def create_ui() -> gr.Blocks:
             gr.update(placeholder=_build_placeholder(lang)),
             gr.update(label=_t(lang, "export")),
             gr.update(choices=_build_template_choices(lang), value="", label=_t(lang, "templates")),
+            gr.update(value=theme_label),
         )
 
     # ── Layout ──
@@ -957,6 +981,13 @@ def create_ui() -> gr.Blocks:
         # ── Main area ──
         with gr.Row(elem_classes=["st-topbar-row"]):
             gr.HTML('<div class="st-topbar-spacer"></div>')
+            theme_btn = gr.Button(
+                _t(lang, "theme_dark"),
+                size="sm",
+                scale=0,
+                min_width=80,
+                elem_classes=["st-theme-btn"],
+            )
             lang_dd = gr.Dropdown(
                 choices=["English", "中文"],
                 value="English",
@@ -973,6 +1004,13 @@ def create_ui() -> gr.Blocks:
             layout="panel",
             buttons=["copy"],
             elem_classes=["st-chatbot"],
+        )
+
+        file_upload = gr.File(
+            label="Upload Config",
+            file_types=[".conf", ".hocon", ".config", ".json"],
+            visible=True,
+            elem_classes=["st-file-upload"],
         )
 
         with gr.Row(elem_classes=["st-input-row"]):
@@ -1026,14 +1064,17 @@ def create_ui() -> gr.Blocks:
             outputs=user_input,
         )
 
+        # ── Dark mode toggle ──
+        theme_state = gr.State("light")
+
         # ── Lang switch wiring ──
-        def _on_lang_change(choice):
+        def _on_lang_change(choice, current_theme):
             lang = "zh" if choice == "中文" else "en"
-            return (lang, *_switch_lang(lang))
+            return (lang, *_switch_lang(lang, current_theme))
 
         lang_dd.change(
             fn=_on_lang_change,
-            inputs=lang_dd,
+            inputs=[lang_dd, theme_state],
             outputs=[
                 lang_state,
                 mode,
@@ -1047,7 +1088,27 @@ def create_ui() -> gr.Blocks:
                 chatbot,
                 export_btn,
                 template_dd,
+                theme_btn,
             ],
+        )
+
+        def _toggle_theme(current_theme, lang):
+            if current_theme == "light":
+                new_theme = "dark"
+                label = _t(lang, "theme_light")
+            else:
+                new_theme = "light"
+                label = _t(lang, "theme_dark")
+            return new_theme, gr.update(value=label)
+
+        theme_btn.click(
+            fn=_toggle_theme,
+            inputs=[theme_state, lang_state],
+            outputs=[theme_state, theme_btn],
+        ).then(
+            fn=None,
+            inputs=[theme_state],
+            js="(theme) => { document.documentElement.setAttribute('data-theme', theme); }",
         )
 
         # ── Stop handler ──
@@ -1148,6 +1209,47 @@ def create_ui() -> gr.Blocks:
             fn=_handle_export,
             inputs=[chatbot, session_state, lang_state],
             outputs=export_btn,
+        )
+
+        # ── File upload handler ──
+        def _handle_file_upload(file_obj):
+            if file_obj is None:
+                return gr.update()
+            import shutil
+            src = Path(file_obj.name if hasattr(file_obj, 'name') else str(file_obj))
+            safe_name = re.sub(r'[^\w.\-]', '_', src.name)
+            dest_dir = Path("configs")
+            dest_dir.mkdir(exist_ok=True)
+            dest = dest_dir / safe_name
+            shutil.copy2(str(src), str(dest))
+            return gr.update(value=str(dest))
+
+        file_upload.change(
+            fn=_handle_file_upload,
+            inputs=file_upload,
+            outputs=config_path,
+        )
+
+        # ── Hint card click → fill input ──
+        chatbot.change(
+            fn=None,
+            js="""() => {
+                document.querySelectorAll('.st-hint-card').forEach(card => {
+                    if (!card.dataset.bound) {
+                        card.dataset.bound = '1';
+                        card.style.cursor = 'pointer';
+                        card.addEventListener('click', () => {
+                            const input = document.querySelector('.st-input textarea');
+                            if (input) {
+                                const nativeSetter = Object.getOwnPropertyDescriptor(
+                                    window.HTMLTextAreaElement.prototype, 'value').set;
+                                nativeSetter.call(input, card.textContent.trim());
+                                input.dispatchEvent(new Event('input', { bubbles: true }));
+                            }
+                        });
+                    }
+                });
+            }""",
         )
 
         # ── Page load ──
@@ -1438,66 +1540,94 @@ footer { display: none !important; }
     border-color: #f76707 !important;
 }
 
+/* ── File upload ── */
+.st-file-upload {
+    padding: 0 24px !important;
+    margin: 0 !important;
+}
+.st-file-upload .file-preview {
+    font-size: 12px !important;
+}
+
 /* ── Responsive sizing ── */
 button { font-size: 12px !important; }
 label { font-size: 11px !important; }
 
-/* ── Dark mode ── */
+/* ── Theme toggle button ── */
+.st-theme-btn {
+    background: #f3f4f6 !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 8px !important;
+    color: #374151 !important;
+    font-size: 12px !important;
+    cursor: pointer !important;
+    height: 30px !important;
+}
+.st-theme-btn:hover {
+    border-color: #f76707 !important;
+    color: #f76707 !important;
+}
+
+/* ── Dark mode tokens ── */
 @media (prefers-color-scheme: dark) {
-    .gradio-container { background: #1a1a2e !important; color: #e2e8f0 !important; }
-    .st-chatbot { background: #1a1a2e !important; }
-    .st-chatbot .message { color: #e2e8f0 !important; }
-    .st-chatbot .user-row {
-        background: #2d2416 !important;
-        border-color: #92400e !important;
-    }
-    .st-chatbot .message code {
-        background: #2d3748 !important;
-        color: #e2e8f0 !important;
-    }
-    .st-input textarea {
-        background: #2d3748 !important;
-        border-color: #4a5568 !important;
-        color: #e2e8f0 !important;
-    }
-    .st-input-row { border-top-color: #2d3748 !important; }
-    .st-btn-demo {
-        background: #2d3748 !important;
-        border-color: #4a5568 !important;
-        color: #e2e8f0 !important;
-    }
-    .st-btn-demo:hover {
-        background: #3d2e1a !important;
-        border-color: #f76707 !important;
-        color: #f76707 !important;
-    }
-    .st-empty-state { color: #a0aec0 !important; }
-    .st-empty-title { color: #e2e8f0 !important; }
-    .st-hint-card {
-        background: #2d3748 !important;
-        border-color: #4a5568 !important;
-        color: #a0aec0 !important;
-    }
-    .st-hint-card:hover { border-color: #f76707 !important; color: #f76707 !important; }
-    .st-docs-link {
-        background: #2d3748 !important;
-        border-color: #4a5568 !important;
-        color: #a0aec0 !important;
-    }
-    .st-docs-link:hover {
-        background: #3d2e1a !important;
-        border-color: #f76707 !important;
-        color: #f76707 !important;
-    }
-    .st-sidebar-control label { color: #a0aec0 !important; }
-    .st-lang-dd select,
-    .st-lang-dd input {
-        border-color: #4a5568 !important;
-        background: #2d3748 !important;
-        color: #e2e8f0 !important;
+    :root:not([data-theme="light"]) {
+        --st-bg: #1a1a2e; --st-text: #e2e8f0; --st-muted: #a0aec0;
+        --st-surface: #2d3748; --st-border: #4a5568;
+        --st-user-bg: #2d2416; --st-user-border: #92400e;
+        --st-hover-bg: #3d2e1a;
     }
 }
+:root[data-theme="dark"] {
+    --st-bg: #1a1a2e; --st-text: #e2e8f0; --st-muted: #a0aec0;
+    --st-surface: #2d3748; --st-border: #4a5568;
+    --st-user-bg: #2d2416; --st-user-border: #92400e;
+    --st-hover-bg: #3d2e1a;
+}
+/* ── Dark mode component rules (generated to avoid duplication) ── */
 """
+
+_DARK_COMPONENT_RULES = [
+    (".gradio-container, {P} .st-chatbot", "background: var(--st-bg) !important; color: var(--st-text) !important;"),
+    (".st-chatbot .message", "color: var(--st-text) !important;"),
+    (".st-chatbot .user-row", "background: var(--st-user-bg) !important; border-color: var(--st-user-border) !important;"),
+    (".st-chatbot .message code", "background: var(--st-surface) !important; color: var(--st-text) !important;"),
+    (".st-input textarea", "background: var(--st-surface) !important; border-color: var(--st-border) !important; color: var(--st-text) !important;"),
+    (".st-input-row", "border-top-color: var(--st-surface) !important;"),
+    (".st-btn-demo", "background: var(--st-surface) !important; border-color: var(--st-border) !important; color: var(--st-text) !important;"),
+    (".st-btn-demo:hover", "background: var(--st-hover-bg) !important; border-color: #f76707 !important; color: #f76707 !important;"),
+    (".st-empty-state", "color: var(--st-muted) !important;"),
+    (".st-empty-title", "color: var(--st-text) !important;"),
+    (".st-hint-card", "background: var(--st-surface) !important; border-color: var(--st-border) !important; color: var(--st-muted) !important;"),
+    (".st-hint-card:hover", "border-color: #f76707 !important; color: #f76707 !important;"),
+    (".st-docs-link", "background: var(--st-surface) !important; border-color: var(--st-border) !important; color: var(--st-muted) !important;"),
+    (".st-docs-link:hover", "background: var(--st-hover-bg) !important; border-color: #f76707 !important; color: #f76707 !important;"),
+    (".st-sidebar-control label", "color: var(--st-muted) !important;"),
+    (".st-lang-dd select, {P} .st-lang-dd input", "border-color: var(--st-border) !important; background: var(--st-surface) !important; color: var(--st-text) !important;"),
+    (".st-theme-btn", "background: var(--st-surface) !important; border-color: var(--st-border) !important; color: var(--st-text) !important;"),
+]
+
+
+def _build_dark_css() -> str:
+    media_lines: list[str] = []
+    explicit_lines: list[str] = []
+    for selector, props in _DARK_COMPONENT_RULES:
+        media_sel = selector.replace("{P}", ":root:not([data-theme=\"light\"])")
+        if "{P}" not in selector:
+            media_sel = ":root:not([data-theme=\"light\"]) " + selector
+        media_lines.append(f"    {media_sel} {{ {props} }}")
+        exp_sel = selector.replace("{P}", ":root[data-theme=\"dark\"]")
+        if "{P}" not in selector:
+            exp_sel = ":root[data-theme=\"dark\"] " + selector
+        explicit_lines.append(f"{exp_sel} {{ {props} }}")
+    return (
+        "@media (prefers-color-scheme: dark) {\n"
+        + "\n".join(media_lines)
+        + "\n}\n"
+        + "\n".join(explicit_lines)
+    )
+
+
+_CUSTOM_CSS = _CUSTOM_CSS + _build_dark_css() + "\n"
 
 
 def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False) -> None:

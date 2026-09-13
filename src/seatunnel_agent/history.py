@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -10,7 +11,8 @@ from pathlib import Path
 from typing import Any
 
 
-HISTORY_DIR = Path("chat_history")
+HISTORY_DIR = Path.home() / ".seatunnel-agent" / "chat_history"
+_OLD_HISTORY_DIR = Path("chat_history")
 
 
 @dataclass
@@ -40,7 +42,12 @@ def extract_title(chat_messages: list[dict[str, str]], max_len: int = 30) -> str
     return "Untitled"
 
 
+_VALID_SESSION_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+
+
 def _session_path(session_id: str) -> Path:
+    if not _VALID_SESSION_ID.match(session_id):
+        raise ValueError(f"Invalid session_id: {session_id!r}")
     return HISTORY_DIR / f"{session_id}.json"
 
 
@@ -55,9 +62,17 @@ def save_session(session: Session) -> None:
 
 
 def load_session(session_id: str) -> Session | None:
-    path = _session_path(session_id)
-    if not path.exists():
+    try:
+        path = _session_path(session_id)
+    except ValueError:
         return None
+    if not path.exists():
+        # Backward compatibility: check the old CWD-relative location
+        old_path = _OLD_HISTORY_DIR / f"{session_id}.json"
+        if old_path.exists():
+            path = old_path
+        else:
+            return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return Session(**data)
@@ -75,26 +90,45 @@ def rename_session(session_id: str, new_title: str) -> bool:
 
 
 def delete_session(session_id: str) -> None:
-    path = _session_path(session_id)
+    try:
+        path = _session_path(session_id)
+    except ValueError:
+        return
     if path.exists():
         path.unlink()
 
 
 def list_sessions() -> list[dict[str, str]]:
-    if not HISTORY_DIR.is_dir():
-        return []
-    sessions = []
-    for f in HISTORY_DIR.glob("*.json"):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            msg_count = len(data.get("chat_messages", []))
-            sessions.append({
-                "id": data["session_id"],
-                "title": data.get("title", "Untitled"),
-                "updated_at": data.get("updated_at", ""),
-                "msg_count": msg_count,
-            })
-        except (json.JSONDecodeError, KeyError):
-            continue
+    seen_ids: set[str] = set()
+    sessions: list[dict[str, str]] = []
+
+    # Collect from new location first, then fall back to old CWD-relative dir
+    dirs_to_check: list[Path] = []
+    if HISTORY_DIR.is_dir():
+        dirs_to_check.append(HISTORY_DIR)
+    if (
+        _OLD_HISTORY_DIR.is_dir()
+        and _OLD_HISTORY_DIR.resolve() != HISTORY_DIR.resolve()
+    ):
+        dirs_to_check.append(_OLD_HISTORY_DIR)
+
+    for d in dirs_to_check:
+        for f in d.glob("*.json"):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                sid = data["session_id"]
+                if sid in seen_ids:
+                    continue
+                seen_ids.add(sid)
+                msg_count = len(data.get("chat_messages", []))
+                sessions.append({
+                    "id": sid,
+                    "title": data.get("title", "Untitled"),
+                    "updated_at": data.get("updated_at", ""),
+                    "msg_count": msg_count,
+                })
+            except (json.JSONDecodeError, KeyError):
+                continue
+
     sessions.sort(key=lambda s: s["updated_at"], reverse=True)
     return sessions

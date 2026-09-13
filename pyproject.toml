@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "seatunnel-agent"
-version = "0.1.0"
+version = "0.2.0"
 description = "AI-powered SeaTunnel pipeline builder and debugger (supports Claude, DeepSeek, Kimi, and other LLMs)"
 requires-python = ">=3.10"
 dependencies = [
@@ -22,12 +22,18 @@ ui = ["gradio>=4.0"]
 dev = [
     "pytest>=7.0",
     "pytest-mock",
+    "pytest-cov",
     "anthropic>=0.40.0",
     "openai>=1.0",
+    "gradio>=4.0",
 ]
 
 [project.scripts]
 seatunnel-agent = "seatunnel_agent.cli:cli"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
 
 [tool.setuptools.packages.find]
 where = ["src"]

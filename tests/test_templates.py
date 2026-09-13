@@ -113,3 +113,75 @@ class TestTemplateTools:
             FAKE_SETTINGS,
         ))
         assert "error" in result
+
+
+class TestNewTemplates:
+    """Tests for the 6 new templates added in Phase 3."""
+
+    def test_total_template_count(self):
+        assert len(TEMPLATES) >= 12
+
+    def test_csv_to_mysql_exists(self):
+        t = get_template("csv_to_mysql")
+        assert t is not None
+        assert t.category == "file"
+
+    def test_csv_to_mysql_renders(self):
+        content = render_template("csv_to_mysql", {})
+        assert content is not None
+        assert "LocalFile" in content
+        assert "Jdbc" in content
+
+    def test_mysql_to_csv_renders(self):
+        content = render_template("mysql_to_csv", {})
+        assert content is not None
+        assert "LocalFile" in content
+
+    def test_kafka_to_mysql_renders(self):
+        content = render_template("kafka_to_mysql", {})
+        assert content is not None
+        assert "Kafka" in content
+        assert "STREAMING" in content
+
+    def test_fake_to_clickhouse_renders(self):
+        content = render_template("fake_to_clickhouse", {})
+        assert content is not None
+        assert "FakeSource" in content or "ClickHouse" in content
+
+    def test_mysql_to_starrocks_renders(self):
+        content = render_template("mysql_to_starrocks", {})
+        assert content is not None
+        assert "StarRocks" in content
+
+    def test_fake_to_console_with_transform_renders(self):
+        content = render_template("fake_to_console_with_transform", {})
+        assert content is not None
+        assert "transform" in content.lower() or "SQL" in content
+
+    def test_new_templates_have_parameters(self):
+        for name in ["csv_to_mysql", "mysql_to_csv", "kafka_to_mysql",
+                      "fake_to_clickhouse", "mysql_to_starrocks",
+                      "fake_to_console_with_transform"]:
+            t = get_template(name)
+            assert t is not None, f"Template {name} not found"
+            assert len(t.parameters) > 0, f"Template {name} has no parameters"
+
+    def test_list_streaming_category(self):
+        streaming = list_templates("streaming")
+        names = [t.name for t in streaming]
+        assert "kafka_to_mysql" in names
+
+    def test_new_template_via_tool(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = json.loads(execute_tool(
+            "use_template",
+            {
+                "template_name": "csv_to_mysql",
+                "parameters": {},
+                "config_path": str(tmp_path / "gen.conf"),
+            },
+            FAKE_SETTINGS,
+        ))
+        assert result["success"] is True
+        content = (tmp_path / "gen.conf").read_text()
+        assert "LocalFile" in content
