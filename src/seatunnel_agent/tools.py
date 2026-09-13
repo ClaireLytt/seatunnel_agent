@@ -441,10 +441,32 @@ def _run_seatunnel_job(settings: Settings, config_path: str) -> str:
 def _read_log(settings: Settings, log_path: str, tail_lines: int = 100) -> str:
     from .utils import resolve_log_path
 
+    if log_path == "auto" and not settings.seatunnel_home:
+        return safe_json({"error": "SEATUNNEL_HOME is not set — cannot use 'auto' log path"})
+
     try:
         resolved = resolve_log_path(log_path, settings.seatunnel_home)
     except FileNotFoundError as e:
         return safe_json({"error": str(e)})
+
+    _LOG_EXTENSIONS = {".log", ".out", ".txt"}
+    resolved_path = Path(resolved)
+    if resolved_path.suffix.lower() not in _LOG_EXTENSIONS:
+        return safe_json({"error": f"Refusing to read {resolved} — only log files (.log, .out, .txt) are allowed"})
+
+    try:
+        abs_path = resolved_path.resolve()
+        cwd = Path.cwd().resolve()
+        st_home = Path(settings.seatunnel_home).resolve() if settings.seatunnel_home else None
+        if not abs_path.is_relative_to(cwd) and (
+            st_home is None or not abs_path.is_relative_to(st_home)
+        ):
+            import tempfile
+            tmp = Path(tempfile.gettempdir()).resolve()
+            if not abs_path.is_relative_to(tmp):
+                return safe_json({"error": f"Refusing to read {resolved} — path is outside allowed directories"})
+    except (OSError, ValueError):
+        return safe_json({"error": f"Invalid path: {log_path}"})
 
     try:
         lines = Path(resolved).read_text(encoding="utf-8", errors="replace").splitlines()

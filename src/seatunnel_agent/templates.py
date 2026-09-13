@@ -127,7 +127,7 @@ sink {
     driver = "com.mysql.cj.jdbc.Driver"
     user = "${dst_user}"
     password = "${dst_password}"
-    database = "${dst_table}"
+    table = "${dst_table}"
     generate_sink_sql = true
   }
 }
