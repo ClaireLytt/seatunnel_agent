@@ -7,6 +7,7 @@ import pytest
 
 from seatunnel_agent.config import Settings
 from seatunnel_agent.llm import LLMClient, LLMResponse, ToolCall, _convert_tools_to_openai
+from seatunnel_agent.tools import TOOL_DEFINITIONS
 
 
 ANTHROPIC_SETTINGS = Settings(
@@ -53,7 +54,7 @@ class TestLLMResponse:
 
 class TestConvertToolsToOpenAI:
     def test_format(self):
-        tools = _convert_tools_to_openai()
+        tools = _convert_tools_to_openai(TOOL_DEFINITIONS)
         assert isinstance(tools, list)
         assert len(tools) > 0
         for t in tools:

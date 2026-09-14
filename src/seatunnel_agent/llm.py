@@ -16,7 +16,6 @@ from typing import Any, Callable
 logger = logging.getLogger(__name__)
 
 from .config import Settings
-from .tools import TOOL_DEFINITIONS
 
 
 @dataclass
@@ -53,10 +52,10 @@ class _StreamedMessage:
     tool_calls: list[_StreamedToolCall] | None
 
 
-def _convert_tools_to_openai() -> list[dict[str, Any]]:
+def _convert_tools_to_openai(tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Convert Anthropic tool schema to OpenAI function calling format."""
     result = []
-    for tool in TOOL_DEFINITIONS:
+    for tool in tools:
         result.append({
             "type": "function",
             "function": {
@@ -71,9 +70,14 @@ def _convert_tools_to_openai() -> list[dict[str, Any]]:
 class LLMClient:
     """Unified interface over Anthropic and OpenAI-compatible APIs."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.settings = settings
         self.provider = settings.llm_provider
+        self.tools = tools if tools is not None else []
 
         if self.provider == "anthropic":
             import anthropic
@@ -188,7 +192,7 @@ class LLMClient:
             model=self.settings.model_name,
             max_tokens=self.settings.max_tokens,
             system=system_prompt,
-            tools=TOOL_DEFINITIONS,
+            tools=self.tools,
             messages=messages,
         )
         if self._supports_thinking(self.settings.model_name):
@@ -248,7 +252,7 @@ class LLMClient:
             model=self.settings.model_name,
             max_tokens=self.settings.max_tokens,
             system=system_prompt,
-            tools=TOOL_DEFINITIONS,
+            tools=self.tools,
             messages=messages,
         )
         if self._supports_thinking(self.settings.model_name):
@@ -287,17 +291,17 @@ class LLMClient:
 
             final_msg = stream.get_final_message()
             raw_content = final_msg.content
-
-        usage = {}
-        if hasattr(final_msg, "usage") and final_msg.usage:
-            usage = {
-                "input_tokens": getattr(final_msg.usage, "input_tokens", 0),
-                "output_tokens": getattr(final_msg.usage, "output_tokens", 0),
-            }
+            usage = {}
+            if hasattr(final_msg, "usage") and final_msg.usage:
+                usage = {
+                    "input_tokens": getattr(final_msg.usage, "input_tokens", 0),
+                    "output_tokens": getattr(final_msg.usage, "output_tokens", 0),
+                }
 
         full_text = "".join(text_parts)
+        wants_tool = getattr(final_msg, "stop_reason", None) == "tool_use"
         return LLMResponse(
-            wants_tool_use=len(tool_calls) > 0,
+            wants_tool_use=wants_tool,
             tool_calls=tool_calls,
             thinking_text=thinking,
             reply_text=full_text,
@@ -320,7 +324,7 @@ class LLMClient:
             model=self.settings.model_name,
             max_tokens=self.settings.max_tokens,
             messages=oai_messages,
-            tools=_convert_tools_to_openai(),
+            tools=_convert_tools_to_openai(self.tools),
         )
         if self.settings.temperature > 0:
             oai_kwargs["temperature"] = self.settings.temperature
@@ -384,7 +388,7 @@ class LLMClient:
             model=self.settings.model_name,
             max_tokens=self.settings.max_tokens,
             messages=oai_messages,
-            tools=_convert_tools_to_openai(),
+            tools=_convert_tools_to_openai(self.tools),
             stream=True,
         )
         if self.settings.temperature > 0:

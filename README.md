@@ -1,6 +1,6 @@
 # SeaTunnel Pipeline Builder Agent
 
-> AI-powered [Apache SeaTunnel](https://seatunnel.apache.org/) pipeline builder — describe your data task in natural language, and the Agent generates configs, runs jobs, diagnoses errors, and fixes them automatically.
+> AI-powered [Apache SeaTunnel](https://seatunnel.apache.org/) pipeline builder & data query assistant — describe your data task in natural language, and the Agent generates configs, runs jobs, diagnoses errors, and fixes them automatically. Now with **Text2SQL (Chat BI)**: ask questions in natural language and get Hive SQL results instantly.
 >
 > Apache SeaTunnel is an open-source, high-performance data integration engine that supports 100+ connectors (databases, message queues, file systems, data lakes, etc.).
 
@@ -41,6 +41,12 @@
 - **DeepSeek Thinking Extraction**: Shows DeepSeek-R1's chain-of-thought reasoning in the UI thinking panel
 - **CLI Enhancements**: `batch` command, `--model`/`--provider` overrides, `--output` flag, `chat --resume`
 - **Demo Mode**: Try the full Agent workflow without an API key
+- **Text2SQL (Chat BI)**: Natural-language data querying — ask a question in Chinese or English, and the agent matches tables, generates safe Hive SQL, executes it, and exports results as CSV
+- **Schema-Aware Matching**: Fuzzy table/column matching using keyword + CJK n-gram scoring against table names, column names, and Chinese comments
+- **Partition Intelligence**: Automatic table suffix classification (_di/_hi/_ri = incremental, _df/_hf = full), time range extraction from natural language, and partition clause generation
+- **SQL Safety Validation**: SELECT-only whitelist, forbidden keyword detection, table whitelist enforcement, LIMIT enforcement, stacked query prevention, partition filter enforcement, and column existence validation
+- **CSV Export with CJK Support**: UTF-8 BOM encoding for Excel compatibility, timestamped filenames, custom output paths
+- **Structured Query Logging**: JSONL-formatted logs of every query (user question, generated SQL, status, timing) for observability
 
 ### Quick Start
 
@@ -168,6 +174,26 @@ seatunnel-agent ui
 # Or use the CLI
 seatunnel-agent run --task "Generate 10 fake rows to console"
 ```
+
+#### Step 4 (Optional): Configure Text2SQL (Chat BI)
+
+To enable the Text2SQL feature, add Hive connection settings to `.env`:
+
+```env
+# HiveServer2 connection (read-only account recommended)
+HIVE_HOST=10.0.0.1
+HIVE_PORT=10000
+HIVE_DATABASE=default
+HIVE_USERNAME=readonly_user
+
+# Query timeout in seconds (default: 300)
+HIVE_TIMEOUT=300
+
+# Schema whitelist DDL file — only tables listed here can be queried
+# SCHEMA_DDL_PATH=config/schema_ddl.sql
+```
+
+Then populate `config/schema_ddl.sql` with your Hive table DDLs (CREATE TABLE statements with column COMMENTs and PARTITIONED BY clauses). The agent will only query tables listed in this file.
 
 ### Docker Deployment
 
@@ -302,6 +328,47 @@ seatunnel-agent --model deepseek-chat --provider openai run --task "..."
 seatunnel-agent -v run --task "..."
 ```
 
+### Text2SQL (Chat BI) Usage
+
+The Text2SQL feature lets you query Hive tables using natural language. Access it from the Web UI's **Text2SQL** page or programmatically.
+
+#### How It Works
+
+```
+User Question (Natural Language)
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│          Text2SQL Agent (ReAct)          │
+│                                         │
+│  1. match_tables    → rank candidates   │
+│  2. get_table_schema → inspect columns  │
+│  3. get_max_partition → latest partition │
+│  4. Generate SQL    → LLM + rules       │
+│  5. execute_sql     → validate & run    │
+│  6. export_csv      → download results  │
+└─────────────────────────────────────────┘
+    │
+    ▼
+Hive SQL Results + CSV Export
+```
+
+#### Example Queries
+
+| Question | Generated SQL (simplified) |
+|----------|---------------------------|
+| "查询最近7天的入库单量" | `SELECT COUNT(*) FROM zz.dwm_scm_detail_di WHERE pt >= '20260907' AND pt <= '20260914'` |
+| "各品牌的入库总量" | `SELECT brand_name, SUM(inbound_cnt) FROM ... WHERE pt = '<max>' GROUP BY brand_name` |
+| "查询学生表所有数据" | `SELECT * FROM atest.student LIMIT 1000` |
+
+#### Safety Guarantees
+
+- **SELECT-only**: Write operations (INSERT/UPDATE/DELETE/DROP/ALTER) are hard-blocked
+- **Table whitelist**: Only tables in `config/schema_ddl.sql` can be queried
+- **Partition enforcement**: Partitioned tables must have a partition filter — queries without one are rejected
+- **Row LIMIT**: Every query gets a LIMIT (default 1000, max 100,000)
+- **Query logging**: All queries are logged to `logs/text2sql_queries.jsonl`
+
 ### Supported LLMs
 
 | Provider | Example Models | Config |
@@ -320,42 +387,32 @@ Any OpenAI-compatible API works — just set `LLM_PROVIDER=openai` and the corre
 ```
 User Input (Natural Language)
     │
-    ▼
-┌──────────────────────────────────────┐
-│           SeaTunnel Agent            │
-│                                      │
-│   ┌──────────┐    ┌───────────────┐  │
-│   │   LLM    │◄──►│ System Prompt │  │
-│   │  Client  │    │  + Session    │  │
-│   │(multi-   │    │    Context    │  │
-│   │ provider)│    └───────────────┘  │
-│   └────┬─────┘                       │
-│        │                             │
-│   ┌────▼─────┐                       │
-│   │  ReAct   │  Think → Act →        │
-│   │  Loop    │  Observe → Repeat     │
-│   └────┬─────┘                       │
-│        │                             │
-│   ┌────▼─────────────────────────┐   │
-│   │        16 Tools              │   │
-│   │  run_seatunnel_job           │   │
-│   │  read_config / write_config  │   │
-│   │  validate_config             │   │
-│   │  read_log / list_connectors  │   │
-│   │  test_connection             │   │
-│   │  list_templates / use_template│  │
-│   │  query_connector_docs        │   │
-│   │  list_config_versions        │   │
-│   │  run_batch                   │   │
-│   │  restore_config_version      │   │
-│   │  delete_config               │   │
-│   │  compare_config_versions     │   │
-│   │  explain_config              │   │
-│   └──────────────────────────────┘   │
-└──────────────────────────────────────┘
-    │
-    ▼
-Apache SeaTunnel (Data Integration Engine)
+    ├───────────────────────┐
+    ▼                       ▼
+┌──────────────────┐  ┌──────────────────────┐
+│  SeaTunnel Agent │  │  Text2SQL Agent      │
+│  (Pipeline)      │  │  (Chat BI)           │
+│                  │  │                      │
+│  ┌────────────┐  │  │  ┌────────────────┐  │
+│  │  LLM +     │  │  │  │ LLM + Schema   │  │
+│  │  ReAct     │  │  │  │ Store + ReAct  │  │
+│  │  Loop      │  │  │  │ Loop           │  │
+│  └─────┬──────┘  │  │  └──────┬─────────┘  │
+│        │         │  │         │             │
+│  ┌─────▼──────┐  │  │  ┌──────▼─────────┐  │
+│  │ 16 Tools   │  │  │  │  5 Tools       │  │
+│  │ run_job    │  │  │  │ match_tables   │  │
+│  │ read/write │  │  │  │ get_schema     │  │
+│  │ validate   │  │  │  │ get_partition  │  │
+│  │ diagnose   │  │  │  │ execute_sql    │  │
+│  │ templates  │  │  │  │ export_csv     │  │
+│  │ ...        │  │  │  └────────────────┘  │
+│  └────────────┘  │  │                      │
+└────────┬─────────┘  └──────────┬───────────┘
+         │                       │
+         ▼                       ▼
+  Apache SeaTunnel        HiveServer2
+  (Data Integration)      (Data Query)
 ```
 
 ### Project Structure
@@ -366,22 +423,43 @@ seatunnel_agent/
 ├── .env.example                # Environment variable template
 ├── Dockerfile                  # Docker image build
 ├── docker-compose.yml          # Docker Compose with persistent volumes
+├── config/
+│   └── schema_ddl.sql          # Text2SQL table whitelist (Hive CREATE TABLE DDLs)
 ├── src/seatunnel_agent/
 │   ├── config.py               # Config loading (.env → Settings)
 │   ├── llm.py                  # Multi-provider LLM abstraction
 │   ├── utils.py                # Utility functions
-│   ├── tools.py                # 16 tool definitions + executor
+│   ├── tools.py                # 16 tool definitions + executor (SeaTunnel pipeline)
 │   ├── templates.py            # 12 built-in pipeline config templates
 │   ├── connector_docs.py       # Connector parameter documentation (19 connectors)
-│   ├── prompts.py              # System prompt (SeaTunnel domain knowledge + transform/streaming guidance)
+│   ├── prompts.py              # System prompt (SeaTunnel pipeline agent)
 │   ├── agent.py                # ReAct loop + session context tracking
 │   ├── history.py              # Chat session persistence
 │   ├── cli.py                  # Click CLI entry point
-│   └── ui.py                   # Gradio Web UI (bilingual)
+│   ├── ui.py                   # Gradio Web UI hub (multipage app)
+│   ├── text2sql_ui.py          # Gradio Text2SQL page (streaming chat)
+│   └── text2sql/               # Text2SQL (Chat BI) agent package
+│       ├── __init__.py         # Package exports
+│       ├── schema.py           # DDL parser, SchemaStore, table/column models
+│       ├── matcher.py          # Table/column fuzzy matching (keyword + CJK n-gram)
+│       ├── partition.py        # Partition classification, time range extraction
+│       ├── validator.py        # SQL safety (SELECT-only, whitelist, columns, LIMIT)
+│       ├── executor.py         # HiveServer2 execution via pyhive
+│       ├── exporter.py         # CSV export (UTF-8 BOM for Excel)
+│       ├── prompts.py          # System prompt assembly (rules + schema)
+│       ├── tools.py            # 5 tool definitions + runtime + partition enforcement
+│       ├── agent.py            # ReAct loop, event protocol, multi-turn
+│       ├── qlog.py             # Structured query logging (JSONL)
+│       └── resources/
+│           ├── SKILL.md        # Skill entry point (when to trigger, workflow)
+│           ├── intent_rules.md # Business rules (partition, aggregation, etc.)
+│           └── optimize_rules.md # Spark/Hive performance optimization rules
 ├── scripts/                    # Dev workflow scripts
 │   ├── ship.ps1                # Commit & push to current branch
 │   └── next.ps1                # Sync main, create new branch
-├── tests/                      # 307 unit tests
+├── docs/
+│   └── text2sql_test_doc.md    # Text2SQL test document (62 automated + manual cases)
+├── tests/                      # 369 unit tests
 │   ├── test_config.py          # Settings & env loading
 │   ├── test_tools.py           # All 16 tools, path guards, version collision, metrics
 │   ├── test_templates.py       # Template registry, rendering, tool integration
@@ -392,7 +470,8 @@ seatunnel_agent/
 │   ├── test_prompts.py         # System prompt, task hints, tool references
 │   ├── test_ui_format.py       # Event formatting, export, normalize, EventCollector
 │   ├── test_utils.py           # Utility functions (truncate, log resolution)
-│   └── test_cli.py             # CLI commands, batch, --list-sessions
+│   ├── test_cli.py             # CLI commands, batch, --list-sessions
+│   └── test_text2sql.py        # Text2SQL: schema, validation, matching, partition, tools (62 tests)
 └── examples/                   # Example configs
     ├── fake_to_console.conf
     └── mysql_to_console.conf
@@ -401,11 +480,14 @@ seatunnel_agent/
 ### Testing
 
 ```bash
-# Run all 307 tests
+# Run all 369 tests
 pytest tests/ -v
 
 # Run a specific test file
 pytest tests/test_agent.py -v
+
+# Run Text2SQL tests only
+pytest tests/test_text2sql.py -v
 
 # Run with coverage
 pytest tests/ --cov=seatunnel_agent --cov-report=term-missing
@@ -426,6 +508,9 @@ Test coverage by module:
 | `ui.py` | 49 | Event formatting, export, elapsed time, token usage display, tool emojis, EventCollector |
 | `utils.py` | 17 | truncate, find_latest_log, safe_json, resolve_log_path |
 | `cli.py` | 9 | CLI commands, batch, --list-sessions, help text |
+| `text2sql/` | 62 | Schema parsing, SQL validation (SELECT-only, whitelist, stacked queries), table/column matching, partition rules, CSV export, query logging, column validation, partition enforcement, tool layer, edge cases |
+
+Full Text2SQL test documentation: [`docs/text2sql_test_doc.md`](docs/text2sql_test_doc.md)
 
 ### Troubleshooting
 
@@ -477,6 +562,12 @@ MIT
 - **DeepSeek 思维链提取**：在 UI 思考面板展示 DeepSeek-R1 的推理过程
 - **CLI 增强**：`batch` 批量执行、`--model`/`--provider` 运行时覆盖、`--output` 输出到文件、`chat --resume` 恢复会话
 - **演示模式**：无需 API Key 即可体验完整的 Agent 工作流程
+- **Text2SQL (Chat BI)**：自然语言数据查询 —— 用中文或英文提问，Agent 自动匹配表、生成安全的 Hive SQL、执行查询并导出 CSV
+- **Schema 感知匹配**：基于关键词 + CJK n-gram 模糊匹配，支持表名、列名、中文备注的多维度评分排序
+- **分区智能**：自动识别表后缀类型（_di/_hi/_ri = 增量表，_df/_hf = 全量表），从自然语言提取时间范围，生成分区条件
+- **SQL 安全验证**：SELECT 白名单、禁止关键词检测、表白名单强制、LIMIT 强制、堆叠查询防护、分区过滤强制、列存在性校验
+- **CSV 导出（CJK 支持）**：UTF-8 BOM 编码确保 Excel 正确显示中文，带时间戳的文件名，支持自定义路径
+- **结构化查询日志**：JSONL 格式记录每次查询（用户问题、生成 SQL、状态、耗时），便于监控与审计
 
 ### 快速开始
 
@@ -604,6 +695,26 @@ seatunnel-agent ui
 # 或使用命令行
 seatunnel-agent run --task "生成 10 条假数据输出到控制台"
 ```
+
+#### 第四步（可选）：配置 Text2SQL (Chat BI)
+
+在 `.env` 中添加 Hive 连接配置以启用 Text2SQL 功能：
+
+```env
+# HiveServer2 连接（建议使用只读账号）
+HIVE_HOST=10.0.0.1
+HIVE_PORT=10000
+HIVE_DATABASE=default
+HIVE_USERNAME=readonly_user
+
+# 查询超时（秒，默认 300）
+HIVE_TIMEOUT=300
+
+# Schema 白名单 DDL 文件 —— 仅允许查询此文件中列出的表
+# SCHEMA_DDL_PATH=config/schema_ddl.sql
+```
+
+在 `config/schema_ddl.sql` 中填入 Hive 表的 DDL（含列 COMMENT 和 PARTITIONED BY）。Agent 仅允许查询此文件中列出的表。
 
 ### Docker 部署
 
@@ -738,6 +849,47 @@ seatunnel-agent --model deepseek-chat --provider openai run --task "..."
 seatunnel-agent -v run --task "..."
 ```
 
+### Text2SQL (Chat BI) 使用说明
+
+Text2SQL 功能支持自然语言查询 Hive 表数据。通过 Web UI 的 **Text2SQL** 页面访问。
+
+#### 工作流程
+
+```
+用户问题（自然语言）
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│       Text2SQL Agent (ReAct 循环)        │
+│                                         │
+│  1. match_tables    → 匹配候选表         │
+│  2. get_table_schema → 查看列信息        │
+│  3. get_max_partition → 获取最新分区      │
+│  4. 生成 SQL         → LLM + 规则       │
+│  5. execute_sql     → 验证并执行         │
+│  6. export_csv      → 导出结果           │
+└─────────────────────────────────────────┘
+    │
+    ▼
+Hive SQL 查询结果 + CSV 导出
+```
+
+#### 示例查询
+
+| 问题 | 生成的 SQL（简化） |
+|------|-------------------|
+| "查询最近7天的入库单量" | `SELECT COUNT(*) FROM zz.dwm_scm_detail_di WHERE pt >= '20260907' AND pt <= '20260914'` |
+| "各品牌的入库总量" | `SELECT brand_name, SUM(inbound_cnt) FROM ... WHERE pt = '<max>' GROUP BY brand_name` |
+| "查询学生表所有数据" | `SELECT * FROM atest.student LIMIT 1000` |
+
+#### 安全保障
+
+- **仅允许 SELECT**：写操作（INSERT/UPDATE/DELETE/DROP/ALTER）被强制拦截
+- **表白名单**：仅能查询 `config/schema_ddl.sql` 中定义的表
+- **分区过滤强制**：分区表必须带分区过滤条件，否则查询被拒绝
+- **行数限制**：每条查询自动添加 LIMIT（默认 1000，最大 100,000）
+- **查询日志**：所有查询记录到 `logs/text2sql_queries.jsonl`
+
 ### 支持的 LLM
 
 | 提供商 | 模型示例 | 配置 |
@@ -756,41 +908,32 @@ seatunnel-agent -v run --task "..."
 ```
 用户输入（自然语言）
     │
-    ▼
-┌──────────────────────────────────────┐
-│           SeaTunnel Agent            │
-│                                      │
-│   ┌──────────┐    ┌───────────────┐  │
-│   │   LLM    │◄──►│ System Prompt │  │
-│   │  Client  │    │  + 会话上下文  │  │
-│   │ (多模型)  │    └───────────────┘  │
-│   └────┬─────┘                       │
-│        │                             │
-│   ┌────▼─────┐                       │
-│   │  ReAct   │  Think → Act →        │
-│   │  Loop    │  Observe → Repeat     │
-│   └────┬─────┘                       │
-│        │                             │
-│   ┌────▼─────────────────────────┐   │
-│   │        16 个工具              │   │
-│   │  run_seatunnel_job           │   │
-│   │  read_config / write_config  │   │
-│   │  validate_config             │   │
-│   │  read_log / list_connectors  │   │
-│   │  test_connection             │   │
-│   │  list_templates / use_template│  │
-│   │  query_connector_docs        │   │
-│   │  list_config_versions        │   │
-│   │  run_batch                   │   │
-│   │  restore_config_version      │   │
-│   │  delete_config               │   │
-│   │  compare_config_versions     │   │
-│   │  explain_config              │   │
-│   └──────────────────────────────┘   │
-└──────────────────────────────────────┘
-    │
-    ▼
-Apache SeaTunnel（数据集成引擎）
+    ├───────────────────────┐
+    ▼                       ▼
+┌──────────────────┐  ┌──────────────────────┐
+│  SeaTunnel Agent │  │  Text2SQL Agent      │
+│  (管道构建)       │  │  (Chat BI)           │
+│                  │  │                      │
+│  ┌────────────┐  │  │  ┌────────────────┐  │
+│  │  LLM +     │  │  │  │ LLM + Schema   │  │
+│  │  ReAct     │  │  │  │ Store + ReAct  │  │
+│  │  循环       │  │  │  │ 循环           │  │
+│  └─────┬──────┘  │  │  └──────┬─────────┘  │
+│        │         │  │         │             │
+│  ┌─────▼──────┐  │  │  ┌──────▼─────────┐  │
+│  │ 16 个工具   │  │  │  │  5 个工具      │  │
+│  │ run_job    │  │  │  │ match_tables   │  │
+│  │ read/write │  │  │  │ get_schema     │  │
+│  │ validate   │  │  │  │ get_partition  │  │
+│  │ diagnose   │  │  │  │ execute_sql    │  │
+│  │ templates  │  │  │  │ export_csv     │  │
+│  │ ...        │  │  │  └────────────────┘  │
+│  └────────────┘  │  │                      │
+└────────┬─────────┘  └──────────┬───────────┘
+         │                       │
+         ▼                       ▼
+  Apache SeaTunnel         HiveServer2
+  （数据集成引擎）          （数据查询）
 ```
 
 ### 项目结构
@@ -801,22 +944,43 @@ seatunnel_agent/
 ├── .env.example                # 环境变量模板
 ├── Dockerfile                  # Docker 镜像构建
 ├── docker-compose.yml          # Docker Compose（含持久化卷）
+├── config/
+│   └── schema_ddl.sql          # Text2SQL 表白名单（Hive CREATE TABLE DDL）
 ├── src/seatunnel_agent/
 │   ├── config.py               # 配置加载（.env → Settings）
 │   ├── llm.py                  # 多模型 LLM 抽象层
 │   ├── utils.py                # 工具函数
-│   ├── tools.py                # 16 个工具定义 + 执行器
+│   ├── tools.py                # 16 个工具定义 + 执行器（SeaTunnel 管道）
 │   ├── templates.py            # 12 个内置管道配置模板
 │   ├── connector_docs.py       # 连接器参数文档（19 个连接器）
-│   ├── prompts.py              # System Prompt（SeaTunnel 领域知识 + Transform/流式处理指导）
+│   ├── prompts.py              # System Prompt（SeaTunnel 管道 Agent）
 │   ├── agent.py                # ReAct 循环 + 会话上下文追踪
 │   ├── history.py              # 对话历史持久化
 │   ├── cli.py                  # Click CLI 入口
-│   └── ui.py                   # Gradio Web UI（中英双语）
+│   ├── ui.py                   # Gradio Web UI 主页（多页应用）
+│   ├── text2sql_ui.py          # Gradio Text2SQL 页面（流式聊天）
+│   └── text2sql/               # Text2SQL (Chat BI) Agent 包
+│       ├── __init__.py         # 包导出
+│       ├── schema.py           # DDL 解析器、SchemaStore、表/列模型
+│       ├── matcher.py          # 表/列模糊匹配（关键词 + CJK n-gram）
+│       ├── partition.py        # 分区分类、时间范围提取
+│       ├── validator.py        # SQL 安全（SELECT 白名单、表白名单、列校验、LIMIT）
+│       ├── executor.py         # HiveServer2 执行（通过 pyhive）
+│       ├── exporter.py         # CSV 导出（UTF-8 BOM 支持 Excel）
+│       ├── prompts.py          # System Prompt 组装（规则 + Schema）
+│       ├── tools.py            # 5 个工具定义 + 运行时 + 分区强制
+│       ├── agent.py            # ReAct 循环、事件协议、多轮对话
+│       ├── qlog.py             # 结构化查询日志（JSONL）
+│       └── resources/
+│           ├── SKILL.md        # 技能入口（触发条件、工作流程）
+│           ├── intent_rules.md # 业务规则（分区、聚合等）
+│           └── optimize_rules.md # Spark/Hive 性能优化规则
 ├── scripts/                    # 开发工作流脚本
 │   ├── ship.ps1                # 提交并推送到当前分支
 │   └── next.ps1                # 同步 main，创建新分支
-├── tests/                      # 307 个单元测试
+├── docs/
+│   └── text2sql_test_doc.md    # Text2SQL 测试文档（62 自动化 + 手动测试用例）
+├── tests/                      # 369 个单元测试
 │   ├── test_config.py          # Settings 与环境变量
 │   ├── test_tools.py           # 16 个工具、路径安全守卫、版本碰撞修复、指标解析、批量任务
 │   ├── test_templates.py       # 模板注册、渲染、分类、工具集成
@@ -827,7 +991,8 @@ seatunnel_agent/
 │   ├── test_prompts.py         # System Prompt 内容验证
 │   ├── test_ui_format.py       # 事件格式化、导出、耗时展示、Token 用量显示、工具 Emoji、EventCollector
 │   ├── test_utils.py           # 工具函数（truncate、日志解析）
-│   └── test_cli.py             # CLI 命令、批量任务、--list-sessions
+│   ├── test_cli.py             # CLI 命令、批量任务、--list-sessions
+│   └── test_text2sql.py        # Text2SQL：Schema、验证、匹配、分区、工具层（62 个测试）
 └── examples/                   # 示例配置
     ├── fake_to_console.conf
     └── mysql_to_console.conf
@@ -836,11 +1001,14 @@ seatunnel_agent/
 ### 测试
 
 ```bash
-# 运行全部 307 个测试
+# 运行全部 369 个测试
 pytest tests/ -v
 
 # 运行特定测试文件
 pytest tests/test_agent.py -v
+
+# 仅运行 Text2SQL 测试
+pytest tests/test_text2sql.py -v
 
 # 生成覆盖率报告
 pytest tests/ --cov=seatunnel_agent --cov-report=term-missing
@@ -861,6 +1029,9 @@ pytest tests/ --cov=seatunnel_agent --cov-report=term-missing
 | `ui.py` | 49 | 事件格式化、导出、耗时展示、Token 用量显示、工具 Emoji、EventCollector |
 | `utils.py` | 17 | truncate、find_latest_log、safe_json、resolve_log_path |
 | `cli.py` | 9 | CLI 命令、批量任务、--list-sessions |
+| `text2sql/` | 62 | Schema 解析、SQL 验证（SELECT 白名单、表白名单、堆叠查询）、表/列匹配、分区规则、CSV 导出、查询日志、列校验、分区强制、工具层、边缘用例 |
+
+完整的 Text2SQL 测试文档：[`docs/text2sql_test_doc.md`](docs/text2sql_test_doc.md)
 
 ### 常见问题
 
