@@ -8,6 +8,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from .config import Settings
+from .context import truncate_messages
 from .llm import LLMClient
 from .prompts import build_system_prompt
 from .tools import TOOL_DEFINITIONS, execute_tool
@@ -25,7 +26,7 @@ class SeaTunnelAgent:
         on_event: EventCallback | None = None,
     ) -> None:
         self.settings = settings
-        self.llm = LLMClient(settings)
+        self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
         self.messages: list[dict[str, Any]] = []
         self.retry_count = 0
         self.console = Console()
@@ -106,6 +107,11 @@ class SeaTunnelAgent:
     # ------------------------------------------------------------------
 
     def _agent_loop(self, system_prompt: str) -> str:
+        text_delta_cb = None
+        if self._on_event:
+            def text_delta_cb(chunk: str) -> None:
+                self._emit("text_delta", {"text": chunk})
+
         for iteration in range(MAX_LOOP_ITERATIONS):
             self._emit("step", {
                 "iteration": iteration + 1,
@@ -118,10 +124,7 @@ class SeaTunnelAgent:
             if context_hint:
                 effective_prompt = system_prompt + context_hint
 
-            text_delta_cb = None
-            if self._on_event:
-                def text_delta_cb(chunk: str) -> None:
-                    self._emit("text_delta", {"text": chunk})
+            self.messages = truncate_messages(self.messages)
             resp = self.llm.chat(effective_prompt, self.messages, on_text_delta=text_delta_cb)
 
             self.messages.append(self.llm.append_assistant(resp.raw_content))

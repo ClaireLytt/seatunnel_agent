@@ -41,7 +41,11 @@ $SEATUNNEL_HOME/
 
 # Gradio temp files
 _tmp_gradio*
+tmp_page.html
 
 # Chat history (user data)
 chat_history/
+
+# Query logs (user data)
+logs/
 

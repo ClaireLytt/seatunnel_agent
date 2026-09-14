@@ -125,6 +125,9 @@ _I18N: dict[str, dict[str, str]] = {
         "tpl_none": "-- Select a template --",
         "stop": "Stop",
         "stopped": "Agent stopped by user.",
+        "rename": "Rename",
+        "delete": "Delete",
+        "rename_placeholder": "New name...",
     },
     "zh": {
         "title": "SeaTunnel 数据管道构建器",
@@ -176,6 +179,9 @@ _I18N: dict[str, dict[str, str]] = {
         "tpl_none": "-- 选择模板 --",
         "stop": "停止",
         "stopped": "已被用户中断。",
+        "rename": "重命名",
+        "delete": "删除",
+        "rename_placeholder": "新名称...",
     },
 }
 
@@ -741,7 +747,102 @@ _MODE_MAP = {
 }
 
 
+_HUB_AGENTS: list[dict[str, Any]] = [
+    {
+        "name": "SeaTunnel Pipeline Builder",
+        "name_zh": "数据管道构建",
+        "desc_en": "Generate / validate / run SeaTunnel configs with natural language, auto-diagnose & fix",
+        "desc_zh": "自然语言生成 / 验证 / 运行 SeaTunnel 配置，自动诊断修复",
+        "href": "/seatunnel",
+        "logo": "ST",
+        "color": "#f76707",
+    },
+    {
+        "name": "Text2SQL · Chat BI",
+        "name_zh": "智能问数",
+        "desc_en": "Ask in natural language → auto match table schema → generate & run Hive SQL → preview & CSV export",
+        "desc_zh": "自然语言提问 → 自动匹配表结构 → 生成并执行 Hive SQL → 结果预览与 CSV 导出",
+        "href": "/text2sql",
+        "logo": "SQL",
+        "color": "#0ea5e9",
+    },
+]
+
+
+def _build_hub_html() -> str:
+    return '''<div class="st-hub" id="st-hub">
+  <div class="st-hub-lang-row">
+    <select id="st-hub-lang" onchange="var l=this.value;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.textContent=e.getAttribute('data-'+l)});">
+      <option value="en" selected>English</option>
+      <option value="zh">中文</option>
+    </select>
+  </div>
+  <div class="st-hub-header">
+    <div class="st-hub-title" data-en="SeaTunnel Agent Platform" data-zh="SeaTunnel Agent 工作台">SeaTunnel Agent Platform</div>
+    <div class="st-hub-subtitle" data-en="AI Agent Workspace · Choose an agent to start" data-zh="AI Agent 工作台 · 选择一个能力开始">AI Agent Workspace · Choose an agent to start</div>
+  </div>
+  <div class="st-hub-grid">
+    <a class="st-hub-card" href="/seatunnel">
+      <div class="st-hub-logo" style="background:#f76707;">ST</div>
+      <div class="st-hub-card-title" data-en="SeaTunnel Pipeline Builder" data-zh="SeaTunnel Pipeline Builder · 数据管道构建">SeaTunnel Pipeline Builder</div>
+      <div class="st-hub-card-desc" data-en="Generate / validate / run SeaTunnel configs with natural language, auto-diagnose &amp; fix" data-zh="自然语言生成 / 验证 / 运行 SeaTunnel 配置，自动诊断修复">Generate / validate / run SeaTunnel configs with natural language, auto-diagnose &amp; fix</div>
+      <div class="st-hub-enter" style="color:#f76707;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/text2sql">
+      <div class="st-hub-logo" style="background:#0ea5e9;">SQL</div>
+      <div class="st-hub-card-title" data-en="Text2SQL · Chat BI" data-zh="Text2SQL · Chat BI · 智能问数">Text2SQL · Chat BI</div>
+      <div class="st-hub-card-desc" data-en="Ask in natural language → auto match table schema → generate &amp; run Hive SQL → preview &amp; CSV export" data-zh="自然语言提问 → 自动匹配表结构 → 生成并执行 Hive SQL → 结果预览与 CSV 导出">Ask in natural language → auto match table schema → generate &amp; run Hive SQL → preview &amp; CSV export</div>
+      <div class="st-hub-enter" style="color:#0ea5e9;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <div class="st-hub-card st-hub-card-soon">
+      <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
+      <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
+      <div class="st-hub-card-desc" data-en="More agent capabilities coming soon..." data-zh="更多 Agent 能力筹备中...">More agent capabilities coming soon...</div>
+    </div>
+  </div>
+</div>'''
+
+
 def create_ui() -> gr.Blocks:
+    """Multipage app: hub landing page + one dedicated page per agent."""
+    from .text2sql_ui import render_text2sql_page, render_history_page
+
+    _hide_history_nav_js = """
+    () => {
+        function hide() {
+            document.querySelectorAll('nav a, .navigation a, a[href*="history"]').forEach(a => {
+                if (a.textContent.trim() === 'Query History' || (a.getAttribute('href') || '').includes('/history')) {
+                    a.style.display = 'none';
+                }
+            });
+        }
+        hide();
+        new MutationObserver(hide).observe(document.body, {childList: true, subtree: true});
+    }
+    """
+
+    with gr.Blocks(
+        title="SeaTunnel Agent",
+        fill_height=True,
+        fill_width=True,
+        css=_CUSTOM_CSS,
+    ) as app:
+        gr.HTML(_build_hub_html())
+        app.load(fn=None, js=_hide_history_nav_js)
+
+    with app.route("SeaTunnel", "/seatunnel"):
+        _render_seatunnel_page(app)
+
+    with app.route("Text2SQL", "/text2sql"):
+        render_text2sql_page(app)
+
+    with app.route("Query History", "/history"):
+        render_history_page()
+
+    return app
+
+
+def _render_seatunnel_page(app: gr.Blocks) -> None:
     settings_holder: dict[str, Settings | None] = {"current": None}
     agent_holder: dict[str, SeaTunnelAgent | None] = {"agent": None}
     collector_holder: dict[str, EventCollector | None] = {"current": None}
@@ -864,27 +965,20 @@ def create_ui() -> gr.Blocks:
             gr.update(placeholder=_build_placeholder(lang)),
             gr.update(label=_t(lang, "export")),
             gr.update(choices=_build_template_choices(lang), value="", label=_t(lang, "templates")),
+            gr.update(value=f"✏ {_t(lang, 'rename')}"),
+            gr.update(value=f"✕ {_t(lang, 'delete')}"),
+            gr.update(placeholder=_t(lang, "rename_placeholder")),
         )
 
     # ── Layout ──
 
-    with gr.Blocks(
-        title="SeaTunnel Agent",
-        fill_height=True,
-        fill_width=True,
-        css=_CUSTOM_CSS,
-    ) as app:
-
+    with gr.Row(elem_classes=["st-page-row"]):
         lang_state = gr.State("en")
         session_state = gr.State("")
 
-        # ── Sidebar: history + settings ──
-        with gr.Sidebar(
-            label="SeaTunnel Agent",
-            position="left",
-            open=True,
-            width=280,
-        ):
+        # ── Left panel (sidebar) ──
+        with gr.Column(scale=0, min_width=260, elem_classes=["st-sidebar"], elem_id="seatunnel-sidebar") as sidebar_col:
+            sidebar_toggle = gr.Button("☰", size="sm", elem_classes=["st-sidebar-toggle"])
             new_chat_btn = gr.Button(
                 _t(lang, "new_chat"),
                 variant="primary",
@@ -899,41 +993,12 @@ def create_ui() -> gr.Blocks:
                 elem_classes=["st-history-dd"],
             )
             with gr.Row(visible=False, elem_classes=["st-action-row"]) as action_row:
-                rename_btn = gr.Button(
-                    "✏ Rename",
-                    size="sm",
-                    scale=1,
-                    elem_classes=["st-action-btn"],
-                )
-                delete_btn = gr.Button(
-                    "✕ Delete",
-                    variant="stop",
-                    size="sm",
-                    scale=1,
-                    elem_classes=["st-action-btn"],
-                )
+                rename_btn = gr.Button(f"✏ {_t(lang, 'rename')}", size="sm", scale=1, elem_classes=["st-action-btn"])
+                delete_btn = gr.Button(f"✕ {_t(lang, 'delete')}", variant="stop", size="sm", scale=1, elem_classes=["st-action-btn"])
             with gr.Row(visible=False, elem_classes=["st-rename-row"]) as rename_row:
-                rename_input = gr.Textbox(
-                    show_label=False,
-                    placeholder="New name...",
-                    scale=3,
-                    lines=1,
-                    elem_classes=["st-rename-input"],
-                )
-                rename_ok = gr.Button(
-                    "✓",
-                    size="sm",
-                    scale=0,
-                    min_width=36,
-                    elem_classes=["st-rename-ok"],
-                )
-                rename_cancel = gr.Button(
-                    "✕",
-                    size="sm",
-                    scale=0,
-                    min_width=36,
-                    elem_classes=["st-rename-cancel"],
-                )
+                rename_input = gr.Textbox(show_label=False, placeholder=_t(lang, "rename_placeholder"), scale=3, lines=1, elem_classes=["st-rename-input"])
+                rename_ok = gr.Button("✓", size="sm", scale=0, min_width=36, elem_classes=["st-rename-ok"])
+                rename_cancel = gr.Button("✕", size="sm", scale=0, min_width=36, elem_classes=["st-rename-cancel"])
 
             mode = gr.Dropdown(
                 choices=[_t(lang, k) for k in ("mode_nl", "mode_run", "mode_validate", "mode_diagnose")],
@@ -953,274 +1018,250 @@ def create_ui() -> gr.Blocks:
                 interactive=True,
                 elem_classes=["st-sidebar-control"],
             )
-            load_btn = gr.Button(
-                _t(lang, "connect"),
-                variant="secondary",
-                size="sm",
-                elem_classes=["st-connect-btn"],
-            )
-            status_box = gr.Textbox(
-                label=_t(lang, "status"),
-                interactive=False,
-                value=_t(lang, "status_default"),
-                elem_classes=["st-sidebar-status"],
-            )
-            export_btn = gr.DownloadButton(
-                _t(lang, "export"),
-                variant="secondary",
-                size="sm",
-                elem_classes=["st-connect-btn"],
-            )
+            load_btn = gr.Button(_t(lang, "connect"), variant="secondary", size="sm", elem_classes=["st-connect-btn"])
+            status_box = gr.Textbox(label=_t(lang, "status"), interactive=False, value=_t(lang, "status_default"), elem_classes=["st-sidebar-status"])
+            export_btn = gr.DownloadButton(_t(lang, "export"), variant="secondary", size="sm", elem_classes=["st-connect-btn"])
 
-        # ── Main area ──
-        with gr.Row(elem_classes=["st-topbar-row"]):
-            gr.HTML('<div class="st-topbar-spacer"></div>')
-            lang_dd = gr.Dropdown(
-                choices=["English", "中文"],
-                value="English",
+        # ── Right panel (chat) ──
+        with gr.Column(scale=1, elem_classes=["st-main"]):
+            with gr.Row(elem_classes=["st-topbar-row"]):
+                sidebar_open_btn = gr.Button("☰", size="sm", visible=False, elem_classes=["st-sidebar-open-btn"])
+                gr.HTML('<div class="st-topbar-spacer"></div>')
+                home_btn = gr.Button("\U0001f3e0", size="sm", elem_classes=["st-home-btn"])
+                lang_dd = gr.Dropdown(
+                    choices=["English", "中文"],
+                    value="English",
+                    show_label=False,
+                    container=False,
+                    min_width=140,
+                    elem_classes=["st-lang-dd"],
+                )
+
+            chatbot = gr.Chatbot(
                 show_label=False,
-                container=False,
-                min_width=140,
-                elem_classes=["st-lang-dd"],
+                placeholder=_build_placeholder(lang),
+                layout="panel",
+                buttons=["copy"],
+                elem_classes=["st-chatbot"],
+                height="calc(100vh - 130px)",
             )
 
-        chatbot = gr.Chatbot(
-            scale=1,
-            show_label=False,
-            placeholder=_build_placeholder(lang),
-            layout="panel",
-            buttons=["copy"],
-            elem_classes=["st-chatbot"],
+            with gr.Row(elem_classes=["st-input-row"]):
+                file_upload = gr.UploadButton(
+                    "+",
+                    file_types=[".conf", ".hocon", ".config", ".json"],
+                    size="sm", scale=0, min_width=40,
+                    elem_classes=["st-btn-upload"],
+                )
+                user_input = gr.Textbox(
+                    placeholder=_t(lang, "input_placeholder"),
+                    show_label=False, scale=8, lines=1,
+                    elem_classes=["st-input"],
+                )
+                demo_btn = gr.Button(_t(lang, "demo"), variant="secondary", size="sm", scale=1, elem_classes=["st-btn-demo"])
+                send_btn = gr.Button("➤", variant="primary", size="sm", scale=0, min_width=48, elem_classes=["st-btn-send"])
+                stop_btn = gr.Button("■", variant="stop", size="sm", scale=0, min_width=48, visible=False, elem_classes=["st-btn-stop"])
+
+    # ── Sidebar toggle ──
+    def _close_sidebar():
+        return gr.update(visible=False), gr.update(visible=True)
+
+    def _open_sidebar():
+        return gr.update(visible=True), gr.update(visible=False)
+
+    sidebar_toggle.click(fn=_close_sidebar, outputs=[sidebar_col, sidebar_open_btn])
+    sidebar_open_btn.click(fn=_open_sidebar, outputs=[sidebar_col, sidebar_open_btn])
+
+    # ── Connect wiring ──
+    load_btn.click(
+        fn=_load_settings_safe,
+        inputs=lang_state,
+        outputs=status_box,
+    )
+
+    # ── Template selection ──
+    def _on_template_select(tpl_name, lang):
+        prompt = _template_to_prompt(tpl_name, lang)
+        return gr.update(value=prompt)
+
+    template_dd.change(
+        fn=_on_template_select,
+        inputs=[template_dd, lang_state],
+        outputs=user_input,
+    )
+
+    # ── Lang switch wiring ──
+    def _on_lang_change(choice):
+        lang = "zh" if choice == "中文" else "en"
+        return (lang, *_switch_lang(lang))
+
+    lang_dd.change(
+        fn=_on_lang_change,
+        inputs=[lang_dd],
+        outputs=[
+            lang_state,
+            mode,
+            config_path,
+            load_btn,
+            status_box,
+            user_input,
+            demo_btn,
+            new_chat_btn,
+            history_dd,
+            chatbot,
+            export_btn,
+            template_dd,
+            rename_btn,
+            delete_btn,
+            rename_input,
+        ],
+    )
+
+    # ── Stop handler ──
+    def _handle_stop(lang):
+        c = collector_holder.get("current")
+        if c and not c.done:
+            c.on_event("final_answer", {"text": _t(lang, "stopped")})
+        return gr.update(visible=True), gr.update(visible=False)
+
+    stop_btn.click(
+        fn=_handle_stop,
+        inputs=[lang_state],
+        outputs=[send_btn, stop_btn],
+    )
+
+    # ── Action wiring ──
+    def _show_stop():
+        return gr.update(visible=False), gr.update(visible=True)
+
+    def _show_send():
+        return gr.update(visible=True), gr.update(visible=False)
+
+    submit_io = dict(
+        fn=_handle_submit,
+        inputs=[user_input, chatbot, mode, config_path, lang_state, session_state],
+        outputs=[chatbot, session_state, history_dd],
+    )
+    def _post_submit():
+        return "", gr.update(value=""), gr.update(visible=True), gr.update(visible=False)
+
+    send_btn.click(fn=_show_stop, outputs=[send_btn, stop_btn]) \
+        .then(**submit_io) \
+        .then(fn=_post_submit, outputs=[user_input, template_dd, send_btn, stop_btn])
+    user_input.submit(fn=_show_stop, outputs=[send_btn, stop_btn]) \
+        .then(**submit_io) \
+        .then(fn=_post_submit, outputs=[user_input, template_dd, send_btn, stop_btn])
+
+    demo_btn.click(
+        fn=_handle_demo,
+        inputs=[user_input, chatbot, config_path, lang_state, session_state],
+        outputs=[chatbot, session_state, history_dd],
+    )
+
+    # ── Sidebar wiring ──
+    new_chat_btn.click(
+        fn=_new_chat,
+        inputs=lang_state,
+        outputs=[session_state, chatbot, history_dd],
+    )
+
+    history_dd.change(
+        fn=_load_history,
+        inputs=[history_dd, lang_state],
+        outputs=[chatbot, session_state],
+    ).then(
+        fn=_show_actions,
+        inputs=history_dd,
+        outputs=[action_row, rename_row],
+    )
+
+    delete_btn.click(
+        fn=_do_delete,
+        inputs=[session_state, lang_state],
+        outputs=[session_state, chatbot, history_dd, action_row, rename_row],
+    )
+
+    rename_btn.click(
+        fn=_open_rename,
+        inputs=session_state,
+        outputs=[action_row, rename_row, rename_input],
+    )
+
+    rename_ok.click(
+        fn=_confirm_rename,
+        inputs=[session_state, rename_input],
+        outputs=[history_dd, action_row, rename_row],
+    )
+
+    rename_cancel.click(
+        fn=_cancel_rename,
+        outputs=[action_row, rename_row],
+    )
+
+    def _handle_export(chat_history, sid, lang):
+        if not chat_history:
+            raise gr.Error(_t(lang, "export_empty"))
+        agent = agent_holder.get("agent")
+        configs = list(agent.context.get("created_configs", [])) if agent else []
+        path = _export_session(
+            chat_history, sid or "export", configs,
+            settings=settings_holder.get("current"),
         )
+        if not path:
+            raise gr.Error(_t(lang, "export_empty"))
+        return path
 
-        with gr.Row(elem_classes=["st-input-row"]):
-            file_upload = gr.UploadButton(
-                "+",
-                file_types=[".conf", ".hocon", ".config", ".json"],
-                size="sm",
-                scale=0,
-                min_width=40,
-                elem_classes=["st-btn-upload"],
-            )
-            user_input = gr.Textbox(
-                placeholder=_t(lang, "input_placeholder"),
-                show_label=False,
-                scale=8,
-                lines=1,
-                elem_classes=["st-input"],
-            )
-            demo_btn = gr.Button(
-                _t(lang, "demo"),
-                variant="secondary",
-                size="sm",
-                scale=1,
-                elem_classes=["st-btn-demo"],
-            )
-            send_btn = gr.Button(
-                "➤",
-                variant="primary",
-                size="sm",
-                scale=0,
-                min_width=48,
-                elem_classes=["st-btn-send"],
-            )
-            stop_btn = gr.Button(
-                "■",
-                variant="stop",
-                size="sm",
-                scale=0,
-                min_width=48,
-                visible=False,
-                elem_classes=["st-btn-stop"],
-            )
+    export_btn.click(
+        fn=_handle_export,
+        inputs=[chatbot, session_state, lang_state],
+        outputs=export_btn,
+    )
 
-        # ── Connect wiring ──
-        load_btn.click(
-            fn=_load_settings_safe,
-            inputs=lang_state,
-            outputs=status_box,
-        )
+    # ── File upload handler ──
+    def _handle_file_upload(file_obj):
+        if file_obj is None:
+            return gr.update()
+        import shutil
+        src = Path(file_obj.name if hasattr(file_obj, 'name') else str(file_obj))
+        safe_name = re.sub(r'[^\w.\-]', '_', src.name)
+        dest_dir = Path("configs")
+        dest_dir.mkdir(exist_ok=True)
+        dest = dest_dir / safe_name
+        shutil.copy2(str(src), str(dest))
+        return gr.update(value=str(dest))
 
-        # ── Template selection ──
-        def _on_template_select(tpl_name, lang):
-            prompt = _template_to_prompt(tpl_name, lang)
-            return gr.update(value=prompt)
+    file_upload.upload(
+        fn=_handle_file_upload,
+        inputs=file_upload,
+        outputs=config_path,
+    )
 
-        template_dd.change(
-            fn=_on_template_select,
-            inputs=[template_dd, lang_state],
-            outputs=user_input,
-        )
+    # ── Home button ──
+    home_btn.click(fn=None, js="() => { window.location.href = '/'; }")
 
-        # ── Lang switch wiring ──
-        def _on_lang_change(choice):
-            lang = "zh" if choice == "中文" else "en"
-            return (lang, *_switch_lang(lang))
+    # ── Page load ──
+    app.load(fn=_on_page_load, outputs=history_dd)
 
-        lang_dd.change(
-            fn=_on_lang_change,
-            inputs=[lang_dd],
-            outputs=[
-                lang_state,
-                mode,
-                config_path,
-                load_btn,
-                status_box,
-                user_input,
-                demo_btn,
-                new_chat_btn,
-                history_dd,
-                chatbot,
-                export_btn,
-                template_dd,
-            ],
-        )
+    # ── Hint card click (event delegation — survives language switch) ──
+    app.load(
+        fn=None,
+        js="""() => {
+            if (document._hintDelegated) return;
+            document._hintDelegated = true;
+            document.addEventListener('click', e => {
+                const card = e.target.closest('.st-hint-card');
+                if (!card) return;
+                const input = document.querySelector('.st-input textarea');
+                if (input) {
+                    const nativeSetter = Object.getOwnPropertyDescriptor(
+                        window.HTMLTextAreaElement.prototype, 'value').set;
+                    nativeSetter.call(input, card.textContent.trim());
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            });
+        }""",
+    )
 
-        # ── Stop handler ──
-        def _handle_stop(lang):
-            c = collector_holder.get("current")
-            if c and not c.done:
-                c.on_event("final_answer", {"text": _t(lang, "stopped")})
-            return gr.update(visible=True), gr.update(visible=False)
-
-        stop_btn.click(
-            fn=_handle_stop,
-            inputs=[lang_state],
-            outputs=[send_btn, stop_btn],
-        )
-
-        # ── Action wiring ──
-        def _show_stop():
-            return gr.update(visible=False), gr.update(visible=True)
-
-        def _show_send():
-            return gr.update(visible=True), gr.update(visible=False)
-
-        submit_io = dict(
-            fn=_handle_submit,
-            inputs=[user_input, chatbot, mode, config_path, lang_state, session_state],
-            outputs=[chatbot, session_state, history_dd],
-        )
-        def _post_submit():
-            return "", gr.update(value=""), gr.update(visible=True), gr.update(visible=False)
-
-        send_btn.click(fn=_show_stop, outputs=[send_btn, stop_btn]) \
-            .then(**submit_io) \
-            .then(fn=_post_submit, outputs=[user_input, template_dd, send_btn, stop_btn])
-        user_input.submit(fn=_show_stop, outputs=[send_btn, stop_btn]) \
-            .then(**submit_io) \
-            .then(fn=_post_submit, outputs=[user_input, template_dd, send_btn, stop_btn])
-
-        demo_btn.click(
-            fn=_handle_demo,
-            inputs=[user_input, chatbot, config_path, lang_state, session_state],
-            outputs=[chatbot, session_state, history_dd],
-        )
-
-        # ── Sidebar wiring ──
-        new_chat_btn.click(
-            fn=_new_chat,
-            inputs=lang_state,
-            outputs=[session_state, chatbot, history_dd],
-        )
-
-        history_dd.change(
-            fn=_load_history,
-            inputs=[history_dd, lang_state],
-            outputs=[chatbot, session_state],
-        ).then(
-            fn=_show_actions,
-            inputs=history_dd,
-            outputs=[action_row, rename_row],
-        )
-
-        delete_btn.click(
-            fn=_do_delete,
-            inputs=[session_state, lang_state],
-            outputs=[session_state, chatbot, history_dd, action_row, rename_row],
-        )
-
-        rename_btn.click(
-            fn=_open_rename,
-            inputs=session_state,
-            outputs=[action_row, rename_row, rename_input],
-        )
-
-        rename_ok.click(
-            fn=_confirm_rename,
-            inputs=[session_state, rename_input],
-            outputs=[history_dd, action_row, rename_row],
-        )
-
-        rename_cancel.click(
-            fn=_cancel_rename,
-            outputs=[action_row, rename_row],
-        )
-
-        def _handle_export(chat_history, sid, lang):
-            if not chat_history:
-                raise gr.Error(_t(lang, "export_empty"))
-            agent = agent_holder.get("agent")
-            configs = list(agent.context.get("created_configs", [])) if agent else []
-            path = _export_session(
-                chat_history, sid or "export", configs,
-                settings=settings_holder.get("current"),
-            )
-            if not path:
-                raise gr.Error(_t(lang, "export_empty"))
-            return path
-
-        export_btn.click(
-            fn=_handle_export,
-            inputs=[chatbot, session_state, lang_state],
-            outputs=export_btn,
-        )
-
-        # ── File upload handler ──
-        def _handle_file_upload(file_obj):
-            if file_obj is None:
-                return gr.update()
-            import shutil
-            src = Path(file_obj.name if hasattr(file_obj, 'name') else str(file_obj))
-            safe_name = re.sub(r'[^\w.\-]', '_', src.name)
-            dest_dir = Path("configs")
-            dest_dir.mkdir(exist_ok=True)
-            dest = dest_dir / safe_name
-            shutil.copy2(str(src), str(dest))
-            return gr.update(value=str(dest))
-
-        file_upload.upload(
-            fn=_handle_file_upload,
-            inputs=file_upload,
-            outputs=config_path,
-        )
-
-        # ── Hint card click → fill input ──
-        chatbot.change(
-            fn=None,
-            js="""() => {
-                document.querySelectorAll('.st-hint-card').forEach(card => {
-                    if (!card.dataset.bound) {
-                        card.dataset.bound = '1';
-                        card.style.cursor = 'pointer';
-                        card.addEventListener('click', () => {
-                            const input = document.querySelector('.st-input textarea');
-                            if (input) {
-                                const nativeSetter = Object.getOwnPropertyDescriptor(
-                                    window.HTMLTextAreaElement.prototype, 'value').set;
-                                nativeSetter.call(input, card.textContent.trim());
-                                input.dispatchEvent(new Event('input', { bubbles: true }));
-                            }
-                        });
-                    }
-                });
-            }""",
-        )
-
-        # ── Page load ──
-        app.load(fn=_on_page_load, outputs=history_dd)
-
-    return app
 
 
 # ------------------------------------------------------------------
@@ -1228,7 +1269,9 @@ def create_ui() -> gr.Blocks:
 # ------------------------------------------------------------------
 
 _CUSTOM_CSS = """
-/* ── Global ── */
+/* ══════════════════════════════════════════
+   Global — full viewport, no scroll on body
+   ══════════════════════════════════════════ */
 .gradio-container {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif !important;
     font-size: 11px !important;
@@ -1238,21 +1281,257 @@ _CUSTOM_CSS = """
     height: 100vh !important;
     overflow: hidden !important;
 }
+.gradio-container > .main,
 .gradio-container > .main > .wrap {
     height: 100vh !important;
     overflow: hidden !important;
+    padding: 0 !important;
+    gap: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
 }
 footer { display: none !important; }
 
-/* ── Chatbot — borderless, full width, fill viewport ── */
+/* ══════════════════════════════════════════════
+   Sidebar — Claude-style push layout (Column)
+   ══════════════════════════════════════════════ */
+/* Page row: sidebar + main side by side. */
+.st-page-row {
+    display: flex !important;
+    flex-direction: row !important;
+    position: fixed !important;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 100;
+    overflow: hidden !important;
+    gap: 0 !important;
+    padding: 0 !important;
+    flex-wrap: nowrap !important;
+}
+/* Left sidebar column */
+.st-sidebar {
+    width: 260px !important;
+    min-width: 260px !important;
+    max-width: 260px !important;
+    height: 100% !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    background: #f9fafb !important;
+    border-right: 1px solid #e5e7eb !important;
+    padding: 10px 12px !important;
+    flex-shrink: 0 !important;
+    gap: 4px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+}
+/* Force ALL divs at any depth to column — catches any Gradio nesting */
+.st-sidebar div {
+    display: flex !important;
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+}
+/* Direct children: full-width block */
+.st-sidebar > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+    flex-shrink: 0 !important;
+}
+/* Re-allow horizontal layout for Row containers */
+.st-sidebar .row,
+.st-sidebar .st-sidebar-row,
+.st-sidebar .st-filter-actions,
+.st-sidebar .st-filter-confirm-row,
+.st-sidebar .st-action-row,
+.st-sidebar .st-rename-row {
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+}
+/* Leaf elements: revert to normal display */
+.st-sidebar button,
+.st-sidebar input,
+.st-sidebar textarea,
+.st-sidebar select,
+.st-sidebar label:not(.st-table-filter label),
+.st-sidebar span,
+.st-sidebar svg,
+.st-sidebar p,
+.st-sidebar h1, .st-sidebar h2, .st-sidebar h3 {
+    display: revert !important;
+    flex-direction: initial !important;
+    gap: initial !important;
+    min-width: revert !important;
+}
+/* CheckboxGroup labels: horizontal for checkbox + text */
+.st-sidebar .st-table-filter label {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0 !important;
+}
+.st-sidebar-toggle {
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    height: 32px !important;
+    padding: 0 !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 6px !important;
+    background: #fff !important;
+    font-size: 14px !important;
+    cursor: pointer !important;
+    margin-bottom: 6px !important;
+}
+.st-sidebar-toggle:hover { background: #f3f4f6 !important; }
+/* Open sidebar button (visible when sidebar hidden) */
+.st-sidebar-open-btn {
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    height: 28px !important;
+    padding: 0 !important;
+    border: 1px solid #e5e7eb !important;
+    border-radius: 6px !important;
+    background: #fff !important;
+    font-size: 14px !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+}
+.st-sidebar-open-btn:hover { background: #f3f4f6 !important; }
+/* Right main content: fill remaining width */
+.st-main {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 0 !important;
+}
+/* Hide Gradio's native sidebar if accidentally present */
+.gradio-sidebar { display: none !important; }
+
+/* ══════════════════════════
+   Hub landing page
+   ══════════════════════════ */
+.st-hub {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    padding: 24px 16px;
+    position: relative;
+}
+.st-hub-lang-row {
+    position: absolute;
+    top: 16px;
+    right: 24px;
+}
+.st-hub-lang-row select {
+    font-size: 11px;
+    padding: 4px 24px 4px 10px;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    height: 28px;
+    cursor: pointer;
+    outline: none;
+}
+.st-hub-lang-row select:hover { border-color: #f76707; }
+.st-hub-header { text-align: center; margin-bottom: 36px; }
+.st-hub-title {
+    font-size: 26px;
+    font-weight: 800;
+    color: #1f2937;
+    letter-spacing: -0.5px;
+}
+.st-hub-subtitle {
+    font-size: 13px;
+    color: #6b7280;
+    margin-top: 8px;
+}
+.st-hub-grid {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 900px;
+}
+.st-hub-card {
+    display: flex;
+    flex-direction: column;
+    width: 250px;
+    padding: 22px 20px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    text-decoration: none !important;
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+    cursor: pointer;
+}
+.st-hub-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,.08);
+    border-color: #d1d5db;
+}
+.st-hub-card-soon {
+    cursor: default;
+    border-style: dashed;
+    opacity: .8;
+}
+.st-hub-card-soon:hover { transform: none; box-shadow: none; }
+.st-hub-logo {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 14px;
+    letter-spacing: -0.5px;
+}
+.st-hub-card-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #1f2937;
+    margin-bottom: 6px;
+}
+.st-hub-zh {
+    font-size: 11px;
+    font-weight: 500;
+    color: #9ca3af;
+}
+.st-hub-card-desc {
+    font-size: 11px;
+    color: #6b7280;
+    line-height: 1.6;
+    flex-grow: 1;
+}
+.st-hub-enter {
+    margin-top: 14px;
+    font-size: 11px;
+    font-weight: 600;
+}
+/* ══════════════════════════════════════════
+   Chatbot — fill remaining height exactly
+   ══════════════════════════════════════════ */
 .st-chatbot {
     border: none !important;
     background: #fff !important;
     border-radius: 0 !important;
     box-shadow: none !important;
-    flex-grow: 1 !important;
-    min-height: 0 !important;
     overflow-y: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
 }
 .st-chatbot .message {
     font-size: 11px !important;
@@ -1288,13 +1567,22 @@ footer { display: none !important; }
     overflow-x: auto !important;
 }
 
-/* ── Input row — full width with padding ── */
-.st-input-row {
-    padding: 4px 20px 10px !important;
+/* ── Input row — pinned to bottom of viewport ── */
+.st-input-row,
+.st-input-row.row {
+    padding: 6px 20px 10px !important;
     gap: 6px !important;
     align-items: flex-end !important;
     border-top: 1px solid #f0f0f0;
+    flex: 0 0 auto !important;
     flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    height: auto !important;
+    max-height: 60px !important;
+    min-height: 44px !important;
+    background: #fff !important;
+    overflow: visible !important;
+    flex-direction: row !important;
 }
 .st-input textarea {
     border-radius: 20px !important;
@@ -1419,13 +1707,13 @@ footer { display: none !important; }
     max-width: 540px;
 }
 .st-hint-card {
-    padding: 7px 12px;
+    padding: 9px 14px;
     background: #fff;
     border: 1px solid #e5e7eb;
     border-radius: 8px;
-    font-size: 11px;
+    font-size: 13px;
     color: #4b5563;
-    cursor: default;
+    cursor: pointer;
     transition: border-color .15s;
 }
 .st-hint-card:hover {
@@ -1490,6 +1778,92 @@ footer { display: none !important; }
     border-radius: 8px !important;
     margin-top: 2px !important;
 }
+.st-sidebar-row {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    gap: 6px !important;
+    width: 100% !important;
+}
+.st-sidebar-row > * {
+    flex: 1 !important;
+    min-width: 0 !important;
+}
+.st-filter-accordion {
+    margin-top: 4px !important;
+    overflow: hidden !important;
+    width: 100% !important;
+    display: block !important;
+}
+.st-table-search textarea {
+    width: 100% !important;
+    font-size: 12px !important;
+    padding: 4px 8px !important;
+    min-height: 28px !important;
+    border-radius: 6px !important;
+}
+.st-table-search { margin-bottom: 2px !important; }
+.st-table-filter {
+    width: 100% !important;
+    max-height: 200px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    border: 1px solid #f0f0f0 !important;
+    border-radius: 6px !important;
+    padding: 4px 6px !important;
+}
+.st-table-filter .wrap {
+    flex-direction: column !important;
+    flex-wrap: nowrap !important;
+    gap: 1px !important;
+    width: 100% !important;
+}
+.st-table-filter label {
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    font-size: 12px !important;
+    line-height: 1.5 !important;
+    padding: 2px 0 !important;
+    cursor: pointer !important;
+}
+.st-table-filter label span {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    min-width: 0 !important;
+}
+.st-table-filter label:hover { background: #f5f5f5 !important; border-radius: 4px !important; }
+.st-table-filter input[type="checkbox"] {
+    width: 14px !important; height: 14px !important;
+    min-width: 14px !important;
+    flex-shrink: 0 !important;
+    margin-right: 6px !important;
+}
+.st-filter-actions {
+    gap: 4px !important;
+    flex-wrap: nowrap !important;
+}
+.st-filter-act-btn {
+    font-size: 11px !important;
+    padding: 2px 6px !important;
+    min-width: 0 !important;
+    border-radius: 4px !important;
+    flex: 1 !important;
+}
+.st-filter-confirm-row {
+    gap: 4px !important;
+    margin-top: 2px !important;
+    flex-wrap: nowrap !important;
+}
+.st-filter-confirm-btn, .st-filter-cancel-btn {
+    font-size: 12px !important;
+    padding: 4px 10px !important;
+    border-radius: 6px !important;
+    min-width: 0 !important;
+    flex: 1 !important;
+}
 .st-sidebar-control label {
     font-size: 10px !important;
     font-weight: 600 !important;
@@ -1499,23 +1873,27 @@ footer { display: none !important; }
 .st-sidebar-control select { font-size: 10px !important; }
 .st-sidebar-status input { font-size: 10px !important; }
 
-/* ── Top bar with language switcher (floating) ── */
-.st-topbar-row {
-    position: absolute !important;
-    top: 8px !important;
-    right: 16px !important;
-    z-index: 100 !important;
-    padding: 0 !important;
-    gap: 0 !important;
-    min-height: 0 !important;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
+/* ── Top bar with language switcher ── */
+.st-topbar-row,
+.st-topbar-row.row {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    padding: 6px 16px !important;
+    margin: 0 !important;
+    gap: 8px !important;
+    min-height: 36px !important;
+    max-height: 36px !important;
+    height: 36px !important;
+    flex: 0 0 36px !important;
+    background: #fff !important;
+    border-bottom: 1px solid #f0f0f0 !important;
+    overflow: visible !important;
     flex-wrap: nowrap !important;
-    width: auto !important;
 }
 .st-topbar-spacer {
-    display: none !important;
+    flex: 1 !important;
 }
 .st-lang-dd {
     max-width: 140px !important;
@@ -1536,16 +1914,96 @@ footer { display: none !important; }
     border-color: #f76707 !important;
 }
 
-/* ── Upload button (inline "+") ── */
-.st-btn-upload {
-    border-radius: 50% !important;
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
-    max-width: 34px !important;
-    font-size: 16px !important;
+/* ── Home button in topbar ── */
+.st-home-btn {
+    min-width: 32px !important;
+    max-width: 32px !important;
+    height: 28px !important;
     padding: 0 !important;
+    font-size: 14px !important;
+    border-radius: 6px !important;
+    border: 1px solid #e5e7eb !important;
+    background: #f9fafb !important;
+    cursor: pointer !important;
     flex-shrink: 0 !important;
+}
+.st-home-btn:hover {
+    border-color: #f76707 !important;
+    background: #fff7ed !important;
+}
+
+
+/* ── History page ── */
+.st-history-page {
+    padding: 28px 40px !important;
+    max-width: 960px !important;
+    margin: 0 auto !important;
+}
+.st-history-page h2 {
+    font-size: 20px !important;
+    font-weight: 700 !important;
+    color: #111827 !important;
+    margin-bottom: 4px !important;
+}
+.st-hist-toolbar {
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+}
+.st-hist-btn {
+    min-width: 0 !important;
+    padding: 5px 14px !important;
+    font-size: 12px !important;
+    border-radius: 6px !important;
+}
+.st-hist-sel-info {
+    min-height: 0 !important;
+    margin: 0 0 6px !important;
+}
+.st-hist-sel-info p {
+    font-size: 12px !important;
+    color: #6b7280 !important;
+    margin: 0 !important;
+}
+.st-history-page table {
+    font-size: 12px !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+}
+.st-history-page th {
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.3px !important;
+    color: #9ca3af !important;
+    background: #f9fafb !important;
+    padding: 10px 12px !important;
+    white-space: nowrap !important;
+    border-bottom: 2px solid #e5e7eb !important;
+}
+.st-history-page td {
+    padding: 10px 12px !important;
+    border-bottom: 1px solid #f3f4f6 !important;
+    vertical-align: middle !important;
+    line-height: 1.5 !important;
+    color: #374151 !important;
+}
+.st-history-page tr:hover td {
+    background: #f0f7ff !important;
+    cursor: pointer;
+}
+.st-history-page td:nth-child(1) {
+    color: #9ca3af !important;
+    font-size: 11px !important;
+}
+.st-history-page td:nth-child(2) {
+    color: #6b7280 !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+}
+.st-history-page td:nth-child(6) {
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace !important;
+    font-size: 11px !important;
+    color: #6b7280 !important;
 }
 
 /* ── Responsive sizing ── */
@@ -1555,12 +2013,42 @@ label { font-size: 10px !important; }
 """
 
 
+def _kill_port(port: int) -> bool:
+    """Kill whatever process is listening on *port*. Returns True if killed."""
+    import subprocess, sys
+    if sys.platform != "win32":
+        r = subprocess.run(
+            ["lsof", "-ti", f":{port}"], capture_output=True, text=True,
+        )
+        for pid in r.stdout.split():
+            subprocess.run(["kill", "-9", pid])
+        return bool(r.stdout.strip())
+    r = subprocess.run(
+        ["netstat", "-ano"], capture_output=True, text=True,
+    )
+    for line in r.stdout.splitlines():
+        if f":{port}" in line and "LISTENING" in line:
+            pid = line.strip().split()[-1]
+            subprocess.run(["taskkill", "/F", "/PID", pid],
+                           capture_output=True)
+            return True
+    return False
+
+
 def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False) -> None:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        if s.connect_ex((host, port)) == 0:
+            print(f"[ui] Port {port} in use — killing old process...")
+            _kill_port(port)
+            import time; time.sleep(0.5)
+
     app.launch(
         server_name=host,
         server_port=port,
         share=share,
         inbrowser=True,
+        css=_CUSTOM_CSS,
     )
 
 
