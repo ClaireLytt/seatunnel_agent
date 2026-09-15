@@ -6,11 +6,19 @@ result) across tool calls within one agent session.
 
 from __future__ import annotations
 
+import difflib
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from .executor import HiveConfig, HiveExecutor, QueryResult
+from .executor import (
+    PARTITION_ENGINES,
+    DatabaseConfig,
+    DatabaseExecutor,
+    QueryResult,
+    create_executor,
+)
 from .exporter import export_csv
 from .matcher import match_tables
 from .partition import classify_table, has_partition_filter
@@ -78,9 +86,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "execute_sql",
         "description": (
-            "Validate and execute a SELECT statement on Hive. Rejects "
-            "non-SELECT statements and non-whitelisted tables; enforces a "
-            "row LIMIT. Returns columns, preview rows, row count and elapsed "
+            "Validate and execute a SELECT statement on the connected database. "
+            "Rejects non-SELECT statements and non-whitelisted tables; enforces "
+            "a row LIMIT. Returns columns, preview rows, row count and elapsed "
             "time. The result is kept for export_csv."
         ),
         "input_schema": {
@@ -131,23 +139,24 @@ class Text2SQLRuntime:
     """Shared state for one Text2SQL session."""
 
     store: SchemaStore
-    hive: HiveConfig | None = None
+    ds_type: str = "hive"
+    db_config: DatabaseConfig | None = None
     logger: QueryLogger = field(default_factory=QueryLogger)
     default_limit: int = 1000
     last_result: QueryResult | None = None
     last_sql: str = ""
-    _executor: HiveExecutor | None = None
+    _executor: DatabaseExecutor | None = None
 
     @property
-    def executor(self) -> HiveExecutor:
+    def executor(self) -> DatabaseExecutor:
         if self._executor is None:
-            if self.hive is None or not self.hive.host:
+            if self.db_config is None or not self.db_config.host:
                 raise RuntimeError(
-                    "Hive connection is not configured. Set HIVE_HOST "
-                    "(and optionally HIVE_PORT/HIVE_DATABASE) or fill in the "
-                    "connection fields in the UI."
+                    "Database connection is not configured. "
+                    "Fill in the connection fields in the UI or set "
+                    "the corresponding environment variables."
                 )
-            self._executor = HiveExecutor(self.hive)
+            self._executor = create_executor(self.db_config)
         return self._executor
 
 
@@ -193,6 +202,8 @@ def _tool_get_table_schema(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str
 
 
 def _tool_get_max_partition(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    if rt.ds_type not in PARTITION_ENGINES:
+        return {"error": f"Partition queries are not supported for {rt.ds_type}"}
     name = inp.get("table", "")
     table = rt.store.get(name)
     if table is None:
@@ -224,12 +235,13 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
         return {"error": "SQL rejected: " + "; ".join(validation.errors)}
 
     missing_partition = []
-    for tname in validation.tables:
-        table = rt.store.get(tname)
-        if table and table.is_partitioned:
-            pcol = table.partition_columns[0].name
-            if not has_partition_filter(sql, pcol):
-                missing_partition.append(f"{table.full_name} (partition column: {pcol})")
+    if rt.ds_type in PARTITION_ENGINES:
+        for tname in validation.tables:
+            table = rt.store.get(tname)
+            if table and table.is_partitioned:
+                pcol = table.partition_columns[0].name
+                if not has_partition_filter(sql, pcol):
+                    missing_partition.append(f"{table.full_name} (partition column: {pcol})")
     if missing_partition:
         msg = (
             "Partitioned table(s) missing partition filter: "
@@ -243,7 +255,7 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
         )
         return {"error": msg}
 
-    final_sql = enforce_limit(sql, default_limit=rt.default_limit)
+    final_sql = enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type)
 
     try:
         result = rt.executor.run(final_sql, max_rows=rt.default_limit)
@@ -252,7 +264,11 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
             user_query=user_query, generated_sql=final_sql, status="error",
             matched_tables=validation.tables, error=str(exc),
         )
-        return {"error": f"Execution failed: {exc}", "sql": final_sql}
+        err: dict[str, Any] = {"error": f"Execution failed: {exc}", "sql": final_sql}
+        suggestion = _suggest_column(str(exc), rt)
+        if suggestion:
+            err["suggestion"] = suggestion
+        return err
 
     rt.last_result = result
     rt.last_sql = final_sql
@@ -292,6 +308,32 @@ def _tool_export_csv(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]
         "csv_path": path,
         "row_count": rt.last_result.row_count,
     }
+
+
+_COL_NOT_FOUND_RE = re.compile(
+    r"(?:cannot resolve|column not found|unknown column|no such column)"
+    r"[:\s]*['\"`]?(\w+)['\"`]?",
+    re.IGNORECASE,
+)
+
+
+def _suggest_column(error_msg: str, rt: Text2SQLRuntime) -> str | None:
+    """If the error names a missing column, suggest the closest match."""
+    m = _COL_NOT_FOUND_RE.search(error_msg)
+    if not m:
+        return None
+    bad_col = m.group(1).lower()
+    all_cols: list[str] = []
+    for tname in rt.store.table_names:
+        table = rt.store.get(tname)
+        if table:
+            for c in table.columns + table.partition_columns:
+                if c.name.lower() not in all_cols:
+                    all_cols.append(c.name.lower())
+    matches = difflib.get_close_matches(bad_col, all_cols, n=3, cutoff=0.6)
+    if matches:
+        return f"Did you mean: {', '.join(matches)}?"
+    return None
 
 
 _TOOL_HANDLERS = {

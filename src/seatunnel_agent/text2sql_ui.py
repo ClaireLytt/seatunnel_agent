@@ -17,157 +17,30 @@ import gradio as gr
 
 from .config import Settings, load_settings
 from .text2sql.executor import (
-    HiveConfig,
-    hive_config_from_env,
+    DS_DEFAULTS,
+    DS_TYPES,
+    DIALECT_NAMES,
+    DatabaseConfig,
+    config_from_env,
+    create_executor,
     schema_ddl_path_from_env,
+)
+from .text2sql.favorites import FavoritesStore
+from .text2sql.i18n import (
+    HINTS_I18N,
+    T2S_I18N,
+    TOOL_EMOJI,
+    TOOL_LABEL_I18N,
+    t2s as _t2s,
 )
 from .text2sql.qlog import QueryLogger
 from .text2sql.schema import SchemaStore
 
+_TOOL_EMOJI = TOOL_EMOJI
+_TOOL_LABEL_I18N = TOOL_LABEL_I18N
 
-_TOOL_EMOJI = {
-    "match_tables": "\U0001f50d",
-    "get_table_schema": "\U0001f4d6",
-    "get_max_partition": "\U0001f4c5",
-    "execute_sql": "⚡",
-    "export_csv": "\U0001f4be",
-}
-
-_TOOL_LABEL_I18N: dict[str, dict[str, str]] = {
-    "en": {
-        "match_tables": "Match Tables",
-        "get_table_schema": "Get Table Schema",
-        "get_max_partition": "Get Max Partition",
-        "execute_sql": "Execute SQL",
-        "export_csv": "Export CSV",
-    },
-    "zh": {
-        "match_tables": "匹配候选表",
-        "get_table_schema": "读取表结构",
-        "get_max_partition": "获取最大分区",
-        "execute_sql": "执行 SQL",
-        "export_csv": "导出 CSV",
-    },
-}
-
-_T2S_I18N: dict[str, dict[str, str]] = {
-    "en": {
-        "sidebar_title": "### \U0001f5c4 Data Source Config",
-        "schema_label": "Schema DDL Path (optional whitelist)",
-        "loaded_from_hive": "Loaded {n} tables from Hive ({db})",
-        "hive_host": "Hive Host",
-        "port": "Port",
-        "database": "Database",
-        "connect": "Connect",
-        "status_label": "Status",
-        "status_default": "Not connected",
-        "new_chat": "+ New Chat",
-        "export_csv": "Export CSV",
-        "history": "\U0001f4dc Query History",
-        "refresh": "Refresh",
-        "input_placeholder": "Describe the data you want to query, e.g.: show total sales by city...",
-        "connect_first": "Please click **Connect** on the left sidebar to load Schema and Hive config first.",
-        "no_export": "No query result to export. Please run a query first.",
-        "placeholder_title": "Smart Data Query · Query Hive data with natural language",
-        "candidates": "Candidate Tables",
-        "score": "score",
-        "type": "type",
-        "matched_cols": "matched columns",
-        "table_type": "Type",
-        "cols_count": "columns",
-        "partitioned": "partitioned",
-        "max_partition": "Max Partition",
-        "exec_success": "SQL Executed",
-        "elapsed": "elapsed",
-        "rows": "rows",
-        "truncated": "(truncated)",
-        "csv_exported": "CSV Exported",
-        "no_result": "(No results)",
-        "reload_schema": "Reload Schema",
-        "schema_reloaded": "Schema reloaded: {n} tables",
-        "thinking": "Thinking",
-        "generating": "Generating...",
-        "executing": "Executing...",
-        "done": "Done, elapsed",
-        "stopped": "Stopped by user.",
-        "loaded_tables": "Loaded {n} tables",
-        "hive_not_configured": "Hive not configured (SQL generation only)",
-        "model": "Model",
-        "schema_not_found": "Schema file not found",
-        "schema_parse_fail": "Schema parse failed",
-        "no_tables": "No tables parsed from",
-        "llm_load_fail": "LLM config load failed",
-        "port_not_number": "Port must be a number",
-        "failed": "failed",
-        "select_tables": "Tables ({n})",
-        "filtered_tables": "Filtered to {n} tables",
-        "select_all": "All",
-        "deselect_all": "None",
-        "confirm": "Confirm",
-        "cancel": "Cancel",
-        "search_placeholder": "🔍 Search tables...",
-    },
-    "zh": {
-        "sidebar_title": "### \U0001f5c4 数据源配置",
-        "schema_label": "Schema DDL 路径（可选白名单）",
-        "loaded_from_hive": "从 Hive ({db}) 加载了 {n} 张表",
-        "hive_host": "Hive Host",
-        "port": "Port",
-        "database": "Database",
-        "connect": "连接 / Connect",
-        "status_label": "状态",
-        "status_default": "未连接",
-        "new_chat": "+ 新建对话",
-        "export_csv": "导出结果 CSV",
-        "history": "\U0001f4dc 历史查询",
-        "refresh": "刷新",
-        "input_placeholder": "用自然语言描述你要查的数据，例如：查最近30天的入库单量...",
-        "connect_first": "请先点击左侧 **连接 / Connect** 加载 Schema 和 Hive 配置。",
-        "no_export": "没有可导出的查询结果，请先执行一次查询。",
-        "placeholder_title": "智能问数 · 用自然语言查 Hive 数据",
-        "candidates": "候选表",
-        "score": "得分",
-        "type": "类型",
-        "matched_cols": "命中字段",
-        "table_type": "类型",
-        "cols_count": "字段数",
-        "partitioned": "分区表",
-        "max_partition": "最大分区",
-        "exec_success": "SQL 执行成功",
-        "elapsed": "耗时",
-        "rows": "行",
-        "truncated": "（已截断）",
-        "csv_exported": "CSV 已导出",
-        "no_result": "(无结果)",
-        "reload_schema": "重新加载 Schema",
-        "schema_reloaded": "Schema 已重新加载: {n} 张表",
-        "thinking": "Thinking",
-        "generating": "生成中...",
-        "executing": "执行中...",
-        "done": "完成，耗时",
-        "stopped": "已被用户中断。",
-        "loaded_tables": "已加载 {n} 张表",
-        "hive_not_configured": "Hive 未配置（仅可生成 SQL）",
-        "model": "模型",
-        "schema_not_found": "Schema 文件不存在",
-        "schema_parse_fail": "Schema 解析失败",
-        "no_tables": "未从以下文件解析到任何表",
-        "llm_load_fail": "LLM 配置加载失败",
-        "port_not_number": "端口号必须是数字",
-        "failed": "失败",
-        "select_tables": "查询表 ({n})",
-        "filtered_tables": "已筛选 {n} 张表",
-        "select_all": "全选",
-        "deselect_all": "清空",
-        "confirm": "确认",
-        "cancel": "取消",
-        "search_placeholder": "🔍 搜索表...",
-    },
-}
-
-
-def _t2s(lang: str, key: str) -> str:
-    return _T2S_I18N.get(lang, _T2S_I18N["en"]).get(key, _T2S_I18N["en"].get(key, key))
+_T2S_I18N = T2S_I18N
+_HINTS_I18N = HINTS_I18N
 
 
 def _md_table(columns: list[str], rows: list[list[Any]], max_rows: int = 20, lang: str = "en") -> str:
@@ -440,18 +313,126 @@ def render_history_page() -> None:
     clear_btn.click(fn=_clear, outputs=[history_table, selected_state, selected_info])
 
 
-_HINTS_I18N: dict[str, list[str]] = {
-    "en": [
-        "Show all student information",
-        "Top 3 students by score",
-        "Total sales amount by city",
-    ],
-    "zh": [
-        "查询所有学生信息",
-        "成绩最高的3个学生",
-        "每个城市的销售总额",
-    ],
-}
+def _fav_rows(store: FavoritesStore) -> list[list[str]]:
+    rows = []
+    for i, e in enumerate(store.list()):
+        sql = e.get("sql", "")
+        if len(sql) > 120:
+            sql = sql[:120] + "..."
+        rows.append([
+            str(i),
+            e.get("name", ""),
+            e.get("ds_type", ""),
+            sql,
+            e.get("created_at", "").replace("T", " "),
+        ])
+    return rows
+
+
+def render_favorites_page() -> None:
+    """Full-page SQL favorites viewer."""
+    store = FavoritesStore()
+
+    with gr.Column(elem_classes=["st-history-page"]):
+        lang_state = gr.State("en")
+        with gr.Row(elem_classes=["st-topbar-row"]):
+            gr.HTML('<div class="st-topbar-spacer"></div>')
+            lang_dd = gr.Dropdown(
+                choices=["English", "中文"],
+                value="English",
+                show_label=False,
+                container=False,
+                min_width=140,
+                elem_classes=["st-lang-dd"],
+            )
+
+        title_md = gr.Markdown("## ⭐ SQL Favorites")
+
+        with gr.Row(elem_classes=["st-hist-toolbar"]):
+            back_btn = gr.Button("← Back", variant="secondary", size="sm",
+                                 elem_classes=["st-hist-btn"])
+            refresh_btn = gr.Button("↻ Refresh", variant="secondary", size="sm",
+                                    elem_classes=["st-hist-btn"])
+            delete_btn = gr.Button("✕ Delete Selected", variant="stop", size="sm",
+                                   elem_classes=["st-hist-btn"])
+            clear_btn = gr.Button("Clear All", variant="stop", size="sm",
+                                  elem_classes=["st-hist-btn"])
+
+        selected_state = gr.State([])
+        selected_info = gr.Markdown("", elem_classes=["st-hist-sel-info"])
+
+        fav_table = gr.Dataframe(
+            headers=["#", "Name", "Engine", "SQL", "Created"],
+            value=_fav_rows(store),
+            interactive=False,
+            wrap=True,
+            column_widths=["36px", "20%", "60px", "45%", "140px"],
+        )
+
+    def _on_select(evt: gr.SelectData, current: list):
+        current = list(current)
+        row = evt.index[0]
+        if row in current:
+            current.remove(row)
+        else:
+            current.append(row)
+        current.sort()
+        if current:
+            info = f"**{len(current)}** selected: #{', #'.join(str(r) for r in current)}"
+        else:
+            info = ""
+        return current, info
+
+    def _refresh():
+        return _fav_rows(store), [], ""
+
+    def _delete_selected(selected: list):
+        if selected:
+            items = store.list()
+            for idx in sorted(selected, reverse=True):
+                if 0 <= idx < len(items):
+                    store.delete(items[idx]["id"])
+        return _fav_rows(store), [], ""
+
+    def _clear():
+        for item in store.list():
+            store.delete(item["id"])
+        return [], [], ""
+
+    def _switch_lang(choice):
+        lang = "zh" if choice == "中文" else "en"
+        if lang == "zh":
+            return (lang,
+                    gr.update(value="## ⭐ SQL 收藏夹"),
+                    gr.update(value="← 返回"),
+                    gr.update(value="↻ 刷新"),
+                    gr.update(value="✕ 删除所选"),
+                    gr.update(value="清空全部"))
+        return (lang,
+                gr.update(value="## ⭐ SQL Favorites"),
+                gr.update(value="← Back"),
+                gr.update(value="↻ Refresh"),
+                gr.update(value="✕ Delete Selected"),
+                gr.update(value="Clear All"))
+
+    lang_dd.change(
+        fn=_switch_lang,
+        inputs=[lang_dd],
+        outputs=[lang_state, title_md, back_btn, refresh_btn, delete_btn, clear_btn],
+    )
+    fav_table.select(
+        fn=_on_select,
+        inputs=[selected_state],
+        outputs=[selected_state, selected_info],
+    )
+    back_btn.click(fn=None, js="() => { window.location.href = '/text2sql'; }")
+    refresh_btn.click(fn=_refresh, outputs=[fav_table, selected_state, selected_info])
+    delete_btn.click(
+        fn=_delete_selected,
+        inputs=[selected_state],
+        outputs=[fav_table, selected_state, selected_info],
+    )
+    clear_btn.click(fn=_clear, outputs=[fav_table, selected_state, selected_info])
 
 
 def _placeholder(lang: str = "en") -> str:
@@ -479,6 +460,8 @@ def render_text2sql_page(app=None) -> None:
         "settings": None,
         "store": None,
         "full_store": None,
+        "ds_type": "hive",
+        "db_config": None,
     }
     holder_lock = threading.Lock()
 
@@ -499,10 +482,15 @@ def render_text2sql_page(app=None) -> None:
         if agent is not None:
             from .text2sql.prompts import build_text2sql_prompt
             agent.runtime.store = new_store
-            agent._system_prompt = build_text2sql_prompt(new_store)
+            ds_type = holder.get("ds_type", "hive")
+            agent._system_prompt = build_text2sql_prompt(new_store, dialect=ds_type)
     logger = QueryLogger()
+    fav_store = FavoritesStore()
 
-    env_hive = hive_config_from_env()
+    _DS_CHOICES = [DIALECT_NAMES[d] for d in DS_TYPES]
+    _DS_LABEL_TO_KEY = {v: k for k, v in DIALECT_NAMES.items()}
+    _NEEDS_AUTH = frozenset({"mysql", "sqlserver", "sparksql", "clickhouse", "doris", "postgresql"})
+    _NEEDS_HOST = frozenset({"hive", "mysql", "sqlserver", "sparksql", "clickhouse", "doris", "postgresql"})
 
     with gr.Row(elem_classes=["st-page-row"]):
         lang_state = gr.State("en")
@@ -511,31 +499,52 @@ def render_text2sql_page(app=None) -> None:
         with gr.Column(scale=0, min_width=260, elem_classes=["st-sidebar"], elem_id="text2sql-sidebar") as sidebar_col:
             sidebar_toggle = gr.Button("☰", size="sm", elem_classes=["st-sidebar-toggle"])
             sidebar_title = gr.Markdown(t("sidebar_title"))
+            ds_type_dd = gr.Dropdown(
+                choices=_DS_CHOICES,
+                value=_DS_CHOICES[0],
+                label=t("datasource_type"),
+                elem_classes=["st-sidebar-control"],
+            )
             schema_path_tb = gr.Textbox(
                 label=t("schema_label"),
                 value="",
                 placeholder=schema_ddl_path_from_env(),
                 elem_classes=["st-sidebar-control"],
             )
-            hive_host_tb = gr.Textbox(
-                label=t("hive_host"),
+            host_tb = gr.Textbox(
+                label=t("host"),
                 value="",
                 placeholder="10.0.0.1",
                 elem_classes=["st-sidebar-control"],
             )
             with gr.Row(elem_classes=["st-sidebar-row"]):
-                hive_port_tb = gr.Textbox(
+                port_tb = gr.Textbox(
                     label=t("port"),
                     value="",
                     placeholder="10000",
                     elem_classes=["st-sidebar-control"],
                 )
-                hive_db_tb = gr.Textbox(
+                db_tb = gr.Textbox(
                     label=t("database"),
                     value="",
                     placeholder="default",
                     elem_classes=["st-sidebar-control"],
                 )
+            username_tb = gr.Textbox(
+                label=t("username"),
+                value="",
+                placeholder="",
+                visible=False,
+                elem_classes=["st-sidebar-control"],
+            )
+            password_tb = gr.Textbox(
+                label=t("password"),
+                value="",
+                placeholder="",
+                type="password",
+                visible=False,
+                elem_classes=["st-sidebar-control"],
+            )
             connect_btn = gr.Button(t("connect"), variant="secondary", size="sm",
                                     elem_classes=["st-connect-btn"])
             reload_schema_btn = gr.Button(
@@ -585,6 +594,19 @@ def render_text2sql_page(app=None) -> None:
                                      elem_classes=["st-connect-btn"])
             history_link.click(fn=None, js="() => { window.location.href = '/history'; }")
 
+            fav_name_tb = gr.Textbox(
+                placeholder=t("fav_name_placeholder"),
+                show_label=False, lines=1,
+                elem_classes=["st-sidebar-control"],
+            )
+            save_fav_btn = gr.Button(
+                t("save_favorite"), variant="secondary", size="sm",
+                elem_classes=["st-connect-btn"],
+            )
+            fav_link = gr.Button(t("favorites"), variant="secondary", size="sm",
+                                 elem_classes=["st-connect-btn"])
+            fav_link.click(fn=None, js="() => { window.location.href = '/favorites'; }")
+
         # ── Right panel (chat) ──
         with gr.Column(scale=1, elem_classes=["st-main"]):
             with gr.Row(elem_classes=["st-topbar-row"]):
@@ -608,6 +630,7 @@ def render_text2sql_page(app=None) -> None:
                 elem_classes=["st-chatbot"],
                 height="calc(100vh - 130px)",
             )
+            chart_plot = gr.Plot(visible=False, elem_classes=["st-chart"])
             with gr.Row(elem_classes=["st-input-row"]):
                 user_input = gr.Textbox(
                     placeholder=t("input_placeholder"),
@@ -618,6 +641,38 @@ def render_text2sql_page(app=None) -> None:
                                      min_width=48, elem_classes=["st-btn-send"])
                 stop_btn = gr.Button("■", variant="stop", size="sm", scale=0,
                                      min_width=48, visible=False, elem_classes=["st-btn-stop"])
+
+    # ── Datasource type change callback ──
+    def _on_ds_change(ds_label: str):
+        ds = _DS_LABEL_TO_KEY.get(ds_label, "hive")
+        defaults = DS_DEFAULTS.get(ds, {})
+        default_port = str(defaults.get("port", 10000))
+        default_db = defaults.get("database", "default")
+        show_auth = ds in _NEEDS_AUTH
+        show_host = ds in _NEEDS_HOST
+
+        env_cfg = config_from_env(ds)
+        if env_cfg:
+            return (
+                gr.update(value=str(env_cfg.port), placeholder=default_port, visible=show_host),
+                gr.update(value=env_cfg.database, placeholder=str(default_db)),
+                gr.update(value=env_cfg.host, visible=show_host),
+                gr.update(value=env_cfg.username or "", visible=show_auth),
+                gr.update(value=env_cfg.password or "", visible=show_auth),
+            )
+        return (
+            gr.update(value="", placeholder=default_port, visible=show_host),
+            gr.update(value="", placeholder=str(default_db)),
+            gr.update(value="", visible=show_host),
+            gr.update(value="", visible=show_auth),
+            gr.update(value="", visible=show_auth),
+        )
+
+    ds_type_dd.change(
+        fn=_on_ds_change,
+        inputs=[ds_type_dd],
+        outputs=[port_tb, db_tb, host_tb, username_tb, password_tb],
+    )
 
     # ── Sidebar toggle ──
     def _close_sidebar():
@@ -631,49 +686,77 @@ def render_text2sql_page(app=None) -> None:
 
     # ── Callbacks ──
 
-    def _connect(schema_path: str, host: str, port: str, db: str, lang: str):
+    def _connect(ds_label: str, schema_path: str, host: str, port: str,
+                 db: str, username: str, password: str, lang: str):
         t = lambda k: _t2s(lang, k)
         no = gr.update()
         def err(msg):
             return (msg, no, no, no, no, no, no)
+
+        ds_type = _DS_LABEL_TO_KEY.get(ds_label, "hive")
+
         try:
             settings = load_settings()
         except Exception as e:
             return err(f"❌ {t('llm_load_fail')}: {e}")
 
-        # ── Resolve Hive config ──
-        hive = None
+        # ── Build DatabaseConfig ──
+        db_config = None
         h = host.strip()
         p = port.strip()
         d = db.strip()
-        if not h:
-            fallback = hive_config_from_env()
+        u = username.strip() or None
+        pw = password.strip() or None
+
+        defaults = DS_DEFAULTS.get(ds_type, {})
+        default_port = str(defaults.get("port", 10000))
+        default_db = defaults.get("database", "default")
+
+        if not h and ds_type in _NEEDS_HOST:
+            fallback = config_from_env(ds_type)
             if fallback:
                 h, p, d = fallback.host, str(fallback.port), fallback.database
-        if h:
+                u = fallback.username
+                pw = fallback.password
+
+        if h and ds_type in _NEEDS_HOST:
             try:
-                hive = HiveConfig(
+                db_config = DatabaseConfig(
+                    ds_type=ds_type,
                     host=h,
-                    port=int(p or "10000"),
-                    database=d or "default",
+                    port=int(p or default_port),
+                    database=d or str(default_db),
+                    username=u,
+                    password=pw,
                 )
             except ValueError:
                 return err(f"❌ {t('port_not_number')}")
 
-        # ── Load schema: prefer Hive auto-fetch, DDL as optional whitelist ──
+        # ── Load schema ──
         store = None
         schema_source = ""
         ddl_path = schema_path.strip()
+        dialect_name = DIALECT_NAMES.get(ds_type, ds_type)
+        db_note = ""
 
-        if hive:
-            from .text2sql.executor import HiveExecutor
-            executor = HiveExecutor(hive)
+        if ds_type == "flinksql":
+            db_note = t("flink_generate_only")
+            path = Path(ddl_path or schema_ddl_path_from_env())
+            if not path.is_file():
+                return err(f"❌ {t('schema_not_found')}: {path}")
+            try:
+                store = SchemaStore.from_file(path)
+            except Exception as e:
+                return err(f"❌ {t('schema_parse_fail')}: {e}")
+            schema_source = t("loaded_tables").format(n=len(store))
+        elif db_config:
+            executor = create_executor(db_config)
             ok, msg = executor.test_connection()
             if not ok:
-                return err(f"❌ Hive: {msg}")
-            hive_note = f"✅ Hive {msg}"
+                return err(f"❌ {dialect_name}: {msg}")
+            db_note = f"✅ {dialect_name} {msg}"
             try:
-                store = SchemaStore.from_hive(executor)
+                store = SchemaStore.from_db(executor)
             except Exception as e:
                 return err(f"❌ {t('schema_parse_fail')}: {e}")
             if ddl_path:
@@ -683,11 +766,19 @@ def render_text2sql_page(app=None) -> None:
                     wl_names = {n.lower() for n in whitelist.table_names}
                     filtered = [tb for tb in store.tables if tb.full_name.lower() in wl_names]
                     store = SchemaStore(filtered)
-                    schema_source = t("loaded_tables").format(n=len(store)) + f" ({t('loaded_from_hive').format(n=len(whitelist), db=hive.database)} → whitelist)"
+                    schema_source = (
+                        t("loaded_tables").format(n=len(store))
+                        + f" ({t('loaded_from_db').format(n=len(whitelist), db_type=dialect_name, db=db_config.database)} → whitelist)"
+                    )
             if not schema_source:
-                schema_source = t("loaded_from_hive").format(n=len(store), db=hive.database)
+                schema_source = (
+                    t("loaded_from_db").format(
+                        n=len(store), db_type=dialect_name, db=db_config.database
+                    )
+                    + f" · ⚠️ No whitelist — all {len(store)} tables queryable"
+                )
         else:
-            hive_note = t("hive_not_configured")
+            db_note = t("db_not_configured")
             path = Path(ddl_path or schema_ddl_path_from_env())
             if not path.is_file():
                 return err(f"❌ {t('schema_not_found')}: {path}")
@@ -704,16 +795,17 @@ def render_text2sql_page(app=None) -> None:
             holder["settings"] = settings
             holder["store"] = store
             holder["full_store"] = store
-            holder["hive"] = hive
+            holder["ds_type"] = ds_type
+            holder["db_config"] = db_config
             holder["agent"] = None
-        status = f"✅ {schema_source} · {hive_note} · {t('model')} {settings.model_name}"
+        status = f"✅ {schema_source} · {db_note} · {t('model')} {settings.model_name}"
 
         choices = _table_choices(store, lang)
         return (
             status,
             gr.update(value=h),
-            gr.update(value=p or "10000"),
-            gr.update(value=d or "default"),
+            gr.update(value=p or default_port),
+            gr.update(value=d or str(default_db)),
             gr.update(choices=choices, value=choices),
             gr.update(open=True, label=t("select_tables").format(n=len(store))),
             choices,
@@ -721,6 +813,7 @@ def render_text2sql_page(app=None) -> None:
 
     def _run_streaming(msg: str, history: list, lang: str):
         from .ui import EventCollector, _normalize_chat
+        from .text2sql.chart import detect_chart_type, build_chart
 
         t = lambda k: _t2s(lang, k)
         history = _normalize_chat(history)
@@ -732,22 +825,23 @@ def render_text2sql_page(app=None) -> None:
             if holder.get("agent") is None:
                 from .text2sql.agent import Text2SQLAgent
                 agent = Text2SQLAgent(
-                    holder["settings"], store=holder["store"],
-                    hive=holder.get("hive"), on_event=collector.on_event,
+                    holder["settings"],
+                    store=holder["store"],
+                    ds_type=holder.get("ds_type", "hive"),
+                    db_config=holder.get("db_config"),
+                    on_event=collector.on_event,
                 )
                 holder["agent"] = agent
-                is_first = True
             else:
                 agent = holder["agent"]
                 agent._on_event = collector.on_event
-                is_first = False
 
         error_msg = None
 
         def _worker():
             nonlocal error_msg
             try:
-                if is_first:
+                if not agent.messages:
                     agent.run(msg)
                 else:
                     agent.chat(msg)
@@ -763,18 +857,28 @@ def render_text2sql_page(app=None) -> None:
             events = collector.snapshot()
             if len(events) > prev:
                 prev = len(events)
-                yield history + [{"role": "user", "content": msg}] + _format_events(events, start, lang)
+                yield history + [{"role": "user", "content": msg}] + _format_events(events, start, lang), gr.update()
         thread.join(timeout=5)
         final = _format_events(collector.snapshot(), start, lang)
         if error_msg:
             final.append({"role": "assistant", "content": f"⚠️ **Error**: {error_msg}"})
         final.append({"role": "assistant", "content": f"⏱️ {t('done')} {time.time() - start:.1f}s"})
-        yield history + [{"role": "user", "content": msg}] + final
+
+        chart_update = gr.update(visible=False)
+        rt = agent.runtime if agent else None
+        if rt and rt.last_result and rt.last_result.columns and rt.last_result.rows:
+            ct = detect_chart_type(rt.last_result.columns, rt.last_result.rows)
+            if ct:
+                fig = build_chart(rt.last_result.columns, rt.last_result.rows, ct)
+                if fig:
+                    chart_update = gr.update(value=fig, visible=True)
+
+        yield history + [{"role": "user", "content": msg}] + final, chart_update
 
     def _handle_submit(msg: str, history: list, lang: str):
         t = lambda k: _t2s(lang, k)
         if not msg.strip():
-            yield history
+            yield history, gr.update()
             return
         with holder_lock:
             store_ready = holder.get("store") is not None
@@ -782,7 +886,7 @@ def render_text2sql_page(app=None) -> None:
             yield history + [
                 {"role": "user", "content": msg},
                 {"role": "assistant", "content": t("connect_first")},
-            ]
+            ], gr.update()
             return
         yield from _run_streaming(msg, history, lang)
 
@@ -793,11 +897,12 @@ def render_text2sql_page(app=None) -> None:
             c.on_event("final_answer", {"text": t("stopped")})
         return gr.update(visible=True), gr.update(visible=False)
 
-    def _new_chat():
+    def _new_chat(lang):
+        t = lambda k: _t2s(lang, k)
         agent = holder.get("agent")
         if agent is not None:
             agent.reset()
-        return []
+        return [], gr.update(placeholder=t("input_placeholder")), gr.update(visible=False)
 
     def _handle_export(lang: str):
         t = lambda k: _t2s(lang, k)
@@ -820,11 +925,11 @@ def render_text2sql_page(app=None) -> None:
         t = lambda k: _t2s(lang, k)
         no = gr.update()
         try:
-            hive = holder.get("hive")
-            if hive:
-                from .text2sql.executor import HiveExecutor
-                executor = HiveExecutor(hive)
-                new_store = SchemaStore.from_hive(executor)
+            db_config = holder.get("db_config")
+            ds_type = holder.get("ds_type", "hive")
+            if db_config and ds_type != "flinksql":
+                executor = create_executor(db_config)
+                new_store = SchemaStore.from_db(executor)
             else:
                 from .text2sql.schema import parse_ddl
                 path = Path(ddl_path or schema_ddl_path_from_env())
@@ -846,6 +951,23 @@ def render_text2sql_page(app=None) -> None:
             )
         except Exception as e:
             return f"Error: {e}", no, no, no
+
+    # ── Favorites callback ──
+
+    def _save_favorite(name: str, lang: str):
+        t = lambda k: _t2s(lang, k)
+        agent = holder.get("agent")
+        rt = agent.runtime if agent else None
+        if rt is None or not rt.last_sql:
+            raise gr.Error(t("no_sql_to_save"))
+        fav_store.save(
+            name=name.strip() or rt.last_sql[:40],
+            sql=rt.last_sql,
+            question="",
+            ds_type=holder.get("ds_type", ""),
+        )
+        gr.Info(t("favorite_saved"))
+        return gr.update(value="")
 
     def _apply_filter(selected: list, lang: str):
         t = lambda k: _t2s(lang, k)
@@ -878,7 +1000,6 @@ def render_text2sql_page(app=None) -> None:
         t = lambda k: _t2s(lang, k)
         full = holder.get("full_store")
         n = len(full) if full else 0
-        # Rebuild choices with new lang; preserve selection by table name
         sel_names = set()
         for label in (cur_selected or []):
             sel_names.add(label.split("(")[0].strip().lower())
@@ -887,10 +1008,13 @@ def render_text2sql_page(app=None) -> None:
         return (
             lang,
             gr.update(value=t("sidebar_title")),
+            gr.update(label=t("datasource_type")),
             gr.update(label=t("schema_label")),
-            gr.update(label=t("hive_host")),
+            gr.update(label=t("host")),
             gr.update(label=t("port")),
             gr.update(label=t("database")),
+            gr.update(label=t("username")),
+            gr.update(label=t("password")),
             gr.update(value=t("connect")),
             gr.update(label=t("status_label")),
             gr.update(value=t("new_chat")),
@@ -899,13 +1023,16 @@ def render_text2sql_page(app=None) -> None:
             gr.update(placeholder=t("input_placeholder")),
             gr.update(placeholder=_placeholder(lang)),
             gr.update(value=t("reload_schema")),
-            gr.update(label=t("select_tables").format(n=n)),  # accordion
+            gr.update(label=t("select_tables").format(n=n)),
             gr.update(value=t("select_all")),
             gr.update(value=t("deselect_all")),
             gr.update(value=f"✔ {t('confirm')}"),
             gr.update(value=f"✕ {t('cancel')}"),
             gr.update(placeholder=t("search_placeholder")),
             gr.update(choices=choices, value=new_selected),
+            gr.update(placeholder=t("fav_name_placeholder")),
+            gr.update(value=t("save_favorite")),
+            gr.update(value=t("favorites")),
         )
 
     # ── Wiring ──
@@ -917,10 +1044,13 @@ def render_text2sql_page(app=None) -> None:
         outputs=[
             lang_state,
             sidebar_title,
+            ds_type_dd,
             schema_path_tb,
-            hive_host_tb,
-            hive_port_tb,
-            hive_db_tb,
+            host_tb,
+            port_tb,
+            db_tb,
+            username_tb,
+            password_tb,
             connect_btn,
             status_box,
             new_chat_btn,
@@ -936,35 +1066,42 @@ def render_text2sql_page(app=None) -> None:
             cancel_filter_btn,
             table_search,
             table_filter,
+            fav_name_tb,
+            save_fav_btn,
+            fav_link,
         ],
     )
 
     connect_btn.click(
         fn=_connect,
-        inputs=[schema_path_tb, hive_host_tb, hive_port_tb, hive_db_tb, lang_state],
-        outputs=[status_box, hive_host_tb, hive_port_tb, hive_db_tb,
+        inputs=[ds_type_dd, schema_path_tb, host_tb, port_tb, db_tb,
+                username_tb, password_tb, lang_state],
+        outputs=[status_box, host_tb, port_tb, db_tb,
                  table_filter, filter_accordion, confirmed_sel],
     )
 
     def _show_stop():
         return gr.update(visible=False), gr.update(visible=True)
 
-    def _post_submit():
-        return "", gr.update(visible=True), gr.update(visible=False)
+    def _post_submit(lang):
+        t = lambda k: _t2s(lang, k)
+        return gr.update(value="", placeholder=t("conversation_active")), gr.update(visible=True), gr.update(visible=False)
 
-    submit_io = dict(fn=_handle_submit, inputs=[user_input, chatbot, lang_state], outputs=chatbot)
+    submit_io = dict(fn=_handle_submit, inputs=[user_input, chatbot, lang_state], outputs=[chatbot, chart_plot])
     send_btn.click(fn=_show_stop, outputs=[send_btn, stop_btn]) \
         .then(**submit_io) \
-        .then(fn=_post_submit, outputs=[user_input, send_btn, stop_btn])
+        .then(fn=_post_submit, inputs=[lang_state], outputs=[user_input, send_btn, stop_btn])
     user_input.submit(fn=_show_stop, outputs=[send_btn, stop_btn]) \
         .then(**submit_io) \
-        .then(fn=_post_submit, outputs=[user_input, send_btn, stop_btn])
+        .then(fn=_post_submit, inputs=[lang_state], outputs=[user_input, send_btn, stop_btn])
 
     stop_btn.click(fn=_handle_stop, inputs=[lang_state], outputs=[send_btn, stop_btn])
-    new_chat_btn.click(fn=_new_chat, outputs=chatbot)
+    new_chat_btn.click(fn=_new_chat, inputs=[lang_state], outputs=[chatbot, user_input, chart_plot])
     export_btn.click(fn=_handle_export, inputs=[lang_state], outputs=export_btn)
     reload_schema_btn.click(fn=_reload_schema, inputs=[schema_path_tb, lang_state],
                             outputs=[status_box, table_filter, filter_accordion, confirmed_sel])
+
+    save_fav_btn.click(fn=_save_favorite, inputs=[fav_name_tb, lang_state], outputs=[fav_name_tb])
 
     def _select_all(lang):
         with holder_lock:
@@ -1013,61 +1150,10 @@ def render_text2sql_page(app=None) -> None:
     # ── Home button ──
     home_btn.click(fn=None, js="() => { window.location.href = '/'; }")
 
-    # ── Force sidebar column layout (Gradio 6.x internal divs override CSS) ──
-    _sidebar_fix_js = """() => {
-        function fixSidebar() {
-            const sb = document.querySelector('.st-sidebar');
-            if (!sb) return;
-            sb.style.setProperty('display', 'flex', 'important');
-            sb.style.setProperty('flex-direction', 'column', 'important');
-            sb.style.setProperty('flex-wrap', 'nowrap', 'important');
-            const allDivs = sb.querySelectorAll('div');
-            for (const el of allDivs) {
-                const cl = el.className || '';
-                // Skip explicit Row containers
-                if (cl.includes('row') || cl.includes('st-filter-actions') ||
-                    cl.includes('st-filter-confirm') || cl.includes('st-action-row') ||
-                    cl.includes('st-rename-row') || cl.includes('st-topbar')) continue;
-                // Skip CheckboxGroup label wrappers (they need column from CSS)
-                if (el.closest('.st-table-filter') && el.classList.contains('wrap')) {
-                    el.style.setProperty('flex-direction', 'column', 'important');
-                    el.style.setProperty('flex-wrap', 'nowrap', 'important');
-                    continue;
-                }
-                el.style.setProperty('display', 'flex', 'important');
-                el.style.setProperty('flex-direction', 'column', 'important');
-                el.style.setProperty('flex-wrap', 'nowrap', 'important');
-                el.style.setProperty('width', '100%', 'important');
-                el.style.setProperty('max-width', '100%', 'important');
-                el.style.setProperty('min-width', '0', 'important');
-            }
-        }
-        fixSidebar();
-        setTimeout(fixSidebar, 200);
-        setTimeout(fixSidebar, 1000);
-        let tid;
-        new MutationObserver(() => {
-            clearTimeout(tid);
-            tid = setTimeout(fixSidebar, 80);
-        }).observe(document.body, {childList: true, subtree: true});
-    }"""
-
-    # ── Clickable hint cards (event delegation — works after language switch) ──
-    _hint_delegate_js = """() => {
-        if (document._hintDelegated) return;
-        document._hintDelegated = true;
-        document.addEventListener('click', e => {
-            const card = e.target.closest('.st-hint-card');
-            if (!card) return;
-            const ta = document.querySelector('.st-input textarea');
-            if (ta) {
-                const nativeSetter = Object.getOwnPropertyDescriptor(
-                    HTMLTextAreaElement.prototype, 'value').set;
-                nativeSetter.call(ta, card.textContent.trim());
-                ta.dispatchEvent(new Event('input', {bubbles: true}));
-            }
-        });
-    }"""
+    # ── Load JS from external files ──
+    _res = Path(__file__).resolve().parent / "text2sql" / "resources"
+    _sidebar_fix_js = (_res / "sidebar_fix.js").read_text(encoding="utf-8")
+    _hint_delegate_js = (_res / "hint_delegate.js").read_text(encoding="utf-8")
     if app is not None:
         app.load(fn=None, js=_sidebar_fix_js)
         app.load(fn=None, js=_hint_delegate_js)

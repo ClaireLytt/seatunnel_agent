@@ -16,9 +16,14 @@ from .schema import SchemaStore
 
 _FORBIDDEN_KEYWORDS = frozenset({
     "insert", "update", "delete", "drop", "alter", "truncate", "create",
-    "grant", "revoke", "load", "msck", "set", "add", "export", "import",
+    "grant", "revoke", "load", "msck", "export", "import",
     "analyze", "refresh",
 })
+
+_STATEMENT_LEVEL_RE = re.compile(
+    r"(?:^|\s)(?:SET\s+\w+\s*=|ADD\s+(?:JAR|FILE|COLUMN|PARTITION)\b)",
+    re.IGNORECASE,
+)
 
 _TABLE_REF_RE = re.compile(
     r"\b(?:from|join)\s+([`\"]?\w+[`\"]?(?:\.[`\"]?\w+[`\"]?)?)",
@@ -111,6 +116,9 @@ def validate_sql(sql: str, store: SchemaStore | None = None) -> ValidationResult
     banned = tokens & _FORBIDDEN_KEYWORDS
     if banned:
         errors.append(f"Forbidden keyword(s): {', '.join(sorted(banned))}")
+
+    if _STATEMENT_LEVEL_RE.search(cleaned):
+        errors.append("Forbidden statement-level keyword (SET/ADD)")
 
     tables = extract_tables(stripped)
     cte_names = _extract_cte_names(cleaned)
@@ -227,9 +235,38 @@ def validate_columns(sql: str, store: SchemaStore) -> list[str]:
     return warnings
 
 
-def enforce_limit(sql: str, default_limit: int = 1000, max_limit: int = 100000) -> str:
-    """Ensure the query carries a LIMIT; cap user limits at ``max_limit``."""
+_TOP_RE = re.compile(r"\bSELECT\s+TOP\s+(\d+)\b", re.IGNORECASE)
+
+
+def enforce_limit(
+    sql: str,
+    default_limit: int = 1000,
+    max_limit: int = 100000,
+    dialect: str = "hive",
+) -> str:
+    """Ensure the query carries a row limit; cap existing limits at *max_limit*.
+
+    SQL Server uses ``TOP N`` / ``OFFSET … FETCH``; all others use ``LIMIT``.
+    """
     stripped = sql.strip().rstrip(";").strip()
+
+    if dialect == "sqlserver":
+        m = _TOP_RE.search(stripped)
+        if m:
+            current = int(m.group(1))
+            if current > max_limit:
+                return _TOP_RE.sub(f"SELECT TOP {max_limit}", stripped, count=1)
+            return stripped
+        if re.search(r"\bOFFSET\b.*\bFETCH\b", stripped, re.IGNORECASE | re.DOTALL):
+            return stripped
+        return re.sub(
+            r"^(SELECT)\b",
+            f"SELECT TOP {default_limit}",
+            stripped,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+
     m = _LIMIT_RE.search(stripped)
     if m:
         current = int(m.group(1))

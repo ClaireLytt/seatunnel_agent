@@ -31,7 +31,7 @@ from seatunnel_agent.text2sql.tools import (
     Text2SQLRuntime,
     execute_text2sql_tool,
 )
-from seatunnel_agent.text2sql.executor import HiveConfig, QueryResult
+from seatunnel_agent.text2sql.executor import DatabaseConfig, QueryResult
 
 
 _DDL = """
@@ -562,22 +562,22 @@ class TestTokenTruncation:
 
 class TestExecutorSafety:
     def test_invalid_table_name_rejected(self):
-        from seatunnel_agent.text2sql.executor import HiveExecutor, HiveConfig
-        config = HiveConfig(host="localhost")
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
+        config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="default")
         executor = HiveExecutor(config)
         with pytest.raises(ValueError, match="Invalid table name"):
             executor.get_max_partition("DROP TABLE foo; --")
 
     def test_valid_table_name_format(self):
-        from seatunnel_agent.text2sql.executor import _TABLE_NAME_RE
+        from seatunnel_agent.text2sql.executor.base import _TABLE_NAME_RE
         assert _TABLE_NAME_RE.fullmatch("db.table_name")
         assert _TABLE_NAME_RE.fullmatch("cladata.student")
         assert not _TABLE_NAME_RE.fullmatch("DROP TABLE foo")
         assert not _TABLE_NAME_RE.fullmatch("db.table; DROP")
 
     def test_cursor_closed_on_success(self):
-        from seatunnel_agent.text2sql.executor import HiveExecutor, HiveConfig
-        config = HiveConfig(host="localhost")
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
+        config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="default")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
         mock_cursor.description = [("col1",)]
@@ -590,8 +590,8 @@ class TestExecutorSafety:
         mock_conn.close.assert_called_once()
 
     def test_cursor_closed_on_error(self):
-        from seatunnel_agent.text2sql.executor import HiveExecutor, HiveConfig
-        config = HiveConfig(host="localhost")
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
+        config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="default")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
         mock_cursor.execute.side_effect = RuntimeError("boom")
@@ -610,8 +610,8 @@ class TestExecutorSafety:
 
 class TestHiveConnection:
     def test_connection_success(self):
-        from seatunnel_agent.text2sql.executor import HiveExecutor, HiveConfig
-        config = HiveConfig(host="localhost", port=10000, database="test")
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
+        config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="test")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
         mock_cursor.fetchone.return_value = (1,)
@@ -623,8 +623,8 @@ class TestHiveConnection:
         assert "localhost" in msg
 
     def test_connection_failure(self):
-        from seatunnel_agent.text2sql.executor import HiveExecutor, HiveConfig
-        config = HiveConfig(host="badhost")
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
+        config = DatabaseConfig(ds_type="hive", host="badhost", port=10000, database="default")
         executor = HiveExecutor(config)
         with patch.object(executor, "_connect", side_effect=ConnectionError("refused")):
             ok, msg = executor.test_connection()
@@ -638,8 +638,8 @@ class TestHiveConnection:
 
 class TestHiveSchemaFetch:
     def test_show_tables(self):
-        from seatunnel_agent.text2sql.executor import HiveExecutor, HiveConfig
-        config = HiveConfig(host="localhost", database="testdb")
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
+        config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [("table_a",), ("table_b",)]
@@ -651,8 +651,8 @@ class TestHiveSchemaFetch:
         mock_cursor.close.assert_called_once()
 
     def test_describe_table(self):
-        from seatunnel_agent.text2sql.executor import HiveExecutor, HiveConfig
-        config = HiveConfig(host="localhost", database="testdb")
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
+        config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
         mock_cursor.fetchall.return_value = [
@@ -676,10 +676,10 @@ class TestHiveSchemaFetch:
         assert schema.partition_columns[0].name == "pt"
         mock_cursor.close.assert_called_once()
 
-    def test_from_hive(self):
-        from seatunnel_agent.text2sql.executor import HiveExecutor, HiveConfig
+    def test_from_db(self):
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
         from seatunnel_agent.text2sql.schema import SchemaStore, TableSchema, ColumnSchema
-        config = HiveConfig(host="localhost", database="testdb")
+        config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
         executor = HiveExecutor(config)
         fake_tables = [
             TableSchema(database="testdb", name="t1",
@@ -688,7 +688,7 @@ class TestHiveSchemaFetch:
                         columns=[ColumnSchema("c2", "int")]),
         ]
         with patch.object(executor, "fetch_all_schemas", return_value=fake_tables):
-            store = SchemaStore.from_hive(executor)
+            store = SchemaStore.from_db(executor)
         assert len(store) == 2
         assert store.get("testdb.t1") is not None
         assert store.get("testdb.t2") is not None
@@ -749,3 +749,190 @@ class TestLogDelete:
     def test_delete_no_file(self, tmp_path):
         logger = QueryLogger(log_dir=str(tmp_path))
         assert logger.delete([0]) == 0
+
+
+# ------------------------------------------------------------------
+# Chart detection (chart.py)
+# ------------------------------------------------------------------
+
+class TestChartDetection:
+    def test_detect_bar(self):
+        from seatunnel_agent.text2sql.chart import detect_chart_type
+        cols = ["city", "sales"]
+        rows = [("Beijing", 100), ("Shanghai", 200), ("Guangzhou", 150)]
+        assert detect_chart_type(cols, rows) == "pie"  # <=8 categories + 1 numeric
+
+    def test_detect_bar_many_rows(self):
+        from seatunnel_agent.text2sql.chart import detect_chart_type
+        cols = ["city", "sales"]
+        rows = [(f"city_{i}", i * 10) for i in range(20)]
+        assert detect_chart_type(cols, rows) == "bar"
+
+    def test_detect_line(self):
+        from seatunnel_agent.text2sql.chart import detect_chart_type
+        cols = ["date", "amount"]
+        rows = [("2026-01-01", 10), ("2026-01-02", 20), ("2026-01-03", 30)]
+        assert detect_chart_type(cols, rows) == "line"
+
+    def test_detect_pie(self):
+        from seatunnel_agent.text2sql.chart import detect_chart_type
+        cols = ["category", "count"]
+        rows = [("A", 10), ("B", 20), ("C", 30)]
+        assert detect_chart_type(cols, rows) == "pie"
+
+    def test_detect_none_too_few_rows(self):
+        from seatunnel_agent.text2sql.chart import detect_chart_type
+        assert detect_chart_type(["a", "b"], [(1, 2)]) is None
+
+    def test_detect_none_no_numeric(self):
+        from seatunnel_agent.text2sql.chart import detect_chart_type
+        cols = ["name", "city"]
+        rows = [("Alice", "BJ"), ("Bob", "SH"), ("Carol", "GZ")]
+        assert detect_chart_type(cols, rows) is None
+
+    def test_build_chart_bar(self):
+        from seatunnel_agent.text2sql.chart import build_chart
+        import matplotlib.pyplot as plt
+        cols = ["city", "sales"]
+        rows = [(f"city_{i}", i * 10) for i in range(10)]
+        fig = build_chart(cols, rows, "bar")
+        assert isinstance(fig, plt.Figure)
+        plt.close(fig)
+
+    def test_build_chart_empty(self):
+        from seatunnel_agent.text2sql.chart import build_chart
+        assert build_chart([], [], "bar") is None
+
+
+# ------------------------------------------------------------------
+# Favorites store (favorites.py)
+# ------------------------------------------------------------------
+
+class TestFavoritesStore:
+    def test_empty_store(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        store = FavoritesStore(path=tmp_path / "favs.json")
+        assert store.list() == []
+
+    def test_save_and_list(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        store = FavoritesStore(path=tmp_path / "favs.json")
+        entry = store.save(name="test", sql="SELECT 1", question="q", ds_type="mysql")
+        assert entry["name"] == "test"
+        assert entry["sql"] == "SELECT 1"
+        items = store.list()
+        assert len(items) == 1
+        assert items[0]["id"] == entry["id"]
+
+    def test_delete(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        store = FavoritesStore(path=tmp_path / "favs.json")
+        entry = store.save(name="del", sql="SELECT 2")
+        assert store.delete(entry["id"]) is True
+        assert store.list() == []
+
+    def test_delete_nonexistent(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        store = FavoritesStore(path=tmp_path / "favs.json")
+        assert store.delete("nonexistent") is False
+
+    def test_multiple_entries(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        store = FavoritesStore(path=tmp_path / "favs.json")
+        for i in range(3):
+            store.save(name=f"q{i}", sql=f"SELECT {i}")
+        assert len(store.list()) == 3
+
+
+# ------------------------------------------------------------------
+# MySQL executor (mock level)
+# ------------------------------------------------------------------
+
+class TestMySQLExecutor:
+    def test_run_query(self):
+        from seatunnel_agent.text2sql.executor.mysql import MySQLExecutor
+        config = DatabaseConfig(ds_type="mysql", host="localhost", port=3306, database="testdb",
+                                username="root", password="")
+        executor = MySQLExecutor(config)
+        mock_cursor = MagicMock()
+        mock_cursor.description = [("id",), ("name",)]
+        mock_cursor.fetchmany.return_value = [(1, "Alice"), (2, "Bob")]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        with patch.object(executor, "_connect", return_value=mock_conn):
+            result = executor.run("SELECT id, name FROM users")
+        assert result.columns == ["id", "name"]
+        assert result.row_count == 2
+        mock_cursor.close.assert_called_once()
+
+    def test_show_tables(self):
+        from seatunnel_agent.text2sql.executor.mysql import MySQLExecutor
+        config = DatabaseConfig(ds_type="mysql", host="localhost", port=3306, database="testdb")
+        executor = MySQLExecutor(config)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [("users",), ("orders",)]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        with patch.object(executor, "_connect", return_value=mock_conn):
+            tables = executor.show_tables()
+        assert tables == ["users", "orders"]
+
+    def test_describe_table(self):
+        from seatunnel_agent.text2sql.executor.mysql import MySQLExecutor
+        config = DatabaseConfig(ds_type="mysql", host="localhost", port=3306, database="testdb")
+        executor = MySQLExecutor(config)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            ("id", "bigint", "primary key"),
+            ("name", "varchar(100)", "user name"),
+        ]
+        mock_cursor.fetchone.return_value = ("用户表",)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        with patch.object(executor, "_connect", return_value=mock_conn):
+            schema = executor.describe_table("users")
+        assert schema.name == "users"
+        assert len(schema.columns) == 2
+        assert schema.comment == "用户表"
+
+    def test_connection_success(self):
+        from seatunnel_agent.text2sql.executor.mysql import MySQLExecutor
+        config = DatabaseConfig(ds_type="mysql", host="localhost", port=3306, database="testdb")
+        executor = MySQLExecutor(config)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchone.return_value = (1,)
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        with patch.object(executor, "_connect", return_value=mock_conn):
+            ok, msg = executor.test_connection()
+        assert ok is True
+
+    def test_connection_failure(self):
+        from seatunnel_agent.text2sql.executor.mysql import MySQLExecutor
+        config = DatabaseConfig(ds_type="mysql", host="badhost", port=3306, database="testdb")
+        executor = MySQLExecutor(config)
+        with patch.object(executor, "_connect", side_effect=ConnectionError("refused")):
+            ok, msg = executor.test_connection()
+        assert ok is False
+
+
+# ------------------------------------------------------------------
+# Validator: set/add false positive fix
+# ------------------------------------------------------------------
+
+class TestValidatorSetAdd:
+    def test_set_in_column_name_ok(self, store):
+        r = validate_sql("SELECT * FROM atest.student WHERE name = 'data_set'", store)
+        assert r.ok, r.errors
+
+    def test_add_in_column_name_ok(self, store):
+        r = validate_sql("SELECT id FROM atest.student WHERE name = 'address'", store)
+        assert r.ok, r.errors
+
+    def test_set_statement_rejected(self, store):
+        r = validate_sql("SET mapreduce.framework = yarn", store)
+        assert not r.ok
+
+    def test_add_jar_rejected(self, store):
+        r = validate_sql("ADD JAR /tmp/udf.jar", store)
+        assert not r.ok

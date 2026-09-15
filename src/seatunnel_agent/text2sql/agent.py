@@ -1,5 +1,7 @@
-"""Text2SQL (Chat BI) agent: natural language -> Hive SQL -> results/CSV.
+"""Text2SQL (Chat BI) agent: natural language -> SQL -> results/CSV.
 
+Supports multiple datasources (Hive, MySQL, SQL Server, Spark SQL, Flink SQL,
+ClickHouse, Doris, PostgreSQL).
 Mirrors SeaTunnelAgent's ReAct loop and event protocol so the existing UI
 streaming machinery (EventCollector) works unchanged.
 """
@@ -16,7 +18,7 @@ from ..config import Settings
 from ..context import truncate_messages
 from ..llm import LLMClient
 from ..utils import truncate
-from .executor import HiveConfig
+from .executor import DatabaseConfig
 from .prompts import build_text2sql_prompt
 from .schema import SchemaStore
 from .tools import TOOL_DEFINITIONS, Text2SQLRuntime, execute_text2sql_tool
@@ -31,16 +33,17 @@ class Text2SQLAgent:
         self,
         settings: Settings,
         store: SchemaStore,
-        hive: HiveConfig | None = None,
+        ds_type: str = "hive",
+        db_config: DatabaseConfig | None = None,
         on_event: EventCallback | None = None,
     ) -> None:
         self.settings = settings
         self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
-        self.runtime = Text2SQLRuntime(store=store, hive=hive)
+        self.runtime = Text2SQLRuntime(store=store, ds_type=ds_type, db_config=db_config)
         self.messages: list[dict[str, Any]] = []
         self.console = Console()
         self._on_event = on_event
-        self._system_prompt = build_text2sql_prompt(store)
+        self._system_prompt = build_text2sql_prompt(store, dialect=ds_type)
 
     def _emit(self, event_type: str, data: dict[str, Any]) -> None:
         if self._on_event:

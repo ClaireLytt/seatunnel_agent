@@ -805,13 +805,16 @@ def _build_hub_html() -> str:
 
 def create_ui() -> gr.Blocks:
     """Multipage app: hub landing page + one dedicated page per agent."""
-    from .text2sql_ui import render_text2sql_page, render_history_page
+    from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page
 
-    _hide_history_nav_js = """
+    _hide_sub_nav_js = """
     () => {
         function hide() {
-            document.querySelectorAll('nav a, .navigation a, a[href*="history"]').forEach(a => {
-                if (a.textContent.trim() === 'Query History' || (a.getAttribute('href') || '').includes('/history')) {
+            document.querySelectorAll('nav a, .navigation a, a[href*="history"], a[href*="favorites"]').forEach(a => {
+                const t = a.textContent.trim();
+                const h = a.getAttribute('href') || '';
+                if (t === 'Query History' || t === 'SQL Favorites'
+                    || h.includes('/history') || h.includes('/favorites')) {
                     a.style.display = 'none';
                 }
             });
@@ -825,10 +828,9 @@ def create_ui() -> gr.Blocks:
         title="SeaTunnel Agent",
         fill_height=True,
         fill_width=True,
-        css=_CUSTOM_CSS,
     ) as app:
         gr.HTML(_build_hub_html())
-        app.load(fn=None, js=_hide_history_nav_js)
+        app.load(fn=None, js=_hide_sub_nav_js)
 
     with app.route("SeaTunnel", "/seatunnel"):
         _render_seatunnel_page(app)
@@ -838,6 +840,9 @@ def create_ui() -> gr.Blocks:
 
     with app.route("Query History", "/history"):
         render_history_page()
+
+    with app.route("SQL Favorites", "/favorites"):
+        render_favorites_page()
 
     return app
 
@@ -1352,13 +1357,13 @@ footer { display: none !important; }
     flex-direction: row !important;
     flex-wrap: nowrap !important;
 }
-/* Leaf elements: revert to normal display */
-.st-sidebar button,
+/* Leaf elements: revert to normal display (exclude accordion toggle) */
+.st-sidebar button:not([class*="label-wrap"]),
 .st-sidebar input,
 .st-sidebar textarea,
 .st-sidebar select,
 .st-sidebar label:not(.st-table-filter label),
-.st-sidebar span,
+.st-sidebar span:not(.st-filter-accordion span),
 .st-sidebar svg,
 .st-sidebar p,
 .st-sidebar h1, .st-sidebar h2, .st-sidebar h3 {
@@ -1789,11 +1794,48 @@ footer { display: none !important; }
     flex: 1 !important;
     min-width: 0 !important;
 }
+/* Fix Dropdown arrow blown up by sidebar flex overrides */
+.st-sidebar svg[class*="dropdown-arrow"] {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    min-height: 18px !important;
+    max-width: 18px !important;
+    max-height: 18px !important;
+}
+.st-sidebar [class*="icon-wrap"] {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex-shrink: 0 !important;
+}
+.st-sidebar [class*="secondary-wrap"] {
+    flex-direction: row !important;
+    align-items: center !important;
+    width: 100% !important;
+}
 .st-filter-accordion {
     margin-top: 4px !important;
     overflow: hidden !important;
     width: 100% !important;
-    display: block !important;
+}
+.st-filter-accordion [class*="label-wrap"] {
+    padding: 4px 8px !important;
+    min-height: 0 !important;
+    font-size: 12px !important;
+    line-height: 1.3 !important;
+    background: #f9fafb !important;
+    border: none !important;
+    box-shadow: none !important;
+    gap: 4px !important;
+}
+.st-filter-accordion [class*="label-wrap"] span {
+    font-size: 12px !important;
+    font-weight: 500 !important;
+    line-height: 1.3 !important;
+}
+.st-filter-accordion [class*="label-wrap"] span[class*="icon"] {
+    font-size: 10px !important;
 }
 .st-table-search textarea {
     width: 100% !important;

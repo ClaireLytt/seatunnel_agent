@@ -261,8 +261,8 @@ class SchemaStore:
         return cls(parse_ddl(text))
 
     @classmethod
-    def from_hive(cls, executor) -> "SchemaStore":
-        """Build a store by introspecting all tables in the Hive database."""
+    def from_db(cls, executor) -> "SchemaStore":
+        """Build a store by introspecting all tables via any DatabaseExecutor."""
         return cls(executor.fetch_all_schemas())
 
     def summary(self) -> str:
