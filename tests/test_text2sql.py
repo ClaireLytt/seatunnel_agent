@@ -1073,3 +1073,100 @@ class TestSqlServerCteWithComment:
         assert "TOP 100" in result
         assert "SELECT id FROM t" in result or "SELECT id" in result
         assert result.index("TOP 100") > result.index("AS")
+
+
+# ------------------------------------------------------------------
+# SQL auto-fix: error classification and retry tracking
+# ------------------------------------------------------------------
+
+class TestErrorClassification:
+    """Test classify_error() returns correct (error_type, retry_hint)."""
+
+    def test_column_not_found(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, hint = classify_error("cannot resolve 'col_x' given columns")
+        assert etype == "column_not_found"
+        assert "get_table_schema" in hint
+
+    def test_unknown_column(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, _ = classify_error("Unknown column 'abc' in 'field list'")
+        assert etype == "column_not_found"
+
+    def test_syntax_error(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, hint = classify_error("syntax error at or near 'SELEC'")
+        assert etype == "syntax_error"
+        assert "syntax" in hint.lower()
+
+    def test_parse_error(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, _ = classify_error("mismatched input 'FROM' expecting {<EOF>}")
+        assert etype == "syntax_error"
+
+    def test_line_col_error(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, _ = classify_error("line 1:42 cannot recognize input")
+        assert etype == "syntax_error"
+
+    def test_type_mismatch(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, hint = classify_error("data type mismatch: cannot cast string to int")
+        assert etype == "type_mismatch"
+        assert "CAST" in hint
+
+    def test_conversion_failed(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, _ = classify_error("conversion failed when converting varchar to numeric")
+        assert etype == "type_mismatch"
+
+    def test_fallback(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, _ = classify_error("connection timed out")
+        assert etype == "execution_error"
+
+
+class TestRetryTracking:
+    """Test sql_retries counter and max_retries_reached flag."""
+
+    def test_retries_increment_on_error(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+        rt = Text2SQLRuntime(store=store, ds_type="hive")
+        result = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
+        assert result.get("attempt") == 1
+        assert result.get("error_type") is not None
+        result2 = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
+        assert result2.get("attempt") == 2
+
+    def test_retries_reset_on_success(self, store, monkeypatch):
+        from unittest.mock import MagicMock
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+        from seatunnel_agent.text2sql.executor import QueryResult
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        rt.sql_retries = 2
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = QueryResult(
+            columns=["id"], rows=[(1,)], row_count=1,
+            truncated=False, elapsed_ms=10,
+        )
+        rt._executor = mock_executor
+        result = _tool_execute_sql(
+            {"sql": "SELECT id FROM atest.student"}, rt,
+        )
+        assert result.get("success") is True
+        assert rt.sql_retries == 0
+
+    def test_max_retries_reached(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+        rt = Text2SQLRuntime(store=store, ds_type="hive", max_sql_retries=2)
+        _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
+        result = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
+        assert result.get("max_retries_reached") is True
+        assert result.get("attempt") == 2
+
+    def test_error_has_retry_hint(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+        rt = Text2SQLRuntime(store=store, ds_type="hive")
+        result = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
+        assert "retry_hint" in result
+        assert len(result["retry_hint"]) > 0

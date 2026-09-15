@@ -133,6 +133,19 @@ class Text2SQLAgent:
                 self._display_tool_result(tc.name, result)
                 self._emit("tool_result", {"name": tc.name, "result": result})
 
+                if tc.name == "execute_sql":
+                    try:
+                        data = json.loads(result)
+                    except (json.JSONDecodeError, TypeError):
+                        data = {}
+                    if data.get("error"):
+                        self._emit("sql_retry", {
+                            "attempt": data.get("attempt", 0),
+                            "max": self.runtime.max_sql_retries,
+                            "error_type": data.get("error_type", ""),
+                            "retry_hint": data.get("retry_hint", ""),
+                        })
+
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tc.id,

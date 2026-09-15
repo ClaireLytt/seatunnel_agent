@@ -96,6 +96,12 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "use_favorite": "Use",
         "fav_name_placeholder": "Name this query...",
         "no_whitelist_warn": "⚠️ No whitelist — all {n} tables queryable",
+        "sql_retry": "🔄 SQL auto-fix ({attempt}/{max})",
+        "sql_retry_hint": "Error type: {error_type} — {hint}",
+        "error_type_column_not_found": "Column not found",
+        "error_type_syntax_error": "Syntax error",
+        "error_type_type_mismatch": "Type mismatch",
+        "error_type_execution_error": "Execution error",
     },
     "zh": {
         "sidebar_title": "### \U0001f5c4 数据源配置",
@@ -165,6 +171,12 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "use_favorite": "使用",
         "fav_name_placeholder": "给这条查询起个名字...",
         "no_whitelist_warn": "⚠️ 无白名单 — 全部 {n} 张表可查询",
+        "sql_retry": "🔄 SQL 自动修正中 ({attempt}/{max})",
+        "sql_retry_hint": "错误类型: {error_type} — {hint}",
+        "error_type_column_not_found": "列名错误",
+        "error_type_syntax_error": "语法错误",
+        "error_type_type_mismatch": "类型不匹配",
+        "error_type_execution_error": "执行错误",
     },
 }
 

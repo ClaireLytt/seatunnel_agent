@@ -182,6 +182,15 @@ def _format_events(events: list[dict[str, Any]], start_time: float | None = None
             inp_t, out_t = ev.get("input_tokens", 0), ev.get("output_tokens", 0)
             if inp_t or out_t:
                 messages.append({"role": "assistant", "content": f"📊 Tokens: {inp_t:,} in / {out_t:,} out"})
+        elif tp == "sql_retry":
+            attempt = ev.get("attempt", 0)
+            max_r = ev.get("max", 3)
+            etype = ev.get("error_type", "execution_error")
+            etype_label = t(f"error_type_{etype}") if t(f"error_type_{etype}") != f"error_type_{etype}" else etype
+            hint = ev.get("retry_hint", "")
+            header = t("sql_retry").format(attempt=attempt, max=max_r)
+            detail = t("sql_retry_hint").format(error_type=etype_label, hint=hint)
+            messages.append({"role": "assistant", "content": f"{header}\n\n{detail}"})
 
     _flush()
     return messages

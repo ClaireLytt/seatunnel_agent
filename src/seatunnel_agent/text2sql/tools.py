@@ -145,6 +145,8 @@ class Text2SQLRuntime:
     default_limit: int = 1000
     last_result: QueryResult | None = None
     last_sql: str = ""
+    sql_retries: int = 0
+    max_sql_retries: int = 3
     _executor: DatabaseExecutor | None = None
 
     @property
@@ -226,13 +228,28 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
     sql = inp.get("sql", "")
     user_query = inp.get("user_query", "")
 
+    def _build_error(error_msg: str, **extra: Any) -> dict[str, Any]:
+        rt.sql_retries += 1
+        error_type, retry_hint = classify_error(error_msg)
+        err: dict[str, Any] = {
+            "error": error_msg,
+            "error_type": error_type,
+            "retry_hint": retry_hint,
+            "attempt": rt.sql_retries,
+            **extra,
+        }
+        if rt.sql_retries >= rt.max_sql_retries:
+            err["max_retries_reached"] = True
+        return err
+
     validation = validate_sql(sql, rt.store)
     if not validation.ok:
+        error_msg = "SQL rejected: " + "; ".join(validation.errors)
         rt.logger.log(
             user_query=user_query, generated_sql=sql, status="rejected",
-            matched_tables=validation.tables, error="; ".join(validation.errors),
+            matched_tables=validation.tables, error=error_msg,
         )
-        return {"error": "SQL rejected: " + "; ".join(validation.errors)}
+        return _build_error(error_msg)
 
     missing_partition = []
     if rt.ds_type in PARTITION_ENGINES:
@@ -253,7 +270,7 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
             user_query=user_query, generated_sql=sql, status="rejected",
             matched_tables=validation.tables, error=msg,
         )
-        return {"error": msg}
+        return _build_error(msg)
 
     final_sql = enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type)
 
@@ -264,12 +281,13 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
             user_query=user_query, generated_sql=final_sql, status="error",
             matched_tables=validation.tables, error=str(exc),
         )
-        err: dict[str, Any] = {"error": f"Execution failed: {exc}", "sql": final_sql}
+        err = _build_error(f"Execution failed: {exc}", sql=final_sql)
         suggestion = _suggest_column(str(exc), rt)
         if suggestion:
             err["suggestion"] = suggestion
         return err
 
+    rt.sql_retries = 0
     rt.last_result = result
     rt.last_sql = final_sql
     rt.logger.log(
@@ -316,6 +334,42 @@ _COL_NOT_FOUND_RE = re.compile(
     r"[:\s]*['\"`]?([\w.]+)['\"`]?",
     re.IGNORECASE,
 )
+
+_SYNTAX_ERR_RE = re.compile(
+    r"(?:syntax error|parse error|unexpected token|mismatched input"
+    r"|extraneous input|no viable alternative|line \d+:\d+)",
+    re.IGNORECASE,
+)
+
+_TYPE_ERR_RE = re.compile(
+    r"(?:type mismatch|cannot cast|cannot convert|incompatible types"
+    r"|invalid input syntax for type|conversion failed"
+    r"|data type mismatch|operand type clash)",
+    re.IGNORECASE,
+)
+
+
+def classify_error(error_msg: str) -> tuple[str, str]:
+    """Classify a SQL execution error and return (error_type, retry_hint)."""
+    if _COL_NOT_FOUND_RE.search(error_msg):
+        return (
+            "column_not_found",
+            "Verify column names with get_table_schema; check the suggestion field.",
+        )
+    if _SYNTAX_ERR_RE.search(error_msg):
+        return (
+            "syntax_error",
+            "Check dialect-specific syntax: date functions, string quoting, JOIN clauses.",
+        )
+    if _TYPE_ERR_RE.search(error_msg):
+        return (
+            "type_mismatch",
+            "Wrap the expression in CAST() or use the dialect's conversion function.",
+        )
+    return (
+        "execution_error",
+        "Read the error details and adjust the query.",
+    )
 
 
 def _suggest_column(error_msg: str, rt: Text2SQLRuntime) -> str | None:

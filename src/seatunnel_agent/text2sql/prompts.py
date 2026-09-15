@@ -62,6 +62,28 @@ show results and export CSV files.
 - Always show the final SQL to the user in a ```sql code block before
   presenting results.
 
+## SQL Error Recovery
+
+When execute_sql returns an error, follow this fix protocol (max 3 retries):
+
+1. Read the error message carefully. Common patterns:
+   - **Column not found**: Check the `suggestion` field; verify column names
+     against get_table_schema output before retrying.
+   - **Syntax error**: Check dialect-specific syntax (date functions, string
+     functions, JOIN syntax). Refer to the dialect tips above.
+   - **Type mismatch / cast error**: Wrap the expression in CAST() or use the
+     dialect's type conversion function.
+   - **Table not found / not in whitelist**: Call match_tables again to find
+     the correct table name.
+   - **Missing partition filter**: Call get_max_partition and add a WHERE
+     condition on the partition column.
+2. Fix the SQL and call execute_sql again with the corrected query.
+3. If `max_retries_reached` is True in the error response, stop retrying and
+   explain the error to the user in their language, showing what you tried.
+
+Always tell the user what went wrong and how you fixed it before showing the
+corrected result.
+
 ## Output Format
 
 After execution, present in this order:
