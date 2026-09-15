@@ -265,12 +265,13 @@ def enforce_limit(
         if re.search(r"\bOFFSET\b.*\bFETCH\b", stripped, re.IGNORECASE | re.DOTALL):
             return stripped
         # Handle CTE: WITH ... AS (...) SELECT → inject TOP into outer SELECT
-        if re.match(r"\s*WITH\b", stripped, re.IGNORECASE):
-            m = re.search(r"\)\s*(SELECT)\b", stripped, re.IGNORECASE)
+        cleaned = _strip_literals_and_comments(stripped)
+        if re.match(r"\s*WITH\b", cleaned, re.IGNORECASE):
+            m = re.search(r"\)\s*(SELECT)\b", cleaned, re.IGNORECASE)
             if m:
                 pos = m.start(1)
                 return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]
-        m = re.search(r"\bSELECT\b", stripped, re.IGNORECASE)
+        m = re.search(r"\bSELECT\b", cleaned, re.IGNORECASE)
         if m:
             pos = m.start()
             return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]

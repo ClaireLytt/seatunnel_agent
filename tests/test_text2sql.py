@@ -1029,3 +1029,47 @@ class TestPieChartNegativeValues:
         rows = [("A", 10), ("B", 20), ("C", 30)]
         ct = detect_chart_type(cols, rows)
         assert ct == "pie"
+
+
+class TestEnvPrefixFlink:
+    """Bug fix: flinksql was missing from _ENV_PREFIX."""
+
+    def test_flinksql_prefix_exists(self):
+        from seatunnel_agent.text2sql.executor.base import _ENV_PREFIX
+        assert "flinksql" in _ENV_PREFIX
+
+    def test_config_from_env_flinksql(self, monkeypatch):
+        from seatunnel_agent.text2sql.executor.base import config_from_env
+        monkeypatch.setenv("FLINK_HOST", "flink-host")
+        monkeypatch.setenv("FLINK_PORT", "8083")
+        cfg = config_from_env("flinksql")
+        assert cfg is not None
+        assert cfg.host == "flink-host"
+
+
+class TestLogRotationSuffix:
+    """Bug fix: with_suffix('.1.jsonl') dropped .jsonl → now uses with_name."""
+
+    def test_rotated_filename(self, tmp_path):
+        from seatunnel_agent.text2sql.qlog import QueryLogger
+        logger = QueryLogger(log_dir=str(tmp_path))
+        logger._MAX_LOG_BYTES = 10
+        logger.log(user_query="q" * 50, generated_sql="s", status="ok")
+        logger.log(user_query="q2", generated_sql="s2", status="ok")
+        rotated = tmp_path / "text2sql_queries.1.jsonl"
+        assert rotated.exists(), f"Expected {rotated}, got {list(tmp_path.iterdir())}"
+
+
+class TestSqlServerCteWithComment:
+    """Bug fix: comment between ) and outer SELECT broke CTE TOP injection."""
+
+    def test_cte_comment_before_select(self):
+        sql = (
+            "WITH cte AS (SELECT id FROM t)\n"
+            "-- get results\n"
+            "SELECT * FROM cte"
+        )
+        result = enforce_limit(sql, default_limit=100, dialect="sqlserver")
+        assert "TOP 100" in result
+        assert "SELECT id FROM t" in result or "SELECT id" in result
+        assert result.index("TOP 100") > result.index("AS")

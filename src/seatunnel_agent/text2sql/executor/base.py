@@ -146,6 +146,7 @@ _ENV_PREFIX: dict[str, str] = {
     "mysql":      "MYSQL",
     "sqlserver":  "MSSQL",
     "sparksql":   "SPARK",
+    "flinksql":   "FLINK",
     "clickhouse": "CLICKHOUSE",
     "doris":      "DORIS",
     "postgresql": "PG",

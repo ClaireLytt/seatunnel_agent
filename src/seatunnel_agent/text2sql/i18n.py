@@ -95,6 +95,7 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "delete_favorite": "Delete",
         "use_favorite": "Use",
         "fav_name_placeholder": "Name this query...",
+        "no_whitelist_warn": "⚠️ No whitelist — all {n} tables queryable",
     },
     "zh": {
         "sidebar_title": "### \U0001f5c4 数据源配置",
@@ -163,6 +164,7 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "delete_favorite": "删除",
         "use_favorite": "使用",
         "fav_name_placeholder": "给这条查询起个名字...",
+        "no_whitelist_warn": "⚠️ 无白名单 — 全部 {n} 张表可查询",
     },
 }
 

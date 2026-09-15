@@ -775,7 +775,7 @@ def render_text2sql_page(app=None) -> None:
                     t("loaded_from_db").format(
                         n=len(store), db_type=dialect_name, db=db_config.database
                     )
-                    + f" · ⚠️ No whitelist — all {len(store)} tables queryable"
+                    + f" · {t('no_whitelist_warn').format(n=len(store))}"
                 )
         else:
             db_note = t("db_not_configured")
@@ -858,7 +858,7 @@ def render_text2sql_page(app=None) -> None:
             if len(events) > prev:
                 prev = len(events)
                 yield history + [{"role": "user", "content": msg}] + _format_events(events, start, lang), gr.update()
-        thread.join(timeout=5)
+        thread.join(timeout=120)
         final = _format_events(collector.snapshot(), start, lang)
         if error_msg:
             final.append({"role": "assistant", "content": f"⚠️ **Error**: {error_msg}"})

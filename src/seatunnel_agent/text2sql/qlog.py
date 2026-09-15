@@ -55,7 +55,7 @@ class QueryLogger:
 
     def _rotate_if_needed(self) -> None:
         if self.log_file.is_file() and self.log_file.stat().st_size > self._MAX_LOG_BYTES:
-            rotated = self.log_file.with_suffix(".1.jsonl")
+            rotated = self.log_file.with_name(self.log_file.stem + ".1.jsonl")
             if rotated.exists():
                 rotated.unlink()
             self.log_file.rename(rotated)
@@ -79,7 +79,7 @@ class QueryLogger:
         with self._lock:
             if self.log_file.is_file():
                 self.log_file.write_text("", encoding="utf-8")
-            rotated = self.log_file.with_suffix(".1.jsonl")
+            rotated = self.log_file.with_name(self.log_file.stem + ".1.jsonl")
             if rotated.is_file():
                 rotated.unlink()
 
