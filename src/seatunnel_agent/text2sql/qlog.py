@@ -53,9 +53,13 @@ class QueryLogger:
 
     _MAX_LOG_BYTES = 10 * 1024 * 1024  # 10 MB
 
+    @property
+    def _rotated_path(self) -> Path:
+        return self.log_file.with_name(self.log_file.stem + ".1.jsonl")
+
     def _rotate_if_needed(self) -> None:
         if self.log_file.is_file() and self.log_file.stat().st_size > self._MAX_LOG_BYTES:
-            rotated = self.log_file.with_name(self.log_file.stem + ".1.jsonl")
+            rotated = self._rotated_path
             if rotated.exists():
                 rotated.unlink()
             self.log_file.rename(rotated)
@@ -79,9 +83,8 @@ class QueryLogger:
         with self._lock:
             if self.log_file.is_file():
                 self.log_file.write_text("", encoding="utf-8")
-            rotated = self.log_file.with_name(self.log_file.stem + ".1.jsonl")
-            if rotated.is_file():
-                rotated.unlink()
+            if self._rotated_path.is_file():
+                self._rotated_path.unlink()
 
     def delete(self, indices_from_newest: list[int]) -> int:
         """Delete records by display index (0 = newest line in file).

@@ -196,4 +196,9 @@ HINTS_I18N: dict[str, list[str]] = {
 
 def t2s(lang: str, key: str) -> str:
     """Look up a UI string by language and key."""
-    return T2S_I18N.get(lang, T2S_I18N["en"]).get(key, T2S_I18N["en"].get(key, key))
+    value = T2S_I18N.get(lang, T2S_I18N["en"]).get(key, T2S_I18N["en"].get(key))
+    if value is None:
+        import logging
+        logging.getLogger(__name__).debug("Missing i18n key: %s", key)
+        return key
+    return value

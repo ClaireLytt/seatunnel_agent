@@ -96,9 +96,22 @@ class DatabaseExecutor(ABC):
     def fetch_all_schemas(self) -> list[TableSchema]:
         ...
 
-    @abstractmethod
     def test_connection(self) -> tuple[bool, str]:
-        ...
+        """Test connectivity — override only if the default doesn't work."""
+        try:
+            conn = self._connect()
+            cursor = None
+            try:
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+            finally:
+                if cursor:
+                    cursor.close()
+                conn.close()
+            return True, f"{self.config.host}:{self.config.port}/{self.config.database}"
+        except Exception as exc:
+            return False, str(exc)
 
     def get_max_partition(self, full_table_name: str, refresh: bool = False) -> str | None:
         return None
@@ -186,32 +199,26 @@ def config_from_env(ds_type: str) -> DatabaseConfig | None:
     )
 
 
+_EXECUTOR_REGISTRY: dict[str, tuple[str, str]] = {
+    "hive":       (".hive",       "HiveExecutor"),
+    "mysql":      (".mysql",      "MySQLExecutor"),
+    "sqlserver":  (".sqlserver",  "SqlServerExecutor"),
+    "sparksql":   (".spark",      "SparkSqlExecutor"),
+    "flinksql":   (".flink",      "FlinkSqlExecutor"),
+    "clickhouse": (".clickhouse", "ClickHouseExecutor"),
+    "doris":      (".doris",      "DorisExecutor"),
+    "postgresql": (".postgres",   "PostgresExecutor"),
+}
+
+
 def create_executor(config: DatabaseConfig) -> DatabaseExecutor:
     """Factory: lazily import and instantiate the right executor."""
-    ds = config.ds_type
-    if ds == "hive":
-        from .hive import HiveExecutor
-        return HiveExecutor(config)
-    elif ds == "mysql":
-        from .mysql import MySQLExecutor
-        return MySQLExecutor(config)
-    elif ds == "sqlserver":
-        from .sqlserver import SqlServerExecutor
-        return SqlServerExecutor(config)
-    elif ds == "sparksql":
-        from .spark import SparkSqlExecutor
-        return SparkSqlExecutor(config)
-    elif ds == "flinksql":
-        from .flink import FlinkSqlExecutor
-        return FlinkSqlExecutor(config)
-    elif ds == "clickhouse":
-        from .clickhouse import ClickHouseExecutor
-        return ClickHouseExecutor(config)
-    elif ds == "doris":
-        from .doris import DorisExecutor
-        return DorisExecutor(config)
-    elif ds == "postgresql":
-        from .postgres import PostgresExecutor
-        return PostgresExecutor(config)
-    else:
-        raise ValueError(f"Unknown datasource type: {ds!r}. Supported: {DS_TYPES}")
+    import importlib
+
+    entry = _EXECUTOR_REGISTRY.get(config.ds_type)
+    if entry is None:
+        raise ValueError(f"Unknown datasource type: {config.ds_type!r}. Supported: {DS_TYPES}")
+    module_name, class_name = entry
+    mod = importlib.import_module(module_name, package=__package__)
+    cls = getattr(mod, class_name)
+    return cls(config)

@@ -69,6 +69,7 @@ class Text2SQLAgent:
         self.messages = []
         self.runtime.last_result = None
         self.runtime.last_sql = ""
+        self.runtime.sql_retries = 0
 
     # ------------------------------------------------------------------
     # Core ReAct loop
@@ -166,15 +167,16 @@ class Text2SQLAgent:
     # Display (Rich)
     # ------------------------------------------------------------------
 
+    _TOOL_STYLE: dict[str, str] = {
+        "match_tables": "blue",
+        "get_table_schema": "blue",
+        "get_max_partition": "cyan",
+        "execute_sql": "green",
+        "export_csv": "yellow",
+    }
+
     def _display_tool_call(self, name: str, inputs: dict[str, Any]) -> None:
-        style_map = {
-            "match_tables": "blue",
-            "get_table_schema": "blue",
-            "get_max_partition": "cyan",
-            "execute_sql": "green",
-            "export_csv": "yellow",
-        }
-        color = style_map.get(name, "white")
+        color = self._TOOL_STYLE.get(name, "white")
         args_str = ", ".join(f"{k}={repr(v)[:120]}" for k, v in inputs.items())
         self.console.print(
             Panel(args_str or "(no arguments)", title=f"Calling: {name}", border_style=color)

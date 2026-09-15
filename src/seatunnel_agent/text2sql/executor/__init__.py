@@ -12,13 +12,12 @@ from .base import (
     create_executor,
     schema_ddl_path_from_env,
 )
-from .hive import HiveExecutor, hive_config_from_env
-
-HiveConfig = DatabaseConfig
+from .hive import HiveExecutor
 
 __all__ = [
     "DatabaseConfig",
     "DatabaseExecutor",
+    "HiveExecutor",
     "QueryResult",
     "DS_DEFAULTS",
     "DS_TYPES",
@@ -27,7 +26,4 @@ __all__ = [
     "config_from_env",
     "create_executor",
     "schema_ddl_path_from_env",
-    "HiveConfig",
-    "HiveExecutor",
-    "hive_config_from_env",
 ]

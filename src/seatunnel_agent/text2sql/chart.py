@@ -42,17 +42,13 @@ def _is_date(values: list[Any]) -> bool:
     return hits > 0
 
 
-def detect_chart_type(
-    columns: list[str], rows: list[tuple],
-) -> str | None:
-    if len(columns) < 2 or len(rows) < 2:
-        return None
-
+def _classify_columns(
+    col_values: list[tuple],
+) -> tuple[list[int], list[int], list[int]]:
+    """Classify column indices into categorical, numeric, and date groups."""
     cat_cols: list[int] = []
     num_cols: list[int] = []
     date_cols: list[int] = []
-    col_values = list(zip(*rows)) if rows else [[] for _ in columns]
-
     for i, vals in enumerate(col_values):
         vlist = list(vals)
         if _is_numeric(vlist):
@@ -61,6 +57,17 @@ def detect_chart_type(
             date_cols.append(i)
         else:
             cat_cols.append(i)
+    return cat_cols, num_cols, date_cols
+
+
+def detect_chart_type(
+    columns: list[str], rows: list[tuple],
+) -> str | None:
+    if len(columns) < 2 or len(rows) < 2:
+        return None
+
+    col_values = list(zip(*rows)) if rows else [[] for _ in columns]
+    cat_cols, num_cols, date_cols = _classify_columns(col_values)
 
     if not num_cols:
         return None
@@ -90,18 +97,7 @@ def build_chart(
         return None
 
     col_values = list(zip(*rows))
-    cat_cols: list[int] = []
-    num_cols: list[int] = []
-    date_cols: list[int] = []
-
-    for i, vals in enumerate(col_values):
-        vlist = list(vals)
-        if _is_numeric(vlist):
-            num_cols.append(i)
-        elif _is_date(vlist):
-            date_cols.append(i)
-        else:
-            cat_cols.append(i)
+    cat_cols, num_cols, date_cols = _classify_columns(col_values)
 
     if not num_cols:
         return None

@@ -1,4 +1,4 @@
-"""Hive DDL parsing and in-memory schema store.
+"""DDL parsing and in-memory schema store.
 
 Parses ``CREATE TABLE`` statements (with column/table COMMENTs and
 ``PARTITIONED BY`` clauses) into structured dataclasses. The schema file

@@ -109,10 +109,10 @@ def validate_sql(sql: str, store: SchemaStore | None = None) -> ValidationResult
     if not stripped:
         return ValidationResult(ok=False, errors=["Empty SQL"])
 
-    if ";" in _strip_literals_and_comments(stripped):
-        errors.append("Multiple SQL statements are not allowed")
-
     cleaned = _strip_literals_and_comments(stripped)
+
+    if ";" in cleaned:
+        errors.append("Multiple SQL statements are not allowed")
     first_word = cleaned.split(None, 1)[0].lower() if cleaned.split() else ""
     if first_word not in ("select", "with"):
         errors.append(f"Only SELECT queries are allowed (got '{first_word}')")
@@ -243,40 +243,33 @@ def validate_columns(sql: str, store: SchemaStore) -> list[str]:
 _TOP_RE = re.compile(r"\bSELECT\s+TOP\s+(\d+)\b", re.IGNORECASE)
 
 
-def enforce_limit(
-    sql: str,
-    default_limit: int = 1000,
-    max_limit: int = 100000,
-    dialect: str = "hive",
+def _enforce_limit_sqlserver(
+    stripped: str, default_limit: int, max_limit: int,
 ) -> str:
-    """Ensure the query carries a row limit; cap existing limits at *max_limit*.
-
-    SQL Server uses ``TOP N`` / ``OFFSET … FETCH``; all others use ``LIMIT``.
-    """
-    stripped = sql.strip().rstrip(";").strip()
-
-    if dialect == "sqlserver":
-        m = _TOP_RE.search(stripped)
-        if m:
-            current = int(m.group(1))
-            if current > max_limit:
-                return _TOP_RE.sub(f"SELECT TOP {max_limit}", stripped, count=1)
-            return stripped
-        if re.search(r"\bOFFSET\b.*\bFETCH\b", stripped, re.IGNORECASE | re.DOTALL):
-            return stripped
-        # Handle CTE: WITH ... AS (...) SELECT → inject TOP into outer SELECT
-        cleaned = _strip_literals_and_comments(stripped)
-        if re.match(r"\s*WITH\b", cleaned, re.IGNORECASE):
-            m = re.search(r"\)\s*(SELECT)\b", cleaned, re.IGNORECASE)
-            if m:
-                pos = m.start(1)
-                return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]
-        m = re.search(r"\bSELECT\b", cleaned, re.IGNORECASE)
-        if m:
-            pos = m.start()
-            return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]
+    m = _TOP_RE.search(stripped)
+    if m:
+        current = int(m.group(1))
+        if current > max_limit:
+            return _TOP_RE.sub(f"SELECT TOP {max_limit}", stripped, count=1)
         return stripped
+    if re.search(r"\bOFFSET\b.*\bFETCH\b", stripped, re.IGNORECASE | re.DOTALL):
+        return stripped
+    cleaned = _strip_literals_and_comments(stripped)
+    if re.match(r"\s*WITH\b", cleaned, re.IGNORECASE):
+        m = re.search(r"\)\s*(SELECT)\b", cleaned, re.IGNORECASE)
+        if m:
+            pos = m.start(1)
+            return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]
+    m = re.search(r"\bSELECT\b", cleaned, re.IGNORECASE)
+    if m:
+        pos = m.start()
+        return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]
+    return stripped
 
+
+def _enforce_limit_standard(
+    stripped: str, default_limit: int, max_limit: int,
+) -> str:
     m = _LIMIT_RE.search(stripped)
     if m:
         current = int(m.group(1))
@@ -285,3 +278,16 @@ def enforce_limit(
             return stripped[:m.start()] + f"LIMIT {max_limit}{offset_part}"
         return stripped
     return f"{stripped}\nLIMIT {default_limit}"
+
+
+def enforce_limit(
+    sql: str,
+    default_limit: int = 1000,
+    max_limit: int = 100000,
+    dialect: str = "hive",
+) -> str:
+    """Ensure the query carries a row limit; cap existing limits at *max_limit*."""
+    stripped = sql.strip().rstrip(";").strip()
+    if dialect == "sqlserver":
+        return _enforce_limit_sqlserver(stripped, default_limit, max_limit)
+    return _enforce_limit_standard(stripped, default_limit, max_limit)

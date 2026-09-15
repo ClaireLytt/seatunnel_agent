@@ -166,18 +166,3 @@ class SqlServerExecutor(DatabaseExecutor):
                 cursor.close()
             conn.close()
 
-    def test_connection(self) -> tuple[bool, str]:
-        try:
-            conn = self._connect()
-            cursor = None
-            try:
-                cursor = conn.cursor()
-                cursor.execute("SELECT 1")
-                cursor.fetchone()
-            finally:
-                if cursor:
-                    cursor.close()
-                conn.close()
-            return True, f"{self.config.host}:{self.config.port}/{self.config.database}"
-        except Exception as exc:
-            return False, str(exc)

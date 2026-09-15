@@ -224,64 +224,79 @@ def _tool_get_max_partition(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[st
     }
 
 
+def _build_sql_error(rt: Text2SQLRuntime, error_msg: str, **extra: Any) -> dict[str, Any]:
+    """Increment retry counter and build a structured error response."""
+    rt.sql_retries += 1
+    error_type, retry_hint = classify_error(error_msg)
+    err: dict[str, Any] = {
+        "error": error_msg,
+        "error_type": error_type,
+        "retry_hint": retry_hint,
+        "attempt": rt.sql_retries,
+        **extra,
+    }
+    if rt.sql_retries >= rt.max_sql_retries:
+        err["max_retries_reached"] = True
+    return err
+
+
+def _log_and_reject(
+    rt: Text2SQLRuntime, user_query: str, sql: str,
+    tables: list[str], error_msg: str, status: str = "rejected",
+) -> dict[str, Any]:
+    """Log a failed SQL attempt and return a structured error."""
+    rt.logger.log(
+        user_query=user_query, generated_sql=sql, status=status,
+        matched_tables=tables, error=error_msg,
+    )
+    return _build_sql_error(rt, error_msg, sql=sql) if status == "error" else _build_sql_error(rt, error_msg)
+
+
+def _check_partition_filters(sql: str, validation: ValidationResult, rt: Text2SQLRuntime) -> str | None:
+    """Return an error message if any partitioned table lacks a partition filter."""
+    if rt.ds_type not in PARTITION_ENGINES:
+        return None
+    missing = []
+    for tname in validation.tables:
+        table = rt.store.get(tname)
+        if table and table.is_partitioned:
+            pcol = table.partition_columns[0].name
+            if not has_partition_filter(sql, pcol):
+                missing.append(f"{table.full_name} (partition column: {pcol})")
+    if missing:
+        return (
+            "Partitioned table(s) missing partition filter: "
+            + ", ".join(missing)
+            + ". Add a WHERE condition on the partition column "
+            "(use get_max_partition if no time range was given)."
+        )
+    return None
+
+
 def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
     sql = inp.get("sql", "")
     user_query = inp.get("user_query", "")
 
-    def _build_error(error_msg: str, **extra: Any) -> dict[str, Any]:
-        rt.sql_retries += 1
-        error_type, retry_hint = classify_error(error_msg)
-        err: dict[str, Any] = {
-            "error": error_msg,
-            "error_type": error_type,
-            "retry_hint": retry_hint,
-            "attempt": rt.sql_retries,
-            **extra,
-        }
-        if rt.sql_retries >= rt.max_sql_retries:
-            err["max_retries_reached"] = True
-        return err
-
     validation = validate_sql(sql, rt.store)
     if not validation.ok:
-        error_msg = "SQL rejected: " + "; ".join(validation.errors)
-        rt.logger.log(
-            user_query=user_query, generated_sql=sql, status="rejected",
-            matched_tables=validation.tables, error=error_msg,
+        return _log_and_reject(
+            rt, user_query, sql, validation.tables,
+            "SQL rejected: " + "; ".join(validation.errors),
         )
-        return _build_error(error_msg)
 
-    missing_partition = []
-    if rt.ds_type in PARTITION_ENGINES:
-        for tname in validation.tables:
-            table = rt.store.get(tname)
-            if table and table.is_partitioned:
-                pcol = table.partition_columns[0].name
-                if not has_partition_filter(sql, pcol):
-                    missing_partition.append(f"{table.full_name} (partition column: {pcol})")
-    if missing_partition:
-        msg = (
-            "Partitioned table(s) missing partition filter: "
-            + ", ".join(missing_partition)
-            + ". Add a WHERE condition on the partition column "
-            "(use get_max_partition if no time range was given)."
-        )
-        rt.logger.log(
-            user_query=user_query, generated_sql=sql, status="rejected",
-            matched_tables=validation.tables, error=msg,
-        )
-        return _build_error(msg)
+    partition_err = _check_partition_filters(sql, validation, rt)
+    if partition_err:
+        return _log_and_reject(rt, user_query, sql, validation.tables, partition_err)
 
     final_sql = enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type)
 
     try:
         result = rt.executor.run(final_sql, max_rows=rt.default_limit)
     except Exception as exc:
-        rt.logger.log(
-            user_query=user_query, generated_sql=final_sql, status="error",
-            matched_tables=validation.tables, error=str(exc),
+        err = _log_and_reject(
+            rt, user_query, final_sql, validation.tables,
+            f"Execution failed: {exc}", status="error",
         )
-        err = _build_error(f"Execution failed: {exc}", sql=final_sql)
         suggestion = _suggest_column(str(exc), rt)
         if suggestion:
             err["suggestion"] = suggestion

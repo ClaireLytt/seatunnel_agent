@@ -22,6 +22,11 @@ def _safe_stem(name: str) -> str:
     return re.sub(r"[^\w\-]", "_", name)[:60] or "query_result"
 
 
+def _timestamped_name(name_hint: str) -> str:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"{_safe_stem(name_hint)}_{ts}.csv"
+
+
 def export_csv(
     columns: list[str],
     rows: list[tuple],
@@ -33,13 +38,11 @@ def export_csv(
         target = Path(path)
         if target.is_dir() or not target.suffix:
             target.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            target = target / f"{_safe_stem(name_hint)}_{timestamp}.csv"
+            target = target / _timestamped_name(name_hint)
         else:
             target.parent.mkdir(parents=True, exist_ok=True)
     else:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        target = default_desktop_dir() / f"{_safe_stem(name_hint)}_{timestamp}.csv"
+        target = default_desktop_dir() / _timestamped_name(name_hint)
 
     with open(target, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)

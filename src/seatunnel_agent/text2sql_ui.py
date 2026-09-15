@@ -28,7 +28,6 @@ from .text2sql.executor import (
 from .text2sql.favorites import FavoritesStore
 from .text2sql.i18n import (
     HINTS_I18N,
-    T2S_I18N,
     TOOL_EMOJI,
     TOOL_LABEL_I18N,
     t2s as _t2s,
@@ -36,11 +35,6 @@ from .text2sql.i18n import (
 from .text2sql.qlog import QueryLogger
 from .text2sql.schema import SchemaStore
 
-_TOOL_EMOJI = TOOL_EMOJI
-_TOOL_LABEL_I18N = TOOL_LABEL_I18N
-
-_T2S_I18N = T2S_I18N
-_HINTS_I18N = HINTS_I18N
 
 
 def _md_table(columns: list[str], rows: list[list[Any]], max_rows: int = 20, lang: str = "en") -> str:
@@ -57,7 +51,7 @@ def _md_table(columns: list[str], rows: list[list[Any]], max_rows: int = 20, lan
 
 def _format_tool_result(name: str, raw: str, lang: str = "en") -> str:
     t = lambda k: _t2s(lang, k)
-    labels = _TOOL_LABEL_I18N.get(lang, _TOOL_LABEL_I18N["en"])
+    labels = TOOL_LABEL_I18N.get(lang, TOOL_LABEL_I18N["en"])
     try:
         data = json.loads(raw)
     except (json.JSONDecodeError, TypeError):
@@ -125,7 +119,7 @@ def _format_tool_result(name: str, raw: str, lang: str = "en") -> str:
 
 def _format_events(events: list[dict[str, Any]], start_time: float | None = None, lang: str = "en") -> list[dict[str, str]]:
     t = lambda k: _t2s(lang, k)
-    labels = _TOOL_LABEL_I18N.get(lang, _TOOL_LABEL_I18N["en"])
+    labels = TOOL_LABEL_I18N.get(lang, TOOL_LABEL_I18N["en"])
     messages: list[dict[str, str]] = []
     delta_buffer: list[str] = []
 
@@ -164,7 +158,7 @@ def _format_events(events: list[dict[str, Any]], start_time: float | None = None
                 messages.append({"role": "assistant", "content": ev["text"]})
         elif tp == "tool_call":
             name = ev.get("name", "?")
-            emoji = _TOOL_EMOJI.get(name, "\U0001f527")
+            emoji = TOOL_EMOJI.get(name, "\U0001f527")
             label = labels.get(name, name)
             inp = ev.get("input", {})
             if name == "execute_sql" and inp.get("sql"):
@@ -445,7 +439,7 @@ def render_favorites_page() -> None:
 
 
 def _placeholder(lang: str = "en") -> str:
-    hints = _HINTS_I18N.get(lang, _HINTS_I18N["en"])
+    hints = HINTS_I18N.get(lang, HINTS_I18N["en"])
     cards = "\n".join(f'<div class="st-hint-card">{h}</div>' for h in hints)
     title = _t2s(lang, "placeholder_title")
     return f'''<div class="st-empty-state">

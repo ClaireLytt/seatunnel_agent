@@ -2,28 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from typing import TYPE_CHECKING
 
-from .base import DatabaseConfig, DatabaseExecutor, QueryResult, _TABLE_NAME_RE
+from .base import DatabaseExecutor, QueryResult, _TABLE_NAME_RE
 
 if TYPE_CHECKING:
     from ..schema import TableSchema
-
-
-def hive_config_from_env() -> DatabaseConfig | None:
-    """Build a DatabaseConfig for Hive from HIVE_* env vars."""
-    host = os.getenv("HIVE_HOST", "").strip()
-    if not host:
-        return None
-    return DatabaseConfig(
-        ds_type="hive",
-        host=host,
-        port=int(os.getenv("HIVE_PORT", "10000")),
-        database=os.getenv("HIVE_DATABASE", "default"),
-        username=os.getenv("HIVE_USERNAME") or None,
-        timeout_s=int(os.getenv("HIVE_TIMEOUT", "300")),
-    )
 
 
 class HiveExecutor(DatabaseExecutor):
@@ -167,18 +151,3 @@ class HiveExecutor(DatabaseExecutor):
                 cursor.close()
             conn.close()
 
-    def test_connection(self) -> tuple[bool, str]:
-        try:
-            conn = self._connect()
-            cursor = None
-            try:
-                cursor = conn.cursor()
-                cursor.execute("SELECT 1")
-                cursor.fetchone()
-            finally:
-                if cursor:
-                    cursor.close()
-                conn.close()
-            return True, f"{self.config.host}:{self.config.port}/{self.config.database}"
-        except Exception as exc:
-            return False, str(exc)
