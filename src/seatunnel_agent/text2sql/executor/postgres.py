@@ -20,7 +20,7 @@ class PostgresExecutor(DatabaseExecutor):
                 "psycopg2 is not installed. Install with: "
                 "pip install psycopg2-binary"
             ) from exc
-        return psycopg2.connect(
+        conn = psycopg2.connect(
             host=self.config.host,
             port=self.config.port,
             dbname=self.config.database or "postgres",
@@ -28,6 +28,8 @@ class PostgresExecutor(DatabaseExecutor):
             password=self.config.password or "",
             connect_timeout=self.config.timeout_s,
         )
+        conn.autocommit = True
+        return conn
 
     def run(self, sql: str, max_rows: int = 1000) -> QueryResult:
         return self._run_dbapi(sql, max_rows)

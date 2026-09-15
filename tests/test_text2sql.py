@@ -936,3 +936,39 @@ class TestValidatorSetAdd:
     def test_add_jar_rejected(self, store):
         r = validate_sql("ADD JAR /tmp/udf.jar", store)
         assert not r.ok
+
+
+# ------------------------------------------------------------------
+# Bug fix regressions: enforce_limit edge cases
+# ------------------------------------------------------------------
+
+class TestEnforceLimitEdgeCases:
+    def test_limit_with_offset_preserved(self):
+        sql = "SELECT * FROM t LIMIT 50 OFFSET 10"
+        result = enforce_limit(sql)
+        assert "LIMIT 50" in result
+        assert "OFFSET 10" in result
+        assert result.count("LIMIT") == 1
+
+    def test_limit_with_offset_capped(self):
+        sql = "SELECT * FROM t LIMIT 999999 OFFSET 10"
+        result = enforce_limit(sql, max_limit=100000)
+        assert "LIMIT 100000" in result
+        assert "OFFSET 10" in result
+
+    def test_sqlserver_cte_gets_top(self):
+        sql = "WITH cte AS (SELECT id FROM t) SELECT * FROM cte"
+        result = enforce_limit(sql, dialect="sqlserver")
+        assert "TOP 1000" in result
+        assert result.index("TOP") > result.index("cte AS")
+
+    def test_sqlserver_plain_select_gets_top(self):
+        sql = "SELECT * FROM users"
+        result = enforce_limit(sql, dialect="sqlserver")
+        assert "TOP 1000" in result
+
+    def test_build_chart_no_numeric_returns_none(self):
+        from seatunnel_agent.text2sql.chart import build_chart
+        cols = ["name", "city"]
+        rows = [("Alice", "BJ"), ("Bob", "SH")]
+        assert build_chart(cols, rows, "bar") is None

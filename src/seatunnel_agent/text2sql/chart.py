@@ -101,9 +101,11 @@ def build_chart(
         else:
             cat_cols.append(i)
 
+    if not num_cols:
+        return None
     label_idx = (date_cols or cat_cols or [0])[0]
     labels = [str(v) for v in col_values[label_idx]]
-    values_idx = num_cols[0] if num_cols else 1
+    values_idx = num_cols[0]
     values = [float(v) if v is not None else 0.0 for v in col_values[values_idx]]
     value_label = columns[values_idx]
 

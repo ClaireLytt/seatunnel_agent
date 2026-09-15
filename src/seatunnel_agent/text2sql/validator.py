@@ -30,7 +30,9 @@ _TABLE_REF_RE = re.compile(
     re.IGNORECASE,
 )
 
-_LIMIT_RE = re.compile(r"\blimit\s+(\d+)\s*$", re.IGNORECASE)
+_LIMIT_RE = re.compile(
+    r"\blimit\s+(\d+)(\s+offset\s+\d+)?\s*$", re.IGNORECASE,
+)
 
 
 @dataclass
@@ -259,18 +261,26 @@ def enforce_limit(
             return stripped
         if re.search(r"\bOFFSET\b.*\bFETCH\b", stripped, re.IGNORECASE | re.DOTALL):
             return stripped
-        return re.sub(
-            r"^(SELECT)\b",
-            f"SELECT TOP {default_limit}",
-            stripped,
-            count=1,
-            flags=re.IGNORECASE,
-        )
+        # Handle CTE: WITH ... AS (...) SELECT → inject TOP into outer SELECT
+        cleaned = _strip_literals_and_comments(stripped)
+        if cleaned.strip().upper().startswith("WITH"):
+            # Find outer SELECT after the CTE block (after last closing paren)
+            m = re.search(r"\)\s*(SELECT)\b", cleaned, re.IGNORECASE)
+            if m:
+                pos = m.start(1)
+                return stripped[:pos] + f"SELECT TOP {default_limit}" + stripped[pos + 6:]
+        else:
+            m = re.search(r"\bSELECT\b", stripped, re.IGNORECASE)
+            if m:
+                pos = m.start()
+                return stripped[:pos] + f"SELECT TOP {default_limit}" + stripped[pos + 6:]
+        return stripped
 
     m = _LIMIT_RE.search(stripped)
     if m:
         current = int(m.group(1))
         if current > max_limit:
-            return _LIMIT_RE.sub(f"LIMIT {max_limit}", stripped)
+            offset_part = m.group(2) or ""
+            return stripped[:m.start()] + f"LIMIT {max_limit}{offset_part}"
         return stripped
     return f"{stripped}\nLIMIT {default_limit}"

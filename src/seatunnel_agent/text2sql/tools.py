@@ -311,8 +311,9 @@ def _tool_export_csv(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]
 
 
 _COL_NOT_FOUND_RE = re.compile(
-    r"(?:cannot resolve|column not found|unknown column|no such column)"
-    r"[:\s]*['\"`]?(\w+)['\"`]?",
+    r"(?:cannot resolve|column not found|unknown column|no such column"
+    r"|does not exist|invalid column name|missing columns?)"
+    r"[:\s]*['\"`]?([\w.]+)['\"`]?",
     re.IGNORECASE,
 )
 
@@ -322,7 +323,8 @@ def _suggest_column(error_msg: str, rt: Text2SQLRuntime) -> str | None:
     m = _COL_NOT_FOUND_RE.search(error_msg)
     if not m:
         return None
-    bad_col = m.group(1).lower()
+    raw = m.group(1)
+    bad_col = raw.rsplit(".", 1)[-1].lower()
     all_cols: list[str] = []
     for tname in rt.store.table_names:
         table = rt.store.get(tname)
