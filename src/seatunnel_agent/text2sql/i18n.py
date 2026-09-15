@@ -102,6 +102,7 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "error_type_syntax_error": "Syntax error",
         "error_type_type_mismatch": "Type mismatch",
         "error_type_execution_error": "Execution error",
+        "cache_hit": "Cache hit ({rows} rows)",
     },
     "zh": {
         "sidebar_title": "### \U0001f5c4 数据源配置",
@@ -177,6 +178,7 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "error_type_syntax_error": "语法错误",
         "error_type_type_mismatch": "类型不匹配",
         "error_type_execution_error": "执行错误",
+        "cache_hit": "缓存命中 ({rows} 行)",
     },
 }
 

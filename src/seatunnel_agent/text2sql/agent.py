@@ -70,6 +70,7 @@ class Text2SQLAgent:
         self.runtime.last_result = None
         self.runtime.last_sql = ""
         self.runtime.sql_retries = 0
+        self.runtime.cache.invalidate()
 
     # ------------------------------------------------------------------
     # Core ReAct loop
@@ -145,6 +146,11 @@ class Text2SQLAgent:
                             "max": self.runtime.max_sql_retries,
                             "error_type": data.get("error_type", ""),
                             "retry_hint": data.get("retry_hint", ""),
+                        })
+                    elif data.get("cached"):
+                        self._emit("cache_hit", {
+                            "sql": data.get("sql", ""),
+                            "row_count": data.get("row_count", 0),
                         })
 
                 tool_results.append({

@@ -1170,3 +1170,117 @@ class TestRetryTracking:
         result = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
         assert "retry_hint" in result
         assert len(result["retry_hint"]) > 0
+
+
+class TestSqlResultCache:
+    """Unit tests for SqlResultCache."""
+
+    def test_cache_hit(self):
+        from seatunnel_agent.text2sql.cache import SqlResultCache
+        from seatunnel_agent.text2sql.executor import QueryResult
+        cache = SqlResultCache(ttl_seconds=60)
+        qr = QueryResult(columns=["a"], rows=[(1,)], row_count=1, truncated=False, elapsed_ms=5)
+        cache.put("SELECT a FROM t", "hive", qr)
+        assert cache.get("SELECT a FROM t", "hive") is qr
+
+    def test_cache_miss(self):
+        from seatunnel_agent.text2sql.cache import SqlResultCache
+        cache = SqlResultCache()
+        assert cache.get("SELECT 1", "hive") is None
+
+    def test_cache_ttl_expiry(self, monkeypatch):
+        import time as _time
+        from seatunnel_agent.text2sql.cache import SqlResultCache
+        from seatunnel_agent.text2sql.executor import QueryResult
+        cache = SqlResultCache(ttl_seconds=1)
+        qr = QueryResult(columns=["x"], rows=[], row_count=0, truncated=False, elapsed_ms=0)
+        cache.put("SELECT x FROM t", "mysql", qr)
+        assert cache.get("SELECT x FROM t", "mysql") is qr
+        original_mono = _time.monotonic
+        monkeypatch.setattr(_time, "monotonic", lambda: original_mono() + 2)
+        assert cache.get("SELECT x FROM t", "mysql") is None
+
+    def test_cache_normalization(self):
+        from seatunnel_agent.text2sql.cache import SqlResultCache
+        from seatunnel_agent.text2sql.executor import QueryResult
+        cache = SqlResultCache()
+        qr = QueryResult(columns=["a"], rows=[(1,)], row_count=1, truncated=False, elapsed_ms=5)
+        cache.put("SELECT  a  FROM  t", "hive", qr)
+        assert cache.get("select a from t", "hive") is qr
+        assert cache.get("  SELECT   A   FROM   T  ", "hive") is qr
+
+    def test_cache_invalidate(self):
+        from seatunnel_agent.text2sql.cache import SqlResultCache
+        from seatunnel_agent.text2sql.executor import QueryResult
+        cache = SqlResultCache()
+        qr = QueryResult(columns=["a"], rows=[], row_count=0, truncated=False, elapsed_ms=0)
+        cache.put("SELECT 1", "hive", qr)
+        cache.put("SELECT 2", "mysql", qr)
+        assert cache.stats["size"] == 2
+        cache.invalidate()
+        assert cache.stats["size"] == 0
+        assert cache.get("SELECT 1", "hive") is None
+
+    def test_cache_max_entries(self):
+        from seatunnel_agent.text2sql.cache import SqlResultCache
+        from seatunnel_agent.text2sql.executor import QueryResult
+        cache = SqlResultCache(max_entries=3)
+        for i in range(5):
+            qr = QueryResult(columns=[f"c{i}"], rows=[], row_count=0, truncated=False, elapsed_ms=0)
+            cache.put(f"SELECT {i}", "hive", qr)
+        assert cache.stats["size"] == 3
+
+    def test_cache_stats(self):
+        from seatunnel_agent.text2sql.cache import SqlResultCache
+        from seatunnel_agent.text2sql.executor import QueryResult
+        cache = SqlResultCache()
+        qr = QueryResult(columns=["a"], rows=[], row_count=0, truncated=False, elapsed_ms=0)
+        cache.put("SELECT 1", "hive", qr)
+        cache.get("SELECT 1", "hive")
+        cache.get("SELECT 1", "hive")
+        cache.get("SELECT 999", "hive")
+        stats = cache.stats
+        assert stats["hits"] == 2
+        assert stats["misses"] == 1
+        assert stats["size"] == 1
+
+    def test_ds_type_isolation(self):
+        from seatunnel_agent.text2sql.cache import SqlResultCache
+        from seatunnel_agent.text2sql.executor import QueryResult
+        cache = SqlResultCache()
+        qr = QueryResult(columns=["a"], rows=[(1,)], row_count=1, truncated=False, elapsed_ms=5)
+        cache.put("SELECT a FROM t", "hive", qr)
+        assert cache.get("SELECT a FROM t", "hive") is qr
+        assert cache.get("SELECT a FROM t", "mysql") is None
+
+
+class TestCacheIntegration:
+    """Integration: _tool_execute_sql uses the cache."""
+
+    def test_execute_sql_cache_hit(self, store):
+        from unittest.mock import MagicMock
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+        from seatunnel_agent.text2sql.executor import QueryResult
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = QueryResult(
+            columns=["id"], rows=[(1,)], row_count=1,
+            truncated=False, elapsed_ms=10,
+        )
+        rt._executor = mock_executor
+        r1 = _tool_execute_sql({"sql": "SELECT id FROM atest.student"}, rt)
+        assert r1.get("success") is True
+        assert r1.get("cached") is None
+        assert mock_executor.run.call_count == 1
+        r2 = _tool_execute_sql({"sql": "SELECT id FROM atest.student"}, rt)
+        assert r2.get("success") is True
+        assert r2.get("cached") is True
+        assert r2.get("elapsed_ms") == 0
+        assert mock_executor.run.call_count == 1
+
+    def test_execute_sql_error_not_cached(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+        rt = Text2SQLRuntime(store=store, ds_type="hive")
+        r1 = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
+        assert r1.get("error") is not None
+        assert rt.cache.stats["size"] == 0

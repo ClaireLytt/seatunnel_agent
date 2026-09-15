@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from .cache import SqlResultCache
 from .executor import (
     PARTITION_ENGINES,
     DatabaseConfig,
@@ -147,6 +148,7 @@ class Text2SQLRuntime:
     last_sql: str = ""
     sql_retries: int = 0
     max_sql_retries: int = 3
+    cache: SqlResultCache = field(default_factory=SqlResultCache)
     _executor: DatabaseExecutor | None = None
 
     @property
@@ -290,6 +292,30 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
 
     final_sql = enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type)
 
+    cached = rt.cache.get(final_sql, rt.ds_type)
+    if cached is not None:
+        rt.sql_retries = 0
+        rt.last_result = cached
+        rt.last_sql = final_sql
+        rt.logger.log(
+            user_query=user_query, generated_sql=final_sql, status="cache_hit",
+            matched_tables=validation.tables,
+            exec_time_ms=0, row_count=cached.row_count,
+        )
+        out: dict[str, Any] = {
+            "success": True,
+            "cached": True,
+            "sql": final_sql,
+            "columns": cached.columns,
+            "preview_rows": [list(r) for r in cached.rows[:_PREVIEW_ROWS]],
+            "row_count": cached.row_count,
+            "truncated": cached.truncated,
+            "elapsed_ms": 0,
+        }
+        if validation.column_warnings:
+            out["column_warnings"] = validation.column_warnings
+        return out
+
     try:
         result = rt.executor.run(final_sql, max_rows=rt.default_limit)
     except Exception as exc:
@@ -305,12 +331,13 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
     rt.sql_retries = 0
     rt.last_result = result
     rt.last_sql = final_sql
+    rt.cache.put(final_sql, rt.ds_type, result)
     rt.logger.log(
         user_query=user_query, generated_sql=final_sql, status="success",
         matched_tables=validation.tables,
         exec_time_ms=result.elapsed_ms, row_count=result.row_count,
     )
-    out: dict[str, Any] = {
+    out = {
         "success": True,
         "sql": final_sql,
         "columns": result.columns,

@@ -96,8 +96,12 @@ def _format_tool_result(name: str, raw: str, lang: str = "en") -> str:
 
     if name == "execute_sql":
         sql = data.get("sql", "")
+        if data.get("cached"):
+            header = f"⚡ **{t('exec_success')}** — {t('cache_hit').format(rows=data.get('row_count', 0))}"
+        else:
+            header = f"⚡ **{t('exec_success')}**"
         lines = [
-            f"⚡ **{t('exec_success')}**",
+            header,
             "",
             f"```sql\n{sql}\n```",
             f"⏱ {t('elapsed')} **{data.get('elapsed_ms', '?')} ms** · "
@@ -185,6 +189,12 @@ def _format_events(events: list[dict[str, Any]], start_time: float | None = None
             header = t("sql_retry").format(attempt=attempt, max=max_r)
             detail = t("sql_retry_hint").format(error_type=etype_label, hint=hint)
             messages.append({"role": "assistant", "content": f"{header}\n\n{detail}"})
+        elif tp == "cache_hit":
+            rows = ev.get("row_count", 0)
+            messages.append({
+                "role": "assistant",
+                "content": f"⚡ {t('cache_hit').format(rows=rows)}",
+            })
 
     _flush()
     return messages
@@ -944,6 +954,9 @@ def render_text2sql_page(app=None) -> None:
                 holder["store"] = new_store
                 holder["full_store"] = new_store
                 _sync_agent_store(new_store)
+            agent = holder.get("agent")
+            if agent is not None:
+                agent.runtime.cache.invalidate()
             choices = _table_choices(new_store, lang)
             n = len(new_store)
             return (
