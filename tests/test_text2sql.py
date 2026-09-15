@@ -972,3 +972,60 @@ class TestEnforceLimitEdgeCases:
         cols = ["name", "city"]
         rows = [("Alice", "BJ"), ("Bob", "SH")]
         assert build_chart(cols, rows, "bar") is None
+
+
+# ------------------------------------------------------------------
+# Bug audit fixes
+# ------------------------------------------------------------------
+
+class TestTokenRegexDigitSplit:
+    """Bug fix: r'[a-zA-Z_]+' split on digits → false positive on columns
+    like export2024. Changed to r'[a-zA-Z_]\\w*' to keep full identifiers."""
+
+    def test_column_export2024_allowed(self, store):
+        r = validate_sql("SELECT export2024 FROM atest.student", store)
+        assert "export" not in [e.lower() for e in r.errors if "Forbidden" in e], r.errors
+
+    def test_column_analyze3_allowed(self, store):
+        r = validate_sql("SELECT analyze3 FROM atest.student", store)
+        assert r.ok or all("Forbidden" not in e for e in r.errors), r.errors
+
+    def test_real_export_keyword_still_blocked(self, store):
+        r = validate_sql("EXPORT TABLE atest.student TO '/tmp'", store)
+        assert not r.ok
+
+
+class TestDoubleQuotedIdentifiers:
+    """Bug fix: double-quoted identifiers were stripped as string literals,
+    causing extract_tables to miss PostgreSQL-style FROM \"table\"."""
+
+    def test_extract_double_quoted_table(self):
+        tables = extract_tables('SELECT * FROM "my_table"')
+        assert "my_table" in tables
+
+    def test_extract_double_quoted_with_schema(self):
+        tables = extract_tables('SELECT * FROM "mydb"."my_table"')
+        assert "mydb.my_table" in tables
+
+    def test_validate_double_quoted_not_in_whitelist(self, store):
+        r = validate_sql('SELECT * FROM "not_whitelisted"', store)
+        assert not r.ok
+        assert any("not_whitelisted" in e for e in r.errors)
+
+
+class TestPieChartNegativeValues:
+    """Bug fix: pie chart should not be returned when values contain negatives."""
+
+    def test_negative_values_not_pie(self):
+        from seatunnel_agent.text2sql.chart import detect_chart_type
+        cols = ["category", "profit"]
+        rows = [("A", 100), ("B", -50), ("C", 200)]
+        ct = detect_chart_type(cols, rows)
+        assert ct != "pie"
+
+    def test_positive_values_still_pie(self):
+        from seatunnel_agent.text2sql.chart import detect_chart_type
+        cols = ["category", "count"]
+        rows = [("A", 10), ("B", 20), ("C", 30)]
+        ct = detect_chart_type(cols, rows)
+        assert ct == "pie"

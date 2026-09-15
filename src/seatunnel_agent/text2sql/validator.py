@@ -62,11 +62,14 @@ def _strip_literals_and_comments(sql: str) -> str:
                     break
                 i += 1
         elif ch == '"':
-            out.append('""')
+            out.append(ch)
             i += 1
             while i < n and sql[i] != '"':
+                out.append(sql[i])
                 i += 1
-            i += 1
+            if i < n:
+                out.append(sql[i])
+                i += 1
         elif sql.startswith("--", i):
             while i < n and sql[i] != "\n":
                 i += 1
@@ -114,7 +117,7 @@ def validate_sql(sql: str, store: SchemaStore | None = None) -> ValidationResult
     if first_word not in ("select", "with"):
         errors.append(f"Only SELECT queries are allowed (got '{first_word}')")
 
-    tokens = set(re.findall(r"[a-zA-Z_]+", cleaned.lower()))
+    tokens = set(re.findall(r"[a-zA-Z_]\w*", cleaned.lower()))
     banned = tokens & _FORBIDDEN_KEYWORDS
     if banned:
         errors.append(f"Forbidden keyword(s): {', '.join(sorted(banned))}")
@@ -262,18 +265,15 @@ def enforce_limit(
         if re.search(r"\bOFFSET\b.*\bFETCH\b", stripped, re.IGNORECASE | re.DOTALL):
             return stripped
         # Handle CTE: WITH ... AS (...) SELECT → inject TOP into outer SELECT
-        cleaned = _strip_literals_and_comments(stripped)
-        if cleaned.strip().upper().startswith("WITH"):
-            # Find outer SELECT after the CTE block (after last closing paren)
-            m = re.search(r"\)\s*(SELECT)\b", cleaned, re.IGNORECASE)
+        if re.match(r"\s*WITH\b", stripped, re.IGNORECASE):
+            m = re.search(r"\)\s*(SELECT)\b", stripped, re.IGNORECASE)
             if m:
                 pos = m.start(1)
-                return stripped[:pos] + f"SELECT TOP {default_limit}" + stripped[pos + 6:]
-        else:
-            m = re.search(r"\bSELECT\b", stripped, re.IGNORECASE)
-            if m:
-                pos = m.start()
-                return stripped[:pos] + f"SELECT TOP {default_limit}" + stripped[pos + 6:]
+                return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]
+        m = re.search(r"\bSELECT\b", stripped, re.IGNORECASE)
+        if m:
+            pos = m.start()
+            return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]
         return stripped
 
     m = _LIMIT_RE.search(stripped)

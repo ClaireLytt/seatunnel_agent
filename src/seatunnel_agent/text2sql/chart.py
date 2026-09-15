@@ -71,7 +71,9 @@ def detect_chart_type(
     if cat_cols and num_cols:
         n_rows = len(rows)
         if n_rows <= _MAX_PIE_SLICES and len(num_cols) == 1:
-            return "pie"
+            vals = [v for v in col_values[num_cols[0]] if v is not None]
+            if all(float(v) >= 0 for v in vals):
+                return "pie"
         if n_rows <= _MAX_BAR_ITEMS:
             return "bar"
         return None

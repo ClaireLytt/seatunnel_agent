@@ -325,13 +325,16 @@ def _suggest_column(error_msg: str, rt: Text2SQLRuntime) -> str | None:
         return None
     raw = m.group(1)
     bad_col = raw.rsplit(".", 1)[-1].lower()
+    seen: set[str] = set()
     all_cols: list[str] = []
     for tname in rt.store.table_names:
         table = rt.store.get(tname)
         if table:
             for c in table.columns + table.partition_columns:
-                if c.name.lower() not in all_cols:
-                    all_cols.append(c.name.lower())
+                low = c.name.lower()
+                if low not in seen:
+                    seen.add(low)
+                    all_cols.append(low)
     matches = difflib.get_close_matches(bad_col, all_cols, n=3, cutoff=0.6)
     if matches:
         return f"Did you mean: {', '.join(matches)}?"
