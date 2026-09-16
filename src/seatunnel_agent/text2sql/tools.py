@@ -25,7 +25,7 @@ from .matcher import match_tables
 from .partition import classify_table, has_partition_filter
 from .qlog import QueryLogger
 from .schema import SchemaStore
-from .validator import enforce_limit, validate_sql
+from .validator import ValidationResult, enforce_limit, validate_sql
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -251,7 +251,8 @@ def _log_and_reject(
         user_query=user_query, generated_sql=sql, status=status,
         matched_tables=tables, error=error_msg,
     )
-    return _build_sql_error(rt, error_msg, sql=sql) if status == "error" else _build_sql_error(rt, error_msg)
+    extra: dict[str, Any] = {"sql": sql} if status == "error" else {}
+    return _build_sql_error(rt, error_msg, **extra)
 
 
 def _check_partition_filters(sql: str, validation: ValidationResult, rt: Text2SQLRuntime) -> str | None:
@@ -273,6 +274,26 @@ def _check_partition_filters(sql: str, validation: ValidationResult, rt: Text2SQ
             "(use get_max_partition if no time range was given)."
         )
     return None
+
+
+def _build_success(
+    result: QueryResult, sql: str,
+    validation: ValidationResult, **extra: Any,
+) -> dict[str, Any]:
+    """Build a structured success response for execute_sql."""
+    out: dict[str, Any] = {
+        "success": True,
+        "sql": sql,
+        "columns": result.columns,
+        "preview_rows": [list(r) for r in result.rows[:_PREVIEW_ROWS]],
+        "row_count": result.row_count,
+        "truncated": result.truncated,
+        "elapsed_ms": result.elapsed_ms,
+        **extra,
+    }
+    if validation.column_warnings:
+        out["column_warnings"] = validation.column_warnings
+    return out
 
 
 def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
@@ -302,19 +323,7 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
             matched_tables=validation.tables,
             exec_time_ms=0, row_count=cached.row_count,
         )
-        out: dict[str, Any] = {
-            "success": True,
-            "cached": True,
-            "sql": final_sql,
-            "columns": cached.columns,
-            "preview_rows": [list(r) for r in cached.rows[:_PREVIEW_ROWS]],
-            "row_count": cached.row_count,
-            "truncated": cached.truncated,
-            "elapsed_ms": 0,
-        }
-        if validation.column_warnings:
-            out["column_warnings"] = validation.column_warnings
-        return out
+        return _build_success(cached, final_sql, validation, cached=True, elapsed_ms=0)
 
     try:
         result = rt.executor.run(final_sql, max_rows=rt.default_limit)
@@ -337,18 +346,7 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
         matched_tables=validation.tables,
         exec_time_ms=result.elapsed_ms, row_count=result.row_count,
     )
-    out = {
-        "success": True,
-        "sql": final_sql,
-        "columns": result.columns,
-        "preview_rows": [list(r) for r in result.rows[:_PREVIEW_ROWS]],
-        "row_count": result.row_count,
-        "truncated": result.truncated,
-        "elapsed_ms": result.elapsed_ms,
-    }
-    if validation.column_warnings:
-        out["column_warnings"] = validation.column_warnings
-    return out
+    return _build_success(result, final_sql, validation)
 
 
 def _tool_export_csv(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:

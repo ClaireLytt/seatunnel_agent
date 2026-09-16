@@ -189,12 +189,6 @@ def _format_events(events: list[dict[str, Any]], start_time: float | None = None
             header = t("sql_retry").format(attempt=attempt, max=max_r)
             detail = t("sql_retry_hint").format(error_type=etype_label, hint=hint)
             messages.append({"role": "assistant", "content": f"{header}\n\n{detail}"})
-        elif tp == "cache_hit":
-            rows = ev.get("row_count", 0)
-            messages.append({
-                "role": "assistant",
-                "content": f"⚡ {t('cache_hit').format(rows=rows)}",
-            })
 
     _flush()
     return messages

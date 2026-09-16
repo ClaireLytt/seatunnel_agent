@@ -196,7 +196,8 @@ class Text2SQLAgent:
             elif data.get("success") is True:
                 extra = ""
                 if "row_count" in data:
-                    extra = f" — {data['row_count']} rows, {data.get('elapsed_ms', '?')}ms"
+                    cached = " (cached)" if data.get("cached") else ""
+                    extra = f" — {data['row_count']} rows, {data.get('elapsed_ms', '?')}ms{cached}"
                 elif "csv_path" in data:
                     extra = f" — {data['csv_path']}"
                 self.console.print(f"  [green]Success[/green]{extra}")
