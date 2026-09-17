@@ -1,0 +1,10 @@
+# Copy the relevant block into your repo's .pre-commit-config.yaml,
+# then run: pre-commit install
+repos:
+  - repo: https://github.com/ClaireLytt/seatunnel_agent
+    rev: main  # pin to a tag/commit in real projects
+    hooks:
+      - id: sqlreview
+        # pre-commit passes changed *.sql files as positional args.
+        # Tune the gate or dialect here if needed:
+        # args: [--static-only, --fail-on, risk, --dialect, spark]

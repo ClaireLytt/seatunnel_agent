@@ -47,6 +47,7 @@
 - **SQL Safety Validation**: SELECT-only whitelist, forbidden keyword detection, table whitelist enforcement, LIMIT enforcement, stacked query prevention, partition filter enforcement, and column existence validation
 - **CSV Export with CJK Support**: UTF-8 BOM encoding for Excel compatibility, timestamped filenames, custom output paths
 - **Structured Query Logging**: JSONL-formatted logs of every query (user question, generated SQL, status, timing) for observability
+- **SQL Code Review**: Static review of Hive/Spark/Flink/MaxCompute SQL — no execution needed. A deterministic linter (GROUP BY completeness, cartesian joins, `= NULL`, partition filters, division-by-zero, complexity scoring, …) plus an LLM semantic pass over a 15-item checklist, producing a fixed-format CR report (严重问题/潜在风险/优化建议/检查统计/总体评价) with table- and column-level lineage. Available as `seatunnel-agent review`, REST `POST /api/sql_review/review`, a Gradio UI page (`/sqlreview`, with history trend chart), or offline via `--static-only`. Multi-statement scripts are split and reviewed per statement with correct line numbers. Batch review a directory (`--dir`), changed files vs a git base (`--diff`), or positional paths (pre-commit style); gate CI with `--fail-on critical|risk|suggestion`; customize rules via `.sqlreview.yaml` (partition columns, disabled checks, severity overrides, custom regex rules); suppress findings inline (`-- sqlreview-disable[-next-line|-file][: category]`) or via a baseline file (`--baseline` / `--update-baseline` — only new findings fail CI); emit machine-readable output with `--format json|sarif` (SARIF uploads to GitHub Code Scanning — see `examples/ci/` and the bundled pre-commit hook in `.pre-commit-hooks.yaml`); pull live schemas with `--db host:port/database`; auto-generate fixed SQL with `--fix`; inspect review history with `review-stats`
 
 ### Quick Start
 
@@ -588,6 +589,7 @@ MIT
 - **SQL 安全验证**：SELECT 白名单、禁止关键词检测、表白名单强制、LIMIT 强制、堆叠查询防护、分区过滤强制、列存在性校验
 - **CSV 导出（CJK 支持）**：UTF-8 BOM 编码确保 Excel 正确显示中文，带时间戳的文件名，支持自定义路径
 - **结构化查询日志**：JSONL 格式记录每次查询（用户问题、生成 SQL、状态、耗时），便于监控与审计
+- **SQL Code Review**：对 Hive/Spark/Flink/MaxCompute SQL 做纯静态审查，无需运行即可发现问题 —— 确定性 Linter（GROUP BY 完整性、笛卡尔积、`= NULL`、分区过滤、除零保护、复杂度评分等）+ LLM 按 15 项检查清单做语义审查，输出固定格式 CR 报告（严重问题/潜在风险/优化建议/检查统计/总体评价）并附表级与列级血缘。支持 `seatunnel-agent review` 命令、REST `POST /api/sql_review/review`、Gradio UI 页面（`/sqlreview`，含历史趋势图），以及无需 API Key 的 `--static-only` 模式。多语句脚本自动按语句拆分审查并映射正确行号。支持目录批量审查（`--dir`）、git 变更文件审查（`--diff`）、位置参数传文件（pre-commit 风格）、CI 门禁（`--fail-on critical|risk|suggestion`）、`.sqlreview.yaml` 规则配置（自定义分区列/关闭检查/调整严重度/自定义正则规则）、行内忽略注释（`-- sqlreview-disable[-next-line|-file][: 类别]`）、基线文件（`--baseline` / `--update-baseline`，只对新问题报错）、机器可读输出（`--format json|sarif`，SARIF 可上传 GitHub Code Scanning，模板见 `examples/ci/` 与 `.pre-commit-hooks.yaml`）、数据库直连拉取表结构（`--db host:port/database`）、LLM 自动生成修复 SQL（`--fix`）与审查历史统计（`review-stats`）
 
 ### 快速开始
 

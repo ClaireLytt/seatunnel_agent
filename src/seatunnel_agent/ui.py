@@ -800,6 +800,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Compare schemas, row counts, and data across two data sources" data-zh="跨数据源比对表结构、行数、数据差异">Compare schemas, row counts, and data across two data sources</div>
       <div class="st-hub-enter" style="color:#8b5cf6;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/sqlreview">
+      <div class="st-hub-logo" style="background:#10b981;">CR</div>
+      <div class="st-hub-card-title" data-en="SQL Code Review" data-zh="SQL 代码审查">SQL Code Review</div>
+      <div class="st-hub-card-desc" data-en="Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards" data-zh="Hive / Spark / Flink / MaxCompute SQL 静态 + LLM 审查 — 性能、质量与规范">Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards</div>
+      <div class="st-hub-enter" style="color:#10b981;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <div class="st-hub-card st-hub-card-soon">
       <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
       <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
@@ -813,6 +819,7 @@ def create_ui() -> gr.Blocks:
     """Multipage app: hub landing page + one dedicated page per agent."""
     from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page
     from .data_comparison_ui import render_data_comparison_page
+    from .sql_review_ui import render_sql_review_page
 
     _hide_sub_nav_js = """
     () => {
@@ -853,6 +860,9 @@ def create_ui() -> gr.Blocks:
 
     with app.route("Data Comparison", "/datacompare"):
         render_data_comparison_page(app)
+
+    with app.route("SQL Review", "/sqlreview"):
+        render_sql_review_page(app)
 
     return app
 
@@ -2097,8 +2107,10 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
 
     if api:
         from .text2sql.api import router as t2s_api_router
+        from .sql_review.api import router as sql_review_api_router
         fastapi_app = app.app
         fastapi_app.include_router(t2s_api_router)
+        fastapi_app.include_router(sql_review_api_router)
 
     app.launch(
         server_name=host,
