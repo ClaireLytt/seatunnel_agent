@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +32,7 @@ class QueryLogger:
         extra: dict[str, Any] | None = None,
     ) -> None:
         record: dict[str, Any] = {
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "user_query": user_query,
             "matched_tables": matched_tables or [],
             "generated_sql": generated_sql,
@@ -53,17 +53,21 @@ class QueryLogger:
 
     _MAX_LOG_BYTES = 10 * 1024 * 1024  # 10 MB
 
+    @property
+    def _rotated_path(self) -> Path:
+        return self.log_file.with_name(self.log_file.stem + ".1.jsonl")
+
     def _rotate_if_needed(self) -> None:
         if self.log_file.is_file() and self.log_file.stat().st_size > self._MAX_LOG_BYTES:
-            rotated = self.log_file.with_suffix(".1.jsonl")
+            rotated = self._rotated_path
             if rotated.exists():
                 rotated.unlink()
             self.log_file.rename(rotated)
 
     def recent(self, n: int = 20) -> list[dict[str, Any]]:
-        if not self.log_file.is_file():
-            return []
         with self._lock:
+            if not self.log_file.is_file():
+                return []
             lines = self.log_file.read_text(encoding="utf-8").splitlines()
         tail = lines[-n:] if len(lines) > n else lines
         records: list[dict[str, Any]] = []
@@ -79,9 +83,8 @@ class QueryLogger:
         with self._lock:
             if self.log_file.is_file():
                 self.log_file.write_text("", encoding="utf-8")
-            rotated = self.log_file.with_suffix(".1.jsonl")
-            if rotated.is_file():
-                rotated.unlink()
+            if self._rotated_path.is_file():
+                self._rotated_path.unlink()
 
     def delete(self, indices_from_newest: list[int]) -> int:
         """Delete records by display index (0 = newest line in file).

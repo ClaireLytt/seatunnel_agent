@@ -16,16 +16,23 @@ from .schema import SchemaStore
 
 _FORBIDDEN_KEYWORDS = frozenset({
     "insert", "update", "delete", "drop", "alter", "truncate", "create",
-    "grant", "revoke", "load", "msck", "set", "add", "export", "import",
+    "grant", "revoke", "load", "msck", "export", "import",
     "analyze", "refresh",
 })
+
+_STATEMENT_LEVEL_RE = re.compile(
+    r"(?:^|\s)(?:SET\s+\w+\s*=|ADD\s+(?:JAR|FILE|COLUMN|PARTITION)\b)",
+    re.IGNORECASE,
+)
 
 _TABLE_REF_RE = re.compile(
     r"\b(?:from|join)\s+([`\"]?\w+[`\"]?(?:\.[`\"]?\w+[`\"]?)?)",
     re.IGNORECASE,
 )
 
-_LIMIT_RE = re.compile(r"\blimit\s+(\d+)\s*$", re.IGNORECASE)
+_LIMIT_RE = re.compile(
+    r"\blimit\s+(\d+)(\s+offset\s+\d+)?\s*$", re.IGNORECASE,
+)
 
 
 @dataclass
@@ -55,11 +62,14 @@ def _strip_literals_and_comments(sql: str) -> str:
                     break
                 i += 1
         elif ch == '"':
-            out.append('""')
+            out.append(ch)
             i += 1
             while i < n and sql[i] != '"':
+                out.append(sql[i])
                 i += 1
-            i += 1
+            if i < n:
+                out.append(sql[i])
+                i += 1
         elif sql.startswith("--", i):
             while i < n and sql[i] != "\n":
                 i += 1
@@ -86,7 +96,7 @@ def extract_tables(sql: str) -> list[str]:
 def _extract_cte_names(cleaned: str) -> set[str]:
     """Collect CTE aliases from a WITH clause so they're not flagged as tables."""
     names: set[str] = set()
-    for m in re.finditer(r"\b(?:with|,)\s*(\w+)\s+as\s*\(", cleaned, re.IGNORECASE):
+    for m in re.finditer(r"(?:\bwith|,)\s*(\w+)\s+as\s*\(", cleaned, re.IGNORECASE):
         names.add(m.group(1).lower())
     return names
 
@@ -99,18 +109,21 @@ def validate_sql(sql: str, store: SchemaStore | None = None) -> ValidationResult
     if not stripped:
         return ValidationResult(ok=False, errors=["Empty SQL"])
 
-    if ";" in _strip_literals_and_comments(stripped):
-        errors.append("Multiple SQL statements are not allowed")
-
     cleaned = _strip_literals_and_comments(stripped)
+
+    if ";" in cleaned:
+        errors.append("Multiple SQL statements are not allowed")
     first_word = cleaned.split(None, 1)[0].lower() if cleaned.split() else ""
     if first_word not in ("select", "with"):
         errors.append(f"Only SELECT queries are allowed (got '{first_word}')")
 
-    tokens = set(re.findall(r"[a-zA-Z_]+", cleaned.lower()))
+    tokens = set(re.findall(r"[a-zA-Z_]\w*", cleaned.lower()))
     banned = tokens & _FORBIDDEN_KEYWORDS
     if banned:
         errors.append(f"Forbidden keyword(s): {', '.join(sorted(banned))}")
+
+    if _STATEMENT_LEVEL_RE.search(cleaned):
+        errors.append("Forbidden statement-level keyword (SET/ADD)")
 
     tables = extract_tables(stripped)
     cte_names = _extract_cte_names(cleaned)
@@ -227,13 +240,55 @@ def validate_columns(sql: str, store: SchemaStore) -> list[str]:
     return warnings
 
 
-def enforce_limit(sql: str, default_limit: int = 1000, max_limit: int = 100000) -> str:
-    """Ensure the query carries a LIMIT; cap user limits at ``max_limit``."""
-    stripped = sql.strip().rstrip(";").strip()
+_TOP_RE = re.compile(r"\bSELECT\s+TOP\s+(\d+)\b", re.IGNORECASE)
+
+
+def _enforce_limit_sqlserver(
+    stripped: str, default_limit: int, max_limit: int,
+) -> str:
+    m = _TOP_RE.search(stripped)
+    if m:
+        current = int(m.group(1))
+        if current > max_limit:
+            return _TOP_RE.sub(f"SELECT TOP {max_limit}", stripped, count=1)
+        return stripped
+    if re.search(r"\bOFFSET\b.*\bFETCH\b", stripped, re.IGNORECASE | re.DOTALL):
+        return stripped
+    if re.match(r"\s*WITH\b", stripped, re.IGNORECASE):
+        last_select = None
+        for m in re.finditer(r"\bSELECT\b", stripped, re.IGNORECASE):
+            last_select = m
+        if last_select:
+            pos = last_select.start()
+            return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]
+    m = re.search(r"\bSELECT\b", stripped, re.IGNORECASE)
+    if m:
+        pos = m.start()
+        return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]
+    return stripped
+
+
+def _enforce_limit_standard(
+    stripped: str, default_limit: int, max_limit: int,
+) -> str:
     m = _LIMIT_RE.search(stripped)
     if m:
         current = int(m.group(1))
         if current > max_limit:
-            return _LIMIT_RE.sub(f"LIMIT {max_limit}", stripped)
+            offset_part = m.group(2) or ""
+            return stripped[:m.start()] + f"LIMIT {max_limit}{offset_part}"
         return stripped
     return f"{stripped}\nLIMIT {default_limit}"
+
+
+def enforce_limit(
+    sql: str,
+    default_limit: int = 1000,
+    max_limit: int = 100000,
+    dialect: str = "hive",
+) -> str:
+    """Ensure the query carries a row limit; cap existing limits at *max_limit*."""
+    stripped = sql.strip().rstrip(";").strip()
+    if dialect == "sqlserver":
+        return _enforce_limit_sqlserver(stripped, default_limit, max_limit)
+    return _enforce_limit_standard(stripped, default_limit, max_limit)

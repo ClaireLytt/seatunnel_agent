@@ -177,23 +177,31 @@ seatunnel-agent run --task "Generate 10 fake rows to console"
 
 #### Step 4 (Optional): Configure Text2SQL (Chat BI)
 
-To enable the Text2SQL feature, add Hive connection settings to `.env`:
+Text2SQL supports 8 database engines. Install the driver for your database:
 
-```env
-# HiveServer2 connection (read-only account recommended)
-HIVE_HOST=10.0.0.1
-HIVE_PORT=10000
-HIVE_DATABASE=default
-HIVE_USERNAME=readonly_user
-
-# Query timeout in seconds (default: 300)
-HIVE_TIMEOUT=300
-
-# Schema whitelist DDL file — only tables listed here can be queried
-# SCHEMA_DDL_PATH=config/schema_ddl.sql
+```bash
+pip install -e ".[mysql]"       # MySQL / Doris
+pip install -e ".[postgres]"    # PostgreSQL
+pip install -e ".[hive]"        # Hive / Spark SQL
+pip install -e ".[sqlserver]"   # SQL Server
+pip install -e ".[clickhouse]"  # ClickHouse
+pip install -e ".[db-all]"      # All database drivers
+pip install -e ".[chart]"       # Chart visualization (matplotlib)
 ```
 
-Then populate `config/schema_ddl.sql` with your Hive table DDLs (CREATE TABLE statements with column COMMENTs and PARTITIONED BY clauses). The agent will only query tables listed in this file.
+Add your database connection to `.env` (example for MySQL):
+
+```env
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_DATABASE=mydb
+MYSQL_USERNAME=readonly_user
+MYSQL_PASSWORD=secret
+```
+
+See `.env.example` for all supported engines (Hive, Spark SQL, MySQL, SQL Server, ClickHouse, Doris, PostgreSQL). A read-only database account is recommended.
+
+Optionally, create a `config/schema_ddl.sql` whitelist with CREATE TABLE DDLs to restrict which tables the agent can query. Without it, all tables in the connected database are available.
 
 ### Docker Deployment
 
@@ -444,12 +452,24 @@ seatunnel_agent/
 │       ├── matcher.py          # Table/column fuzzy matching (keyword + CJK n-gram)
 │       ├── partition.py        # Partition classification, time range extraction
 │       ├── validator.py        # SQL safety (SELECT-only, whitelist, columns, LIMIT)
-│       ├── executor.py         # HiveServer2 execution via pyhive
+│       ├── chart.py            # Auto-detect chart type + matplotlib rendering
+│       ├── favorites.py        # SQL query favorites store (JSON backend)
+│       ├── i18n.py             # UI i18n dictionaries (EN/ZH)
 │       ├── exporter.py         # CSV export (UTF-8 BOM for Excel)
 │       ├── prompts.py          # System prompt assembly (rules + schema)
 │       ├── tools.py            # 5 tool definitions + runtime + partition enforcement
 │       ├── agent.py            # ReAct loop, event protocol, multi-turn
 │       ├── qlog.py             # Structured query logging (JSONL)
+│       ├── executor/           # Multi-engine database executors
+│       │   ├── base.py         # Abstract base, factory, DatabaseConfig
+│       │   ├── hive.py         # HiveServer2 via pyhive
+│       │   ├── mysql.py        # MySQL via pymysql
+│       │   ├── postgres.py     # PostgreSQL via psycopg2
+│       │   ├── sqlserver.py    # SQL Server via pymssql
+│       │   ├── clickhouse.py   # ClickHouse via clickhouse-connect
+│       │   ├── doris.py        # Doris/StarRocks (MySQL protocol)
+│       │   ├── spark.py        # Spark SQL (extends Hive)
+│       │   └── flink.py        # Flink SQL (generate-only)
 │       └── resources/
 │           ├── SKILL.md        # Skill entry point (when to trigger, workflow)
 │           ├── intent_rules.md # Business rules (partition, aggregation, etc.)
@@ -698,23 +718,31 @@ seatunnel-agent run --task "生成 10 条假数据输出到控制台"
 
 #### 第四步（可选）：配置 Text2SQL (Chat BI)
 
-在 `.env` 中添加 Hive 连接配置以启用 Text2SQL 功能：
+Text2SQL 支持 8 种数据库引擎。安装对应数据库驱动：
 
-```env
-# HiveServer2 连接（建议使用只读账号）
-HIVE_HOST=10.0.0.1
-HIVE_PORT=10000
-HIVE_DATABASE=default
-HIVE_USERNAME=readonly_user
-
-# 查询超时（秒，默认 300）
-HIVE_TIMEOUT=300
-
-# Schema 白名单 DDL 文件 —— 仅允许查询此文件中列出的表
-# SCHEMA_DDL_PATH=config/schema_ddl.sql
+```bash
+pip install -e ".[mysql]"       # MySQL / Doris
+pip install -e ".[postgres]"    # PostgreSQL
+pip install -e ".[hive]"        # Hive / Spark SQL
+pip install -e ".[sqlserver]"   # SQL Server
+pip install -e ".[clickhouse]"  # ClickHouse
+pip install -e ".[db-all]"      # 全部数据库驱动
+pip install -e ".[chart]"       # 图表可视化（matplotlib）
 ```
 
-在 `config/schema_ddl.sql` 中填入 Hive 表的 DDL（含列 COMMENT 和 PARTITIONED BY）。Agent 仅允许查询此文件中列出的表。
+在 `.env` 中添加数据库连接配置（以 MySQL 为例）：
+
+```env
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_DATABASE=mydb
+MYSQL_USERNAME=readonly_user
+MYSQL_PASSWORD=secret
+```
+
+所有支持的引擎配置请参考 `.env.example`（Hive、Spark SQL、MySQL、SQL Server、ClickHouse、Doris、PostgreSQL）。建议使用只读数据库账号。
+
+可选：在 `config/schema_ddl.sql` 中填入表 DDL 作为白名单，限制 Agent 可查询的表范围。不配置白名单时，连接数据库中的所有表均可查询。
 
 ### Docker 部署
 
@@ -965,12 +993,24 @@ seatunnel_agent/
 │       ├── matcher.py          # 表/列模糊匹配（关键词 + CJK n-gram）
 │       ├── partition.py        # 分区分类、时间范围提取
 │       ├── validator.py        # SQL 安全（SELECT 白名单、表白名单、列校验、LIMIT）
-│       ├── executor.py         # HiveServer2 执行（通过 pyhive）
+│       ├── chart.py            # 自动检测图表类型 + matplotlib 渲染
+│       ├── favorites.py        # SQL 收藏夹（JSON 后端）
+│       ├── i18n.py             # UI 国际化字典（中英文）
 │       ├── exporter.py         # CSV 导出（UTF-8 BOM 支持 Excel）
 │       ├── prompts.py          # System Prompt 组装（规则 + Schema）
 │       ├── tools.py            # 5 个工具定义 + 运行时 + 分区强制
 │       ├── agent.py            # ReAct 循环、事件协议、多轮对话
 │       ├── qlog.py             # 结构化查询日志（JSONL）
+│       ├── executor/           # 多引擎数据库执行器
+│       │   ├── base.py         # 抽象基类、工厂、DatabaseConfig
+│       │   ├── hive.py         # HiveServer2（pyhive）
+│       │   ├── mysql.py        # MySQL（pymysql）
+│       │   ├── postgres.py     # PostgreSQL（psycopg2）
+│       │   ├── sqlserver.py    # SQL Server（pymssql）
+│       │   ├── clickhouse.py   # ClickHouse（clickhouse-connect）
+│       │   ├── doris.py        # Doris/StarRocks（MySQL 协议）
+│       │   ├── spark.py        # Spark SQL（扩展 Hive）
+│       │   └── flink.py        # Flink SQL（仅生成）
 │       └── resources/
 │           ├── SKILL.md        # 技能入口（触发条件、工作流程）
 │           ├── intent_rules.md # 业务规则（分区、聚合等）

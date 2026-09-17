@@ -1,6 +1,8 @@
 """Text2SQL (Chat BI) agent package.
 
-Turns natural-language questions into safe, executable Hive SQL:
+Turns natural-language questions into safe, executable SQL across multiple
+database engines (Hive, MySQL, SQL Server, Spark SQL, Flink SQL, ClickHouse,
+Doris, PostgreSQL):
 schema matching -> SQL generation (LLM + rules) -> validation -> execution
 -> preview + CSV export.
 """

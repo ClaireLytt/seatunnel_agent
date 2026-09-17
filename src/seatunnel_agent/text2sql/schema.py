@@ -1,4 +1,4 @@
-"""Hive DDL parsing and in-memory schema store.
+"""DDL parsing and in-memory schema store.
 
 Parses ``CREATE TABLE`` statements (with column/table COMMENTs and
 ``PARTITIONED BY`` clauses) into structured dataclasses. The schema file
@@ -261,8 +261,8 @@ class SchemaStore:
         return cls(parse_ddl(text))
 
     @classmethod
-    def from_hive(cls, executor) -> "SchemaStore":
-        """Build a store by introspecting all tables in the Hive database."""
+    def from_db(cls, executor) -> "SchemaStore":
+        """Build a store by introspecting all tables via any DatabaseExecutor."""
         return cls(executor.fetch_all_schemas())
 
     def summary(self) -> str:
