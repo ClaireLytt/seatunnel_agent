@@ -151,7 +151,11 @@ class DatabaseExecutor(ABC):
 
 
 def schema_ddl_path_from_env() -> str:
-    return os.getenv("SCHEMA_DDL_PATH", DEFAULT_SCHEMA_DDL_PATH)
+    raw = os.getenv("SCHEMA_DDL_PATH", DEFAULT_SCHEMA_DDL_PATH)
+    resolved = os.path.normpath(raw)
+    if os.path.isabs(resolved) and ".." in os.path.relpath(resolved, os.getcwd()):
+        return DEFAULT_SCHEMA_DDL_PATH
+    return resolved
 
 
 _ENV_PREFIX: dict[str, str] = {
@@ -188,14 +192,23 @@ def config_from_env(ds_type: str) -> DatabaseConfig | None:
     default_port = str(defaults.get("port", 10000))
     default_db = str(defaults.get("database", "default"))
 
+    try:
+        port = int(os.getenv(f"{prefix}_PORT", default_port))
+    except ValueError:
+        port = int(default_port)
+    try:
+        timeout = int(os.getenv(f"{prefix}_TIMEOUT", "300"))
+    except ValueError:
+        timeout = 300
+
     return DatabaseConfig(
         ds_type=ds_type,
         host=host,
-        port=int(os.getenv(f"{prefix}_PORT", default_port)),
+        port=port,
         database=os.getenv(f"{prefix}_DATABASE", default_db),
         username=os.getenv(f"{prefix}_USERNAME") or None,
         password=os.getenv(f"{prefix}_PASSWORD") or None,
-        timeout_s=int(os.getenv(f"{prefix}_TIMEOUT", "300")),
+        timeout_s=timeout,
     )
 
 

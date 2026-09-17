@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +32,7 @@ class QueryLogger:
         extra: dict[str, Any] | None = None,
     ) -> None:
         record: dict[str, Any] = {
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "user_query": user_query,
             "matched_tables": matched_tables or [],
             "generated_sql": generated_sql,
@@ -65,9 +65,9 @@ class QueryLogger:
             self.log_file.rename(rotated)
 
     def recent(self, n: int = 20) -> list[dict[str, Any]]:
-        if not self.log_file.is_file():
-            return []
         with self._lock:
+            if not self.log_file.is_file():
+                return []
             lines = self.log_file.read_text(encoding="utf-8").splitlines()
         tail = lines[-n:] if len(lines) > n else lines
         records: list[dict[str, Any]] = []

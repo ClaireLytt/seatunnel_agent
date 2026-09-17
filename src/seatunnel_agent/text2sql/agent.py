@@ -146,6 +146,7 @@ class Text2SQLAgent:
                             "max": self.runtime.max_sql_retries,
                             "error_type": data.get("error_type", ""),
                             "retry_hint": data.get("retry_hint", ""),
+                            "failed_sql": data.get("sql", tc.input.get("sql", "")),
                         })
                     elif data.get("cached"):
                         self._emit("cache_hit", {
@@ -177,8 +178,11 @@ class Text2SQLAgent:
         "match_tables": "blue",
         "get_table_schema": "blue",
         "get_max_partition": "cyan",
+        "explain_sql": "magenta",
         "execute_sql": "green",
         "export_csv": "yellow",
+        "export_excel": "yellow",
+        "export_pdf": "yellow",
     }
 
     def _display_tool_call(self, name: str, inputs: dict[str, Any]) -> None:

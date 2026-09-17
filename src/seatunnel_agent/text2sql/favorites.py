@@ -1,13 +1,44 @@
-"""SQL query favorites store — JSON file backend."""
+"""SQL query favorites store — JSON file backend with parameter support."""
 
 from __future__ import annotations
 
 import json
+import os
+import re
+import tempfile
 import threading
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+_MAX_FAVORITES = 200
+_PARAM_RE = re.compile(r"\$\{(\w+)\}")
+
+
+def extract_params(sql: str) -> list[str]:
+    """Extract unique ``${param}`` placeholder names from SQL, in order."""
+    seen: set[str] = set()
+    params: list[str] = []
+    for m in _PARAM_RE.finditer(sql):
+        name = m.group(1)
+        if name not in seen:
+            seen.add(name)
+            params.append(name)
+    return params
+
+
+def apply_params(sql: str, values: dict[str, str]) -> str:
+    """Replace ``${param}`` placeholders with provided values.
+
+    Raises ``ValueError`` if a placeholder has no corresponding value.
+    """
+    def _replace(m: re.Match) -> str:
+        name = m.group(1)
+        if name not in values:
+            raise ValueError(f"Missing value for parameter: ${{{name}}}")
+        return values[name]
+    return _PARAM_RE.sub(_replace, sql)
 
 
 class FavoritesStore:
@@ -25,9 +56,20 @@ class FavoritesStore:
 
     def _write(self, data: list[dict[str, Any]]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+        content = json.dumps(data, ensure_ascii=False, indent=2)
+        fd, tmp = tempfile.mkstemp(
+            dir=str(self.path.parent), suffix=".tmp",
         )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(content)
+            os.replace(tmp, str(self.path))
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def list(self) -> list[dict[str, Any]]:
         with self._lock:
@@ -46,11 +88,14 @@ class FavoritesStore:
             "sql": sql,
             "question": question,
             "ds_type": ds_type,
-            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "params": extract_params(sql),
+            "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
         with self._lock:
             data = self._read()
             data.append(entry)
+            if len(data) > _MAX_FAVORITES:
+                data = data[-_MAX_FAVORITES:]
             self._write(data)
         return entry
 

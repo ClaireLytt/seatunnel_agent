@@ -1031,6 +1031,29 @@ class TestPieChartNegativeValues:
         assert ct == "pie"
 
 
+class TestScatterChart:
+    """Feature 4: scatter chart type."""
+
+    def test_scatter_with_two_numeric(self):
+        from seatunnel_agent.text2sql.chart import build_chart
+        import matplotlib.pyplot as plt
+        cols = ["x", "y"]
+        rows = [(1, 10), (2, 20), (3, 15), (4, 25)]
+        fig = build_chart(cols, rows, "scatter")
+        assert fig is not None
+        assert isinstance(fig, plt.Figure)
+        plt.close(fig)
+
+    def test_scatter_with_one_numeric(self):
+        from seatunnel_agent.text2sql.chart import build_chart
+        import matplotlib.pyplot as plt
+        cols = ["name", "value"]
+        rows = [("A", 10), ("B", 20), ("C", 30)]
+        fig = build_chart(cols, rows, "scatter")
+        assert fig is not None
+        plt.close(fig)
+
+
 class TestEnvPrefixFlink:
     """Bug fix: flinksql was missing from _ENV_PREFIX."""
 
@@ -1284,3 +1307,1144 @@ class TestCacheIntegration:
         r1 = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
         assert r1.get("error") is not None
         assert rt.cache.stats["size"] == 0
+
+
+class TestChatHistory:
+    """Feature 7: chat history persistence."""
+
+    def test_save_and_load(self, tmp_path, monkeypatch):
+        import seatunnel_agent.text2sql.chat_history as ch
+        monkeypatch.setattr(ch, "HISTORY_DIR", tmp_path)
+        session = ch.Text2SQLSession(
+            session_id="abc123",
+            title="Test",
+            created_at=ch.now_iso(),
+            updated_at=ch.now_iso(),
+            ds_type="mysql",
+            chat_messages=[{"role": "user", "content": "hello"}],
+        )
+        ch.save_t2s_session(session)
+        loaded = ch.load_t2s_session("abc123")
+        assert loaded is not None
+        assert loaded.title == "Test"
+        assert len(loaded.chat_messages) == 1
+
+    def test_list_sessions(self, tmp_path, monkeypatch):
+        import seatunnel_agent.text2sql.chat_history as ch
+        monkeypatch.setattr(ch, "HISTORY_DIR", tmp_path)
+        for i in range(3):
+            s = ch.Text2SQLSession(
+                session_id=f"s{i}",
+                title=f"Session {i}",
+                created_at=ch.now_iso(),
+                updated_at=ch.now_iso(),
+            )
+            ch.save_t2s_session(s)
+        sessions = ch.list_t2s_sessions()
+        assert len(sessions) == 3
+
+    def test_delete_session(self, tmp_path, monkeypatch):
+        import seatunnel_agent.text2sql.chat_history as ch
+        monkeypatch.setattr(ch, "HISTORY_DIR", tmp_path)
+        s = ch.Text2SQLSession(
+            session_id="del1",
+            title="To Delete",
+            created_at=ch.now_iso(),
+            updated_at=ch.now_iso(),
+        )
+        ch.save_t2s_session(s)
+        assert ch.load_t2s_session("del1") is not None
+        ch.delete_t2s_session("del1")
+        assert ch.load_t2s_session("del1") is None
+
+    def test_extract_title(self):
+        from seatunnel_agent.text2sql.chat_history import extract_title
+        msgs = [{"role": "user", "content": "查询最近的销售数据"}]
+        assert extract_title(msgs) == "查询最近的销售数据"
+        assert extract_title([]) == "Untitled"
+
+    def test_load_nonexistent(self, tmp_path, monkeypatch):
+        import seatunnel_agent.text2sql.chat_history as ch
+        monkeypatch.setattr(ch, "HISTORY_DIR", tmp_path)
+        assert ch.load_t2s_session("nonexistent") is None
+
+
+class TestGetResultPage:
+    """Feature 6: pagination tool."""
+
+    def test_basic_page(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_get_result_page
+        from seatunnel_agent.text2sql.executor import QueryResult
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        rt.last_result = QueryResult(
+            columns=["id"], rows=[(i,) for i in range(120)],
+            row_count=120, truncated=False, elapsed_ms=10,
+        )
+        result = _tool_get_result_page({"page": 1, "page_size": 50}, rt)
+        assert result["success"] is True
+        assert len(result["rows"]) == 50
+        assert result["page"] == 1
+        assert result["total_pages"] == 3
+        assert result["total_rows"] == 120
+
+    def test_last_page(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_get_result_page
+        from seatunnel_agent.text2sql.executor import QueryResult
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        rt.last_result = QueryResult(
+            columns=["id"], rows=[(i,) for i in range(120)],
+            row_count=120, truncated=False, elapsed_ms=10,
+        )
+        result = _tool_get_result_page({"page": 3, "page_size": 50}, rt)
+        assert result["success"] is True
+        assert len(result["rows"]) == 20
+        assert result["page"] == 3
+
+    def test_page_beyond_max_clamped(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_get_result_page
+        from seatunnel_agent.text2sql.executor import QueryResult
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        rt.last_result = QueryResult(
+            columns=["id"], rows=[(1,), (2,)],
+            row_count=2, truncated=False, elapsed_ms=10,
+        )
+        result = _tool_get_result_page({"page": 999}, rt)
+        assert result["page"] == 1
+
+    def test_no_result(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_get_result_page
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        result = _tool_get_result_page({"page": 1}, rt)
+        assert result.get("error") is not None
+
+
+class TestExportExcelPdf:
+    """Feature 5: Excel and PDF export."""
+
+    def test_export_excel(self, tmp_path):
+        from seatunnel_agent.text2sql.exporter import export_excel
+        cols = ["name", "score"]
+        rows = [("Alice", 90), ("Bob", 85)]
+        path = export_excel(cols, rows, path=str(tmp_path), name_hint="test")
+        assert path.endswith(".xlsx")
+        assert Path(path).is_file()
+        from openpyxl import load_workbook
+        wb = load_workbook(path)
+        ws = wb.active
+        assert ws.cell(1, 1).value == "name"
+        assert ws.cell(2, 1).value == "Alice"
+        assert ws.freeze_panes == "A2"
+
+    def test_export_pdf(self, tmp_path):
+        from seatunnel_agent.text2sql.exporter import export_pdf
+        cols = ["name", "score"]
+        rows = [("Alice", 90), ("Bob", 85)]
+        path = export_pdf(cols, rows, path=str(tmp_path), name_hint="test")
+        assert path.endswith(".pdf")
+        assert Path(path).is_file()
+        assert Path(path).stat().st_size > 100
+
+    def test_export_excel_tool(self, store, tmp_path):
+        from unittest.mock import MagicMock
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_export_excel
+        from seatunnel_agent.text2sql.executor import QueryResult
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        rt.last_result = QueryResult(
+            columns=["id", "name"], rows=[(1, "A"), (2, "B")],
+            row_count=2, truncated=False, elapsed_ms=10,
+        )
+        result = _tool_export_excel({"path": str(tmp_path)}, rt)
+        assert result["success"] is True
+        assert result["excel_path"].endswith(".xlsx")
+
+    def test_export_pdf_tool(self, store, tmp_path):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_export_pdf
+        from seatunnel_agent.text2sql.executor import QueryResult
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        rt.last_result = QueryResult(
+            columns=["id", "name"], rows=[(1, "A"), (2, "B")],
+            row_count=2, truncated=False, elapsed_ms=10,
+        )
+        result = _tool_export_pdf({"path": str(tmp_path), "title": "Test Report"}, rt)
+        assert result["success"] is True
+        assert result["pdf_path"].endswith(".pdf")
+
+    def test_export_no_result(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_export_excel, _tool_export_pdf
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        assert _tool_export_excel({}, rt).get("error") is not None
+        assert _tool_export_pdf({}, rt).get("error") is not None
+
+
+class TestExplainSql:
+    """Tests for the explain_sql tool."""
+
+    def test_explain_success(self, store):
+        from unittest.mock import MagicMock
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_explain_sql
+        from seatunnel_agent.text2sql.executor import QueryResult
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        mock_executor = MagicMock()
+        mock_executor.run.return_value = QueryResult(
+            columns=["id", "select_type", "table"],
+            rows=[("1", "SIMPLE", "student")],
+            row_count=1, truncated=False, elapsed_ms=5,
+        )
+        rt._executor = mock_executor
+        result = _tool_explain_sql({"sql": "SELECT id FROM atest.student"}, rt)
+        assert result["success"] is True
+        assert "SIMPLE" in result["plan"]
+        mock_executor.run.assert_called_once()
+        call_sql = mock_executor.run.call_args[0][0]
+        assert call_sql.startswith("EXPLAIN ")
+
+    def test_explain_unsupported_engine(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_explain_sql
+        rt = Text2SQLRuntime(store=store, ds_type="sqlserver")
+        result = _tool_explain_sql({"sql": "SELECT 1"}, rt)
+        assert "not supported" in result["error"]
+
+    def test_explain_rejects_non_select(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_explain_sql
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        result = _tool_explain_sql({"sql": "DROP TABLE atest.student"}, rt)
+        assert result.get("error") is not None
+
+    def test_explain_empty_sql(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_explain_sql
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        result = _tool_explain_sql({"sql": ""}, rt)
+        assert result.get("error") is not None
+
+
+class TestSqlTemplates:
+    """Feature 8: SQL template library."""
+
+    def test_all_templates_have_required_keys(self):
+        from seatunnel_agent.text2sql.templates import SQL_TEMPLATES
+        required = {"id", "name_en", "name_zh", "description_en", "description_zh", "pattern"}
+        for t in SQL_TEMPLATES:
+            assert required <= set(t.keys()), f"Template {t.get('id')} missing keys"
+
+    def test_template_count(self):
+        from seatunnel_agent.text2sql.templates import SQL_TEMPLATES
+        assert len(SQL_TEMPLATES) == 8
+
+    def test_get_template(self):
+        from seatunnel_agent.text2sql.templates import get_template
+        t = get_template("topn")
+        assert t is not None
+        assert t["id"] == "topn"
+        assert "LIMIT" in t["pattern"]
+        assert get_template("nonexistent") is None
+
+    def test_template_choices_en(self):
+        from seatunnel_agent.text2sql.templates import template_choices
+        choices = template_choices("en")
+        assert len(choices) == 8
+        assert any("Top N" in c for c in choices)
+        assert all("[" in c and "]" in c for c in choices)
+
+    def test_template_choices_zh(self):
+        from seatunnel_agent.text2sql.templates import template_choices
+        choices = template_choices("zh")
+        assert any("排行" in c for c in choices)
+
+    def test_template_description(self):
+        from seatunnel_agent.text2sql.templates import template_description
+        desc = template_description("mom", "en")
+        assert "Compare" in desc
+        assert "```sql" in desc
+        desc_zh = template_description("mom", "zh")
+        assert "对比" in desc_zh
+        assert template_description("nonexistent") == ""
+
+
+class TestRestApi:
+    """Feature 10: REST API endpoints."""
+
+    def test_health(self):
+        from fastapi.testclient import TestClient
+        from seatunnel_agent.text2sql.api import router
+        from fastapi import FastAPI
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+        resp = client.get("/api/text2sql/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+    def test_schema_endpoint(self):
+        from fastapi.testclient import TestClient
+        from seatunnel_agent.text2sql.api import router
+        from fastapi import FastAPI
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+        resp = client.get("/api/text2sql/schema")
+        assert resp.status_code == 200
+        assert "message" in resp.json()
+
+    def test_query_no_config(self):
+        from fastapi.testclient import TestClient
+        from seatunnel_agent.text2sql.api import router
+        from fastapi import FastAPI
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+        resp = client.post("/api/text2sql/query", json={
+            "question": "show all students",
+            "ds_type": "hive",
+        })
+        assert resp.status_code == 400
+
+    def test_query_with_ddl(self, monkeypatch):
+        from fastapi.testclient import TestClient
+        from seatunnel_agent.text2sql.api import router
+        from fastapi import FastAPI
+        app = FastAPI()
+        app.include_router(router)
+        client = TestClient(app)
+
+        mock_agent = MagicMock()
+        mock_agent.messages = []
+        mock_agent.run.return_value = "The answer is 42"
+        mock_rt = MagicMock()
+        mock_rt.last_sql = "SELECT 1"
+        mock_rt.last_result = QueryResult(
+            columns=["id"], rows=[(1,)], row_count=1,
+            truncated=False, elapsed_ms=5,
+        )
+        mock_agent.runtime = mock_rt
+
+        import seatunnel_agent.text2sql.api as api_mod
+        monkeypatch.setattr(api_mod, "_build_agent", lambda *a, **kw: mock_agent)
+
+        resp = client.post("/api/text2sql/query", json={
+            "question": "show all students",
+            "ds_type": "hive",
+            "schema_ddl": _DDL,
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["answer"] == "The answer is 42"
+        assert data["sql"] == "SELECT 1"
+        assert data["row_count"] == 1
+
+
+class TestSchemaBrowser:
+    """Tests for the schema browser card builder (Direction 11)."""
+
+    def _make_table(self, name="test_db.users", comment="User table",
+                    columns=None, partition_columns=None):
+        from seatunnel_agent.text2sql.schema import ColumnSchema, TableSchema
+        if columns is None:
+            columns = [
+                ColumnSchema(name="id", dtype="bigint", comment="Primary key"),
+                ColumnSchema(name="name", dtype="string", comment="User name"),
+            ]
+        if partition_columns is None:
+            partition_columns = []
+        db, tbl = name.split(".", 1) if "." in name else ("", name)
+        return TableSchema(
+            database=db, name=tbl, comment=comment,
+            columns=columns, partition_columns=partition_columns,
+        )
+
+    def test_basic_card(self):
+        from seatunnel_agent.text2sql_ui import build_schema_card
+        table = self._make_table()
+        html = build_schema_card(table)
+        assert "test_db.users" in html
+        assert "User table" in html
+        assert "bigint" in html
+        assert "id" in html
+        assert "name" in html
+        assert "Primary key" in html
+        assert "2 columns" in html
+
+    def test_partitioned_card(self):
+        from seatunnel_agent.text2sql_ui import build_schema_card
+        from seatunnel_agent.text2sql.schema import ColumnSchema
+        table = self._make_table(
+            partition_columns=[
+                ColumnSchema(name="dt", dtype="string", comment="Date partition"),
+            ],
+        )
+        html = build_schema_card(table)
+        assert "partitioned" in html
+        assert "dt" in html
+        assert "Date partition" in html
+        assert "Partition Columns" in html
+        assert "3 columns" in html
+
+    def test_empty_comment(self):
+        from seatunnel_agent.text2sql_ui import build_schema_card
+        table = self._make_table(comment="")
+        html = build_schema_card(table)
+        assert "test_db.users" in html
+        assert "bigint" in html
+
+    def test_zh_labels(self):
+        from seatunnel_agent.text2sql_ui import build_schema_card
+        table = self._make_table()
+        html = build_schema_card(table, lang="zh")
+        assert "test_db.users" in html
+        assert "2 个字段" in html
+        assert "字段列表" in html
+
+    def test_xss_escape(self):
+        from seatunnel_agent.text2sql_ui import build_schema_card
+        from seatunnel_agent.text2sql.schema import ColumnSchema
+        table = self._make_table(
+            comment="<script>alert(1)</script>",
+            columns=[ColumnSchema(name="x", dtype="string", comment="a&b")],
+        )
+        html = build_schema_card(table)
+        assert "<script>" not in html
+        assert "&lt;script&gt;" in html
+        assert "a&amp;b" in html
+
+
+class TestDataLineage:
+    """Tests for SQL data lineage extraction (Direction 12)."""
+
+    def test_simple_select(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        sql = "SELECT id, name FROM users"
+        lineage = trace_lineage(sql)
+        assert lineage.source_tables == ["users"]
+        assert len(lineage.output_columns) == 2
+        names = [c.output_name for c in lineage.output_columns]
+        assert "id" in names
+        assert "name" in names
+
+    def test_join_lineage(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        sql = (
+            "SELECT o.id, c.name "
+            "FROM orders o "
+            "JOIN customers c ON o.customer_id = c.id "
+            "WHERE o.status = 'active'"
+        )
+        lineage = trace_lineage(sql)
+        assert "orders" in lineage.source_tables
+        assert "customers" in lineage.source_tables
+        assert len(lineage.joins) >= 1
+        assert any("customer_id" in j for j in lineage.joins)
+        assert len(lineage.filters) >= 1
+
+    def test_multi_condition_join(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        sql = (
+            "SELECT o.id, c.name "
+            "FROM orders o "
+            "JOIN customers c ON o.customer_id = c.id AND o.region = c.region"
+        )
+        lineage = trace_lineage(sql)
+        assert len(lineage.joins) == 2
+        assert any("customer_id" in j for j in lineage.joins)
+        assert any("region" in j for j in lineage.joins)
+
+    def test_aggregation(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        sql = "SELECT city, SUM(amount) AS total FROM orders GROUP BY city"
+        lineage = trace_lineage(sql)
+        assert lineage.source_tables == ["orders"]
+        agg_cols = [c for c in lineage.output_columns if c.is_aggregation]
+        assert len(agg_cols) >= 1
+        assert agg_cols[0].output_name == "total"
+        assert lineage.group_by
+
+    def test_where_filter(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        sql = "SELECT id FROM users WHERE age > 18 AND status = 'active'"
+        lineage = trace_lineage(sql)
+        assert len(lineage.filters) >= 2
+
+    def test_group_by(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        sql = "SELECT dept, COUNT(*) AS cnt FROM emp GROUP BY dept"
+        lineage = trace_lineage(sql)
+        assert "dept" in lineage.group_by
+
+    def test_cte_excluded(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        sql = "WITH tmp AS (SELECT id FROM users) SELECT * FROM tmp"
+        lineage = trace_lineage(sql)
+        assert "tmp" not in lineage.source_tables
+        assert "tmp" in lineage.cte_names
+
+    def test_star_select(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        sql = "SELECT * FROM orders"
+        lineage = trace_lineage(sql)
+        assert lineage.source_tables == ["orders"]
+        assert any(c.output_name == "*" for c in lineage.output_columns)
+
+    def test_empty_sql(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        lineage = trace_lineage("")
+        assert lineage.source_tables == []
+        assert lineage.output_columns == []
+
+    def test_with_store_resolution(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        from seatunnel_agent.text2sql.schema import ColumnSchema, TableSchema, SchemaStore
+        tables = [
+            TableSchema(database="db", name="orders", columns=[
+                ColumnSchema(name="id", dtype="bigint"),
+                ColumnSchema(name="amount", dtype="decimal"),
+                ColumnSchema(name="city", dtype="string"),
+            ], partition_columns=[]),
+        ]
+        store = SchemaStore(tables)
+        sql = "SELECT city, SUM(amount) AS total FROM orders GROUP BY city"
+        lineage = trace_lineage(sql, store)
+        city_col = next(c for c in lineage.output_columns if c.output_name == "city")
+        assert city_col.source_column == "city"
+
+    def test_lineage_card_basic(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        from seatunnel_agent.text2sql_ui import build_lineage_card
+        sql = (
+            "SELECT o.id, c.name "
+            "FROM orders o "
+            "JOIN customers c ON o.customer_id = c.id"
+        )
+        lineage = trace_lineage(sql)
+        html = build_lineage_card(lineage)
+        assert "Data Lineage" in html
+        assert "orders" in html
+        assert "customers" in html
+        assert "<details" in html
+
+    def test_lineage_card_zh(self):
+        from seatunnel_agent.text2sql.lineage import trace_lineage
+        from seatunnel_agent.text2sql_ui import build_lineage_card
+        sql = "SELECT id, name FROM users WHERE age > 18"
+        lineage = trace_lineage(sql)
+        html = build_lineage_card(lineage, lang="zh")
+        assert "数据血缘" in html
+        assert "来源表" in html
+        assert "过滤条件" in html
+
+
+class TestConfigFromEnv:
+    """Tests for config_from_env edge cases."""
+
+    def test_missing_host_returns_none(self):
+        from seatunnel_agent.text2sql.executor.base import config_from_env
+        with patch.dict("os.environ", {}, clear=True):
+            assert config_from_env("mysql") is None
+
+    def test_invalid_port_falls_back(self):
+        from seatunnel_agent.text2sql.executor.base import config_from_env
+        env = {"MYSQL_HOST": "localhost", "MYSQL_PORT": "not_a_number"}
+        with patch.dict("os.environ", env, clear=True):
+            cfg = config_from_env("mysql")
+            assert cfg is not None
+            assert cfg.port == 3306
+
+    def test_invalid_timeout_falls_back(self):
+        from seatunnel_agent.text2sql.executor.base import config_from_env
+        env = {"MYSQL_HOST": "localhost", "MYSQL_TIMEOUT": "bad"}
+        with patch.dict("os.environ", env, clear=True):
+            cfg = config_from_env("mysql")
+            assert cfg is not None
+            assert cfg.timeout_s == 300
+
+    def test_unknown_ds_type(self):
+        from seatunnel_agent.text2sql.executor.base import config_from_env
+        assert config_from_env("nosuchdb") is None
+
+    def test_sparksql_falls_back_to_hive_env(self):
+        from seatunnel_agent.text2sql.executor.base import config_from_env
+        env = {"HIVE_HOST": "hivehost", "HIVE_PORT": "10000"}
+        with patch.dict("os.environ", env, clear=True):
+            cfg = config_from_env("sparksql")
+            assert cfg is not None
+            assert cfg.host == "hivehost"
+
+
+class TestFavoritesEdgeCases:
+    """Tests for favorites store edge cases."""
+
+    def test_max_favorites_cap(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore, _MAX_FAVORITES
+        store = FavoritesStore(tmp_path / "favs.json")
+        for i in range(_MAX_FAVORITES + 10):
+            store.save(f"q{i}", f"SELECT {i}")
+        assert len(store.list()) == _MAX_FAVORITES
+
+    def test_delete_nonexistent(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        store = FavoritesStore(tmp_path / "favs.json")
+        assert store.delete("nonexistent") is False
+
+    def test_corrupted_file(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        p = tmp_path / "favs.json"
+        p.write_text("not json", encoding="utf-8")
+        store = FavoritesStore(p)
+        assert store.list() == []
+
+
+class TestChatHistory:
+    """Tests for chat history persistence."""
+
+    def test_save_and_load(self, tmp_path):
+        from seatunnel_agent.text2sql.chat_history import (
+            Text2SQLSession, save_t2s_session, load_t2s_session,
+            new_session_id, now_iso, HISTORY_DIR,
+        )
+        with patch.object(
+            __import__("seatunnel_agent.text2sql.chat_history", fromlist=["HISTORY_DIR"]),
+            "HISTORY_DIR", tmp_path,
+        ):
+            sid = new_session_id()
+            session = Text2SQLSession(
+                session_id=sid, title="Test", created_at=now_iso(), updated_at=now_iso(),
+                chat_messages=[{"role": "user", "content": "hello"}],
+            )
+            save_t2s_session(session)
+            loaded = load_t2s_session(sid)
+            assert loaded is not None
+            assert loaded.title == "Test"
+            assert len(loaded.chat_messages) == 1
+
+    def test_load_nonexistent(self, tmp_path):
+        from seatunnel_agent.text2sql.chat_history import load_t2s_session
+        with patch.object(
+            __import__("seatunnel_agent.text2sql.chat_history", fromlist=["HISTORY_DIR"]),
+            "HISTORY_DIR", tmp_path,
+        ):
+            assert load_t2s_session("nonexistent123") is None
+
+    def test_invalid_session_id(self):
+        from seatunnel_agent.text2sql.chat_history import load_t2s_session
+        assert load_t2s_session("../../../etc/passwd") is None
+
+    def test_chat_message_cap(self, tmp_path):
+        from seatunnel_agent.text2sql.chat_history import (
+            Text2SQLSession, save_t2s_session, load_t2s_session,
+            new_session_id, now_iso, _MAX_CHAT_MESSAGES,
+        )
+        with patch.object(
+            __import__("seatunnel_agent.text2sql.chat_history", fromlist=["HISTORY_DIR"]),
+            "HISTORY_DIR", tmp_path,
+        ):
+            sid = new_session_id()
+            msgs = [{"role": "user", "content": f"msg{i}"} for i in range(_MAX_CHAT_MESSAGES + 50)]
+            session = Text2SQLSession(
+                session_id=sid, title="Big", created_at=now_iso(), updated_at=now_iso(),
+                chat_messages=msgs,
+            )
+            save_t2s_session(session)
+            loaded = load_t2s_session(sid)
+            assert loaded is not None
+            assert len(loaded.chat_messages) == _MAX_CHAT_MESSAGES
+
+    def test_extract_title(self):
+        from seatunnel_agent.text2sql.chat_history import extract_title
+        msgs = [{"role": "user", "content": "Show me sales data"}]
+        assert extract_title(msgs) == "Show me sales data"
+        assert extract_title([]) == "Untitled"
+
+
+class TestTemplates:
+    """Tests for SQL template library."""
+
+    def test_get_template_exists(self):
+        from seatunnel_agent.text2sql.templates import get_template
+        t = get_template("topn")
+        assert t is not None
+        assert t["id"] == "topn"
+        assert "LIMIT" in t["pattern"]
+
+    def test_get_template_missing(self):
+        from seatunnel_agent.text2sql.templates import get_template
+        assert get_template("nonexistent") is None
+
+    def test_template_choices_en(self):
+        from seatunnel_agent.text2sql.templates import template_choices
+        choices = template_choices("en")
+        assert len(choices) > 0
+        assert all("[" in c for c in choices)
+
+    def test_template_choices_zh(self):
+        from seatunnel_agent.text2sql.templates import template_choices
+        choices = template_choices("zh")
+        assert len(choices) > 0
+
+    def test_template_description(self):
+        from seatunnel_agent.text2sql.templates import template_description
+        desc = template_description("topn", "en")
+        assert "Top N" in desc or "top" in desc.lower()
+        assert "```sql" in desc
+
+    def test_template_description_missing(self):
+        from seatunnel_agent.text2sql.templates import template_description
+        assert template_description("nope") == ""
+
+
+class TestMdTableXss:
+    """Tests for XSS escaping in markdown table output."""
+
+    def test_html_in_cell_escaped(self):
+        from seatunnel_agent.text2sql_ui import _md_table
+        cols = ["name"]
+        rows = [["<script>alert(1)</script>"]]
+        result = _md_table(cols, rows)
+        assert "<script>" not in result
+        assert "&lt;script&gt;" in result
+
+    def test_html_in_header_escaped(self):
+        from seatunnel_agent.text2sql_ui import _md_table
+        cols = ["<b>name</b>"]
+        rows = [["value"]]
+        result = _md_table(cols, rows)
+        assert "<b>" not in result
+        assert "&lt;b&gt;" in result
+
+
+class TestChartEdgeCases:
+    """Tests for chart building edge cases."""
+
+    def test_empty_rows(self):
+        from seatunnel_agent.text2sql.chart import build_chart
+        assert build_chart(["a", "b"], [], "bar") is None
+
+    def test_empty_columns(self):
+        from seatunnel_agent.text2sql.chart import build_chart
+        assert build_chart([], [(1, 2)], "bar") is None
+
+    def test_no_numeric_columns(self):
+        from seatunnel_agent.text2sql.chart import build_chart
+        result = build_chart(["a", "b"], [("x", "y"), ("m", "n")], "bar")
+        assert result is None
+
+    def test_scatter_single_numeric(self):
+        import matplotlib.pyplot as plt
+        from seatunnel_agent.text2sql.chart import build_chart
+        fig = build_chart(["cat", "val"], [("a", 1), ("b", 2)], "scatter")
+        assert fig is not None
+        plt.close(fig)
+
+    def test_unknown_chart_type(self):
+        from seatunnel_agent.text2sql.chart import build_chart
+        assert build_chart(["a", "b"], [("x", 1)], "unknown_type") is None
+
+    def test_detect_no_numeric(self):
+        from seatunnel_agent.text2sql.chart import detect_chart_type
+        assert detect_chart_type(["a", "b"], [("x", "y"), ("m", "n")]) is None
+
+    def test_detect_single_row(self):
+        from seatunnel_agent.text2sql.chart import detect_chart_type
+        assert detect_chart_type(["a", "b"], [(1, 2)]) is None
+
+
+class TestExporterEdgeCases:
+    """Tests for exporter edge cases."""
+
+    def test_csv_ragged_rows(self, tmp_path):
+        from seatunnel_agent.text2sql.exporter import export_csv
+        path = export_csv(["a", "b", "c"], [("x",), ("y", "z")], str(tmp_path / "test.csv"))
+        content = Path(path).read_text(encoding="utf-8-sig")
+        lines = content.strip().split("\n")
+        assert len(lines) == 3
+        assert lines[1].count(",") == 2
+
+    def test_csv_empty_rows(self, tmp_path):
+        from seatunnel_agent.text2sql.exporter import export_csv
+        path = export_csv(["a", "b"], [], str(tmp_path / "empty.csv"))
+        content = Path(path).read_text(encoding="utf-8-sig")
+        lines = content.strip().split("\n")
+        assert len(lines) == 1
+
+    def test_excel_export(self, tmp_path):
+        pytest.importorskip("openpyxl")
+        from seatunnel_agent.text2sql.exporter import export_excel
+        path = export_excel(["x", "y"], [(1, 2), (3, 4)], str(tmp_path / "test.xlsx"))
+        assert Path(path).exists()
+        assert path.endswith(".xlsx")
+
+    def test_excel_ragged_rows(self, tmp_path):
+        pytest.importorskip("openpyxl")
+        from seatunnel_agent.text2sql.exporter import export_excel
+        path = export_excel(["a", "b", "c"], [("x",)], str(tmp_path / "ragged.xlsx"))
+        assert Path(path).exists()
+
+
+class TestQlogEdgeCases:
+    """Tests for query logger edge cases."""
+
+    def test_concurrent_writes(self, tmp_path):
+        import threading
+        logger = QueryLogger(log_dir=str(tmp_path))
+        errors = []
+
+        def writer(n):
+            try:
+                for i in range(20):
+                    logger.log(f"q{n}_{i}", f"SELECT {n}_{i}", "success")
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=writer, args=(i,)) for i in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert not errors
+        assert len(logger.recent(200)) == 100
+
+    def test_clear(self, tmp_path):
+        logger = QueryLogger(log_dir=str(tmp_path))
+        logger.log("q1", "SELECT 1", "success")
+        assert len(logger.recent()) > 0
+        logger.clear()
+        assert len(logger.recent()) == 0
+
+
+class TestValidatorExtras:
+    """Tests for validator functions not covered elsewhere."""
+
+    def test_strip_literals_and_comments(self):
+        from seatunnel_agent.text2sql.validator import _strip_literals_and_comments
+        sql = "SELECT * FROM t WHERE name = 'hello' -- comment"
+        cleaned = _strip_literals_and_comments(sql)
+        assert "hello" not in cleaned
+        assert "comment" not in cleaned
+        assert "SELECT" in cleaned
+
+    def test_extract_cte_names(self):
+        from seatunnel_agent.text2sql.validator import _extract_cte_names
+        sql = "WITH cte1 AS (SELECT 1), cte2 AS (SELECT 2) SELECT * FROM cte1"
+        names = _extract_cte_names(sql)
+        assert "cte1" in names
+        assert "cte2" in names
+
+    def test_classify_error_column_not_found(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, hint = classify_error("column not found 'foo' in any table")
+        assert etype == "column_not_found"
+
+    def test_classify_error_syntax(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, hint = classify_error("syntax error at or near 'SELEC'")
+        assert etype == "syntax_error"
+
+    def test_classify_error_type_mismatch(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, hint = classify_error("cannot cast string to int: type mismatch")
+        assert etype == "type_mismatch"
+
+    def test_classify_error_unknown(self):
+        from seatunnel_agent.text2sql.tools import classify_error
+        etype, hint = classify_error("something completely unrecognized happened")
+        assert etype == "execution_error"
+
+
+# ------------------------------------------------------------------
+# Direction 13: Data Profiling
+# ------------------------------------------------------------------
+
+class TestProfiler:
+    def test_build_profile_sql(self):
+        from seatunnel_agent.text2sql.profiler import build_profile_sql
+        cols = [{"name": "id", "type": "int"}, {"name": "name", "type": "string"}]
+        sql = build_profile_sql("db.users", cols)
+        assert "COUNT(*)" in sql
+        assert "id__non_null" in sql
+        assert "name__distinct" in sql
+        assert "FROM db.users" in sql
+
+    def test_build_profile_sql_max_columns(self):
+        from seatunnel_agent.text2sql.profiler import build_profile_sql
+        cols = [{"name": f"col{i}", "type": "string"} for i in range(30)]
+        sql = build_profile_sql("t", cols)
+        assert "col19__non_null" in sql
+        assert "col20" not in sql
+
+    def test_parse_profile_result(self):
+        from seatunnel_agent.text2sql.profiler import parse_profile_result
+        cols = [{"name": "id", "type": "int"}, {"name": "name", "type": "string"}]
+        row = (100, 100, 100, 1, 100, 98, 50, "Alice", "Zoe")
+        profile = parse_profile_result("db.users", cols, row)
+        assert profile.row_count == 100
+        assert profile.table_name == "db.users"
+        assert len(profile.columns) == 2
+        assert profile.columns[0].name == "id"
+        assert profile.columns[0].null_count == 0
+        assert profile.columns[0].distinct_count == 100
+        assert profile.columns[1].null_count == 2
+
+    def test_parse_empty_table(self):
+        from seatunnel_agent.text2sql.profiler import parse_profile_result
+        cols = [{"name": "x", "type": "int"}]
+        row = (0, 0, 0, None, None)
+        profile = parse_profile_result("t", cols, row)
+        assert profile.row_count == 0
+        assert profile.columns[0].null_count == 0
+
+    def test_profile_card(self):
+        from seatunnel_agent.text2sql.profiler import TableProfile, ColumnProfile
+        from seatunnel_agent.text2sql_ui import build_profile_card
+        profile = TableProfile(
+            table_name="db.t",
+            row_count=50,
+            columns=[ColumnProfile("id", "int", 50, 0, 50, 1, 50)],
+        )
+        html = build_profile_card(profile, "en")
+        assert "Table Profile" in html
+        assert "db.t" in html
+        assert "50" in html
+
+
+# ------------------------------------------------------------------
+# Direction 14: SQL Formatter
+# ------------------------------------------------------------------
+
+class TestSqlFormatter:
+    def test_simple_select(self):
+        from seatunnel_agent.text2sql.formatter import format_sql
+        result = format_sql("select a, b from t where a > 1")
+        assert "SELECT" in result
+        assert "FROM" in result
+        assert "WHERE" in result
+
+    def test_preserves_strings(self):
+        from seatunnel_agent.text2sql.formatter import format_sql
+        result = format_sql("select * from t where name = 'hello world'")
+        assert "'hello world'" in result
+
+    def test_empty_sql(self):
+        from seatunnel_agent.text2sql.formatter import format_sql
+        assert format_sql("") == ""
+        assert format_sql("   ") == "   "
+
+    def test_join_formatting(self):
+        from seatunnel_agent.text2sql.formatter import format_sql
+        sql = "select a.id from t1 a join t2 b on a.id = b.id where a.x > 1"
+        result = format_sql(sql)
+        assert "JOIN" in result
+        assert "ON" in result
+
+    def test_keywords_uppercased(self):
+        from seatunnel_agent.text2sql.formatter import format_sql
+        result = format_sql("select distinct a from t order by a limit 10")
+        assert "SELECT" in result
+        assert "DISTINCT" in result
+        assert "ORDER BY" in result
+        assert "LIMIT" in result
+
+
+# ------------------------------------------------------------------
+# Direction 15: Query Result Diff
+# ------------------------------------------------------------------
+
+class TestResultDiff:
+    def test_no_diff(self):
+        from seatunnel_agent.text2sql.differ import diff_results
+        cols = ["a", "b"]
+        rows = [(1, 2), (3, 4)]
+        diff = diff_results(cols, rows, cols, rows)
+        assert not diff.has_changes
+
+    def test_added_rows(self):
+        from seatunnel_agent.text2sql.differ import diff_results
+        old_rows = [(1, 2)]
+        new_rows = [(1, 2), (3, 4)]
+        diff = diff_results(["a", "b"], old_rows, ["a", "b"], new_rows)
+        assert diff.has_changes
+        assert len(diff.added_rows) == 1
+        assert (3, 4) in diff.added_rows
+
+    def test_removed_rows(self):
+        from seatunnel_agent.text2sql.differ import diff_results
+        old_rows = [(1, 2), (3, 4)]
+        new_rows = [(1, 2)]
+        diff = diff_results(["a", "b"], old_rows, ["a", "b"], new_rows)
+        assert len(diff.removed_rows) == 1
+
+    def test_column_changes(self):
+        from seatunnel_agent.text2sql.differ import diff_results
+        diff = diff_results(["a", "b"], [], ["a", "c"], [])
+        assert diff.columns_added == ["c"]
+        assert diff.columns_removed == ["b"]
+
+    def test_diff_card_html(self):
+        from seatunnel_agent.text2sql_ui import build_diff_card
+        diff_data = {"added_count": 3, "removed_count": 1, "cols_added": ["c"],
+                     "cols_removed": [], "old_count": 10, "new_count": 12}
+        html = build_diff_card(diff_data, "en")
+        assert "Result Diff" in html
+        assert "+3" in html
+
+
+# ------------------------------------------------------------------
+# Direction 16: Smart JOIN Recommendation
+# ------------------------------------------------------------------
+
+class TestJoinAdvisor:
+    def _build_store(self):
+        ddl = """
+        CREATE TABLE db.users(
+          id int COMMENT 'pk',
+          name string COMMENT 'name',
+          dept_id int COMMENT 'department FK'
+        ) COMMENT 'users';
+
+        CREATE TABLE db.orders(
+          order_id int COMMENT 'pk',
+          user_id int COMMENT 'user FK',
+          amount decimal(10,2) COMMENT 'amount'
+        ) COMMENT 'orders';
+
+        CREATE TABLE db.departments(
+          id int COMMENT 'pk',
+          dept_name string COMMENT 'dept name'
+        ) COMMENT 'departments';
+        """
+        from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+        return SchemaStore(parse_ddl(ddl))
+
+    def test_exact_name_match(self):
+        from seatunnel_agent.text2sql.join_advisor import suggest_joins
+        store = self._build_store()
+        suggestions = suggest_joins("db.orders", store)
+        exact = [s for s in suggestions if s.match_type == "exact_name"]
+        cols = {(s.column_a, s.table_b) for s in exact}
+        assert ("user_id", "db.users") not in cols  # user_id only in orders, users has no user_id
+
+    def test_fk_pattern(self):
+        from seatunnel_agent.text2sql.join_advisor import suggest_joins
+        store = self._build_store()
+        suggestions = suggest_joins("db.users", store)
+        fk = [s for s in suggestions if s.match_type == "fk_pattern"]
+        pairs = {(s.column_a, s.column_b, s.table_b) for s in fk}
+        assert ("id", "user_id", "db.orders") in pairs
+
+    def test_reverse_fk(self):
+        from seatunnel_agent.text2sql.join_advisor import suggest_joins
+        store = self._build_store()
+        suggestions = suggest_joins("db.orders", store)
+        fk = [s for s in suggestions if s.match_type == "fk_pattern"]
+        pairs = {(s.column_a, s.column_b, s.table_b) for s in fk}
+        assert ("user_id", "id", "db.users") in pairs
+
+    def test_no_suggestions_single_table(self):
+        from seatunnel_agent.text2sql.join_advisor import suggest_joins
+        from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+        store = SchemaStore(parse_ddl("CREATE TABLE t(x int) COMMENT 't';"))
+        assert suggest_joins("t", store) == []
+
+    def test_confidence_ordering(self):
+        from seatunnel_agent.text2sql.join_advisor import suggest_joins
+        store = self._build_store()
+        suggestions = suggest_joins("db.users", store)
+        if len(suggestions) >= 2:
+            for i in range(len(suggestions) - 1):
+                assert suggestions[i].confidence >= suggestions[i + 1].confidence
+
+
+# ------------------------------------------------------------------
+# Direction 17: Data Quality Check
+# ------------------------------------------------------------------
+
+class TestQualityCheck:
+    def test_no_warnings_clean_data(self):
+        from seatunnel_agent.text2sql.quality import check_quality
+        report = check_quality(["a", "b"], [(1, 2), (3, 4), (5, 6)])
+        assert not report.has_warnings
+
+    def test_high_null_warning(self):
+        from seatunnel_agent.text2sql.quality import check_quality
+        rows = [(None,), (None,), (None,), (1,)]
+        report = check_quality(["x"], rows)
+        assert report.has_warnings
+        types = [w.warning_type for w in report.warnings]
+        assert "high_null" in types
+
+    def test_constant_column(self):
+        from seatunnel_agent.text2sql.quality import check_quality
+        rows = [(42, "a"), (42, "b"), (42, "c")]
+        report = check_quality(["val", "name"], rows)
+        types = {w.warning_type for w in report.warnings}
+        assert "constant" in types
+
+    def test_outlier_detection(self):
+        from seatunnel_agent.text2sql.quality import check_quality
+        rows = [(i,) for i in range(100)]
+        rows.append((99999,))
+        report = check_quality(["val"], rows)
+        types = {w.warning_type for w in report.warnings}
+        assert "outlier" in types
+
+    def test_duplicate_rows(self):
+        from seatunnel_agent.text2sql.quality import check_quality
+        rows = [(1, 2), (1, 2), (3, 4)]
+        report = check_quality(["a", "b"], rows)
+        assert report.duplicate_count == 1
+        types = {w.warning_type for w in report.warnings}
+        assert "duplicate_rows" in types
+
+    def test_quality_card_html(self):
+        from seatunnel_agent.text2sql_ui import build_quality_card
+        warnings = [{"column": "x", "warning_type": "high_null", "detail": "8/10 (80%)"}]
+        html = build_quality_card(warnings, "en")
+        assert "Data Quality" in html
+        assert "high_null" in html.lower() or "High NULL" in html
+
+    def test_empty_result(self):
+        from seatunnel_agent.text2sql.quality import check_quality
+        report = check_quality(["a"], [])
+        assert not report.has_warnings
+
+
+# ------------------------------------------------------------------
+# Direction 18: Parameterized Favorites
+# ------------------------------------------------------------------
+
+class TestParameterizedFavorites:
+    def test_extract_params(self):
+        from seatunnel_agent.text2sql.favorites import extract_params
+        params = extract_params("SELECT * FROM t WHERE date = '${start_date}' AND city = '${city}'")
+        assert params == ["start_date", "city"]
+
+    def test_extract_params_none(self):
+        from seatunnel_agent.text2sql.favorites import extract_params
+        assert extract_params("SELECT * FROM t") == []
+
+    def test_extract_params_duplicates(self):
+        from seatunnel_agent.text2sql.favorites import extract_params
+        params = extract_params("${x} = 1 AND ${x} = 2")
+        assert params == ["x"]
+
+    def test_apply_params(self):
+        from seatunnel_agent.text2sql.favorites import apply_params
+        result = apply_params(
+            "SELECT * FROM t WHERE d = '${date}' AND c = '${city}'",
+            {"date": "2024-01-01", "city": "Beijing"},
+        )
+        assert "2024-01-01" in result
+        assert "Beijing" in result
+        assert "${" not in result
+
+    def test_apply_params_missing(self):
+        from seatunnel_agent.text2sql.favorites import apply_params
+        with pytest.raises(ValueError, match="Missing value"):
+            apply_params("SELECT * WHERE x = '${missing}'", {})
+
+    def test_save_with_params(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        store = FavoritesStore(tmp_path / "fav.json")
+        entry = store.save("q1", "SELECT * WHERE d = '${date}'")
+        assert entry["params"] == ["date"]
+
+    def test_save_without_params(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        store = FavoritesStore(tmp_path / "fav.json")
+        entry = store.save("q2", "SELECT * FROM t")
+        assert entry["params"] == []

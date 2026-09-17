@@ -96,7 +96,7 @@ def extract_tables(sql: str) -> list[str]:
 def _extract_cte_names(cleaned: str) -> set[str]:
     """Collect CTE aliases from a WITH clause so they're not flagged as tables."""
     names: set[str] = set()
-    for m in re.finditer(r"\b(?:with|,)\s*(\w+)\s+as\s*\(", cleaned, re.IGNORECASE):
+    for m in re.finditer(r"(?:\bwith|,)\s*(\w+)\s+as\s*\(", cleaned, re.IGNORECASE):
         names.add(m.group(1).lower())
     return names
 
@@ -254,13 +254,14 @@ def _enforce_limit_sqlserver(
         return stripped
     if re.search(r"\bOFFSET\b.*\bFETCH\b", stripped, re.IGNORECASE | re.DOTALL):
         return stripped
-    cleaned = _strip_literals_and_comments(stripped)
-    if re.match(r"\s*WITH\b", cleaned, re.IGNORECASE):
-        m = re.search(r"\)\s*(SELECT)\b", cleaned, re.IGNORECASE)
-        if m:
-            pos = m.start(1)
+    if re.match(r"\s*WITH\b", stripped, re.IGNORECASE):
+        last_select = None
+        for m in re.finditer(r"\bSELECT\b", stripped, re.IGNORECASE):
+            last_select = m
+        if last_select:
+            pos = last_select.start()
             return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]
-    m = re.search(r"\bSELECT\b", cleaned, re.IGNORECASE)
+    m = re.search(r"\bSELECT\b", stripped, re.IGNORECASE)
     if m:
         pos = m.start()
         return stripped[:pos] + f"SELECT TOP {default_limit} " + stripped[pos + 6:]

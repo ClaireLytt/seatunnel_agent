@@ -21,6 +21,8 @@ anthropic = ["anthropic>=0.40.0"]
 openai = ["openai>=1.0"]
 ui = ["gradio>=4.0"]
 chart = ["matplotlib>=3.7"]
+excel = ["openpyxl>=3.1"]
+pdf = ["fpdf2>=2.7"]
 hive = ["pyhive[hive]>=0.7"]
 mysql = ["pymysql>=1.1"]
 postgres = ["psycopg2-binary>=2.9"]
@@ -39,6 +41,8 @@ all = [
     "openai>=1.0",
     "gradio>=4.0",
     "matplotlib>=3.7",
+    "openpyxl>=3.1",
+    "fpdf2>=2.7",
 ]
 dev = [
     "pytest>=7.0",
@@ -48,6 +52,8 @@ dev = [
     "openai>=1.0",
     "gradio>=4.0",
     "matplotlib>=3.7",
+    "openpyxl>=3.1",
+    "fpdf2>=2.7",
 ]
 
 [project.urls]

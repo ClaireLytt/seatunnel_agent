@@ -794,6 +794,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Ask in natural language → auto match table schema → generate &amp; run Hive SQL → preview &amp; CSV export" data-zh="自然语言提问 → 自动匹配表结构 → 生成并执行 Hive SQL → 结果预览与 CSV 导出">Ask in natural language → auto match table schema → generate &amp; run Hive SQL → preview &amp; CSV export</div>
       <div class="st-hub-enter" style="color:#0ea5e9;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/datacompare">
+      <div class="st-hub-logo" style="background:#8b5cf6;">⇄</div>
+      <div class="st-hub-card-title" data-en="Data Comparison" data-zh="数据比对">Data Comparison</div>
+      <div class="st-hub-card-desc" data-en="Compare schemas, row counts, and data across two data sources" data-zh="跨数据源比对表结构、行数、数据差异">Compare schemas, row counts, and data across two data sources</div>
+      <div class="st-hub-enter" style="color:#8b5cf6;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <div class="st-hub-card st-hub-card-soon">
       <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
       <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
@@ -806,6 +812,7 @@ def _build_hub_html() -> str:
 def create_ui() -> gr.Blocks:
     """Multipage app: hub landing page + one dedicated page per agent."""
     from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page
+    from .data_comparison_ui import render_data_comparison_page
 
     _hide_sub_nav_js = """
     () => {
@@ -843,6 +850,9 @@ def create_ui() -> gr.Blocks:
 
     with app.route("SQL Favorites", "/favorites"):
         render_favorites_page()
+
+    with app.route("Data Comparison", "/datacompare"):
+        render_data_comparison_page(app)
 
     return app
 
@@ -2077,13 +2087,18 @@ def _kill_port(port: int) -> bool:
     return False
 
 
-def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False) -> None:
+def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
     import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         if s.connect_ex((host, port)) == 0:
             print(f"[ui] Port {port} in use — killing old process...")
             _kill_port(port)
             import time; time.sleep(0.5)
+
+    if api:
+        from .text2sql.api import router as t2s_api_router
+        fastapi_app = app.app
+        fastapi_app.include_router(t2s_api_router)
 
     app.launch(
         server_name=host,

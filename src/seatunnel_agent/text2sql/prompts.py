@@ -45,10 +45,18 @@ show results and export CSV files.
 - **get_table_schema**: Full column list with Chinese comments, partition
   columns and table type (incremental/full/other). Call before writing SQL.
 {partition_tool_doc}\
+- **explain_sql**: Run EXPLAIN on a SELECT statement to preview the execution
+  plan. Call this before execute_sql when the user wants to check whether a
+  query will cause a full table scan, or to estimate cost. Not available on
+  SQL Server.
 - **execute_sql**: Validate and run a SELECT. Only whitelisted tables and
   read-only statements are accepted; a row LIMIT is enforced automatically.
 - **export_csv**: Export the last query result to CSV (default: Desktop,
   timestamped filename; or a user-specified path).
+- **export_excel**: Export to a formatted Excel (.xlsx) file with bold headers,
+  auto-filter and frozen header row. Requires the openpyxl library.
+- **export_pdf**: Export to a PDF report with a table layout. Accepts an
+  optional title parameter. Requires the fpdf2 library.
 
 ## Hard Safety Rules (never violate)
 
@@ -90,10 +98,33 @@ After execution, present in this order:
 1. The final SQL (```sql block).
 2. Execution log: elapsed time, row count.
 3. Result preview (markdown table, first 20 rows max).
-4. CSV path if the user wanted a download (default is to export).
+4. A brief **natural language summary** of the key findings (2-3 sentences).
+   Highlight notable patterns, outliers, trends, or rankings in the data.
+   Example: "销售额最高的城市是上海（¥12.5M），占总量的35%。前3名城市贡献了
+   全部销售额的72%。" or "Daily active users peaked on March 15th at 42,000,
+   then declined steadily over the following week."
+5. CSV path if the user wanted a download (default is to export).
 Answer in the user's language (Chinese question -> Chinese answer).
 {join_pattern}\
 {dialect_tips}\
+
+## SQL Template Patterns
+
+When the user selects a template, adapt the pattern to their tables and columns.
+
+- **Month-over-Month (环比)**: Self-join with current vs previous month filters,
+  compute (curr - prev) / prev * 100 as MoM%.
+- **Year-over-Year (同比)**: Self-join with current year vs previous year,
+  compute (curr - prev) / prev * 100 as YoY%.
+- **Top N**: ORDER BY metric DESC LIMIT N.
+- **Ranked Groups (分组排名)**: ROW_NUMBER() OVER(PARTITION BY group ORDER BY
+  metric DESC) AS rank.
+- **Daily Trend (每日趋势)**: GROUP BY date_col ORDER BY date_col with SUM/COUNT.
+- **Proportion (占比)**: SUM(metric) / SUM(SUM(metric)) OVER() * 100 AS pct.
+- **Moving Average (移动平均)**: AVG(metric) OVER(ORDER BY date ROWS BETWEEN
+  N-1 PRECEDING AND CURRENT ROW).
+- **Cumulative Sum (累计求和)**: SUM(metric) OVER(ORDER BY date ROWS UNBOUNDED
+  PRECEDING).
 """
 
 _PARTITION_TOOL_DOC = """\

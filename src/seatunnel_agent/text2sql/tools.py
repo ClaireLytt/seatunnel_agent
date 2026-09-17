@@ -20,11 +20,12 @@ from .executor import (
     QueryResult,
     create_executor,
 )
-from .exporter import export_csv
+from .exporter import export_csv, export_excel, export_pdf
 from .matcher import match_tables
 from .partition import classify_table, has_partition_filter
 from .qlog import QueryLogger
 from .schema import SchemaStore
+from .quality import check_quality
 from .validator import ValidationResult, enforce_limit, validate_sql
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
@@ -108,6 +109,24 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "explain_sql",
+        "description": (
+            "Run EXPLAIN on a SELECT statement to preview the execution plan "
+            "before running it. Useful for checking whether a query will cause "
+            "a full table scan or estimating cost. Not supported on SQL Server."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sql": {
+                    "type": "string",
+                    "description": "The SELECT statement to explain",
+                },
+            },
+            "required": ["sql"],
+        },
+    },
+    {
         "name": "export_csv",
         "description": (
             "Export the most recent query result to a CSV file. Default "
@@ -129,6 +148,74 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": [],
         },
     },
+    {
+        "name": "export_excel",
+        "description": (
+            "Export the most recent query result to a formatted Excel (.xlsx) "
+            "file with bold headers, auto-filter and frozen header row. "
+            "Requires openpyxl."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Optional output directory or .xlsx file path",
+                },
+                "name_hint": {
+                    "type": "string",
+                    "description": "Optional short name used in the filename",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "export_pdf",
+        "description": (
+            "Export the most recent query result to a PDF report with a "
+            "table layout. Requires fpdf2."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Optional output directory or .pdf file path",
+                },
+                "name_hint": {
+                    "type": "string",
+                    "description": "Optional short name used in the filename",
+                },
+                "title": {
+                    "type": "string",
+                    "description": "Report title shown at the top of the PDF",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "get_result_page",
+        "description": (
+            "Return a specific page of the most recent query result. "
+            "Use this to browse large result sets beyond the initial preview."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer",
+                    "description": "Page number (1-based)",
+                },
+                "page_size": {
+                    "type": "integer",
+                    "description": "Rows per page (default 50, max 200)",
+                },
+            },
+            "required": ["page"],
+        },
+    },
 ]
 
 
@@ -145,7 +232,9 @@ class Text2SQLRuntime:
     logger: QueryLogger = field(default_factory=QueryLogger)
     default_limit: int = 1000
     last_result: QueryResult | None = None
+    prev_result: QueryResult | None = None
     last_sql: str = ""
+    prev_sql: str = ""
     sql_retries: int = 0
     max_sql_retries: int = 3
     cache: SqlResultCache = field(default_factory=SqlResultCache)
@@ -293,6 +382,12 @@ def _build_success(
     }
     if validation.column_warnings:
         out["column_warnings"] = validation.column_warnings
+    report = check_quality(result.columns, result.rows)
+    if report.has_warnings:
+        out["quality_warnings"] = [
+            {"column": w.column, "warning_type": w.warning_type, "detail": w.detail}
+            for w in report.warnings
+        ]
     return out
 
 
@@ -316,6 +411,8 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
     cached = rt.cache.get(final_sql, rt.ds_type)
     if cached is not None:
         rt.sql_retries = 0
+        rt.prev_result = rt.last_result
+        rt.prev_sql = rt.last_sql
         rt.last_result = cached
         rt.last_sql = final_sql
         rt.logger.log(
@@ -338,6 +435,8 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
         return err
 
     rt.sql_retries = 0
+    rt.prev_result = rt.last_result
+    rt.prev_sql = rt.last_sql
     rt.last_result = result
     rt.last_sql = final_sql
     rt.cache.put(final_sql, rt.ds_type, result)
@@ -346,7 +445,53 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
         matched_tables=validation.tables,
         exec_time_ms=result.elapsed_ms, row_count=result.row_count,
     )
-    return _build_success(result, final_sql, validation)
+    out = _build_success(result, final_sql, validation)
+    if rt.prev_result is not None:
+        from .differ import diff_results
+        diff = diff_results(
+            rt.prev_result.columns, rt.prev_result.rows,
+            result.columns, result.rows,
+        )
+        if diff.has_changes:
+            out["diff"] = {
+                "added_count": len(diff.added_rows),
+                "removed_count": len(diff.removed_rows),
+                "cols_added": diff.columns_added,
+                "cols_removed": diff.columns_removed,
+                "old_count": diff.old_count,
+                "new_count": diff.new_count,
+            }
+    return out
+
+
+_EXPLAIN_UNSUPPORTED = frozenset({"sqlserver"})
+
+
+def _tool_explain_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    sql = inp.get("sql", "").strip()
+    if not sql:
+        return {"error": "No SQL provided"}
+    if rt.ds_type in _EXPLAIN_UNSUPPORTED:
+        return {"error": f"EXPLAIN is not supported for {rt.ds_type}"}
+
+    validation = validate_sql(sql, rt.store)
+    if not validation.ok:
+        return {"error": "SQL rejected: " + "; ".join(validation.errors)}
+
+    try:
+        result = rt.executor.run(f"EXPLAIN {sql}", max_rows=200)
+    except Exception as exc:
+        return {"error": f"EXPLAIN failed: {exc}"}
+
+    plan_lines = []
+    for row in result.rows:
+        plan_lines.append(" | ".join(str(v) for v in row))
+    return {
+        "success": True,
+        "sql": sql,
+        "plan": "\n".join(plan_lines),
+        "columns": result.columns,
+    }
 
 
 def _tool_export_csv(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
@@ -435,12 +580,80 @@ def _suggest_column(error_msg: str, rt: Text2SQLRuntime) -> str | None:
     return None
 
 
+def _tool_get_result_page(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    if rt.last_result is None:
+        return {"error": "No query result available. Run execute_sql first."}
+    page = inp.get("page", 1)
+    page_size = min(inp.get("page_size", 50), 200)
+    if page < 1:
+        page = 1
+    total = rt.last_result.row_count
+    total_pages = max(1, (total + page_size - 1) // page_size)
+    if page > total_pages:
+        page = total_pages
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_rows = rt.last_result.rows[start:end]
+    return {
+        "success": True,
+        "columns": rt.last_result.columns,
+        "rows": [list(r) for r in page_rows],
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+        "total_rows": total,
+    }
+
+
+def _tool_export_excel(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    if rt.last_result is None:
+        return {"error": "No query result to export. Run execute_sql first."}
+    try:
+        path = export_excel(
+            columns=rt.last_result.columns,
+            rows=rt.last_result.rows,
+            path=inp.get("path"),
+            name_hint=inp.get("name_hint", "query_result"),
+        )
+    except Exception as exc:
+        return {"error": f"Excel export failed: {exc}"}
+    return {
+        "success": True,
+        "excel_path": path,
+        "row_count": rt.last_result.row_count,
+    }
+
+
+def _tool_export_pdf(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    if rt.last_result is None:
+        return {"error": "No query result to export. Run execute_sql first."}
+    try:
+        path = export_pdf(
+            columns=rt.last_result.columns,
+            rows=rt.last_result.rows,
+            path=inp.get("path"),
+            name_hint=inp.get("name_hint", "query_result"),
+            title=inp.get("title", "Query Result Report"),
+        )
+    except Exception as exc:
+        return {"error": f"PDF export failed: {exc}"}
+    return {
+        "success": True,
+        "pdf_path": path,
+        "row_count": rt.last_result.row_count,
+    }
+
+
 _TOOL_HANDLERS = {
     "match_tables": _tool_match_tables,
     "get_table_schema": _tool_get_table_schema,
     "get_max_partition": _tool_get_max_partition,
+    "explain_sql": _tool_explain_sql,
     "execute_sql": _tool_execute_sql,
     "export_csv": _tool_export_csv,
+    "export_excel": _tool_export_excel,
+    "export_pdf": _tool_export_pdf,
+    "get_result_page": _tool_get_result_page,
 }
 
 
