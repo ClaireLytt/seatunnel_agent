@@ -887,6 +887,20 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         try:
             settings_holder["current"] = load_settings()
             s = settings_holder["current"]
+
+            def _warmup_llm():
+                """Pre-import LLM SDK so the first chat doesn't pay the cost."""
+                try:
+                    if s.llm_provider == "anthropic":
+                        import anthropic
+                    else:
+                        import openai
+                except Exception:
+                    pass
+
+            import threading
+            threading.Thread(target=_warmup_llm, daemon=True).start()
+
             if lang == "zh":
                 return f"✅ 连接成功，模型: {s.model_name}"
             return f"✅ Connected, Model: {s.model_name}"

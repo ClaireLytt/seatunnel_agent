@@ -1265,6 +1265,23 @@ def render_text2sql_page(app=None) -> None:
             holder["ds_type"] = ds_type
             holder["db_config"] = db_config
             holder["agent"] = None
+
+        def _warmup():
+            """Pre-create agent so the first message doesn't pay import cost."""
+            try:
+                from .text2sql.agent import Text2SQLAgent
+                agent = Text2SQLAgent(
+                    settings, store=store, ds_type=ds_type, db_config=db_config,
+                )
+                with holder_lock:
+                    if holder.get("agent") is None:
+                        holder["agent"] = agent
+            except Exception:
+                pass
+
+        import threading
+        threading.Thread(target=_warmup, daemon=True).start()
+
         status = f"✅ {schema_source} · {db_note} · {t('model')} {settings.model_name}"
 
         choices = _table_choices(store, lang)
