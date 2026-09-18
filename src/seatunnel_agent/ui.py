@@ -2082,13 +2082,22 @@ def _kill_port(port: int) -> bool:
     return False
 
 
-def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
+def _port_has_listener(port: int) -> bool:
+    """Check if a process is actually LISTENING on *port* (not TIME_WAIT)."""
+    import subprocess, sys
+    if sys.platform == "win32":
+        r = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
+        return any(f":{port}" in ln and "LISTENING" in ln for ln in r.stdout.splitlines())
     import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        if s.connect_ex((host, port)) == 0:
-            print(f"[ui] Port {port} in use — killing old process...")
-            _kill_port(port)
-            import time; time.sleep(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
+    if _port_has_listener(port):
+        print(f"[ui] Port {port} in use — killing old process...")
+        _kill_port(port)
+        import time; time.sleep(0.5)
 
     if api:
         from .text2sql.api import router as t2s_api_router
