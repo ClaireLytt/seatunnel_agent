@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 _TABLE_NAME_RE = re.compile(r"^\w+\.\w+$")
 
 DS_TYPES = ("hive", "mysql", "sqlserver", "sparksql", "flinksql",
-            "clickhouse", "doris", "postgresql")
+            "clickhouse", "doris", "postgresql", "sqlite")
 
 PARTITION_ENGINES = frozenset({"hive", "sparksql"})
 
@@ -33,6 +33,7 @@ DS_DEFAULTS: dict[str, dict[str, object]] = {
     "clickhouse": {"port": 8123,  "database": "default"},
     "doris":      {"port": 9030,  "database": ""},
     "postgresql": {"port": 5432,  "database": "postgres"},
+    "sqlite":     {"port": 0,     "database": "config/demo.db"},
 }
 
 DIALECT_NAMES: dict[str, str] = {
@@ -44,6 +45,7 @@ DIALECT_NAMES: dict[str, str] = {
     "clickhouse": "ClickHouse",
     "doris":      "Doris",
     "postgresql": "PostgreSQL",
+    "sqlite":     "SQLite",
 }
 
 DEFAULT_SCHEMA_DDL_PATH = "config/schema_ddl.sql"
@@ -221,6 +223,7 @@ _EXECUTOR_REGISTRY: dict[str, tuple[str, str]] = {
     "clickhouse": (".clickhouse", "ClickHouseExecutor"),
     "doris":      (".doris",      "DorisExecutor"),
     "postgresql": (".postgres",   "PostgresExecutor"),
+    "sqlite":     (".sqlite",     "SQLiteExecutor"),
 }
 
 

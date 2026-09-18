@@ -929,19 +929,18 @@ def render_text2sql_page(app=None) -> None:
                 placeholder="10.0.0.1",
                 elem_classes=["st-sidebar-control"],
             )
-            with gr.Row(elem_classes=["st-sidebar-row"]):
-                port_tb = gr.Textbox(
-                    label=t("port"),
-                    value="",
-                    placeholder="10000",
-                    elem_classes=["st-sidebar-control"],
-                )
-                db_tb = gr.Textbox(
-                    label=t("database"),
-                    value="",
-                    placeholder="default",
-                    elem_classes=["st-sidebar-control"],
-                )
+            port_tb = gr.Textbox(
+                label=t("port"),
+                value="",
+                placeholder="10000",
+                elem_classes=["st-sidebar-control"],
+            )
+            db_tb = gr.Textbox(
+                label=t("database"),
+                value="",
+                placeholder="default",
+                elem_classes=["st-sidebar-control"],
+            )
             username_tb = gr.Textbox(
                 label=t("username"),
                 value="",
@@ -1076,7 +1075,7 @@ def render_text2sql_page(app=None) -> None:
                 layout="panel",
                 buttons=["copy"],
                 elem_classes=["st-chatbot"],
-                height="calc(100vh - 130px)",
+                height=None,
             )
             chart_plot = gr.Plot(visible=False, elem_classes=["st-chart"])
             chart_type_radio = gr.Radio(
@@ -1115,14 +1114,15 @@ def render_text2sql_page(app=None) -> None:
         if env_cfg:
             return (
                 gr.update(value=str(env_cfg.port), placeholder=default_port, visible=show_host),
-                gr.update(value=env_cfg.database, placeholder=str(default_db)),
+                gr.update(value=env_cfg.database, placeholder=str(default_db), visible=True),
                 gr.update(value=env_cfg.host, visible=show_host),
                 gr.update(value=env_cfg.username or "", visible=show_auth),
                 gr.update(value=env_cfg.password or "", visible=show_auth),
             )
+        db_placeholder = "config/demo.db" if ds == "sqlite" else str(default_db)
         return (
             gr.update(value="", placeholder=default_port, visible=show_host),
-            gr.update(value="", placeholder=str(default_db)),
+            gr.update(value="", placeholder=db_placeholder, visible=True),
             gr.update(value="", visible=show_host),
             gr.update(value="", visible=show_auth),
             gr.update(value="", visible=show_auth),
@@ -1179,7 +1179,14 @@ def render_text2sql_page(app=None) -> None:
                 u = fallback.username
                 pw = fallback.password
 
-        if h and ds_type in _NEEDS_HOST:
+        if ds_type == "sqlite":
+            db_config = DatabaseConfig(
+                ds_type="sqlite",
+                host="",
+                port=0,
+                database=d or str(default_db),
+            )
+        elif h and ds_type in _NEEDS_HOST:
             try:
                 db_config = DatabaseConfig(
                     ds_type=ds_type,
@@ -1261,11 +1268,12 @@ def render_text2sql_page(app=None) -> None:
         status = f"✅ {schema_source} · {db_note} · {t('model')} {settings.model_name}"
 
         choices = _table_choices(store, lang)
+        no = gr.update()
         return (
             status,
-            gr.update(value=h),
-            gr.update(value=p or default_port),
-            gr.update(value=d or str(default_db)),
+            gr.update(value=h) if h else no,
+            gr.update(value=p) if p else no,
+            gr.update(value=d) if d else no,
             gr.update(choices=choices, value=choices),
             gr.update(open=True, label=t("select_tables").format(n=len(store))),
             choices,
@@ -1818,6 +1826,8 @@ def render_text2sql_page(app=None) -> None:
     _res = Path(__file__).resolve().parent / "text2sql" / "resources"
     _sidebar_fix_js = (_res / "sidebar_fix.js").read_text(encoding="utf-8")
     _hint_delegate_js = (_res / "hint_delegate.js").read_text(encoding="utf-8")
+    _tab_fill_js = (_res / "tab_fill.js").read_text(encoding="utf-8")
     if app is not None:
         app.load(fn=None, js=_sidebar_fix_js)
         app.load(fn=None, js=_hint_delegate_js)
+        app.load(fn=None, js=_tab_fill_js)
