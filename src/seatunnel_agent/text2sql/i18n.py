@@ -183,6 +183,9 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "fav_has_params": "This query has parameters",
         "fav_apply_params": "Apply",
         "fav_param_label": "Parameter: {param}",
+        "er_diagram": "ER Diagram",
+        "er_diagram_title": "Table Relationships",
+        "connect_first_er": "Please connect to a data source first",
     },
     "zh": {
         "sidebar_title": "### \U0001f5c4 数据源配置",
@@ -327,6 +330,9 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "fav_has_params": "此查询包含参数",
         "fav_apply_params": "应用",
         "fav_param_label": "参数: {param}",
+        "er_diagram": "ER 关系图",
+        "er_diagram_title": "表关系图",
+        "connect_first_er": "请先连接数据源",
     },
 }
 

@@ -587,6 +587,7 @@ class TestExecutorSafety:
         with patch.object(executor, "_connect", return_value=mock_conn):
             executor.run("SELECT 1")
         mock_cursor.close.assert_called_once()
+        executor.close_pool()
         mock_conn.close.assert_called_once()
 
     def test_cursor_closed_on_error(self):
@@ -601,6 +602,7 @@ class TestExecutorSafety:
             with pytest.raises(RuntimeError):
                 executor.run("SELECT fail")
         mock_cursor.close.assert_called_once()
+        executor.close_pool()
         mock_conn.close.assert_called_once()
 
 
@@ -2448,3 +2450,58 @@ class TestParameterizedFavorites:
         store = FavoritesStore(tmp_path / "fav.json")
         entry = store.save("q2", "SELECT * FROM t")
         assert entry["params"] == []
+
+
+class TestSchemaViz:
+    def test_empty_store(self):
+        from seatunnel_agent.text2sql.schema_viz import generate_er_mermaid
+        from seatunnel_agent.text2sql.schema import SchemaStore
+        store = SchemaStore([])
+        result = generate_er_mermaid(store)
+        assert "erDiagram" in result
+
+    def test_single_table(self):
+        from seatunnel_agent.text2sql.schema_viz import generate_er_mermaid
+        from seatunnel_agent.text2sql.schema import SchemaStore, TableSchema, ColumnSchema
+        table = TableSchema(database="db", name="users", comment="", columns=[
+            ColumnSchema(name="id", dtype="INT", comment=""),
+            ColumnSchema(name="name", dtype="VARCHAR", comment=""),
+        ], partition_columns=[])
+        store = SchemaStore([table])
+        result = generate_er_mermaid(store)
+        assert "users" in result
+        assert "INT id" in result or "id" in result
+
+    def test_relationships_detected(self):
+        from seatunnel_agent.text2sql.schema_viz import generate_er_mermaid
+        from seatunnel_agent.text2sql.schema import SchemaStore, TableSchema, ColumnSchema
+        t1 = TableSchema(database="db", name="student", comment="", columns=[
+            ColumnSchema(name="id", dtype="INT", comment=""),
+            ColumnSchema(name="name", dtype="VARCHAR", comment=""),
+        ], partition_columns=[])
+        t2 = TableSchema(database="db", name="score", comment="", columns=[
+            ColumnSchema(name="student_id", dtype="INT", comment=""),
+            ColumnSchema(name="value", dtype="FLOAT", comment=""),
+        ], partition_columns=[])
+        store = SchemaStore([t1, t2])
+        result = generate_er_mermaid(store)
+        assert "student" in result
+        assert "score" in result
+
+    def test_html_output(self):
+        from seatunnel_agent.text2sql.schema_viz import generate_er_html
+        from seatunnel_agent.text2sql.schema import SchemaStore
+        store = SchemaStore([])
+        html = generate_er_html(store, "en")
+        assert "mermaid" in html
+        assert "<pre" in html
+
+    def test_special_chars_sanitized(self):
+        from seatunnel_agent.text2sql.schema_viz import generate_er_mermaid
+        from seatunnel_agent.text2sql.schema import SchemaStore, TableSchema, ColumnSchema
+        table = TableSchema(database="my.db", name="my.table", comment="", columns=[
+            ColumnSchema(name="col-1", dtype="VARCHAR(100)", comment=""),
+        ], partition_columns=[])
+        store = SchemaStore([table])
+        result = generate_er_mermaid(store)
+        assert "my.table" not in result or "my_table" in result

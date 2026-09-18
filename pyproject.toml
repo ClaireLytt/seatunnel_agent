@@ -67,6 +67,7 @@ seatunnel-agent = "seatunnel_agent.cli:cli"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v"
+markers = ["integration: real-database integration tests (no mocks)"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

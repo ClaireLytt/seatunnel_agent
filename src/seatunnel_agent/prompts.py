@@ -289,9 +289,18 @@ _TASK_HINTS = {
 }
 
 
-def build_system_prompt(task_type: str, max_retries: int = 3) -> str:
+def build_system_prompt(task_type: str, max_retries: int = 3, has_api: bool = False) -> str:
     prompt = SYSTEM_PROMPT.replace("{max_retries}", str(max_retries))
     hint = _TASK_HINTS.get(task_type, "")
     if hint:
         prompt += f"\n## Current Task\n\n{hint}\n"
+    if has_api:
+        prompt += (
+            "\n\n## SeaTunnel REST API\n\n"
+            "The SeaTunnel REST API is available. You can use **submit_job_api** to submit jobs "
+            "via the engine's HTTP API, **get_job_status** to check a job's current status, "
+            "**list_jobs** to see all jobs (running, finished, failed), and **cancel_job** to "
+            "stop a running job. These tools communicate with the SeaTunnel Zeta engine directly "
+            "and do not require the CLI binary.\n"
+        )
     return prompt

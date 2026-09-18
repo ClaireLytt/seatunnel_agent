@@ -33,7 +33,7 @@ class MySQLExecutor(DatabaseExecutor):
         return self._run_dbapi(sql, max_rows)
 
     def show_tables(self) -> list[str]:
-        conn = self._connect()
+        conn = self.get_connection()
         cursor = None
         try:
             cursor = conn.cursor()
@@ -47,7 +47,7 @@ class MySQLExecutor(DatabaseExecutor):
     def describe_table(self, table_name: str) -> TableSchema:
         from ..schema import ColumnSchema, TableSchema
 
-        conn = self._connect()
+        conn = self.get_connection()
         cursor = None
         try:
             cursor = conn.cursor()
@@ -87,7 +87,7 @@ class MySQLExecutor(DatabaseExecutor):
     def fetch_all_schemas(self) -> list[TableSchema]:
         from ..schema import ColumnSchema, TableSchema
 
-        conn = self._connect()
+        conn = self.get_connection()
         cursor = None
         try:
             cursor = conn.cursor()

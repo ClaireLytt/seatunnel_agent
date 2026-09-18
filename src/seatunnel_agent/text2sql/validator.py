@@ -131,6 +131,8 @@ def validate_sql(sql: str, store: SchemaStore | None = None) -> ValidationResult
 
     if store is not None:
         allowed = {name.lower() for name in store.table_names}
+        short_names = {tb.name.lower() for tb in store.tables}
+        allowed |= short_names
         for t in real_tables:
             if t not in allowed:
                 errors.append(f"Table '{t}' is not in the schema whitelist")

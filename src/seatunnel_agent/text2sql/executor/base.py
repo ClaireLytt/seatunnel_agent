@@ -7,12 +7,15 @@ layer stays engine-agnostic.
 
 from __future__ import annotations
 
+import logging
 import os
+import queue
 import re
+import threading
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable
 
 if TYPE_CHECKING:
     from ..schema import TableSchema
@@ -69,16 +72,128 @@ class QueryResult:
     truncated: bool = False
 
 
+_log = logging.getLogger(__name__)
+
+
+class ConnectionPool:
+    """Thread-safe connection pool backed by ``queue.Queue``."""
+
+    def __init__(
+        self,
+        factory: Callable[[], Any],
+        max_size: int = 5,
+        max_idle_s: int = 300,
+        ping_fn: Callable[[Any], Any] | None = None,
+    ) -> None:
+        self._factory = factory
+        self._max_size = max_size
+        self._max_idle_s = max_idle_s
+        self._ping_fn = ping_fn or self._default_ping
+        self._pool: queue.Queue[tuple[Any, float]] = queue.Queue(maxsize=max_size)
+        self._lock = threading.Lock()
+        self._size = 0
+
+    @staticmethod
+    def _default_ping(conn: Any) -> None:
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT 1")
+            cur.fetchone()
+        finally:
+            cur.close()
+
+    def acquire(self) -> Any:
+        while True:
+            try:
+                conn, ts = self._pool.get_nowait()
+            except queue.Empty:
+                break
+            if time.monotonic() - ts > self._max_idle_s:
+                self._close_raw(conn)
+                continue
+            try:
+                self._ping_fn(conn)
+                return _PooledConnection(conn, self)
+            except Exception:
+                self._close_raw(conn)
+        conn = self._factory()
+        with self._lock:
+            self._size += 1
+        return _PooledConnection(conn, self)
+
+    def release(self, conn: Any) -> None:
+        try:
+            self._pool.put_nowait((conn, time.monotonic()))
+        except queue.Full:
+            self._close_raw(conn)
+
+    def _close_raw(self, conn: Any) -> None:
+        with self._lock:
+            self._size -= 1
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    def close_all(self) -> None:
+        while True:
+            try:
+                conn, _ = self._pool.get_nowait()
+                self._close_raw(conn)
+            except queue.Empty:
+                break
+
+
+class _PooledConnection:
+    """Wrapper that returns the connection to the pool on ``close()``."""
+
+    __slots__ = ("_conn", "_pool", "_closed")
+
+    def __init__(self, conn: Any, pool: ConnectionPool) -> None:
+        self._conn = conn
+        self._pool = pool
+        self._closed = False
+
+    def close(self) -> None:
+        if not self._closed:
+            self._closed = True
+            self._pool.release(self._conn)
+
+    def cursor(self):
+        return self._conn.cursor()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        self.close()
+
+
 class DatabaseExecutor(ABC):
     """Interface that every concrete executor must implement."""
 
     def __init__(self, config: DatabaseConfig) -> None:
         self.config = config
         self._partition_cache: dict[str, str] = {}
+        self._pool: ConnectionPool | None = None
 
     @abstractmethod
     def _connect(self):
         ...
+
+    def get_connection(self):
+        """Return a pooled connection (lazy-init)."""
+        if self._pool is None:
+            self._pool = ConnectionPool(self._connect)
+        return self._pool.acquire()
+
+    def close_pool(self) -> None:
+        if self._pool is not None:
+            self._pool.close_all()
+            self._pool = None
 
     @abstractmethod
     def run(self, sql: str, max_rows: int = 1000) -> QueryResult:
@@ -99,7 +214,7 @@ class DatabaseExecutor(ABC):
     def test_connection(self) -> tuple[bool, str]:
         """Test connectivity — override only if the default doesn't work."""
         try:
-            conn = self._connect()
+            conn = self.get_connection()
             cursor = None
             try:
                 cursor = conn.cursor()
@@ -122,7 +237,7 @@ class DatabaseExecutor(ABC):
                    strip_table_prefix: bool = False) -> QueryResult:
         """Generic DB-API 2.0 execute-and-fetch."""
         start = time.time()
-        conn = self._connect()
+        conn = self.get_connection()
         cursor = None
         try:
             cursor = conn.cursor()

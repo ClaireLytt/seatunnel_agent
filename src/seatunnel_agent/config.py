@@ -23,6 +23,7 @@ class Settings:
     job_timeout: int = 120
     temperature: float = 0.0
     config_dir: str = "configs"
+    seatunnel_api_url: str = ""
 
     @property
     def anthropic_api_key(self) -> str:
@@ -55,6 +56,7 @@ def load_settings() -> Settings:
     job_timeout = int(os.getenv("JOB_TIMEOUT", "120"))
     temperature = float(os.getenv("TEMPERATURE", "0.0"))
     config_dir = os.getenv("CONFIG_DIR", "configs")
+    seatunnel_api_url = os.getenv("SEATUNNEL_API_URL", "")
 
     seatunnel_bin = ""
     if seatunnel_home:
@@ -80,4 +82,5 @@ def load_settings() -> Settings:
         job_timeout=job_timeout,
         temperature=temperature,
         config_dir=config_dir,
+        seatunnel_api_url=seatunnel_api_url,
     )

@@ -124,7 +124,7 @@ _log = logging.getLogger(__name__)
 _DS_CHOICES = [DIALECT_NAMES[d] for d in DS_TYPES]
 _DS_LABEL_TO_KEY = {v: k for k, v in DIALECT_NAMES.items()}
 _NEEDS_AUTH = frozenset({"mysql", "sqlserver", "sparksql", "clickhouse", "doris", "postgresql"})
-_NEEDS_HOST = frozenset(DS_TYPES) - {"flinksql"}
+_NEEDS_HOST = frozenset(DS_TYPES) - {"flinksql", "sqlite"}
 
 _DDL_KEYWORDS = re.compile(
     r"\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|GRANT|REVOKE"
@@ -1423,28 +1423,34 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         default_port = str(defaults.get("port", 10000))
         default_db = defaults.get("database", "default")
 
-        if not h:
-            fallback = config_from_env(ds_type)
-            if fallback:
-                h, p, d = fallback.host, str(fallback.port), fallback.database
-                u, pw = fallback.username, fallback.password
+        if ds_type == "sqlite":
+            cfg = DatabaseConfig(
+                ds_type="sqlite", host="", port=0,
+                database=d or str(default_db),
+            )
+        else:
+            if not h:
+                fallback = config_from_env(ds_type)
+                if fallback:
+                    h, p, d = fallback.host, str(fallback.port), fallback.database
+                    u, pw = fallback.username, fallback.password
 
-        if not h:
-            return t_fn("dc_not_connected"), gr.update()
+            if not h:
+                return t_fn("dc_not_connected"), gr.update()
 
-        try:
-            port_int = int(p or default_port)
-        except ValueError:
-            return f"❌ {t_fn('dc_port_not_number')}", gr.update()
+            try:
+                port_int = int(p or default_port)
+            except ValueError:
+                return f"❌ {t_fn('dc_port_not_number')}", gr.update()
 
-        cfg = DatabaseConfig(
-            ds_type=ds_type,
-            host=h,
-            port=port_int,
-            database=d or str(default_db),
-            username=u,
-            password=pw,
-        )
+            cfg = DatabaseConfig(
+                ds_type=ds_type,
+                host=h,
+                port=port_int,
+                database=d or str(default_db),
+                username=u,
+                password=pw,
+            )
         executor = create_executor(cfg)
         ok, msg = executor.test_connection()
         if not ok:

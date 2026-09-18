@@ -83,6 +83,10 @@ _I18N: dict[str, dict[str, str]] = {
         "mode_run": "Run Config",
         "mode_validate": "Validate Config",
         "mode_diagnose": "Diagnose Log",
+        "mode_monitor": "Monitor Jobs",
+        "monitor_title": "JOB MONITOR",
+        "monitor_refresh": "Refresh",
+        "monitor_no_api": "SEATUNNEL_API_URL is not configured. Set it in .env to enable job monitoring.",
         "config_path": "CONFIG / LOG PATH",
         "config_placeholder": "examples/fake_to_console.conf",
         "connect": "Connect",
@@ -137,6 +141,10 @@ _I18N: dict[str, dict[str, str]] = {
         "mode_run": "运行配置文件",
         "mode_validate": "验证配置",
         "mode_diagnose": "诊断日志",
+        "mode_monitor": "监控作业",
+        "monitor_title": "作业监控",
+        "monitor_refresh": "刷新",
+        "monitor_no_api": "未配置 SEATUNNEL_API_URL，请在 .env 中设置以启用作业监控。",
         "config_path": "配置 / 日志路径",
         "config_placeholder": "examples/fake_to_console.conf",
         "connect": "连接",
@@ -382,6 +390,10 @@ _TOOL_EMOJI = {
     "delete_config": "\U0001f5d1",
     "compare_config_versions": "\U0001f500",
     "explain_config": "\U0001f4cb",
+    "submit_job_api": "\U0001f680",
+    "get_job_status": "\U0001f4ca",
+    "list_jobs": "\U0001f4cb",
+    "cancel_job": "\U0001f6d1",
 }
 
 
@@ -742,6 +754,7 @@ def _export_session(
 _MODE_MAP = {
     "Natural Language": "run", "Run Config": "run_config",
     "Validate Config": "validate", "Diagnose Log": "diagnose",
+    "Monitor Jobs": "monitor", "监控作业": "monitor",
     "自然语言描述": "run", "运行配置文件": "run_config",
     "验证配置": "validate", "诊断日志": "diagnose",
 }
@@ -870,9 +883,22 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         try:
             settings_holder["current"] = load_settings()
             s = settings_holder["current"]
+            status_parts = []
             if lang == "zh":
-                return f"✅ 连接成功，模型: {s.model_name}"
-            return f"✅ Connected, Model: {s.model_name}"
+                status_parts.append(f"✅ 连接成功，模型: {s.model_name}")
+            else:
+                status_parts.append(f"✅ Connected, Model: {s.model_name}")
+            if s.seatunnel_api_url:
+                from .seatunnel_api import SeaTunnelAPI, SeaTunnelAPIConfig
+                api = SeaTunnelAPI(SeaTunnelAPIConfig(s.seatunnel_api_url))
+                ok, msg = api.test_connectivity()
+                if ok:
+                    api_label = "REST API: 已连接" if lang == "zh" else "REST API: connected"
+                    status_parts.append(f"✅ {api_label}")
+                else:
+                    api_label = "REST API: 不可达" if lang == "zh" else "REST API: unreachable"
+                    status_parts.append(f"⚠️ {api_label}")
+            return "\n".join(status_parts)
         except Exception as e:
             settings_holder["current"] = None
             if lang == "zh":
@@ -967,7 +993,7 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         return gr.update(choices=choices, value=None)
 
     def _switch_lang(lang):
-        modes = [_t(lang, k) for k in ("mode_nl", "mode_run", "mode_validate", "mode_diagnose")]
+        modes = [_t(lang, k) for k in ("mode_nl", "mode_run", "mode_validate", "mode_diagnose", "mode_monitor")]
         return (
             gr.update(choices=modes, value=modes[0], label=_t(lang, "mode")),
             gr.update(label=_t(lang, "config_path"), placeholder=_t(lang, "config_placeholder")),
@@ -1016,7 +1042,7 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 rename_cancel = gr.Button("✕", size="sm", scale=0, min_width=36, elem_classes=["st-rename-cancel"])
 
             mode = gr.Dropdown(
-                choices=[_t(lang, k) for k in ("mode_nl", "mode_run", "mode_validate", "mode_diagnose")],
+                choices=[_t(lang, k) for k in ("mode_nl", "mode_run", "mode_validate", "mode_diagnose", "mode_monitor")],
                 value=_t(lang, "mode_nl"),
                 label=_t(lang, "mode"),
                 elem_classes=["st-sidebar-control"],
@@ -1061,6 +1087,22 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 height="calc(100vh - 130px)",
             )
 
+            with gr.Column(visible=False, elem_classes=["st-monitor-panel"]) as monitor_panel:
+                gr.Markdown(f"### {_t(lang, 'monitor_title')}")
+                monitor_status = gr.Markdown("")
+                job_table = gr.Dataframe(
+                    headers=["Job ID", "Job Name", "Status", "Start Time", "End Time"],
+                    datatype=["str", "str", "str", "str", "str"],
+                    interactive=False,
+                    elem_classes=["st-job-table"],
+                )
+                monitor_refresh_btn = gr.Button(
+                    _t(lang, "monitor_refresh"),
+                    variant="secondary",
+                    size="sm",
+                    elem_classes=["st-connect-btn"],
+                )
+
             with gr.Row(elem_classes=["st-input-row"]):
                 file_upload = gr.UploadButton(
                     "+",
@@ -1077,6 +1119,37 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 send_btn = gr.Button("➤", variant="primary", size="sm", scale=0, min_width=48, elem_classes=["st-btn-send"])
                 stop_btn = gr.Button("■", variant="stop", size="sm", scale=0, min_width=48, visible=False, elem_classes=["st-btn-stop"])
 
+    # ── Monitor Jobs helpers ──
+
+    def _refresh_jobs(lang):
+        s = settings_holder.get("current")
+        if not s or not s.seatunnel_api_url:
+            return gr.update(value=_t(lang, "monitor_no_api")), gr.update(value=[])
+        from .seatunnel_api import SeaTunnelAPI, SeaTunnelAPIConfig
+        api = SeaTunnelAPI(SeaTunnelAPIConfig(s.seatunnel_api_url))
+        try:
+            jobs = api.list_all_jobs()
+            rows = []
+            for j in (jobs if isinstance(jobs, list) else []):
+                rows.append([
+                    str(j.get("jobId", j.get("id", ""))),
+                    str(j.get("jobName", j.get("name", ""))),
+                    str(j.get("jobStatus", j.get("status", ""))),
+                    str(j.get("createTime", j.get("startTime", ""))),
+                    str(j.get("finishTime", j.get("endTime", ""))),
+                ])
+            if not rows:
+                status = "No jobs found" if lang != "zh" else "暂无作业"
+            else:
+                status = f"{len(rows)} job(s)" if lang != "zh" else f"{len(rows)} 个作业"
+            return gr.update(value=status), gr.update(value=rows)
+        except Exception as e:
+            return gr.update(value=f"Error: {e}"), gr.update(value=[])
+
+    def _on_mode_change(mode_text):
+        is_monitor = _MODE_MAP.get(mode_text) == "monitor"
+        return gr.update(visible=not is_monitor), gr.update(visible=is_monitor)
+
     # ── Sidebar toggle ──
     def _close_sidebar():
         return gr.update(visible=False), gr.update(visible=True)
@@ -1092,6 +1165,20 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         fn=_load_settings_safe,
         inputs=lang_state,
         outputs=status_box,
+    )
+
+    # ── Mode change: toggle monitor panel vs chatbot ──
+    mode.change(
+        fn=_on_mode_change,
+        inputs=mode,
+        outputs=[chatbot, monitor_panel],
+    )
+
+    # ── Monitor refresh ──
+    monitor_refresh_btn.click(
+        fn=_refresh_jobs,
+        inputs=lang_state,
+        outputs=[monitor_status, job_table],
     )
 
     # ── Template selection ──
@@ -2087,13 +2174,22 @@ def _kill_port(port: int) -> bool:
     return False
 
 
-def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
+def _port_has_listener(port: int) -> bool:
+    """Check if a process is actually LISTENING on *port* (not TIME_WAIT)."""
+    import subprocess, sys
+    if sys.platform == "win32":
+        r = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
+        return any(f":{port}" in ln and "LISTENING" in ln for ln in r.stdout.splitlines())
     import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        if s.connect_ex((host, port)) == 0:
-            print(f"[ui] Port {port} in use — killing old process...")
-            _kill_port(port)
-            import time; time.sleep(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
+    if _port_has_listener(port):
+        print(f"[ui] Port {port} in use — killing old process...")
+        _kill_port(port)
+        import time; time.sleep(0.5)
 
     if api:
         from .text2sql.api import router as t2s_api_router
