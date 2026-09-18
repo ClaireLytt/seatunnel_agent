@@ -336,6 +336,63 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": ["config_path"],
         },
     },
+    {
+        "name": "submit_job_api",
+        "description": (
+            "Submit a SeaTunnel job via REST API. Reads the config file and submits it to the engine. "
+            "Returns job ID for status tracking. Requires SEATUNNEL_API_URL to be configured."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "config_path": {
+                    "type": "string",
+                    "description": "Path to the HOCON config file",
+                },
+                "job_name": {
+                    "type": "string",
+                    "description": "Optional job name for identification",
+                },
+            },
+            "required": ["config_path"],
+        },
+    },
+    {
+        "name": "get_job_status",
+        "description": "Get the current status of a SeaTunnel job by its ID.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_id": {
+                    "type": "string",
+                    "description": "Job ID from submit_job_api",
+                },
+            },
+            "required": ["job_id"],
+        },
+    },
+    {
+        "name": "list_jobs",
+        "description": "List all SeaTunnel jobs currently known to the engine (running, finished, failed).",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "cancel_job",
+        "description": "Cancel a running SeaTunnel job.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "job_id": {
+                    "type": "string",
+                    "description": "Job ID to cancel",
+                },
+            },
+            "required": ["job_id"],
+        },
+    },
 ]
 
 
@@ -916,6 +973,62 @@ def _explain_config(settings: Settings, config_path: str) -> str:
     return safe_json(result)
 
 
+def _submit_job_api(settings: Settings, config_path: str, job_name: str = "") -> str:
+    if not settings.seatunnel_api_url:
+        return safe_json({"error": "SEATUNNEL_API_URL is not configured"})
+    from .seatunnel_api import SeaTunnelAPI, SeaTunnelAPIConfig
+
+    api = SeaTunnelAPI(SeaTunnelAPIConfig(base_url=settings.seatunnel_api_url))
+    path = Path(config_path)
+    if not path.is_file():
+        return safe_json({"error": f"Config file not found: {config_path}"})
+    content = path.read_text(encoding="utf-8")
+    try:
+        result = api.submit_job(content, job_name=job_name)
+        return safe_json({"success": True, "result": result})
+    except Exception as e:
+        return safe_json({"error": str(e)})
+
+
+def _get_job_status(settings: Settings, job_id: str) -> str:
+    if not settings.seatunnel_api_url:
+        return safe_json({"error": "SEATUNNEL_API_URL is not configured"})
+    from .seatunnel_api import SeaTunnelAPI, SeaTunnelAPIConfig
+
+    api = SeaTunnelAPI(SeaTunnelAPIConfig(base_url=settings.seatunnel_api_url))
+    try:
+        info = api.get_job_info(job_id)
+        return safe_json({"success": True, "job": info})
+    except Exception as e:
+        return safe_json({"error": str(e)})
+
+
+def _list_jobs_api(settings: Settings) -> str:
+    if not settings.seatunnel_api_url:
+        return safe_json({"error": "SEATUNNEL_API_URL is not configured"})
+    from .seatunnel_api import SeaTunnelAPI, SeaTunnelAPIConfig
+
+    api = SeaTunnelAPI(SeaTunnelAPIConfig(base_url=settings.seatunnel_api_url))
+    try:
+        jobs = api.list_all_jobs()
+        return safe_json({"success": True, "jobs": jobs, "count": len(jobs)})
+    except Exception as e:
+        return safe_json({"error": str(e)})
+
+
+def _cancel_job_api(settings: Settings, job_id: str) -> str:
+    if not settings.seatunnel_api_url:
+        return safe_json({"error": "SEATUNNEL_API_URL is not configured"})
+    from .seatunnel_api import SeaTunnelAPI, SeaTunnelAPIConfig
+
+    api = SeaTunnelAPI(SeaTunnelAPIConfig(base_url=settings.seatunnel_api_url))
+    try:
+        result = api.cancel_job(job_id)
+        return safe_json({"success": True, "result": result})
+    except Exception as e:
+        return safe_json({"error": str(e)})
+
+
 # ---------------------------------------------------------------------------
 # Dispatcher
 # ---------------------------------------------------------------------------
@@ -937,6 +1050,10 @@ _TOOL_MAP = {
     "delete_config": _delete_config,
     "compare_config_versions": _compare_config_versions,
     "explain_config": _explain_config,
+    "submit_job_api": _submit_job_api,
+    "get_job_status": _get_job_status,
+    "list_jobs": _list_jobs_api,
+    "cancel_job": _cancel_job_api,
 }
 
 

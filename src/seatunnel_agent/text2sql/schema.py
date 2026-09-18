@@ -242,7 +242,13 @@ class SchemaStore:
         self._tables[table.full_name.lower()] = table
 
     def get(self, full_name: str) -> TableSchema | None:
-        return self._tables.get(full_name.lower())
+        result = self._tables.get(full_name.lower())
+        if result is None:
+            key = full_name.lower()
+            for t in self._tables.values():
+                if t.name.lower() == key:
+                    return t
+        return result
 
     @property
     def tables(self) -> list[TableSchema]:

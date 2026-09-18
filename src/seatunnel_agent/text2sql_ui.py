@@ -1008,6 +1008,11 @@ def render_text2sql_page(app=None) -> None:
                 )
                 schema_browser_html = gr.HTML("", elem_classes=["st-schema-card"])
 
+            er_btn = gr.Button(
+                t("er_diagram"), variant="secondary", size="sm",
+                elem_classes=["st-connect-btn"],
+            )
+
             status_box = gr.Textbox(label=t("status_label"), interactive=False,
                                     value=t("status_default"),
                                     elem_classes=["st-sidebar-status"])
@@ -1069,6 +1074,8 @@ def render_text2sql_page(app=None) -> None:
                     min_width=140,
                     elem_classes=["st-lang-dd"],
                 )
+
+            er_html = gr.HTML("", visible=False, elem_classes=["st-er-diagram"])
 
             chatbot = gr.Chatbot(
                 show_label=False,
@@ -1527,6 +1534,7 @@ def render_text2sql_page(app=None) -> None:
             gr.update(label=t("schema_browser")),
             gr.update(choices=choices, value=None),
             "",
+            gr.update(value=t("er_diagram")),
         )
 
     # ── Wiring ──
@@ -1572,6 +1580,7 @@ def render_text2sql_page(app=None) -> None:
             schema_browser_acc,
             schema_browser_dd,
             schema_browser_html,
+            er_btn,
         ],
     )
 
@@ -1589,6 +1598,17 @@ def render_text2sql_page(app=None) -> None:
         inputs=[schema_browser_dd, lang_state],
         outputs=[schema_browser_html],
     )
+
+    def _show_er_diagram(lang):
+        t = lambda k: _t2s(lang, k)
+        full = holder.get("full_store")
+        if not full or len(full) == 0:
+            return gr.update(value=f"<p>{t('connect_first_er')}</p>", visible=True)
+        from .text2sql.schema_viz import generate_er_html
+        html = generate_er_html(full, lang)
+        return gr.update(value=html, visible=True)
+
+    er_btn.click(fn=_show_er_diagram, inputs=[lang_state], outputs=[er_html])
 
     def _show_stop():
         return gr.update(visible=False), gr.update(visible=True)

@@ -5,13 +5,21 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-from .base import DatabaseExecutor, QueryResult
+from .base import ConnectionPool, DatabaseExecutor, QueryResult
 
 if TYPE_CHECKING:
     from ..schema import TableSchema
 
 
 class ClickHouseExecutor(DatabaseExecutor):
+
+    def get_connection(self):
+        if self._pool is None:
+            self._pool = ConnectionPool(
+                self._connect,
+                ping_fn=lambda c: c.query("SELECT 1"),
+            )
+        return self._pool.acquire()
 
     def _connect(self):
         try:
@@ -31,7 +39,7 @@ class ClickHouseExecutor(DatabaseExecutor):
 
     def run(self, sql: str, max_rows: int = 1000) -> QueryResult:
         start = time.time()
-        client = self._connect()
+        client = self.get_connection()
         try:
             result = client.query(sql, settings={"max_result_rows": max_rows + 1})
             columns = list(result.column_names)
@@ -51,7 +59,7 @@ class ClickHouseExecutor(DatabaseExecutor):
         )
 
     def show_tables(self) -> list[str]:
-        client = self._connect()
+        client = self.get_connection()
         try:
             result = client.query("SHOW TABLES")
             return [row[0] for row in result.result_rows]
@@ -61,7 +69,7 @@ class ClickHouseExecutor(DatabaseExecutor):
     def describe_table(self, table_name: str) -> TableSchema:
         from ..schema import ColumnSchema, TableSchema
 
-        client = self._connect()
+        client = self.get_connection()
         try:
             result = client.query(
                 "SELECT name, type, comment "
@@ -98,7 +106,7 @@ class ClickHouseExecutor(DatabaseExecutor):
     def fetch_all_schemas(self) -> list[TableSchema]:
         from ..schema import ColumnSchema, TableSchema
 
-        client = self._connect()
+        client = self.get_connection()
         try:
             result = client.query("SHOW TABLES")
             tables = [row[0] for row in result.result_rows]
@@ -134,7 +142,7 @@ class ClickHouseExecutor(DatabaseExecutor):
 
     def test_connection(self) -> tuple[bool, str]:
         try:
-            client = self._connect()
+            client = self.get_connection()
             try:
                 client.query("SELECT 1")
             finally:

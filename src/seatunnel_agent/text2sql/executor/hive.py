@@ -43,7 +43,7 @@ class HiveExecutor(DatabaseExecutor):
 
         if not _TABLE_NAME_RE.fullmatch(full_table_name):
             raise ValueError(f"Invalid table name: {full_table_name!r}")
-        conn = self._connect()
+        conn = self.get_connection()
         cursor = None
         try:
             cursor = conn.cursor()
@@ -66,7 +66,7 @@ class HiveExecutor(DatabaseExecutor):
         return max_value
 
     def show_tables(self) -> list[str]:
-        conn = self._connect()
+        conn = self.get_connection()
         cursor = None
         try:
             cursor = conn.cursor()
@@ -78,7 +78,7 @@ class HiveExecutor(DatabaseExecutor):
             conn.close()
 
     def describe_table(self, table_name: str) -> TableSchema:
-        conn = self._connect()
+        conn = self.get_connection()
         try:
             return self._describe_table_with_cursor(table_name, conn)
         finally:
@@ -137,7 +137,7 @@ class HiveExecutor(DatabaseExecutor):
         )
 
     def fetch_all_schemas(self) -> list[TableSchema]:
-        conn = self._connect()
+        conn = self.get_connection()
         cursor = None
         try:
             cursor = conn.cursor()

@@ -215,6 +215,18 @@ _DIALECT_TIPS: dict[str, str] = {
 - Window functions: `ROW_NUMBER() OVER(...)`, `LAG()`, `LEAD()`.
 - Use `::type` for casting, e.g. `col::date`, `col::integer`.
 """,
+    "sqlite": """
+## SQLite Tips
+- Use `LIMIT N` for row limits.
+- Date functions: `DATE(col)`, `TIME(col)`, `DATETIME(col)`,
+  `STRFTIME('%Y-%m-%d', col)`, `DATE('now')`, `JULIANDAY(a) - JULIANDAY(b)`.
+- String functions: `LENGTH()`, `SUBSTR()`, `REPLACE()`, `UPPER()`, `LOWER()`,
+  `INSTR()`, `TRIM()`. There is no `CONCAT()` — use `||` operator instead.
+- Use `COALESCE(col, default)` instead of `IFNULL()` for portability.
+- SQLite has no `BOOLEAN` type — use `0` and `1`.
+- Random sampling: `ORDER BY RANDOM() LIMIT N`.
+- There is no `TRUNCATE`, `AUTO_INCREMENT`, or stored procedures.
+""",
 }
 
 
