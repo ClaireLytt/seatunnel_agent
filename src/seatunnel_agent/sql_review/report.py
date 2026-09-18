@@ -7,6 +7,7 @@ review — static-only or LLM-assisted — looks the same to the reader.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -123,76 +124,99 @@ def _table(headers: list[str], rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def render_report(report: ReviewReport) -> str:
-    """Render the CR report in the fixed markdown format."""
-    parts: list[str] = ["## CR 报告"]
+_LINE_LOC_RE = re.compile(r"行\s*(\d+)")
 
-    parts.append("\n### 🔴 严重问题（必须修复）\n")
+
+def _loc(location: str, lang: str) -> str:
+    """Localize a finding location for display ("行 6" -> "Line 6")."""
+    if lang != "en":
+        return location
+    loc = _LINE_LOC_RE.sub(lambda m: f"Line {m.group(1)}", location)
+    return loc.replace("全局", "Global")
+
+
+def render_report(report: ReviewReport, lang: str = "zh") -> str:
+    """Render the CR report in the fixed markdown format (zh or en chrome)."""
+    from .i18n import sr
+
+    def t(key: str) -> str:
+        return sr(lang, key)
+
+    sep = ": " if lang == "en" else "："
+    parts: list[str] = [t("sr_report_title")]
+
+    parts.append(f"\n{t('sr_sec_critical')}\n")
     if report.criticals:
         rows = [
-            [str(i), f.description, f.location, f.impact, f.suggestion]
+            [str(i), f.description, _loc(f.location, lang), f.impact, f.suggestion]
             for i, f in enumerate(report.criticals, 1)
         ]
-        parts.append(_table(["序号", "问题描述", "代码位置", "影响范围", "修复建议"], rows))
+        parts.append(_table(
+            [t("sr_h_no"), t("sr_h_desc"), t("sr_h_loc"), t("sr_h_impact"), t("sr_h_fix")],
+            rows))
     else:
-        parts.append("无")
+        parts.append(t("sr_none"))
 
-    parts.append("\n### 🟡 潜在风险（建议修复）\n")
+    parts.append(f"\n{t('sr_sec_risk')}\n")
     if report.risks:
         rows = [
-            [str(i), f.description, f.location, f.impact, f.suggestion]
+            [str(i), f.description, _loc(f.location, lang), f.impact, f.suggestion]
             for i, f in enumerate(report.risks, 1)
         ]
-        parts.append(_table(["序号", "问题描述", "代码位置", "风险说明", "优化建议"], rows))
+        parts.append(_table(
+            [t("sr_h_no"), t("sr_h_desc"), t("sr_h_loc"), t("sr_h_risk"), t("sr_h_opt")],
+            rows))
     else:
-        parts.append("无")
+        parts.append(t("sr_none"))
 
-    parts.append("\n### 🟢 优化建议（可选）\n")
+    parts.append(f"\n{t('sr_sec_suggestion')}\n")
     if report.suggestions:
-        parts.append("\n".join(f"- {f.description}（{f.suggestion}）" if f.suggestion else f"- {f.description}"
-                               for f in report.suggestions))
+        if lang == "en":
+            fmt = lambda f: (f"- {f.description} ({f.suggestion})"  # noqa: E731
+                             if f.suggestion else f"- {f.description}")
+        else:
+            fmt = lambda f: (f"- {f.description}（{f.suggestion}）"  # noqa: E731
+                             if f.suggestion else f"- {f.description}")
+        parts.append("\n".join(fmt(f) for f in report.suggestions))
     else:
-        parts.append("无")
+        parts.append(t("sr_none"))
 
     if report.lineage:
         lin = report.lineage
         lineage_md = (
-            "\n### 🔗 表级血缘\n"
-            f"- 来源表：{', '.join(lin.sources) if lin.sources else '无'}\n"
-            f"- 目标表：{', '.join(lin.targets) if lin.targets else '无（仅查询）'}"
+            f"\n{t('sr_sec_lineage')}\n"
+            f"- {t('sr_lin_sources')}{sep}"
+            f"{', '.join(lin.sources) if lin.sources else t('sr_none')}\n"
+            f"- {t('sr_lin_targets')}{sep}"
+            f"{', '.join(lin.targets) if lin.targets else t('sr_lin_none_target')}"
         )
         if lin.columns:
-            col_lines = ["- 列级血缘："]
+            col_lines = [f"- {t('sr_lin_columns')}"]
             for col in lin.columns[:15]:
-                agg = "（聚合）" if col.get("aggregated") else ""
+                agg = t("sr_lin_agg") if col.get("aggregated") else ""
                 col_lines.append(f"  - {col['output']} ← {col['source']}{agg}")
             lineage_md += "\n" + "\n".join(col_lines)
         parts.append(lineage_md)
 
     s = report.stats()
     parts.append(
-        "\n### 📊 检查统计\n"
-        f"- 检查项总数：{s['total']}\n"
-        f"- 通过：{s['passed']}\n"
-        f"- 问题：{s['problems']}\n"
-        f"- 风险：{s['risks']}"
+        f"\n{t('sr_sec_stats')}\n"
+        f"- {t('sr_stats_total')}{sep}{s['total']}\n"
+        f"- {t('sr_stats_passed')}{sep}{s['passed']}\n"
+        f"- {t('sr_stats_problems')}{sep}{s['problems']}\n"
+        f"- {t('sr_stats_risks')}{sep}{s['risks']}"
     )
 
-    parts.append("\n### 💡 总体评价\n")
-    parts.append(report.summary or _default_summary(report))
+    parts.append(f"\n{t('sr_sec_verdict')}\n")
+    parts.append(report.summary or _default_summary(report, lang))
 
     return "\n".join(parts)
 
 
-def _default_summary(report: ReviewReport) -> str:
+def _default_summary(report: ReviewReport, lang: str = "zh") -> str:
+    from .i18n import sr
     if report.criticals:
-        return (
-            f"代码存在 {len(report.criticals)} 个严重问题，会导致 SQL 执行错误或结果不正确，"
-            "必须修复后才能上线。"
-        )
+        return sr(lang, "sr_sum_critical").format(n=len(report.criticals))
     if report.risks:
-        return (
-            f"代码无严重问题，但存在 {len(report.risks)} 个潜在风险，"
-            "建议按优化建议修复后再上线。"
-        )
-    return "代码检查通过，未发现明显问题。"
+        return sr(lang, "sr_sum_risk").format(n=len(report.risks))
+    return sr(lang, "sr_sum_pass")

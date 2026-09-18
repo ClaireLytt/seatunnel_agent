@@ -99,6 +99,7 @@ class SQLReviewRuntime:
     dialect: str = "hive"
     store: SchemaStore | None = None
     config: ReviewConfig | None = None
+    lang: str = "zh"
     lint_findings: list[Finding] = field(default_factory=list)
     last_report: str = ""
     report: ReviewReport | None = None
@@ -192,7 +193,7 @@ def _tool_submit_review(inp: dict[str, Any], rt: SQLReviewRuntime) -> dict[str, 
         lineage=extract_table_lineage(rt.sql, store=rt.store),
     )
     rt.report = report
-    rt.last_report = render_report(report)
+    rt.last_report = render_report(report, lang=rt.lang)
     return {"success": True, "report": rt.last_report}
 
 

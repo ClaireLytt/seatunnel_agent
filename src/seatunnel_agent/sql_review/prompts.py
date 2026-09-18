@@ -30,8 +30,8 @@ def _load_resource(name: str) -> str:
 _BASE_PROMPT = """\
 You are an expert SQL Code Reviewer for data warehouse pipelines. You review
 {dialect_name} statically — you never execute the SQL — and produce a
-structured CR report in Chinese. Your goal: catch the problems a human
-reviewer would otherwise only find by running the query step by step.
+structured CR report in {report_language}. Your goal: catch the problems a
+human reviewer would otherwise only find by running the query step by step.
 
 ## How You Work (ReAct Pattern)
 
@@ -60,8 +60,8 @@ reviewer would otherwise only find by running the query step by step.
   "risk" = likely quality/performance hazard (建议修复);
   "suggestion" = optional improvement (可选).
 - category: one of the 15 checklist keys (e.g. groupby_completeness).
-- location: cite the line number like "行 6"; use "全局" for whole-file issues.
-- description / impact / suggestion: concise Chinese, actionable.
+- location: {location_hint}
+- description / impact / suggestion: concise {report_language}, actionable.
 - Do NOT resubmit findings already returned by lint_sql — they are merged
   into the report automatically. Only add findings the linter missed, or
   skip duplicates.
@@ -91,7 +91,11 @@ types; only report type issues visible from the SQL text itself, and state
 assumptions in the finding description when needed."""
 
 
-def build_review_prompt(dialect: str = "hive", store: SchemaStore | None = None) -> str:
+def build_review_prompt(
+    dialect: str = "hive",
+    store: SchemaStore | None = None,
+    lang: str = "zh",
+) -> str:
     dialect = normalize_dialect(dialect)
     checklist = _load_resource("review_checklist.md")
 
@@ -100,8 +104,19 @@ def build_review_prompt(dialect: str = "hive", store: SchemaStore | None = None)
     else:
         schema_section = _SCHEMA_UNAVAILABLE
 
+    if lang == "en":
+        report_language = "English"
+        location_hint = ('cite the line number like "Line 6"; use "Global" '
+                         "for whole-file issues.")
+    else:
+        report_language = "Chinese"
+        location_hint = ('cite the line number like "行 6"; use "全局" '
+                         "for whole-file issues.")
+
     return _BASE_PROMPT.format(
         dialect_name=DIALECT_NAMES.get(dialect, "SQL"),
         checklist=checklist,
         schema_section=schema_section,
+        report_language=report_language,
+        location_hint=location_hint,
     )

@@ -2,7 +2,8 @@
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
 ``app.route("SQL Review", "/sqlreview")``.  Static mode is pure local
-linting; LLM mode runs the full review agent.
+linting; LLM mode runs the full review agent.  The page is bilingual
+(EN/ZH) following the same switch pattern as the Data Comparison page.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ import gradio as gr
 from .config import load_settings
 from .sql_review.agent import SQLReviewAgent, static_review_report
 from .sql_review.fixer import generate_fix
+from .sql_review.i18n import catalog_label, sr
 from .sql_review.linter import normalize_dialect
 from .sql_review.report import render_report
 from .sql_review.rlog import ReviewLogger
@@ -29,42 +31,56 @@ FROM ods.user_log a
 JOIN dim.user_info b ON a.user_id = b.user_id
 ORDER BY a.user_id"""
 
+_DEFAULT_LANG = "en"
 
-def _err_md(exc: Exception) -> str:
-    return f"❌ **审查失败**：{exc}"
+
+def _mode_choices(lang: str) -> list[tuple[str, str]]:
+    return [(sr(lang, "sr_mode_static"), "static"),
+            (sr(lang, "sr_mode_llm"), "agent")]
+
+
+def _err_md(exc: Exception, lang: str) -> str:
+    sep = ": " if lang == "en" else "："
+    return f"{sr(lang, 'sr_review_failed')}{sep}{exc}"
 
 
 def render_sql_review_page(app: gr.Blocks) -> None:
-    gr.Markdown("## 🔍 SQL Code Review · SQL 代码审查\n"
-                "静态规则 + LLM 语义审查，支持 Hive / Spark / Flink / MaxCompute。"
-                "纯静态分析，不执行 SQL。")
+    t0 = lambda k: sr(_DEFAULT_LANG, k)  # noqa: E731 — initial labels
+
+    with gr.Row():
+        title_md = gr.Markdown(f"{t0('sr_title')}\n{t0('sr_subtitle')}")
+        lang_dd = gr.Dropdown(
+            choices=["English", "中文"], value="English",
+            show_label=False, container=False, min_width=140, scale=0,
+        )
+    lang_state = gr.State(_DEFAULT_LANG)
 
     with gr.Row():
         with gr.Column(scale=3):
             sql_box = gr.Textbox(
-                label="SQL", lines=12, placeholder="粘贴要审查的 SQL……",
+                label="SQL", lines=12, placeholder=t0("sr_sql_placeholder"),
                 value=_EXAMPLE_SQL,
             )
             with gr.Row():
                 dialect_dd = gr.Dropdown(
-                    choices=_DIALECT_CHOICES, value="hive", label="SQL 方言",
+                    choices=_DIALECT_CHOICES, value="hive", label=t0("sr_dialect"),
                 )
                 mode_radio = gr.Radio(
-                    choices=[("静态审查（快速，无需 LLM）", "static"),
-                             ("LLM 深度审查", "agent")],
-                    value="static", label="审查模式",
+                    choices=_mode_choices(_DEFAULT_LANG),
+                    value="static", label=t0("sr_mode"),
                 )
-            with gr.Accordion("表结构 DDL（可选，用于 schema 校验）", open=False):
+            with gr.Accordion(t0("sr_ddl_accordion"), open=False) as ddl_acc:
                 ddl_box = gr.Textbox(
-                    label="CREATE TABLE 语句", lines=6,
+                    label=t0("sr_ddl_label"), lines=6,
                     placeholder="CREATE TABLE ods.user_log (user_id BIGINT, dt STRING) ...",
                 )
             with gr.Row():
-                review_btn = gr.Button("开始审查", variant="primary")
-                fix_btn = gr.Button("生成修复 SQL（LLM）")
+                review_btn = gr.Button(t0("sr_review_btn"), variant="primary")
+                fix_btn = gr.Button(t0("sr_fix_btn"))
         with gr.Column(scale=4):
-            report_md = gr.Markdown("*审查报告将显示在这里*")
-            fixed_sql_box = gr.Code(label="修复后 SQL", language="sql", visible=False)
+            report_md = gr.Markdown(t0("sr_report_placeholder"))
+            fixed_sql_box = gr.Code(label=t0("sr_fixed_sql"), language="sql",
+                                    visible=False)
 
     report_state = gr.State("")
 
@@ -76,28 +92,29 @@ def render_sql_review_page(app: gr.Blocks) -> None:
         tables = parse_ddl(ddl)
         return SchemaStore(tables) if tables else None
 
-    def do_review(sql: str, dialect: str, mode: str, ddl: str):
+    def do_review(sql: str, dialect: str, mode: str, ddl: str, lang: str):
         sql = (sql or "").strip()
         if not sql:
-            return "请先输入 SQL。", "", gr.update(visible=False)
+            return sr(lang, "sr_input_sql_first"), "", gr.update(visible=False)
         dialect = normalize_dialect(dialect)
         start = time.time()
         try:
             store = _build_store(ddl)
             if mode == "static":
                 rep = static_review_report(sql, dialect, store=store)
-                report = render_report(rep)
+                report = render_report(rep, lang=lang)
                 findings, stats = rep.findings, rep.stats()
             else:
                 settings = load_settings()
-                agent = SQLReviewAgent(settings, dialect=dialect, store=store)
+                agent = SQLReviewAgent(settings, dialect=dialect, store=store,
+                                       lang=lang)
                 report = agent.review(sql)
                 findings, stats = [], {}
                 if agent.runtime and agent.runtime.report:
                     findings = agent.runtime.report.findings
                     stats = agent.runtime.report.stats()
         except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
-            return _err_md(exc), "", gr.update(visible=False)
+            return _err_md(exc, lang), "", gr.update(visible=False)
         ReviewLogger().log(
             sql=sql, dialect=dialect, mode=mode, findings=findings,
             stats=stats, source="ui",
@@ -105,32 +122,35 @@ def render_sql_review_page(app: gr.Blocks) -> None:
         )
         return report, report, gr.update(visible=False)
 
-    def do_fix(sql: str, dialect: str, report: str):
+    def do_fix(sql: str, dialect: str, report: str, lang: str):
         sql = (sql or "").strip()
         if not sql or not report:
-            return gr.update(value="-- 请先完成一次审查", visible=True)
+            return gr.update(value=sr(lang, "sr_fix_need_review"), visible=True)
         try:
             settings = load_settings()
-            fixed = generate_fix(settings, sql, normalize_dialect(dialect), report)
+            fixed = generate_fix(settings, sql, normalize_dialect(dialect),
+                                 report, lang=lang)
         except Exception as exc:  # noqa: BLE001
-            return gr.update(value=f"-- 修复失败: {exc}", visible=True)
+            sep = ": " if lang == "en" else "："
+            return gr.update(value=f"{sr(lang, 'sr_fix_failed')}{sep}{exc}",
+                             visible=True)
         return gr.update(value=fixed, visible=True)
 
     review_btn.click(
         do_review,
-        inputs=[sql_box, dialect_dd, mode_radio, ddl_box],
+        inputs=[sql_box, dialect_dd, mode_radio, ddl_box, lang_state],
         outputs=[report_md, report_state, fixed_sql_box],
     )
     fix_btn.click(
         do_fix,
-        inputs=[sql_box, dialect_dd, report_state],
+        inputs=[sql_box, dialect_dd, report_state, lang_state],
         outputs=[fixed_sql_box],
     )
 
-    with gr.Accordion("📈 审查历史统计", open=False):
-        stats_md = gr.Markdown("*点击刷新查看*")
+    with gr.Accordion(t0("sr_stats_accordion"), open=False) as stats_acc:
+        stats_md = gr.Markdown(t0("sr_stats_placeholder"))
         trend_plot = gr.Plot(visible=False)
-        refresh_btn = gr.Button("刷新统计", size="sm")
+        refresh_btn = gr.Button(t0("sr_refresh"), size="sm")
 
         def _trend_figure(records: list[dict]):
             by_day: dict[str, dict[str, int]] = {}
@@ -168,20 +188,28 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             fig.tight_layout()
             return fig
 
-        def load_stats():
+        def load_stats(lang: str):
+            sep = ": " if lang == "en" else "："
             logger = ReviewLogger()
             s = logger.summarize()
             if not s["reviews"]:
-                return "暂无审查记录。", gr.update(visible=False)
-            lines = [f"- 审查次数：{s['reviews']}",
-                     f"- 发现问题总数：{s['findings']}"]
-            sev_names = {"critical": "🔴 严重", "risk": "🟡 风险", "suggestion": "🟢 建议"}
+                return sr(lang, "sr_no_records"), gr.update(visible=False)
+            lines = [f"- {sr(lang, 'sr_stat_reviews')}{sep}{s['reviews']}",
+                     f"- {sr(lang, 'sr_stat_findings')}{sep}{s['findings']}"]
+            sev_names = {"critical": sr(lang, "sr_sev_critical"),
+                         "risk": sr(lang, "sr_sev_risk"),
+                         "suggestion": sr(lang, "sr_sev_suggestion")}
             for sev, cnt in s["severities"].items():
-                lines.append(f"- {sev_names.get(sev, sev)}：{cnt}")
+                lines.append(f"- {sev_names.get(sev, sev)}{sep}{cnt}")
             if s["top_categories"]:
-                lines.append("\n**高频问题类别**：")
+                lines.append(f"\n{sr(lang, 'sr_top_categories')}")
                 for item in s["top_categories"][:5]:
-                    lines.append(f"- {item['label']}（{item['count']} 次）")
+                    label = catalog_label(item.get("category", ""), lang) \
+                        if item.get("category") else item["label"]
+                    if lang == "en":
+                        lines.append(f"- {label} ({item['count']})")
+                    else:
+                        lines.append(f"- {label}（{item['count']} 次）")
             try:
                 fig = _trend_figure(logger.recent(500))
             except Exception:  # noqa: BLE001 — the chart is optional
@@ -190,4 +218,44 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                            else gr.update(visible=False))
             return "\n".join(lines), plot_update
 
-        refresh_btn.click(load_stats, outputs=[stats_md, trend_plot])
+        refresh_btn.click(load_stats, inputs=[lang_state],
+                          outputs=[stats_md, trend_plot])
+
+    # Language switch — update all component labels/text. The returned tuple
+    # must stay positionally aligned with the outputs list below.
+    def _switch_lang(choice: str):
+        lg = "zh" if choice == "中文" else "en"
+        t = lambda k: sr(lg, k)  # noqa: E731
+        return (
+            lg,                                                     # lang_state
+            f"{t('sr_title')}\n{t('sr_subtitle')}",                 # title_md
+            gr.update(placeholder=t("sr_sql_placeholder")),         # sql_box
+            gr.update(label=t("sr_dialect")),                       # dialect_dd
+            gr.update(label=t("sr_mode"), choices=_mode_choices(lg)),  # mode_radio
+            gr.update(label=t("sr_ddl_accordion")),                 # ddl_acc
+            gr.update(label=t("sr_ddl_label")),                     # ddl_box
+            gr.update(value=t("sr_review_btn")),                    # review_btn
+            gr.update(value=t("sr_fix_btn")),                       # fix_btn
+            gr.update(label=t("sr_fixed_sql")),                     # fixed_sql_box
+            gr.update(label=t("sr_stats_accordion")),               # stats_acc
+            gr.update(value=t("sr_refresh")),                       # refresh_btn
+        )
+
+    lang_dd.change(
+        _switch_lang,
+        inputs=[lang_dd],
+        outputs=[
+            lang_state,
+            title_md,
+            sql_box,
+            dialect_dd,
+            mode_radio,
+            ddl_acc,
+            ddl_box,
+            review_btn,
+            fix_btn,
+            fixed_sql_box,
+            stats_acc,
+            refresh_btn,
+        ],
+    )

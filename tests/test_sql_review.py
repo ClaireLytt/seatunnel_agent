@@ -319,6 +319,73 @@ def test_table_cells_escaped():
 
 
 # ---------------------------------------------------------------------------
+# i18n (English rendering)
+# ---------------------------------------------------------------------------
+
+def test_render_report_en_sections_and_locations():
+    findings = [
+        Finding(Severity.CRITICAL, "groupby_completeness", "d", "行 6", "i", "s"),
+        Finding(Severity.RISK, "readability", "d", "全局", "i", "s"),
+    ]
+    md = render_report(ReviewReport(findings=findings), lang="en")
+    for section in ("## CR Report", "Critical Issues", "Potential Risks",
+                    "Suggestions", "Check Statistics", "Overall Verdict"):
+        assert section in md
+    assert "Line 6" in md
+    assert "Global" in md
+    assert "行 6" not in md
+    assert "## CR 报告" not in md
+
+
+def test_render_report_en_empty():
+    md = render_report(ReviewReport(findings=[]), lang="en")
+    assert "None" in md
+    assert f"Total checks: {len(CHECK_CATALOG)}" in md
+    assert "Checks passed" in md
+
+
+def test_render_report_zh_default_unchanged():
+    md_default = render_report(ReviewReport(findings=lint_sql(SPEC_EXAMPLE)))
+    md_zh = render_report(ReviewReport(findings=lint_sql(SPEC_EXAMPLE)), lang="zh")
+    assert md_default == md_zh
+    assert "## CR 报告" in md_default
+
+
+def test_i18n_key_parity():
+    from seatunnel_agent.sql_review.i18n import CHECK_CATALOG_EN, SR_I18N
+    assert set(SR_I18N["en"]) == set(SR_I18N["zh"])
+    assert set(CHECK_CATALOG_EN) == set(CHECK_CATALOG)
+
+
+def test_i18n_normalize_and_fallback():
+    from seatunnel_agent.sql_review.i18n import normalize_lang, sr
+    assert normalize_lang("en") == "en"
+    assert normalize_lang("English") == "en"
+    assert normalize_lang("zh") == "zh"
+    assert normalize_lang(None) == "zh"
+    assert normalize_lang("") == "zh"
+    assert sr("en", "sr_none") == "None"
+    assert sr("fr", "sr_none") == "无"  # unknown lang falls back to zh
+    assert sr("en", "nonexistent_key") == "nonexistent_key"
+
+
+def test_catalog_label():
+    from seatunnel_agent.sql_review.i18n import catalog_label
+    assert catalog_label("groupby_completeness", "en") == "GROUP BY completeness"
+    assert catalog_label("groupby_completeness", "zh") == CHECK_CATALOG["groupby_completeness"]
+    assert catalog_label("unknown_cat", "en") == "unknown_cat"
+
+
+def test_build_review_prompt_language():
+    from seatunnel_agent.sql_review.prompts import build_review_prompt
+    en = build_review_prompt("hive", lang="en")
+    assert "English" in en and 'like "Line 6"' in en
+    zh = build_review_prompt("hive", lang="zh")
+    assert "Chinese" in zh and 'like "行 6"' in zh
+    assert build_review_prompt("hive") == zh
+
+
+# ---------------------------------------------------------------------------
 # Tools
 # ---------------------------------------------------------------------------
 

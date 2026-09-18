@@ -6,6 +6,7 @@ import re
 
 from ..config import Settings
 from ..llm import LLMClient
+from .i18n import normalize_lang, sr
 from .linter import normalize_dialect
 from .prompts import DIALECT_NAMES
 
@@ -22,14 +23,15 @@ Rules:
   date), use a placeholder like '${{bizdate}}' and add a `-- TODO` comment.
 - Output ONLY the fixed SQL inside one ```sql code block. No explanations
   before or after the block. You may use `--` comments inside the SQL to
-  mark what changed.
+  mark what changed; write those comments in {comment_language}.
 """
 
 _SQL_BLOCK_RE = re.compile(r"```sql\s*(.*?)```", re.IGNORECASE | re.DOTALL)
 
 
 def generate_fix(
-    settings: Settings, sql: str, dialect: str, report_md: str
+    settings: Settings, sql: str, dialect: str, report_md: str,
+    lang: str = "zh",
 ) -> str:
     """Ask the LLM for a fixed version of *sql* based on *report_md*.
 
@@ -37,15 +39,24 @@ def generate_fix(
     no usable SQL block.
     """
     dialect = normalize_dialect(dialect)
+    lang = normalize_lang(lang)
     llm = LLMClient(settings)
     system = _FIX_SYSTEM_PROMPT.format(
-        dialect_name=DIALECT_NAMES.get(dialect, "SQL")
+        dialect_name=DIALECT_NAMES.get(dialect, "SQL"),
+        comment_language="English" if lang == "en" else "Chinese",
     )
-    user = (
-        f"原始 SQL：\n```sql\n{sql}\n```\n\n"
-        f"审查报告：\n{report_md}\n\n"
-        "请给出修复后的 SQL。"
-    )
+    if lang == "en":
+        user = (
+            f"Original SQL:\n```sql\n{sql}\n```\n\n"
+            f"Review report:\n{report_md}\n\n"
+            "Please provide the fixed SQL."
+        )
+    else:
+        user = (
+            f"原始 SQL：\n```sql\n{sql}\n```\n\n"
+            f"审查报告：\n{report_md}\n\n"
+            "请给出修复后的 SQL。"
+        )
     resp = llm.chat(system, [{"role": "user", "content": user}])
     text = resp.reply_text or ""
     m = _SQL_BLOCK_RE.search(text)
@@ -57,4 +68,4 @@ def generate_fix(
     stripped = text.strip()
     if stripped.lower().lstrip("(").startswith(("select", "insert", "with", "create")):
         return stripped
-    raise RuntimeError("模型未返回可用的修复 SQL")
+    raise RuntimeError(sr(lang, "sr_fix_no_sql"))

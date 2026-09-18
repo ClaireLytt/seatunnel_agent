@@ -18,6 +18,7 @@ from ..config import load_settings
 from ..text2sql.executor import DatabaseConfig, create_executor
 from ..text2sql.schema import SchemaStore, parse_ddl
 from .agent import SQLReviewAgent
+from .i18n import normalize_lang
 from .linter import DIALECTS, is_known_dialect, normalize_dialect
 from .rlog import ReviewLogger
 
@@ -33,6 +34,7 @@ class ReviewRequest(BaseModel):
     )
     schema_ddl: str | None = Field(None, description="Optional inline DDL for table definitions")
     instructions: str | None = Field(None, description="Extra review instructions")
+    lang: str = Field("zh", description="Report language: 'zh' or 'en'")
 
 
 class ReviewResponse(BaseModel):
@@ -92,12 +94,13 @@ def review(req: ReviewRequest) -> ReviewResponse:
     lineage: dict[str, Any] | None = None
 
     store = _build_store(dialect, req.db_config, req.schema_ddl)
+    lang = normalize_lang(req.lang)
 
     if req.mode == "static":
         from .agent import static_review_report
         from .report import render_report
         rep = static_review_report(req.sql, dialect, store=store)
-        report_md = render_report(rep)
+        report_md = render_report(rep, lang=lang)
         raw_findings = rep.findings
         findings = [f.to_dict() for f in raw_findings]
         stats = rep.stats()
@@ -105,7 +108,7 @@ def review(req: ReviewRequest) -> ReviewResponse:
             lineage = rep.lineage.to_dict()
     else:
         settings = load_settings()
-        agent = SQLReviewAgent(settings, dialect=dialect, store=store)
+        agent = SQLReviewAgent(settings, dialect=dialect, store=store, lang=lang)
         try:
             report_md = agent.review(req.sql, instructions=req.instructions or "")
         except Exception as exc:

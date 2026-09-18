@@ -19,6 +19,7 @@ from ..llm import LLMClient
 from ..text2sql.schema import SchemaStore
 from ..utils import truncate
 from .config import ReviewConfig
+from .i18n import normalize_lang, sr
 from .lineage import extract_table_lineage
 from .linter import lint_sql, normalize_dialect
 from .prompts import build_review_prompt
@@ -63,17 +64,19 @@ class SQLReviewAgent:
         store: SchemaStore | None = None,
         config: ReviewConfig | None = None,
         on_event: EventCallback | None = None,
+        lang: str = "zh",
     ) -> None:
         self.settings = settings
         self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
         self.dialect = normalize_dialect(dialect)
         self.store = store
         self.config = config
+        self.lang = normalize_lang(lang)
         self.runtime: SQLReviewRuntime | None = None
         self.messages: list[dict[str, Any]] = []
         self.console = Console()
         self._on_event = on_event
-        self._system_prompt = build_review_prompt(self.dialect, store)
+        self._system_prompt = build_review_prompt(self.dialect, store, lang=self.lang)
 
     def _emit(self, event_type: str, data: dict[str, Any]) -> None:
         if self._on_event:
@@ -87,20 +90,29 @@ class SQLReviewAgent:
         """Review one SQL statement/script and return the CR report."""
         sql = sql.strip()
         if not sql:
-            return "没有可审查的 SQL。"
+            return sr(self.lang, "sr_no_sql")
         self.runtime = SQLReviewRuntime(
-            sql=sql, dialect=self.dialect, store=self.store, config=self.config
+            sql=sql, dialect=self.dialect, store=self.store, config=self.config,
+            lang=self.lang,
         )
-        prompt = f"请对以下 {self.dialect} SQL 做 Code Review：\n\n```sql\n{sql}\n```"
-        if instructions:
-            prompt += f"\n\n补充说明：{instructions}"
+        if self.lang == "en":
+            prompt = (f"Please code-review the following {self.dialect} SQL:"
+                      f"\n\n```sql\n{sql}\n```")
+            if instructions:
+                prompt += f"\n\nAdditional instructions: {instructions}"
+        else:
+            prompt = f"请对以下 {self.dialect} SQL 做 Code Review：\n\n```sql\n{sql}\n```"
+            if instructions:
+                prompt += f"\n\n补充说明：{instructions}"
         self.messages = [{"role": "user", "content": prompt}]
         self.console.print(Panel(truncate(sql, 800), title="SQL Review", border_style="cyan"))
 
         answer = self._agent_loop()
         # The prompt asks the model to echo the rendered report verbatim; if it
         # paraphrased instead, prefer the deterministic render.
-        if self.runtime.last_report and "CR 报告" not in answer:
+        if self.runtime.last_report and not any(
+            marker in answer for marker in ("CR 报告", "CR Report")
+        ):
             return self.runtime.last_report
         return answer
 
