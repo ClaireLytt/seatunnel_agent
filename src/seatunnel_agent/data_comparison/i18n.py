@@ -135,6 +135,7 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_schedule_stop": "Stop Schedule",
         "dc_schedule_running": "Scheduled: next run in {m} min",
         "dc_schedule_stopped": "Schedule stopped",
+        "dc_schedule_interval_min": "Interval must be at least 1 minute",
         # Q — multi-table full comparison
         "dc_batch_full": "Batch Full Compare",
         "dc_batch_full_result": "Batch Full Comparison",
@@ -265,6 +266,8 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_lineage_title": "Upstream Dependencies",
         "dc_lineage_hint": "SQL statements to trace lineage from (one per line)",
         "dc_lineage_no_deps": "No upstream dependencies found",
+        "dc_common_upstream": "Trace Common Upstream",
+        "dc_common_upstream_none": "No common upstream found within the traced depth",
     },
     "zh": {
         "dc_title": "### 数据比对",
@@ -394,6 +397,7 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_schedule_stop": "停止定时",
         "dc_schedule_running": "定时运行中：{m} 分钟后执行",
         "dc_schedule_stopped": "定时已停止",
+        "dc_schedule_interval_min": "间隔不能小于 1 分钟",
         # Q — multi-table full comparison
         "dc_batch_full": "批量全量对比",
         "dc_batch_full_result": "批量全量对比结果",
@@ -524,6 +528,8 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_lineage_title": "上游依赖",
         "dc_lineage_hint": "用于溯源的SQL语句（每行一条）",
         "dc_lineage_no_deps": "未发现上游依赖",
+        "dc_common_upstream": "公共上游追溯",
+        "dc_common_upstream_none": "追溯深度内两表没有公共上游",
     },
 }
 

@@ -1,0 +1,138 @@
+# -*- coding: utf-8 -*-
+"""MCP server exposing lineage tools over stdio (install extras: ``mcp``).
+
+Start with ``seatunnel-agent lineage-mcp --sql-dir ...`` and register it in an
+MCP client (Claude Desktop / Claude Code / Cline). The tool callables are
+plain functions built by :func:`build_tool_functions`, so they are usable and
+testable without the ``mcp`` package; ``create_mcp_server`` only wires them
+into a FastMCP instance.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any, Callable
+
+from .agent import static_lineage
+from .config import load_lineage_config
+from .loaders import build_graph
+from .render import render_health, render_path, render_report, render_sla_impact
+
+_DIRECTIONS = ("upstream", "downstream", "both")
+
+_INSTRUCTIONS = (
+    "数据表全链路血缘分析：上下游链路、字段级影响、最短路径、SLA 延迟影响、"
+    "治理体检。表名用 库名.表名（如 zz.dwd_orders_df）。"
+)
+
+
+def build_tool_functions(
+    sql_dir: str | None = None,
+    seatunnel_dir: str | None = None,
+    use_hive: bool = False,
+    meta_table: str | None = None,
+    partition: str | None = None,
+    graph: Any = None,
+) -> dict[str, Callable[..., str]]:
+    """Lineage tool callables keyed by name; the graph is built lazily once."""
+    state: dict[str, Any] = {"graph": graph, "warnings": []}
+
+    def _graph():
+        if state["graph"] is None:
+            built, warnings = build_graph(
+                sql_dir=sql_dir, seatunnel_dir=seatunnel_dir, use_hive=use_hive,
+                meta_table=meta_table, partition=partition,
+            )
+            state["graph"], state["warnings"] = built, warnings
+        return state["graph"]
+
+    def _missing(g, table: str) -> str:
+        names = [n.name for n in g.search(table.rsplit(".", 1)[-1])]
+        hint = f"，相近的表：{', '.join(names)}" if names else ""
+        return f"表 '{table}' 不在血缘图中{hint}"
+
+    def lineage_query(
+        table: str, direction: str = "both", depth: int = 3,
+        column: str | None = None,
+    ) -> str:
+        """查询表的上下游血缘链路，返回中文 Markdown 报告（含 mermaid 图）。
+        direction: upstream / downstream / both；column 可选，做字段级影响分析。"""
+        if direction not in _DIRECTIONS:
+            return f"direction 必须是 {', '.join(_DIRECTIONS)} 之一"
+        g = _graph()
+        report = static_lineage(
+            g, table, direction, depth, column=column, config=load_lineage_config()
+        )
+        if report.chain and report.chain.missing_root:
+            return _missing(g, table)
+        return render_report(report)
+
+    def lineage_path(src: str, dst: str) -> str:
+        """查询两张表之间的最短血缘路径（src → dst），返回中文 Markdown。"""
+        g = _graph()
+        for name in (src, dst):
+            if g.get(name) is None:
+                return _missing(g, name)
+        return render_path(g.path_between(src, dst), src, dst, g)
+
+    def lineage_sla_impact(
+        table: str, delay_hours: float = 0.0, depth: int = 10
+    ) -> str:
+        """SLA 延迟影响分析：假设某表延迟 N 小时，列出受影响的下游 SLA/基线任务。"""
+        g = _graph()
+        impact = g.sla_impact(table, delay_hours, depth)
+        if impact.missing_root:
+            return _missing(g, table)
+        return render_sla_impact(impact)
+
+    def lineage_health_check() -> str:
+        """血缘治理体检：环依赖 / 孤立表 / 无下游可下线表，返回中文 Markdown。"""
+        return render_health(_graph().health_check())
+
+    def lineage_search(keyword: str) -> str:
+        """按关键词搜索血缘图中的表，返回 JSON（中文属性标签）。"""
+        nodes = _graph().search(keyword)
+        return json.dumps(
+            {"匹配数": len(nodes), "表": [n.to_dict() for n in nodes]},
+            ensure_ascii=False, indent=2,
+        )
+
+    def lineage_reload() -> str:
+        """重新加载血缘图（重读 SQL/SeaTunnel 目录、重查 Hive），返回图统计。"""
+        state["graph"] = None
+        g = _graph()
+        return json.dumps(
+            {"stats": g.stats(), "warnings": state["warnings"]},
+            ensure_ascii=False, indent=2,
+        )
+
+    tools = (
+        lineage_query, lineage_path, lineage_sla_impact,
+        lineage_health_check, lineage_search, lineage_reload,
+    )
+    return {fn.__name__: fn for fn in tools}
+
+
+def create_mcp_server(
+    sql_dir: str | None = None,
+    seatunnel_dir: str | None = None,
+    use_hive: bool = False,
+    meta_table: str | None = None,
+    partition: str | None = None,
+):
+    """FastMCP server (stdio) wrapping the lineage tools."""
+    try:
+        from mcp.server.fastmcp import FastMCP
+    except ImportError as exc:
+        raise RuntimeError(
+            "未安装 mcp 依赖，请先执行: pip install 'seatunnel-agent[mcp]'"
+        ) from exc
+
+    server = FastMCP("seatunnel-lineage", instructions=_INSTRUCTIONS)
+    functions = build_tool_functions(
+        sql_dir=sql_dir, seatunnel_dir=seatunnel_dir, use_hive=use_hive,
+        meta_table=meta_table, partition=partition,
+    )
+    for fn in functions.values():
+        server.tool()(fn)
+    return server

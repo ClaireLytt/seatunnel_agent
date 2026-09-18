@@ -24,7 +24,14 @@ from .history import (
     Session, delete_session, extract_title, list_sessions,
     load_session, new_session_id, rename_session, save_session,
 )
+from .session_state import SessionHolders
 from .tools import execute_tool
+
+_holders = SessionHolders(lambda: {
+    "settings": {"current": None},
+    "agent": {"agent": None},
+    "collector": {"current": None},
+})
 
 
 def _extract_text_part(part: Any) -> str:
@@ -281,7 +288,7 @@ def _run_demo(
     config_path: str,
     lang: str,
 ) -> list[dict[str, str]]:
-    import tempfile, os
+    import os
 
     fake_settings = Settings(
         api_key="demo", seatunnel_home=".", seatunnel_bin="", max_retries=3,
@@ -292,7 +299,10 @@ def _run_demo(
     steps = _DEMO_STEPS[key]
 
     if not has_config:
-        demo_path = os.path.join(tempfile.gettempdir(), "demo_fake_to_console.conf")
+        # 工具层的路径白名单只允许 cwd 之内，临时目录会被拒绝
+        demo_dir = os.path.join(os.getcwd(), "logs", "demo")
+        os.makedirs(demo_dir, exist_ok=True)
+        demo_path = os.path.join(demo_dir, "demo_fake_to_console.conf")
         with open(demo_path, "w", encoding="utf-8") as f:
             f.write(_DEMO_CONFIG)
         config_path = demo_path
@@ -592,6 +602,7 @@ def _run_agent_streaming(user_message, chat_history, mode, config_path, settings
             collector.on_event("final_answer", {"text": f"Error: {e}"})
 
     thread = threading.Thread(target=_worker, daemon=True)
+    agent_holder["thread"] = thread
     thread.start()
     prev_count = 0
     while not collector.done:
@@ -806,6 +817,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards" data-zh="Hive / Spark / Flink / MaxCompute SQL 静态 + LLM 审查 — 性能、质量与规范">Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards</div>
       <div class="st-hub-enter" style="color:#10b981;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/lineage">
+      <div class="st-hub-logo" style="background:#ef4444;">DL</div>
+      <div class="st-hub-card-title" data-en="Data Lineage" data-zh="全链路血缘分析">Data Lineage</div>
+      <div class="st-hub-card-desc" data-en="Full-chain table &amp; column lineage across SQL files and Hive metadata — impact analysis, SLA &amp; baselines" data-zh="跨 SQL 文件 / Hive 元数据的表级、字段级全链路血缘 — 影响分析、SLA 与基线展示">Full-chain table &amp; column lineage across SQL files and Hive metadata — impact analysis, SLA &amp; baselines</div>
+      <div class="st-hub-enter" style="color:#ef4444;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <div class="st-hub-card st-hub-card-soon">
       <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
       <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
@@ -820,6 +837,7 @@ def create_ui() -> gr.Blocks:
     from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page
     from .data_comparison_ui import render_data_comparison_page
     from .sql_review_ui import render_sql_review_page
+    from .lineage_ui import render_lineage_page
 
     _hide_sub_nav_js = """
     () => {
@@ -864,19 +882,19 @@ def create_ui() -> gr.Blocks:
     with app.route("SQL Review", "/sqlreview"):
         render_sql_review_page(app)
 
+    with app.route("Lineage", "/lineage"):
+        render_lineage_page(app)
+
     return app
 
 
 def _render_seatunnel_page(app: gr.Blocks) -> None:
-    settings_holder: dict[str, Settings | None] = {"current": None}
-    agent_holder: dict[str, SeaTunnelAgent | None] = {"agent": None}
-    collector_holder: dict[str, EventCollector | None] = {"current": None}
-
     lang = "en"
 
     # ── Callbacks ──
 
-    def _load_settings_safe(lang):
+    def _load_settings_safe(lang, request: gr.Request = None):
+        settings_holder = _holders.get(request)["settings"]
         try:
             settings_holder["current"] = load_settings()
             s = settings_holder["current"]
@@ -889,20 +907,31 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 return f"❌ 连接失败: {e}"
             return f"❌ Failed: {e}"
 
-    def _handle_submit(msg, history, mode_text, cfg, lang, sid):
+    def _handle_submit(msg, history, mode_text, cfg, lang, sid, request: gr.Request = None):
+        h = _holders.get(request)
+        agent_holder = h["agent"]
+        collector_holder = h["collector"]
         no_save = gr.update()
         if not msg.strip() and not cfg.strip():
             yield history, sid, no_save
             return
         if not sid:
             sid = new_session_id()
-        settings = settings_holder.get("current")
+        settings = h["settings"].get("current")
         if settings is None:
             yield history + [
                 {"role": "user", "content": msg},
                 {"role": "assistant", "content": _t(lang, "no_settings")},
             ], sid, no_save
             return
+        # 上一次查询的 worker 若还在跑，先取消并等待其退出，
+        # 避免两个线程同时读写同一个 agent 的 messages
+        old_thread = agent_holder.get("thread")
+        if old_thread is not None and old_thread.is_alive():
+            old_agent = agent_holder.get("agent")
+            if old_agent is not None:
+                old_agent.stop_event.set()
+            old_thread.join(timeout=5)
         mode_key = _MODE_MAP.get(mode_text, "run")
         final_chat = history
         for update in _run_agent_streaming(msg, history, mode_key, cfg, settings, agent_holder, collector_holder):
@@ -912,7 +941,8 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         choices = _build_history_choices()
         yield final_chat, sid, gr.update(choices=choices, value=sid)
 
-    def _handle_demo(msg, history, cfg, lang, sid):
+    def _handle_demo(msg, history, cfg, lang, sid, request: gr.Request = None):
+        agent_holder = _holders.get(request)["agent"]
         if not msg.strip():
             msg = _t(lang, "demo_default_msg")
         if not sid:
@@ -923,32 +953,34 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         choices = _build_history_choices()
         return final, sid, gr.update(choices=choices, value=sid)
 
-    def _new_chat(lang):
+    def _new_chat(lang, request: gr.Request = None):
+        agent_holder = _holders.get(request)["agent"]
         agent_holder["agent"] = None
         sid = new_session_id()
         choices = _build_history_choices()
         return sid, [], gr.update(choices=choices, value=None)
 
-    def _load_history(selected_sid, lang):
+    def _load_history(selected_sid, lang, request: gr.Request = None):
+        h = _holders.get(request)
         if not selected_sid:
             return [], ""
         session = load_session(selected_sid)
         if not session:
             return [], ""
         if session.agent_messages:
-            settings = settings_holder.get("current")
+            settings = h["settings"].get("current")
             if settings:
                 agent = SeaTunnelAgent(settings, on_event=lambda *_: None)
                 agent.messages = list(session.agent_messages)
                 if session.agent_context:
                     agent.context = dict(session.agent_context)
-                agent_holder["agent"] = agent
+                h["agent"]["agent"] = agent
         return session.chat_messages, selected_sid
 
-    def _do_delete(sid, lang):
+    def _do_delete(sid, lang, request: gr.Request = None):
         if sid:
             delete_session(sid)
-        agent_holder["agent"] = None
+        _holders.get(request)["agent"]["agent"] = None
         choices = _build_history_choices()
         return "", [], gr.update(choices=choices, value=None), gr.update(visible=False), gr.update(visible=False)
 
@@ -1143,8 +1175,12 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
     )
 
     # ── Stop handler ──
-    def _handle_stop(lang):
-        c = collector_holder.get("current")
+    def _handle_stop(lang, request: gr.Request = None):
+        h = _holders.get(request)
+        agent = h["agent"].get("agent")
+        if agent is not None:
+            agent.stop_event.set()
+        c = h["collector"].get("current")
         if c and not c.done:
             c.on_event("final_answer", {"text": _t(lang, "stopped")})
         return gr.update(visible=True), gr.update(visible=False)
@@ -1223,14 +1259,15 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         outputs=[action_row, rename_row],
     )
 
-    def _handle_export(chat_history, sid, lang):
+    def _handle_export(chat_history, sid, lang, request: gr.Request = None):
+        h = _holders.get(request)
         if not chat_history:
             raise gr.Error(_t(lang, "export_empty"))
-        agent = agent_holder.get("agent")
+        agent = h["agent"].get("agent")
         configs = list(agent.context.get("created_configs", [])) if agent else []
         path = _export_session(
             chat_history, sid or "export", configs,
-            settings=settings_holder.get("current"),
+            settings=h["settings"].get("current"),
         )
         if not path:
             raise gr.Error(_t(lang, "export_empty"))
@@ -1440,6 +1477,34 @@ footer { display: none !important; }
 }
 /* Hide Gradio's native sidebar if accidentally present */
 .gradio-sidebar { display: none !important; }
+
+/* ══════════════════════════
+   Lineage page — the global container is 100vh/overflow-hidden,
+   so the page provides its own vertical scroll
+   ══════════════════════════ */
+.st-lin-page {
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 12px 16px 24px !important;
+    box-sizing: border-box !important;
+}
+.st-lin-side, .st-lin-main {
+    height: calc(100vh - 140px) !important;
+    max-height: calc(100vh - 140px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    align-self: flex-start !important;
+    scrollbar-width: thin;
+}
+.st-lin-side {
+    padding-right: 6px !important;
+    border-right: 1px solid #e5e7eb;
+}
+.st-lin-hidden {
+    display: none !important;
+}
 
 /* ══════════════════════════
    Hub landing page
@@ -2077,10 +2142,13 @@ label { font-size: 10px !important; }
 
 def _kill_port(port: int) -> bool:
     """Kill whatever process is listening on *port*. Returns True if killed."""
+    import re as _re
     import subprocess, sys
     if sys.platform != "win32":
+        # -sTCP:LISTEN 只杀监听进程，避免误杀恰好用该端口作源端口的客户端
         r = subprocess.run(
-            ["lsof", "-ti", f":{port}"], capture_output=True, text=True,
+            ["lsof", "-ti", f"tcp:{port}", "-sTCP:LISTEN"],
+            capture_output=True, text=True,
         )
         for pid in r.stdout.split():
             subprocess.run(["kill", "-9", pid])
@@ -2088,10 +2156,13 @@ def _kill_port(port: int) -> bool:
     r = subprocess.run(
         ["netstat", "-ano"], capture_output=True, text=True,
     )
+    # 只匹配本地地址列以 :port 结尾的 LISTENING 行，
+    # 子串匹配会误中远端地址或端口前缀相同的行（如 :78600、PID 含 7860）
+    pat = _re.compile(rf"^\s*TCP\s+\S+:{port}\s+\S+\s+LISTENING\s+(\d+)\s*$")
     for line in r.stdout.splitlines():
-        if f":{port}" in line and "LISTENING" in line:
-            pid = line.strip().split()[-1]
-            subprocess.run(["taskkill", "/F", "/PID", pid],
+        m = pat.match(line)
+        if m:
+            subprocess.run(["taskkill", "/F", "/PID", m.group(1)],
                            capture_output=True)
             return True
     return False
@@ -2105,20 +2176,26 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
             _kill_port(port)
             import time; time.sleep(0.5)
 
-    if api:
-        from .text2sql.api import router as t2s_api_router
-        from .sql_review.api import router as sql_review_api_router
-        fastapi_app = app.app
-        fastapi_app.include_router(t2s_api_router)
-        fastapi_app.include_router(sql_review_api_router)
-
+    # gradio's launch() replaces blocks.app with a freshly created FastAPI
+    # instance, so API routers must be mounted AFTER launch (FastAPI allows
+    # adding routes to a running app).
     app.launch(
         server_name=host,
         server_port=port,
         share=share,
         inbrowser=True,
         css=_CUSTOM_CSS,
+        prevent_thread_lock=api,
     )
+    if api:
+        from .text2sql.api import router as t2s_api_router
+        from .sql_review.api import router as sql_review_api_router
+        from .data_lineage.api import router as lineage_api_router
+        fastapi_app = app.app
+        fastapi_app.include_router(t2s_api_router)
+        fastapi_app.include_router(sql_review_api_router)
+        fastapi_app.include_router(lineage_api_router)
+        app.block_thread()
 
 
 def main() -> None:

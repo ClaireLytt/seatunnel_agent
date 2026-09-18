@@ -8,13 +8,18 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..text2sql.schema import SchemaStore
 from .config import ReviewConfig
 from .lineage import extract_table_lineage
 from .linter import lint_sql, normalize_dialect
 from .report import CHECK_CATALOG, Finding, ReviewReport, Severity, render_report
+
+if TYPE_CHECKING:
+    from ..data_lineage.graph import LineageGraph
+
+_IMPACT_MAX_TABLES = 50
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -47,6 +52,30 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
             },
             "required": ["table"],
+        },
+    },
+    {
+        "name": "lineage_impact",
+        "description": (
+            "Query the data-lineage graph for downstream tables affected by "
+            "this SQL's write targets (INSERT/CTAS). Returns affected tables "
+            "with layer and SLA markers so you can judge the blast radius and "
+            "mention it in finding impact. Use it when the SQL writes to a "
+            "table. If no lineage directories are configured the tool "
+            "returns a hint instead of failing — just skip impact analysis."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "table": {
+                    "type": "string",
+                    "description": "覆盖默认目标表；缺省时自动取 SQL 的写入目标表",
+                },
+                "depth": {
+                    "type": "integer",
+                    "description": "下游追溯层数，默认 3",
+                },
+            },
         },
     },
     {
@@ -99,6 +128,7 @@ class SQLReviewRuntime:
     dialect: str = "hive"
     store: SchemaStore | None = None
     config: ReviewConfig | None = None
+    lineage_graph: "LineageGraph | None" = None
     lint_findings: list[Finding] = field(default_factory=list)
     last_report: str = ""
     report: ReviewReport | None = None
@@ -136,6 +166,55 @@ def _tool_get_table_schema(inp: dict[str, Any], rt: SQLReviewRuntime) -> dict[st
             for c in table.columns
         ],
     }
+
+
+def _tool_lineage_impact(inp: dict[str, Any], rt: SQLReviewRuntime) -> dict[str, Any]:
+    graph = rt.lineage_graph
+    if graph is None:
+        from .lineage_context import get_lineage_graph
+
+        graph, hint = get_lineage_graph()
+        if graph is None:
+            return {"error": hint}
+
+    try:
+        depth = max(1, min(int(inp.get("depth") or 3), 10))
+    except (TypeError, ValueError):
+        depth = 3
+
+    explicit = str(inp.get("table") or "").strip()
+    targets = [explicit] if explicit else extract_table_lineage(rt.sql).targets
+    if not targets:
+        return {
+            "error": "该 SQL 没有写入目标表（非 INSERT/CTAS），无需下游影响分析；"
+                     "也可通过 table 参数手动指定表名"
+        }
+
+    impact: dict[str, Any] = {}
+    for target in targets:
+        chain = graph.downstream_of(target, depth=depth)
+        if chain.missing_root:
+            impact[target] = {"found": False, "message": f"血缘图中不存在表 {target}"}
+            continue
+        affected = [n for name, n in sorted(chain.nodes.items()) if name != chain.root]
+        sla = [
+            {"table": n.name, "sla_time": n.sla_time}
+            for n in affected if n.is_sla
+        ]
+        entry: dict[str, Any] = {
+            "found": True,
+            "downstream_count": len(affected),
+            "sla_affected": sla,
+            "downstream": [
+                {"table": n.name, "layer": n.layer, "is_sla": n.is_sla}
+                for n in affected[:_IMPACT_MAX_TABLES]
+            ],
+            "truncated": chain.truncated,
+        }
+        if len(affected) > _IMPACT_MAX_TABLES:
+            entry["note"] = f"下游表过多，仅列出前 {_IMPACT_MAX_TABLES} 个"
+        impact[target] = entry
+    return {"success": True, "depth": depth, "impact": impact}
 
 
 def _parse_llm_finding(raw: dict[str, Any]) -> Finding | None:
@@ -199,6 +278,7 @@ def _tool_submit_review(inp: dict[str, Any], rt: SQLReviewRuntime) -> dict[str, 
 _TOOL_HANDLERS = {
     "lint_sql": _tool_lint_sql,
     "get_table_schema": _tool_get_table_schema,
+    "lineage_impact": _tool_lineage_impact,
     "submit_review": _tool_submit_review,
 }
 

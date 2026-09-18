@@ -91,8 +91,10 @@ from .data_comparison.comparator import (
     get_upstream_tables,
 )
 from .data_comparison.i18n import dc
+from .data_comparison.lineage_link import trace_common_upstream
 from .data_comparison.presets import ConnectionPresetsStore
 from .data_comparison.templates_store import ComparisonTemplatesStore
+from .session_state import SessionHolders
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +140,18 @@ _PRESETS_STORE = ConnectionPresetsStore()
 _TEMPLATES_STORE = ComparisonTemplatesStore()
 _SAMPLE_STRATEGIES = ["TOP N", "RANDOM", "STRATIFIED"]
 
+_holders = SessionHolders(lambda: {
+    "executor_a": None,
+    "executor_b": None,
+    "tables_a": [],
+    "tables_b": [],
+    "last_report": None,
+    "schedule_timer": None,
+    "schedule_active": False,
+    "schedule_last_run": None,
+})
+holder_lock = threading.Lock()
+
 _TH = 'style="text-align:left;padding:4px 6px;font-size:11px;border-bottom:1px solid #e5e7eb;"'
 _TD = 'style="padding:4px 6px;font-size:11px;border-bottom:1px solid #f3f4f6;"'
 
@@ -175,15 +189,15 @@ def _send_webhook(url: str, payload: dict) -> tuple[bool, str]:
     import urllib.request
     import urllib.error
     data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
-    req = urllib.request.Request(
-        url, data=data,
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
     try:
+        req = urllib.request.Request(
+            url, data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         with urllib.request.urlopen(req, timeout=10) as resp:
             return True, f"{resp.status}"
-    except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
+    except (urllib.error.URLError, urllib.error.HTTPError, OSError, ValueError) as exc:
         return False, str(exc)
 
 
@@ -197,22 +211,17 @@ def _validate_where(clause: str, lang: str) -> tuple[bool, str]:
     return True, ""
 
 
-def _with_validation(holder, holder_lock, fn):
-    """Wrap a compare callback with connection/table checks and error handling."""
-    def wrapper(*args):
-        lang_val = args[2] if len(args) > 2 else "en"
-        with holder_lock:
-            if holder.get("executor_a") is None or holder.get("executor_b") is None:
-                return dc(lang_val, "dc_connect_both")
-        table_a = args[0] if len(args) > 0 else ""
-        table_b = args[1] if len(args) > 1 else ""
-        if not table_a or not table_b:
-            return dc(lang_val, "dc_select_tables")
-        try:
-            return fn(*args)
-        except Exception as e:
-            return _error_html(lang_val, e)
-    return wrapper
+def _guarded(holder, table_a, table_b, lang_val, run):
+    """Connection/table checks and error handling around a compare callback."""
+    with holder_lock:
+        if holder.get("executor_a") is None or holder.get("executor_b") is None:
+            return dc(lang_val, "dc_connect_both")
+    if not table_a or not table_b:
+        return dc(lang_val, "dc_select_tables")
+    try:
+        return run()
+    except Exception as e:
+        return _error_html(lang_val, e)
 
 
 # ---------------------------------------------------------------------------
@@ -1021,6 +1030,39 @@ def build_lineage_card(table: str, upstream: list[str], lang: str = "en") -> str
     )
 
 
+def build_common_upstream_card(result: dict, lang: str = "en") -> str:
+    if "error" in result:
+        return (
+            '<div style="border:1px solid #fca5a5;border-radius:8px;padding:12px;'
+            'background:#fef2f2;margin-bottom:8px;">'
+            f'<b>{dc(lang, "dc_common_upstream")}</b>: '
+            f'{_esc_html(str(result["error"]))}</div>'
+        )
+    entries = result.get("common_upstream", [])
+    if not entries:
+        body = f'<p style="margin:8px 0;">{dc(lang, "dc_common_upstream_none")}</p>'
+    else:
+        items = "".join(
+            f'<li>{_esc_html(e.get("table", ""))}'
+            f'（{_esc_html(e.get("layer") or "-")}'
+            f'{"，SLA" if e.get("is_sla") else ""}，'
+            f'A↑{e.get("depth_from_a", 0)} / B↑{e.get("depth_from_b", 0)}）</li>'
+            for e in entries
+        )
+        body = f'<ul style="margin:8px 0;padding-left:20px;">{items}</ul>'
+    note = result.get("note")
+    if note:
+        body += f'<p style="color:#92400e;margin:4px 0;">{_esc_html(str(note))}</p>'
+    return (
+        '<details open style="border:1px solid #c7d2fe;border-radius:8px;padding:10px;'
+        'background:#f8fafc;margin-bottom:8px;">'
+        f'<summary style="font-weight:600;font-size:13px;color:#6366f1;cursor:pointer;">'
+        f'{dc(lang, "dc_common_upstream")} — '
+        f'{_esc_html(result.get("table_a", ""))} × {_esc_html(result.get("table_b", ""))}'
+        f'</summary>{body}</details>'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Standalone report page  (opens in new tab)
 # ---------------------------------------------------------------------------
@@ -1398,20 +1440,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     lang = "en"
     t = lambda k: dc(lang, k)
 
-    holder: dict[str, Any] = {
-        "executor_a": None,
-        "executor_b": None,
-        "tables_a": [],
-        "tables_b": [],
-        "last_report": None,
-        "schedule_timer": None,
-        "schedule_active": False,
-        "schedule_last_run": None,
-    }
-    holder_lock = threading.Lock()
+    # 会话状态按浏览器会话隔离在模块级 _holders 中（gr.Request 注入 session_hash）
 
     # ── Connection helper (shared by A / B) ──
-    def _do_connect(ds_label, host, port, db, username, password, lang_val, side):
+    def _do_connect(ds_label, host, port, db, username, password, lang_val, side, holder):
         t_fn = lambda k: dc(lang_val, k)
         ds_type = _DS_LABEL_TO_KEY.get(ds_label, "hive")
         h = host.strip()
@@ -1463,9 +1495,19 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         status = f"✅ {dialect} {msg} · {t_fn('dc_tables_loaded').format(n=len(tables))}"
         return status, gr.update(choices=tables, value=None)
 
+    def _connect_a(ds_label, host, port, db, username, password, lang_val,
+                   request: gr.Request = None):
+        return _do_connect(ds_label, host, port, db, username, password,
+                           lang_val, "a", _holders.get(request))
+
+    def _connect_b(ds_label, host, port, db, username, password, lang_val,
+                   request: gr.Request = None):
+        return _do_connect(ds_label, host, port, db, username, password,
+                           lang_val, "b", _holders.get(request))
+
     # ── Table search filter (G) ──
 
-    def _filter_tables(search_text, side):
+    def _filter_tables(search_text, side, holder):
         with holder_lock:
             all_tables = list(holder[f"tables_{side}"])
         if not search_text.strip():
@@ -1474,14 +1516,20 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         filtered = [t for t in all_tables if q in t.lower()]
         return gr.update(choices=filtered)
 
+    def _filter_tables_a(search_text, request: gr.Request = None):
+        return _filter_tables(search_text, "a", _holders.get(request))
+
+    def _filter_tables_b(search_text, request: gr.Request = None):
+        return _filter_tables(search_text, "b", _holders.get(request))
+
     # ── Inner comparison logic (no validation — used by both single + all) ──
 
-    def _snap_executors():
+    def _snap_executors(holder):
         with holder_lock:
             return holder["executor_a"], holder["executor_b"]
 
-    def _schema_inner(table_a, table_b, lang_val, where_val="", desc_a=None, desc_b=None):
-        ex_a, ex_b = _snap_executors()
+    def _schema_inner(holder, table_a, table_b, lang_val, where_val="", desc_a=None, desc_b=None):
+        ex_a, ex_b = _snap_executors(holder)
         if desc_a is None and desc_b is None:
             desc_a, desc_b = run_parallel(
                 lambda: ex_a.describe_table(table_a),
@@ -1497,10 +1545,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         result = compare_schemas(cols_a, cols_b, table_a, table_b)
         return result, build_schema_diff_card(result, lang_val)
 
-    def _count_inner(table_a, table_b, lang_val, where_val=""):
-        ex_a, ex_b = _snap_executors()
-        sql_a = build_count_sql(table_a, where_val)
-        sql_b = build_count_sql(table_b, where_val)
+    def _count_inner(holder, table_a, table_b, lang_val, where_val=""):
+        ex_a, ex_b = _snap_executors(holder)
+        sql_a = build_count_sql(table_a, where_val, ds_type=ex_a.config.ds_type)
+        sql_b = build_count_sql(table_b, where_val, ds_type=ex_b.config.ds_type)
         ra, rb = run_parallel(
             lambda: ex_a.run(sql_a, max_rows=1),
             lambda: ex_b.run(sql_b, max_rows=1),
@@ -1510,10 +1558,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         result = build_row_count_result(table_a, ca, table_b, cb)
         return result, build_count_card(result, lang_val)
 
-    def _sample_inner(table_a, table_b, lang_val, where_val="", key_cols_str="",
+    def _sample_inner(holder, table_a, table_b, lang_val, where_val="", key_cols_str="",
                       strategy="TOP N", col_mapping_str="", masking_on=True,
                       stratified_col=""):
-        ex_a, ex_b = _snap_executors()
+        ex_a, ex_b = _snap_executors(holder)
         limit = 100
         if strategy == "STRATIFIED" and stratified_col.strip():
             sql_a = build_stratified_sample_sql(table_a, stratified_col.strip(),
@@ -1561,8 +1609,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         cols = ra.columns or rb_cols
         return diff, build_sample_diff_card(diff, lang_val, columns=cols)
 
-    def _agg_inner(table_a, table_b, lang_val, where_val="", desc_a=None, desc_b=None):
-        ex_a, ex_b = _snap_executors()
+    def _agg_inner(holder, table_a, table_b, lang_val, where_val="", desc_a=None, desc_b=None):
+        ex_a, ex_b = _snap_executors(holder)
         if desc_a is None and desc_b is None:
             desc_a, desc_b = run_parallel(
                 lambda: ex_a.describe_table(table_a),
@@ -1586,8 +1634,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 f'<b style="color:#6b7280;">{dc(lang_val, "dc_agg_result")}</b> — '
                 f'{dc(lang_val, "dc_no_numeric")}</div>'
             )
-        sql_a = build_aggregate_sql(table_a, shared_numeric, where_val)
-        sql_b = build_aggregate_sql(table_b, shared_numeric, where_val)
+        sql_a = build_aggregate_sql(table_a, shared_numeric, where_val,
+                                    ds_type=ex_a.config.ds_type)
+        sql_b = build_aggregate_sql(table_b, shared_numeric, where_val,
+                                    ds_type=ex_b.config.ds_type)
         ra, rb = run_parallel(
             lambda: ex_a.run(sql_a, max_rows=1),
             lambda: ex_b.run(sql_b, max_rows=1),
@@ -1597,8 +1647,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         result = compare_aggregates(table_a, row_a, table_b, row_b, shared_numeric)
         return result, build_aggregate_card(result, lang_val)
 
-    def _profile_inner(table_a, table_b, lang_val, where_val=""):
-        ex_a, ex_b = _snap_executors()
+    def _profile_inner(holder, table_a, table_b, lang_val, where_val=""):
+        ex_a, ex_b = _snap_executors(holder)
         desc_a, desc_b = run_parallel(
             lambda: ex_a.describe_table(table_a),
             lambda: ex_b.describe_table(table_b),
@@ -1611,8 +1661,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             return ProfileResult(table_a, table_b), build_profile_card(
                 ProfileResult(table_a, table_b), lang_val)
 
-        sql_a = build_profile_sql(table_a, shared_cols, where_val)
-        sql_b = build_profile_sql(table_b, shared_cols, where_val)
+        sql_a = build_profile_sql(table_a, shared_cols, where_val,
+                                  ds_type=ex_a.config.ds_type)
+        sql_b = build_profile_sql(table_b, shared_cols, where_val,
+                                  ds_type=ex_b.config.ds_type)
         ra, rb = run_parallel(
             lambda: ex_a.run(sql_a, max_rows=1),
             lambda: ex_b.run(sql_b, max_rows=1),
@@ -1626,74 +1678,74 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Wrapped callbacks ──
 
-    def _store_partial(key: str, value: Any) -> None:
+    def _store_partial(holder, key: str, value: Any) -> None:
         """Store a single comparison result into the report."""
         with holder_lock:
             if holder["last_report"] is None:
                 holder["last_report"] = CompareReport()
             setattr(holder["last_report"], key, value)
 
-    def _compare_schema_fn(table_a, table_b, lang_val, where_val):
+    def _compare_schema_fn(holder, table_a, table_b, lang_val, where_val):
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
             return msg
-        result, html = _schema_inner(table_a, table_b, lang_val, where_val)
-        _store_partial("schema", result)
+        result, html = _schema_inner(holder, table_a, table_b, lang_val, where_val)
+        _store_partial(holder, "schema", result)
         return html
 
-    def _compare_count_fn(table_a, table_b, lang_val, where_val, threshold_str=""):
+    def _compare_count_fn(holder, table_a, table_b, lang_val, where_val, threshold_str=""):
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
             return msg
         threshold = parse_threshold(threshold_str)
-        result, html = _count_inner(table_a, table_b, lang_val, where_val)
+        result, html = _count_inner(holder, table_a, table_b, lang_val, where_val)
         html = build_count_card(result, lang_val, threshold)
-        _store_partial("row_count", result)
+        _store_partial(holder, "row_count", result)
         return html
 
-    def _compare_sample_fn(table_a, table_b, lang_val, where_val, key_cols_str,
+    def _compare_sample_fn(holder, table_a, table_b, lang_val, where_val, key_cols_str,
                            strategy="TOP N", col_mapping_str="", masking_on=True,
                            stratified_col=""):
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
             return msg
         result, html = _sample_inner(
-            table_a, table_b, lang_val, where_val, key_cols_str,
+            holder, table_a, table_b, lang_val, where_val, key_cols_str,
             strategy, col_mapping_str, masking_on, stratified_col)
         if isinstance(result, KeyedDiffResult):
-            _store_partial("keyed_diff", result)
+            _store_partial(holder, "keyed_diff", result)
         else:
-            _store_partial("sample", result)
+            _store_partial(holder, "sample", result)
         return html
 
-    def _compare_agg_fn(table_a, table_b, lang_val, where_val):
+    def _compare_agg_fn(holder, table_a, table_b, lang_val, where_val):
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
             return msg
-        result, html = _agg_inner(table_a, table_b, lang_val, where_val)
-        _store_partial("aggregate", result)
+        result, html = _agg_inner(holder, table_a, table_b, lang_val, where_val)
+        _store_partial(holder, "aggregate", result)
         return html
 
-    def _compare_profile_fn(table_a, table_b, lang_val, where_val):
+    def _compare_profile_fn(holder, table_a, table_b, lang_val, where_val):
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
             return msg
-        result, html = _profile_inner(table_a, table_b, lang_val, where_val)
-        _store_partial("profile", result)
+        result, html = _profile_inner(holder, table_a, table_b, lang_val, where_val)
+        _store_partial(holder, "profile", result)
         return html
 
     # ── Skew analysis (BB) ──
 
-    def _skew_inner(table_a, table_b, lang_val, where_val="", skew_cols_str=""):
-        ex_a, ex_b = _snap_executors()
+    def _skew_inner(holder, table_a, table_b, lang_val, where_val="", skew_cols_str=""):
+        ex_a, ex_b = _snap_executors(holder)
         cols = [c.strip() for c in skew_cols_str.split(",") if c.strip()]
         if not cols:
             return SkewResult(table_a, table_b), build_skew_card(
                 SkewResult(table_a, table_b), lang_val)
 
         cols = cols[:10]
-        count_sql_a = build_count_sql(table_a, where_val)
-        count_sql_b = build_count_sql(table_b, where_val)
+        count_sql_a = build_count_sql(table_a, where_val, ds_type=ex_a.config.ds_type)
+        count_sql_b = build_count_sql(table_b, where_val, ds_type=ex_b.config.ds_type)
         ra_cnt, rb_cnt = run_parallel(
             lambda: ex_a.run(count_sql_a, max_rows=1),
             lambda: ex_b.run(count_sql_b, max_rows=1),
@@ -1727,27 +1779,58 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         )
         return result, build_skew_card(result, lang_val)
 
-    def _compare_skew_fn(table_a, table_b, lang_val, where_val, skew_cols_str):
+    def _compare_skew_fn(holder, table_a, table_b, lang_val, where_val, skew_cols_str):
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
             return msg
         if not skew_cols_str or not skew_cols_str.strip():
             return f'<div style="color:#dc2626;">{dc(lang_val, "dc_skew_no_columns")}</div>'
-        result, html = _skew_inner(table_a, table_b, lang_val, where_val, skew_cols_str)
-        _store_partial("skew", result)
+        result, html = _skew_inner(holder, table_a, table_b, lang_val, where_val, skew_cols_str)
+        _store_partial(holder, "skew", result)
         return html
 
-    _compare_schema = _with_validation(holder, holder_lock, _compare_schema_fn)
-    _compare_count = _with_validation(holder, holder_lock, _compare_count_fn)
-    _compare_sample = _with_validation(holder, holder_lock, _compare_sample_fn)
-    _compare_agg = _with_validation(holder, holder_lock, _compare_agg_fn)
-    _compare_profile = _with_validation(holder, holder_lock, _compare_profile_fn)
-    _compare_skew = _with_validation(holder, holder_lock, _compare_skew_fn)
+    def _compare_schema(table_a, table_b, lang_val, where_val,
+                        request: gr.Request = None):
+        holder = _holders.get(request)
+        return _guarded(holder, table_a, table_b, lang_val, lambda: _compare_schema_fn(
+            holder, table_a, table_b, lang_val, where_val))
+
+    def _compare_count(table_a, table_b, lang_val, where_val, threshold_str="",
+                       request: gr.Request = None):
+        holder = _holders.get(request)
+        return _guarded(holder, table_a, table_b, lang_val, lambda: _compare_count_fn(
+            holder, table_a, table_b, lang_val, where_val, threshold_str))
+
+    def _compare_sample(table_a, table_b, lang_val, where_val, key_cols_str,
+                        strategy="TOP N", col_mapping_str="", masking_on=True,
+                        stratified_col="", request: gr.Request = None):
+        holder = _holders.get(request)
+        return _guarded(holder, table_a, table_b, lang_val, lambda: _compare_sample_fn(
+            holder, table_a, table_b, lang_val, where_val, key_cols_str,
+            strategy, col_mapping_str, masking_on, stratified_col))
+
+    def _compare_agg(table_a, table_b, lang_val, where_val,
+                     request: gr.Request = None):
+        holder = _holders.get(request)
+        return _guarded(holder, table_a, table_b, lang_val, lambda: _compare_agg_fn(
+            holder, table_a, table_b, lang_val, where_val))
+
+    def _compare_profile(table_a, table_b, lang_val, where_val,
+                         request: gr.Request = None):
+        holder = _holders.get(request)
+        return _guarded(holder, table_a, table_b, lang_val, lambda: _compare_profile_fn(
+            holder, table_a, table_b, lang_val, where_val))
+
+    def _compare_skew(table_a, table_b, lang_val, where_val, skew_cols_str,
+                      request: gr.Request = None):
+        holder = _holders.get(request)
+        return _guarded(holder, table_a, table_b, lang_val, lambda: _compare_skew_fn(
+            holder, table_a, table_b, lang_val, where_val, skew_cols_str))
 
     # ── Checksum comparison (CC) ──
 
-    def _checksum_inner(table_a, table_b, lang_val, where_val="", checksum_cols_str=""):
-        ex_a, ex_b = _snap_executors()
+    def _checksum_inner(holder, table_a, table_b, lang_val, where_val="", checksum_cols_str=""):
+        ex_a, ex_b = _snap_executors(holder)
         cols = [c.strip() for c in checksum_cols_str.split(",") if c.strip()]
         if not cols:
             desc_a, desc_b = run_parallel(
@@ -1769,20 +1852,24 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         result = compare_checksums(table_a, table_b, ra.rows, rb.rows)
         return result, build_checksum_card(result, lang_val)
 
-    def _compare_checksum_fn(table_a, table_b, lang_val, where_val, checksum_cols_str=""):
+    def _compare_checksum_fn(holder, table_a, table_b, lang_val, where_val, checksum_cols_str=""):
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
             return msg
-        result, html = _checksum_inner(table_a, table_b, lang_val, where_val, checksum_cols_str)
-        _store_partial("checksum", result)
+        result, html = _checksum_inner(holder, table_a, table_b, lang_val, where_val, checksum_cols_str)
+        _store_partial(holder, "checksum", result)
         return html
 
-    _compare_checksum = _with_validation(holder, holder_lock, _compare_checksum_fn)
+    def _compare_checksum(table_a, table_b, lang_val, where_val, checksum_cols_str="",
+                          request: gr.Request = None):
+        holder = _holders.get(request)
+        return _guarded(holder, table_a, table_b, lang_val, lambda: _compare_checksum_fn(
+            holder, table_a, table_b, lang_val, where_val, checksum_cols_str))
 
     # ── Partition comparison (DD) ──
 
-    def _partition_inner(table_a, table_b, lang_val, where_val="", partition_col=""):
-        ex_a, ex_b = _snap_executors()
+    def _partition_inner(holder, table_a, table_b, lang_val, where_val="", partition_col=""):
+        ex_a, ex_b = _snap_executors(holder)
         if not partition_col.strip():
             return PartitionResult(table_a, table_b), build_partition_card(
                 PartitionResult(table_a, table_b), lang_val)
@@ -1798,28 +1885,34 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                     ra.rows, rb.rows)
         return result, build_partition_card(result, lang_val)
 
-    def _compare_partition_fn(table_a, table_b, lang_val, where_val, partition_col):
+    def _compare_partition_fn(holder, table_a, table_b, lang_val, where_val, partition_col):
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
             return msg
         if not partition_col or not partition_col.strip():
             return f'<div style="color:#dc2626;">{dc(lang_val, "dc_partition_col_hint")}</div>'
-        result, html = _partition_inner(table_a, table_b, lang_val, where_val, partition_col)
-        _store_partial("partition", result)
+        result, html = _partition_inner(holder, table_a, table_b, lang_val, where_val, partition_col)
+        _store_partial(holder, "partition", result)
         return html
 
-    _compare_partition = _with_validation(holder, holder_lock, _compare_partition_fn)
+    def _compare_partition(table_a, table_b, lang_val, where_val, partition_col,
+                           request: gr.Request = None):
+        holder = _holders.get(request)
+        return _guarded(holder, table_a, table_b, lang_val, lambda: _compare_partition_fn(
+            holder, table_a, table_b, lang_val, where_val, partition_col))
 
     # ── Custom aggregates (EE) ──
 
-    def _custom_agg_inner(table_a, table_b, lang_val, where_val="", expressions_str=""):
-        ex_a, ex_b = _snap_executors()
+    def _custom_agg_inner(holder, table_a, table_b, lang_val, where_val="", expressions_str=""):
+        ex_a, ex_b = _snap_executors(holder)
         expressions = parse_custom_agg_expressions(expressions_str)
         if not expressions:
             return CustomAggResult(table_a, table_b), build_custom_agg_card(
                 CustomAggResult(table_a, table_b), lang_val)
-        sql_a = build_custom_agg_sql(table_a, expressions, where_val)
-        sql_b = build_custom_agg_sql(table_b, expressions, where_val)
+        sql_a = build_custom_agg_sql(table_a, expressions, where_val,
+                                     ds_type=ex_a.config.ds_type)
+        sql_b = build_custom_agg_sql(table_b, expressions, where_val,
+                                     ds_type=ex_b.config.ds_type)
         ra, rb = run_parallel(
             lambda: ex_a.run(sql_a, max_rows=1),
             lambda: ex_b.run(sql_b, max_rows=1),
@@ -1829,21 +1922,26 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         result = compare_custom_aggs(table_a, row_a, table_b, row_b, expressions)
         return result, build_custom_agg_card(result, lang_val)
 
-    def _compare_custom_agg_fn(table_a, table_b, lang_val, where_val, expressions_str):
+    def _compare_custom_agg_fn(holder, table_a, table_b, lang_val, where_val, expressions_str):
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
             return msg
         if not expressions_str or not expressions_str.strip():
             return f'<div style="color:#dc2626;">{dc(lang_val, "dc_custom_agg_hint")}</div>'
-        result, html = _custom_agg_inner(table_a, table_b, lang_val, where_val, expressions_str)
-        _store_partial("custom_agg", result)
+        result, html = _custom_agg_inner(holder, table_a, table_b, lang_val, where_val, expressions_str)
+        _store_partial(holder, "custom_agg", result)
         return html
 
-    _compare_custom_agg = _with_validation(holder, holder_lock, _compare_custom_agg_fn)
+    def _compare_custom_agg(table_a, table_b, lang_val, where_val, expressions_str,
+                            request: gr.Request = None):
+        holder = _holders.get(request)
+        return _guarded(holder, table_a, table_b, lang_val, lambda: _compare_custom_agg_fn(
+            holder, table_a, table_b, lang_val, where_val, expressions_str))
 
     # ── Custom SQL comparison (B) ──
 
-    def _compare_sql(sql_a_text, sql_b_text, lang_val):
+    def _compare_sql(sql_a_text, sql_b_text, lang_val, request: gr.Request = None):
+        holder = _holders.get(request)
         with holder_lock:
             if holder.get("executor_a") is None or holder.get("executor_b") is None:
                 return dc(lang_val, "dc_connect_both")
@@ -1877,7 +1975,11 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                      masking_on=True, webhook_url="", notify_on_fail=False,
                      skew_cols_str="", stratified_col="",
                      checksum_cols_str="", partition_col="", custom_agg_str="",
-                     progress=gr.Progress()):
+                     request: gr.Request = None,
+                     progress=gr.Progress(), holder=None):
+        # 定时任务后台线程直接传 holder；Gradio 事件走 request 注入
+        if holder is None:
+            holder = _holders.get(request)
         with holder_lock:
             if holder.get("executor_a") is None or holder.get("executor_b") is None:
                 return dc(lang_val, "dc_connect_both")
@@ -1897,7 +1999,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
         try:
             t0 = time.perf_counter()
-            ex_a, ex_b = _snap_executors()
+            ex_a, ex_b = _snap_executors(holder)
 
             _safe_progress(0.1, dc(lang_val, "dc_running"))
             desc_a, desc_b = run_parallel(
@@ -1906,50 +2008,50 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             )
 
             _safe_progress(0.25, dc(lang_val, "dc_running"))
-            schema_result, schema_html = _schema_inner(table_a, table_b, lang_val, where_val, desc_a, desc_b)
+            schema_result, schema_html = _schema_inner(holder, table_a, table_b, lang_val, where_val, desc_a, desc_b)
 
             _safe_progress(0.4, dc(lang_val, "dc_running"))
-            count_result, _ = _count_inner(table_a, table_b, lang_val, where_val)
+            count_result, _ = _count_inner(holder, table_a, table_b, lang_val, where_val)
             count_html = build_count_card(count_result, lang_val, threshold)
 
             _safe_progress(0.55, dc(lang_val, "dc_running"))
             sample_result, sample_html = _sample_inner(
-                table_a, table_b, lang_val, where_val, key_cols_str,
+                holder, table_a, table_b, lang_val, where_val, key_cols_str,
                 strategy, col_mapping_str, masking_on, stratified_col)
 
             _safe_progress(0.7, dc(lang_val, "dc_running"))
-            agg_result, agg_html = _agg_inner(table_a, table_b, lang_val, where_val, desc_a, desc_b)
+            agg_result, agg_html = _agg_inner(holder, table_a, table_b, lang_val, where_val, desc_a, desc_b)
 
             _safe_progress(0.8, dc(lang_val, "dc_running"))
-            profile_result, profile_html = _profile_inner(table_a, table_b, lang_val, where_val)
+            profile_result, profile_html = _profile_inner(holder, table_a, table_b, lang_val, where_val)
 
             skew_result = None
             skew_html = ""
             if skew_cols_str and skew_cols_str.strip():
                 _safe_progress(0.84, dc(lang_val, "dc_running"))
                 skew_result, skew_html = _skew_inner(
-                    table_a, table_b, lang_val, where_val, skew_cols_str)
+                    holder, table_a, table_b, lang_val, where_val, skew_cols_str)
 
             checksum_result = None
             checksum_html = ""
             if checksum_cols_str and checksum_cols_str.strip():
                 _safe_progress(0.88, dc(lang_val, "dc_running"))
                 checksum_result, checksum_html = _checksum_inner(
-                    table_a, table_b, lang_val, where_val, checksum_cols_str)
+                    holder, table_a, table_b, lang_val, where_val, checksum_cols_str)
 
             partition_result = None
             partition_html = ""
             if partition_col and partition_col.strip():
                 _safe_progress(0.92, dc(lang_val, "dc_running"))
                 partition_result, partition_html = _partition_inner(
-                    table_a, table_b, lang_val, where_val, partition_col)
+                    holder, table_a, table_b, lang_val, where_val, partition_col)
 
             custom_agg_result = None
             custom_agg_html = ""
             if custom_agg_str and custom_agg_str.strip():
                 _safe_progress(0.96, dc(lang_val, "dc_running"))
                 custom_agg_result, custom_agg_html = _custom_agg_inner(
-                    table_a, table_b, lang_val, where_val, custom_agg_str)
+                    holder, table_a, table_b, lang_val, where_val, custom_agg_str)
 
             elapsed = int((time.perf_counter() - t0) * 1000)
 
@@ -2025,7 +2127,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Batch count (H — progress) ──
 
-    def _batch_count(lang_val, where_val, progress=gr.Progress()):
+    def _batch_count(lang_val, where_val,
+                     request: gr.Request = None, progress=gr.Progress()):
+        holder = _holders.get(request)
         with holder_lock:
             if holder.get("executor_a") is None or holder.get("executor_b") is None:
                 return dc(lang_val, "dc_connect_both")
@@ -2051,8 +2155,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             total = len(pairs)
             for idx, (ta, tb) in enumerate(pairs):
                 progress((idx + 1) / total, desc=dc(lang_val, "dc_comparing_table").format(name=ta))
-                sql_a = build_count_sql(ta, where_val)
-                sql_b = build_count_sql(tb, where_val)
+                sql_a = build_count_sql(ta, where_val, ds_type=ex_a.config.ds_type)
+                sql_b = build_count_sql(tb, where_val, ds_type=ex_b.config.ds_type)
                 ra, rb = run_parallel(
                     lambda: ex_a.run(sql_a, max_rows=1),
                     lambda: ex_b.run(sql_b, max_rows=1),
@@ -2061,7 +2165,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 cb = int(rb.rows[0][0]) if rb.rows else 0
                 results.append(build_row_count_result(ta, ca, tb, cb))
 
-            _store_partial("batch_counts", results)
+            _store_partial(holder, "batch_counts", results)
 
             return build_batch_count_card(results, lang_val)
         except Exception as e:
@@ -2069,7 +2173,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Report persistence (E) ──
 
-    def _save_report(lang_val):
+    def _save_report(lang_val, request: gr.Request = None, holder=None):
+        # 定时任务后台线程直接传 holder；Gradio 事件走 request 注入
+        if holder is None:
+            holder = _holders.get(request)
         with holder_lock:
             report = holder.get("last_report")
         if not report:
@@ -2092,7 +2199,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         names = [f.name for f in files[:50]]
         return gr.update(choices=names, value=None)
 
-    def _load_report(filename, lang_val):
+    def _load_report(filename, lang_val, request: gr.Request = None):
+        holder = _holders.get(request)
         if not filename:
             return dc(lang_val, "dc_no_reports")
         fpath = _REPORTS_DIR / filename
@@ -2134,7 +2242,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Export ──
 
-    def _export_csv(lang_val):
+    def _export_csv(lang_val, request: gr.Request = None):
+        holder = _holders.get(request)
         with holder_lock:
             report = holder.get("last_report")
         if not report:
@@ -2145,7 +2254,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             _log.warning("CSV export failed", exc_info=True)
             return None
 
-    def _export_excel(lang_val):
+    def _export_excel(lang_val, request: gr.Request = None):
+        holder = _holders.get(request)
         with holder_lock:
             report = holder.get("last_report")
         if not report:
@@ -2214,7 +2324,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Batch full comparison (F) ──
 
-    def _batch_full(lang_val, where_val, threshold_str, progress=gr.Progress()):
+    def _batch_full(lang_val, where_val, threshold_str,
+                    request: gr.Request = None, progress=gr.Progress()):
+        holder = _holders.get(request)
         with holder_lock:
             if holder.get("executor_a") is None or holder.get("executor_b") is None:
                 return dc(lang_val, "dc_connect_both")
@@ -2244,15 +2356,15 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 progress((idx + 1) / total,
                          desc=dc(lang_val, "dc_comparing_table").format(name=ta))
                 try:
-                    schema_r, _ = _schema_inner(ta, tb, lang_val, where_val)
+                    schema_r, _ = _schema_inner(holder, ta, tb, lang_val, where_val)
                 except Exception:
                     schema_r = None
                 try:
-                    count_r, _ = _count_inner(ta, tb, lang_val, where_val)
+                    count_r, _ = _count_inner(holder, ta, tb, lang_val, where_val)
                 except Exception:
                     count_r = None
                 try:
-                    agg_r, _ = _agg_inner(ta, tb, lang_val, where_val)
+                    agg_r, _ = _agg_inner(holder, ta, tb, lang_val, where_val)
                 except Exception:
                     agg_r = None
 
@@ -2266,14 +2378,16 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
                 items.append(BatchFullItem(ta, tb, schema_r, count_r, agg_r, has_diffs))
 
-            _store_partial("batch_full", items)
+            _store_partial(holder, "batch_full", items)
             return build_batch_full_card(items, lang_val, threshold)
         except Exception as e:
             return _error_html(lang_val, e)
 
     # ── SeaTunnel sync config (C) ──
 
-    def _gen_sync_config(table_a, table_b, col_mapping_str, lang_val):
+    def _gen_sync_config(table_a, table_b, col_mapping_str, lang_val,
+                         request: gr.Request = None):
+        holder = _holders.get(request)
         with holder_lock:
             ex_a = holder.get("executor_a")
             ex_b = holder.get("executor_b")
@@ -2299,11 +2413,11 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Scheduled comparison (E) ──
 
-    def _schedule_tick(table_a, table_b, lang_val, where_val, key_cols_str, interval_min):
+    def _schedule_tick(holder, table_a, table_b, lang_val, where_val, key_cols_str, interval_min):
         """Background timer callback — run comparison and reschedule."""
         try:
-            _compare_all(table_a, table_b, lang_val, where_val, key_cols_str)
-            _save_report(lang_val)
+            _compare_all(table_a, table_b, lang_val, where_val, key_cols_str, holder=holder)
+            _save_report(lang_val, holder=holder)
             with holder_lock:
                 holder["schedule_last_run"] = datetime.now(timezone.utc).strftime("%H:%M:%S")
         except Exception:
@@ -2313,19 +2427,23 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 t = threading.Timer(
                     float(interval_min) * 60,
                     _schedule_tick,
-                    args=(table_a, table_b, lang_val, where_val, key_cols_str, interval_min),
+                    args=(holder, table_a, table_b, lang_val, where_val, key_cols_str, interval_min),
                 )
                 t.daemon = True
                 holder["schedule_timer"] = t
                 t.start()
 
-    def _schedule_start(table_a, table_b, lang_val, where_val, key_cols_str, interval_str):
+    def _schedule_start(table_a, table_b, lang_val, where_val, key_cols_str, interval_str,
+                        request: gr.Request = None):
+        holder = _holders.get(request)
         if not table_a or not table_b:
             return dc(lang_val, "dc_select_tables")
         try:
             interval_min = int(interval_str)
         except (ValueError, TypeError):
             interval_min = 15
+        if interval_min < 1:
+            return dc(lang_val, "dc_schedule_interval_min")
         with holder_lock:
             if holder["schedule_active"]:
                 return dc(lang_val, "dc_schedule_running").format(m=interval_min)
@@ -2333,7 +2451,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         t = threading.Timer(
             float(interval_min) * 60,
             _schedule_tick,
-            args=(table_a, table_b, lang_val, where_val, key_cols_str, interval_min),
+            args=(holder, table_a, table_b, lang_val, where_val, key_cols_str, interval_min),
         )
         t.daemon = True
         with holder_lock:
@@ -2341,7 +2459,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         t.start()
         return f'✅ {dc(lang_val, "dc_schedule_running").format(m=interval_min)}'
 
-    def _schedule_stop(lang_val):
+    def _schedule_stop(lang_val, request: gr.Request = None):
+        holder = _holders.get(request)
         with holder_lock:
             holder["schedule_active"] = False
             timer = holder.get("schedule_timer")
@@ -2432,11 +2551,22 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         except Exception as e:
             return _error_html(lang_val, e)
 
+    def _common_upstream_fn(table_a, table_b, lang_val):
+        if not table_a or not table_b:
+            return dc(lang_val, "dc_select_tables")
+        try:
+            result = trace_common_upstream(str(table_a), str(table_b))
+            return build_common_upstream_card(result, lang_val)
+        except Exception as e:
+            return _error_html(lang_val, e)
+
     # ── Feature A — Incremental comparison ──
 
     def _incremental_fn(table_a, table_b, lang_val, where_val,
                         watermark_col, watermark_val, key_cols_str,
-                        col_mapping_str, masking_on):
+                        col_mapping_str, masking_on,
+                        request: gr.Request = None):
+        holder = _holders.get(request)
         with holder_lock:
             if holder.get("executor_a") is None or holder.get("executor_b") is None:
                 return dc(lang_val, "dc_connect_both")
@@ -2471,17 +2601,19 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             key_cols = [k.strip() for k in key_cols_str.split(",") if k.strip()] if key_cols_str else []
             if key_cols:
                 kd_result = diff_by_key(ra.columns, rows_a, rb_cols, rows_b, key_cols)
-                _store_partial("keyed_diff", kd_result)
+                _store_partial(holder, "keyed_diff", kd_result)
                 return build_keyed_diff_card(kd_result, lang_val)
             diff = diff_results(ra.columns, rows_a, rb_cols, rows_b)
-            _store_partial("sample", diff)
+            _store_partial(holder, "sample", diff)
             return build_sample_diff_card(diff, lang_val, columns=ra.columns or rb_cols)
         except Exception as e:
             return _error_html(lang_val, e)
 
     # ── Feature B — Quality rules ──
 
-    def _check_quality_fn(table_a, table_b, lang_val, where_val, quality_rules_str):
+    def _check_quality_fn(table_a, table_b, lang_val, where_val, quality_rules_str,
+                          request: gr.Request = None):
+        holder = _holders.get(request)
         with holder_lock:
             if holder.get("executor_a") is None or holder.get("executor_b") is None:
                 return dc(lang_val, "dc_connect_both")
@@ -2489,11 +2621,14 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             return dc(lang_val, "dc_select_tables")
         if not quality_rules_str.strip():
             return dc(lang_val, "dc_quality_rules_hint")
+        ok, msg = _validate_where(where_val, lang_val)
+        if not ok:
+            return msg
         try:
             rules = parse_quality_rules(quality_rules_str)
             if not rules:
                 return dc(lang_val, "dc_quality_rules_hint")
-            profile_result, _ = _profile_inner(table_a, table_b, lang_val, where_val)
+            profile_result, _ = _profile_inner(holder, table_a, table_b, lang_val, where_val)
             results = check_quality_rules(rules, profile_result)
             return build_quality_card(results, lang_val)
         except Exception as e:
@@ -2501,7 +2636,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Feature C — Diff SQL generation ──
 
-    def _gen_diff_sql_fn(table_a, table_b, lang_val):
+    def _gen_diff_sql_fn(table_a, table_b, lang_val, request: gr.Request = None):
+        holder = _holders.get(request)
         with holder_lock:
             report = holder.get("last_report")
         if not report or not report.keyed_diff:
@@ -2580,7 +2716,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Feature F6 — Batch template orchestration ──
 
-    def _batch_templates_fn(selected_names, lang_val):
+    def _batch_templates_fn(selected_names, lang_val, request: gr.Request = None):
+        holder = _holders.get(request)
         if not selected_names:
             return dc(lang_val, "dc_batch_templates_hint")
         with holder_lock:
@@ -2598,10 +2735,14 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 ta = tmpl.get("table_a", "")
                 tb = tmpl.get("table_b", "")
                 wh = tmpl.get("where_clause", "")
+                ok, msg = _validate_where(wh, lang_val)
+                if not ok:
+                    results.append({"name": name, "status": "skip", "detail": msg})
+                    continue
 
                 # Count comparison
-                count_sql_a = build_count_sql(ta, wh)
-                count_sql_b = build_count_sql(tb, wh)
+                count_sql_a = build_count_sql(ta, wh, ds_type=ex_a.config.ds_type)
+                count_sql_b = build_count_sql(tb, wh, ds_type=ex_b.config.ds_type)
                 ra, rb = run_parallel(
                     lambda s=count_sql_a: ex_a.run(s, max_rows=1),
                     lambda s=count_sql_b: ex_b.run(s, max_rows=1),
@@ -2706,8 +2847,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             cards.append(build_schema_diff_card(schema_result, lang_val))
 
             # Count comparison
-            sql_ca = build_count_sql(tbl, where_val)
-            sql_cb = build_count_sql(tbl, where_val)
+            sql_ca = build_count_sql(tbl, where_val, ds_type=ex_a.config.ds_type)
+            sql_cb = build_count_sql(tbl, where_val, ds_type=ex_b.config.ds_type)
             ra, rb = run_parallel(
                 lambda: ex_a.run(sql_ca, max_rows=1),
                 lambda: ex_b.run(sql_cb, max_rows=1),
@@ -3051,6 +3192,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                     elem_classes=["st-sidebar-control"])
                 lineage_btn = gr.Button(t("dc_lineage_title"), size="sm",
                                          elem_classes=["st-connect-btn"])
+                common_upstream_btn = gr.Button(t("dc_common_upstream"), size="sm",
+                                                elem_classes=["st-connect-btn"])
 
             # AA — Multi-environment
             with gr.Accordion(t("dc_environment"), open=False) as env_accordion:
@@ -3118,19 +3261,19 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # Connect buttons
     conn_a.click(
-        fn=lambda *args: _do_connect(*args, side="a"),
+        fn=_connect_a,
         inputs=[ds_a, host_a, port_a, db_a, user_a, pwd_a, lang_state],
         outputs=[status_a, table_a],
     )
     conn_b.click(
-        fn=lambda *args: _do_connect(*args, side="b"),
+        fn=_connect_b,
         inputs=[ds_b, host_b, port_b, db_b, user_b, pwd_b, lang_state],
         outputs=[status_b, table_b],
     )
 
     # G — Table search filters
-    search_a.change(fn=lambda s: _filter_tables(s, "a"), inputs=[search_a], outputs=[table_a])
-    search_b.change(fn=lambda s: _filter_tables(s, "b"), inputs=[search_b], outputs=[table_b])
+    search_a.change(fn=_filter_tables_a, inputs=[search_a], outputs=[table_a])
+    search_b.change(fn=_filter_tables_b, inputs=[search_b], outputs=[table_b])
 
     # Strategy change — show/hide stratified column input
     sample_strategy.change(
@@ -3284,6 +3427,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     lineage_btn.click(fn=_show_lineage_fn,
                       inputs=[table_a, lang_state, lineage_sql_input],
                       outputs=[result_html])
+    common_upstream_btn.click(fn=_common_upstream_fn,
+                              inputs=[table_a, table_b, lang_state],
+                              outputs=[result_html])
 
     # A — Presets
     preset_save_btn.click(
@@ -3306,8 +3452,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     excel_btn.click(fn=_export_excel, inputs=[lang_state], outputs=[excel_btn])
 
     # View Report — open in new tab
-    def _build_report_page(lang_val):
-        report = holder.get("last_report")
+    def _build_report_page(lang_val, request: gr.Request = None):
+        holder = _holders.get(request)
+        with holder_lock:
+            report = holder.get("last_report")
         if not report:
             return dc(lang_val, "dc_no_report")
         return build_standalone_report(report, lang_val)
@@ -3465,6 +3613,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(label=t_fn("dc_lineage_title")),                 # lineage_accordion
             gr.update(label=t_fn("dc_lineage_hint")),                  # lineage_sql_input
             gr.update(value=t_fn("dc_lineage_title")),                 # lineage_btn
+            gr.update(value=t_fn("dc_common_upstream")),               # common_upstream_btn
         )
 
     lang_dd.change(
@@ -3512,6 +3661,6 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             batch_template_dd, batch_template_btn,
             # Round 10 — report diff + lineage
             report_old_dd, report_new_dd, report_diff_btn,
-            lineage_accordion, lineage_sql_input, lineage_btn,
+            lineage_accordion, lineage_sql_input, lineage_btn, common_upstream_btn,
         ],
     )

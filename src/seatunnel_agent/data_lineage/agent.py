@@ -1,8 +1,12 @@
-"""SQL Code Review agent: static lint + LLM semantic review -> CR report.
+"""Data lineage agent: full-chain table/column lineage analysis.
 
-Supports Hive SQL, Spark SQL, Flink SQL and MaxCompute SQL. Pure static
-analysis — the SQL is never executed. Mirrors Text2SQLAgent's ReAct loop
-and event protocol so the existing UI streaming machinery works unchanged.
+Two entry points:
+
+- ``static_lineage`` — deterministic, no LLM: query the graph and render the
+  Chinese report directly (CLI/API default path).
+- ``LineageAgent`` — ReAct loop over the lineage tools for natural-language
+  questions like "改这个字段影响哪些下游表". Mirrors SQLReviewAgent's loop
+  and event protocol so the existing UI streaming machinery works unchanged.
 """
 
 from __future__ import annotations
@@ -16,64 +20,91 @@ from rich.panel import Panel
 from ..config import Settings
 from ..context import truncate_messages
 from ..llm import LLMClient
-from ..text2sql.schema import SchemaStore
 from ..utils import truncate
-from .config import ReviewConfig
-from .lineage import extract_table_lineage
-from .linter import lint_sql, normalize_dialect
-from .prompts import build_review_prompt
-from .report import ReviewReport, render_report
-from .tools import TOOL_DEFINITIONS, SQLReviewRuntime, execute_review_tool
+from .config import LineageConfig
+from .graph import LineageGraph
+from .prompts import build_lineage_prompt
+from .render import render_column_mermaid, render_mermaid, render_report
+from .report import LineageReport
+from .tools import TOOL_DEFINITIONS, LineageRuntime, execute_lineage_tool
 
 MAX_LOOP_ITERATIONS = 10
 
 EventCallback = Callable[[str, dict[str, Any]], None]
 
 
-def static_review_report(
-    sql: str,
-    dialect: str = "hive",
-    store: SchemaStore | None = None,
-    config: ReviewConfig | None = None,
-) -> ReviewReport:
-    """Linter-only review (no LLM): run deterministic rules, return the report object."""
-    dialect = normalize_dialect(dialect)
-    findings = lint_sql(sql, dialect, store=store, config=config)
-    return ReviewReport(
-        findings=findings, dialect=dialect,
-        lineage=extract_table_lineage(sql, store=store),
+def static_lineage(
+    graph: LineageGraph,
+    table: str,
+    direction: str = "both",
+    depth: int = 3,
+    column: str | None = None,
+    config: LineageConfig | None = None,
+) -> LineageReport:
+    """Deterministic lineage analysis (no LLM): query the graph, build a report."""
+    config = config or LineageConfig()
+    depth = max(1, min(depth, config.max_depth))
+
+    if direction == "upstream":
+        chain = graph.upstream_of(table, depth, config.max_nodes)
+    elif direction == "downstream":
+        chain = graph.downstream_of(table, depth, config.max_nodes)
+    else:
+        direction = "both"
+        chain = graph.full_chain(table, depth, depth, config.max_nodes)
+
+    impact = None
+    if column and not chain.missing_root:
+        impact = graph.impact_of_column(table, column, depth=5, max_nodes=config.max_nodes)
+
+    if impact and not impact.degraded and impact.edges:
+        mermaid = render_column_mermaid(impact)
+    elif not chain.missing_root:
+        mermaid = render_mermaid(chain, config.max_mermaid_nodes)
+    else:
+        mermaid = ""
+
+    return LineageReport(
+        root_table=chain.root,
+        direction=direction,
+        chain=chain,
+        column_impact=impact,
+        mermaid=mermaid,
     )
 
 
-def static_review(
-    sql: str,
-    dialect: str = "hive",
-    store: SchemaStore | None = None,
-    config: ReviewConfig | None = None,
-) -> str:
-    """Linter-only review (no LLM): run deterministic rules, render the report."""
-    return render_report(static_review_report(sql, dialect, store=store, config=config))
-
-
-class SQLReviewAgent:
+class LineageAgent:
     def __init__(
         self,
         settings: Settings,
-        dialect: str = "hive",
-        store: SchemaStore | None = None,
-        config: ReviewConfig | None = None,
+        graph: LineageGraph | None = None,
+        config: LineageConfig | None = None,
+        sql_dir: str | None = None,
+        seatunnel_dir: str | None = None,
+        hive_available: bool = False,
+        meta_table: str | None = None,
+        partition: str | None = None,
         on_event: EventCallback | None = None,
     ) -> None:
         self.settings = settings
         self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
-        self.dialect = normalize_dialect(dialect)
-        self.store = store
-        self.config = config
-        self.runtime: SQLReviewRuntime | None = None
+        self.config = config or LineageConfig()
+        self.runtime = LineageRuntime(
+            graph=graph if graph is not None else LineageGraph(),
+            config=self.config,
+            sql_dir=sql_dir,
+            seatunnel_dir=seatunnel_dir,
+            hive_available=hive_available,
+            meta_table=meta_table or self.config.meta_table,
+            partition=partition,
+        )
         self.messages: list[dict[str, Any]] = []
         self.console = Console()
         self._on_event = on_event
-        self._system_prompt = build_review_prompt(self.dialect, store)
+        self._system_prompt = build_lineage_prompt(
+            self.runtime.graph, self.config, hive_available, sql_dir,
+            seatunnel_dir=seatunnel_dir,
+        )
 
     def _emit(self, event_type: str, data: dict[str, Any]) -> None:
         if self._on_event:
@@ -83,38 +114,51 @@ class SQLReviewAgent:
     # Public entry points
     # ------------------------------------------------------------------
 
-    def review(self, sql: str, instructions: str = "") -> str:
-        """Review one SQL statement/script and return the CR report."""
-        sql = sql.strip()
-        if not sql:
-            return "没有可审查的 SQL。"
-        self.runtime = SQLReviewRuntime(
-            sql=sql, dialect=self.dialect, store=self.store, config=self.config
-        )
-        prompt = f"请对以下 {self.dialect} SQL 做 Code Review：\n\n```sql\n{sql}\n```"
-        if instructions:
-            prompt += f"\n\n补充说明：{instructions}"
-        self.messages = [{"role": "user", "content": prompt}]
-        self.console.print(Panel(truncate(sql, 800), title="SQL Review", border_style="cyan"))
+    def analyze(self, question: str) -> str:
+        """Answer one lineage question and return the rendered Chinese report."""
+        question = question.strip()
+        if not question:
+            return "请提供要分析的血缘问题。"
+        # Fresh question — drop per-question state so a previous question's
+        # chain/impact never leaks into this report.
+        self.runtime.last_chain = None
+        self.runtime.last_impact = None
+        self.runtime.last_report = ""
+        self.runtime.last_mermaid = ""
+        self.runtime.report = None
+        self.messages = [{"role": "user", "content": question}]
+        self.console.print(Panel(truncate(question, 800), title="Lineage", border_style="cyan"))
 
         answer = self._agent_loop()
         # The prompt asks the model to echo the rendered report verbatim; if it
         # paraphrased instead, prefer the deterministic render.
-        if self.runtime.last_report and "CR 报告" not in answer:
+        if self.runtime.last_report and "血缘分析报告" not in answer:
             return self.runtime.last_report
         return answer
 
     def chat(self, message: str) -> str:
-        """Follow-up conversation about the last review (e.g. ask for a fix)."""
+        """Follow-up conversation about the loaded lineage graph."""
         if not self.messages:
-            return self.review(message)
+            return self.analyze(message)
+        # 追问是新的问题：清掉上一轮的 per-question 状态（尤其 last_impact，
+        # 否则旧的列级影响会混进新报告），但保留图和对话历史。
+        self.runtime.last_chain = None
+        self.runtime.last_impact = None
+        self.runtime.last_report = ""
+        self.runtime.last_mermaid = ""
+        self.runtime.report = None
         self.messages.append({"role": "user", "content": message})
-        self.console.print(Panel(message, title="SQL Review", border_style="cyan"))
+        self.console.print(Panel(message, title="Lineage", border_style="cyan"))
         return self._agent_loop()
 
     def reset(self) -> None:
+        """Clear the conversation; the loaded graph is kept."""
         self.messages = []
-        self.runtime = None
+        self.runtime.last_chain = None
+        self.runtime.last_impact = None
+        self.runtime.last_report = ""
+        self.runtime.last_mermaid = ""
+        self.runtime.report = None
 
     # ------------------------------------------------------------------
     # Core ReAct loop
@@ -174,7 +218,7 @@ class SQLReviewAgent:
                 self._display_tool_call(tc.name, tc.input)
                 self._emit("tool_call", {"name": tc.name, "input": tc.input})
 
-                result = execute_review_tool(tc.name, tc.input, self.runtime)
+                result = execute_lineage_tool(tc.name, tc.input, self.runtime)
 
                 self._display_tool_result(tc.name, result)
                 self._emit("tool_result", {"name": tc.name, "result": result})
@@ -191,11 +235,11 @@ class SQLReviewAgent:
             else:
                 self.messages.append(result_msg)
 
-        # Fell out of the loop — fall back to whatever review exists.
-        if self.runtime and self.runtime.last_report:
+        # Fell out of the loop — fall back to whatever report exists.
+        if self.runtime.last_report:
             self._emit("final_answer", {"text": self.runtime.last_report})
             return self.runtime.last_report
-        msg = "SQL Review agent reached maximum iterations without completing."
+        msg = "Lineage agent reached maximum iterations without completing."
         self._emit("final_answer", {"text": msg})
         return msg
 
@@ -204,10 +248,19 @@ class SQLReviewAgent:
     # ------------------------------------------------------------------
 
     _TOOL_STYLE: dict[str, str] = {
-        "lint_sql": "blue",
-        "get_table_schema": "cyan",
-        "lineage_impact": "magenta",
-        "submit_review": "green",
+        "load_lineage_from_hive": "magenta",
+        "load_lineage_from_sql": "magenta",
+        "load_lineage_from_seatunnel": "magenta",
+        "get_upstream": "blue",
+        "get_downstream": "blue",
+        "get_full_chain": "blue",
+        "impact_analysis": "yellow",
+        "find_path": "blue",
+        "sla_impact": "yellow",
+        "health_check": "yellow",
+        "search_tables": "cyan",
+        "get_table_detail": "cyan",
+        "submit_lineage_report": "green",
     }
 
     def _display_tool_call(self, name: str, inputs: dict[str, Any]) -> None:
@@ -224,8 +277,8 @@ class SQLReviewAgent:
                 self.console.print(f"  [red]Error:[/red] {str(data['error'])[:200]}")
             elif data.get("success") is True:
                 extra = ""
-                if "finding_count" in data:
-                    extra = f" — {data['finding_count']} finding(s)"
+                if "graph" in data:
+                    extra = f" — graph: {data['graph']}"
                 self.console.print(f"  [green]Success[/green]{extra}")
             else:
                 self.console.print(f"  [dim]Result received ({len(result)} chars)[/dim]")

@@ -44,6 +44,10 @@ reviewer would otherwise only find by running the query step by step.
    - If table schemas are available (see Schema section), call
      **get_table_schema** for each referenced table to verify column
      existence, types (JOIN key type mismatch!) and partition columns.
+   - When the SQL writes to a table (INSERT/CTAS), call **lineage_impact**
+     to see downstream tables affected (with SLA markers) and cite the blast
+     radius in finding impact. If it reports lineage is not configured, just
+     skip impact analysis.
    - Perform your own semantic review over the FULL checklist below —
      the linter only covers the mechanical subset. Pay special attention to
      NULL handling on joined columns, dedup correctness, money precision,

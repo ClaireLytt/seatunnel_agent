@@ -1440,3 +1440,39 @@ def test_changed_sql_files_from_subdirectory(tmp_path):
     files = changed_sql_files("HEAD", cwd=sub)
     assert [p.name for p in files] == ["q.sql"]
     assert all(p.is_file() for p in files)
+
+
+# ---------------------------------------------------------------------------
+# lineage_context failure-retry cache
+# ---------------------------------------------------------------------------
+
+def test_lineage_context_failure_retries_after_timeout(tmp_path, monkeypatch):
+    from seatunnel_agent.sql_review import lineage_context as lc
+
+    lc.reset_lineage_cache()
+    monkeypatch.setenv("LINEAGE_SQL_DIR", str(tmp_path))
+    monkeypatch.delenv("LINEAGE_SEATUNNEL_DIR", raising=False)
+
+    # empty dir -> empty graph -> failure hint cached
+    graph, hint = lc.get_lineage_graph()
+    assert graph is None
+    assert hint
+
+    # fix the directory: within retry window the failure stays cached
+    (tmp_path / "q.sql").write_text(
+        "INSERT OVERWRITE TABLE zz.dws_t SELECT * FROM zz.dwd_s;", encoding="utf-8",
+    )
+    graph2, hint2 = lc.get_lineage_graph()
+    assert graph2 is None
+    assert hint2 == hint
+
+    # after the retry window the build is attempted again and succeeds
+    real_time = lc.time.time
+    monkeypatch.setattr(
+        lc.time, "time",
+        lambda: real_time() + lc._FAILURE_RETRY_SECONDS + 1,
+    )
+    graph3, hint3 = lc.get_lineage_graph()
+    assert graph3 is not None
+    assert hint3 == ""
+    lc.reset_lineage_cache()

@@ -48,6 +48,7 @@
 - **CSV Export with CJK Support**: UTF-8 BOM encoding for Excel compatibility, timestamped filenames, custom output paths
 - **Structured Query Logging**: JSONL-formatted logs of every query (user question, generated SQL, status, timing) for observability
 - **SQL Code Review**: Static review of Hive/Spark/Flink/MaxCompute SQL — no execution needed. A deterministic linter (GROUP BY completeness, cartesian joins, `= NULL`, partition filters, division-by-zero, complexity scoring, …) plus an LLM semantic pass over a 15-item checklist, producing a fixed-format CR report (严重问题/潜在风险/优化建议/检查统计/总体评价) with table- and column-level lineage. Available as `seatunnel-agent review`, REST `POST /api/sql_review/review`, a Gradio UI page (`/sqlreview`, with history trend chart), or offline via `--static-only`. Multi-statement scripts are split and reviewed per statement with correct line numbers. Batch review a directory (`--dir`), changed files vs a git base (`--diff`), or positional paths (pre-commit style); gate CI with `--fail-on critical|risk|suggestion`; customize rules via `.sqlreview.yaml` (partition columns, disabled checks, severity overrides, custom regex rules); suppress findings inline (`-- sqlreview-disable[-next-line|-file][: category]`) or via a baseline file (`--baseline` / `--update-baseline` — only new findings fail CI); emit machine-readable output with `--format json|sarif` (SARIF uploads to GitHub Code Scanning — see `examples/ci/` and the bundled pre-commit hook in `.pre-commit-hooks.yaml`); pull live schemas with `--db host:port/database`; auto-generate fixed SQL with `--fix`; inspect review history with `review-stats`
+- **Data Lineage (全链路血缘)**: Full-chain table/column lineage agent. Builds a global lineage graph from three sources — local `*.sql` files (INSERT/CTAS parsing with cross-file linking; column edges upgrade automatically to AST-based extraction when sqlglot is installed via `.[lineage]`, falling back to regex otherwise), SeaTunnel config directories (`--seatunnel-dir`, source→sink sync lineage from `*.conf/*.config/*.json`), and/or the Hive lineage metadata table `zz.dwm_meta_table_lineage_df` (latest `pt` partition by default, covering hive/flink/doris/mysql/kafka/报表 lineage with layer, SLA time and baseline attributes; results cached locally with a TTL — `LINEAGE_CACHE_TTL`, `--no-cache` to force refresh). Answers "which downstream tables break if I change this column" via BFS impact analysis (column-level first, degrading transparently to table-level when column edges are missing), finds shortest paths between tables (`--path-to`), simulates SLA delay impact (`--sla-delay`), runs governance health checks for cycles/orphans/sink-less tables (`--check`), renders mermaid diagrams with layer coloring, SLA markers and click-to-query nodes, and reports in Chinese with the metadata table's comment labels (类型/库名/表分层/是否在SLA/SLA产出时间/所在基线). Available as `seatunnel-agent lineage` (deterministic, `-F markdown|mermaid|json`), an agent Q&A mode with streaming output (`--agent --ask "..."`), REST `POST /api/lineage/query` / `/path` / `/sla_impact` / `/check` / `/analyze`, a Gradio UI page (`/lineage`, with table-name autocomplete), and an MCP server over stdio (`seatunnel-agent lineage-mcp`, install `.[mcp]`) for Claude Desktop / Claude Code / Cline
 
 ### Quick Start
 
@@ -188,6 +189,8 @@ pip install -e ".[sqlserver]"   # SQL Server
 pip install -e ".[clickhouse]"  # ClickHouse
 pip install -e ".[db-all]"      # All database drivers
 pip install -e ".[chart]"       # Chart visualization (matplotlib)
+pip install -e ".[lineage]"     # AST-based column lineage (sqlglot, optional)
+pip install -e ".[mcp]"         # MCP server for lineage tools (optional)
 ```
 
 Add your database connection to `.env` (example for MySQL):
@@ -335,6 +338,36 @@ seatunnel-agent --model deepseek-chat --provider openai run --task "..."
 
 # Verbose output
 seatunnel-agent -v run --task "..."
+
+# Data lineage: full chain of a table from local SQL files
+seatunnel-agent lineage -t zz.dwd_orders_df --sql-dir ./warehouse_sql
+
+# Column-level impact analysis ("what breaks if I change this column")
+seatunnel-agent lineage -t zz.ods_orders -c amount --sql-dir ./warehouse_sql
+
+# From the Hive lineage metadata table (latest pt partition; needs HIVE_HOST in .env)
+# Results are cached locally with a TTL — add --no-cache to force a refresh
+seatunnel-agent lineage -t zz.dwd_orders_df --hive
+
+# From SeaTunnel configs (source→sink sync lineage)
+seatunnel-agent lineage -t test_db.users --seatunnel-dir ./st_jobs
+
+# Shortest path between two tables / SLA delay impact / governance health check
+seatunnel-agent lineage -t zz.ods_orders --path-to zz.dws_city_gmv_df --sql-dir ./warehouse_sql
+seatunnel-agent lineage -t zz.dwd_orders_df --sla-delay 2 --hive
+seatunnel-agent lineage --check --sql-dir ./warehouse_sql
+
+# Mermaid / JSON output, save to file
+seatunnel-agent lineage -t zz.dwd_orders_df --sql-dir ./warehouse_sql -F mermaid -o chain.mmd
+
+# Agent Q&A mode (needs API key)
+seatunnel-agent lineage --sql-dir ./warehouse_sql --agent --ask "改 zz.ods_orders 的 amount 字段影响哪些下游表？"
+
+# Lineage query history
+seatunnel-agent lineage-stats
+
+# MCP server over stdio (install .[mcp]) — for Claude Desktop / Claude Code / Cline
+seatunnel-agent lineage-mcp --sql-dir ./warehouse_sql
 ```
 
 ### Text2SQL (Chat BI) Usage
@@ -590,6 +623,7 @@ MIT
 - **CSV 导出（CJK 支持）**：UTF-8 BOM 编码确保 Excel 正确显示中文，带时间戳的文件名，支持自定义路径
 - **结构化查询日志**：JSONL 格式记录每次查询（用户问题、生成 SQL、状态、耗时），便于监控与审计
 - **SQL Code Review**：对 Hive/Spark/Flink/MaxCompute SQL 做纯静态审查，无需运行即可发现问题 —— 确定性 Linter（GROUP BY 完整性、笛卡尔积、`= NULL`、分区过滤、除零保护、复杂度评分等）+ LLM 按 15 项检查清单做语义审查，输出固定格式 CR 报告（严重问题/潜在风险/优化建议/检查统计/总体评价）并附表级与列级血缘。支持 `seatunnel-agent review` 命令、REST `POST /api/sql_review/review`、Gradio UI 页面（`/sqlreview`，含历史趋势图），以及无需 API Key 的 `--static-only` 模式。多语句脚本自动按语句拆分审查并映射正确行号。支持目录批量审查（`--dir`）、git 变更文件审查（`--diff`）、位置参数传文件（pre-commit 风格）、CI 门禁（`--fail-on critical|risk|suggestion`）、`.sqlreview.yaml` 规则配置（自定义分区列/关闭检查/调整严重度/自定义正则规则）、行内忽略注释（`-- sqlreview-disable[-next-line|-file][: 类别]`）、基线文件（`--baseline` / `--update-baseline`，只对新问题报错）、机器可读输出（`--format json|sarif`，SARIF 可上传 GitHub Code Scanning，模板见 `examples/ci/` 与 `.pre-commit-hooks.yaml`）、数据库直连拉取表结构（`--db host:port/database`）、LLM 自动生成修复 SQL（`--fix`）与审查历史统计（`review-stats`）
+- **全链路血缘分析**：数据表全链路血缘 Agent。从三类数据源构建全局血缘图 —— 本地 `*.sql` 文件（解析 INSERT/CTAS 并跨文件串联；安装 `.[lineage]` 后字段级血缘自动升级为 sqlglot AST 解析，未安装则回退正则）、SeaTunnel 配置目录（`--seatunnel-dir`，从 `*.conf/*.config/*.json` 提取 source→sink 同步血缘）和/或 Hive 血缘元数据表 `zz.dwm_meta_table_lineage_df`（默认取最新 `pt` 分区，覆盖 hive/flink/doris/mysql/kafka/报表 血缘，含表分层、SLA 产出时间与基线属性；结果带 TTL 本地缓存 —— `LINEAGE_CACHE_TTL` 配置、`--no-cache` 强制刷新）。通过 BFS 影响分析回答"改这个字段影响哪些下游表"（优先字段级，字段边缺失时如实降级为表级），支持两表最短路径查询（`--path-to`）、SLA 延迟影响推演（`--sla-delay`）、治理体检（`--check`，环依赖/孤立表/无下游表），渲染带分层配色、SLA 标记与节点点击跳转的 mermaid 血缘图，报告用元数据表的中文 comment 展示（类型/库名/表分层/是否在SLA/SLA产出时间/所在基线）。支持 `seatunnel-agent lineage` 命令（确定性模式，`-F markdown|mermaid|json`）、流式输出的 Agent 问答模式（`--agent --ask "..."`）、REST `POST /api/lineage/query` / `/path` / `/sla_impact` / `/check` / `/analyze`、Gradio UI 页面（`/lineage`，含表名自动补全），以及 stdio MCP server（`seatunnel-agent lineage-mcp`，安装 `.[mcp]`），可接入 Claude Desktop / Claude Code / Cline
 
 ### 快速开始
 
@@ -730,6 +764,8 @@ pip install -e ".[sqlserver]"   # SQL Server
 pip install -e ".[clickhouse]"  # ClickHouse
 pip install -e ".[db-all]"      # 全部数据库驱动
 pip install -e ".[chart]"       # 图表可视化（matplotlib）
+pip install -e ".[lineage]"     # 字段级血缘 AST 解析（sqlglot，可选）
+pip install -e ".[mcp]"         # 血缘工具 MCP server（可选）
 ```
 
 在 `.env` 中添加数据库连接配置（以 MySQL 为例）：
@@ -877,6 +913,36 @@ seatunnel-agent --model deepseek-chat --provider openai run --task "..."
 
 # 详细输出
 seatunnel-agent -v run --task "..."
+
+# 全链路血缘：从本地 SQL 文件查询某表的上下游链路
+seatunnel-agent lineage -t zz.dwd_orders_df --sql-dir ./warehouse_sql
+
+# 字段级影响分析（"改这个字段影响哪些下游表"）
+seatunnel-agent lineage -t zz.ods_orders -c amount --sql-dir ./warehouse_sql
+
+# 从 Hive 血缘元数据表构建（默认最新 pt 分区；需 .env 配置 HIVE_HOST）
+# 结果带 TTL 本地缓存，加 --no-cache 强制刷新
+seatunnel-agent lineage -t zz.dwd_orders_df --hive
+
+# 从 SeaTunnel 配置目录提取 source→sink 同步血缘
+seatunnel-agent lineage -t test_db.users --seatunnel-dir ./st_jobs
+
+# 两表最短路径 / SLA 延迟影响推演 / 治理体检
+seatunnel-agent lineage -t zz.ods_orders --path-to zz.dws_city_gmv_df --sql-dir ./warehouse_sql
+seatunnel-agent lineage -t zz.dwd_orders_df --sla-delay 2 --hive
+seatunnel-agent lineage --check --sql-dir ./warehouse_sql
+
+# mermaid / JSON 输出并保存到文件
+seatunnel-agent lineage -t zz.dwd_orders_df --sql-dir ./warehouse_sql -F mermaid -o chain.mmd
+
+# Agent 问答模式（需 API Key）
+seatunnel-agent lineage --sql-dir ./warehouse_sql --agent --ask "改 zz.ods_orders 的 amount 字段影响哪些下游表？"
+
+# 血缘查询历史统计
+seatunnel-agent lineage-stats
+
+# stdio MCP server（需安装 .[mcp]）—— 供 Claude Desktop / Claude Code / Cline 接入
+seatunnel-agent lineage-mcp --sql-dir ./warehouse_sql
 ```
 
 ### Text2SQL (Chat BI) 使用说明
