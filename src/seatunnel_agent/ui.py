@@ -828,6 +828,23 @@ def create_ui() -> gr.Blocks:
         }
         hide();
         new MutationObserver(hide).observe(document.body, {childList: true, subtree: true});
+
+        if (!document._tabFillReady) {
+            document._tabFillReady = true;
+            document.addEventListener('keydown', function(e) {
+                if (e.key !== 'Tab') return;
+                var el = e.target;
+                if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+                if (el.value.trim() !== '' || !el.placeholder) return;
+                e.preventDefault();
+                var proto = el.tagName === 'TEXTAREA'
+                    ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+                setter.call(el, el.placeholder);
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+            });
+        }
     }
     """
 
@@ -1058,7 +1075,7 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 layout="panel",
                 buttons=["copy"],
                 elem_classes=["st-chatbot"],
-                height="calc(100vh - 130px)",
+                height=None,
             )
 
             with gr.Row(elem_classes=["st-input-row"]):
@@ -1339,17 +1356,7 @@ footer { display: none !important; }
     flex-direction: column !important;
     flex-wrap: nowrap !important;
 }
-/* Force ALL divs at any depth to column — catches any Gradio nesting */
-.st-sidebar div {
-    display: flex !important;
-    flex-direction: column !important;
-    flex-wrap: nowrap !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    box-sizing: border-box !important;
-}
-/* Direct children: full-width block */
+/* Direct children: full-width column layout */
 .st-sidebar > * {
     width: 100% !important;
     max-width: 100% !important;
@@ -1366,21 +1373,6 @@ footer { display: none !important; }
 .st-sidebar .st-rename-row {
     flex-direction: row !important;
     flex-wrap: nowrap !important;
-}
-/* Leaf elements: revert to normal display (exclude accordion toggle) */
-.st-sidebar button:not([class*="label-wrap"]),
-.st-sidebar input,
-.st-sidebar textarea,
-.st-sidebar select,
-.st-sidebar label:not(.st-table-filter label),
-.st-sidebar span:not(.st-filter-accordion span),
-.st-sidebar svg,
-.st-sidebar p,
-.st-sidebar h1, .st-sidebar h2, .st-sidebar h3 {
-    display: revert !important;
-    flex-direction: initial !important;
-    gap: initial !important;
-    min-width: revert !important;
 }
 /* CheckboxGroup labels: horizontal for checkbox + text */
 .st-sidebar .st-table-filter label {
@@ -1418,15 +1410,16 @@ footer { display: none !important; }
     flex-shrink: 0 !important;
 }
 .st-sidebar-open-btn:hover { background: #f3f4f6 !important; }
-/* Right main content: fill remaining width */
+/* Right main content: fill remaining width, flex column to pin input at bottom */
 .st-main {
     flex: 1 1 0 !important;
     min-width: 0 !important;
     height: 100% !important;
     max-height: 100% !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
+    overflow: hidden !important;
     padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
 }
 /* Hide Gradio's native sidebar if accidentally present */
 .gradio-sidebar { display: none !important; }
@@ -1547,6 +1540,8 @@ footer { display: none !important; }
     overflow-y: auto !important;
     padding: 0 !important;
     margin: 0 !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
 }
 .st-chatbot .message {
     font-size: 11px !important;

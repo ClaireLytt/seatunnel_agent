@@ -243,7 +243,13 @@ class Text2SQLRuntime:
     @property
     def executor(self) -> DatabaseExecutor:
         if self._executor is None:
-            if self.db_config is None or not self.db_config.host:
+            if self.db_config is None:
+                raise RuntimeError(
+                    "Database connection is not configured. "
+                    "Fill in the connection fields in the UI or set "
+                    "the corresponding environment variables."
+                )
+            if not self.db_config.host and self.db_config.ds_type != "sqlite":
                 raise RuntimeError(
                     "Database connection is not configured. "
                     "Fill in the connection fields in the UI or set "
