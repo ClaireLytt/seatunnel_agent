@@ -2448,3 +2448,143 @@ class TestParameterizedFavorites:
         store = FavoritesStore(tmp_path / "fav.json")
         entry = store.save("q2", "SELECT * FROM t")
         assert entry["params"] == []
+
+
+class TestBugfixRegressions:
+    """本轮全项目审计修复的回归测试。"""
+
+    def test_extract_tables_comma_list(self):
+        tables = extract_tables("SELECT * FROM db.ok, db.secret WHERE 1=1")
+        assert tables == ["db.ok", "db.secret"]
+
+    def test_extract_tables_comma_list_with_aliases(self):
+        tables = extract_tables(
+            "SELECT * FROM db.a x, db.b AS y JOIN db.c ON 1=1"
+        )
+        assert tables == ["db.a", "db.b", "db.c"]
+
+    def test_extract_tables_alias_does_not_eat_join(self):
+        tables = extract_tables("SELECT * FROM a JOIN b ON a.id=b.id")
+        assert tables == ["a", "b"]
+
+    def test_diff_results_mixed_types_no_typeerror(self):
+        from seatunnel_agent.text2sql.differ import diff_results
+        old_rows = [(1, "x"), (None, "y")]
+        new_rows = [("s", 2), (None, "y")]
+        diff = diff_results(["a", "b"], old_rows, ["a", "b"], new_rows)
+        assert diff.old_count == 2 and diff.new_count == 2
+
+    def test_truncate_messages_drops_orphan_tool_result(self):
+        from seatunnel_agent.context import truncate_messages
+        msgs = [
+            {"role": "user", "content": "q" * 6000},
+            {"role": "assistant", "content": [
+                {"type": "tool_use", "id": "t1", "name": "x", "input": {}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "r" * 6000},
+            ]},
+            {"role": "assistant", "content": "a" * 6000},
+        ]
+        result = truncate_messages(msgs, max_chars=13000)
+        for m in result:
+            content = m.get("content")
+            if isinstance(content, list) and any(
+                isinstance(b, dict) and b.get("type") == "tool_result"
+                for b in content
+            ):
+                # 出现 tool_result 时前一条必须是带 tool_use 的 assistant 消息
+                idx = result.index(m)
+                assert idx > 0
+                prev = result[idx - 1].get("content")
+                assert isinstance(prev, list) and any(
+                    isinstance(b, dict) and b.get("type") == "tool_use"
+                    for b in prev
+                )
+
+    def test_favorites_read_non_list_json(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        p = tmp_path / "fav.json"
+        p.write_text('{"not": "a list"}', encoding="utf-8")
+        store = FavoritesStore(p)
+        assert store.list() == []
+
+    # ── fix 1: enforce_limit 尾注释 ──
+
+    def test_enforce_limit_trailing_line_comment(self):
+        sql = "SELECT * FROM t LIMIT 9999999 -- note"
+        out = enforce_limit(sql, max_limit=1000)
+        assert out.lower().count("limit") == 1
+        assert "9999999" not in out and "1000" in out
+
+    def test_enforce_limit_trailing_block_comment(self):
+        sql = "SELECT * FROM t LIMIT 9999999 /* c */"
+        out = enforce_limit(sql, max_limit=1000)
+        assert out.lower().count("limit") == 1
+        assert "9999999" not in out and "1000" in out
+
+    def test_enforce_limit_no_comment_unchanged_behavior(self):
+        out = enforce_limit("SELECT * FROM t LIMIT 5", max_limit=1000)
+        assert out.strip().lower().endswith("limit 5")
+        out2 = enforce_limit("SELECT * FROM t", default_limit=1000)
+        assert out2.lower().count("limit") == 1 and "1000" in out2
+
+    # ── fix 2: 跨盘符 relpath ValueError ──
+
+    def test_schema_ddl_path_cross_drive_valueerror(self, monkeypatch):
+        import os as _os
+        from seatunnel_agent.text2sql.executor.base import (
+            DEFAULT_SCHEMA_DDL_PATH,
+            schema_ddl_path_from_env,
+        )
+        monkeypatch.setenv("SCHEMA_DDL_PATH", _os.path.abspath("x.sql"))
+
+        def _boom(path, start):
+            raise ValueError("path is on mount 'E:', start on mount 'D:'")
+
+        monkeypatch.setattr(_os.path, "relpath", _boom)
+        assert schema_ddl_path_from_env() == DEFAULT_SCHEMA_DDL_PATH
+
+    # ── fix 3/4: _config_matches ──
+
+    def _mk_api_agent(self, ds_type="hive", schema_ddl=""):
+        from seatunnel_agent.text2sql.api import Text2SQLAgent
+        agent = MagicMock(spec=Text2SQLAgent)
+        agent.runtime = MagicMock()
+        agent.runtime.ds_type = ds_type
+        agent.runtime.db_config = None
+        agent.api_schema_ddl = schema_ddl
+        return agent
+
+    def test_config_matches_invalid_port_no_exception(self):
+        from seatunnel_agent.text2sql.api import QueryRequest, _config_matches
+        agent = self._mk_api_agent()
+        agent.runtime.db_config = MagicMock(
+            host="h", port=10000, database="d", username=None, password=None
+        )
+        req = QueryRequest(
+            question="q", ds_type="hive",
+            db_config={"host": "h", "port": "abc", "database": "d"},
+        )
+        assert _config_matches(agent, req) is False
+
+    def test_config_matches_schema_ddl_change_rebuilds(self):
+        from seatunnel_agent.text2sql.api import QueryRequest, _config_matches
+        agent = self._mk_api_agent(schema_ddl="CREATE TABLE a (x INT)")
+        req = QueryRequest(
+            question="q", ds_type="hive",
+            schema_ddl="CREATE TABLE b (y INT)",
+        )
+        assert _config_matches(agent, req) is False
+
+    def test_config_matches_schema_ddl_none_equals_empty(self):
+        from seatunnel_agent.text2sql.api import QueryRequest, _config_matches
+        agent = self._mk_api_agent(schema_ddl="")
+        req = QueryRequest(question="q", ds_type="hive", schema_ddl=None)
+        assert _config_matches(agent, req) is True
+
+    # ── fix 6: 双引号字符串不误触关键字 ──
+
+    def test_double_quoted_keyword_string_not_rejected(self):
+        r = validate_sql('SELECT "insert" FROM t')
+        assert r.ok, r.errors

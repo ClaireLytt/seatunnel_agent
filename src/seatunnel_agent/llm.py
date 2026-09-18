@@ -170,7 +170,13 @@ class LLMClient:
                 )
                 if isinstance(status, str):
                     status = None
-                retryable = status in (429, 500, 502, 503, 529) or "rate" in str(exc).lower()
+                retryable = (
+                    status in (429, 500, 502, 503, 529)
+                    # openai SDK 的超时异常没有 status_code，按类名识别
+                    or exc.__class__.__name__ == "APITimeoutError"
+                    or any(k in str(exc).lower()
+                           for k in ("rate limit", "rate_limit", "429"))
+                )
                 if not retryable or attempt == max_retries - 1:
                     raise
                 wait = 2 ** attempt
@@ -209,9 +215,10 @@ class LLMClient:
             if not hasattr(block, "type"):
                 continue
             if block.type == "thinking" and getattr(block, "thinking", ""):
-                thinking = block.thinking
+                thinking += block.thinking
             elif block.type == "text" and block.text:
-                text = block.text
+                # 一次响应可能有多个 text 块（如夹在 tool_use 之间），拼接而非覆盖
+                text += block.text
             elif block.type == "tool_use":
                 tool_calls.append(ToolCall(
                     id=block.id, name=block.name, input=block.input,
@@ -331,7 +338,7 @@ class LLMClient:
         try:
             response = self._client.chat.completions.create(**oai_kwargs)
         except openai.APITimeoutError:
-            raise RuntimeError("API request timed out. Check your network or try again.")
+            raise  # 超时是瞬态错误，原样抛给 _call_with_retry 重试
         except openai.APIConnectionError:
             raise RuntimeError("Cannot connect to API. Check LLM_BASE_URL and your network.")
 
@@ -398,7 +405,7 @@ class LLMClient:
         try:
             stream = self._client.chat.completions.create(**stream_oai_kwargs)
         except openai.APITimeoutError:
-            raise RuntimeError("API request timed out. Check your network or try again.")
+            raise  # 超时是瞬态错误，原样抛给 _call_with_retry 重试
         except openai.APIConnectionError:
             raise RuntimeError("Cannot connect to API. Check LLM_BASE_URL and your network.")
 

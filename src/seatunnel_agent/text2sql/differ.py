@@ -43,8 +43,9 @@ def diff_results(
         new_idx = [new_cols.index(c) for c in shared]
         old_tuples = {tuple(r[i] for i in old_idx) for r in old_rows}
         new_tuples = {tuple(r[i] for i in new_idx) for r in new_rows}
-        added = sorted(new_tuples - old_tuples)[:_MAX_DIFF_ROWS]
-        removed = sorted(old_tuples - new_tuples)[:_MAX_DIFF_ROWS]
+        # 行内可能混有 None/数字/字符串，直接比较会 TypeError，按 repr 排序
+        added = sorted(new_tuples - old_tuples, key=repr)[:_MAX_DIFF_ROWS]
+        removed = sorted(old_tuples - new_tuples, key=repr)[:_MAX_DIFF_ROWS]
     else:
         added = [tuple(r) for r in new_rows[:_MAX_DIFF_ROWS]]
         removed = [tuple(r) for r in old_rows[:_MAX_DIFF_ROWS]]

@@ -33,7 +33,11 @@ class ClickHouseExecutor(DatabaseExecutor):
         start = time.time()
         client = self._connect()
         try:
-            result = client.query(sql, settings={"max_result_rows": max_rows + 1})
+            result = client.query(sql, settings={
+                "max_result_rows": max_rows + 1,
+                # 超限时截断返回而不是整个查询报错
+                "result_overflow_mode": "break",
+            })
             columns = list(result.column_names)
             rows = [tuple(r) for r in result.result_rows]
             truncated = len(rows) > max_rows

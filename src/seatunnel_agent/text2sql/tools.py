@@ -584,7 +584,7 @@ def _tool_get_result_page(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
     if rt.last_result is None:
         return {"error": "No query result available. Run execute_sql first."}
     page = inp.get("page", 1)
-    page_size = min(inp.get("page_size", 50), 200)
+    page_size = min(max(1, inp.get("page_size", 50)), 200)
     if page < 1:
         page = 1
     total = rt.last_result.row_count

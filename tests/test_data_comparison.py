@@ -4195,3 +4195,97 @@ class TestWebhookPayloadStructure:
         assert summary["schema_diffs"][0]["column"] == "c1"
         assert "agg_mismatches" in summary
         assert len(summary["agg_mismatches"]) == 1
+
+
+class TestDialectBugfixRegressions:
+    """本轮全项目审计修复的回归测试（方言相关）。"""
+
+    def test_quote_identifier_mysql_backticks(self):
+        assert quote_identifier("table name", "mysql") == "`table name`"
+        assert quote_identifier("a`b", "mysql") == "`a``b`"
+
+    def test_quote_identifier_pg_double_quotes(self):
+        assert quote_identifier("table name", "postgresql") == '"table name"'
+
+    def test_sql_literal_pg_no_backslash_doubling(self):
+        assert _sql_literal("a" + chr(92) + "b", "postgresql") == "'a" + chr(92) + "b'"
+        assert _sql_literal("a" + chr(92) + "b", "mysql") == "'a" + chr(92) * 2 + "b'"
+        assert _sql_literal("it's", "postgresql") == "'it''s'"
+
+    def test_checksum_sql_pg_no_crc32(self):
+        sql = build_checksum_sql("t", ["id", "v"], ds_type="postgresql", segments=4)
+        assert "CRC32" not in sql
+        assert "MD5" in sql
+
+    def test_checksum_sql_hive_pmod(self):
+        sql = build_checksum_sql("t", ["id", "v"], ds_type="hive", segments=4)
+        assert "PMOD(CRC32" in sql
+
+    def test_checksum_sql_sqlserver_checksum(self):
+        sql = build_checksum_sql("t", ["id", "v"], ds_type="sqlserver", segments=4)
+        assert "CHECKSUM" in sql and "CRC32" not in sql
+
+    def test_parse_quality_rules_negative_range(self):
+        rules = parse_quality_rules("temp:range:-5-10")
+        assert len(rules) == 1
+        assert rules[0].min_val == -5.0
+        assert rules[0].max_val == 10.0
+
+    def test_deobfuscate_corrupt_b64(self):
+        from seatunnel_agent.data_comparison.presets import _deobfuscate
+        assert _deobfuscate("b64:!!!not-base64!!!") == ""
+
+
+class TestAuditRound2Regressions:
+    """第二轮全项目审计修复的回归测试。"""
+
+    def test_checksum_sql_clickhouse_multicolumn_tostring(self):
+        sql = build_checksum_sql("t", ["id", "v"], ds_type="clickhouse", segments=4)
+        # toString 只接受单参数：每列单独转换，',' 分隔对齐 CONCAT_WS
+        assert "MD5(CONCAT(toString(id), ',', toString(v)))" in sql
+        assert "toString(toString" not in sql
+        assert "toString(id, " not in sql
+
+    def test_checksum_sql_clickhouse_single_column(self):
+        sql = build_checksum_sql("t", ["id"], ds_type="clickhouse", segments=4)
+        assert "MD5(CONCAT(toString(id)))" in sql
+
+    def test_count_sql_mysql_dash_table_backticks(self):
+        sql = build_count_sql("my-table", ds_type="mysql")
+        assert "`my-table`" in sql
+
+    def test_sample_sql_mysql_dash_table_backticks(self):
+        sql = build_sample_sql("my-table", ds_type="mysql")
+        assert "`my-table`" in sql
+
+    def test_aggregate_sql_mysql_dash_identifiers_backticks(self):
+        sql = build_aggregate_sql("my-table", ["col-a"], ds_type="mysql")
+        assert "`my-table`" in sql
+        assert "`col-a`" in sql
+        assert "`col-a__sum`" in sql
+
+    def test_profile_sql_mysql_dash_identifiers_backticks(self):
+        sql = build_profile_sql("my-table", ["col-a"], ds_type="mysql")
+        assert "`my-table`" in sql
+        assert "`col-a__dist`" in sql
+
+    def test_stratified_sample_sql_mysql_dash_table_backticks(self):
+        sql = build_stratified_sample_sql("my-table", "grp-col", 5, "mysql")
+        assert "`my-table`" in sql
+        assert "`grp-col`" in sql
+
+    def test_skew_sql_mysql_dash_table_backticks(self):
+        sql = build_skew_sql("my-table", "col-a", ds_type="mysql")
+        assert "`my-table`" in sql
+        assert "`col-a`" in sql
+
+    def test_templates_store_non_list_json_degrades_to_empty(self, tmp_path):
+        path = tmp_path / "tmpl.json"
+        path.write_text('{"not": "a list"}', encoding="utf-8")
+        store = ComparisonTemplatesStore(path)
+        assert store.list() == []
+
+    def test_send_webhook_invalid_url_returns_false(self):
+        ok, msg = _send_webhook("not-a-url", {"x": 1})
+        assert ok is False
+        assert msg

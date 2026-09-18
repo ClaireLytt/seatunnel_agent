@@ -25,8 +25,16 @@ _STATEMENT_LEVEL_RE = re.compile(
     re.IGNORECASE,
 )
 
+# 逗号连接的表（FROM a, b）也必须全部提取，否则白名单可被绕过
+_IDENT_PAT = r"[`\"]?\w+[`\"]?(?:\.[`\"]?\w+[`\"]?)?"
+_ALIAS_STOP = (
+    r"(?:join|where|on|group|order|having|limit|union|left|right|inner"
+    r"|outer|full|cross|lateral|window|qualify|select)"
+)
+_ALIAS_PAT = rf"(?:\s+(?:as\s+)?(?!{_ALIAS_STOP}\b)\w+)?"
 _TABLE_REF_RE = re.compile(
-    r"\b(?:from|join)\s+([`\"]?\w+[`\"]?(?:\.[`\"]?\w+[`\"]?)?)",
+    rf"\b(?:from|join)\s+({_IDENT_PAT}{_ALIAS_PAT}"
+    rf"(?:\s*,\s*{_IDENT_PAT}{_ALIAS_PAT})*)",
     re.IGNORECASE,
 )
 
@@ -87,9 +95,13 @@ def extract_tables(sql: str) -> list[str]:
     cleaned = _strip_literals_and_comments(sql)
     names: list[str] = []
     for m in _TABLE_REF_RE.finditer(cleaned):
-        name = m.group(1).replace("`", "").replace('"', "").lower()
-        if name not in names:
-            names.append(name)
+        for ref in m.group(1).split(","):
+            parts = ref.strip().split()
+            if not parts:
+                continue
+            name = parts[0].replace("`", "").replace('"', "").lower()
+            if name and name not in names:
+                names.append(name)
     return names
 
 
@@ -110,19 +122,22 @@ def validate_sql(sql: str, store: SchemaStore | None = None) -> ValidationResult
         return ValidationResult(ok=False, errors=["Empty SQL"])
 
     cleaned = _strip_literals_and_comments(stripped)
+    # 双引号内容可能是字符串字面量（Hive/CH 合法），关键字扫描前一并剥掉；
+    # cleaned 本身保留双引号标识符，供表名提取使用
+    keyword_scan = re.sub(r'"[^"\n]*"', '""', cleaned)
 
-    if ";" in cleaned:
+    if ";" in keyword_scan:
         errors.append("Multiple SQL statements are not allowed")
     first_word = cleaned.split(None, 1)[0].lower() if cleaned.split() else ""
     if first_word not in ("select", "with"):
         errors.append(f"Only SELECT queries are allowed (got '{first_word}')")
 
-    tokens = set(re.findall(r"[a-zA-Z_]\w*", cleaned.lower()))
+    tokens = set(re.findall(r"[a-zA-Z_]\w*", keyword_scan.lower()))
     banned = tokens & _FORBIDDEN_KEYWORDS
     if banned:
         errors.append(f"Forbidden keyword(s): {', '.join(sorted(banned))}")
 
-    if _STATEMENT_LEVEL_RE.search(cleaned):
+    if _STATEMENT_LEVEL_RE.search(keyword_scan):
         errors.append("Forbidden statement-level keyword (SET/ADD)")
 
     tables = extract_tables(stripped)
@@ -240,6 +255,47 @@ def validate_columns(sql: str, store: SchemaStore) -> list[str]:
     return warnings
 
 
+def _strip_trailing_comments(sql: str) -> str:
+    """Drop comments/whitespace/semicolons after the last code character.
+
+    Keeps mid-SQL comments (e.g. optimizer hints) intact; only the tail is
+    trimmed so the LIMIT regex can anchor at end-of-statement.
+    """
+    i, n = 0, len(sql)
+    last_code_end = 0
+    while i < n:
+        ch = sql[i]
+        if ch == "'":
+            i += 1
+            while i < n:
+                if sql[i] == "\\":
+                    i += 2
+                    continue
+                if sql[i] == "'":
+                    i += 1
+                    break
+                i += 1
+            last_code_end = i
+        elif ch == '"':
+            i += 1
+            while i < n and sql[i] != '"':
+                i += 1
+            if i < n:
+                i += 1
+            last_code_end = i
+        elif sql.startswith("--", i):
+            while i < n and sql[i] != "\n":
+                i += 1
+        elif sql.startswith("/*", i):
+            end = sql.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+        else:
+            if not ch.isspace() and ch != ";":
+                last_code_end = i + 1
+            i += 1
+    return sql[:last_code_end]
+
+
 _TOP_RE = re.compile(r"\bSELECT\s+TOP\s+(\d+)\b", re.IGNORECASE)
 
 
@@ -288,7 +344,7 @@ def enforce_limit(
     dialect: str = "hive",
 ) -> str:
     """Ensure the query carries a row limit; cap existing limits at *max_limit*."""
-    stripped = sql.strip().rstrip(";").strip()
+    stripped = _strip_trailing_comments(sql).strip().rstrip(";").strip()
     if dialect == "sqlserver":
         return _enforce_limit_sqlserver(stripped, default_limit, max_limit)
     return _enforce_limit_standard(stripped, default_limit, max_limit)

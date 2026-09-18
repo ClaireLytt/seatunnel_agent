@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from seatunnel_agent.context import truncate_messages
 from seatunnel_agent.utils import (
     find_latest_log,
     resolve_log_path,
@@ -78,6 +79,42 @@ class TestSafeJson:
         result = safe_json({"path": Path("/tmp/test")})
         parsed = json.loads(result)
         assert "/tmp/test" in parsed["path"] or "\\tmp\\test" in parsed["path"]
+
+
+class TestTruncateMessages:
+    def test_never_returns_empty_when_budget_too_small(self):
+        # 回归:预算只够尾部 tool_result 时,弹出孤儿后曾返回空列表,
+        # 调用方用返回值覆盖 self.messages 会清空整个会话
+        msgs = [
+            {"role": "user", "content": "run job"},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "x" * 5000},
+                {"type": "tool_use", "id": "t1", "name": "read_config", "input": {}},
+            ]},
+            {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "t1", "content": "y" * 5000},
+            ]},
+        ]
+        result = truncate_messages(msgs, max_chars=100)
+        assert result, "truncate_messages must never return an empty list"
+        assert result[0]["role"] == "user"
+
+    def test_openai_orphan_tool_message_popped(self):
+        # 回归:openai 格式的孤儿 role=="tool" 消息开头会导致 API 400
+        msgs = [
+            {"role": "user", "content": "q"},
+            {"role": "assistant", "content": "x" * 500},
+            {"role": "tool", "tool_call_id": "t1", "content": "z" * 300},
+            {"role": "assistant", "content": "answer"},
+            {"role": "user", "content": "follow-up"},
+        ]
+        result = truncate_messages(msgs, max_chars=320)
+        assert all(m.get("role") != "tool" for m in result)
+        assert result[0]["role"] == "user"
+
+    def test_within_budget_unchanged(self):
+        msgs = [{"role": "user", "content": "hi"}]
+        assert truncate_messages(msgs, max_chars=100) == msgs
 
 
 class TestResolveLogPath:

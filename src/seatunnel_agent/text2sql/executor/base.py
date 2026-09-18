@@ -153,8 +153,13 @@ class DatabaseExecutor(ABC):
 def schema_ddl_path_from_env() -> str:
     raw = os.getenv("SCHEMA_DDL_PATH", DEFAULT_SCHEMA_DDL_PATH)
     resolved = os.path.normpath(raw)
-    if os.path.isabs(resolved) and ".." in os.path.relpath(resolved, os.getcwd()):
-        return DEFAULT_SCHEMA_DDL_PATH
+    if os.path.isabs(resolved):
+        try:
+            outside = ".." in os.path.relpath(resolved, os.getcwd())
+        except ValueError:  # Windows：跨盘符无相对路径，必然在 cwd 外
+            outside = True
+        if outside:
+            return DEFAULT_SCHEMA_DDL_PATH
     return resolved
 
 

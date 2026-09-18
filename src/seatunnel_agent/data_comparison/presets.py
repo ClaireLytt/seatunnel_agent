@@ -28,7 +28,11 @@ def _deobfuscate(stored: str) -> str:
     if not stored:
         return ""
     if stored.startswith("b64:"):
-        return base64.b64decode(stored[4:]).decode("utf-8")
+        try:
+            return base64.b64decode(stored[4:]).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            # corrupt stored value must not break listing every preset
+            return ""
     return stored
 
 
@@ -57,9 +61,10 @@ class ConnectionPresetsStore:
         if not self.path.is_file():
             return []
         try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
+            data = json.loads(self.path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return []
+        return data if isinstance(data, list) else []
 
     def _write(self, data: list[dict[str, Any]]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

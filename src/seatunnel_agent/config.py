@@ -48,12 +48,30 @@ def load_settings() -> Settings:
 
     seatunnel_home = os.getenv("SEATUNNEL_HOME", "")
 
-    max_retries = int(os.getenv("MAX_RETRIES", "3"))
+    def _env_int(name: str, default: str) -> int:
+        raw = os.getenv(name, default)
+        try:
+            return int(raw)
+        except ValueError:
+            raise RuntimeError(
+                f"环境变量 {name}='{raw}' 不是有效整数"
+            ) from None
+
+    def _env_float(name: str, default: str) -> float:
+        raw = os.getenv(name, default)
+        try:
+            return float(raw)
+        except ValueError:
+            raise RuntimeError(
+                f"环境变量 {name}='{raw}' 不是有效数字"
+            ) from None
+
+    max_retries = _env_int("MAX_RETRIES", "3")
     model_name = os.getenv("MODEL_NAME", "claude-opus-5")
-    max_tokens = int(os.getenv("MAX_TOKENS", "16000"))
+    max_tokens = _env_int("MAX_TOKENS", "16000")
     llm_base_url = os.getenv("LLM_BASE_URL", "")
-    job_timeout = int(os.getenv("JOB_TIMEOUT", "120"))
-    temperature = float(os.getenv("TEMPERATURE", "0.0"))
+    job_timeout = _env_int("JOB_TIMEOUT", "120")
+    temperature = _env_float("TEMPERATURE", "0.0")
     config_dir = os.getenv("CONFIG_DIR", "configs")
 
     seatunnel_bin = ""

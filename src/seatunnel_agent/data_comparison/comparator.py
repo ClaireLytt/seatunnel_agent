@@ -368,14 +368,21 @@ class CompareReport:
 # Identifier quoting
 # ---------------------------------------------------------------------------
 
-def quote_identifier(name: str) -> str:
+_BACKTICK_DIALECTS = frozenset(
+    {"mysql", "doris", "hive", "sparksql", "flinksql", "clickhouse"}
+)
+
+
+def quote_identifier(name: str, ds_type: str = "") -> str:
     """Quote a SQL identifier to prevent injection.
 
     Simple names (alphanumeric + underscore/dot/$) pass through unchanged.
-    Anything else is double-quoted with embedded quotes escaped.
+    Backtick dialects (MySQL family) get backticks; others double quotes.
     """
     if _SAFE_IDENT.match(name):
         return name
+    if ds_type in _BACKTICK_DIALECTS:
+        return "`" + name.replace("`", "``") + "`"
     return '"' + name.replace('"', '""') + '"'
 
 
@@ -436,14 +443,14 @@ def _row_limit(ds_type: str, n: int) -> tuple[str, str]:
     return "", f" LIMIT {int(n)}"
 
 
-def build_count_sql(table_name: str, where: str = "") -> str:
-    return f"SELECT COUNT(*) AS cnt FROM {quote_identifier(table_name)}{_where_clause(where)}"
+def build_count_sql(table_name: str, where: str = "", ds_type: str = "") -> str:
+    return f"SELECT COUNT(*) AS cnt FROM {quote_identifier(table_name, ds_type)}{_where_clause(where)}"
 
 
 def build_sample_sql(table_name: str, limit: int = 100, where: str = "",
                      ds_type: str = "mysql") -> str:
     top, tail = _row_limit(ds_type, limit)
-    return f"SELECT {top}* FROM {quote_identifier(table_name)}{_where_clause(where)}{tail}"
+    return f"SELECT {top}* FROM {quote_identifier(table_name, ds_type)}{_where_clause(where)}{tail}"
 
 
 _NUMERIC_KEYWORDS = frozenset({
@@ -459,22 +466,23 @@ def is_numeric_type(dtype: str) -> bool:
     return base in _NUMERIC_KEYWORDS
 
 
-def build_aggregate_sql(table_name: str, columns: list[str], where: str = "") -> str:
+def build_aggregate_sql(table_name: str, columns: list[str], where: str = "",
+                        ds_type: str = "") -> str:
     """Build SQL to compute SUM/AVG/MIN/MAX and NULL count for *columns*."""
     if not columns:
-        return build_count_sql(table_name, where)
+        return build_count_sql(table_name, where, ds_type)
     exprs: list[str] = ["COUNT(*) AS cnt"]
     if len(columns) > 20:
         _log.warning("Truncating columns from %d to 20 for aggregate SQL on %s", len(columns), table_name)
     for c in columns[:20]:
-        qc = quote_identifier(c)
-        exprs.append(f"SUM({qc}) AS {quote_identifier(c + '__sum')}")
-        exprs.append(f"AVG({qc}) AS {quote_identifier(c + '__avg')}")
-        exprs.append(f"MIN({qc}) AS {quote_identifier(c + '__min')}")
-        exprs.append(f"MAX({qc}) AS {quote_identifier(c + '__max')}")
-        exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) AS {quote_identifier(c + '__null')}")
+        qc = quote_identifier(c, ds_type)
+        exprs.append(f"SUM({qc}) AS {quote_identifier(c + '__sum', ds_type)}")
+        exprs.append(f"AVG({qc}) AS {quote_identifier(c + '__avg', ds_type)}")
+        exprs.append(f"MIN({qc}) AS {quote_identifier(c + '__min', ds_type)}")
+        exprs.append(f"MAX({qc}) AS {quote_identifier(c + '__max', ds_type)}")
+        exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) AS {quote_identifier(c + '__null', ds_type)}")
     return ("SELECT " + ",\n       ".join(exprs)
-            + f"\n  FROM {quote_identifier(table_name)}{_where_clause(where)}")
+            + f"\n  FROM {quote_identifier(table_name, ds_type)}{_where_clause(where)}")
 
 
 # ---------------------------------------------------------------------------
@@ -632,21 +640,22 @@ def diff_by_key(
 # Column profile  (C)
 # ---------------------------------------------------------------------------
 
-def build_profile_sql(table_name: str, columns: list[str], where: str = "") -> str:
+def build_profile_sql(table_name: str, columns: list[str], where: str = "",
+                      ds_type: str = "") -> str:
     """Build SQL to compute distinct count, null count, min, max per column."""
     if not columns:
-        return build_count_sql(table_name, where)
+        return build_count_sql(table_name, where, ds_type)
     exprs: list[str] = ["COUNT(*) AS cnt"]
     if len(columns) > 20:
         _log.warning("Truncating columns from %d to 20 for profile SQL on %s", len(columns), table_name)
     for c in columns[:20]:
-        qc = quote_identifier(c)
-        exprs.append(f"COUNT(DISTINCT {qc}) AS {quote_identifier(c + '__dist')}")
-        exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) AS {quote_identifier(c + '__null')}")
-        exprs.append(f"MIN({qc}) AS {quote_identifier(c + '__min')}")
-        exprs.append(f"MAX({qc}) AS {quote_identifier(c + '__max')}")
+        qc = quote_identifier(c, ds_type)
+        exprs.append(f"COUNT(DISTINCT {qc}) AS {quote_identifier(c + '__dist', ds_type)}")
+        exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) AS {quote_identifier(c + '__null', ds_type)}")
+        exprs.append(f"MIN({qc}) AS {quote_identifier(c + '__min', ds_type)}")
+        exprs.append(f"MAX({qc}) AS {quote_identifier(c + '__max', ds_type)}")
     return ("SELECT " + ",\n       ".join(exprs)
-            + f"\n  FROM {quote_identifier(table_name)}{_where_clause(where)}")
+            + f"\n  FROM {quote_identifier(table_name, ds_type)}{_where_clause(where)}")
 
 
 def compare_profiles(
@@ -793,7 +802,7 @@ def build_random_sample_sql(
     """Build dialect-specific random sampling SQL."""
     tpl = _RANDOM_SQL.get(ds_type, _RANDOM_SQL["mysql"])
     return tpl.format(
-        table=quote_identifier(table_name),
+        table=quote_identifier(table_name, ds_type),
         limit=int(limit),
         where=_where_clause(where),
     )
@@ -807,8 +816,8 @@ def build_stratified_sample_sql(
     where: str = "",
 ) -> str:
     """Build SQL for stratified sampling via ROW_NUMBER() OVER(PARTITION BY)."""
-    qt = quote_identifier(table_name)
-    qc = quote_identifier(group_col)
+    qt = quote_identifier(table_name, ds_type)
+    qc = quote_identifier(group_col, ds_type)
     wc = _where_clause(where)
     n = int(sample_per_group)
     return (
@@ -873,10 +882,10 @@ def generate_sync_config(
 
     transform_block = "transform {\n}"
     if column_mapping:
-        field_list = ", ".join(
-            f"{quote_identifier(v)} AS {quote_identifier(k)}"
+        field_list = _escape_hocon(", ".join(
+            f"{quote_identifier(v, ds_type_a)} AS {quote_identifier(k, ds_type_a)}"
             for k, v in column_mapping.items()
-        )
+        ))
         transform_block = (
             'transform {\n'
             '  Sql {\n'
@@ -901,7 +910,7 @@ def generate_sync_config(
     if pwd_a:
         lines.append(f'    password = "{_escape_hocon(pwd_a)}"')
     lines += [
-        f'    query = "SELECT * FROM {quote_identifier(table_a)}"',
+        f'    query = "SELECT * FROM {_escape_hocon(quote_identifier(table_a, ds_type_a))}"',
         '  }',
         '}',
         '',
@@ -917,8 +926,8 @@ def generate_sync_config(
     if pwd_b:
         lines.append(f'    password = "{_escape_hocon(pwd_b)}"')
     lines += [
-        f'    database = "{db_b}"',
-        f'    table = "{table_b}"',
+        f'    database = "{_escape_hocon(db_b)}"',
+        f'    table = "{_escape_hocon(table_b)}"',
         '    generate_sink_sql = true',
         '  }',
         '}',
@@ -974,11 +983,11 @@ def build_incremental_sql(
     limit: int = 1000, where: str = "", ds_type: str = "mysql",
 ) -> str:
     """Build SQL that fetches only rows newer than *last_value*."""
-    tbl = quote_identifier(table_name)
-    wm = quote_identifier(watermark_col)
+    tbl = quote_identifier(table_name, ds_type)
+    wm = quote_identifier(watermark_col, ds_type)
     parts: list[str] = []
     if last_value:
-        parts.append(f"{wm} > {_sql_literal(last_value)}")
+        parts.append(f"{wm} > {_sql_literal(last_value, ds_type)}")
     w = where.strip()
     if w:
         parts.append(f"({w})")
@@ -1003,7 +1012,12 @@ def parse_quality_rules(raw: str) -> list[QualityRule]:
         try:
             if ":range:" in token:
                 col, _, bounds = token.partition(":range:")
-                lo, hi = bounds.split("-", 1)
+                m = re.match(
+                    r"^\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*$", bounds
+                )
+                if not m:
+                    continue
+                lo, hi = m.group(1), m.group(2)
                 rules.append(QualityRule(
                     column=col.strip(), rule_type="value_range",
                     min_val=float(lo), max_val=float(hi)))
@@ -1094,7 +1108,7 @@ def check_quality_rules(
 # Diff → SQL generation  (C)
 # ---------------------------------------------------------------------------
 
-def _sql_literal(value: Any) -> str:
+def _sql_literal(value: Any, ds_type: str = "mysql") -> str:
     """Format a Python value as a SQL literal."""
     if value is None:
         return "NULL"
@@ -1102,7 +1116,12 @@ def _sql_literal(value: Any) -> str:
         if math.isnan(value) or math.isinf(value):
             return "NULL"
         return str(value)
-    s = str(value).replace("\\", "\\\\").replace("'", "''")
+    s = str(value)
+    # backslash is an escape char in the MySQL family but a plain character
+    # in standard-conforming PostgreSQL / SQL Server
+    if ds_type in _BACKTICK_DIALECTS:
+        s = s.replace("\\", "\\\\")
+    s = s.replace("'", "''")
     return f"'{s}'"
 
 
@@ -1112,14 +1131,14 @@ def generate_diff_sql(
 ) -> str:
     """Generate INSERT/UPDATE/DELETE SQL from a keyed diff result."""
     stmts: list[str] = []
-    tbl = quote_identifier(table_target)
+    tbl = quote_identifier(table_target, ds_type)
     cols = keyed_diff.columns
     key_cols = keyed_diff.key_columns
     col_set = set(cols)
 
     for row in keyed_diff.added:
-        col_names = ", ".join(quote_identifier(c) for c in cols)
-        values = ", ".join(_sql_literal(row[i]) if i < len(row) else "NULL"
+        col_names = ", ".join(quote_identifier(c, ds_type) for c in cols)
+        values = ", ".join(_sql_literal(row[i], ds_type) if i < len(row) else "NULL"
                            for i in range(len(cols)))
         stmts.append(f"INSERT INTO {tbl} ({col_names}) VALUES ({values});")
 
@@ -1129,17 +1148,17 @@ def generate_diff_sql(
             if kc not in col_set:
                 continue
             idx = cols.index(kc)
-            wheres.append(f"{quote_identifier(kc)} = {_sql_literal(row[idx] if idx < len(row) else None)}")
+            wheres.append(f"{quote_identifier(kc, ds_type)} = {_sql_literal(row[idx] if idx < len(row) else None, ds_type)}")
         if wheres:
             stmts.append(f"DELETE FROM {tbl} WHERE {' AND '.join(wheres)};")
 
     for mod in keyed_diff.modified:
         sets = []
         for col, _old, new in mod.changes:
-            sets.append(f"{quote_identifier(col)} = {_sql_literal(new)}")
+            sets.append(f"{quote_identifier(col, ds_type)} = {_sql_literal(new, ds_type)}")
         wheres = []
         for i, kc in enumerate(key_cols):
-            wheres.append(f"{quote_identifier(kc)} = {_sql_literal(mod.key[i])}")
+            wheres.append(f"{quote_identifier(kc, ds_type)} = {_sql_literal(mod.key[i], ds_type)}")
         stmts.append(f"UPDATE {tbl} SET {', '.join(sets)} WHERE {' AND '.join(wheres)};")
 
     return "\n".join(stmts)
@@ -1230,19 +1249,30 @@ def mask_rows(
 # Data skew analysis  (BB)
 # ---------------------------------------------------------------------------
 
+def _str_cast(expr: str, ds_type: str) -> str:
+    """Cast an expression to string using the dialect's own syntax."""
+    if ds_type == "mysql":
+        return f"CAST({expr} AS CHAR(200))"
+    if ds_type in ("hive", "sparksql", "flinksql"):
+        return f"CAST({expr} AS STRING)"
+    if ds_type == "clickhouse":
+        return f"toString({expr})"
+    return f"CAST({expr} AS VARCHAR(200))"
+
+
 def build_skew_sql(
     table_name: str, column: str, where: str = "", top_n: int = 20,
     ds_type: str = "mysql",
 ) -> str:
     """Build SQL to get top-N value frequencies for one column."""
-    qc = quote_identifier(column)
-    qt = quote_identifier(table_name)
+    qc = quote_identifier(column, ds_type)
+    qt = quote_identifier(table_name, ds_type)
     if top_n > 0 and ds_type == "sqlserver":
         top_clause = f"TOP {int(top_n)} "
     else:
         top_clause = ""
     sql = (
-        f"SELECT {top_clause}CAST({qc} AS VARCHAR(200)) AS val, COUNT(*) AS cnt"
+        f"SELECT {top_clause}{_str_cast(qc, ds_type)} AS val, COUNT(*) AS cnt"
         f"\n  FROM {qt}{_where_clause(where)}"
         f"\n GROUP BY {qc}"
         f"\n ORDER BY cnt DESC"
@@ -1356,7 +1386,7 @@ _HASH_FUNC: dict[str, str] = {
     "postgresql": "MD5(CONCAT_WS(',', {cols}))",
     "hive":       "MD5(CONCAT_WS(',', {cols}))",
     "sparksql":   "MD5(CONCAT_WS(',', {cols}))",
-    "clickhouse": "MD5(CONCAT(toString({cols_ts})))",
+    "clickhouse": "MD5(CONCAT({cols_ts}))",
     "doris":      "MD5(CONCAT_WS(',', {cols}))",
     "flinksql":   "MD5(CONCAT_WS(',', {cols}))",
     "sqlserver":  "HASHBYTES('MD5', CONCAT_WS(',', {cols}))",
@@ -1369,20 +1399,30 @@ def build_checksum_sql(
 ) -> str:
     """Build SQL to compute per-segment checksums for data verification."""
     segments = max(1, int(segments))
-    qt = quote_identifier(table_name)
-    cols_quoted = ", ".join(f"CAST({quote_identifier(c)} AS VARCHAR(200))" for c in columns)
+    qt = quote_identifier(table_name, ds_type)
+    cols_cast = [_str_cast(quote_identifier(c, ds_type), ds_type) for c in columns]
+    cols_quoted = ", ".join(cols_cast)
 
     tpl = _HASH_FUNC.get(ds_type, _HASH_FUNC["mysql"])
     if ds_type == "clickhouse":
-        cols_ts = ", ".join(f"toString({quote_identifier(c)})" for c in columns)
-        hash_expr = tpl.format(cols=cols_quoted, cols_ts=cols_ts)
+        # toString takes one argument: cast each column, join with ',' literals
+        # to mirror CONCAT_WS separators used by the other dialects
+        hash_expr = tpl.format(cols_ts=", ',', ".join(cols_cast))
     else:
         hash_expr = tpl.format(cols=cols_quoted)
 
-    if ds_type in ("mysql", "postgresql", "clickhouse", "doris"):
-        seg_expr = f"MOD(ABS(CRC32(CONCAT_WS(',', {cols_quoted}))), {segments})"
+    concat = f"CONCAT_WS(',', {cols_quoted})"
+    if ds_type == "postgresql":
+        # PG has no CRC32/CHECKSUM: derive the segment from the MD5 hex prefix
+        seg_expr = (
+            f"MOD(ABS(('x' || SUBSTR(MD5({concat}), 1, 8))::bit(32)::int), {segments})"
+        )
+    elif ds_type in ("hive", "sparksql"):
+        seg_expr = f"PMOD(CRC32({concat}), {segments})"
+    elif ds_type == "sqlserver":
+        seg_expr = f"ABS(CHECKSUM({concat})) % {segments}"
     else:
-        seg_expr = f"ABS(CHECKSUM(CONCAT_WS(',', {cols_quoted}))) % {segments}"
+        seg_expr = f"MOD(ABS(CRC32({concat})), {segments})"
 
     return (
         f"SELECT {seg_expr} AS seg,"
@@ -1439,10 +1479,10 @@ def build_partition_count_sql(
     ds_type: str = "mysql",
 ) -> str:
     """Build SQL to get row counts grouped by partition column."""
-    qt = quote_identifier(table_name)
-    qp = quote_identifier(partition_col)
+    qt = quote_identifier(table_name, ds_type)
+    qp = quote_identifier(partition_col, ds_type)
     return (
-        f"SELECT CAST({qp} AS VARCHAR(200)) AS part_val, COUNT(*) AS cnt"
+        f"SELECT {_str_cast(qp, ds_type)} AS part_val, COUNT(*) AS cnt"
         f"\n  FROM {qt}{_where_clause(where)}"
         f"\n GROUP BY {qp}"
         f"\n ORDER BY cnt DESC"
@@ -1522,10 +1562,11 @@ def parse_custom_agg_expressions(raw: str) -> list[tuple[str, str]]:
 
 def build_custom_agg_sql(
     table_name: str, expressions: list[tuple[str, str]], where: str = "",
+    ds_type: str = "",
 ) -> str:
     """Build SQL with user-defined aggregate expressions."""
-    qt = quote_identifier(table_name)
-    parts = [f"({expr}) AS {quote_identifier(alias)}" for alias, expr in expressions]
+    qt = quote_identifier(table_name, ds_type)
+    parts = [f"({expr}) AS {quote_identifier(alias, ds_type)}" for alias, expr in expressions]
     return f"SELECT {', '.join(parts)}\n  FROM {qt}{_where_clause(where)}"
 
 
@@ -1536,9 +1577,18 @@ def compare_custom_aggs(
     """Compare custom aggregate results."""
     items: list[CustomAggItem] = []
     mismatches = 0
+    def _val(row: tuple, i: int) -> Any:
+        if i >= len(row) or row[i] is None:
+            return None
+        try:
+            return float(row[i])
+        except (TypeError, ValueError):
+            # non-numeric aggregate (e.g. MAX(name)) — compare as-is
+            return row[i]
+
     for i, (alias, expr) in enumerate(expressions):
-        va = float(row_a[i]) if i < len(row_a) and row_a[i] is not None else None
-        vb = float(row_b[i]) if i < len(row_b) and row_b[i] is not None else None
+        va = _val(row_a, i)
+        vb = _val(row_b, i)
         matched = _close_enough(va, vb)
         if not matched:
             mismatches += 1
@@ -1685,9 +1735,9 @@ def diff_reports(old: CompareReport, new: CompareReport) -> ReportDiff:
 # ---------------------------------------------------------------------------
 
 def build_expression_check_sql(
-    table: str, expression: str, where: str = "",
+    table: str, expression: str, where: str = "", ds_type: str = "",
 ) -> str:
-    tbl = quote_identifier(table)
+    tbl = quote_identifier(table, ds_type)
     w = f" WHERE {where}" if where.strip() else ""
     return (
         f"SELECT COUNT(*) AS total, "

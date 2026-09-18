@@ -16,6 +16,7 @@ from typing import Any
 import gradio as gr
 
 from .config import Settings, load_settings
+from .session_state import SessionHolders
 from .text2sql.executor import (
     DS_DEFAULTS,
     DS_TYPES,
@@ -848,7 +849,7 @@ def render_text2sql_page(app=None) -> None:
     lang = "en"
     t = lambda k: _t2s(lang, k)
 
-    holder: dict[str, Any] = {
+    _holders = SessionHolders(lambda: {
         "agent": None,
         "collector": None,
         "settings": None,
@@ -857,7 +858,7 @@ def render_text2sql_page(app=None) -> None:
         "ds_type": "hive",
         "db_config": None,
         "session_id": None,
-    }
+    })
     holder_lock = threading.Lock()
 
     def _table_choices(store, lang="zh"):
@@ -871,7 +872,8 @@ def render_text2sql_page(app=None) -> None:
             choices.append(label)
         return choices
 
-    def _on_schema_browse(table_choice, lang):
+    def _on_schema_browse(table_choice, lang, request: gr.Request = None):
+        holder = _holders.get(request)
         if not table_choice:
             return ""
         name = table_choice.split("(")[0].strip()
@@ -888,7 +890,7 @@ def render_text2sql_page(app=None) -> None:
             return ""
         return build_schema_card(table, lang, store=full)
 
-    def _sync_agent_store(new_store):
+    def _sync_agent_store(new_store, holder):
         """Update agent's runtime store AND rebuild its system prompt."""
         agent = holder.get("agent")
         if agent is not None:
@@ -1147,7 +1149,9 @@ def render_text2sql_page(app=None) -> None:
     # ── Callbacks ──
 
     def _connect(ds_label: str, schema_path: str, host: str, port: str,
-                 db: str, username: str, password: str, lang: str):
+                 db: str, username: str, password: str, lang: str,
+                 request: gr.Request = None):
+        holder = _holders.get(request)
         t = lambda k: _t2s(lang, k)
         no = gr.update()
         def err(msg):
@@ -1275,7 +1279,7 @@ def render_text2sql_page(app=None) -> None:
 
     _CHART_TYPE_MAP = {"Bar": "bar", "Line": "line", "Pie": "pie", "Scatter": "scatter"}
 
-    def _run_streaming(msg: str, history: list, lang: str, chart_pref: str = "Auto"):
+    def _run_streaming(msg: str, history: list, lang: str, chart_pref: str, holder: dict[str, Any]):
         from .ui import EventCollector, _normalize_chat
         from .text2sql.chart import detect_chart_type, build_chart
         import matplotlib.pyplot as plt
@@ -1288,6 +1292,10 @@ def render_text2sql_page(app=None) -> None:
         with holder_lock:
             holder["collector"] = collector
             store_ref = holder.get("store")
+            prev_worker = holder.get("worker")
+            if prev_worker is not None and prev_worker.is_alive():
+                # 上一个查询线程还没退出（如超时未 join），不能共用它的 agent
+                holder["agent"] = None
             if holder.get("agent") is None:
                 from .text2sql.agent import Text2SQLAgent
                 agent = Text2SQLAgent(
@@ -1316,6 +1324,8 @@ def render_text2sql_page(app=None) -> None:
                 collector.on_event("final_answer", {"text": f"Error: {e}"})
 
         thread = threading.Thread(target=_worker, daemon=True)
+        with holder_lock:
+            holder["worker"] = thread
         thread.start()
         prev = 0
         while not collector.done:
@@ -1347,7 +1357,9 @@ def render_text2sql_page(app=None) -> None:
 
         yield history + [{"role": "user", "content": msg}] + final, chart_update
 
-    def _handle_submit(msg: str, history: list, lang: str, chart_pref: str = "Auto"):
+    def _handle_submit(msg: str, history: list, lang: str, chart_pref: str = "Auto",
+                       request: gr.Request = None):
+        holder = _holders.get(request)
         t = lambda k: _t2s(lang, k)
         if not msg.strip():
             yield history, gr.update()
@@ -1360,21 +1372,33 @@ def render_text2sql_page(app=None) -> None:
                 {"role": "assistant", "content": t("connect_first")},
             ], gr.update()
             return
-        yield from _run_streaming(msg, history, lang, chart_pref)
+        yield from _run_streaming(msg, history, lang, chart_pref, holder)
 
-    def _handle_stop(lang: str):
+    def _handle_stop(lang: str, request: gr.Request = None):
+        holder = _holders.get(request)
         t = lambda k: _t2s(lang, k)
-        c = holder.get("collector")
-        if c and not c.done:
-            c.on_event("final_answer", {"text": t("stopped")})
+        with holder_lock:
+            c = holder.get("collector")
+            if c and not c.done:
+                c.on_event("final_answer", {"text": t("stopped")})
+                # 停止只是结束前端流，后台线程仍在旧 agent 上跑；
+                # 丢弃该 agent，避免下一个查询与旧线程并发写同一份对话状态
+                holder["agent"] = None
         return gr.update(visible=True), gr.update(visible=False)
 
-    def _new_chat(lang):
+    def _new_chat(lang, request: gr.Request = None):
+        holder = _holders.get(request)
         t = lambda k: _t2s(lang, k)
-        agent = holder.get("agent")
-        if agent is not None:
-            agent.reset()
-        holder["session_id"] = None
+        with holder_lock:
+            worker = holder.get("worker")
+            if worker is not None and worker.is_alive():
+                # 旧查询线程还在跑：不能 reset 它正在写的 agent，直接丢弃
+                holder["agent"] = None
+            else:
+                agent = holder.get("agent")
+                if agent is not None:
+                    agent.reset()
+            holder["session_id"] = None
         return (
             [],
             gr.update(placeholder=t("input_placeholder")),
@@ -1384,7 +1408,8 @@ def render_text2sql_page(app=None) -> None:
             1,
         )
 
-    def _handle_export(lang: str):
+    def _handle_export(lang: str, request: gr.Request = None):
+        holder = _holders.get(request)
         t = lambda k: _t2s(lang, k)
         agent = holder.get("agent")
         rt = agent.runtime if agent else None
@@ -1401,7 +1426,8 @@ def render_text2sql_page(app=None) -> None:
             name_hint="query_result",
         )
 
-    def _reload_schema(ddl_path: str, lang: str):
+    def _reload_schema(ddl_path: str, lang: str, request: gr.Request = None):
+        holder = _holders.get(request)
         t = lambda k: _t2s(lang, k)
         no = gr.update()
         try:
@@ -1420,7 +1446,7 @@ def render_text2sql_page(app=None) -> None:
             with holder_lock:
                 holder["store"] = new_store
                 holder["full_store"] = new_store
-                _sync_agent_store(new_store)
+                _sync_agent_store(new_store, holder)
             agent = holder.get("agent")
             if agent is not None:
                 agent.runtime.cache.invalidate()
@@ -1439,7 +1465,8 @@ def render_text2sql_page(app=None) -> None:
 
     # ── Favorites callback ──
 
-    def _save_favorite(name: str, lang: str):
+    def _save_favorite(name: str, lang: str, request: gr.Request = None):
+        holder = _holders.get(request)
         t = lambda k: _t2s(lang, k)
         agent = holder.get("agent")
         rt = agent.runtime if agent else None
@@ -1454,7 +1481,7 @@ def render_text2sql_page(app=None) -> None:
         gr.Info(t("favorite_saved"))
         return gr.update(value="")
 
-    def _apply_filter(selected: list, lang: str):
+    def _apply_filter(selected: list, lang: str, holder: dict[str, Any]):
         t = lambda k: _t2s(lang, k)
         with holder_lock:
             full = holder.get("full_store")
@@ -1463,7 +1490,7 @@ def render_text2sql_page(app=None) -> None:
         if not selected:
             with holder_lock:
                 holder["store"] = SchemaStore([])
-                _sync_agent_store(holder["store"])
+                _sync_agent_store(holder["store"], holder)
             return f"❌ {t('no_tables')}"
         sel_names = set()
         for label in selected:
@@ -1473,14 +1500,15 @@ def render_text2sql_page(app=None) -> None:
         new_store = SchemaStore(filtered)
         with holder_lock:
             holder["store"] = new_store
-            _sync_agent_store(new_store)
+            _sync_agent_store(new_store, holder)
         n = len(new_store)
         total = len(full)
         if n == total:
             return f"✅ {t('select_tables').format(n=total)}"
         return f"✅ {t('filtered_tables').format(n=n)}"
 
-    def _switch_lang(choice, cur_selected):
+    def _switch_lang(choice, cur_selected, request: gr.Request = None):
+        holder = _holders.get(request)
         lang = "zh" if choice == "中文" else "en"
         t = lambda k: _t2s(lang, k)
         full = holder.get("full_store")
@@ -1593,10 +1621,11 @@ def render_text2sql_page(app=None) -> None:
     def _show_stop():
         return gr.update(visible=False), gr.update(visible=True)
 
-    def _post_submit(lang, history):
+    def _post_submit(lang, history, request: gr.Request = None):
+        holder = _holders.get(request)
         t = lambda k: _t2s(lang, k)
-        _save_current_session(history)
-        page_vis, page_info_val, page_num = _show_pagination(lang)
+        _save_current_session(history, holder)
+        page_vis, page_info_val, page_num = _show_pagination(lang, holder)
         return (
             gr.update(value="", placeholder=t("conversation_active")),
             gr.update(visible=True),
@@ -1651,7 +1680,8 @@ def render_text2sql_page(app=None) -> None:
         outputs=[template_preview, user_input],
     )
 
-    def _select_all(lang):
+    def _select_all(lang, request: gr.Request = None):
+        holder = _holders.get(request)
         with holder_lock:
             full = holder.get("full_store")
         if not full:
@@ -1661,9 +1691,10 @@ def render_text2sql_page(app=None) -> None:
     def _deselect_all():
         return gr.update(value=[])
 
-    def _confirm_filter(selected, lang):
+    def _confirm_filter(selected, lang, request: gr.Request = None):
+        holder = _holders.get(request)
         t = lambda k: _t2s(lang, k)
-        status = _apply_filter(selected, lang)
+        status = _apply_filter(selected, lang, holder)
         n = len(selected)
         return status, list(selected), gr.update(label=t("select_tables").format(n=n))
 
@@ -1690,7 +1721,7 @@ def render_text2sql_page(app=None) -> None:
     def _refresh_sessions():
         return gr.update(choices=_session_choices(), value=None)
 
-    def _save_current_session(chat_messages: list):
+    def _save_current_session(chat_messages: list, holder: dict[str, Any]):
         sid = holder.get("session_id")
         agent = holder.get("agent")
         if not chat_messages:
@@ -1714,7 +1745,8 @@ def render_text2sql_page(app=None) -> None:
         )
         save_t2s_session(session)
 
-    def _load_session_handler(session_choice: str, lang: str):
+    def _load_session_handler(session_choice: str, lang: str, request: gr.Request = None):
+        holder = _holders.get(request)
         t = lambda k: _t2s(lang, k)
         if not session_choice:
             return gr.update(), gr.update()
@@ -1752,7 +1784,7 @@ def render_text2sql_page(app=None) -> None:
 
     _PAGE_SIZE = 50
 
-    def _paginate(page: int, lang: str):
+    def _paginate(page: int, lang: str, holder: dict[str, Any]):
         t = lambda k: _t2s(lang, k)
         agent = holder.get("agent")
         rt = agent.runtime if agent else None
@@ -1768,13 +1800,13 @@ def render_text2sql_page(app=None) -> None:
         info = t("page_label").format(page=page, total=total_pages) + f" · {t('page_info').format(total=total)}"
         return gr.update(value=table), gr.update(value=info), page
 
-    def _next_page(page: int, lang: str):
-        return _paginate(page + 1, lang)
+    def _next_page(page: int, lang: str, request: gr.Request = None):
+        return _paginate(page + 1, lang, _holders.get(request))
 
-    def _prev_page(page: int, lang: str):
-        return _paginate(page - 1, lang)
+    def _prev_page(page: int, lang: str, request: gr.Request = None):
+        return _paginate(page - 1, lang, _holders.get(request))
 
-    def _show_pagination(lang: str):
+    def _show_pagination(lang: str, holder: dict[str, Any]):
         t = lambda k: _t2s(lang, k)
         agent = holder.get("agent")
         rt = agent.runtime if agent else None

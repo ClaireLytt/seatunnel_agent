@@ -174,6 +174,44 @@ class TestAgentLoop:
         assert any("/tmp/my.conf" in p for p in captured_prompts)
 
 
+class TestStopEvent:
+    def test_stop_cancels_pending_tools_and_pairs_results(self):
+        agent = SeaTunnelAgent(SETTINGS)
+        tc = ToolCall(id="t1", name="read_config", input={})
+        resp = _tool_response("working", [tc])
+
+        def chat_side_effect(*args, **kwargs):
+            agent.stop_event.set()
+            return resp
+
+        captured = {}
+
+        def build_result(tool_results):
+            captured["results"] = tool_results
+            return {"role": "user", "content": tool_results}
+
+        with patch.object(agent.llm, "chat", side_effect=chat_side_effect), \
+             patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
+             patch.object(agent.llm, "build_tool_result_message", side_effect=build_result), \
+             patch("seatunnel_agent.agent.execute_tool") as mock_exec:
+            result = agent.run("task")
+
+        mock_exec.assert_not_called()
+        assert "stopped" in result.lower()
+        # 停止时每个 tool_use 仍有配对的 tool_result,不留悬空
+        assert captured["results"][0]["tool_use_id"] == "t1"
+
+    def test_stale_stop_event_cleared_on_new_run(self):
+        agent = SeaTunnelAgent(SETTINGS)
+        agent.stop_event.set()
+
+        with patch.object(agent.llm, "chat", return_value=_end_response("done")), \
+             patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "done"}):
+            result = agent.run("task")
+
+        assert result == "done"
+
+
 class TestUpdateContext:
     def _run_tool(self, agent, tool_name, tool_input, result_data):
         agent._update_context(tool_name, tool_input, json.dumps(result_data))

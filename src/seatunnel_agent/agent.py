@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from typing import Any, Callable
 
 from rich.console import Console
@@ -29,6 +30,8 @@ class SeaTunnelAgent:
         self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
         self.messages: list[dict[str, Any]] = []
         self.retry_count = 0
+        # 协作式取消：UI 的 Stop 按钮置位后，ReAct 循环在安全点收尾退出
+        self.stop_event = threading.Event()
         self.console = Console()
         self._on_event = on_event
         self.context: dict[str, Any] = {
@@ -107,12 +110,15 @@ class SeaTunnelAgent:
     # ------------------------------------------------------------------
 
     def _agent_loop(self, system_prompt: str) -> str:
+        self.stop_event.clear()
         text_delta_cb = None
         if self._on_event:
             def text_delta_cb(chunk: str) -> None:
                 self._emit("text_delta", {"text": chunk})
 
         for iteration in range(MAX_LOOP_ITERATIONS):
+            if self.stop_event.is_set():
+                return self._finish_stopped()
             self._emit("step", {
                 "iteration": iteration + 1,
                 "max": MAX_LOOP_ITERATIONS,
@@ -149,18 +155,25 @@ class SeaTunnelAgent:
 
             tool_results = []
             for tc in resp.tool_calls:
-                self._display_tool_call(tc.name, tc.input)
-                self._emit("tool_call", {"name": tc.name, "input": tc.input})
+                # 停止后不再执行工具，但仍要为每个 tool_use 补上配对的
+                # tool_result，否则下一次请求会因悬空 tool_use 直接 400
+                if self.stop_event.is_set():
+                    result = json.dumps(
+                        {"cancelled": True, "message": "Cancelled by user."}
+                    )
+                else:
+                    self._display_tool_call(tc.name, tc.input)
+                    self._emit("tool_call", {"name": tc.name, "input": tc.input})
 
-                result = execute_tool(tc.name, tc.input, self.settings)
+                    result = execute_tool(tc.name, tc.input, self.settings)
 
-                self._display_tool_result(tc.name, result)
-                self._emit("tool_result", {"name": tc.name, "result": result})
+                    self._display_tool_result(tc.name, result)
+                    self._emit("tool_result", {"name": tc.name, "result": result})
 
-                self._update_context(tc.name, tc.input, result)
+                    self._update_context(tc.name, tc.input, result)
 
-                if tc.name == "run_seatunnel_job":
-                    self._track_retry(result)
+                    if tc.name == "run_seatunnel_job":
+                        self._track_retry(result)
 
                 tool_results.append({
                     "type": "tool_result",
@@ -174,6 +187,9 @@ class SeaTunnelAgent:
             else:
                 self.messages.append(result_msg)
 
+            if self.stop_event.is_set():
+                return self._finish_stopped()
+
             if self.retry_count >= self.settings.max_retries:
                 self.messages.append({
                     "role": "user",
@@ -183,12 +199,19 @@ class SeaTunnelAgent:
                     ),
                 })
                 resp = self.llm.chat(system_prompt, self.messages)
-                self.messages.append(self.llm.append_assistant(resp.raw_content))
                 final = resp.reply_text or "Maximum retry limit reached."
+                # 只保留文本回复：若模型此时仍带 tool_use，我们不会再执行工具，
+                # 悬空的 tool_use 会让续聊/恢复会话的下一次请求直接 400
+                self.messages.append({"role": "assistant", "content": final})
                 self._emit("final_answer", {"text": final})
                 return final
 
         msg = "Agent loop reached maximum iterations without completing."
+        self._emit("final_answer", {"text": msg})
+        return msg
+
+    def _finish_stopped(self) -> str:
+        msg = "Stopped by user request."
         self._emit("final_answer", {"text": msg})
         return msg
 

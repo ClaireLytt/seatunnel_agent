@@ -399,6 +399,51 @@ class TestRetryLogic:
         assert fn.call_count == 3
 
 
+class TestRetryClassification:
+    """Regression: substring "rate" used to match "generate"/"moderate"."""
+
+    def _client(self):
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            return LLMClient(ANTHROPIC_SETTINGS)
+
+    def test_generate_message_not_retryable(self):
+        client = self._client()
+        err = RuntimeError("Failed to generate response")
+        fn = MagicMock(side_effect=err)
+        with pytest.raises(RuntimeError, match="generate"):
+            client._call_with_retry(fn, "a", max_retries=3)
+        assert fn.call_count == 1
+
+    def test_rate_limit_message_retryable(self):
+        client = self._client()
+        expected = LLMResponse(
+            wants_tool_use=False, tool_calls=[], thinking_text="",
+            reply_text="ok", raw_content="ok",
+        )
+        fn = MagicMock(side_effect=[Exception("Rate limit exceeded"), expected])
+        with patch("seatunnel_agent.llm.time.sleep"):
+            result = client._call_with_retry(fn, "a", max_retries=3)
+        assert result == expected
+        assert fn.call_count == 2
+
+    def test_api_timeout_error_retryable(self):
+        client = self._client()
+        expected = LLMResponse(
+            wants_tool_use=False, tool_calls=[], thinking_text="",
+            reply_text="ok", raw_content="ok",
+        )
+
+        class APITimeoutError(Exception):
+            pass
+
+        fn = MagicMock(side_effect=[APITimeoutError("Request timed out"), expected])
+        with patch("seatunnel_agent.llm.time.sleep"):
+            result = client._call_with_retry(fn, "a", max_retries=3)
+        assert result == expected
+        assert fn.call_count == 2
+
+
 class TestDeepSeekThinking:
     def test_reasoning_content_extracted(self):
         mock_openai = MagicMock()

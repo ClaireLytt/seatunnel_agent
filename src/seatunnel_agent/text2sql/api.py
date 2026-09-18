@@ -116,7 +116,35 @@ def _build_agent(
     if store is None or len(store) == 0:
         raise HTTPException(status_code=400, detail="No tables loaded — provide db_config or schema_ddl")
 
-    return Text2SQLAgent(settings, store=store, ds_type=ds_type, db_config=db_config)
+    agent = Text2SQLAgent(settings, store=store, ds_type=ds_type, db_config=db_config)
+    # 供 _config_matches 比对：换 DDL 必须重建，否则旧 SchemaStore 静默生效
+    agent.api_schema_ddl = (schema_ddl or "").strip()
+    return agent
+
+
+def _config_matches(agent: Text2SQLAgent, req: QueryRequest) -> bool:
+    rt = agent.runtime
+    if rt.ds_type != req.ds_type:
+        return False
+    if getattr(agent, "api_schema_ddl", "") != (req.schema_ddl or "").strip():
+        return False
+    if not req.db_config:
+        return True
+    cfg = rt.db_config
+    if cfg is None:
+        return False
+    d = req.db_config
+    try:
+        port = int(d.get("port", 10000))
+    except (TypeError, ValueError):
+        return False  # 非法 port 视为不匹配，走重建由 _build_agent 统一报 400
+    return (
+        cfg.host == d.get("host", "localhost")
+        and cfg.port == port
+        and cfg.database == d.get("database", "default")
+        and cfg.username == d.get("username")
+        and cfg.password == d.get("password")
+    )
 
 
 @router.post("/query", response_model=QueryResponse)
@@ -126,6 +154,10 @@ def query(req: QueryRequest) -> QueryResponse:
     agent: Text2SQLAgent | None = None
     if req.session_id:
         agent = _sessions.get(req.session_id)
+        # 请求带了新的连接配置且与会话不一致时必须重建，
+        # 否则新配置被静默忽略，查询继续打到旧数据库
+        if agent is not None and not _config_matches(agent, req):
+            agent = None
 
     if agent is None:
         agent = _build_agent(req.ds_type, req.db_config, req.schema_ddl)

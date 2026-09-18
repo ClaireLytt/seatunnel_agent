@@ -22,7 +22,8 @@ FAKE_SETTINGS = Settings(
 # --- validate_config ---
 
 
-def test_validate_config_valid(tmp_path):
+def test_validate_config_valid(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     config = tmp_path / "job.conf"
     config.write_text(
         'env { job.mode = "BATCH" }\n'
@@ -39,7 +40,8 @@ def test_validate_config_valid(tmp_path):
     assert "sink" in result["sections_found"]
 
 
-def test_validate_config_missing_source(tmp_path):
+def test_validate_config_missing_source(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     config = tmp_path / "job.conf"
     config.write_text(
         'env { job.mode = "BATCH" }\n'
@@ -52,7 +54,8 @@ def test_validate_config_missing_source(tmp_path):
     assert any("source" in e.lower() for e in result["errors"])
 
 
-def test_validate_config_missing_sink(tmp_path):
+def test_validate_config_missing_sink(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     config = tmp_path / "job.conf"
     config.write_text(
         "source { FakeSource { rows = 10 } }\n"
@@ -64,7 +67,8 @@ def test_validate_config_missing_sink(tmp_path):
     assert any("sink" in e.lower() for e in result["errors"])
 
 
-def test_validate_config_syntax_error(tmp_path):
+def test_validate_config_syntax_error(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     config = tmp_path / "job.conf"
     config.write_text("this is {{ not valid hocon")
     result = json.loads(
@@ -403,8 +407,9 @@ def test_write_config_saves_version(tmp_path, monkeypatch):
     assert result["success"] is True
     assert "version" in result
     assert result["version"] == 1
-    history_dir = tmp_path / ".config_history" / "job.conf"
-    assert history_dir.is_dir()
+    # 历史目录名带路径哈希后缀（防扁平化碰撞）
+    matches = list((tmp_path / ".config_history").glob("job.conf_*"))
+    assert len(matches) == 1 and matches[0].is_dir()
 
 
 def test_write_config_increments_version(tmp_path, monkeypatch):
@@ -789,6 +794,16 @@ class TestReadConfigExtensionGuard:
     def test_read_conf_file_allowed(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         conf = tmp_path / "job.conf"
+        conf.write_text("env {}")
+        result = json.loads(execute_tool(
+            "read_config", {"config_path": str(conf)}, FAKE_SETTINGS
+        ))
+        assert "content" in result
+
+    def test_uppercase_extension_allowed(self, tmp_path, monkeypatch):
+        # 回归:扩展名白名单曾大小写敏感,.CONF 被误拒
+        monkeypatch.chdir(tmp_path)
+        conf = tmp_path / "JOB.CONF"
         conf.write_text("env {}")
         result = json.loads(execute_tool(
             "read_config", {"config_path": str(conf)}, FAKE_SETTINGS

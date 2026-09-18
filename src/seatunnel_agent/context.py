@@ -55,6 +55,32 @@ def truncate_messages(
 
     kept_from_end.reverse()
 
+    # 截断点若落在 tool_use/tool_result 对中间，开头的 tool_result
+    # 找不到对应的 tool_use，API 会直接报 400 —— 连带丢弃这些消息。
+    # openai 兼容格式的工具结果是 role=="tool"，同样要弹出。
+    def _leads_with_tool_result(m: dict[str, Any]) -> bool:
+        if m.get("role") == "tool":
+            return True
+        content = m.get("content")
+        return isinstance(content, list) and any(
+            isinstance(b, dict) and b.get("type") == "tool_result"
+            for b in content
+        )
+
+    while kept_from_end and _leads_with_tool_result(kept_from_end[0]):
+        kept_from_end.pop(0)
+
+    if not kept_from_end:
+        # 预算连一条完整消息都留不下：至少保留最近一个 user 轮，
+        # 绝不能返回空列表（调用方会用返回值覆盖会话历史）
+        for i in range(len(messages) - 1, -1, -1):
+            m = messages[i]
+            if m.get("role") == "user" and not _leads_with_tool_result(m):
+                kept_from_end = list(messages[i:])
+                break
+        if not kept_from_end:
+            return messages
+
     if kept_from_end and kept_from_end[0].get("role") != "user":
         result.append({
             "role": "user",

@@ -469,6 +469,7 @@ def _read_log(settings: Settings, log_path: str, tail_lines: int = 100) -> str:
         return safe_json({"error": f"Invalid path: {log_path}"})
 
     try:
+        tail_lines = max(1, int(tail_lines))
         lines = Path(resolved).read_text(encoding="utf-8", errors="replace").splitlines()
         tail = lines[-tail_lines:] if len(lines) > tail_lines else lines
         return safe_json({
@@ -506,7 +507,7 @@ _ALLOWED_EXTENSIONS = {".conf", ".hocon", ".config", ".json"}
 def _validate_config_path(config_path: str) -> str | None:
     """Return an error string if the path is invalid, else None."""
     path = Path(config_path)
-    if not path.suffix or path.suffix not in _ALLOWED_EXTENSIONS:
+    if not path.suffix or path.suffix.lower() not in _ALLOWED_EXTENSIONS:
         return (
             f"Refusing to operate on {config_path} — "
             "expected a .conf, .hocon, .config, or .json file extension"
@@ -527,7 +528,11 @@ def _history_dir(config_path: Path) -> Path:
         rel = config_path.resolve().relative_to(Path.cwd().resolve())
     except ValueError:
         rel = config_path
-    safe_key = str(rel).replace("\\", "/").replace("/", "_")
+    import hashlib
+    norm = str(rel).replace("\\", "/")
+    # a/b_c 和 a_b/c 扁平化后同名，加原始路径哈希消歧
+    digest = hashlib.sha1(norm.encode("utf-8")).hexdigest()[:8]
+    safe_key = f"{norm.replace('/', '_')}_{digest}"
     return Path(".config_history") / safe_key
 
 
@@ -588,6 +593,9 @@ def _write_config(settings: Settings, config_path: str, content: str) -> str:
 
 
 def _validate_config(settings: Settings, config_path: str) -> str:
+    err = _validate_config_path(config_path)
+    if err:
+        return safe_json({"valid": False, "errors": [err]})
     path = Path(config_path)
     if not path.exists():
         return safe_json({

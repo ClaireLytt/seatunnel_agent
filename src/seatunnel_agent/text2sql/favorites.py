@@ -50,9 +50,10 @@ class FavoritesStore:
         if not self.path.is_file():
             return []
         try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
+            data = json.loads(self.path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return []
+        return data if isinstance(data, list) else []
 
     def _write(self, data: list[dict[str, Any]]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
