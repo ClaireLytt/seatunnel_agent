@@ -42,7 +42,6 @@ TOOL_LABEL_I18N: dict[str, dict[str, str]] = {
 T2S_I18N: dict[str, dict[str, str]] = {
     "en": {
         "sidebar_title": "### \U0001f5c4 Data Source Config",
-        "schema_label": "Schema DDL Path (optional whitelist)",
         "loaded_from_db": "Loaded {n} tables from {db_type} ({db})",
         "datasource_type": "Data Source",
         "host": "Host",
@@ -107,7 +106,6 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "delete_favorite": "Delete",
         "use_favorite": "Use",
         "fav_name_placeholder": "Name this query...",
-        "no_whitelist_warn": "⚠️ No whitelist — all {n} tables queryable",
         "sql_retry": "🔄 SQL auto-fix ({attempt}/{max})",
         "sql_retry_hint": "Error type: {error_type} — {hint}",
         "sql_retry_failed": "Failed SQL",
@@ -186,7 +184,6 @@ T2S_I18N: dict[str, dict[str, str]] = {
     },
     "zh": {
         "sidebar_title": "### \U0001f5c4 数据源配置",
-        "schema_label": "Schema DDL 路径（可选白名单）",
         "loaded_from_db": "从 {db_type} ({db}) 加载了 {n} 张表",
         "datasource_type": "数据源类型",
         "host": "主机地址",
@@ -251,7 +248,6 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "delete_favorite": "删除",
         "use_favorite": "使用",
         "fav_name_placeholder": "给这条查询起个名字...",
-        "no_whitelist_warn": "⚠️ 无白名单 — 全部 {n} 张表可查询",
         "sql_retry": "🔄 SQL 自动修正中 ({attempt}/{max})",
         "sql_retry_hint": "错误类型: {error_type} — {hint}",
         "sql_retry_failed": "失败的 SQL",

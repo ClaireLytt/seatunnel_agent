@@ -917,12 +917,6 @@ def render_text2sql_page(app=None) -> None:
                 label=t("datasource_type"),
                 elem_classes=["st-sidebar-control"],
             )
-            schema_path_tb = gr.Textbox(
-                label=t("schema_label"),
-                value="",
-                placeholder=schema_ddl_path_from_env(),
-                elem_classes=["st-sidebar-control"],
-            )
             host_tb = gr.Textbox(
                 label=t("host"),
                 value="",
@@ -1078,9 +1072,14 @@ def render_text2sql_page(app=None) -> None:
                 height=None,
             )
             chart_plot = gr.Plot(visible=False, elem_classes=["st-chart"])
+            def _chart_choices(lang):
+                _t = lambda k: _t2s(lang, k)
+                return [_t("chart_auto"), _t("chart_bar"), _t("chart_line"),
+                        _t("chart_pie"), _t("chart_scatter"), _t("chart_none")]
+
             chart_type_radio = gr.Radio(
-                choices=["Auto", "Bar", "Line", "Pie", "Scatter", "None"],
-                value="Auto",
+                choices=_chart_choices("en"),
+                value=_t2s("en", "chart_auto"),
                 label=t("chart_type_label"),
                 elem_classes=["st-chart-type"],
             )
@@ -1146,7 +1145,7 @@ def render_text2sql_page(app=None) -> None:
 
     # ── Callbacks ──
 
-    def _connect(ds_label: str, schema_path: str, host: str, port: str,
+    def _connect(ds_label: str, host: str, port: str,
                  db: str, username: str, password: str, lang: str):
         t = lambda k: _t2s(lang, k)
         no = gr.update()
@@ -1202,13 +1201,12 @@ def render_text2sql_page(app=None) -> None:
         # ── Load schema ──
         store = None
         schema_source = ""
-        ddl_path = schema_path.strip()
         dialect_name = DIALECT_NAMES.get(ds_type, ds_type)
         db_note = ""
 
         if ds_type == "flinksql":
             db_note = t("flink_generate_only")
-            path = Path(ddl_path or schema_ddl_path_from_env())
+            path = Path(schema_ddl_path_from_env())
             if not path.is_file():
                 return err(f"❌ {t('schema_not_found')}: {path}")
             try:
@@ -1226,27 +1224,12 @@ def render_text2sql_page(app=None) -> None:
                 store = SchemaStore.from_db(executor)
             except Exception as e:
                 return err(f"❌ {t('schema_parse_fail')}: {e}")
-            if ddl_path:
-                ddl_file = Path(ddl_path)
-                if ddl_file.is_file():
-                    whitelist = SchemaStore.from_file(ddl_file)
-                    wl_names = {n.lower() for n in whitelist.table_names}
-                    filtered = [tb for tb in store.tables if tb.full_name.lower() in wl_names]
-                    store = SchemaStore(filtered)
-                    schema_source = (
-                        t("loaded_tables").format(n=len(store))
-                        + f" ({t('loaded_from_db').format(n=len(whitelist), db_type=dialect_name, db=db_config.database)} → whitelist)"
-                    )
-            if not schema_source:
-                schema_source = (
-                    t("loaded_from_db").format(
-                        n=len(store), db_type=dialect_name, db=db_config.database
-                    )
-                    + f" · {t('no_whitelist_warn').format(n=len(store))}"
-                )
+            schema_source = t("loaded_from_db").format(
+                n=len(store), db_type=dialect_name, db=db_config.database
+            )
         else:
             db_note = t("db_not_configured")
-            path = Path(ddl_path or schema_ddl_path_from_env())
+            path = Path(schema_ddl_path_from_env())
             if not path.is_file():
                 return err(f"❌ {t('schema_not_found')}: {path}")
             try:
@@ -1281,7 +1264,14 @@ def render_text2sql_page(app=None) -> None:
             "",
         )
 
-    _CHART_TYPE_MAP = {"Bar": "bar", "Line": "line", "Pie": "pie", "Scatter": "scatter"}
+    _CHART_KEY_TO_TYPE = {"chart_bar": "bar", "chart_line": "line", "chart_pie": "pie", "chart_scatter": "scatter"}
+
+    def _chart_pref_to_type(pref: str, lang: str):
+        """Map a localized chart radio label back to a chart type key."""
+        for key, ct in _CHART_KEY_TO_TYPE.items():
+            if pref == _t2s(lang, key):
+                return ct
+        return None
 
     def _run_streaming(msg: str, history: list, lang: str, chart_pref: str = "Auto"):
         from .ui import EventCollector, _normalize_chat
@@ -1341,10 +1331,10 @@ def render_text2sql_page(app=None) -> None:
         chart_update = gr.update(visible=False)
         rt = agent.runtime if agent else None
         if rt and rt.last_result and rt.last_result.columns and rt.last_result.rows:
-            if chart_pref == "None":
+            if chart_pref == _t2s(lang, "chart_none"):
                 ct = None
-            elif chart_pref in _CHART_TYPE_MAP:
-                ct = _CHART_TYPE_MAP[chart_pref]
+            elif _chart_pref_to_type(chart_pref, lang):
+                ct = _chart_pref_to_type(chart_pref, lang)
             else:
                 ct = detect_chart_type(rt.last_result.columns, rt.last_result.rows)
             if ct:
@@ -1409,7 +1399,7 @@ def render_text2sql_page(app=None) -> None:
             name_hint="query_result",
         )
 
-    def _reload_schema(ddl_path: str, lang: str):
+    def _reload_schema(lang: str):
         t = lambda k: _t2s(lang, k)
         no = gr.update()
         try:
@@ -1420,7 +1410,7 @@ def render_text2sql_page(app=None) -> None:
                 new_store = SchemaStore.from_db(executor)
             else:
                 from .text2sql.schema import parse_ddl
-                path = Path(ddl_path or schema_ddl_path_from_env())
+                path = Path(schema_ddl_path_from_env())
                 if not path.is_file():
                     return f"❌ {t('schema_not_found')}: {path}", no, no, no, no, no
                 text = path.read_text(encoding="utf-8")
@@ -1502,7 +1492,6 @@ def render_text2sql_page(app=None) -> None:
             lang,
             gr.update(value=t("sidebar_title")),
             gr.update(label=t("datasource_type")),
-            gr.update(label=t("schema_label")),
             gr.update(label=t("host")),
             gr.update(label=t("port")),
             gr.update(label=t("database")),
@@ -1526,7 +1515,7 @@ def render_text2sql_page(app=None) -> None:
             gr.update(placeholder=t("fav_name_placeholder")),
             gr.update(value=t("save_favorite")),
             gr.update(value=t("favorites")),
-            gr.update(label=t("chart_type_label")),
+            gr.update(label=t("chart_type_label"), choices=_chart_choices(lang), value=t("chart_auto")),
             gr.update(choices=template_choices(lang), value=None),
             gr.update(value=""),
             gr.update(label=t("session_label")),
@@ -1547,7 +1536,6 @@ def render_text2sql_page(app=None) -> None:
             lang_state,
             sidebar_title,
             ds_type_dd,
-            schema_path_tb,
             host_tb,
             port_tb,
             db_tb,
@@ -1585,7 +1573,7 @@ def render_text2sql_page(app=None) -> None:
 
     connect_btn.click(
         fn=_connect,
-        inputs=[ds_type_dd, schema_path_tb, host_tb, port_tb, db_tb,
+        inputs=[ds_type_dd, host_tb, port_tb, db_tb,
                 username_tb, password_tb, lang_state],
         outputs=[status_box, host_tb, port_tb, db_tb,
                  table_filter, filter_accordion, confirmed_sel,
@@ -1629,7 +1617,7 @@ def render_text2sql_page(app=None) -> None:
     new_chat_btn.click(fn=_new_chat, inputs=[lang_state],
                        outputs=[chatbot, user_input, chart_plot, page_nav_row, page_table_md, page_state])
     export_btn.click(fn=_handle_export, inputs=[lang_state], outputs=export_btn)
-    reload_schema_btn.click(fn=_reload_schema, inputs=[schema_path_tb, lang_state],
+    reload_schema_btn.click(fn=_reload_schema, inputs=[lang_state],
                             outputs=[status_box, table_filter, filter_accordion, confirmed_sel,
                                      schema_browser_dd, schema_browser_html])
 
