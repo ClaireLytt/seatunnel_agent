@@ -966,6 +966,10 @@ def render_text2sql_page(app=None) -> None:
                     show_label=False, lines=1,
                     elem_classes=["st-table-search"],
                 )
+                exit_search_btn = gr.Button(
+                    f"↩ {t('exit_search')}", size="sm",
+                    elem_classes=["st-exit-search-btn"],
+                )
                 table_filter = gr.CheckboxGroup(
                     choices=[], label="", show_label=False,
                     elem_classes=["st-table-filter"],
@@ -1528,6 +1532,7 @@ def render_text2sql_page(app=None) -> None:
             gr.update(value=f"✔ {t('confirm')}"),
             gr.update(value=f"✕ {t('cancel')}"),
             gr.update(placeholder=t("search_placeholder")),
+            gr.update(value=f"↩ {t('exit_search')}"),
             gr.update(choices=choices, value=new_selected),
             gr.update(placeholder=t("fav_name_placeholder")),
             gr.update(value=t("save_favorite")),
@@ -1572,6 +1577,7 @@ def render_text2sql_page(app=None) -> None:
             confirm_filter_btn,
             cancel_filter_btn,
             table_search,
+            exit_search_btn,
             table_filter,
             fav_name_tb,
             save_fav_btn,
@@ -1800,19 +1806,53 @@ def render_text2sql_page(app=None) -> None:
 
     _PREVIEW_ROWS_UI = 20
 
-    _search_js = """
-    (q) => {
-        const el = document.querySelector('.st-table-filter');
-        if (!el) return q;
-        const labels = el.querySelectorAll('label');
-        const low = (q || '').toLowerCase();
-        labels.forEach(lb => {
-            lb.style.display = lb.textContent.toLowerCase().includes(low) ? '' : 'none';
-        });
-        return q;
-    }
-    """
-    table_search.input(fn=None, js=_search_js, inputs=[table_search], outputs=[table_search])
+    def _on_table_search(query, current_selection, lang):
+        full = holder.get("full_store")
+        if not full:
+            return gr.update()
+        if not query or not query.strip():
+            return gr.update()
+        all_choices = _table_choices(full, lang)
+        if "search_backup" not in holder:
+            holder["search_backup"] = list(current_selection or [])
+        low = query.lower()
+        filtered = [c for c in all_choices if low in c.lower()]
+        holder["search_visible"] = filtered
+        kept = [s for s in holder["search_backup"] if s in filtered]
+        return gr.update(choices=filtered, value=kept)
+
+    def _exit_search(current_selection, lang):
+        full = holder.get("full_store")
+        backup = holder.pop("search_backup", None)
+        last_visible = holder.pop("search_visible", None)
+        if not full:
+            return gr.update(), gr.update(value="")
+        all_choices = _table_choices(full, lang)
+        if backup is None:
+            return gr.update(choices=all_choices), gr.update(value="")
+        current_set = set(current_selection or [])
+        backup_set = set(backup)
+        visible_set = set(last_visible) if last_visible else set()
+        final = []
+        for item in all_choices:
+            if item in visible_set:
+                if item in current_set:
+                    final.append(item)
+            else:
+                if item in backup_set:
+                    final.append(item)
+        return gr.update(choices=all_choices, value=final), gr.update(value="")
+
+    table_search.input(
+        fn=_on_table_search,
+        inputs=[table_search, table_filter, lang_state],
+        outputs=[table_filter],
+    )
+    exit_search_btn.click(
+        fn=_exit_search,
+        inputs=[table_filter, lang_state],
+        outputs=[table_filter, table_search],
+    )
 
     # ── Pagination ──
     prev_page_btn.click(
