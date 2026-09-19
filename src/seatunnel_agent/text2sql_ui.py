@@ -58,11 +58,14 @@ def build_schema_card(table, lang: str = "en", store=None) -> str:
     esc = _esc_html
 
     type_colors = {"incremental": "#0ea5e9", "full": "#22c55e", "other": "#a3a3a3"}
+    _type_i18n = {"incremental": "table_type_incremental", "full": "table_type_full"}
     tt = table.table_type
     type_color = type_colors.get(tt, "#a3a3a3")
+    type_label = t(_type_i18n.get(tt, "table_type_other"))
     badges = (
         f'<span style="display:inline-block;padding:1px 6px;border-radius:3px;'
-        f'font-size:10px;color:#fff;background:{type_color};margin-left:6px;">{esc(tt)}</span>'
+        f'font-size:10px;color:#fff;background:{type_color};margin-left:6px;">'
+        f'{t("schema_table_type")}: {esc(type_label)}</span>'
     )
     if table.is_partitioned:
         badges += (
@@ -966,10 +969,6 @@ def render_text2sql_page(app=None) -> None:
                     show_label=False, lines=1,
                     elem_classes=["st-table-search"],
                 )
-                exit_search_btn = gr.Button(
-                    f"↩ {t('exit_search')}", size="sm",
-                    elem_classes=["st-exit-search-btn"],
-                )
                 table_filter = gr.CheckboxGroup(
                     choices=[], label="", show_label=False,
                     elem_classes=["st-table-filter"],
@@ -1532,7 +1531,6 @@ def render_text2sql_page(app=None) -> None:
             gr.update(value=f"✔ {t('confirm')}"),
             gr.update(value=f"✕ {t('cancel')}"),
             gr.update(placeholder=t("search_placeholder")),
-            gr.update(value=f"↩ {t('exit_search')}"),
             gr.update(choices=choices, value=new_selected),
             gr.update(placeholder=t("fav_name_placeholder")),
             gr.update(value=t("save_favorite")),
@@ -1577,7 +1575,6 @@ def render_text2sql_page(app=None) -> None:
             confirm_filter_btn,
             cancel_filter_btn,
             table_search,
-            exit_search_btn,
             table_filter,
             fav_name_tb,
             save_fav_btn,
@@ -1680,24 +1677,56 @@ def render_text2sql_page(app=None) -> None:
     def _deselect_all():
         return gr.update(value=[])
 
+    def _restore_from_search(current_selection, lang):
+        """Exit search mode and return the merged full choices + selection."""
+        full = holder.get("full_store")
+        backup = holder.pop("search_backup", None)
+        last_visible = holder.pop("search_visible", None)
+        if not full:
+            return current_selection or []
+        all_choices = _table_choices(full, lang)
+        if backup is None:
+            return current_selection or []
+        current_set = set(current_selection or [])
+        backup_set = set(backup)
+        visible_set = set(last_visible) if last_visible else set()
+        final = []
+        for item in all_choices:
+            if item in visible_set:
+                if item in current_set:
+                    final.append(item)
+            else:
+                if item in backup_set:
+                    final.append(item)
+        return final
+
     def _confirm_filter(selected, lang):
         t = lambda k: _t2s(lang, k)
-        status = _apply_filter(selected, lang)
-        n = len(selected)
-        return status, list(selected), gr.update(label=t("select_tables").format(n=n))
+        merged = _restore_from_search(selected, lang)
+        status = _apply_filter(merged, lang)
+        n = len(merged)
+        full = holder.get("full_store")
+        all_choices = _table_choices(full, lang) if full else []
+        return status, list(merged), gr.update(label=t("select_tables").format(n=n)), \
+               gr.update(choices=all_choices, value=merged), gr.update(value="")
 
-    def _cancel_filter(prev):
-        return gr.update(value=prev)
+    def _cancel_filter(confirmed, lang):
+        full = holder.get("full_store")
+        all_choices = _table_choices(full, lang) if full else []
+        backup = holder.pop("search_backup", None)
+        holder.pop("search_visible", None)
+        restore = backup if backup is not None else confirmed
+        return gr.update(choices=all_choices, value=restore), gr.update(value="")
 
     select_all_btn.click(fn=_select_all, inputs=[lang_state], outputs=[table_filter])
     deselect_all_btn.click(fn=_deselect_all, outputs=[table_filter])
     confirm_filter_btn.click(
         fn=_confirm_filter, inputs=[table_filter, lang_state],
-        outputs=[status_box, confirmed_sel, filter_accordion],
+        outputs=[status_box, confirmed_sel, filter_accordion, table_filter, table_search],
     )
     cancel_filter_btn.click(
-        fn=_cancel_filter, inputs=[confirmed_sel],
-        outputs=[table_filter],
+        fn=_cancel_filter, inputs=[confirmed_sel, lang_state],
+        outputs=[table_filter, table_search],
     )
 
     # ── Session management ──
@@ -1821,37 +1850,10 @@ def render_text2sql_page(app=None) -> None:
         kept = [s for s in holder["search_backup"] if s in filtered]
         return gr.update(choices=filtered, value=kept)
 
-    def _exit_search(current_selection, lang):
-        full = holder.get("full_store")
-        backup = holder.pop("search_backup", None)
-        last_visible = holder.pop("search_visible", None)
-        if not full:
-            return gr.update(), gr.update(value="")
-        all_choices = _table_choices(full, lang)
-        if backup is None:
-            return gr.update(choices=all_choices), gr.update(value="")
-        current_set = set(current_selection or [])
-        backup_set = set(backup)
-        visible_set = set(last_visible) if last_visible else set()
-        final = []
-        for item in all_choices:
-            if item in visible_set:
-                if item in current_set:
-                    final.append(item)
-            else:
-                if item in backup_set:
-                    final.append(item)
-        return gr.update(choices=all_choices, value=final), gr.update(value="")
-
     table_search.input(
         fn=_on_table_search,
         inputs=[table_search, table_filter, lang_state],
         outputs=[table_filter],
-    )
-    exit_search_btn.click(
-        fn=_exit_search,
-        inputs=[table_filter, lang_state],
-        outputs=[table_filter, table_search],
     )
 
     # ── Pagination ──
