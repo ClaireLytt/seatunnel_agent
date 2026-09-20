@@ -127,75 +127,6 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "export_csv",
-        "description": (
-            "Export the most recent query result to a CSV file. Default "
-            "location is the user's Desktop with a timestamped filename; "
-            "pass 'path' to override (directory or full file path)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Optional output directory or .csv file path",
-                },
-                "name_hint": {
-                    "type": "string",
-                    "description": "Optional short name used in the filename",
-                },
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "export_excel",
-        "description": (
-            "Export the most recent query result to a formatted Excel (.xlsx) "
-            "file with bold headers, auto-filter and frozen header row. "
-            "Requires openpyxl."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Optional output directory or .xlsx file path",
-                },
-                "name_hint": {
-                    "type": "string",
-                    "description": "Optional short name used in the filename",
-                },
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "export_pdf",
-        "description": (
-            "Export the most recent query result to a PDF report with a "
-            "table layout. Requires fpdf2."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Optional output directory or .pdf file path",
-                },
-                "name_hint": {
-                    "type": "string",
-                    "description": "Optional short name used in the filename",
-                },
-                "title": {
-                    "type": "string",
-                    "description": "Report title shown at the top of the PDF",
-                },
-            },
-            "required": [],
-        },
-    },
-    {
         "name": "get_result_page",
         "description": (
             "Return a specific page of the most recent query result. "
@@ -656,9 +587,6 @@ _TOOL_HANDLERS = {
     "get_max_partition": _tool_get_max_partition,
     "explain_sql": _tool_explain_sql,
     "execute_sql": _tool_execute_sql,
-    "export_csv": _tool_export_csv,
-    "export_excel": _tool_export_excel,
-    "export_pdf": _tool_export_pdf,
     "get_result_page": _tool_get_result_page,
 }
 

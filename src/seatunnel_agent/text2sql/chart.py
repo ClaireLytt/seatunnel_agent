@@ -12,6 +12,39 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+def _configure_cjk_font() -> None:
+    """Set matplotlib to use a CJK-capable font for Chinese labels."""
+    import matplotlib.font_manager as fm
+    from pathlib import Path
+
+    for name in ("Microsoft YaHei", "SimHei", "PingFang SC", "Noto Sans SC"):
+        if any(name.lower() in f.name.lower() for f in fm.fontManager.ttflist):
+            plt.rcParams["font.sans-serif"] = [name] + plt.rcParams.get(
+                "font.sans-serif", []
+            )
+            plt.rcParams["axes.unicode_minus"] = False
+            return
+
+    noto = Path.home() / ".seatunnel-agent" / "fonts" / "NotoSansSC-Regular.otf"
+    if not noto.is_file():
+        try:
+            noto.parent.mkdir(parents=True, exist_ok=True)
+            import urllib.request
+            _url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Regular.otf"
+            urllib.request.urlretrieve(_url, str(noto))
+        except Exception:
+            return
+    if noto.is_file():
+        fm.fontManager.addfont(str(noto))
+        plt.rcParams["font.sans-serif"] = ["Noto Sans SC"] + plt.rcParams.get(
+            "font.sans-serif", []
+        )
+        plt.rcParams["axes.unicode_minus"] = False
+
+
+_configure_cjk_font()
+
+
 def fig_to_base64(fig: plt.Figure) -> str:
     """Convert a matplotlib Figure to a base64-encoded PNG data URI."""
     buf = io.BytesIO()
@@ -72,6 +105,39 @@ def _classify_columns(
     return cat_cols, num_cols, date_cols
 
 
+_RANK_HINTS = re.compile(
+    r"avg|average|mean|score|分|均|rank|rating|count\b|num\b|数量|max|min",
+    re.I,
+)
+_SHARE_HINTS = re.compile(
+    r"amount|sum|total|sales|revenue|额|量|费|收入|支出|占比|proportion|share",
+    re.I,
+)
+
+
+def _looks_like_proportion(vals: list[float], columns: list[str], num_idx: int) -> bool:
+    """Heuristic: return True only when pie chart is semantically appropriate.
+
+    Pie is good for "parts of a whole" (sales by city, revenue by dept).
+    Pie is bad for rankings, averages, scores, counts per individual.
+    """
+    col_name = columns[num_idx] if num_idx < len(columns) else ""
+    if _RANK_HINTS.search(col_name):
+        return False
+    if _SHARE_HINTS.search(col_name):
+        return True
+    if len(vals) < 2:
+        return False
+    mx = max(vals)
+    mn = min(vals)
+    if mx == 0:
+        return False
+    spread = (mx - mn) / mx
+    if spread < 0.15:
+        return False
+    return True
+
+
 def detect_chart_type(
     columns: list[str], rows: list[tuple],
 ) -> str | None:
@@ -94,10 +160,12 @@ def detect_chart_type(
         if n_rows <= _MAX_PIE_SLICES and len(num_cols) == 1:
             vals = [v for v in col_values[num_cols[0]] if v is not None]
             try:
-                all_positive = all(float(v) >= 0 for v in vals)
+                fvals = [float(v) for v in vals]
+                all_positive = all(v >= 0 for v in fvals)
             except (ValueError, TypeError):
                 all_positive = False
-            if all_positive:
+                fvals = []
+            if all_positive and fvals and _looks_like_proportion(fvals, columns, num_cols[0]):
                 return "pie"
         if n_rows <= _MAX_BAR_ITEMS:
             return "bar"
