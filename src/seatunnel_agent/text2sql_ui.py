@@ -464,6 +464,11 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
             header = f"⚡ **{t('exec_success')}** — {t('cache_hit').format(rows=data.get('row_count', 0))}"
         else:
             header = f"⚡ **{t('exec_success')}**"
+        csv_path = data.get("csv_path", "")
+        dl_line = ""
+        if csv_path:
+            fname = csv_path.replace("\\", "/").rsplit("/", 1)[-1]
+            dl_line = f'\n\n📥 [**Download CSV**](/file={csv_path})'
         lines = [
             header,
             "",
@@ -472,7 +477,8 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
             f"**{data.get('row_count', 0)}** {t('rows')}"
             + (f" {t('truncated')}" if data.get("truncated") else ""),
             "",
-            _md_table(data.get("columns", []), data.get("preview_rows", []), lang=lang),
+            _md_table(data.get("columns", []), data.get("preview_rows", []), lang=lang)
+            + dl_line,
         ]
         if sql:
             try:
@@ -1534,6 +1540,7 @@ def render_text2sql_page(app=None) -> None:
                 buttons=["copy"],
                 elem_classes=["st-chatbot"],
                 height=None,
+                sanitize_html=False,
             )
             chart_plot = gr.Plot(visible=False, elem_classes=["st-chart"], show_label=False)
             def _chart_choices(lang):
@@ -1877,7 +1884,18 @@ def render_text2sql_page(app=None) -> None:
                         f'style="max-width:100%;border-radius:8px;margin:8px 0;" />'
                         f'</div>'
                     )
-                    final.append({"role": "assistant", "content": chart_html})
+                    png_dl = ""
+                    try:
+                        import tempfile as _tmp
+                        _dl_dir = _tmp.gettempdir() + "/text2sql_exports"
+                        _ts = time.strftime("%Y%m%d_%H%M%S")
+                        _png_path = f"{_dl_dir}/chart_{_ts}.png"
+                        fig.savefig(_png_path, format="png", bbox_inches="tight", dpi=120)
+                        _png_name = _png_path.replace("\\", "/").rsplit("/", 1)[-1]
+                        png_dl = f'\n\n🖼️ [**Download Chart**](/file={_png_path})'
+                    except Exception:
+                        pass
+                    final.append({"role": "assistant", "content": chart_html + png_dl})
                     if rt.last_sql:
                         sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
                         _chart_cache_put(sql_hash, data_uri)

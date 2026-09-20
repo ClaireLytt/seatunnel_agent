@@ -1638,6 +1638,21 @@ body:has(.st-history-page) .gradio-container > .main > .wrap {
     overflow-x: auto !important;
 }
 
+/* ── Per-message CSV download button ── */
+.st-dl-btn {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 4px;
+    background: #2563eb;
+    color: #fff !important;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none !important;
+    cursor: pointer;
+    vertical-align: middle;
+}
+.st-dl-btn:hover { background: #1d4ed8; }
+
 /* ── Input row — pinned to bottom of viewport ── */
 .st-input-row,
 .st-input-row.row {
