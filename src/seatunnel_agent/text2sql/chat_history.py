@@ -82,10 +82,20 @@ def save_t2s_session(session: Text2SQLSession) -> None:
         session.chat_messages = session.chat_messages[-_MAX_CHAT_MESSAGES:]
     if len(session.agent_messages) > _MAX_AGENT_MESSAGES:
         session.agent_messages = session.agent_messages[-_MAX_AGENT_MESSAGES:]
-    _session_path(session.session_id).write_text(
-        json.dumps(asdict(session), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    target = _session_path(session.session_id)
+    content = json.dumps(asdict(session), ensure_ascii=False, indent=2)
+    import tempfile, os
+    fd, tmp = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        os.replace(tmp, str(target))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     _invalidate_sessions_cache()
 
 

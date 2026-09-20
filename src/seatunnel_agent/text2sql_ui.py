@@ -52,6 +52,15 @@ from .text2sql.schema import SchemaStore
 
 _shared_holder: dict[str, Any] = {}
 _chart_cache: dict[str, str] = {}
+_CHART_CACHE_MAX = 50
+
+
+def _chart_cache_put(key: str, value: str) -> None:
+    """Store a chart in the cache, evicting oldest entries if full."""
+    if len(_chart_cache) >= _CHART_CACHE_MAX:
+        oldest = next(iter(_chart_cache))
+        del _chart_cache[oldest]
+    _chart_cache[key] = value
 
 
 def _esc_html(s: str) -> str:
@@ -939,9 +948,11 @@ def render_history_page(app=None) -> None:
             if ct:
                 fig = build_chart(result.columns, result.rows, ct)
                 if fig:
-                    b64 = fig_to_base64(fig)
-                    _chart_cache[sql_hash] = b64
-                    plt.close(fig)
+                    try:
+                        b64 = fig_to_base64(fig)
+                        _chart_cache_put(sql_hash, b64)
+                    finally:
+                        plt.close(fig)
         if b64:
             return gr.update(
                 value=f'<div style="text-align:center;padding:12px;">'
@@ -1830,7 +1841,7 @@ def render_text2sql_page(app=None) -> None:
                     final.append({"role": "assistant", "content": chart_html})
                     if rt.last_sql:
                         sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
-                        _chart_cache[sql_hash] = data_uri
+                        _chart_cache_put(sql_hash, data_uri)
                     plt.close(fig)
 
         yield history + [{"role": "user", "content": msg}] + final, chart_update
@@ -1859,10 +1870,11 @@ def render_text2sql_page(app=None) -> None:
 
     def _new_chat(lang):
         t = lambda k: _t2s(lang, k)
-        agent = holder.get("agent")
-        if agent is not None:
-            agent.reset()
-        holder["session_id"] = None
+        with holder_lock:
+            agent = holder.get("agent")
+            if agent is not None:
+                agent.reset()
+            holder["session_id"] = None
         return (
             [],
             gr.update(placeholder=t("input_placeholder")),

@@ -31,7 +31,9 @@ def _configure_cjk_font() -> None:
             noto.parent.mkdir(parents=True, exist_ok=True)
             import urllib.request
             _url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Regular.otf"
-            urllib.request.urlretrieve(_url, str(noto))
+            resp = urllib.request.urlopen(_url, timeout=15)  # noqa: S310
+            with open(noto, "wb") as _f:
+                _f.write(resp.read())
         except Exception:
             return
     if noto.is_file():
@@ -121,15 +123,17 @@ def _looks_like_proportion(vals: list[float], columns: list[str], num_idx: int) 
     Pie is good for "parts of a whole" (sales by city, revenue by dept).
     Pie is bad for rankings, averages, scores, counts per individual.
     """
+    import math
     col_name = columns[num_idx] if num_idx < len(columns) else ""
     if _RANK_HINTS.search(col_name):
         return False
     if _SHARE_HINTS.search(col_name):
         return True
-    if len(vals) < 2:
+    clean = [v for v in vals if math.isfinite(v)]
+    if len(clean) < 2:
         return False
-    mx = max(vals)
-    mn = min(vals)
+    mx = max(clean)
+    mn = min(clean)
     if mx == 0:
         return False
     spread = (mx - mn) / mx
@@ -192,7 +196,14 @@ def build_chart(
     label_idx = (date_cols or cat_cols or [0])[0]
     labels = [str(v) for v in col_values[label_idx]]
     values_idx = num_cols[0]
-    values = [float(v) if v is not None else 0.0 for v in col_values[values_idx]]
+    def _safe_float(v):
+        if v is None:
+            return 0.0
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 0.0
+    values = [_safe_float(v) for v in col_values[values_idx]]
     value_label = columns[values_idx]
 
     if not values:

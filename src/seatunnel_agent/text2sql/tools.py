@@ -9,6 +9,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -170,23 +171,26 @@ class Text2SQLRuntime:
     max_sql_retries: int = 3
     cache: SqlResultCache = field(default_factory=SqlResultCache)
     _executor: DatabaseExecutor | None = None
+    _executor_lock: threading.Lock = field(default_factory=threading.Lock)
 
     @property
     def executor(self) -> DatabaseExecutor:
         if self._executor is None:
-            if self.db_config is None:
-                raise RuntimeError(
-                    "Database connection is not configured. "
-                    "Fill in the connection fields in the UI or set "
-                    "the corresponding environment variables."
-                )
-            if not self.db_config.host and self.db_config.ds_type != "sqlite":
-                raise RuntimeError(
-                    "Database connection is not configured. "
-                    "Fill in the connection fields in the UI or set "
-                    "the corresponding environment variables."
-                )
-            self._executor = create_executor(self.db_config)
+            with self._executor_lock:
+                if self._executor is None:
+                    if self.db_config is None:
+                        raise RuntimeError(
+                            "Database connection is not configured. "
+                            "Fill in the connection fields in the UI or set "
+                            "the corresponding environment variables."
+                        )
+                    if not self.db_config.host and self.db_config.ds_type != "sqlite":
+                        raise RuntimeError(
+                            "Database connection is not configured. "
+                            "Fill in the connection fields in the UI or set "
+                            "the corresponding environment variables."
+                        )
+                    self._executor = create_executor(self.db_config)
         return self._executor
 
 
