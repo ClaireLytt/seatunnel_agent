@@ -118,7 +118,7 @@ def build_chart(
     if not values:
         return None
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(5, 2.8), dpi=100)
     try:
         fig.patch.set_facecolor("#fafafa")
 

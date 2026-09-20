@@ -35,10 +35,21 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def extract_title(chat_messages: list[dict[str, str]], max_len: int = 30) -> str:
+def extract_title(chat_messages: list[dict], max_len: int = 30) -> str:
     for msg in chat_messages:
-        if msg.get("role") == "user" and msg.get("content", "").strip():
-            text = msg["content"].strip().replace("\n", " ")
+        if msg.get("role") != "user":
+            continue
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(
+                p.get("text", "") if isinstance(p, dict) else str(p)
+                for p in content
+            )
+        if not isinstance(content, str):
+            continue
+        text = content.strip()
+        if text:
+            text = text.replace("\n", " ")
             return text[:max_len] + ("..." if len(text) > max_len else "")
     return "Untitled"
 

@@ -48,6 +48,9 @@ from .text2sql.schema import SchemaStore
 
 
 
+_shared_holder: dict[str, Any] = {}
+
+
 def _esc_html(s: str) -> str:
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -65,7 +68,7 @@ def build_schema_card(table, lang: str = "en", store=None) -> str:
     badges = (
         f'<span style="display:inline-block;padding:1px 6px;border-radius:3px;'
         f'font-size:10px;color:#fff;background:{type_color};margin-left:6px;">'
-        f'{t("schema_table_type")}: {esc(type_label)}</span>'
+        f'{t("schema_table_type")} {esc(type_label)}</span>'
     )
     if table.is_partitioned:
         badges += (
@@ -608,6 +611,99 @@ def _history_rows(logger: QueryLogger, n: int = 100) -> list[list[str]]:
     return rows
 
 
+def render_schema_browser_page(app=None) -> None:
+    """Standalone schema browser page opened in a new tab."""
+    lang = "en"
+    t = lambda k: _t2s(lang, k)
+
+    def _table_choices_from_shared(lang):
+        store = _shared_holder.get("full_store")
+        if not store:
+            return []
+        choices = []
+        for tb in store.tables:
+            if lang == "zh" and tb.comment:
+                label = f"{tb.name} ({tb.comment})"
+            else:
+                label = tb.name
+            choices.append(label)
+        return choices
+
+    def _browse(table_choice, lang):
+        if not table_choice:
+            return ""
+        name = table_choice.split("(")[0].strip()
+        store = _shared_holder.get("full_store")
+        if not store:
+            return ""
+        table = store.get(name)
+        if table is None:
+            for tb in store.tables:
+                if tb.name == name:
+                    table = tb
+                    break
+        if table is None:
+            return ""
+        return build_schema_card(table, lang, store=store)
+
+    def _refresh(lang):
+        choices = _table_choices_from_shared(lang)
+        return gr.update(choices=choices, value=None), ""
+
+    def _switch_lang(choice):
+        lang = "zh" if choice == "中文" else "en"
+        t = lambda k: _t2s(lang, k)
+        choices = _table_choices_from_shared(lang)
+        return (
+            lang,
+            gr.update(value=f"## {t('schema_browser')}"),
+            gr.update(value=t("schema_back")),
+            gr.update(value=t("refresh")),
+            gr.update(choices=choices, value=None),
+            "",
+        )
+
+    with gr.Column():
+        lang_state = gr.State("en")
+        with gr.Row(elem_classes=["st-topbar-row"]):
+            gr.HTML('<div class="st-topbar-spacer"></div>')
+            lang_dd = gr.Dropdown(
+                choices=["English", "中文"], value="English",
+                show_label=False, container=False, min_width=140,
+                elem_classes=["st-lang-dd"],
+            )
+
+        title_md = gr.Markdown(f"## {t('schema_browser')}")
+
+        with gr.Row():
+            back_btn = gr.Button(t("schema_back"), variant="secondary", size="sm")
+            refresh_btn = gr.Button(t("refresh"), variant="secondary", size="sm")
+
+        no_tables_msg = t("schema_no_tables") if not _shared_holder.get("full_store") else ""
+        schema_dd = gr.Dropdown(
+            choices=_table_choices_from_shared("en"),
+            value=None, label="",
+            show_label=False,
+        )
+        schema_html = gr.HTML(no_tables_msg)
+
+    schema_dd.change(fn=_browse, inputs=[schema_dd, lang_state], outputs=[schema_html])
+    refresh_btn.click(fn=_refresh, inputs=[lang_state], outputs=[schema_dd, schema_html])
+    back_btn.click(fn=None, js="() => { window.close(); }")
+    lang_dd.change(
+        fn=_switch_lang, inputs=[lang_dd],
+        outputs=[lang_state, title_md, back_btn, refresh_btn, schema_dd, schema_html],
+    )
+
+    def _on_load():
+        choices = _table_choices_from_shared("en")
+        msg = "" if choices else _t2s("en", "schema_no_tables")
+        return gr.update(choices=choices, value=None), msg
+
+    if app is not None:
+        app.load(fn=_on_load, outputs=[schema_dd, schema_html])
+
+
 def render_history_page() -> None:
     """Full-page query history viewer."""
     logger = QueryLogger()
@@ -874,23 +970,6 @@ def render_text2sql_page(app=None) -> None:
             choices.append(label)
         return choices
 
-    def _on_schema_browse(table_choice, lang):
-        if not table_choice:
-            return ""
-        name = table_choice.split("(")[0].strip()
-        full = holder.get("full_store")
-        if not full:
-            return ""
-        table = full.get(name)
-        if table is None:
-            for tb in full.tables:
-                if tb.name == name:
-                    table = tb
-                    break
-        if table is None:
-            return ""
-        return build_schema_card(table, lang, store=full)
-
     def _sync_agent_store(new_store):
         """Update agent's runtime store AND rebuild its system prompt."""
         agent = holder.get("agent")
@@ -991,18 +1070,14 @@ def render_text2sql_page(app=None) -> None:
                         f"✕ {t('cancel')}", size="sm",
                         elem_classes=["st-filter-cancel-btn"],
                     )
-            with gr.Accordion(
-                t("schema_browser"), open=False, visible=True,
-                elem_classes=["st-filter-accordion"],
-            ) as schema_browser_acc:
-                schema_browser_dd = gr.Dropdown(
-                    choices=[],
-                    value=None,
-                    label="",
-                    show_label=False,
-                    elem_classes=["st-sidebar-control"],
-                )
-                schema_browser_html = gr.HTML("", elem_classes=["st-schema-card"])
+            schema_browse_btn = gr.Button(
+                t("schema_browse_btn"), size="sm",
+                elem_classes=["st-filter-act-btn"],
+            )
+            schema_browse_btn.click(
+                fn=None,
+                js="() => { window.open('/schema-browser', '_blank'); }",
+            )
 
             status_box = gr.Textbox(label=t("status_label"), interactive=False,
                                     value=t("status_default"),
@@ -1074,7 +1149,7 @@ def render_text2sql_page(app=None) -> None:
                 elem_classes=["st-chatbot"],
                 height=None,
             )
-            chart_plot = gr.Plot(visible=False, elem_classes=["st-chart"])
+            chart_plot = gr.Plot(visible=False, elem_classes=["st-chart"], show_label=False)
             def _chart_choices(lang):
                 _t = lambda k: _t2s(lang, k)
                 return [_t("chart_auto"), _t("chart_bar"), _t("chart_line"),
@@ -1153,7 +1228,7 @@ def render_text2sql_page(app=None) -> None:
         t = lambda k: _t2s(lang, k)
         no = gr.update()
         def err(msg):
-            return (msg, no, no, no, no, no, no, no, no)
+            return (msg, no, no, no, no, no, no)
 
         ds_type = _DS_LABEL_TO_KEY.get(ds_label, "hive")
 
@@ -1244,16 +1319,38 @@ def render_text2sql_page(app=None) -> None:
         if len(store) == 0:
             return err(f"❌ {t('no_tables')}")
 
+        # ── Quick LLM API health check ──
+        llm_status = ""
+        try:
+            from dataclasses import replace as _dc_replace
+            from .llm import LLMClient
+            _ping_settings = _dc_replace(settings, llm_timeout=15)
+            _test_client = LLMClient(_ping_settings, tools=[])
+            _test_client.chat(
+                "Reply OK", [{"role": "user", "content": "ping"}]
+            )
+            llm_status = f"✅ LLM {settings.model_name}"
+        except Exception as e:
+            e_msg = str(e)
+            if "timeout" in e_msg.lower() or "timed out" in e_msg.lower():
+                llm_status = f"⚠️ LLM timeout ({settings.llm_base_url or 'default'})"
+            elif "auth" in e_msg.lower() or "api key" in e_msg.lower() or "401" in e_msg:
+                llm_status = f"❌ LLM auth fail — check API_KEY"
+            elif "connect" in e_msg.lower():
+                llm_status = f"❌ LLM unreachable ({settings.llm_base_url or 'default'})"
+            else:
+                llm_status = f"⚠️ LLM: {e_msg[:80]}"
+
         with holder_lock:
             holder["settings"] = settings
             holder["store"] = store
             holder["full_store"] = store
+            _shared_holder["full_store"] = store
             holder["ds_type"] = ds_type
             holder["db_config"] = db_config
             holder["agent"] = None
 
         def _warmup():
-            """Pre-create agent so the first message doesn't pay import cost."""
             try:
                 from .text2sql.agent import Text2SQLAgent
                 agent = Text2SQLAgent(
@@ -1268,9 +1365,10 @@ def render_text2sql_page(app=None) -> None:
         import threading
         threading.Thread(target=_warmup, daemon=True).start()
 
-        status = f"✅ {schema_source} · {db_note} · {t('model')} {settings.model_name}"
+        status = f"✅ {schema_source} · {db_note} · {llm_status}"
 
         choices = _table_choices(store, lang)
+        holder["last_confirmed"] = list(choices)
         no = gr.update()
         return (
             status,
@@ -1280,8 +1378,6 @@ def render_text2sql_page(app=None) -> None:
             gr.update(choices=choices, value=choices),
             gr.update(open=True, label=t("select_tables").format(n=len(store))),
             choices,
-            gr.update(choices=choices, value=None),
-            "",
         )
 
     _CHART_KEY_TO_TYPE = {"chart_bar": "bar", "chart_line": "line", "chart_pie": "pie", "chart_scatter": "scatter"}
@@ -1432,28 +1528,28 @@ def render_text2sql_page(app=None) -> None:
                 from .text2sql.schema import parse_ddl
                 path = Path(schema_ddl_path_from_env())
                 if not path.is_file():
-                    return f"❌ {t('schema_not_found')}: {path}", no, no, no, no, no
+                    return f"❌ {t('schema_not_found')}: {path}", no, no, no
                 text = path.read_text(encoding="utf-8")
                 new_store = SchemaStore(parse_ddl(text))
             with holder_lock:
                 holder["store"] = new_store
                 holder["full_store"] = new_store
+                _shared_holder["full_store"] = new_store
                 _sync_agent_store(new_store)
             agent = holder.get("agent")
             if agent is not None:
                 agent.runtime.cache.invalidate()
             choices = _table_choices(new_store, lang)
+            holder["last_confirmed"] = list(choices)
             n = len(new_store)
             return (
                 t("schema_reloaded").format(n=n),
                 gr.update(choices=choices, value=choices),
                 gr.update(open=True, label=t("select_tables").format(n=n)),
                 choices,
-                gr.update(choices=choices, value=None),
-                "",
             )
         except Exception as e:
-            return f"Error: {e}", no, no, no, no, no
+            return f"Error: {e}", no, no, no
 
     # ── Favorites callback ──
 
@@ -1541,9 +1637,7 @@ def render_text2sql_page(app=None) -> None:
             gr.update(label=t("session_label")),
             gr.update(value=t("load_session")),
             gr.update(value=t("delete_session")),
-            gr.update(label=t("schema_browser")),
-            gr.update(choices=choices, value=None),
-            "",
+            gr.update(value=t("schema_browse_btn")),
         )
 
     # ── Wiring ──
@@ -1585,9 +1679,7 @@ def render_text2sql_page(app=None) -> None:
             session_dd,
             load_session_btn,
             delete_session_btn,
-            schema_browser_acc,
-            schema_browser_dd,
-            schema_browser_html,
+            schema_browse_btn,
         ],
     )
 
@@ -1596,14 +1688,7 @@ def render_text2sql_page(app=None) -> None:
         inputs=[ds_type_dd, host_tb, port_tb, db_tb,
                 username_tb, password_tb, lang_state],
         outputs=[status_box, host_tb, port_tb, db_tb,
-                 table_filter, filter_accordion, confirmed_sel,
-                 schema_browser_dd, schema_browser_html],
-    )
-
-    schema_browser_dd.change(
-        fn=_on_schema_browse,
-        inputs=[schema_browser_dd, lang_state],
-        outputs=[schema_browser_html],
+                 table_filter, filter_accordion, confirmed_sel],
     )
 
     def _show_stop():
@@ -1611,7 +1696,10 @@ def render_text2sql_page(app=None) -> None:
 
     def _post_submit(lang, history):
         t = lambda k: _t2s(lang, k)
-        _save_current_session(history)
+        try:
+            _save_current_session(history)
+        except Exception:
+            pass
         page_vis, page_info_val, page_num = _show_pagination(lang)
         return (
             gr.update(value="", placeholder=t("conversation_active")),
@@ -1638,8 +1726,7 @@ def render_text2sql_page(app=None) -> None:
                        outputs=[chatbot, user_input, chart_plot, page_nav_row, page_table_md, page_state])
     export_btn.click(fn=_handle_export, inputs=[lang_state], outputs=export_btn)
     reload_schema_btn.click(fn=_reload_schema, inputs=[lang_state],
-                            outputs=[status_box, table_filter, filter_accordion, confirmed_sel,
-                                     schema_browser_dd, schema_browser_html])
+                            outputs=[status_box, table_filter, filter_accordion, confirmed_sel])
 
     save_fav_btn.click(fn=_save_favorite, inputs=[fav_name_tb, lang_state], outputs=[fav_name_tb])
 
@@ -1672,6 +1759,9 @@ def render_text2sql_page(app=None) -> None:
             full = holder.get("full_store")
         if not full:
             return gr.update()
+        visible = holder.get("search_visible")
+        if visible is not None:
+            return gr.update(value=list(visible))
         return gr.update(value=_table_choices(full, lang))
 
     def _deselect_all():
@@ -1705,6 +1795,7 @@ def render_text2sql_page(app=None) -> None:
         merged = _restore_from_search(selected, lang)
         status = _apply_filter(merged, lang)
         n = len(merged)
+        holder["last_confirmed"] = list(merged)
         full = holder.get("full_store")
         all_choices = _table_choices(full, lang) if full else []
         return status, list(merged), gr.update(label=t("select_tables").format(n=n)), \
@@ -1835,15 +1926,19 @@ def render_text2sql_page(app=None) -> None:
 
     _PREVIEW_ROWS_UI = 20
 
-    def _on_table_search(query, current_selection, lang):
+    def _on_table_search(query, lang):
         full = holder.get("full_store")
         if not full:
             return gr.update()
-        if not query or not query.strip():
-            return gr.update()
         all_choices = _table_choices(full, lang)
+        if not query or not query.strip():
+            backup = holder.get("search_backup")
+            if backup is not None:
+                holder.pop("search_visible", None)
+                return gr.update(choices=all_choices, value=backup)
+            return gr.update()
         if "search_backup" not in holder:
-            holder["search_backup"] = list(current_selection or [])
+            holder["search_backup"] = list(holder.get("last_confirmed") or all_choices)
         low = query.lower()
         filtered = [c for c in all_choices if low in c.lower()]
         holder["search_visible"] = filtered
@@ -1852,7 +1947,7 @@ def render_text2sql_page(app=None) -> None:
 
     table_search.input(
         fn=_on_table_search,
-        inputs=[table_search, table_filter, lang_state],
+        inputs=[table_search, lang_state],
         outputs=[table_filter],
     )
 

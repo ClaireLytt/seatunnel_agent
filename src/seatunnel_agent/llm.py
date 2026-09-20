@@ -81,10 +81,16 @@ class LLMClient:
 
         if self.provider == "anthropic":
             import anthropic
-            self._client = anthropic.Anthropic(api_key=settings.api_key)
+            self._client = anthropic.Anthropic(
+                api_key=settings.api_key,
+                timeout=settings.llm_timeout,
+            )
         elif self.provider == "openai":
             import openai
-            kwargs: dict[str, Any] = {"api_key": settings.api_key}
+            kwargs: dict[str, Any] = {
+                "api_key": settings.api_key,
+                "timeout": settings.llm_timeout,
+            }
             if settings.llm_base_url:
                 kwargs["base_url"] = settings.llm_base_url
             self._client = openai.OpenAI(**kwargs)
@@ -170,7 +176,13 @@ class LLMClient:
                 )
                 if isinstance(status, str):
                     status = None
-                retryable = status in (429, 500, 502, 503, 529) or "rate" in str(exc).lower()
+                exc_str = str(exc).lower()
+                retryable = (
+                    status in (429, 500, 502, 503, 529)
+                    or "rate" in exc_str
+                    or "timeout" in exc_str
+                    or "timed out" in exc_str
+                )
                 if not retryable or attempt == max_retries - 1:
                     raise
                 wait = 2 ** attempt
@@ -328,12 +340,19 @@ class LLMClient:
         )
         if self.settings.temperature > 0:
             oai_kwargs["temperature"] = self.settings.temperature
+        base = self.settings.llm_base_url or "https://api.openai.com"
         try:
             response = self._client.chat.completions.create(**oai_kwargs)
         except openai.APITimeoutError:
-            raise RuntimeError("API request timed out. Check your network or try again.")
+            raise RuntimeError(
+                f"API request timed out ({self.settings.llm_timeout}s). "
+                f"Endpoint: {base} — check network or increase LLM_TIMEOUT."
+            )
         except openai.APIConnectionError:
-            raise RuntimeError("Cannot connect to API. Check LLM_BASE_URL and your network.")
+            raise RuntimeError(
+                f"Cannot connect to API at {base}. "
+                "Check LLM_BASE_URL and your network."
+            )
 
         if not response.choices:
             raise RuntimeError("API returned empty response (no choices).")
@@ -395,12 +414,19 @@ class LLMClient:
             stream_oai_kwargs["temperature"] = self.settings.temperature
         if not self.settings.llm_base_url:
             stream_oai_kwargs["stream_options"] = {"include_usage": True}
+        base = self.settings.llm_base_url or "https://api.openai.com"
         try:
             stream = self._client.chat.completions.create(**stream_oai_kwargs)
         except openai.APITimeoutError:
-            raise RuntimeError("API request timed out. Check your network or try again.")
+            raise RuntimeError(
+                f"API request timed out ({self.settings.llm_timeout}s). "
+                f"Endpoint: {base} — check network or increase LLM_TIMEOUT."
+            )
         except openai.APIConnectionError:
-            raise RuntimeError("Cannot connect to API. Check LLM_BASE_URL and your network.")
+            raise RuntimeError(
+                f"Cannot connect to API at {base}. "
+                "Check LLM_BASE_URL and your network."
+            )
 
         text_parts: list[str] = []
         tc_builders: dict[int, dict[str, Any]] = {}
