@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import threading
 import time
 from pathlib import Path
@@ -759,10 +760,34 @@ def render_schema_browser_page(app=None) -> None:
         app.load(fn=_on_load, outputs=[schema_dd, schema_html])
 
 
+def _session_choices_global() -> list[str]:
+    sessions = list_t2s_sessions()
+    return [f"{s['title']} ({s['updated_at'][:10]}) [{s['id']}]" for s in sessions]
+
+
 def render_history_page(app=None) -> None:
     """Full-page query history viewer."""
     logger = QueryLogger()
     fav_store = FavoritesStore()
+
+    _HIST_ROW_HL_JS = """
+    () => {
+      requestAnimationFrame(() => {
+        document.querySelectorAll('.st-hist-table table tbody tr').forEach(tr => {
+          if (tr.dataset._hlBound) return;
+          tr.dataset._hlBound = '1';
+          tr.style.cursor = 'pointer';
+          tr.addEventListener('click', () => {
+            const wasSelected = tr.classList.contains('st-row-selected');
+            document.querySelectorAll('.st-hist-table table tbody tr').forEach(r => {
+              r.classList.remove('st-row-selected');
+            });
+            if (!wasSelected) tr.classList.add('st-row-selected');
+          });
+        });
+      });
+    }
+    """
 
     with gr.Column(elem_classes=["st-history-page"]):
         lang_state = gr.State("en")
@@ -778,6 +803,21 @@ def render_history_page(app=None) -> None:
             )
 
         title_md = gr.Markdown("## Query History")
+
+        gr.Markdown("### 💬 Sessions")
+        _sess_choices = _session_choices_global()
+        session_dd = gr.Dropdown(
+            choices=_sess_choices,
+            value=None,
+            label="",
+            show_label=False,
+            elem_classes=["st-sidebar-control"],
+        )
+        with gr.Row(elem_classes=["st-hist-toolbar"]):
+            resume_btn = gr.Button("💬 Resume Chat", variant="primary", size="sm",
+                                    elem_classes=["st-hist-btn"])
+
+        gr.Markdown("### 📋 Query Log")
 
         with gr.Row(elem_classes=["st-hist-toolbar"]):
             back_btn = gr.Button("← Back", variant="secondary", size="sm",
@@ -802,22 +842,29 @@ def render_history_page(app=None) -> None:
             interactive=False,
             wrap=True,
             column_widths=["36px", "140px", "32%", "32px", "60px", "38%"],
+            elem_classes=["st-hist-table"],
         )
         chart_preview_html = gr.HTML("", visible=False, elem_classes=["st-hist-chart-preview"])
 
+        gr.HTML(
+            '<style>'
+            '.st-hist-table table tbody tr.st-row-selected,'
+            '.st-fav-table table tbody tr.st-row-selected'
+            ' { background: var(--color-accent-soft, #dbeafe) !important; }'
+            '@media (prefers-color-scheme: dark) {'
+            '  .st-hist-table table tbody tr.st-row-selected,'
+            '  .st-fav-table table tbody tr.st-row-selected'
+            '  { background: #1e3a5f !important; }'
+            '}'
+            '</style>'
+        )
+
     def _on_select(evt: gr.SelectData, current: list):
-        current = list(current)
         row = evt.index[0]
-        if row in current:
-            current.remove(row)
-        else:
-            current.append(row)
-        current.sort()
-        if current:
-            info = f"**{len(current)}** selected: #{', #'.join(str(r) for r in current)}"
-        else:
-            info = ""
-        return current, info
+        if current == [row]:
+            return [], ""
+        info = f"**Selected:** #{row}"
+        return [row], info
 
     def _refresh():
         return _history_rows(logger), [], ""
@@ -843,7 +890,7 @@ def render_history_page(app=None) -> None:
                 sql = rec.get("generated_sql", "")
                 question = rec.get("user_query", "")
                 if sql:
-                    name = question[:40] if question else sql[:40]
+                    name = question[:60] if question else sql[:40]
                     fav_store.save(name=name, sql=sql, question=question, ds_type="")
                     saved += 1
         if saved:
@@ -875,6 +922,7 @@ def render_history_page(app=None) -> None:
         if lang == "zh":
             return (lang,
                     gr.update(value="## 查询历史"),
+                    gr.update(value="💬 恢复会话"),
                     gr.update(value="← 返回"),
                     gr.update(value="↻ 刷新"),
                     gr.update(value="⭐ 收藏此查询"),
@@ -883,6 +931,7 @@ def render_history_page(app=None) -> None:
                     gr.update(value="清空全部"))
         return (lang,
                 gr.update(value="## Query History"),
+                gr.update(value="💬 Resume Chat"),
                 gr.update(value="← Back"),
                 gr.update(value="↻ Refresh"),
                 gr.update(value="⭐ Save to Favorites"),
@@ -893,15 +942,33 @@ def render_history_page(app=None) -> None:
     lang_dd.change(
         fn=_switch_lang,
         inputs=[lang_dd],
-        outputs=[lang_state, title_md, back_btn, refresh_btn, save_fav_btn, view_chart_btn, delete_btn, clear_btn],
+        outputs=[lang_state, title_md, resume_btn, back_btn, refresh_btn, save_fav_btn, view_chart_btn, delete_btn, clear_btn],
     )
     history_table.select(
         fn=_on_select,
         inputs=[selected_state],
         outputs=[selected_state, selected_info],
     )
-    back_btn.click(fn=None, js="() => { window.location.href = '/text2sql'; }")
+    def _resume_set(choice: str):
+        if not choice:
+            return
+        parts = choice.rsplit("[", 1)
+        if len(parts) < 2:
+            return
+        sid = parts[1].rstrip("]").strip()
+        if sid:
+            _shared_holder["_pending_resume"] = sid
+
+    _RESUME_OPEN_JS = "() => { window.open('/text2sql', '_blank'); }"
+    resume_btn.click(fn=_resume_set, inputs=[session_dd]).then(
+        fn=None, js=_RESUME_OPEN_JS,
+    )
+
+    def _refresh_sessions():
+        return gr.update(choices=_session_choices_global(), value=None)
+
     refresh_btn.click(fn=_refresh, outputs=[history_table, selected_state, selected_info])
+    refresh_btn.click(fn=_refresh_sessions, outputs=[session_dd])
     save_fav_btn.click(fn=_save_to_favorites, inputs=[selected_state, lang_state])
     view_chart_btn.click(fn=_view_chart, inputs=[selected_state, lang_state], outputs=[chart_preview_html])
     delete_btn.click(
@@ -913,14 +980,15 @@ def render_history_page(app=None) -> None:
 
     if app is not None:
         app.load(fn=_refresh, outputs=[history_table, selected_state, selected_info])
+        app.load(fn=None, js=_HIST_ROW_HL_JS)
+
+    history_table.change(fn=None, js=_HIST_ROW_HL_JS)
 
 
 def _fav_rows(store: FavoritesStore) -> list[list[str]]:
     rows = []
     for i, e in enumerate(store.list()):
         sql = e.get("sql", "")
-        if len(sql) > 120:
-            sql = sql[:120] + "..."
         rows.append([
             str(i),
             e.get("name", ""),
@@ -935,6 +1003,24 @@ def render_favorites_page(app=None) -> None:
     """Full-page SQL favorites viewer."""
     store = FavoritesStore()
 
+    _ROW_HL_JS = """
+    () => {
+      requestAnimationFrame(() => {
+        document.querySelectorAll('.st-fav-table table tbody tr').forEach(tr => {
+          if (tr.dataset._hlBound) return;
+          tr.dataset._hlBound = '1';
+          tr.style.cursor = 'pointer';
+          tr.addEventListener('click', () => {
+            tr.classList.toggle('st-row-selected');
+            document.querySelectorAll('.st-fav-table table tbody tr').forEach(r => {
+              if (r !== tr) r.classList.remove('st-row-selected');
+            });
+          });
+        });
+      });
+    }
+    """
+
     with gr.Column(elem_classes=["st-history-page"]):
         lang_state = gr.State("en")
         with gr.Row(elem_classes=["st-topbar-row"]):
@@ -948,19 +1034,33 @@ def render_favorites_page(app=None) -> None:
                 elem_classes=["st-lang-dd"],
             )
 
-        title_md = gr.Markdown("## ⭐ SQL Favorites")
+        title_md = gr.Markdown("#### ⭐ SQL Favorites")
 
         with gr.Row(elem_classes=["st-hist-toolbar"]):
             back_btn = gr.Button("← Back", variant="secondary", size="sm",
                                  elem_classes=["st-hist-btn"])
-            refresh_btn = gr.Button("↻ Refresh", variant="secondary", size="sm",
+            refresh_btn = gr.Button("↻", variant="secondary", size="sm",
                                     elem_classes=["st-hist-btn"])
-            delete_btn = gr.Button("✕ Delete Selected", variant="stop", size="sm",
+            fav_search = gr.Textbox(
+                placeholder=_t2s("en", "fav_search_placeholder"),
+                show_label=False, lines=1, scale=3,
+                elem_classes=["st-table-search"],
+            )
+            search_clear_btn = gr.Button("✕", size="sm", scale=0, min_width=32)
+            rename_input = gr.Textbox(
+                placeholder=_t2s("en", "fav_rename_placeholder"),
+                show_label=False, lines=1, scale=2,
+                interactive=True,
+            )
+            rename_save_btn = gr.Button("✏️", variant="primary", size="sm",
+                                        scale=0, min_width=36)
+            delete_btn = gr.Button("✕ Delete", variant="stop", size="sm",
                                    elem_classes=["st-hist-btn"])
             clear_btn = gr.Button("Clear All", variant="stop", size="sm",
                                   elem_classes=["st-hist-btn"])
 
         selected_state = gr.State([])
+        search_state = gr.State("")
         selected_info = gr.Markdown("", elem_classes=["st-hist-sel-info"])
 
         fav_table = gr.Dataframe(
@@ -968,76 +1068,139 @@ def render_favorites_page(app=None) -> None:
             value=_fav_rows(store),
             interactive=False,
             wrap=True,
-            column_widths=["36px", "20%", "60px", "45%", "140px"],
+            column_widths=["30px", "15%", "50px", "55%", "100px"],
+            elem_classes=["st-fav-table"],
         )
 
-    def _on_select(evt: gr.SelectData, current: list):
-        current = list(current)
+        gr.HTML(
+            '<style>'
+            '.st-fav-table table tbody tr.st-row-selected { background: var(--color-accent-soft, #dbeafe) !important; }'
+            '@media (prefers-color-scheme: dark) { .st-fav-table table tbody tr.st-row-selected { background: #1e3a5f !important; } }'
+            '</style>'
+        )
+
+    def _filtered_rows(query: str = "") -> list[list[str]]:
+        all_rows = _fav_rows(store)
+        if not query or not query.strip():
+            return all_rows
+        low = query.lower()
+        return [r for r in all_rows if low in r[1].lower() or low in r[3].lower()]
+
+    def _on_select(evt: gr.SelectData, current: list, search_q: str):
         row = evt.index[0]
-        if row in current:
-            current.remove(row)
-        else:
-            current.append(row)
-        current.sort()
-        if current:
-            info = f"**{len(current)}** selected: #{', #'.join(str(r) for r in current)}"
-        else:
-            info = ""
-        return current, info
+        current = [row]
+        visible = _filtered_rows(search_q)
+        name = ""
+        if 0 <= row < len(visible):
+            name = visible[row][1]
+        info = f"**Selected:** #{row}"
+        return current, info, gr.update(value=name)
 
-    def _refresh():
-        return _fav_rows(store), [], ""
+    def _refresh(search_q: str = ""):
+        return _filtered_rows(search_q), [], "", gr.update(value="")
 
-    def _delete_selected(selected: list):
+    def _clear_search():
+        return _fav_rows(store), gr.update(value=""), "", [], "", gr.update(value="")
+
+    def _on_search(query: str):
+        return _filtered_rows(query), query, [], "", gr.update(value="")
+
+    def _delete_selected(selected: list, search_q: str):
         if selected:
+            visible = _filtered_rows(search_q)
             items = store.list()
             for idx in sorted(selected, reverse=True):
-                if 0 <= idx < len(items):
-                    store.delete(items[idx]["id"])
-        return _fav_rows(store), [], ""
+                if 0 <= idx < len(visible):
+                    orig_idx = int(visible[idx][0])
+                    if 0 <= orig_idx < len(items):
+                        store.delete(items[orig_idx]["id"])
+        return _filtered_rows(search_q), [], "", gr.update(value="")
 
     def _clear():
         for item in store.list():
             store.delete(item["id"])
-        return [], [], ""
+        return [], [], "", gr.update(value="")
+
+    def _do_rename(new_name: str, selected: list, search_q: str, lang: str):
+        if not selected:
+            gr.Warning(_t2s(lang, "fav_rename_no_selection"))
+            return gr.update(), gr.update()
+        if not new_name.strip():
+            gr.Warning(_t2s(lang, "fav_rename_empty"))
+            return gr.update(), gr.update()
+        visible = _filtered_rows(search_q)
+        items = store.list()
+        idx = selected[0]
+        if 0 <= idx < len(visible):
+            orig_idx = int(visible[idx][0])
+            if 0 <= orig_idx < len(items):
+                store.rename(items[orig_idx]["id"], new_name.strip())
+                gr.Info(_t2s(lang, "fav_rename_ok").format(name=new_name.strip()))
+        return _filtered_rows(search_q), ""
 
     def _switch_lang(choice):
         lang = "zh" if choice == "中文" else "en"
         if lang == "zh":
             return (lang,
-                    gr.update(value="## ⭐ SQL 收藏夹"),
+                    gr.update(value="#### ⭐ SQL 收藏夹"),
+                    gr.update(placeholder=_t2s("zh", "fav_search_placeholder")),
                     gr.update(value="← 返回"),
-                    gr.update(value="↻ 刷新"),
-                    gr.update(value="✕ 删除所选"),
-                    gr.update(value="清空全部"))
+                    gr.update(value="↻"),
+                    gr.update(value="✕ 删除"),
+                    gr.update(value="清空全部"),
+                    gr.update(placeholder=_t2s("zh", "fav_rename_placeholder")),
+                    gr.update(value="✏️"))
         return (lang,
-                gr.update(value="## ⭐ SQL Favorites"),
+                gr.update(value="#### ⭐ SQL Favorites"),
+                gr.update(placeholder=_t2s("en", "fav_search_placeholder")),
                 gr.update(value="← Back"),
-                gr.update(value="↻ Refresh"),
-                gr.update(value="✕ Delete Selected"),
-                gr.update(value="Clear All"))
+                gr.update(value="↻"),
+                gr.update(value="✕ Delete"),
+                gr.update(value="Clear All"),
+                gr.update(placeholder=_t2s("en", "fav_rename_placeholder")),
+                gr.update(value="✏️"))
 
     lang_dd.change(
         fn=_switch_lang,
         inputs=[lang_dd],
-        outputs=[lang_state, title_md, back_btn, refresh_btn, delete_btn, clear_btn],
+        outputs=[lang_state, title_md, fav_search, back_btn, refresh_btn,
+                 delete_btn, clear_btn, rename_input, rename_save_btn],
     )
     fav_table.select(
         fn=_on_select,
-        inputs=[selected_state],
-        outputs=[selected_state, selected_info],
+        inputs=[selected_state, search_state],
+        outputs=[selected_state, selected_info, rename_input],
     )
-    back_btn.click(fn=None, js="() => { window.location.href = '/text2sql'; }")
-    refresh_btn.click(fn=_refresh, outputs=[fav_table, selected_state, selected_info])
+    fav_search.input(
+        fn=_on_search,
+        inputs=[fav_search],
+        outputs=[fav_table, search_state, selected_state, selected_info, rename_input],
+    )
+    back_btn.click(fn=None, js="() => { window.close(); }")
+    search_clear_btn.click(
+        fn=_clear_search,
+        outputs=[fav_table, fav_search, search_state, selected_state, selected_info, rename_input],
+    )
+    refresh_btn.click(fn=_refresh, inputs=[search_state],
+                      outputs=[fav_table, selected_state, selected_info, rename_input])
+    rename_save_btn.click(
+        fn=_do_rename,
+        inputs=[rename_input, selected_state, search_state, lang_state],
+        outputs=[fav_table, selected_info],
+    )
     delete_btn.click(
         fn=_delete_selected,
-        inputs=[selected_state],
-        outputs=[fav_table, selected_state, selected_info],
+        inputs=[selected_state, search_state],
+        outputs=[fav_table, selected_state, selected_info, rename_input],
     )
-    clear_btn.click(fn=_clear, outputs=[fav_table, selected_state, selected_info])
+    clear_btn.click(fn=_clear, outputs=[fav_table, selected_state, selected_info, rename_input])
 
     if app is not None:
-        app.load(fn=_refresh, outputs=[fav_table, selected_state, selected_info])
+        app.load(fn=_refresh, inputs=[search_state],
+                 outputs=[fav_table, selected_state, selected_info, rename_input])
+        app.load(fn=None, js=_ROW_HL_JS)
+
+    fav_table.change(fn=None, js=_ROW_HL_JS)
 
 
 def _placeholder(lang: str = "en") -> str:
@@ -1200,20 +1363,16 @@ def render_text2sql_page(app=None) -> None:
                                            elem_classes=["st-connect-btn"])
             history_link = gr.Button(t("history"), variant="secondary", size="sm",
                                      elem_classes=["st-connect-btn"])
-            history_link.click(fn=None, js="() => { window.location.href = '/history'; }")
+            history_link.click(fn=None, js="() => { window.open('/history', '_blank'); }")
 
-            fav_name_tb = gr.Textbox(
-                placeholder=t("fav_name_placeholder"),
-                show_label=False, lines=1,
-                elem_classes=["st-sidebar-control"],
-            )
+            fav_section_md = gr.Markdown(f"---\n**{t('fav_section_title')}**")
             save_fav_btn = gr.Button(
-                t("save_favorite"), variant="secondary", size="sm",
+                t("save_favorite"), variant="primary", size="sm",
                 elem_classes=["st-connect-btn"],
             )
             fav_link = gr.Button(t("favorites"), variant="secondary", size="sm",
                                  elem_classes=["st-connect-btn"])
-            fav_link.click(fn=None, js="() => { window.location.href = '/favorites'; }")
+            fav_link.click(fn=None, js="() => { window.open('/favorites', '_blank'); }")
 
             gr.Markdown(f"---\n**{t('template_label')}**")
             template_dd = gr.Dropdown(
@@ -1340,7 +1499,7 @@ def render_text2sql_page(app=None) -> None:
         t = lambda k: _t2s(lang, k)
         no = gr.update()
         def err(msg):
-            return (msg, no, no, no, no, no, no)
+            return (msg, no, no, no, no, no, no, no, no)
 
         ds_type = _DS_LABEL_TO_KEY.get(ds_label, "hive")
 
@@ -1451,6 +1610,9 @@ def render_text2sql_page(app=None) -> None:
                 with holder_lock:
                     if holder.get("agent") is None:
                         holder["agent"] = agent
+                    resume_msgs = holder.pop("_resume_agent_msgs", None)
+                    if resume_msgs:
+                        agent.messages = resume_msgs
                     holder["llm_status"] = f"✅ LLM {settings.model_name}"
             except Exception as e:
                 e_msg = str(e)
@@ -1471,6 +1633,19 @@ def render_text2sql_page(app=None) -> None:
         choices = _table_choices(store, lang)
         holder["last_confirmed"] = list(choices)
         no = gr.update()
+
+        chat_up = no
+        input_up = no
+        rsid = _shared_holder.pop("_pending_resume", "")
+        if rsid:
+            session = load_t2s_session(rsid)
+            if session is not None:
+                holder["session_id"] = rsid
+                holder["_resume_agent_msgs"] = session.agent_messages
+                chat_up = session.chat_messages
+                input_up = gr.update(value="", placeholder=t("conversation_active"))
+                status += f" · 💬 {t('session_resumed')}"
+
         return (
             status,
             gr.update(value=h) if h else no,
@@ -1479,6 +1654,8 @@ def render_text2sql_page(app=None) -> None:
             gr.update(choices=choices, value=choices),
             gr.update(open=True, label=t("select_tables").format(n=len(store))),
             choices,
+            chat_up,
+            input_up,
         )
 
     _CHART_KEY_TO_TYPE = {"chart_bar": "bar", "chart_line": "line", "chart_pie": "pie", "chart_scatter": "scatter"}
@@ -1551,8 +1728,19 @@ def render_text2sql_page(app=None) -> None:
             final.append({"role": "assistant", "content": f"⚠️ **Error**: {error_msg}"})
         final.append({"role": "assistant", "content": f"⏱️ {t('done')} {time.time() - start:.1f}s"})
 
-        chart_update = gr.update(visible=False)
         rt = agent.runtime if agent else None
+        if rt and rt.last_sql:
+            with holder_lock:
+                holder["_last_sql"] = rt.last_sql
+                last_q = ""
+                if agent and agent.messages:
+                    for m in reversed(agent.messages):
+                        if m.get("role") == "user":
+                            last_q = str(m.get("content", ""))[:60]
+                            break
+                holder["_last_question"] = last_q
+
+        chart_update = gr.update(visible=False)
         if rt and rt.last_result and rt.last_result.columns and rt.last_result.rows:
             if chart_pref == _t2s(lang, "chart_none"):
                 ct = None
@@ -1670,20 +1858,27 @@ def render_text2sql_page(app=None) -> None:
 
     # ── Favorites callback ──
 
-    def _save_favorite(name: str, lang: str):
+    def _save_favorite(lang: str):
         t = lambda k: _t2s(lang, k)
         agent = holder.get("agent")
         rt = agent.runtime if agent else None
-        if rt is None or not rt.last_sql:
+        sql = (rt.last_sql if rt else "") or holder.get("_last_sql", "")
+        if not sql:
             raise gr.Error(t("no_sql_to_save"))
+        last_question = holder.get("_last_question", "")
+        if not last_question and agent and agent.messages:
+            for m in reversed(agent.messages):
+                if m.get("role") == "user":
+                    last_question = str(m.get("content", ""))[:60]
+                    break
+        name = last_question or sql[:40]
         fav_store.save(
-            name=name.strip() or rt.last_sql[:40],
-            sql=rt.last_sql,
-            question="",
+            name=name,
+            sql=sql,
+            question=last_question,
             ds_type=holder.get("ds_type", ""),
         )
         gr.Info(t("favorite_saved"))
-        return gr.update(value="")
 
     def _apply_filter(selected: list, lang: str):
         t = lambda k: _t2s(lang, k)
@@ -1745,7 +1940,7 @@ def render_text2sql_page(app=None) -> None:
             gr.update(value=f"✕ {t('cancel')}"),
             gr.update(placeholder=t("search_placeholder")),
             gr.update(choices=choices, value=new_selected),
-            gr.update(placeholder=t("fav_name_placeholder")),
+            gr.update(value=f"---\n**{t('fav_section_title')}**"),
             gr.update(value=t("save_favorite")),
             gr.update(value=t("favorites")),
             gr.update(label=t("chart_type_label"), choices=_chart_choices(lang), value=t("chart_auto")),
@@ -1787,7 +1982,7 @@ def render_text2sql_page(app=None) -> None:
             cancel_filter_btn,
             table_search,
             table_filter,
-            fav_name_tb,
+            fav_section_md,
             save_fav_btn,
             fav_link,
             chart_type_radio,
@@ -1805,7 +2000,8 @@ def render_text2sql_page(app=None) -> None:
         inputs=[ds_type_dd, host_tb, port_tb, db_tb,
                 username_tb, password_tb, lang_state],
         outputs=[status_box, host_tb, port_tb, db_tb,
-                 table_filter, filter_accordion, confirmed_sel],
+                 table_filter, filter_accordion, confirmed_sel,
+                 chatbot, user_input],
     )
 
     def _show_stop():
@@ -1848,7 +2044,7 @@ def render_text2sql_page(app=None) -> None:
     reload_schema_btn.click(fn=_reload_schema, inputs=[lang_state],
                             outputs=[status_box, table_filter, filter_accordion, confirmed_sel])
 
-    save_fav_btn.click(fn=_save_favorite, inputs=[fav_name_tb, lang_state], outputs=[fav_name_tb])
+    save_fav_btn.click(fn=_save_favorite, inputs=[lang_state])
 
     def _on_template_select(choice: str, lang: str):
         if not choice:
@@ -1942,9 +2138,7 @@ def render_text2sql_page(app=None) -> None:
 
     # ── Session management ──
 
-    def _session_choices() -> list[str]:
-        sessions = list_t2s_sessions()
-        return [f"{s['title']} ({s['updated_at'][:10]}) [{s['id']}]" for s in sessions]
+    _session_choices = _session_choices_global
 
     def _refresh_sessions():
         return gr.update(choices=_session_choices(), value=None)
@@ -2084,12 +2278,54 @@ def render_text2sql_page(app=None) -> None:
     # ── Home button ──
     home_btn.click(fn=None, js="() => { window.location.href = '/'; }")
 
+    # ── Session resume from history page ──
+
     # ── Load JS from external files ──
     _res = Path(__file__).resolve().parent / "text2sql" / "resources"
     _sidebar_fix_js = (_res / "sidebar_fix.js").read_text(encoding="utf-8")
     _hint_delegate_js = (_res / "hint_delegate.js").read_text(encoding="utf-8")
     _tab_fill_js = (_res / "tab_fill.js").read_text(encoding="utf-8")
+    def _auto_resume_on_load(lang: str):
+        sid = _shared_holder.pop("_pending_resume", "")
+        if not sid:
+            return gr.update(), gr.update(), gr.update()
+        session = load_t2s_session(sid)
+        if session is None:
+            return gr.update(), gr.update(), gr.update()
+        t = lambda k: _t2s(lang, k)
+        holder["session_id"] = sid
+        holder["_resume_agent_msgs"] = session.agent_messages
+
+        def _msg_text(content):
+            if isinstance(content, str):
+                return content
+            if isinstance(content, list):
+                return " ".join(
+                    p.get("text", "") if isinstance(p, dict) else str(p)
+                    for p in content
+                )
+            return str(content)
+
+        for m in reversed(session.chat_messages):
+            if m.get("role") == "assistant":
+                text = _msg_text(m.get("content", ""))
+                sql_match = re.search(r"```sql\s*\n(.*?)```", text, re.S)
+                if sql_match:
+                    holder["_last_sql"] = sql_match.group(1).strip()
+                    break
+        for m in reversed(session.chat_messages):
+            if m.get("role") == "user":
+                holder["_last_question"] = _msg_text(m.get("content", ""))[:60]
+                break
+        return (
+            session.chat_messages,
+            gr.update(value="", placeholder=t("conversation_active")),
+            gr.update(value=f"💬 {t('session_resumed')} — {t('status_default')}"),
+        )
+
     if app is not None:
+        app.load(fn=_auto_resume_on_load, inputs=[lang_state],
+                 outputs=[chatbot, user_input, status_box])
         app.load(fn=None, js=_sidebar_fix_js)
         app.load(fn=None, js=_hint_delegate_js)
         app.load(fn=None, js=_tab_fill_js)
