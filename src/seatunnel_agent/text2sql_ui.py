@@ -765,6 +765,18 @@ def _session_choices_global() -> list[str]:
     return [f"{s['title']} ({s['updated_at'][:10]}) [{s['id']}]" for s in sessions]
 
 
+def _reexecute_sql(sql: str):
+    """Re-run a SQL string using the shared db_config. Returns QueryResult or None."""
+    db_config = _shared_holder.get("db_config")
+    if not db_config:
+        return None
+    try:
+        executor = create_executor(db_config)
+        return executor.run(sql, max_rows=1000)
+    except Exception:
+        return None
+
+
 def render_history_page(app=None) -> None:
     """Full-page query history viewer."""
     logger = QueryLogger()
@@ -828,6 +840,8 @@ def render_history_page(app=None) -> None:
                                      elem_classes=["st-hist-btn"])
             view_chart_btn = gr.Button("📊 View Chart", variant="secondary", size="sm",
                                        elem_classes=["st-hist-btn"])
+            export_csv_btn = gr.DownloadButton("📥 Export CSV", variant="secondary", size="sm",
+                                                elem_classes=["st-hist-btn"])
             delete_btn = gr.Button("✕ Delete Selected", variant="stop", size="sm",
                                    elem_classes=["st-hist-btn"])
             clear_btn = gr.Button("Clear All", variant="stop", size="sm",
@@ -902,18 +916,39 @@ def render_history_page(app=None) -> None:
             return gr.update(visible=False)
         records = list(reversed(logger.recent(100)))
         idx = selected[0]
-        if 0 <= idx < len(records):
-            rec = records[idx]
-            sql = rec.get("generated_sql", "")
-            sql_hash = hashlib.md5(sql.encode()).hexdigest()
-            b64 = _chart_cache.get(sql_hash)
-            if b64:
-                return gr.update(
-                    value=f'<div style="text-align:center;padding:12px;">'
-                          f'<img src="{b64}" style="max-width:100%;border-radius:8px;" />'
-                          f'</div>',
-                    visible=True,
-                )
+        if not (0 <= idx < len(records)):
+            return gr.update(visible=False)
+        rec = records[idx]
+        sql = rec.get("generated_sql", "")
+        if not sql:
+            gr.Warning(_t2s(lang, "hist_no_sql"))
+            return gr.update(visible=False)
+        sql_hash = hashlib.md5(sql.encode()).hexdigest()
+        b64 = _chart_cache.get(sql_hash)
+        if not b64:
+            if not _shared_holder.get("db_config"):
+                gr.Warning(_t2s(lang, "hist_no_connection"))
+                return gr.update(visible=False)
+            result = _reexecute_sql(sql)
+            if result is None:
+                gr.Warning(_t2s(lang, "hist_reexec_failed"))
+                return gr.update(visible=False)
+            from .text2sql.chart import detect_chart_type, build_chart, fig_to_base64
+            import matplotlib.pyplot as plt
+            ct = detect_chart_type(result.columns, result.rows)
+            if ct:
+                fig = build_chart(result.columns, result.rows, ct)
+                if fig:
+                    b64 = fig_to_base64(fig)
+                    _chart_cache[sql_hash] = b64
+                    plt.close(fig)
+        if b64:
+            return gr.update(
+                value=f'<div style="text-align:center;padding:12px;">'
+                      f'<img src="{b64}" style="max-width:100%;border-radius:8px;" />'
+                      f'</div>',
+                visible=True,
+            )
         gr.Warning(_t2s(lang, "hist_chart_unavailable"))
         return gr.update(visible=False)
 
@@ -927,6 +962,7 @@ def render_history_page(app=None) -> None:
                     gr.update(value="↻ 刷新"),
                     gr.update(value="⭐ 收藏此查询"),
                     gr.update(value="📊 查看图表"),
+                    gr.update(label=_t2s("zh", "hist_export_csv")),
                     gr.update(value="✕ 删除所选"),
                     gr.update(value="清空全部"))
         return (lang,
@@ -936,13 +972,43 @@ def render_history_page(app=None) -> None:
                 gr.update(value="↻ Refresh"),
                 gr.update(value="⭐ Save to Favorites"),
                 gr.update(value="📊 View Chart"),
+                gr.update(label=_t2s("en", "hist_export_csv")),
                 gr.update(value="✕ Delete Selected"),
                 gr.update(value="Clear All"))
+
+    def _export_csv(selected: list, lang: str):
+        if not selected:
+            raise gr.Error(_t2s(lang, "hist_no_selection"))
+        if not _shared_holder.get("db_config"):
+            raise gr.Error(_t2s(lang, "hist_no_connection"))
+        records = list(reversed(logger.recent(100)))
+        idx = selected[0]
+        if not (0 <= idx < len(records)):
+            raise gr.Error(_t2s(lang, "hist_no_selection"))
+        sql = records[idx].get("generated_sql", "")
+        if not sql:
+            raise gr.Error(_t2s(lang, "hist_no_sql"))
+        result = _reexecute_sql(sql)
+        if result is None:
+            raise gr.Error(_t2s(lang, "hist_reexec_failed"))
+        import tempfile
+        from .text2sql.exporter import export_csv
+        out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
+        out_dir.mkdir(exist_ok=True)
+        question = records[idx].get("user_query", "")
+        hint = question[:30].strip() if question else "query_result"
+        return export_csv(
+            columns=result.columns,
+            rows=result.rows,
+            path=str(out_dir),
+            name_hint=hint,
+        )
 
     lang_dd.change(
         fn=_switch_lang,
         inputs=[lang_dd],
-        outputs=[lang_state, title_md, resume_btn, back_btn, refresh_btn, save_fav_btn, view_chart_btn, delete_btn, clear_btn],
+        outputs=[lang_state, title_md, resume_btn, back_btn, refresh_btn,
+                 save_fav_btn, view_chart_btn, export_csv_btn, delete_btn, clear_btn],
     )
     history_table.select(
         fn=_on_select,
@@ -971,6 +1037,7 @@ def render_history_page(app=None) -> None:
     refresh_btn.click(fn=_refresh_sessions, outputs=[session_dd])
     save_fav_btn.click(fn=_save_to_favorites, inputs=[selected_state, lang_state])
     view_chart_btn.click(fn=_view_chart, inputs=[selected_state, lang_state], outputs=[chart_preview_html])
+    export_csv_btn.click(fn=_export_csv, inputs=[selected_state, lang_state], outputs=[export_csv_btn])
     delete_btn.click(
         fn=_delete_selected,
         inputs=[selected_state],
@@ -1052,7 +1119,7 @@ def render_favorites_page(app=None) -> None:
                 show_label=False, lines=1, scale=2,
                 interactive=True,
             )
-            rename_save_btn = gr.Button("✏️", variant="primary", size="sm",
+            rename_save_btn = gr.Button("✓", variant="primary", size="sm",
                                         scale=0, min_width=36)
             delete_btn = gr.Button("✕ Delete", variant="stop", size="sm",
                                    elem_classes=["st-hist-btn"])
@@ -1149,7 +1216,7 @@ def render_favorites_page(app=None) -> None:
                     gr.update(value="✕ 删除"),
                     gr.update(value="清空全部"),
                     gr.update(placeholder=_t2s("zh", "fav_rename_placeholder")),
-                    gr.update(value="✏️"))
+                    gr.update(value="✓"))
         return (lang,
                 gr.update(value="#### ⭐ SQL Favorites"),
                 gr.update(placeholder=_t2s("en", "fav_search_placeholder")),
@@ -1158,7 +1225,7 @@ def render_favorites_page(app=None) -> None:
                 gr.update(value="✕ Delete"),
                 gr.update(value="Clear All"),
                 gr.update(placeholder=_t2s("en", "fav_rename_placeholder")),
-                gr.update(value="✏️"))
+                gr.update(value="✓"))
 
     lang_dd.change(
         fn=_switch_lang,
@@ -1597,6 +1664,8 @@ def render_text2sql_page(app=None) -> None:
             holder["store"] = store
             holder["full_store"] = store
             _shared_holder["full_store"] = store
+            _shared_holder["db_config"] = db_config
+            _shared_holder["ds_type"] = ds_type
             holder["ds_type"] = ds_type
             holder["db_config"] = db_config
             holder["agent"] = None

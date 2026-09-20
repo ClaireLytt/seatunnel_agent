@@ -481,7 +481,8 @@ def classify_error(error_msg: str) -> tuple[str, str]:
     if _SYNTAX_ERR_RE.search(error_msg):
         return (
             "syntax_error",
-            "Check dialect-specific syntax: date functions, string quoting, JOIN clauses.",
+            "Check dialect-specific syntax: date functions, string quoting, JOIN clauses."
+            " In Hive, non-ASCII column aliases (Chinese etc.) MUST use backticks: AS `别名`.",
         )
     if _TYPE_ERR_RE.search(error_msg):
         return (
