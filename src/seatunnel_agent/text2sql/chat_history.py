@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time as _time
 import uuid
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields as dc_fields
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -68,11 +69,15 @@ _MAX_CHAT_MESSAGES = 500
 _sessions_cache: list[dict[str, str]] | None = None
 _sessions_cache_ts: float = 0.0
 _SESSIONS_CACHE_TTL = 5.0
+_sessions_cache_lock = threading.Lock()
+
+_T2S_FIELDS = {f.name for f in dc_fields(Text2SQLSession)}
 
 
 def _invalidate_sessions_cache() -> None:
     global _sessions_cache
-    _sessions_cache = None
+    with _sessions_cache_lock:
+        _sessions_cache = None
 
 
 def save_t2s_session(session: Text2SQLSession) -> None:
@@ -108,7 +113,8 @@ def load_t2s_session(session_id: str) -> Text2SQLSession | None:
         return None
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return Text2SQLSession(**data)
+        filtered = {k: v for k, v in data.items() if k in _T2S_FIELDS}
+        return Text2SQLSession(**filtered)
     except (json.JSONDecodeError, TypeError, KeyError):
         return None
 
@@ -125,8 +131,9 @@ def delete_t2s_session(session_id: str) -> None:
 
 def list_t2s_sessions() -> list[dict[str, str]]:
     global _sessions_cache, _sessions_cache_ts
-    if _sessions_cache is not None and (_time.time() - _sessions_cache_ts) < _SESSIONS_CACHE_TTL:
-        return _sessions_cache
+    with _sessions_cache_lock:
+        if _sessions_cache is not None and (_time.time() - _sessions_cache_ts) < _SESSIONS_CACHE_TTL:
+            return list(_sessions_cache)
     sessions: list[dict[str, str]] = []
     if not HISTORY_DIR.is_dir():
         return sessions
@@ -142,6 +149,7 @@ def list_t2s_sessions() -> list[dict[str, str]]:
         except (json.JSONDecodeError, KeyError):
             continue
     sessions.sort(key=lambda s: s["updated_at"], reverse=True)
-    _sessions_cache = sessions
-    _sessions_cache_ts = _time.time()
+    with _sessions_cache_lock:
+        _sessions_cache = sessions
+        _sessions_cache_ts = _time.time()
     return sessions

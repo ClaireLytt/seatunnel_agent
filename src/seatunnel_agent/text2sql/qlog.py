@@ -8,6 +8,8 @@ generated SQL, execution time, row count, status.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -112,5 +114,15 @@ class QueryLogger:
                 return 0
             remaining = [l for i, l in enumerate(lines) if i not in abs_indices]
             content = "\n".join(remaining) + ("\n" if remaining else "")
-            self.log_file.write_text(content, encoding="utf-8")
+            fd, tmp = tempfile.mkstemp(dir=str(self.log_file.parent), suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(content)
+                os.replace(tmp, str(self.log_file))
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
             return len(abs_indices)

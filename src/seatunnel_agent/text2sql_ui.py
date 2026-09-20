@@ -51,16 +51,19 @@ from .text2sql.schema import SchemaStore
 
 
 _shared_holder: dict[str, Any] = {}
+_shared_holder_lock = threading.Lock()
 _chart_cache: dict[str, str] = {}
+_chart_cache_lock = threading.Lock()
 _CHART_CACHE_MAX = 50
 
 
 def _chart_cache_put(key: str, value: str) -> None:
     """Store a chart in the cache, evicting oldest entries if full."""
-    if len(_chart_cache) >= _CHART_CACHE_MAX:
-        oldest = next(iter(_chart_cache))
-        del _chart_cache[oldest]
-    _chart_cache[key] = value
+    with _chart_cache_lock:
+        if len(_chart_cache) >= _CHART_CACHE_MAX:
+            oldest = next(iter(_chart_cache))
+            del _chart_cache[oldest]
+        _chart_cache[key] = value
 
 
 def _esc_html(s: str) -> str:
@@ -317,12 +320,12 @@ def build_diff_card(diff_data: dict, lang: str = "en") -> str:
     if cols_added:
         items.append(
             f'<div style="font-size:11px;padding:2px 0;color:#16a34a;">'
-            f'{t("diff_cols_added")}: {", ".join(cols_added)}</div>'
+            f'{t("diff_cols_added")}: {_esc_html(", ".join(cols_added))}</div>'
         )
     if cols_removed:
         items.append(
             f'<div style="font-size:11px;padding:2px 0;color:#dc2626;">'
-            f'{t("diff_cols_removed")}: {", ".join(cols_removed)}</div>'
+            f'{t("diff_cols_removed")}: {_esc_html(", ".join(cols_removed))}</div>'
         )
     old_c = diff_data.get("old_count", 0)
     new_c = diff_data.get("new_count", 0)
@@ -655,7 +658,9 @@ def _history_rows(logger: QueryLogger, n: int = 100) -> list[list[str]]:
         sql_full = rec.get("generated_sql") or ""
         if sql_full and status == "success":
             sql_hash = hashlib.md5(sql_full.encode()).hexdigest()
-            if sql_hash in _chart_cache:
+            with _chart_cache_lock:
+                has_chart = sql_hash in _chart_cache
+            if has_chart:
                 badge += "📊"
         elapsed = rec.get("exec_time_ms")
         elapsed_str = f"{elapsed}ms" if elapsed is not None else ""
@@ -682,7 +687,8 @@ def render_schema_browser_page(app=None) -> None:
     t = lambda k: _t2s(lang, k)
 
     def _table_choices_from_shared(lang):
-        store = _shared_holder.get("full_store")
+        with _shared_holder_lock:
+            store = _shared_holder.get("full_store")
         if not store:
             return []
         choices = []
@@ -698,7 +704,8 @@ def render_schema_browser_page(app=None) -> None:
         if not table_choice:
             return ""
         name = table_choice.split("(")[0].strip()
-        store = _shared_holder.get("full_store")
+        with _shared_holder_lock:
+            store = _shared_holder.get("full_store")
         if not store:
             return ""
         table = store.get(name)
@@ -744,7 +751,9 @@ def render_schema_browser_page(app=None) -> None:
             back_btn = gr.Button(t("schema_back"), variant="secondary", size="sm")
             refresh_btn = gr.Button(t("refresh"), variant="secondary", size="sm")
 
-        no_tables_msg = t("schema_no_tables") if not _shared_holder.get("full_store") else ""
+        with _shared_holder_lock:
+            _has_store = _shared_holder.get("full_store") is not None
+        no_tables_msg = t("schema_no_tables") if not _has_store else ""
         schema_dd = gr.Dropdown(
             choices=_table_choices_from_shared("en"),
             value=None, label="",
@@ -776,7 +785,8 @@ def _session_choices_global() -> list[str]:
 
 def _reexecute_sql(sql: str):
     """Re-run a SQL string using the shared db_config. Returns QueryResult or None."""
-    db_config = _shared_holder.get("db_config")
+    with _shared_holder_lock:
+        db_config = _shared_holder.get("db_config")
     if not db_config:
         return None
     try:
@@ -897,19 +907,20 @@ def render_history_page(app=None) -> None:
         if row < 0 or row >= len(records):
             return ""
         rec = records[row]
-        question = rec.get("user_query", "")
-        sql = rec.get("generated_sql", "")
-        ts = rec.get("timestamp", "").replace("T", " ")
+        question = _esc_html(rec.get("user_query", ""))
+        sql = _esc_html(rec.get("generated_sql", ""))
+        ts = _esc_html(rec.get("timestamp", "").replace("T", " "))
         status = rec.get("status", "")
         elapsed = rec.get("exec_time_ms")
         badge = "✅" if status == "success" else "❌" if status == "error" else "⏳"
         elapsed_str = f"{elapsed}ms" if elapsed is not None else ""
         html = (
-            f'<div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;'
-            f'margin:8px 0;background:#f9fafb;font-size:13px;">'
+            f'<div style="border:1px solid var(--border-color-primary, #e5e7eb);'
+            f'border-radius:8px;padding:12px;margin:8px 0;'
+            f'background:var(--background-fill-secondary, #f9fafb);font-size:13px;">'
             f'<div style="margin-bottom:8px;"><b>Row #{row}</b> &nbsp; {badge} &nbsp; '
-            f'<span style="color:#6b7280;">{ts}</span> &nbsp; '
-            f'<span style="color:#6b7280;">{elapsed_str}</span></div>'
+            f'<span style="color:var(--body-text-color-subdued, #6b7280);">{ts}</span> &nbsp; '
+            f'<span style="color:var(--body-text-color-subdued, #6b7280);">{elapsed_str}</span></div>'
             f'<div style="margin-bottom:6px;"><b>Question:</b> {question}</div>'
             f'<div><b>SQL:</b></div>'
             f'<pre style="background:#1e293b;color:#e2e8f0;padding:10px;border-radius:6px;'
@@ -998,7 +1009,7 @@ def render_history_page(app=None) -> None:
     def _export_all(lang: str):
         records = list(reversed(logger.recent(100)))
         if not records:
-            raise gr.Error(_t2s(lang, "hist_no_selection"))
+            raise gr.Error(_t2s(lang, "hist_empty") if "hist_empty" in HINTS_I18N.get(lang, {}) else "No history records")
         import tempfile
         from .text2sql.exporter import export_csv
         out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
@@ -1059,7 +1070,8 @@ def render_history_page(app=None) -> None:
             return
         sid = parts[1].rstrip("]").strip()
         if sid:
-            _shared_holder["_pending_resume"] = sid
+            with _shared_holder_lock:
+                _shared_holder["_pending_resume"] = sid
 
     _RESUME_OPEN_JS = "() => { window.open('/text2sql', '_blank'); }"
     resume_btn.click(fn=_resume_set, inputs=[session_dd]).then(
@@ -1699,6 +1711,7 @@ def render_text2sql_page(app=None) -> None:
             holder["settings"] = settings
             holder["store"] = store
             holder["full_store"] = store
+        with _shared_holder_lock:
             _shared_holder["full_store"] = store
             _shared_holder["db_config"] = db_config
             _shared_holder["ds_type"] = ds_type
@@ -1741,7 +1754,8 @@ def render_text2sql_page(app=None) -> None:
 
         chat_up = no
         input_up = no
-        rsid = _shared_holder.pop("_pending_resume", "")
+        with _shared_holder_lock:
+            rsid = _shared_holder.pop("_pending_resume", "")
         if rsid:
             session = load_t2s_session(rsid)
             if session is not None:
@@ -1888,7 +1902,8 @@ def render_text2sql_page(app=None) -> None:
 
     def _handle_stop(lang: str):
         t = lambda k: _t2s(lang, k)
-        c = holder.get("collector")
+        with holder_lock:
+            c = holder.get("collector")
         if c and not c.done:
             c.on_event("final_answer", {"text": t("stopped")})
         return gr.update(visible=True), gr.update(visible=False)
@@ -1911,7 +1926,8 @@ def render_text2sql_page(app=None) -> None:
 
     def _handle_export(lang: str):
         t = lambda k: _t2s(lang, k)
-        agent = holder.get("agent")
+        with holder_lock:
+            agent = holder.get("agent")
         rt = agent.runtime if agent else None
         if rt is None or rt.last_result is None:
             raise gr.Error(t("no_export"))
@@ -1928,12 +1944,17 @@ def render_text2sql_page(app=None) -> None:
         chart_b64 = None
         if rt.last_sql:
             sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
-            chart_b64 = _chart_cache.get(sql_hash)
+            with _chart_cache_lock:
+                chart_b64 = _chart_cache.get(sql_hash)
         if chart_b64:
             png_path = Path(csv_path).with_suffix(".png")
             header = "data:image/png;base64,"
             raw = chart_b64[len(header):] if chart_b64.startswith(header) else chart_b64
-            png_path.write_bytes(base64.b64decode(raw))
+            try:
+                png_path.write_bytes(base64.b64decode(raw))
+            except Exception:
+                chart_b64 = None
+        if chart_b64:
             zip_path = Path(csv_path).with_suffix(".zip")
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.write(csv_path, Path(csv_path).name)
@@ -1960,8 +1981,9 @@ def render_text2sql_page(app=None) -> None:
             with holder_lock:
                 holder["store"] = new_store
                 holder["full_store"] = new_store
-                _shared_holder["full_store"] = new_store
                 _sync_agent_store(new_store)
+            with _shared_holder_lock:
+                _shared_holder["full_store"] = new_store
             agent = holder.get("agent")
             if agent is not None:
                 agent.runtime.cache.invalidate()
@@ -1981,12 +2003,14 @@ def render_text2sql_page(app=None) -> None:
 
     def _save_favorite(lang: str):
         t = lambda k: _t2s(lang, k)
-        agent = holder.get("agent")
+        with holder_lock:
+            agent = holder.get("agent")
+            sql_fallback = holder.get("_last_sql", "")
+            last_question = holder.get("_last_question", "")
         rt = agent.runtime if agent else None
-        sql = (rt.last_sql if rt else "") or holder.get("_last_sql", "")
+        sql = (rt.last_sql if rt else "") or sql_fallback
         if not sql:
             raise gr.Error(t("no_sql_to_save"))
-        last_question = holder.get("_last_question", "")
         if not last_question and agent and agent.messages:
             for m in reversed(agent.messages):
                 if m.get("role") == "user":
@@ -2407,7 +2431,8 @@ def render_text2sql_page(app=None) -> None:
     _hint_delegate_js = (_res / "hint_delegate.js").read_text(encoding="utf-8")
     _tab_fill_js = (_res / "tab_fill.js").read_text(encoding="utf-8")
     def _auto_resume_on_load(lang: str):
-        sid = _shared_holder.pop("_pending_resume", "")
+        with _shared_holder_lock:
+            sid = _shared_holder.pop("_pending_resume", "")
         if not sid:
             return gr.update(), gr.update(), gr.update()
         session = load_t2s_session(sid)

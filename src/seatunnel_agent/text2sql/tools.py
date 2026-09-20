@@ -21,13 +21,25 @@ from .executor import (
     QueryResult,
     create_executor,
 )
-from .exporter import export_csv, export_excel, export_pdf
+from .exporter import export_csv
 from .matcher import match_tables
 from .partition import classify_table, has_partition_filter
 from .qlog import QueryLogger
 from .schema import SchemaStore
 from .quality import check_quality
 from .validator import ValidationResult, enforce_limit, validate_sql
+
+_DB_CONN_RE = re.compile(
+    r"(?:jdbc:[^\s]+|(?:\d{1,3}\.){3}\d{1,3}:\d+|"
+    r"password\s*=\s*\S+|user\s*=\s*\S+|"
+    r"host\s*=\s*\S+|port\s*=\s*\d+)",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_db_error(msg: str) -> str:
+    """Strip connection details (host, port, credentials) from DB errors."""
+    return _DB_CONN_RE.sub("[REDACTED]", msg)
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -242,12 +254,12 @@ def _tool_get_max_partition(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[st
     table = rt.store.get(name)
     if table is None:
         return {"error": f"Table '{name}' is not registered in the schema whitelist"}
-    if not table.is_partitioned:
+    if not table.is_partitioned or not table.partition_columns:
         return {"error": f"Table '{name}' is not partitioned"}
     try:
         value = rt.executor.get_max_partition(table.full_name)
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": _sanitize_db_error(str(exc))}
     return {
         "table": table.full_name,
         "partition_column": table.partition_columns[0].name,
@@ -368,7 +380,7 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
     except Exception as exc:
         err = _log_and_reject(
             rt, user_query, final_sql, validation.tables,
-            f"Execution failed: {exc}", status="error",
+            f"Execution failed: {_sanitize_db_error(str(exc))}", status="error",
         )
         suggestion = _suggest_column(str(exc), rt)
         if suggestion:
@@ -432,25 +444,6 @@ def _tool_explain_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
         "sql": sql,
         "plan": "\n".join(plan_lines),
         "columns": result.columns,
-    }
-
-
-def _tool_export_csv(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
-    if rt.last_result is None:
-        return {"error": "No query result to export. Run execute_sql first."}
-    try:
-        path = export_csv(
-            columns=rt.last_result.columns,
-            rows=rt.last_result.rows,
-            path=inp.get("path"),
-            name_hint=inp.get("name_hint", "query_result"),
-        )
-    except Exception as exc:
-        return {"error": f"CSV export failed: {exc}"}
-    return {
-        "success": True,
-        "csv_path": path,
-        "row_count": rt.last_result.row_count,
     }
 
 
@@ -544,45 +537,6 @@ def _tool_get_result_page(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
         "page_size": page_size,
         "total_pages": total_pages,
         "total_rows": total,
-    }
-
-
-def _tool_export_excel(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
-    if rt.last_result is None:
-        return {"error": "No query result to export. Run execute_sql first."}
-    try:
-        path = export_excel(
-            columns=rt.last_result.columns,
-            rows=rt.last_result.rows,
-            path=inp.get("path"),
-            name_hint=inp.get("name_hint", "query_result"),
-        )
-    except Exception as exc:
-        return {"error": f"Excel export failed: {exc}"}
-    return {
-        "success": True,
-        "excel_path": path,
-        "row_count": rt.last_result.row_count,
-    }
-
-
-def _tool_export_pdf(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
-    if rt.last_result is None:
-        return {"error": "No query result to export. Run execute_sql first."}
-    try:
-        path = export_pdf(
-            columns=rt.last_result.columns,
-            rows=rt.last_result.rows,
-            path=inp.get("path"),
-            name_hint=inp.get("name_hint", "query_result"),
-            title=inp.get("title", "Query Result Report"),
-        )
-    except Exception as exc:
-        return {"error": f"PDF export failed: {exc}"}
-    return {
-        "success": True,
-        "pdf_path": path,
-        "row_count": rt.last_result.row_count,
     }
 
 

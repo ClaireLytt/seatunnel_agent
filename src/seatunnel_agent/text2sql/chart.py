@@ -12,8 +12,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+_cjk_font_configured = False
+
+
 def _configure_cjk_font() -> None:
     """Set matplotlib to use a CJK-capable font for Chinese labels."""
+    global _cjk_font_configured
+    if _cjk_font_configured:
+        return
+    _cjk_font_configured = True
     import matplotlib.font_manager as fm
     from pathlib import Path
 
@@ -26,7 +33,17 @@ def _configure_cjk_font() -> None:
             return
 
     noto = Path.home() / ".seatunnel-agent" / "fonts" / "NotoSansSC-Regular.otf"
-    if not noto.is_file():
+    if noto.is_file():
+        fm.fontManager.addfont(str(noto))
+        plt.rcParams["font.sans-serif"] = ["Noto Sans SC"] + plt.rcParams.get(
+            "font.sans-serif", []
+        )
+        plt.rcParams["axes.unicode_minus"] = False
+        return
+
+    import threading
+
+    def _download_font():
         try:
             noto.parent.mkdir(parents=True, exist_ok=True)
             import urllib.request
@@ -34,17 +51,16 @@ def _configure_cjk_font() -> None:
             resp = urllib.request.urlopen(_url, timeout=15)  # noqa: S310
             with open(noto, "wb") as _f:
                 _f.write(resp.read())
+            if noto.is_file():
+                fm.fontManager.addfont(str(noto))
+                plt.rcParams["font.sans-serif"] = ["Noto Sans SC"] + plt.rcParams.get(
+                    "font.sans-serif", []
+                )
+                plt.rcParams["axes.unicode_minus"] = False
         except Exception:
-            return
-    if noto.is_file():
-        fm.fontManager.addfont(str(noto))
-        plt.rcParams["font.sans-serif"] = ["Noto Sans SC"] + plt.rcParams.get(
-            "font.sans-serif", []
-        )
-        plt.rcParams["axes.unicode_minus"] = False
+            pass
 
-
-_configure_cjk_font()
+    threading.Thread(target=_download_font, daemon=True).start()
 
 
 def fig_to_base64(fig: plt.Figure) -> str:
@@ -183,13 +199,17 @@ def build_chart(
     rows: list[tuple],
     chart_type: str,
 ) -> plt.Figure | None:
+    _configure_cjk_font()
     if not rows or not columns:
         return None
 
     ncols = len(columns)
     padded = [tuple(r) + (None,) * (ncols - len(r)) if len(r) < ncols else tuple(r) for r in rows]
     col_values = list(zip(*padded))
-    cat_cols, num_cols, date_cols = _classify_columns(col_values)
+
+    num_cols = [i for i, vals in enumerate(col_values) if _is_numeric(list(vals))]
+    date_cols = [i for i, vals in enumerate(col_values) if not _is_numeric(list(vals)) and _is_date(list(vals))]
+    cat_cols = [i for i in range(ncols) if i not in num_cols and i not in date_cols]
 
     if not num_cols:
         return None
@@ -224,6 +244,9 @@ def build_chart(
             ax.set_xlabel(columns[label_idx])
             plt.xticks(rotation=45, ha="right")
         elif chart_type == "pie":
+            if not any(v != 0 for v in values):
+                plt.close(fig)
+                return None
             ax.pie(values, labels=labels, autopct="%1.1f%%", startangle=90)
             ax.set_title(value_label)
         elif chart_type == "scatter":
