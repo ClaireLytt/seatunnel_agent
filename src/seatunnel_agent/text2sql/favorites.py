@@ -99,6 +99,16 @@ class FavoritesStore:
             self._write(data)
         return entry
 
+    def rename(self, fav_id: str, new_name: str) -> bool:
+        with self._lock:
+            data = self._read()
+            for entry in data:
+                if entry.get("id") == fav_id:
+                    entry["name"] = new_name
+                    self._write(data)
+                    return True
+            return False
+
     def delete(self, fav_id: str) -> bool:
         with self._lock:
             data = self._read()

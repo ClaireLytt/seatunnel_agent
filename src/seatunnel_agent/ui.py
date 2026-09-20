@@ -2017,36 +2017,51 @@ footer { display: none !important; }
 }
 
 
-/* ── History page ── */
+/* ── History / Favorites page ── */
 .st-history-page {
-    padding: 28px 40px !important;
-    max-width: 960px !important;
+    padding: 16px 28px !important;
+    max-width: 1400px !important;
     margin: 0 auto !important;
+    overflow: auto !important;
+    height: 100vh !important;
 }
 .st-history-page h2 {
-    font-size: 20px !important;
+    font-size: 16px !important;
     font-weight: 700 !important;
     color: #111827 !important;
-    margin-bottom: 4px !important;
+    margin: 0 0 4px !important;
 }
 .st-hist-toolbar {
-    gap: 8px !important;
-    margin-bottom: 12px !important;
+    gap: 6px !important;
+    margin-bottom: 6px !important;
 }
 .st-hist-btn {
     min-width: 0 !important;
-    padding: 5px 14px !important;
-    font-size: 12px !important;
+    padding: 3px 10px !important;
+    font-size: 11px !important;
     border-radius: 6px !important;
 }
 .st-hist-sel-info {
     min-height: 0 !important;
-    margin: 0 0 6px !important;
+    margin: 0 0 2px !important;
 }
 .st-hist-sel-info p {
-    font-size: 12px !important;
+    font-size: 11px !important;
     color: #6b7280 !important;
     margin: 0 !important;
+}
+.st-fav-search-row { margin-bottom: 4px !important; }
+.st-fav-rename-row { margin-bottom: 4px !important; }
+.st-fav-table,
+.st-hist-table {
+    overflow: visible !important;
+}
+.st-fav-table > div,
+.st-hist-table > div,
+.st-history-page .wrap,
+.st-history-page .table-wrap {
+    overflow: visible !important;
+    max-height: none !important;
 }
 .st-history-page table {
     font-size: 12px !important;
@@ -2060,15 +2075,18 @@ footer { display: none !important; }
     letter-spacing: 0.3px !important;
     color: #9ca3af !important;
     background: #f9fafb !important;
-    padding: 10px 12px !important;
+    padding: 6px 10px !important;
     white-space: nowrap !important;
     border-bottom: 2px solid #e5e7eb !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 2 !important;
 }
 .st-history-page td {
-    padding: 10px 12px !important;
+    padding: 6px 10px !important;
     border-bottom: 1px solid #f3f4f6 !important;
-    vertical-align: middle !important;
-    line-height: 1.5 !important;
+    vertical-align: top !important;
+    line-height: 1.4 !important;
     color: #374151 !important;
 }
 .st-history-page tr:hover td {
@@ -2084,10 +2102,15 @@ footer { display: none !important; }
     font-size: 11px !important;
     white-space: nowrap !important;
 }
-.st-history-page td:nth-child(6) {
+
+/* ── SQL column: show full text, wrap naturally ── */
+.st-fav-table td:nth-child(4),
+.st-hist-table td:nth-child(6) {
     font-family: 'SF Mono', 'Consolas', 'Monaco', monospace !important;
     font-size: 11px !important;
     color: #6b7280 !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
 }
 
 /* ── Responsive sizing ── */
