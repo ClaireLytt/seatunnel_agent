@@ -356,9 +356,18 @@ class EventCollector:
         self._new_event.wait(timeout)
         self._new_event.clear()
 
+    @property
+    def event_count(self) -> int:
+        with self.lock:
+            return len(self.events)
+
     def snapshot(self) -> list[dict[str, Any]]:
         with self.lock:
             return list(self.events)
+
+    def snapshot_since(self, start: int) -> list[dict[str, Any]]:
+        with self.lock:
+            return self.events[start:]
 
 
 # ------------------------------------------------------------------
@@ -811,7 +820,7 @@ def _build_hub_html() -> str:
 
 def create_ui() -> gr.Blocks:
     """Multipage app: hub landing page + one dedicated page per agent."""
-    from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page
+    from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
     from .data_comparison_ui import render_data_comparison_page
 
     _hide_sub_nav_js = """
@@ -863,10 +872,13 @@ def create_ui() -> gr.Blocks:
         render_text2sql_page(app)
 
     with app.route("Query History", "/history"):
-        render_history_page()
+        render_history_page(app)
 
     with app.route("SQL Favorites", "/favorites"):
-        render_favorites_page()
+        render_favorites_page(app)
+
+    with app.route("Schema Browser", "/schema-browser"):
+        render_schema_browser_page(app)
 
     with app.route("Data Comparison", "/datacompare"):
         render_data_comparison_page(app)
@@ -1556,6 +1568,17 @@ footer { display: none !important; }
     margin: 0 !important;
     flex: 1 1 0 !important;
     min-height: 0 !important;
+}
+.st-chart {
+    max-height: 280px !important;
+    overflow: hidden !important;
+    flex: none !important;
+}
+.st-chart img, .st-chart canvas, .st-chart svg {
+    max-height: 260px !important;
+    width: auto !important;
+    margin: 0 auto !important;
+    display: block !important;
 }
 .st-chatbot .message {
     font-size: 11px !important;

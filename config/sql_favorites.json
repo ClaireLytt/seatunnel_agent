@@ -1,0 +1,38 @@
+[
+  {
+    "id": "be5dc0be72a8",
+    "name": "SELECT city AS `城市`, SUM(amount) AS `销售总",
+    "sql": "SELECT city AS `城市`, SUM(amount) AS `销售总额`\nFROM cladata.sales_di\nWHERE pt = '20260914'\nGROUP BY city\nORDER BY `销售总额` DESC\nLIMIT 1000",
+    "question": "",
+    "ds_type": "hive",
+    "params": [],
+    "created_at": "2026-09-20T01:15:20+00:00"
+  },
+  {
+    "id": "5e8b6d0a3525",
+    "name": "SELECT s.id AS `学号`, st.name AS `姓名`, st",
+    "sql": "SELECT s.id AS `学号`, st.name AS `姓名`, st.major AS `专业`, ROUND(AVG(s.score), 2) AS `平均成绩`\nFROM cladata.score s\nJOIN cladata.student st ON s.id = st.id\nGROUP BY s.id, st.name, st.major\nORDER BY `平均成绩` DESC\nLIMIT 3",
+    "question": "",
+    "ds_type": "hive",
+    "params": [],
+    "created_at": "2026-09-20T02:28:12+00:00"
+  },
+  {
+    "id": "6b14ad5de854",
+    "name": "Top 3 students by score",
+    "sql": "SELECT s.id AS `学号`, st.name AS `姓名`, st.major AS `专业`, ROUND(AVG(s.score), 2) AS `平均成绩`\nFROM cladata.score s\nJOIN cladata.student st ON s.id = st.id\nGROUP BY s.id, st.name, st.major\nORDER BY `平均成绩` DESC\nLIMIT 3",
+    "question": "Top 3 students by score",
+    "ds_type": "",
+    "params": [],
+    "created_at": "2026-09-20T02:40:08+00:00"
+  },
+  {
+    "id": "e4628dd28603",
+    "name": "Top 3 students by score",
+    "sql": "SELECT s.id AS `学号`, st.name AS `姓名`, st.major AS `专业`, ROUND(AVG(s.score), 2) AS `平均成绩`\nFROM cladata.score s\nJOIN cladata.student st ON s.id = st.id\nGROUP BY s.id, st.name, st.major\nORDER BY `平均成绩` DESC\nLIMIT 3",
+    "question": "Top 3 students by score",
+    "ds_type": "",
+    "params": [],
+    "created_at": "2026-09-20T02:47:29+00:00"
+  }
+]

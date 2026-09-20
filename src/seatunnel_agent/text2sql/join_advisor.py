@@ -12,7 +12,7 @@ _NON_JOIN_COLUMNS = frozenset({
     "is_deleted", "sort_order",
 })
 
-_EXACT_MATCH_EXCLUDE = _NON_JOIN_COLUMNS | {"id"}
+_KEY_SUFFIXES = ("_id", "_key", "_code", "_no", "_num")
 
 _MAX_SUGGESTIONS = 10
 
@@ -51,15 +51,17 @@ def suggest_joins(table_name: str, store: SchemaStore) -> list[JoinSuggestion]:
         other_lower = other.name.lower()
 
         for col in target_cols & other_cols:
-            if col in _EXACT_MATCH_EXCLUDE:
+            if col in _NON_JOIN_COLUMNS or col == "id":
+                continue
+            if not col.endswith(_KEY_SUFFIXES):
                 continue
             key = (target.full_name, col, other.full_name, col)
             if key not in seen:
                 seen.add(key)
                 suggestions.append(JoinSuggestion(
-                    table_a=target.full_name,
+                    table_a=target.name,
                     column_a=col,
-                    table_b=other.full_name,
+                    table_b=other.name,
                     column_b=col,
                     confidence=0.9,
                     match_type="exact_name",
@@ -74,9 +76,9 @@ def suggest_joins(table_name: str, store: SchemaStore) -> list[JoinSuggestion]:
                 if key not in seen:
                     seen.add(key)
                     suggestions.append(JoinSuggestion(
-                        table_a=target.full_name,
+                        table_a=target.name,
                         column_a="id",
-                        table_b=other.full_name,
+                        table_b=other.name,
                         column_b=fk_col,
                         confidence=0.85,
                         match_type="fk_pattern",
@@ -91,9 +93,9 @@ def suggest_joins(table_name: str, store: SchemaStore) -> list[JoinSuggestion]:
                     if key not in seen:
                         seen.add(key)
                         suggestions.append(JoinSuggestion(
-                            table_a=target.full_name,
+                            table_a=target.name,
                             column_a=col,
-                            table_b=other.full_name,
+                            table_b=other.name,
                             column_b="id",
                             confidence=0.85,
                             match_type="fk_pattern",

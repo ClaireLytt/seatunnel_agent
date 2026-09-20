@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import base64
+import io
 import re
 from typing import Any
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+
+def fig_to_base64(fig: plt.Figure) -> str:
+    """Convert a matplotlib Figure to a base64-encoded PNG data URI."""
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=120)
+    buf.seek(0)
+    b64 = base64.b64encode(buf.read()).decode("ascii")
+    buf.close()
+    return f"data:image/png;base64,{b64}"
 
 _DATE_RE = re.compile(
     r"^\d{4}[-/]\d{1,2}[-/]\d{1,2}"
@@ -118,7 +130,7 @@ def build_chart(
     if not values:
         return None
 
-    fig, ax = plt.subplots(figsize=(7, 4))
+    fig, ax = plt.subplots(figsize=(5, 2.8), dpi=100)
     try:
         fig.patch.set_facecolor("#fafafa")
 
