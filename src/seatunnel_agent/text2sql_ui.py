@@ -399,8 +399,22 @@ def _md_table(columns: list[str], rows: list[list[Any]], max_rows: int = 20, lan
     return "\n".join(lines)
 
 
+def _file_to_gradio_url(filepath: str, component) -> str | None:
+    """Register a file in Gradio's cache and return a servable URL."""
+    if not filepath or not component:
+        return None
+    try:
+        from gradio import processing_utils
+        fd_dict = {"path": filepath, "meta": {"_type": "gradio.FileData"}}
+        result = processing_utils.move_files_to_cache(fd_dict, component, postprocess=True)
+        return result.get("url", "")
+    except Exception:
+        return None
+
+
 def _format_tool_result(name: str, raw: str, lang: str = "en",
-                        store: SchemaStore | None = None) -> str:
+                        store: SchemaStore | None = None,
+                        chatbot_component=None) -> str:
     from .text2sql.formatter import format_sql
     from .text2sql.lineage import trace_lineage
 
@@ -464,11 +478,6 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
             header = f"⚡ **{t('exec_success')}** — {t('cache_hit').format(rows=data.get('row_count', 0))}"
         else:
             header = f"⚡ **{t('exec_success')}**"
-        csv_path = data.get("csv_path", "")
-        dl_line = ""
-        if csv_path:
-            fname = csv_path.replace("\\", "/").rsplit("/", 1)[-1]
-            dl_line = f'\n\n📥 [**Download CSV**](/file={csv_path})'
         lines = [
             header,
             "",
@@ -477,9 +486,15 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
             f"**{data.get('row_count', 0)}** {t('rows')}"
             + (f" {t('truncated')}" if data.get("truncated") else ""),
             "",
-            _md_table(data.get("columns", []), data.get("preview_rows", []), lang=lang)
-            + dl_line,
+            _md_table(data.get("columns", []), data.get("preview_rows", []), lang=lang),
         ]
+        csv_path = data.get("csv_path", "")
+        if csv_path and chatbot_component:
+            _url = _file_to_gradio_url(csv_path, chatbot_component)
+            if _url:
+                _fname = csv_path.replace("\\", "/").rsplit("/", 1)[-1]
+                lines.append("")
+                lines.append(f'📥 <a href="{_url}" download="{_fname}">Download CSV</a>')
         if sql:
             try:
                 lineage = trace_lineage(sql, store)
@@ -540,10 +555,11 @@ class _IncrementalFormatter:
     discards the buffer; non-text events flush it as a permanent message.
     """
 
-    def __init__(self, start_time: float | None, lang: str, store: SchemaStore | None):
+    def __init__(self, start_time: float | None, lang: str, store: SchemaStore | None, chatbot_component=None):
         self._start = start_time
         self._lang = lang
         self._store = store
+        self._chatbot = chatbot_component
         self._t = lambda k: _t2s(lang, k)
         self._labels = TOOL_LABEL_I18N.get(lang, TOOL_LABEL_I18N["en"])
         self.messages: list[dict[str, str]] = []
@@ -610,7 +626,10 @@ class _IncrementalFormatter:
             elif tp == "tool_result":
                 self.messages.append({
                     "role": "assistant",
-                    "content": _format_tool_result(ev.get("name", "?"), ev.get("result", "{}"), self._lang, store=self._store),
+                    "content": _format_tool_result(
+                        ev.get("name", "?"), ev.get("result", "{}"),
+                        self._lang, store=self._store, chatbot_component=self._chatbot,
+                    ),
                 })
             elif tp == "usage":
                 inp_t, out_t = ev.get("input_tokens", 0), ev.get("output_tokens", 0)
@@ -1836,7 +1855,7 @@ def render_text2sql_page(app=None) -> None:
         thread = threading.Thread(target=_worker, daemon=True)
         thread.start()
         prev = 0
-        fmt = _IncrementalFormatter(start, lang, store_ref)
+        fmt = _IncrementalFormatter(start, lang, store_ref, chatbot_component=chatbot)
         user_msg = [{"role": "user", "content": msg}]
         while not collector.done:
             collector.wait_for_event(timeout=0.3)
@@ -1887,12 +1906,15 @@ def render_text2sql_page(app=None) -> None:
                     png_dl = ""
                     try:
                         import tempfile as _tmp
-                        _dl_dir = _tmp.gettempdir() + "/text2sql_exports"
+                        _dl_dir = Path(_tmp.gettempdir()) / "text2sql_exports"
+                        _dl_dir.mkdir(parents=True, exist_ok=True)
                         _ts = time.strftime("%Y%m%d_%H%M%S")
-                        _png_path = f"{_dl_dir}/chart_{_ts}.png"
+                        _png_path = str(_dl_dir / f"chart_{_ts}.png")
                         fig.savefig(_png_path, format="png", bbox_inches="tight", dpi=120)
-                        _png_name = _png_path.replace("\\", "/").rsplit("/", 1)[-1]
-                        png_dl = f'\n\n🖼️ [**Download Chart**](/file={_png_path})'
+                        _png_url = _file_to_gradio_url(_png_path, chatbot)
+                        if _png_url:
+                            _png_name = _png_path.replace("\\", "/").rsplit("/", 1)[-1]
+                            png_dl = f'\n\n🖼️ <a href="{_png_url}" download="{_png_name}">Download Chart</a>'
                     except Exception:
                         pass
                     final.append({"role": "assistant", "content": chart_html + png_dl})

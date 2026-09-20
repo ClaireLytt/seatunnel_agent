@@ -105,7 +105,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "Validate and execute a SELECT statement on the connected database. "
             "Rejects non-SELECT statements and non-whitelisted tables; enforces "
             "a row LIMIT. Returns columns, preview rows, row count and elapsed "
-            "time. The result is kept for export_csv."
+            "time. A CSV download link is shown automatically."
         ),
         "input_schema": {
             "type": "object",
