@@ -1349,6 +1349,11 @@ _CUSTOM_CSS = """
     flex-direction: column !important;
 }
 footer { display: none !important; }
+/* Suppress Gradio default block borders globally */
+.gradio-container .block {
+    border: none !important;
+    box-shadow: none !important;
+}
 
 /* ══════════════════════════════════════════════
    Sidebar — Claude-style push layout (Column)
@@ -1389,6 +1394,8 @@ footer { display: none !important; }
     min-width: 0 !important;
     box-sizing: border-box !important;
     flex-shrink: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 /* Re-allow horizontal layout for Row containers */
 .st-sidebar .row,
@@ -2111,6 +2118,23 @@ footer { display: none !important; }
     color: #6b7280 !important;
     white-space: pre-wrap !important;
     word-break: break-word !important;
+}
+
+/* ── Hide Gradio block borders inside history/favorites pages ── */
+.st-history-page > *,
+.st-history-page > * > *,
+.st-history-page [class*="block"],
+.st-history-page [class*="panel"],
+.st-history-page [class*="form"],
+.st-history-page [class*="padded"] {
+    border: none !important;
+    box-shadow: none !important;
+}
+.st-history-page h3 {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #374151 !important;
+    margin: 8px 0 4px !important;
 }
 
 /* ── Responsive sizing ── */

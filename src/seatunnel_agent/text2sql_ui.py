@@ -1432,7 +1432,7 @@ def render_text2sql_page(app=None) -> None:
                                      elem_classes=["st-connect-btn"])
             history_link.click(fn=None, js="() => { window.open('/history', '_blank'); }")
 
-            fav_section_md = gr.Markdown(f"---\n**{t('fav_section_title')}**")
+            fav_section_md = gr.Markdown(f"**{t('fav_section_title')}**")
             save_fav_btn = gr.Button(
                 t("save_favorite"), variant="primary", size="sm",
                 elem_classes=["st-connect-btn"],
@@ -1441,7 +1441,7 @@ def render_text2sql_page(app=None) -> None:
                                  elem_classes=["st-connect-btn"])
             fav_link.click(fn=None, js="() => { window.open('/favorites', '_blank'); }")
 
-            gr.Markdown(f"---\n**{t('template_label')}**")
+            gr.Markdown(f"**{t('template_label')}**")
             template_dd = gr.Dropdown(
                 choices=template_choices("en"),
                 value=None,
@@ -1451,7 +1451,7 @@ def render_text2sql_page(app=None) -> None:
             )
             template_preview = gr.Markdown("", elem_classes=["st-template-preview"])
 
-            gr.Markdown(f"---\n**{t('session_label')}**")
+            gr.Markdown(f"**{t('session_label')}**")
             session_dd = gr.Dropdown(
                 choices=[], value=None,
                 label=t("session_label"),
@@ -2009,7 +2009,7 @@ def render_text2sql_page(app=None) -> None:
             gr.update(value=f"✕ {t('cancel')}"),
             gr.update(placeholder=t("search_placeholder")),
             gr.update(choices=choices, value=new_selected),
-            gr.update(value=f"---\n**{t('fav_section_title')}**"),
+            gr.update(value=f"**{t('fav_section_title')}**"),
             gr.update(value=t("save_favorite")),
             gr.update(value=t("favorites")),
             gr.update(label=t("chart_type_label"), choices=_chart_choices(lang), value=t("chart_auto")),
