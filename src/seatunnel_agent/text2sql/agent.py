@@ -8,11 +8,28 @@ streaming machinery (EventCollector) works unchanged.
 
 from __future__ import annotations
 
+import io
 import json
+import sys
 from typing import Any, Callable
 
 from rich.console import Console
 from rich.panel import Panel
+
+_utf8_stdout: Any = None
+
+
+def _get_utf8_stdout() -> Any:
+    global _utf8_stdout
+    if _utf8_stdout is None:
+        if hasattr(sys.stdout, "buffer"):
+            _utf8_stdout = io.TextIOWrapper(
+                sys.stdout.buffer, encoding="utf-8", errors="replace",
+                line_buffering=True,
+            )
+        else:
+            _utf8_stdout = sys.stdout
+    return _utf8_stdout
 
 from ..config import Settings
 from ..context import truncate_messages
@@ -41,7 +58,7 @@ class Text2SQLAgent:
         self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
         self.runtime = Text2SQLRuntime(store=store, ds_type=ds_type, db_config=db_config)
         self.messages: list[dict[str, Any]] = []
-        self.console = Console()
+        self.console = Console(file=_get_utf8_stdout())
         self._on_event = on_event
         self._system_prompt = build_text2sql_prompt(store, dialect=ds_type)
 

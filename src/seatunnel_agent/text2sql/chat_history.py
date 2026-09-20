@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import time as _time
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
@@ -64,6 +65,16 @@ _MAX_AGENT_MESSAGES = 200
 _MAX_CHAT_MESSAGES = 500
 
 
+_sessions_cache: list[dict[str, str]] | None = None
+_sessions_cache_ts: float = 0.0
+_SESSIONS_CACHE_TTL = 5.0
+
+
+def _invalidate_sessions_cache() -> None:
+    global _sessions_cache
+    _sessions_cache = None
+
+
 def save_t2s_session(session: Text2SQLSession) -> None:
     HISTORY_DIR.mkdir(parents=True, exist_ok=True)
     session.updated_at = now_iso()
@@ -75,6 +86,7 @@ def save_t2s_session(session: Text2SQLSession) -> None:
         json.dumps(asdict(session), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    _invalidate_sessions_cache()
 
 
 def load_t2s_session(session_id: str) -> Text2SQLSession | None:
@@ -98,9 +110,13 @@ def delete_t2s_session(session_id: str) -> None:
         return
     if path.exists():
         path.unlink()
+    _invalidate_sessions_cache()
 
 
 def list_t2s_sessions() -> list[dict[str, str]]:
+    global _sessions_cache, _sessions_cache_ts
+    if _sessions_cache is not None and (_time.time() - _sessions_cache_ts) < _SESSIONS_CACHE_TTL:
+        return _sessions_cache
     sessions: list[dict[str, str]] = []
     if not HISTORY_DIR.is_dir():
         return sessions
@@ -116,4 +132,6 @@ def list_t2s_sessions() -> list[dict[str, str]]:
         except (json.JSONDecodeError, KeyError):
             continue
     sessions.sort(key=lambda s: s["updated_at"], reverse=True)
+    _sessions_cache = sessions
+    _sessions_cache_ts = _time.time()
     return sessions

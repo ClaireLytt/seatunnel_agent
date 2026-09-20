@@ -68,7 +68,16 @@ class QueryLogger:
         with self._lock:
             if not self.log_file.is_file():
                 return []
-            lines = self.log_file.read_text(encoding="utf-8").splitlines()
+            size = self.log_file.stat().st_size
+            if size == 0:
+                return []
+            chunk_size = min(size, n * 2048)
+            with open(self.log_file, "rb") as f:
+                f.seek(max(0, size - chunk_size))
+                data = f.read().decode("utf-8", errors="replace")
+        lines = data.splitlines()
+        if chunk_size < size:
+            lines = lines[1:]
         tail = lines[-n:] if len(lines) > n else lines
         records: list[dict[str, Any]] = []
         for line in tail:

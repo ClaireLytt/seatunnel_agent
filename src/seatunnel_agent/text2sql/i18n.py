@@ -186,6 +186,12 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "fav_has_params": "This query has parameters",
         "fav_apply_params": "Apply",
         "fav_param_label": "Parameter: {param}",
+        "hist_save_favorite": "⭐ Save to Favorites",
+        "hist_favorite_saved": "Saved to favorites: {name}",
+        "hist_no_selection": "Select a row first",
+        "hist_no_sql": "Selected row has no SQL",
+        "hist_view_chart": "📊 View Chart",
+        "hist_chart_unavailable": "Chart not available — re-run the query to regenerate",
     },
     "zh": {
         "sidebar_title": "### \U0001f5c4 数据源配置",
@@ -333,6 +339,12 @@ T2S_I18N: dict[str, dict[str, str]] = {
         "fav_has_params": "此查询包含参数",
         "fav_apply_params": "应用",
         "fav_param_label": "参数: {param}",
+        "hist_save_favorite": "⭐ 收藏此查询",
+        "hist_favorite_saved": "已收藏: {name}",
+        "hist_no_selection": "请先选择一行",
+        "hist_no_sql": "所选行无 SQL",
+        "hist_view_chart": "📊 查看图表",
+        "hist_chart_unavailable": "图表不可用 — 请重新执行查询以生成",
     },
 }
 

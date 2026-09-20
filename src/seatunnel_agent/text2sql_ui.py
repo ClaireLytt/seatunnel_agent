@@ -7,6 +7,7 @@ fully independent from the SeaTunnel page.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import time
@@ -49,6 +50,7 @@ from .text2sql.schema import SchemaStore
 
 
 _shared_holder: dict[str, Any] = {}
+_chart_cache: dict[str, str] = {}
 
 
 def _esc_html(s: str) -> str:
@@ -386,6 +388,9 @@ def _md_table(columns: list[str], rows: list[list[Any]], max_rows: int = 20, lan
 
 def _format_tool_result(name: str, raw: str, lang: str = "en",
                         store: SchemaStore | None = None) -> str:
+    from .text2sql.formatter import format_sql
+    from .text2sql.lineage import trace_lineage
+
     t = lambda k: _t2s(lang, k)
     labels = TOOL_LABEL_I18N.get(lang, TOOL_LABEL_I18N["en"])
     try:
@@ -441,7 +446,6 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
 
     if name == "execute_sql":
         sql = data.get("sql", "")
-        from .text2sql.formatter import format_sql
         display_sql = format_sql(sql) if sql else sql
         if data.get("cached"):
             header = f"⚡ **{t('exec_success')}** — {t('cache_hit').format(rows=data.get('row_count', 0))}"
@@ -458,7 +462,6 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
             _md_table(data.get("columns", []), data.get("preview_rows", []), lang=lang),
         ]
         if sql:
-            from .text2sql.lineage import trace_lineage
             try:
                 lineage = trace_lineage(sql, store)
                 card = build_lineage_card(lineage, lang)
@@ -509,82 +512,129 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
     return f"\U0001f4e6 **{label}**\n```json\n{json.dumps(data, indent=2, ensure_ascii=False)[:600]}\n```"
 
 
+class _IncrementalFormatter:
+    """Formats events incrementally — only processes new events on each call.
+
+    Delta handling: text_delta events accumulate in a buffer. A temporary
+    cursor message is appended at the END of each ``feed()`` call and removed
+    at the START of the next one.  The ``text`` event (complete text) simply
+    discards the buffer; non-text events flush it as a permanent message.
+    """
+
+    def __init__(self, start_time: float | None, lang: str, store: SchemaStore | None):
+        self._start = start_time
+        self._lang = lang
+        self._store = store
+        self._t = lambda k: _t2s(lang, k)
+        self._labels = TOOL_LABEL_I18N.get(lang, TOOL_LABEL_I18N["en"])
+        self.messages: list[dict[str, str]] = []
+        self._delta_buf: list[str] = []
+        self._has_cursor = False
+        self._delta_flush_idx: int | None = None
+
+    def _remove_cursor(self) -> None:
+        if self._has_cursor and self.messages:
+            self.messages.pop()
+            self._has_cursor = False
+
+    def feed(self, new_events: list[dict[str, Any]]) -> list[dict[str, str]]:
+        self._remove_cursor()
+
+        t = self._t
+        labels = self._labels
+        for ev in new_events:
+            tp = ev["type"]
+            if tp == "text_delta":
+                self._delta_buf.append(ev.get("text", ""))
+                continue
+            if tp == "text":
+                self._delta_buf.clear()
+            elif self._delta_buf:
+                acc = "".join(self._delta_buf)
+                if acc.strip():
+                    self._delta_flush_idx = len(self.messages)
+                    self.messages.append({"role": "assistant", "content": acc})
+                self._delta_buf.clear()
+
+            if tp == "step":
+                phase = ev.get("phase", "")
+                phase_label = {"thinking": t("generating"), "executing_tools": t("executing")}.get(phase, phase)
+                elapsed = f" ({time.time() - self._start:.1f}s)" if self._start else ""
+                self.messages.append({
+                    "role": "assistant",
+                    "content": f"⏳ **Step {ev.get('iteration', '?')}** — {phase_label}{elapsed}",
+                })
+            elif tp == "thinking":
+                text = ev.get("text", "")
+                if text:
+                    preview = text[:600] + ("..." if len(text) > 600 else "")
+                    self.messages.append({"role": "assistant", "content": f"\U0001f4ad **{t('thinking')}**\n\n{preview}"})
+            elif tp == "text":
+                full = ev.get("text")
+                if full:
+                    if self._delta_flush_idx is not None:
+                        self.messages[self._delta_flush_idx] = {"role": "assistant", "content": full}
+                    else:
+                        self.messages.append({"role": "assistant", "content": full})
+                self._delta_flush_idx = None
+            elif tp == "tool_call":
+                name = ev.get("name", "?")
+                emoji = TOOL_EMOJI.get(name, "\U0001f527")
+                label = labels.get(name, name)
+                inp = ev.get("input", {})
+                if name == "execute_sql" and inp.get("sql"):
+                    body = f"```sql\n{inp['sql']}\n```"
+                else:
+                    args = ", ".join(f"{k}={repr(v)[:100]}" for k, v in inp.items())
+                    body = f"`{args}`" if args else ""
+                self.messages.append({"role": "assistant", "content": f"{emoji} **{label}**\n{body}"})
+            elif tp == "tool_result":
+                self.messages.append({
+                    "role": "assistant",
+                    "content": _format_tool_result(ev.get("name", "?"), ev.get("result", "{}"), self._lang, store=self._store),
+                })
+            elif tp == "usage":
+                inp_t, out_t = ev.get("input_tokens", 0), ev.get("output_tokens", 0)
+                if inp_t or out_t:
+                    self.messages.append({"role": "assistant", "content": f"📊 Tokens: {inp_t:,} in / {out_t:,} out"})
+            elif tp == "sql_retry":
+                attempt = ev.get("attempt", 0)
+                max_r = ev.get("max", 3)
+                etype = ev.get("error_type", "execution_error")
+                etype_label = t(f"error_type_{etype}") if t(f"error_type_{etype}") != f"error_type_{etype}" else etype
+                hint = ev.get("retry_hint", "")
+                header = t("sql_retry").format(attempt=attempt, max=max_r)
+                detail = t("sql_retry_hint").format(error_type=etype_label, hint=hint)
+                failed_sql = ev.get("failed_sql", "")
+                parts = [f"{header}\n\n{detail}"]
+                if failed_sql:
+                    parts.append(f"\n```sql\n{failed_sql}\n```")
+                self.messages.append({"role": "assistant", "content": "".join(parts)})
+
+        if self._delta_buf:
+            acc = "".join(self._delta_buf)
+            if acc.strip():
+                self.messages.append({"role": "assistant", "content": acc + " ▌"})
+                self._has_cursor = True
+
+        return self.messages
+
+    def finalize(self) -> list[dict[str, str]]:
+        self._remove_cursor()
+        if self._delta_buf:
+            acc = "".join(self._delta_buf)
+            if acc.strip():
+                self.messages.append({"role": "assistant", "content": acc})
+        self._delta_buf.clear()
+        self._delta_flush_idx = None
+        return self.messages
+
+
 def _format_events(events: list[dict[str, Any]], start_time: float | None = None,
                     lang: str = "en", store: SchemaStore | None = None) -> list[dict[str, str]]:
-    t = lambda k: _t2s(lang, k)
-    labels = TOOL_LABEL_I18N.get(lang, TOOL_LABEL_I18N["en"])
-    messages: list[dict[str, str]] = []
-    delta_buffer: list[str] = []
-
-    def _flush() -> None:
-        if delta_buffer:
-            acc = "".join(delta_buffer)
-            if acc.strip():
-                messages.append({"role": "assistant", "content": acc + " ▌"})
-            delta_buffer.clear()
-
-    for ev in events:
-        tp = ev["type"]
-        if tp == "text_delta":
-            delta_buffer.append(ev.get("text", ""))
-            continue
-        if tp == "text":
-            delta_buffer.clear()
-        elif delta_buffer:
-            _flush()
-
-        if tp == "step":
-            phase = ev.get("phase", "")
-            phase_label = {"thinking": t("generating"), "executing_tools": t("executing")}.get(phase, phase)
-            elapsed = f" ({time.time() - start_time:.1f}s)" if start_time else ""
-            messages.append({
-                "role": "assistant",
-                "content": f"⏳ **Step {ev.get('iteration', '?')}** — {phase_label}{elapsed}",
-            })
-        elif tp == "thinking":
-            text = ev.get("text", "")
-            if text:
-                preview = text[:600] + ("..." if len(text) > 600 else "")
-                messages.append({"role": "assistant", "content": f"\U0001f4ad **{t('thinking')}**\n\n{preview}"})
-        elif tp == "text":
-            if ev.get("text"):
-                messages.append({"role": "assistant", "content": ev["text"]})
-        elif tp == "tool_call":
-            name = ev.get("name", "?")
-            emoji = TOOL_EMOJI.get(name, "\U0001f527")
-            label = labels.get(name, name)
-            inp = ev.get("input", {})
-            if name == "execute_sql" and inp.get("sql"):
-                body = f"```sql\n{inp['sql']}\n```"
-            else:
-                args = ", ".join(f"{k}={repr(v)[:100]}" for k, v in inp.items())
-                body = f"`{args}`" if args else ""
-            messages.append({"role": "assistant", "content": f"{emoji} **{label}**\n{body}"})
-        elif tp == "tool_result":
-            messages.append({
-                "role": "assistant",
-                "content": _format_tool_result(ev.get("name", "?"), ev.get("result", "{}"), lang, store=store),
-            })
-        elif tp == "usage":
-            inp_t, out_t = ev.get("input_tokens", 0), ev.get("output_tokens", 0)
-            if inp_t or out_t:
-                messages.append({"role": "assistant", "content": f"📊 Tokens: {inp_t:,} in / {out_t:,} out"})
-        elif tp == "sql_retry":
-            attempt = ev.get("attempt", 0)
-            max_r = ev.get("max", 3)
-            etype = ev.get("error_type", "execution_error")
-            etype_label = t(f"error_type_{etype}") if t(f"error_type_{etype}") != f"error_type_{etype}" else etype
-            hint = ev.get("retry_hint", "")
-            header = t("sql_retry").format(attempt=attempt, max=max_r)
-            detail = t("sql_retry_hint").format(error_type=etype_label, hint=hint)
-            failed_sql = ev.get("failed_sql", "")
-            parts = [f"{header}\n\n{detail}"]
-            if failed_sql:
-                parts.append(f"\n```sql\n{failed_sql}\n```")
-            messages.append({"role": "assistant", "content": "".join(parts)})
-
-    _flush()
-    return messages
+    fmt = _IncrementalFormatter(start_time, lang, store)
+    fmt.feed(events)
+    return fmt.finalize()
 
 
 def _history_rows(logger: QueryLogger, n: int = 100) -> list[list[str]]:
@@ -592,12 +642,17 @@ def _history_rows(logger: QueryLogger, n: int = 100) -> list[list[str]]:
     for i, rec in enumerate(reversed(logger.recent(n))):
         status = rec.get("status", "")
         badge = "✅" if status == "success" else "❌" if status == "error" else "⏳"
+        sql_full = rec.get("generated_sql") or ""
+        if sql_full and status == "success":
+            sql_hash = hashlib.md5(sql_full.encode()).hexdigest()
+            if sql_hash in _chart_cache:
+                badge += "📊"
         elapsed = rec.get("exec_time_ms")
         elapsed_str = f"{elapsed}ms" if elapsed is not None else ""
         ts = rec.get("timestamp", "")
         if "T" in ts:
             ts = ts.replace("T", " ")
-        sql = rec.get("generated_sql") or ""
+        sql = sql_full
         if len(sql) > 120:
             sql = sql[:120] + "..."
         rows.append([
@@ -704,9 +759,10 @@ def render_schema_browser_page(app=None) -> None:
         app.load(fn=_on_load, outputs=[schema_dd, schema_html])
 
 
-def render_history_page() -> None:
+def render_history_page(app=None) -> None:
     """Full-page query history viewer."""
     logger = QueryLogger()
+    fav_store = FavoritesStore()
 
     with gr.Column(elem_classes=["st-history-page"]):
         lang_state = gr.State("en")
@@ -728,6 +784,10 @@ def render_history_page() -> None:
                                  elem_classes=["st-hist-btn"])
             refresh_btn = gr.Button("↻ Refresh", variant="secondary", size="sm",
                                     elem_classes=["st-hist-btn"])
+            save_fav_btn = gr.Button("⭐ Save to Favorites", variant="secondary", size="sm",
+                                     elem_classes=["st-hist-btn"])
+            view_chart_btn = gr.Button("📊 View Chart", variant="secondary", size="sm",
+                                       elem_classes=["st-hist-btn"])
             delete_btn = gr.Button("✕ Delete Selected", variant="stop", size="sm",
                                    elem_classes=["st-hist-btn"])
             clear_btn = gr.Button("Clear All", variant="stop", size="sm",
@@ -743,6 +803,7 @@ def render_history_page() -> None:
             wrap=True,
             column_widths=["36px", "140px", "32%", "32px", "60px", "38%"],
         )
+        chart_preview_html = gr.HTML("", visible=False, elem_classes=["st-hist-chart-preview"])
 
     def _on_select(evt: gr.SelectData, current: list):
         current = list(current)
@@ -770,6 +831,45 @@ def render_history_page() -> None:
         logger.clear()
         return [], [], ""
 
+    def _save_to_favorites(selected: list, lang: str):
+        if not selected:
+            gr.Warning(_t2s(lang, "hist_no_selection"))
+            return
+        records = list(reversed(logger.recent(100)))
+        saved = 0
+        for idx in selected:
+            if 0 <= idx < len(records):
+                rec = records[idx]
+                sql = rec.get("generated_sql", "")
+                question = rec.get("user_query", "")
+                if sql:
+                    name = question[:40] if question else sql[:40]
+                    fav_store.save(name=name, sql=sql, question=question, ds_type="")
+                    saved += 1
+        if saved:
+            gr.Info(_t2s(lang, "hist_favorite_saved").format(name=f"{saved}"))
+
+    def _view_chart(selected: list, lang: str):
+        if not selected:
+            gr.Warning(_t2s(lang, "hist_no_selection"))
+            return gr.update(visible=False)
+        records = list(reversed(logger.recent(100)))
+        idx = selected[0]
+        if 0 <= idx < len(records):
+            rec = records[idx]
+            sql = rec.get("generated_sql", "")
+            sql_hash = hashlib.md5(sql.encode()).hexdigest()
+            b64 = _chart_cache.get(sql_hash)
+            if b64:
+                return gr.update(
+                    value=f'<div style="text-align:center;padding:12px;">'
+                          f'<img src="{b64}" style="max-width:100%;border-radius:8px;" />'
+                          f'</div>',
+                    visible=True,
+                )
+        gr.Warning(_t2s(lang, "hist_chart_unavailable"))
+        return gr.update(visible=False)
+
     def _switch_lang(choice):
         lang = "zh" if choice == "中文" else "en"
         if lang == "zh":
@@ -777,19 +877,23 @@ def render_history_page() -> None:
                     gr.update(value="## 查询历史"),
                     gr.update(value="← 返回"),
                     gr.update(value="↻ 刷新"),
+                    gr.update(value="⭐ 收藏此查询"),
+                    gr.update(value="📊 查看图表"),
                     gr.update(value="✕ 删除所选"),
                     gr.update(value="清空全部"))
         return (lang,
                 gr.update(value="## Query History"),
                 gr.update(value="← Back"),
                 gr.update(value="↻ Refresh"),
+                gr.update(value="⭐ Save to Favorites"),
+                gr.update(value="📊 View Chart"),
                 gr.update(value="✕ Delete Selected"),
                 gr.update(value="Clear All"))
 
     lang_dd.change(
         fn=_switch_lang,
         inputs=[lang_dd],
-        outputs=[lang_state, title_md, back_btn, refresh_btn, delete_btn, clear_btn],
+        outputs=[lang_state, title_md, back_btn, refresh_btn, save_fav_btn, view_chart_btn, delete_btn, clear_btn],
     )
     history_table.select(
         fn=_on_select,
@@ -798,12 +902,17 @@ def render_history_page() -> None:
     )
     back_btn.click(fn=None, js="() => { window.location.href = '/text2sql'; }")
     refresh_btn.click(fn=_refresh, outputs=[history_table, selected_state, selected_info])
+    save_fav_btn.click(fn=_save_to_favorites, inputs=[selected_state, lang_state])
+    view_chart_btn.click(fn=_view_chart, inputs=[selected_state, lang_state], outputs=[chart_preview_html])
     delete_btn.click(
         fn=_delete_selected,
         inputs=[selected_state],
         outputs=[history_table, selected_state, selected_info],
     )
     clear_btn.click(fn=_clear, outputs=[history_table, selected_state, selected_info])
+
+    if app is not None:
+        app.load(fn=_refresh, outputs=[history_table, selected_state, selected_info])
 
 
 def _fav_rows(store: FavoritesStore) -> list[list[str]]:
@@ -822,7 +931,7 @@ def _fav_rows(store: FavoritesStore) -> list[list[str]]:
     return rows
 
 
-def render_favorites_page() -> None:
+def render_favorites_page(app=None) -> None:
     """Full-page SQL favorites viewer."""
     store = FavoritesStore()
 
@@ -926,6 +1035,9 @@ def render_favorites_page() -> None:
         outputs=[fav_table, selected_state, selected_info],
     )
     clear_btn.click(fn=_clear, outputs=[fav_table, selected_state, selected_info])
+
+    if app is not None:
+        app.load(fn=_refresh, outputs=[fav_table, selected_state, selected_info])
 
 
 def _placeholder(lang: str = "en") -> str:
@@ -1319,27 +1431,7 @@ def render_text2sql_page(app=None) -> None:
         if len(store) == 0:
             return err(f"❌ {t('no_tables')}")
 
-        # ── Quick LLM API health check ──
-        llm_status = ""
-        try:
-            from dataclasses import replace as _dc_replace
-            from .llm import LLMClient
-            _ping_settings = _dc_replace(settings, llm_timeout=15)
-            _test_client = LLMClient(_ping_settings, tools=[])
-            _test_client.chat(
-                "Reply OK", [{"role": "user", "content": "ping"}]
-            )
-            llm_status = f"✅ LLM {settings.model_name}"
-        except Exception as e:
-            e_msg = str(e)
-            if "timeout" in e_msg.lower() or "timed out" in e_msg.lower():
-                llm_status = f"⚠️ LLM timeout ({settings.llm_base_url or 'default'})"
-            elif "auth" in e_msg.lower() or "api key" in e_msg.lower() or "401" in e_msg:
-                llm_status = f"❌ LLM auth fail — check API_KEY"
-            elif "connect" in e_msg.lower():
-                llm_status = f"❌ LLM unreachable ({settings.llm_base_url or 'default'})"
-            else:
-                llm_status = f"⚠️ LLM: {e_msg[:80]}"
+        llm_status = f"⏳ LLM {settings.model_name} (checking...)"
 
         with holder_lock:
             holder["settings"] = settings
@@ -1359,10 +1451,19 @@ def render_text2sql_page(app=None) -> None:
                 with holder_lock:
                     if holder.get("agent") is None:
                         holder["agent"] = agent
-            except Exception:
-                pass
+                    holder["llm_status"] = f"✅ LLM {settings.model_name}"
+            except Exception as e:
+                e_msg = str(e)
+                with holder_lock:
+                    if "timeout" in e_msg.lower() or "timed out" in e_msg.lower():
+                        holder["llm_status"] = f"⚠️ LLM timeout ({settings.llm_base_url or 'default'})"
+                    elif "auth" in e_msg.lower() or "api key" in e_msg.lower() or "401" in e_msg:
+                        holder["llm_status"] = f"❌ LLM auth fail — check API_KEY"
+                    elif "connect" in e_msg.lower():
+                        holder["llm_status"] = f"❌ LLM unreachable ({settings.llm_base_url or 'default'})"
+                    else:
+                        holder["llm_status"] = f"⚠️ LLM: {e_msg[:80]}"
 
-        import threading
         threading.Thread(target=_warmup, daemon=True).start()
 
         status = f"✅ {schema_source} · {db_note} · {llm_status}"
@@ -1391,7 +1492,7 @@ def render_text2sql_page(app=None) -> None:
 
     def _run_streaming(msg: str, history: list, lang: str, chart_pref: str = "Auto"):
         from .ui import EventCollector, _normalize_chat
-        from .text2sql.chart import detect_chart_type, build_chart
+        from .text2sql.chart import detect_chart_type, build_chart, fig_to_base64
         import matplotlib.pyplot as plt
 
         t = lambda k: _t2s(lang, k)
@@ -1432,14 +1533,20 @@ def render_text2sql_page(app=None) -> None:
         thread = threading.Thread(target=_worker, daemon=True)
         thread.start()
         prev = 0
+        fmt = _IncrementalFormatter(start, lang, store_ref)
+        user_msg = [{"role": "user", "content": msg}]
         while not collector.done:
             collector.wait_for_event(timeout=0.3)
-            events = collector.snapshot()
-            if len(events) > prev:
-                prev = len(events)
-                yield history + [{"role": "user", "content": msg}] + _format_events(events, start, lang, store=store_ref), gr.update()
+            count = collector.event_count
+            if count > prev:
+                new_events = collector.snapshot_since(prev)
+                prev = count
+                yield history + user_msg + fmt.feed(new_events), gr.update()
         thread.join(timeout=120)
-        final = _format_events(collector.snapshot(), start, lang, store=store_ref)
+        remaining = collector.snapshot_since(prev)
+        if remaining:
+            fmt.feed(remaining)
+        final = fmt.finalize()
         if error_msg:
             final.append({"role": "assistant", "content": f"⚠️ **Error**: {error_msg}"})
         final.append({"role": "assistant", "content": f"⏱️ {t('done')} {time.time() - start:.1f}s"})
@@ -1456,7 +1563,17 @@ def render_text2sql_page(app=None) -> None:
             if ct:
                 fig = build_chart(rt.last_result.columns, rt.last_result.rows, ct)
                 if fig:
-                    chart_update = gr.update(value=fig, visible=True)
+                    data_uri = fig_to_base64(fig)
+                    chart_html = (
+                        f'<div class="st-inline-chart">'
+                        f'<img src="{data_uri}" alt="chart" '
+                        f'style="max-width:100%;border-radius:8px;margin:8px 0;" />'
+                        f'</div>'
+                    )
+                    final.append({"role": "assistant", "content": chart_html})
+                    if rt.last_sql:
+                        sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
+                        _chart_cache[sql_hash] = data_uri
                     plt.close(fig)
 
         yield history + [{"role": "user", "content": msg}] + final, chart_update
@@ -1701,6 +1818,8 @@ def render_text2sql_page(app=None) -> None:
         except Exception:
             pass
         page_vis, page_info_val, page_num = _show_pagination(lang)
+        llm_st = holder.get("llm_status")
+        status_upd = gr.update(value=llm_st) if llm_st else gr.update()
         return (
             gr.update(value="", placeholder=t("conversation_active")),
             gr.update(visible=True),
@@ -1710,10 +1829,11 @@ def render_text2sql_page(app=None) -> None:
             page_num,
             gr.update(visible=False),
             gr.update(choices=_session_choices()),
+            status_upd,
         )
 
     submit_io = dict(fn=_handle_submit, inputs=[user_input, chatbot, lang_state, chart_type_radio], outputs=[chatbot, chart_plot])
-    _post_outputs = [user_input, send_btn, stop_btn, page_nav_row, page_info_md, page_state, page_table_md, session_dd]
+    _post_outputs = [user_input, send_btn, stop_btn, page_nav_row, page_info_md, page_state, page_table_md, session_dd, status_box]
     send_btn.click(fn=_show_stop, outputs=[send_btn, stop_btn]) \
         .then(**submit_io) \
         .then(fn=_post_submit, inputs=[lang_state, chatbot], outputs=_post_outputs)
