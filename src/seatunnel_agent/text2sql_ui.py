@@ -800,10 +800,17 @@ def render_history_page(app=None) -> None:
           tr.style.cursor = 'pointer';
           tr.addEventListener('click', () => {
             const wasSelected = tr.classList.contains('st-row-selected');
+            const idx = Array.from(tr.parentNode.children).indexOf(tr);
             document.querySelectorAll('.st-hist-table table tbody tr').forEach(r => {
               r.classList.remove('st-row-selected');
             });
-            if (!wasSelected) tr.classList.add('st-row-selected');
+            const tb = document.querySelector('#hist-sel-idx textarea, #hist-sel-idx input');
+            if (wasSelected) {
+              if (tb) { tb.value = '-1'; tb.dispatchEvent(new Event('input', {bubbles:true})); }
+            } else {
+              tr.classList.add('st-row-selected');
+              if (tb) { tb.value = String(idx); tb.dispatchEvent(new Event('input', {bubbles:true})); }
+            }
           });
         });
       });
@@ -847,9 +854,9 @@ def render_history_page(app=None) -> None:
                                     elem_classes=["st-hist-btn"])
             save_fav_btn = gr.Button("⭐ Save to Favorites", variant="secondary", size="sm",
                                      elem_classes=["st-hist-btn"])
-            view_chart_btn = gr.Button("📊 View Chart", variant="secondary", size="sm",
-                                       elem_classes=["st-hist-btn"])
-            export_csv_btn = gr.DownloadButton("📥 Export CSV", variant="secondary", size="sm",
+            export_sel_btn = gr.DownloadButton("📥 Export Selected", variant="secondary", size="sm",
+                                                elem_classes=["st-hist-btn"])
+            export_all_btn = gr.DownloadButton("📥 Export All CSV", variant="secondary", size="sm",
                                                 elem_classes=["st-hist-btn"])
             delete_btn = gr.Button("✕ Delete Selected", variant="stop", size="sm",
                                    elem_classes=["st-hist-btn"])
@@ -858,6 +865,7 @@ def render_history_page(app=None) -> None:
 
         selected_state = gr.State([])
         selected_info = gr.Markdown("", elem_classes=["st-hist-sel-info"])
+        selected_idx_box = gr.Textbox(visible=False, elem_id="hist-sel-idx")
 
         history_table = gr.Dataframe(
             headers=["#", "Time", "Question", "", "Elapsed", "SQL"],
@@ -867,7 +875,8 @@ def render_history_page(app=None) -> None:
             column_widths=["36px", "140px", "32%", "32px", "60px", "38%"],
             elem_classes=["st-hist-table"],
         )
-        chart_preview_html = gr.HTML("", visible=False, elem_classes=["st-hist-chart-preview"])
+
+        detail_html = gr.HTML("", elem_classes=["st-hist-detail"])
 
         gr.HTML(
             '<style>'
@@ -879,27 +888,77 @@ def render_history_page(app=None) -> None:
             '  .st-fav-table table tbody tr.st-row-selected'
             '  { background: #1e3a5f !important; }'
             '}'
+            '.st-hist-detail { padding: 0 8px; }'
             '</style>'
         )
+
+    def _build_detail(row: int) -> str:
+        records = list(reversed(logger.recent(100)))
+        if row < 0 or row >= len(records):
+            return ""
+        rec = records[row]
+        question = rec.get("user_query", "")
+        sql = rec.get("generated_sql", "")
+        ts = rec.get("timestamp", "").replace("T", " ")
+        status = rec.get("status", "")
+        elapsed = rec.get("exec_time_ms")
+        badge = "✅" if status == "success" else "❌" if status == "error" else "⏳"
+        elapsed_str = f"{elapsed}ms" if elapsed is not None else ""
+        html = (
+            f'<div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;'
+            f'margin:8px 0;background:#f9fafb;font-size:13px;">'
+            f'<div style="margin-bottom:8px;"><b>Row #{row}</b> &nbsp; {badge} &nbsp; '
+            f'<span style="color:#6b7280;">{ts}</span> &nbsp; '
+            f'<span style="color:#6b7280;">{elapsed_str}</span></div>'
+            f'<div style="margin-bottom:6px;"><b>Question:</b> {question}</div>'
+            f'<div><b>SQL:</b></div>'
+            f'<pre style="background:#1e293b;color:#e2e8f0;padding:10px;border-radius:6px;'
+            f'overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:12px;">'
+            f'{sql}</pre>'
+            f'</div>'
+        )
+        return html
 
     def _on_select(evt: gr.SelectData, current: list):
         row = evt.index[0]
         if current == [row]:
-            return [], ""
-        info = f"**Selected:** #{row}"
-        return [row], info
+            return [], "", ""
+        question = ""
+        records = list(reversed(logger.recent(100)))
+        if 0 <= row < len(records):
+            question = records[row].get("user_query", "")
+            if len(question) > 60:
+                question = question[:60] + "..."
+        info = f"**Selected row #{row}:** {question}"
+        return [row], info, _build_detail(row)
+
+    def _on_js_select(idx_str: str):
+        try:
+            row = int(idx_str)
+        except (ValueError, TypeError):
+            return [], "", ""
+        if row < 0:
+            return [], "", ""
+        records = list(reversed(logger.recent(100)))
+        question = ""
+        if 0 <= row < len(records):
+            question = records[row].get("user_query", "")
+            if len(question) > 60:
+                question = question[:60] + "..."
+        info = f"**Selected row #{row}:** {question}"
+        return [row], info, _build_detail(row)
 
     def _refresh():
-        return _history_rows(logger), [], ""
+        return _history_rows(logger), [], "", ""
 
     def _delete_selected(selected: list):
         if selected:
             logger.delete(selected)
-        return _history_rows(logger), [], ""
+        return _history_rows(logger), [], "", ""
 
     def _clear():
         logger.clear()
-        return [], [], ""
+        return [], [], "", ""
 
     def _save_to_favorites(selected: list, lang: str):
         if not selected:
@@ -919,49 +978,36 @@ def render_history_page(app=None) -> None:
         if saved:
             gr.Info(_t2s(lang, "hist_favorite_saved").format(name=f"{saved}"))
 
-    def _view_chart(selected: list, lang: str):
+    def _export_selected(selected: list, lang: str):
         if not selected:
-            gr.Warning(_t2s(lang, "hist_no_selection"))
-            return gr.update(visible=False)
+            raise gr.Error(_t2s(lang, "hist_no_selection"))
         records = list(reversed(logger.recent(100)))
-        idx = selected[0]
-        if not (0 <= idx < len(records)):
-            return gr.update(visible=False)
-        rec = records[idx]
-        sql = rec.get("generated_sql", "")
-        if not sql:
-            gr.Warning(_t2s(lang, "hist_no_sql"))
-            return gr.update(visible=False)
-        sql_hash = hashlib.md5(sql.encode()).hexdigest()
-        b64 = _chart_cache.get(sql_hash)
-        if not b64:
-            if not _shared_holder.get("db_config"):
-                gr.Warning(_t2s(lang, "hist_no_connection"))
-                return gr.update(visible=False)
-            result = _reexecute_sql(sql)
-            if result is None:
-                gr.Warning(_t2s(lang, "hist_reexec_failed"))
-                return gr.update(visible=False)
-            from .text2sql.chart import detect_chart_type, build_chart, fig_to_base64
-            import matplotlib.pyplot as plt
-            ct = detect_chart_type(result.columns, result.rows)
-            if ct:
-                fig = build_chart(result.columns, result.rows, ct)
-                if fig:
-                    try:
-                        b64 = fig_to_base64(fig)
-                        _chart_cache_put(sql_hash, b64)
-                    finally:
-                        plt.close(fig)
-        if b64:
-            return gr.update(
-                value=f'<div style="text-align:center;padding:12px;">'
-                      f'<img src="{b64}" style="max-width:100%;border-radius:8px;" />'
-                      f'</div>',
-                visible=True,
-            )
-        gr.Warning(_t2s(lang, "hist_chart_unavailable"))
-        return gr.update(visible=False)
+        records = [records[i] for i in selected if 0 <= i < len(records)]
+        if not records:
+            raise gr.Error(_t2s(lang, "hist_no_selection"))
+        import tempfile
+        from .text2sql.exporter import export_csv
+        out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
+        out_dir.mkdir(exist_ok=True)
+        columns = ["Time", "Question", "Status", "Elapsed(ms)", "SQL"]
+        rows = [(r.get("timestamp", ""), r.get("user_query", ""),
+                 r.get("status", ""), r.get("exec_time_ms", ""),
+                 r.get("generated_sql", "")) for r in records]
+        return export_csv(columns=columns, rows=rows, path=str(out_dir), name_hint="query_selected")
+
+    def _export_all(lang: str):
+        records = list(reversed(logger.recent(100)))
+        if not records:
+            raise gr.Error(_t2s(lang, "hist_no_selection"))
+        import tempfile
+        from .text2sql.exporter import export_csv
+        out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
+        out_dir.mkdir(exist_ok=True)
+        columns = ["Time", "Question", "Status", "Elapsed(ms)", "SQL"]
+        rows = [(r.get("timestamp", ""), r.get("user_query", ""),
+                 r.get("status", ""), r.get("exec_time_ms", ""),
+                 r.get("generated_sql", "")) for r in records]
+        return export_csv(columns=columns, rows=rows, path=str(out_dir), name_hint="query_history_all")
 
     def _switch_lang(choice):
         lang = "zh" if choice == "中文" else "en"
@@ -972,8 +1018,8 @@ def render_history_page(app=None) -> None:
                     gr.update(value="← 返回"),
                     gr.update(value="↻ 刷新"),
                     gr.update(value="⭐ 收藏此查询"),
-                    gr.update(value="📊 查看图表"),
-                    gr.update(label=_t2s("zh", "hist_export_csv")),
+                    gr.update(label="📥 导出所选"),
+                    gr.update(label="📥 导出全部"),
                     gr.update(value="✕ 删除所选"),
                     gr.update(value="清空全部"))
         return (lang,
@@ -982,49 +1028,28 @@ def render_history_page(app=None) -> None:
                 gr.update(value="← Back"),
                 gr.update(value="↻ Refresh"),
                 gr.update(value="⭐ Save to Favorites"),
-                gr.update(value="📊 View Chart"),
-                gr.update(label=_t2s("en", "hist_export_csv")),
+                gr.update(label="📥 Export Selected"),
+                gr.update(label="📥 Export All CSV"),
                 gr.update(value="✕ Delete Selected"),
                 gr.update(value="Clear All"))
 
-    def _export_csv(selected: list, lang: str):
-        if not selected:
-            raise gr.Error(_t2s(lang, "hist_no_selection"))
-        if not _shared_holder.get("db_config"):
-            raise gr.Error(_t2s(lang, "hist_no_connection"))
-        records = list(reversed(logger.recent(100)))
-        idx = selected[0]
-        if not (0 <= idx < len(records)):
-            raise gr.Error(_t2s(lang, "hist_no_selection"))
-        sql = records[idx].get("generated_sql", "")
-        if not sql:
-            raise gr.Error(_t2s(lang, "hist_no_sql"))
-        result = _reexecute_sql(sql)
-        if result is None:
-            raise gr.Error(_t2s(lang, "hist_reexec_failed"))
-        import tempfile
-        from .text2sql.exporter import export_csv
-        out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
-        out_dir.mkdir(exist_ok=True)
-        question = records[idx].get("user_query", "")
-        hint = question[:30].strip() if question else "query_result"
-        return export_csv(
-            columns=result.columns,
-            rows=result.rows,
-            path=str(out_dir),
-            name_hint=hint,
-        )
+    _sel_outputs = [selected_state, selected_info, detail_html]
+    _refresh_outputs = [history_table, selected_state, selected_info, detail_html]
 
     lang_dd.change(
         fn=_switch_lang,
         inputs=[lang_dd],
-        outputs=[lang_state, title_md, resume_btn, back_btn, refresh_btn,
-                 save_fav_btn, view_chart_btn, export_csv_btn, delete_btn, clear_btn],
+        outputs=[lang_state, title_md, resume_btn, back_btn, refresh_btn, save_fav_btn, export_sel_btn, export_all_btn, delete_btn, clear_btn],
     )
     history_table.select(
         fn=_on_select,
         inputs=[selected_state],
-        outputs=[selected_state, selected_info],
+        outputs=_sel_outputs,
+    )
+    selected_idx_box.input(
+        fn=_on_js_select,
+        inputs=[selected_idx_box],
+        outputs=_sel_outputs,
     )
     def _resume_set(choice: str):
         if not choice:
@@ -1044,20 +1069,20 @@ def render_history_page(app=None) -> None:
     def _refresh_sessions():
         return gr.update(choices=_session_choices_global(), value=None)
 
-    refresh_btn.click(fn=_refresh, outputs=[history_table, selected_state, selected_info])
+    refresh_btn.click(fn=_refresh, outputs=_refresh_outputs)
     refresh_btn.click(fn=_refresh_sessions, outputs=[session_dd])
     save_fav_btn.click(fn=_save_to_favorites, inputs=[selected_state, lang_state])
-    view_chart_btn.click(fn=_view_chart, inputs=[selected_state, lang_state], outputs=[chart_preview_html])
-    export_csv_btn.click(fn=_export_csv, inputs=[selected_state, lang_state], outputs=[export_csv_btn])
+    export_sel_btn.click(fn=_export_selected, inputs=[selected_state, lang_state], outputs=[export_sel_btn])
+    export_all_btn.click(fn=_export_all, inputs=[lang_state], outputs=[export_all_btn])
     delete_btn.click(
         fn=_delete_selected,
         inputs=[selected_state],
-        outputs=[history_table, selected_state, selected_info],
+        outputs=_refresh_outputs,
     )
-    clear_btn.click(fn=_clear, outputs=[history_table, selected_state, selected_info])
+    clear_btn.click(fn=_clear, outputs=_refresh_outputs)
 
     if app is not None:
-        app.load(fn=_refresh, outputs=[history_table, selected_state, selected_info])
+        app.load(fn=_refresh, outputs=_refresh_outputs)
         app.load(fn=None, js=_HIST_ROW_HL_JS)
 
     history_table.change(fn=None, js=_HIST_ROW_HL_JS)
@@ -1890,16 +1915,31 @@ def render_text2sql_page(app=None) -> None:
         rt = agent.runtime if agent else None
         if rt is None or rt.last_result is None:
             raise gr.Error(t("no_export"))
-        import tempfile
+        import tempfile, zipfile, base64
         from .text2sql.exporter import export_csv
         out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
         out_dir.mkdir(exist_ok=True)
-        return export_csv(
+        csv_path = export_csv(
             columns=rt.last_result.columns,
             rows=rt.last_result.rows,
             path=str(out_dir),
             name_hint="query_result",
         )
+        chart_b64 = None
+        if rt.last_sql:
+            sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
+            chart_b64 = _chart_cache.get(sql_hash)
+        if chart_b64:
+            png_path = Path(csv_path).with_suffix(".png")
+            header = "data:image/png;base64,"
+            raw = chart_b64[len(header):] if chart_b64.startswith(header) else chart_b64
+            png_path.write_bytes(base64.b64decode(raw))
+            zip_path = Path(csv_path).with_suffix(".zip")
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                zf.write(csv_path, Path(csv_path).name)
+                zf.write(png_path, png_path.name)
+            return str(zip_path)
+        return csv_path
 
     def _reload_schema(lang: str):
         t = lambda k: _t2s(lang, k)

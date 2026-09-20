@@ -1355,6 +1355,23 @@ footer { display: none !important; }
     box-shadow: none !important;
 }
 
+/* Standalone pages (history, favorites, schema) need scrolling.
+   Only the outermost .gradio-container scrolls; everything inside is visible. */
+body:has(.st-history-page) {
+    overflow: hidden !important;
+}
+body:has(.st-history-page) .gradio-container {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    height: 100vh !important;
+}
+body:has(.st-history-page) .gradio-container > .main,
+body:has(.st-history-page) .gradio-container > .main > .wrap {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+}
+
 /* ══════════════════════════════════════════════
    Sidebar — Claude-style push layout (Column)
    ══════════════════════════════════════════════ */
@@ -2029,8 +2046,8 @@ footer { display: none !important; }
     padding: 16px 28px !important;
     max-width: 1400px !important;
     margin: 0 auto !important;
-    overflow: auto !important;
-    height: 100vh !important;
+    overflow: visible !important;
+    height: auto !important;
 }
 .st-history-page h2 {
     font-size: 16px !important;
