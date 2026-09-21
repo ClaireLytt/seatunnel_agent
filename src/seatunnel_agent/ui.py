@@ -356,9 +356,18 @@ class EventCollector:
         self._new_event.wait(timeout)
         self._new_event.clear()
 
+    @property
+    def event_count(self) -> int:
+        with self.lock:
+            return len(self.events)
+
     def snapshot(self) -> list[dict[str, Any]]:
         with self.lock:
             return list(self.events)
+
+    def snapshot_since(self, start: int) -> list[dict[str, Any]]:
+        with self.lock:
+            return self.events[start:]
 
 
 # ------------------------------------------------------------------
@@ -817,7 +826,7 @@ def _build_hub_html() -> str:
 
 def create_ui() -> gr.Blocks:
     """Multipage app: hub landing page + one dedicated page per agent."""
-    from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page
+    from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
     from .data_comparison_ui import render_data_comparison_page
     from .sql_review_ui import render_sql_review_page
 
@@ -835,6 +844,23 @@ def create_ui() -> gr.Blocks:
         }
         hide();
         new MutationObserver(hide).observe(document.body, {childList: true, subtree: true});
+
+        if (!document._tabFillReady) {
+            document._tabFillReady = true;
+            document.addEventListener('keydown', function(e) {
+                if (e.key !== 'Tab') return;
+                var el = e.target;
+                if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return;
+                if (el.value.trim() !== '' || !el.placeholder) return;
+                e.preventDefault();
+                var proto = el.tagName === 'TEXTAREA'
+                    ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+                var setter = Object.getOwnPropertyDescriptor(proto, 'value').set;
+                setter.call(el, el.placeholder);
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+                el.dispatchEvent(new Event('change', {bubbles: true}));
+            });
+        }
     }
     """
 
@@ -853,10 +879,13 @@ def create_ui() -> gr.Blocks:
         render_text2sql_page(app)
 
     with app.route("Query History", "/history"):
-        render_history_page()
+        render_history_page(app)
 
     with app.route("SQL Favorites", "/favorites"):
-        render_favorites_page()
+        render_favorites_page(app)
+
+    with app.route("Schema Browser", "/schema-browser"):
+        render_schema_browser_page(app)
 
     with app.route("Data Comparison", "/datacompare"):
         render_data_comparison_page(app)
@@ -880,6 +909,20 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         try:
             settings_holder["current"] = load_settings()
             s = settings_holder["current"]
+
+            def _warmup_llm():
+                """Pre-import LLM SDK so the first chat doesn't pay the cost."""
+                try:
+                    if s.llm_provider == "anthropic":
+                        import anthropic
+                    else:
+                        import openai
+                except Exception:
+                    pass
+
+            import threading
+            threading.Thread(target=_warmup_llm, daemon=True).start()
+
             if lang == "zh":
                 return f"✅ 连接成功，模型: {s.model_name}"
             return f"✅ Connected, Model: {s.model_name}"
@@ -1068,7 +1111,7 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 layout="panel",
                 buttons=["copy"],
                 elem_classes=["st-chatbot"],
-                height="calc(100vh - 130px)",
+                height=None,
             )
 
             with gr.Row(elem_classes=["st-input-row"]):
@@ -1316,6 +1359,28 @@ _CUSTOM_CSS = """
     flex-direction: column !important;
 }
 footer { display: none !important; }
+/* Suppress Gradio default block borders globally */
+.gradio-container .block {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Standalone pages (history, favorites, schema) need scrolling.
+   Only the outermost .gradio-container scrolls; everything inside is visible. */
+body:has(.st-history-page) {
+    overflow: hidden !important;
+}
+body:has(.st-history-page) .gradio-container {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    height: 100vh !important;
+}
+body:has(.st-history-page) .gradio-container > .main,
+body:has(.st-history-page) .gradio-container > .main > .wrap {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+}
 
 /* ══════════════════════════════════════════════
    Sidebar — Claude-style push layout (Column)
@@ -1349,23 +1414,15 @@ footer { display: none !important; }
     flex-direction: column !important;
     flex-wrap: nowrap !important;
 }
-/* Force ALL divs at any depth to column — catches any Gradio nesting */
-.st-sidebar div {
-    display: flex !important;
-    flex-direction: column !important;
-    flex-wrap: nowrap !important;
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-    box-sizing: border-box !important;
-}
-/* Direct children: full-width block */
+/* Direct children: full-width column layout */
 .st-sidebar > * {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
     box-sizing: border-box !important;
     flex-shrink: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 /* Re-allow horizontal layout for Row containers */
 .st-sidebar .row,
@@ -1376,21 +1433,6 @@ footer { display: none !important; }
 .st-sidebar .st-rename-row {
     flex-direction: row !important;
     flex-wrap: nowrap !important;
-}
-/* Leaf elements: revert to normal display (exclude accordion toggle) */
-.st-sidebar button:not([class*="label-wrap"]),
-.st-sidebar input,
-.st-sidebar textarea,
-.st-sidebar select,
-.st-sidebar label:not(.st-table-filter label),
-.st-sidebar span:not(.st-filter-accordion span),
-.st-sidebar svg,
-.st-sidebar p,
-.st-sidebar h1, .st-sidebar h2, .st-sidebar h3 {
-    display: revert !important;
-    flex-direction: initial !important;
-    gap: initial !important;
-    min-width: revert !important;
 }
 /* CheckboxGroup labels: horizontal for checkbox + text */
 .st-sidebar .st-table-filter label {
@@ -1428,15 +1470,16 @@ footer { display: none !important; }
     flex-shrink: 0 !important;
 }
 .st-sidebar-open-btn:hover { background: #f3f4f6 !important; }
-/* Right main content: fill remaining width */
+/* Right main content: fill remaining width, flex column to pin input at bottom */
 .st-main {
     flex: 1 1 0 !important;
     min-width: 0 !important;
     height: 100% !important;
     max-height: 100% !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
+    overflow: hidden !important;
     padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
 }
 /* Hide Gradio's native sidebar if accidentally present */
 .gradio-sidebar { display: none !important; }
@@ -1557,6 +1600,19 @@ footer { display: none !important; }
     overflow-y: auto !important;
     padding: 0 !important;
     margin: 0 !important;
+    flex: 1 1 0 !important;
+    min-height: 0 !important;
+}
+.st-chart {
+    max-height: 280px !important;
+    overflow: hidden !important;
+    flex: none !important;
+}
+.st-chart img, .st-chart canvas, .st-chart svg {
+    max-height: 260px !important;
+    width: auto !important;
+    margin: 0 auto !important;
+    display: block !important;
 }
 .st-chatbot .message {
     font-size: 11px !important;
@@ -1590,6 +1646,17 @@ footer { display: none !important; }
     font-size: 10px !important;
     margin: 4px 0 !important;
     overflow-x: auto !important;
+}
+
+/* ── Inline download buttons inside chat messages ── */
+.st-dl-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+.st-dl-btns a:hover {
+    background: var(--background-fill-primary, #eee) !important;
 }
 
 /* ── Input row — pinned to bottom of viewport ── */
@@ -1995,36 +2062,51 @@ footer { display: none !important; }
 }
 
 
-/* ── History page ── */
+/* ── History / Favorites page ── */
 .st-history-page {
-    padding: 28px 40px !important;
-    max-width: 960px !important;
+    padding: 16px 28px !important;
+    max-width: 1400px !important;
     margin: 0 auto !important;
+    overflow: visible !important;
+    height: auto !important;
 }
 .st-history-page h2 {
-    font-size: 20px !important;
+    font-size: 16px !important;
     font-weight: 700 !important;
     color: #111827 !important;
-    margin-bottom: 4px !important;
+    margin: 0 0 4px !important;
 }
 .st-hist-toolbar {
-    gap: 8px !important;
-    margin-bottom: 12px !important;
+    gap: 6px !important;
+    margin-bottom: 6px !important;
 }
 .st-hist-btn {
     min-width: 0 !important;
-    padding: 5px 14px !important;
-    font-size: 12px !important;
+    padding: 3px 10px !important;
+    font-size: 11px !important;
     border-radius: 6px !important;
 }
 .st-hist-sel-info {
     min-height: 0 !important;
-    margin: 0 0 6px !important;
+    margin: 0 0 2px !important;
 }
 .st-hist-sel-info p {
-    font-size: 12px !important;
+    font-size: 11px !important;
     color: #6b7280 !important;
     margin: 0 !important;
+}
+.st-fav-search-row { margin-bottom: 4px !important; }
+.st-fav-rename-row { margin-bottom: 4px !important; }
+.st-fav-table,
+.st-hist-table {
+    overflow: visible !important;
+}
+.st-fav-table > div,
+.st-hist-table > div,
+.st-history-page .wrap,
+.st-history-page .table-wrap {
+    overflow: visible !important;
+    max-height: none !important;
 }
 .st-history-page table {
     font-size: 12px !important;
@@ -2038,15 +2120,18 @@ footer { display: none !important; }
     letter-spacing: 0.3px !important;
     color: #9ca3af !important;
     background: #f9fafb !important;
-    padding: 10px 12px !important;
+    padding: 6px 10px !important;
     white-space: nowrap !important;
     border-bottom: 2px solid #e5e7eb !important;
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 2 !important;
 }
 .st-history-page td {
-    padding: 10px 12px !important;
+    padding: 6px 10px !important;
     border-bottom: 1px solid #f3f4f6 !important;
-    vertical-align: middle !important;
-    line-height: 1.5 !important;
+    vertical-align: top !important;
+    line-height: 1.4 !important;
     color: #374151 !important;
 }
 .st-history-page tr:hover td {
@@ -2062,10 +2147,32 @@ footer { display: none !important; }
     font-size: 11px !important;
     white-space: nowrap !important;
 }
-.st-history-page td:nth-child(6) {
+
+/* ── SQL column: show full text, wrap naturally ── */
+.st-fav-table td:nth-child(4),
+.st-hist-table td:nth-child(6) {
     font-family: 'SF Mono', 'Consolas', 'Monaco', monospace !important;
     font-size: 11px !important;
     color: #6b7280 !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+}
+
+/* ── Hide Gradio block borders inside history/favorites pages ── */
+.st-history-page > *,
+.st-history-page > * > *,
+.st-history-page [class*="block"],
+.st-history-page [class*="panel"],
+.st-history-page [class*="form"],
+.st-history-page [class*="padded"] {
+    border: none !important;
+    box-shadow: none !important;
+}
+.st-history-page h3 {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #374151 !important;
+    margin: 8px 0 4px !important;
 }
 
 /* ── Responsive sizing ── */
@@ -2097,13 +2204,22 @@ def _kill_port(port: int) -> bool:
     return False
 
 
-def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
+def _port_has_listener(port: int) -> bool:
+    """Check if a process is actually LISTENING on *port* (not TIME_WAIT)."""
+    import subprocess, sys
+    if sys.platform == "win32":
+        r = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
+        return any(f":{port}" in ln and "LISTENING" in ln for ln in r.stdout.splitlines())
     import socket
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        if s.connect_ex((host, port)) == 0:
-            print(f"[ui] Port {port} in use — killing old process...")
-            _kill_port(port)
-            import time; time.sleep(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
+    if _port_has_listener(port):
+        print(f"[ui] Port {port} in use — killing old process...")
+        _kill_port(port)
+        import time; time.sleep(0.5)
 
     if api:
         from .text2sql.api import router as t2s_api_router

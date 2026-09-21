@@ -8,6 +8,8 @@ generated SQL, execution time, row count, status.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -68,7 +70,16 @@ class QueryLogger:
         with self._lock:
             if not self.log_file.is_file():
                 return []
-            lines = self.log_file.read_text(encoding="utf-8").splitlines()
+            size = self.log_file.stat().st_size
+            if size == 0:
+                return []
+            chunk_size = min(size, n * 2048)
+            with open(self.log_file, "rb") as f:
+                f.seek(max(0, size - chunk_size))
+                data = f.read().decode("utf-8", errors="replace")
+        lines = data.splitlines()
+        if chunk_size < size:
+            lines = lines[1:]
         tail = lines[-n:] if len(lines) > n else lines
         records: list[dict[str, Any]] = []
         for line in tail:
@@ -103,5 +114,15 @@ class QueryLogger:
                 return 0
             remaining = [l for i, l in enumerate(lines) if i not in abs_indices]
             content = "\n".join(remaining) + ("\n" if remaining else "")
-            self.log_file.write_text(content, encoding="utf-8")
+            fd, tmp = tempfile.mkstemp(dir=str(self.log_file.parent), suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(content)
+                os.replace(tmp, str(self.log_file))
+            except BaseException:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
             return len(abs_indices)

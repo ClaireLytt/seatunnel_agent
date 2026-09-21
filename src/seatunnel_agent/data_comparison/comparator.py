@@ -784,6 +784,7 @@ _RANDOM_SQL: dict[str, str] = {
     "sparksql":   "SELECT * FROM {table}{where} ORDER BY RAND() LIMIT {limit}",
     "sqlserver":  "SELECT TOP {limit} * FROM {table}{where} ORDER BY NEWID()",
     "flinksql":   "SELECT * FROM {table}{where} LIMIT {limit}",
+    "sqlite":     "SELECT * FROM {table}{where} ORDER BY RANDOM() LIMIT {limit}",
 }
 
 

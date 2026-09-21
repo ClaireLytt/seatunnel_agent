@@ -2158,7 +2158,7 @@ class TestProfiler:
         assert "COUNT(*)" in sql
         assert "id__non_null" in sql
         assert "name__distinct" in sql
-        assert "FROM db.users" in sql
+        assert "FROM `db.users`" in sql
 
     def test_build_profile_sql_max_columns(self):
         from seatunnel_agent.text2sql.profiler import build_profile_sql
