@@ -42,7 +42,8 @@ def build_profile_sql(table_name: str, columns: list[dict[str, str]]) -> str:
         parts.append(f"MIN(`{safe}`) AS `{safe}__min`")
         parts.append(f"MAX(`{safe}`) AS `{safe}__max`")
     select = ",\n  ".join(parts)
-    return f"SELECT\n  {select}\nFROM {table_name}"
+    safe_table = table_name.replace("`", "")
+    return f"SELECT\n  {select}\nFROM `{safe_table}`"
 
 
 def parse_profile_result(

@@ -399,22 +399,9 @@ def _md_table(columns: list[str], rows: list[list[Any]], max_rows: int = 20, lan
     return "\n".join(lines)
 
 
-def _file_to_gradio_url(filepath: str, component) -> str | None:
-    """Register a file in Gradio's cache and return a servable URL."""
-    if not filepath or not component:
-        return None
-    try:
-        from gradio import processing_utils
-        fd_dict = {"path": filepath, "meta": {"_type": "gradio.FileData"}}
-        result = processing_utils.move_files_to_cache(fd_dict, component, postprocess=True)
-        return result.get("url", "")
-    except Exception:
-        return None
-
 
 def _format_tool_result(name: str, raw: str, lang: str = "en",
-                        store: SchemaStore | None = None,
-                        chatbot_component=None) -> str:
+                        store: SchemaStore | None = None) -> str:
     from .text2sql.formatter import format_sql
     from .text2sql.lineage import trace_lineage
 
@@ -488,13 +475,6 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
             "",
             _md_table(data.get("columns", []), data.get("preview_rows", []), lang=lang),
         ]
-        csv_path = data.get("csv_path", "")
-        if csv_path and chatbot_component:
-            _url = _file_to_gradio_url(csv_path, chatbot_component)
-            if _url:
-                _fname = csv_path.replace("\\", "/").rsplit("/", 1)[-1]
-                lines.append("")
-                lines.append(f'📥 <a href="{_url}" download="{_fname}">Download CSV</a>')
         if sql:
             try:
                 lineage = trace_lineage(sql, store)
@@ -555,11 +535,10 @@ class _IncrementalFormatter:
     discards the buffer; non-text events flush it as a permanent message.
     """
 
-    def __init__(self, start_time: float | None, lang: str, store: SchemaStore | None, chatbot_component=None):
+    def __init__(self, start_time: float | None, lang: str, store: SchemaStore | None):
         self._start = start_time
         self._lang = lang
         self._store = store
-        self._chatbot = chatbot_component
         self._t = lambda k: _t2s(lang, k)
         self._labels = TOOL_LABEL_I18N.get(lang, TOOL_LABEL_I18N["en"])
         self.messages: list[dict[str, str]] = []
@@ -628,7 +607,7 @@ class _IncrementalFormatter:
                     "role": "assistant",
                     "content": _format_tool_result(
                         ev.get("name", "?"), ev.get("result", "{}"),
-                        self._lang, store=self._store, chatbot_component=self._chatbot,
+                        self._lang, store=self._store,
                     ),
                 })
             elif tp == "usage":
@@ -807,18 +786,6 @@ def _session_choices_global() -> list[str]:
     sessions = list_t2s_sessions()
     return [f"{s['title']} ({s['updated_at'][:10]}) [{s['id']}]" for s in sessions]
 
-
-def _reexecute_sql(sql: str):
-    """Re-run a SQL string using the shared db_config. Returns QueryResult or None."""
-    with _shared_holder_lock:
-        db_config = _shared_holder.get("db_config")
-    if not db_config:
-        return None
-    try:
-        executor = create_executor(db_config)
-        return executor.run(sql, max_rows=1000)
-    except Exception:
-        return None
 
 
 def render_history_page(app=None) -> None:
@@ -1034,7 +1001,7 @@ def render_history_page(app=None) -> None:
     def _export_all(lang: str):
         records = list(reversed(logger.recent(100)))
         if not records:
-            raise gr.Error(_t2s(lang, "hist_empty") if "hist_empty" in HINTS_I18N.get(lang, {}) else "No history records")
+            raise gr.Error(_t2s(lang, "hist_empty"))
         import tempfile
         from .text2sql.exporter import export_csv
         out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
@@ -1499,8 +1466,6 @@ def render_text2sql_page(app=None) -> None:
                                     elem_classes=["st-sidebar-status"])
             new_chat_btn = gr.Button(t("new_chat"), variant="primary", size="sm",
                                      elem_classes=["st-new-chat-btn"])
-            export_btn = gr.DownloadButton(t("export_csv"), variant="secondary", size="sm",
-                                           elem_classes=["st-connect-btn"])
             history_link = gr.Button(t("history"), variant="secondary", size="sm",
                                      elem_classes=["st-connect-btn"])
             history_link.click(fn=None, js="() => { window.open('/history', '_blank'); }")
@@ -1561,6 +1526,15 @@ def render_text2sql_page(app=None) -> None:
                 height=None,
                 sanitize_html=False,
             )
+            with gr.Row(visible=False, elem_classes=["st-dl-row"]) as dl_row:
+                export_btn = gr.DownloadButton(
+                    "📥 CSV", variant="secondary", size="sm",
+                    elem_classes=["st-dl-btn"], scale=0, min_width=80,
+                )
+                chart_dl_btn = gr.DownloadButton(
+                    "🖼️ Chart", variant="secondary", size="sm",
+                    elem_classes=["st-dl-btn"], scale=0, min_width=80,
+                )
             chart_plot = gr.Plot(visible=False, elem_classes=["st-chart"], show_label=False)
             def _chart_choices(lang):
                 _t = lambda k: _t2s(lang, k)
@@ -1737,13 +1711,13 @@ def render_text2sql_page(app=None) -> None:
             holder["settings"] = settings
             holder["store"] = store
             holder["full_store"] = store
+            holder["ds_type"] = ds_type
+            holder["db_config"] = db_config
+            holder["agent"] = None
         with _shared_holder_lock:
             _shared_holder["full_store"] = store
             _shared_holder["db_config"] = db_config
             _shared_holder["ds_type"] = ds_type
-            holder["ds_type"] = ds_type
-            holder["db_config"] = db_config
-            holder["agent"] = None
 
         def _warmup():
             try:
@@ -1855,7 +1829,7 @@ def render_text2sql_page(app=None) -> None:
         thread = threading.Thread(target=_worker, daemon=True)
         thread.start()
         prev = 0
-        fmt = _IncrementalFormatter(start, lang, store_ref, chatbot_component=chatbot)
+        fmt = _IncrementalFormatter(start, lang, store_ref)
         user_msg = [{"role": "user", "content": msg}]
         while not collector.done:
             collector.wait_for_event(timeout=0.3)
@@ -1903,7 +1877,6 @@ def render_text2sql_page(app=None) -> None:
                         f'style="max-width:100%;border-radius:8px;margin:8px 0;" />'
                         f'</div>'
                     )
-                    png_dl = ""
                     try:
                         import tempfile as _tmp
                         _dl_dir = Path(_tmp.gettempdir()) / "text2sql_exports"
@@ -1911,13 +1884,11 @@ def render_text2sql_page(app=None) -> None:
                         _ts = time.strftime("%Y%m%d_%H%M%S")
                         _png_path = str(_dl_dir / f"chart_{_ts}.png")
                         fig.savefig(_png_path, format="png", bbox_inches="tight", dpi=120)
-                        _png_url = _file_to_gradio_url(_png_path, chatbot)
-                        if _png_url:
-                            _png_name = _png_path.replace("\\", "/").rsplit("/", 1)[-1]
-                            png_dl = f'\n\n🖼️ <a href="{_png_url}" download="{_png_name}">Download Chart</a>'
+                        with holder_lock:
+                            holder["_last_chart_png"] = _png_path
                     except Exception:
                         pass
-                    final.append({"role": "assistant", "content": chart_html + png_dl})
+                    final.append({"role": "assistant", "content": chart_html})
                     if rt.last_sql:
                         sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
                         _chart_cache_put(sql_hash, data_uri)
@@ -1955,6 +1926,7 @@ def render_text2sql_page(app=None) -> None:
             if agent is not None:
                 agent.reset()
             holder["session_id"] = None
+            holder.pop("_last_chart_png", None)
         return (
             [],
             gr.update(placeholder=t("input_placeholder")),
@@ -1962,6 +1934,7 @@ def render_text2sql_page(app=None) -> None:
             gr.update(visible=False),
             gr.update(value=""),
             1,
+            gr.update(visible=False),
         )
 
     def _handle_export(lang: str):
@@ -1971,36 +1944,24 @@ def render_text2sql_page(app=None) -> None:
         rt = agent.runtime if agent else None
         if rt is None or rt.last_result is None:
             raise gr.Error(t("no_export"))
-        import tempfile, zipfile, base64
+        import tempfile
         from .text2sql.exporter import export_csv
         out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
         out_dir.mkdir(exist_ok=True)
-        csv_path = export_csv(
+        return export_csv(
             columns=rt.last_result.columns,
             rows=rt.last_result.rows,
             path=str(out_dir),
             name_hint="query_result",
         )
-        chart_b64 = None
-        if rt.last_sql:
-            sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
-            with _chart_cache_lock:
-                chart_b64 = _chart_cache.get(sql_hash)
-        if chart_b64:
-            png_path = Path(csv_path).with_suffix(".png")
-            header = "data:image/png;base64,"
-            raw = chart_b64[len(header):] if chart_b64.startswith(header) else chart_b64
-            try:
-                png_path.write_bytes(base64.b64decode(raw))
-            except Exception:
-                chart_b64 = None
-        if chart_b64:
-            zip_path = Path(csv_path).with_suffix(".zip")
-            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.write(csv_path, Path(csv_path).name)
-                zf.write(png_path, png_path.name)
-            return str(zip_path)
-        return csv_path
+
+    def _handle_chart_dl(lang: str):
+        t = lambda k: _t2s(lang, k)
+        with holder_lock:
+            png_path = holder.get("_last_chart_png")
+        if not png_path or not Path(png_path).is_file():
+            raise gr.Error(t("hist_chart_unavailable"))
+        return png_path
 
     def _reload_schema(lang: str):
         t = lambda k: _t2s(lang, k)
@@ -2113,7 +2074,6 @@ def render_text2sql_page(app=None) -> None:
             gr.update(value=t("connect")),
             gr.update(label=t("status_label")),
             gr.update(value=t("new_chat")),
-            gr.update(label=t("export_csv")),
             gr.update(value=t("history")),
             gr.update(placeholder=t("input_placeholder")),
             gr.update(placeholder=_placeholder(lang)),
@@ -2155,7 +2115,6 @@ def render_text2sql_page(app=None) -> None:
             connect_btn,
             status_box,
             new_chat_btn,
-            export_btn,
             history_link,
             user_input,
             chatbot,
@@ -2201,6 +2160,10 @@ def render_text2sql_page(app=None) -> None:
         page_vis, page_info_val, page_num = _show_pagination(lang)
         llm_st = holder.get("llm_status")
         status_upd = gr.update(value=llm_st) if llm_st else gr.update()
+        with holder_lock:
+            agent = holder.get("agent")
+        rt = agent.runtime if agent else None
+        has_result = rt is not None and rt.last_result is not None
         return (
             gr.update(value="", placeholder=t("conversation_active")),
             gr.update(visible=True),
@@ -2211,10 +2174,11 @@ def render_text2sql_page(app=None) -> None:
             gr.update(visible=False),
             gr.update(choices=_session_choices()),
             status_upd,
+            gr.update(visible=has_result),
         )
 
     submit_io = dict(fn=_handle_submit, inputs=[user_input, chatbot, lang_state, chart_type_radio], outputs=[chatbot, chart_plot])
-    _post_outputs = [user_input, send_btn, stop_btn, page_nav_row, page_info_md, page_state, page_table_md, session_dd, status_box]
+    _post_outputs = [user_input, send_btn, stop_btn, page_nav_row, page_info_md, page_state, page_table_md, session_dd, status_box, dl_row]
     send_btn.click(fn=_show_stop, outputs=[send_btn, stop_btn]) \
         .then(**submit_io) \
         .then(fn=_post_submit, inputs=[lang_state, chatbot], outputs=_post_outputs)
@@ -2224,8 +2188,9 @@ def render_text2sql_page(app=None) -> None:
 
     stop_btn.click(fn=_handle_stop, inputs=[lang_state], outputs=[send_btn, stop_btn])
     new_chat_btn.click(fn=_new_chat, inputs=[lang_state],
-                       outputs=[chatbot, user_input, chart_plot, page_nav_row, page_table_md, page_state])
+                       outputs=[chatbot, user_input, chart_plot, page_nav_row, page_table_md, page_state, dl_row])
     export_btn.click(fn=_handle_export, inputs=[lang_state], outputs=export_btn)
+    chart_dl_btn.click(fn=_handle_chart_dl, inputs=[lang_state], outputs=chart_dl_btn)
     reload_schema_btn.click(fn=_reload_schema, inputs=[lang_state],
                             outputs=[status_box, table_filter, filter_accordion, confirmed_sel])
 

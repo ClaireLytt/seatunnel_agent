@@ -1638,20 +1638,16 @@ body:has(.st-history-page) .gradio-container > .main > .wrap {
     overflow-x: auto !important;
 }
 
-/* ── Per-message CSV download button ── */
-.st-dl-btn {
-    display: inline-block;
-    padding: 1px 8px;
-    border-radius: 4px;
-    background: #2563eb;
-    color: #fff !important;
-    font-size: 12px;
-    font-weight: 600;
-    text-decoration: none !important;
-    cursor: pointer;
-    vertical-align: middle;
+/* ── Download row (CSV + Chart) — flush against chatbot bottom ── */
+.st-dl-row {
+    margin: -4px 0 4px 0 !important;
+    padding: 0 12px !important;
+    gap: 8px !important;
+    justify-content: flex-start !important;
+    flex-wrap: nowrap !important;
+    flex: 0 0 auto !important;
 }
-.st-dl-btn:hover { background: #1d4ed8; }
+.st-dl-btn { min-width: 0 !important; }
 
 /* ── Input row — pinned to bottom of viewport ── */
 .st-input-row,

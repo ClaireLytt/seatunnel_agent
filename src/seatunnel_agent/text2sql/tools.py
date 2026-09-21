@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import difflib
 import json
-import os
 import re
 import threading
 from dataclasses import dataclass, field
@@ -400,17 +399,6 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
         exec_time_ms=result.elapsed_ms, row_count=result.row_count,
     )
     out = _build_success(result, final_sql, validation)
-    try:
-        from .exporter import export_csv as _export_csv
-        import tempfile
-        _dl_dir = os.path.join(tempfile.gettempdir(), "text2sql_exports")
-        os.makedirs(_dl_dir, exist_ok=True)
-        out["csv_path"] = _export_csv(
-            columns=result.columns, rows=result.rows,
-            path=_dl_dir, name_hint="query_result",
-        )
-    except Exception:
-        pass
     if rt.prev_result is not None:
         from .differ import diff_results
         diff = diff_results(

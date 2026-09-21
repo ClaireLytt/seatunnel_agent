@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import re
+import threading
 from typing import Any
 
 import matplotlib
@@ -13,6 +14,7 @@ import matplotlib.pyplot as plt
 
 
 _cjk_font_configured = False
+_cjk_font_lock = threading.Lock()
 
 
 def _configure_cjk_font() -> None:
@@ -20,7 +22,10 @@ def _configure_cjk_font() -> None:
     global _cjk_font_configured
     if _cjk_font_configured:
         return
-    _cjk_font_configured = True
+    with _cjk_font_lock:
+        if _cjk_font_configured:
+            return
+        _cjk_font_configured = True
     import matplotlib.font_manager as fm
     from pathlib import Path
 
@@ -40,8 +45,6 @@ def _configure_cjk_font() -> None:
         )
         plt.rcParams["axes.unicode_minus"] = False
         return
-
-    import threading
 
     def _download_font():
         try:
