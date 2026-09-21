@@ -1871,27 +1871,9 @@ def render_text2sql_page(app=None) -> None:
                             break
                 holder["_last_question"] = last_q
 
-        result_indices = [
-            i for i, m in enumerate(final)
-            if m.get("role") == "assistant"
-            and "⚡" in m.get("content", "")
-            and "```sql" in m.get("content", "")
-        ]
-
         chart_update = gr.update(visible=False)
-        _done_idx = len(final) - 1
-        for _si, _ri in enumerate(result_indices):
-            next_ri = result_indices[_si + 1] if _si + 1 < len(result_indices) else _done_idx
-            tail_idx = _ri
-            for _j in range(next_ri - 1, _ri, -1):
-                _jc = final[_j].get("content", "")
-                if final[_j].get("role") == "assistant" and not _jc.startswith("⏳") and not _jc.startswith("\U0001f4ad"):
-                    tail_idx = _j
-                    break
-
-            if _si >= len(_result_snapshots):
-                continue
-            _snap = _result_snapshots[_si]
+        _dl_messages: list[tuple[int, dict]] = []
+        for _si, _snap in enumerate(_result_snapshots):
             _csv_uri = _build_csv_data_uri(_snap.columns, _snap.rows)
             _ts = time.strftime("%Y%m%d_%H%M%S")
             dl_parts: list[str] = [
@@ -1917,7 +1899,7 @@ def render_text2sql_page(app=None) -> None:
                             f'style="{_DL_BTN_STYLE}">\U0001f5bc️ Chart</a>'
                         )
                         chart_block = (
-                            f'\n\n<div class="st-inline-chart">'
+                            f'<div class="st-inline-chart">'
                             f'<img src="{_chart_uri}" alt="chart" '
                             f'style="max-width:100%;border-radius:8px;margin:8px 0;" />'
                             f'</div>'
@@ -1932,17 +1914,24 @@ def render_text2sql_page(app=None) -> None:
                                 holder["_last_chart_png"] = _png_path
                         except Exception:
                             pass
-                        if rt and rt.last_sql and _si == len(result_indices) - 1:
+                        if rt and rt.last_sql and _si == len(_result_snapshots) - 1:
                             sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
                             _chart_cache_put(sql_hash, _chart_uri)
                         plt.close(fig)
 
             bar_html = (
-                '\n\n<div class="st-dl-btns">'
+                '<div class="st-dl-btns">'
                 + "".join(dl_parts)
                 + '</div>'
             )
-            final[tail_idx]["content"] += chart_block + bar_html
+            content = chart_block + bar_html
+            _dl_messages.append((_si, {"role": "assistant", "content": content}))
+
+        if _dl_messages:
+            done_msg = final.pop()
+            for _, dm in _dl_messages:
+                final.append(dm)
+            final.append(done_msg)
 
         yield history + [{"role": "user", "content": msg}] + final, chart_update
 
