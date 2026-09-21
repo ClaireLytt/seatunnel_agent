@@ -1859,21 +1859,6 @@ def render_text2sql_page(app=None) -> None:
             final.append({"role": "assistant", "content": f"⚠️ **Error**: {error_msg}"})
         final.append({"role": "assistant", "content": f"⏱️ {t('done')} {time.time() - start:.1f}s"})
 
-        _snap_idx = 0
-        for _fi, _fm in enumerate(final):
-            _fc = _fm.get("content", "")
-            if _fm.get("role") == "assistant" and "⚡" in _fc and "```sql" in _fc:
-                if _snap_idx < len(_result_snapshots):
-                    _snap = _result_snapshots[_snap_idx]
-                    _csv_uri = _build_csv_data_uri(_snap.columns, _snap.rows)
-                    _ts = time.strftime("%Y%m%d_%H%M%S")
-                    final[_fi]["content"] += (
-                        f'\n\n<div class="st-dl-btns">'
-                        f'<a href="{_csv_uri}" download="query_{_ts}.csv" '
-                        f'style="{_DL_BTN_STYLE}">\U0001f4e5 CSV</a></div>'
-                    )
-                    _snap_idx += 1
-
         rt = agent.runtime if agent else None
         if rt and rt.last_sql:
             with holder_lock:
@@ -1886,44 +1871,78 @@ def render_text2sql_page(app=None) -> None:
                             break
                 holder["_last_question"] = last_q
 
+        result_indices = [
+            i for i, m in enumerate(final)
+            if m.get("role") == "assistant"
+            and "⚡" in m.get("content", "")
+            and "```sql" in m.get("content", "")
+        ]
+
         chart_update = gr.update(visible=False)
-        if rt and rt.last_result and rt.last_result.columns and rt.last_result.rows:
-            if chart_pref == _t2s(lang, "chart_none"):
-                ct = None
-            elif _chart_pref_to_type(chart_pref, lang):
-                ct = _chart_pref_to_type(chart_pref, lang)
-            else:
-                ct = detect_chart_type(rt.last_result.columns, rt.last_result.rows)
-            if ct:
-                fig = build_chart(rt.last_result.columns, rt.last_result.rows, ct)
-                if fig:
-                    data_uri = fig_to_base64(fig)
-                    _cts = time.strftime("%Y%m%d_%H%M%S")
-                    chart_html = (
-                        f'<div class="st-inline-chart">'
-                        f'<img src="{data_uri}" alt="chart" '
-                        f'style="max-width:100%;border-radius:8px;margin:8px 0;" />'
-                        f'<div class="st-dl-btns">'
-                        f'<a href="{data_uri}" download="chart_{_cts}.png" '
-                        f'style="{_DL_BTN_STYLE}">\U0001f5bc️ Chart</a></div>'
-                        f'</div>'
-                    )
-                    try:
-                        import tempfile as _tmp
-                        _dl_dir = Path(_tmp.gettempdir()) / "text2sql_exports"
-                        _dl_dir.mkdir(parents=True, exist_ok=True)
-                        _ts = time.strftime("%Y%m%d_%H%M%S")
-                        _png_path = str(_dl_dir / f"chart_{_ts}.png")
-                        fig.savefig(_png_path, format="png", bbox_inches="tight", dpi=120)
-                        with holder_lock:
-                            holder["_last_chart_png"] = _png_path
-                    except Exception:
-                        pass
-                    final.append({"role": "assistant", "content": chart_html})
-                    if rt.last_sql:
-                        sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
-                        _chart_cache_put(sql_hash, data_uri)
-                    plt.close(fig)
+        _done_idx = len(final) - 1
+        for _si, _ri in enumerate(result_indices):
+            next_ri = result_indices[_si + 1] if _si + 1 < len(result_indices) else _done_idx
+            tail_idx = _ri
+            for _j in range(next_ri - 1, _ri, -1):
+                _jc = final[_j].get("content", "")
+                if final[_j].get("role") == "assistant" and not _jc.startswith("⏳") and not _jc.startswith("\U0001f4ad"):
+                    tail_idx = _j
+                    break
+
+            if _si >= len(_result_snapshots):
+                continue
+            _snap = _result_snapshots[_si]
+            _csv_uri = _build_csv_data_uri(_snap.columns, _snap.rows)
+            _ts = time.strftime("%Y%m%d_%H%M%S")
+            dl_parts: list[str] = [
+                f'<a href="{_csv_uri}" download="query_{_ts}_{_si}.csv" '
+                f'style="{_DL_BTN_STYLE}">\U0001f4e5 CSV</a>'
+            ]
+            chart_block = ""
+            cols, rows = _snap.columns, _snap.rows
+            if cols and rows:
+                if chart_pref == _t2s(lang, "chart_none"):
+                    ct = None
+                elif _chart_pref_to_type(chart_pref, lang):
+                    ct = _chart_pref_to_type(chart_pref, lang)
+                else:
+                    ct = detect_chart_type(cols, rows)
+                if ct:
+                    fig = build_chart(cols, rows, ct)
+                    if fig:
+                        _chart_uri = fig_to_base64(fig)
+                        _cts = time.strftime("%Y%m%d_%H%M%S")
+                        dl_parts.append(
+                            f'<a href="{_chart_uri}" download="chart_{_cts}_{_si}.png" '
+                            f'style="{_DL_BTN_STYLE}">\U0001f5bc️ Chart</a>'
+                        )
+                        chart_block = (
+                            f'\n\n<div class="st-inline-chart">'
+                            f'<img src="{_chart_uri}" alt="chart" '
+                            f'style="max-width:100%;border-radius:8px;margin:8px 0;" />'
+                            f'</div>'
+                        )
+                        try:
+                            import tempfile as _tmp
+                            _dl_dir = Path(_tmp.gettempdir()) / "text2sql_exports"
+                            _dl_dir.mkdir(parents=True, exist_ok=True)
+                            _png_path = str(_dl_dir / f"chart_{_cts}_{_si}.png")
+                            fig.savefig(_png_path, format="png", bbox_inches="tight", dpi=120)
+                            with holder_lock:
+                                holder["_last_chart_png"] = _png_path
+                        except Exception:
+                            pass
+                        if rt and rt.last_sql and _si == len(result_indices) - 1:
+                            sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
+                            _chart_cache_put(sql_hash, _chart_uri)
+                        plt.close(fig)
+
+            bar_html = (
+                '\n\n<div class="st-dl-btns">'
+                + "".join(dl_parts)
+                + '</div>'
+            )
+            final[tail_idx]["content"] += chart_block + bar_html
 
         yield history + [{"role": "user", "content": msg}] + final, chart_update
 
