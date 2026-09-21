@@ -1349,6 +1349,28 @@ _CUSTOM_CSS = """
     flex-direction: column !important;
 }
 footer { display: none !important; }
+/* Suppress Gradio default block borders globally */
+.gradio-container .block {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Standalone pages (history, favorites, schema) need scrolling.
+   Only the outermost .gradio-container scrolls; everything inside is visible. */
+body:has(.st-history-page) {
+    overflow: hidden !important;
+}
+body:has(.st-history-page) .gradio-container {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    height: 100vh !important;
+}
+body:has(.st-history-page) .gradio-container > .main,
+body:has(.st-history-page) .gradio-container > .main > .wrap {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+}
 
 /* ══════════════════════════════════════════════
    Sidebar — Claude-style push layout (Column)
@@ -1389,6 +1411,8 @@ footer { display: none !important; }
     min-width: 0 !important;
     box-sizing: border-box !important;
     flex-shrink: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
 }
 /* Re-allow horizontal layout for Row containers */
 .st-sidebar .row,
@@ -1612,6 +1636,17 @@ footer { display: none !important; }
     font-size: 10px !important;
     margin: 4px 0 !important;
     overflow-x: auto !important;
+}
+
+/* ── Inline download buttons inside chat messages ── */
+.st-dl-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+.st-dl-btns a:hover {
+    background: var(--background-fill-primary, #eee) !important;
 }
 
 /* ── Input row — pinned to bottom of viewport ── */
@@ -2022,8 +2057,8 @@ footer { display: none !important; }
     padding: 16px 28px !important;
     max-width: 1400px !important;
     margin: 0 auto !important;
-    overflow: auto !important;
-    height: 100vh !important;
+    overflow: visible !important;
+    height: auto !important;
 }
 .st-history-page h2 {
     font-size: 16px !important;
@@ -2111,6 +2146,23 @@ footer { display: none !important; }
     color: #6b7280 !important;
     white-space: pre-wrap !important;
     word-break: break-word !important;
+}
+
+/* ── Hide Gradio block borders inside history/favorites pages ── */
+.st-history-page > *,
+.st-history-page > * > *,
+.st-history-page [class*="block"],
+.st-history-page [class*="panel"],
+.st-history-page [class*="form"],
+.st-history-page [class*="padded"] {
+    border: none !important;
+    box-shadow: none !important;
+}
+.st-history-page h3 {
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    color: #374151 !important;
+    margin: 8px 0 4px !important;
 }
 
 /* ── Responsive sizing ── */

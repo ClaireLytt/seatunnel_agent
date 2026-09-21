@@ -9,6 +9,7 @@ from __future__ import annotations
 import difflib
 import json
 import re
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -20,13 +21,25 @@ from .executor import (
     QueryResult,
     create_executor,
 )
-from .exporter import export_csv, export_excel, export_pdf
+from .exporter import export_csv
 from .matcher import match_tables
 from .partition import classify_table, has_partition_filter
 from .qlog import QueryLogger
 from .schema import SchemaStore
 from .quality import check_quality
 from .validator import ValidationResult, enforce_limit, validate_sql
+
+_DB_CONN_RE = re.compile(
+    r"(?:jdbc:[^\s]+|(?:\d{1,3}\.){3}\d{1,3}:\d+|"
+    r"password\s*=\s*\S+|user\s*=\s*\S+|"
+    r"host\s*=\s*\S+|port\s*=\s*\d+)",
+    re.IGNORECASE,
+)
+
+
+def _sanitize_db_error(msg: str) -> str:
+    """Strip connection details (host, port, credentials) from DB errors."""
+    return _DB_CONN_RE.sub("[REDACTED]", msg)
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -91,7 +104,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "Validate and execute a SELECT statement on the connected database. "
             "Rejects non-SELECT statements and non-whitelisted tables; enforces "
             "a row LIMIT. Returns columns, preview rows, row count and elapsed "
-            "time. The result is kept for export_csv."
+            "time. A CSV download link is shown automatically."
         ),
         "input_schema": {
             "type": "object",
@@ -124,75 +137,6 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
             },
             "required": ["sql"],
-        },
-    },
-    {
-        "name": "export_csv",
-        "description": (
-            "Export the most recent query result to a CSV file. Default "
-            "location is the user's Desktop with a timestamped filename; "
-            "pass 'path' to override (directory or full file path)."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Optional output directory or .csv file path",
-                },
-                "name_hint": {
-                    "type": "string",
-                    "description": "Optional short name used in the filename",
-                },
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "export_excel",
-        "description": (
-            "Export the most recent query result to a formatted Excel (.xlsx) "
-            "file with bold headers, auto-filter and frozen header row. "
-            "Requires openpyxl."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Optional output directory or .xlsx file path",
-                },
-                "name_hint": {
-                    "type": "string",
-                    "description": "Optional short name used in the filename",
-                },
-            },
-            "required": [],
-        },
-    },
-    {
-        "name": "export_pdf",
-        "description": (
-            "Export the most recent query result to a PDF report with a "
-            "table layout. Requires fpdf2."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Optional output directory or .pdf file path",
-                },
-                "name_hint": {
-                    "type": "string",
-                    "description": "Optional short name used in the filename",
-                },
-                "title": {
-                    "type": "string",
-                    "description": "Report title shown at the top of the PDF",
-                },
-            },
-            "required": [],
         },
     },
     {
@@ -239,23 +183,26 @@ class Text2SQLRuntime:
     max_sql_retries: int = 3
     cache: SqlResultCache = field(default_factory=SqlResultCache)
     _executor: DatabaseExecutor | None = None
+    _executor_lock: threading.Lock = field(default_factory=threading.Lock)
 
     @property
     def executor(self) -> DatabaseExecutor:
         if self._executor is None:
-            if self.db_config is None:
-                raise RuntimeError(
-                    "Database connection is not configured. "
-                    "Fill in the connection fields in the UI or set "
-                    "the corresponding environment variables."
-                )
-            if not self.db_config.host and self.db_config.ds_type != "sqlite":
-                raise RuntimeError(
-                    "Database connection is not configured. "
-                    "Fill in the connection fields in the UI or set "
-                    "the corresponding environment variables."
-                )
-            self._executor = create_executor(self.db_config)
+            with self._executor_lock:
+                if self._executor is None:
+                    if self.db_config is None:
+                        raise RuntimeError(
+                            "Database connection is not configured. "
+                            "Fill in the connection fields in the UI or set "
+                            "the corresponding environment variables."
+                        )
+                    if not self.db_config.host and self.db_config.ds_type != "sqlite":
+                        raise RuntimeError(
+                            "Database connection is not configured. "
+                            "Fill in the connection fields in the UI or set "
+                            "the corresponding environment variables."
+                        )
+                    self._executor = create_executor(self.db_config)
         return self._executor
 
 
@@ -307,12 +254,12 @@ def _tool_get_max_partition(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[st
     table = rt.store.get(name)
     if table is None:
         return {"error": f"Table '{name}' is not registered in the schema whitelist"}
-    if not table.is_partitioned:
+    if not table.is_partitioned or not table.partition_columns:
         return {"error": f"Table '{name}' is not partitioned"}
     try:
         value = rt.executor.get_max_partition(table.full_name)
     except Exception as exc:
-        return {"error": str(exc)}
+        return {"error": _sanitize_db_error(str(exc))}
     return {
         "table": table.full_name,
         "partition_column": table.partition_columns[0].name,
@@ -433,7 +380,7 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
     except Exception as exc:
         err = _log_and_reject(
             rt, user_query, final_sql, validation.tables,
-            f"Execution failed: {exc}", status="error",
+            f"Execution failed: {_sanitize_db_error(str(exc))}", status="error",
         )
         suggestion = _suggest_column(str(exc), rt)
         if suggestion:
@@ -500,25 +447,6 @@ def _tool_explain_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
     }
 
 
-def _tool_export_csv(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
-    if rt.last_result is None:
-        return {"error": "No query result to export. Run execute_sql first."}
-    try:
-        path = export_csv(
-            columns=rt.last_result.columns,
-            rows=rt.last_result.rows,
-            path=inp.get("path"),
-            name_hint=inp.get("name_hint", "query_result"),
-        )
-    except Exception as exc:
-        return {"error": f"CSV export failed: {exc}"}
-    return {
-        "success": True,
-        "csv_path": path,
-        "row_count": rt.last_result.row_count,
-    }
-
-
 _COL_NOT_FOUND_RE = re.compile(
     r"(?:cannot resolve|column not found|unknown column|no such column"
     r"|does not exist|invalid column name|missing columns?)"
@@ -550,7 +478,8 @@ def classify_error(error_msg: str) -> tuple[str, str]:
     if _SYNTAX_ERR_RE.search(error_msg):
         return (
             "syntax_error",
-            "Check dialect-specific syntax: date functions, string quoting, JOIN clauses.",
+            "Check dialect-specific syntax: date functions, string quoting, JOIN clauses."
+            " In Hive, non-ASCII column aliases (Chinese etc.) MUST use backticks: AS `别名`.",
         )
     if _TYPE_ERR_RE.search(error_msg):
         return (
@@ -611,54 +540,12 @@ def _tool_get_result_page(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
     }
 
 
-def _tool_export_excel(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
-    if rt.last_result is None:
-        return {"error": "No query result to export. Run execute_sql first."}
-    try:
-        path = export_excel(
-            columns=rt.last_result.columns,
-            rows=rt.last_result.rows,
-            path=inp.get("path"),
-            name_hint=inp.get("name_hint", "query_result"),
-        )
-    except Exception as exc:
-        return {"error": f"Excel export failed: {exc}"}
-    return {
-        "success": True,
-        "excel_path": path,
-        "row_count": rt.last_result.row_count,
-    }
-
-
-def _tool_export_pdf(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
-    if rt.last_result is None:
-        return {"error": "No query result to export. Run execute_sql first."}
-    try:
-        path = export_pdf(
-            columns=rt.last_result.columns,
-            rows=rt.last_result.rows,
-            path=inp.get("path"),
-            name_hint=inp.get("name_hint", "query_result"),
-            title=inp.get("title", "Query Result Report"),
-        )
-    except Exception as exc:
-        return {"error": f"PDF export failed: {exc}"}
-    return {
-        "success": True,
-        "pdf_path": path,
-        "row_count": rt.last_result.row_count,
-    }
-
-
 _TOOL_HANDLERS = {
     "match_tables": _tool_match_tables,
     "get_table_schema": _tool_get_table_schema,
     "get_max_partition": _tool_get_max_partition,
     "explain_sql": _tool_explain_sql,
     "execute_sql": _tool_execute_sql,
-    "export_csv": _tool_export_csv,
-    "export_excel": _tool_export_excel,
-    "export_pdf": _tool_export_pdf,
     "get_result_page": _tool_get_result_page,
 }
 

@@ -31,6 +31,11 @@ def extract_params(sql: str) -> list[str]:
 def apply_params(sql: str, values: dict[str, str]) -> str:
     """Replace ``${param}`` placeholders with provided values.
 
+    **Security note**: values are interpolated as-is (no escaping). This is
+    intentional for template parameter substitution in the UI, but callers
+    must never pass unsanitised end-user input as *values* if the resulting
+    SQL will be executed directly.
+
     Raises ``ValueError`` if a placeholder has no corresponding value.
     """
     def _replace(m: re.Match) -> str:

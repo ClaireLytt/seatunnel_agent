@@ -5,11 +5,65 @@ from __future__ import annotations
 import base64
 import io
 import re
+import threading
 from typing import Any
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+
+
+_cjk_font_configured = False
+_cjk_font_lock = threading.Lock()
+
+
+def _configure_cjk_font() -> None:
+    """Set matplotlib to use a CJK-capable font for Chinese labels."""
+    global _cjk_font_configured
+    if _cjk_font_configured:
+        return
+    with _cjk_font_lock:
+        if _cjk_font_configured:
+            return
+        _cjk_font_configured = True
+    import matplotlib.font_manager as fm
+    from pathlib import Path
+
+    for name in ("Microsoft YaHei", "SimHei", "PingFang SC", "Noto Sans SC"):
+        if any(name.lower() in f.name.lower() for f in fm.fontManager.ttflist):
+            plt.rcParams["font.sans-serif"] = [name] + plt.rcParams.get(
+                "font.sans-serif", []
+            )
+            plt.rcParams["axes.unicode_minus"] = False
+            return
+
+    noto = Path.home() / ".seatunnel-agent" / "fonts" / "NotoSansSC-Regular.otf"
+    if noto.is_file():
+        fm.fontManager.addfont(str(noto))
+        plt.rcParams["font.sans-serif"] = ["Noto Sans SC"] + plt.rcParams.get(
+            "font.sans-serif", []
+        )
+        plt.rcParams["axes.unicode_minus"] = False
+        return
+
+    def _download_font():
+        try:
+            noto.parent.mkdir(parents=True, exist_ok=True)
+            import urllib.request
+            _url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Regular.otf"
+            resp = urllib.request.urlopen(_url, timeout=15)  # noqa: S310
+            with open(noto, "wb") as _f:
+                _f.write(resp.read())
+            if noto.is_file():
+                fm.fontManager.addfont(str(noto))
+                plt.rcParams["font.sans-serif"] = ["Noto Sans SC"] + plt.rcParams.get(
+                    "font.sans-serif", []
+                )
+                plt.rcParams["axes.unicode_minus"] = False
+        except Exception:
+            pass
+
+    threading.Thread(target=_download_font, daemon=True).start()
 
 
 def fig_to_base64(fig: plt.Figure) -> str:
@@ -72,6 +126,41 @@ def _classify_columns(
     return cat_cols, num_cols, date_cols
 
 
+_RANK_HINTS = re.compile(
+    r"avg|average|mean|score|分|均|rank|rating|count\b|num\b|数量|max|min",
+    re.I,
+)
+_SHARE_HINTS = re.compile(
+    r"amount|sum|total|sales|revenue|额|量|费|收入|支出|占比|proportion|share",
+    re.I,
+)
+
+
+def _looks_like_proportion(vals: list[float], columns: list[str], num_idx: int) -> bool:
+    """Heuristic: return True only when pie chart is semantically appropriate.
+
+    Pie is good for "parts of a whole" (sales by city, revenue by dept).
+    Pie is bad for rankings, averages, scores, counts per individual.
+    """
+    import math
+    col_name = columns[num_idx] if num_idx < len(columns) else ""
+    if _RANK_HINTS.search(col_name):
+        return False
+    if _SHARE_HINTS.search(col_name):
+        return True
+    clean = [v for v in vals if math.isfinite(v)]
+    if len(clean) < 2:
+        return False
+    mx = max(clean)
+    mn = min(clean)
+    if mx == 0:
+        return False
+    spread = (mx - mn) / mx
+    if spread < 0.15:
+        return False
+    return True
+
+
 def detect_chart_type(
     columns: list[str], rows: list[tuple],
 ) -> str | None:
@@ -94,10 +183,12 @@ def detect_chart_type(
         if n_rows <= _MAX_PIE_SLICES and len(num_cols) == 1:
             vals = [v for v in col_values[num_cols[0]] if v is not None]
             try:
-                all_positive = all(float(v) >= 0 for v in vals)
+                fvals = [float(v) for v in vals]
+                all_positive = all(v >= 0 for v in fvals)
             except (ValueError, TypeError):
                 all_positive = False
-            if all_positive:
+                fvals = []
+            if all_positive and fvals and _looks_like_proportion(fvals, columns, num_cols[0]):
                 return "pie"
         if n_rows <= _MAX_BAR_ITEMS:
             return "bar"
@@ -111,20 +202,31 @@ def build_chart(
     rows: list[tuple],
     chart_type: str,
 ) -> plt.Figure | None:
+    _configure_cjk_font()
     if not rows or not columns:
         return None
 
     ncols = len(columns)
     padded = [tuple(r) + (None,) * (ncols - len(r)) if len(r) < ncols else tuple(r) for r in rows]
     col_values = list(zip(*padded))
-    cat_cols, num_cols, date_cols = _classify_columns(col_values)
+
+    num_cols = [i for i, vals in enumerate(col_values) if _is_numeric(list(vals))]
+    date_cols = [i for i, vals in enumerate(col_values) if not _is_numeric(list(vals)) and _is_date(list(vals))]
+    cat_cols = [i for i in range(ncols) if i not in num_cols and i not in date_cols]
 
     if not num_cols:
         return None
     label_idx = (date_cols or cat_cols or [0])[0]
     labels = [str(v) for v in col_values[label_idx]]
     values_idx = num_cols[0]
-    values = [float(v) if v is not None else 0.0 for v in col_values[values_idx]]
+    def _safe_float(v):
+        if v is None:
+            return 0.0
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return 0.0
+    values = [_safe_float(v) for v in col_values[values_idx]]
     value_label = columns[values_idx]
 
     if not values:
@@ -145,6 +247,9 @@ def build_chart(
             ax.set_xlabel(columns[label_idx])
             plt.xticks(rotation=45, ha="right")
         elif chart_type == "pie":
+            if not any(v != 0 for v in values):
+                plt.close(fig)
+                return None
             ax.pie(values, labels=labels, autopct="%1.1f%%", startangle=90)
             ax.set_title(value_label)
         elif chart_type == "scatter":

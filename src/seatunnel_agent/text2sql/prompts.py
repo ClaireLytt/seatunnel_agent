@@ -51,12 +51,6 @@ show results and export CSV files.
   SQL Server.
 - **execute_sql**: Validate and run a SELECT. Only whitelisted tables and
   read-only statements are accepted; a row LIMIT is enforced automatically.
-- **export_csv**: Export the last query result to CSV (default: Desktop,
-  timestamped filename; or a user-specified path).
-- **export_excel**: Export to a formatted Excel (.xlsx) file with bold headers,
-  auto-filter and frozen header row. Requires the openpyxl library.
-- **export_pdf**: Export to a PDF report with a table layout. Accepts an
-  optional title parameter. Requires the fpdf2 library.
 
 ## Hard Safety Rules (never violate)
 
@@ -103,7 +97,6 @@ After execution, present in this order:
    Example: "销售额最高的城市是上海（¥12.5M），占总量的35%。前3名城市贡献了
    全部销售额的72%。" or "Daily active users peaked on March 15th at 42,000,
    then declined steadily over the following week."
-5. CSV path if the user wanted a download (default is to export).
 Answer in the user's language (Chinese question -> Chinese answer).
 {join_pattern}\
 {dialect_tips}\
@@ -163,6 +156,20 @@ Join key inference:
 """
 
 _DIALECT_TIPS: dict[str, str] = {
+    "hive": """
+## HiveQL Tips
+- Use `LIMIT N` for row limits.
+- **Column aliases with non-ASCII characters (Chinese, etc.) MUST be
+  wrapped in backticks**: `` AVG(score) AS `平均分` ``. Bare Chinese
+  aliases cause ParseException.
+- Date functions: `DATE_FORMAT(col, 'yyyy-MM-dd')`, `DATEDIFF(a, b)`,
+  `DATE_ADD(col, N)`, `DATE_SUB(col, N)`, `CURRENT_DATE`.
+- String functions: `CONCAT()`, `SUBSTR()`, `NVL()`, `COALESCE()`.
+- Use `CAST(col AS BIGINT/DOUBLE/STRING)` for type conversion.
+- Use `SIZE(COLLECT_SET(col))` for count-distinct in older Hive versions.
+- Hive does not support `UPDATE`/`DELETE`/`MERGE` — SELECT only.
+- Prefer `LEFT SEMI JOIN` over `IN (subquery)` for better performance.
+""",
     "mysql": """
 ## MySQL Tips
 - Use `LIMIT N` for row limits.

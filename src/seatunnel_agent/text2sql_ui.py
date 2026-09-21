@@ -51,7 +51,19 @@ from .text2sql.schema import SchemaStore
 
 
 _shared_holder: dict[str, Any] = {}
+_shared_holder_lock = threading.Lock()
 _chart_cache: dict[str, str] = {}
+_chart_cache_lock = threading.Lock()
+_CHART_CACHE_MAX = 50
+
+
+def _chart_cache_put(key: str, value: str) -> None:
+    """Store a chart in the cache, evicting oldest entries if full."""
+    with _chart_cache_lock:
+        if len(_chart_cache) >= _CHART_CACHE_MAX:
+            oldest = next(iter(_chart_cache))
+            del _chart_cache[oldest]
+        _chart_cache[key] = value
 
 
 def _esc_html(s: str) -> str:
@@ -308,12 +320,12 @@ def build_diff_card(diff_data: dict, lang: str = "en") -> str:
     if cols_added:
         items.append(
             f'<div style="font-size:11px;padding:2px 0;color:#16a34a;">'
-            f'{t("diff_cols_added")}: {", ".join(cols_added)}</div>'
+            f'{t("diff_cols_added")}: {_esc_html(", ".join(cols_added))}</div>'
         )
     if cols_removed:
         items.append(
             f'<div style="font-size:11px;padding:2px 0;color:#dc2626;">'
-            f'{t("diff_cols_removed")}: {", ".join(cols_removed)}</div>'
+            f'{t("diff_cols_removed")}: {_esc_html(", ".join(cols_removed))}</div>'
         )
     old_c = diff_data.get("old_count", 0)
     new_c = diff_data.get("new_count", 0)
@@ -385,6 +397,26 @@ def _md_table(columns: list[str], rows: list[list[Any]], max_rows: int = 20, lan
             for c in cells
         ) + " |")
     return "\n".join(lines)
+
+
+def _build_csv_data_uri(columns: list[str], rows: list) -> str:
+    import csv as _csv, io as _io, base64 as _b64
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(columns)
+    w.writerows(rows)
+    b64 = _b64.b64encode(buf.getvalue().encode("utf-8-sig")).decode("ascii")
+    return f"data:text/csv;base64,{b64}"
+
+
+_DL_BTN_STYLE = (
+    "display:inline-flex;align-items:center;gap:4px;"
+    "padding:4px 12px;margin:4px 4px 4px 0;"
+    "border:1px solid var(--border-color-primary,#e0e0e0);"
+    "border-radius:6px;background:var(--background-fill-secondary,#f7f7f7);"
+    "color:var(--body-text-color,#333);font-size:13px;cursor:pointer;"
+    "text-decoration:none;"
+)
 
 
 def _format_tool_result(name: str, raw: str, lang: str = "en",
@@ -592,7 +624,10 @@ class _IncrementalFormatter:
             elif tp == "tool_result":
                 self.messages.append({
                     "role": "assistant",
-                    "content": _format_tool_result(ev.get("name", "?"), ev.get("result", "{}"), self._lang, store=self._store),
+                    "content": _format_tool_result(
+                        ev.get("name", "?"), ev.get("result", "{}"),
+                        self._lang, store=self._store,
+                    ),
                 })
             elif tp == "usage":
                 inp_t, out_t = ev.get("input_tokens", 0), ev.get("output_tokens", 0)
@@ -646,7 +681,9 @@ def _history_rows(logger: QueryLogger, n: int = 100) -> list[list[str]]:
         sql_full = rec.get("generated_sql") or ""
         if sql_full and status == "success":
             sql_hash = hashlib.md5(sql_full.encode()).hexdigest()
-            if sql_hash in _chart_cache:
+            with _chart_cache_lock:
+                has_chart = sql_hash in _chart_cache
+            if has_chart:
                 badge += "📊"
         elapsed = rec.get("exec_time_ms")
         elapsed_str = f"{elapsed}ms" if elapsed is not None else ""
@@ -673,7 +710,8 @@ def render_schema_browser_page(app=None) -> None:
     t = lambda k: _t2s(lang, k)
 
     def _table_choices_from_shared(lang):
-        store = _shared_holder.get("full_store")
+        with _shared_holder_lock:
+            store = _shared_holder.get("full_store")
         if not store:
             return []
         choices = []
@@ -689,7 +727,8 @@ def render_schema_browser_page(app=None) -> None:
         if not table_choice:
             return ""
         name = table_choice.split("(")[0].strip()
-        store = _shared_holder.get("full_store")
+        with _shared_holder_lock:
+            store = _shared_holder.get("full_store")
         if not store:
             return ""
         table = store.get(name)
@@ -735,7 +774,9 @@ def render_schema_browser_page(app=None) -> None:
             back_btn = gr.Button(t("schema_back"), variant="secondary", size="sm")
             refresh_btn = gr.Button(t("refresh"), variant="secondary", size="sm")
 
-        no_tables_msg = t("schema_no_tables") if not _shared_holder.get("full_store") else ""
+        with _shared_holder_lock:
+            _has_store = _shared_holder.get("full_store") is not None
+        no_tables_msg = t("schema_no_tables") if not _has_store else ""
         schema_dd = gr.Dropdown(
             choices=_table_choices_from_shared("en"),
             value=None, label="",
@@ -765,6 +806,7 @@ def _session_choices_global() -> list[str]:
     return [f"{s['title']} ({s['updated_at'][:10]}) [{s['id']}]" for s in sessions]
 
 
+
 def render_history_page(app=None) -> None:
     """Full-page query history viewer."""
     logger = QueryLogger()
@@ -779,10 +821,17 @@ def render_history_page(app=None) -> None:
           tr.style.cursor = 'pointer';
           tr.addEventListener('click', () => {
             const wasSelected = tr.classList.contains('st-row-selected');
+            const idx = Array.from(tr.parentNode.children).indexOf(tr);
             document.querySelectorAll('.st-hist-table table tbody tr').forEach(r => {
               r.classList.remove('st-row-selected');
             });
-            if (!wasSelected) tr.classList.add('st-row-selected');
+            const tb = document.querySelector('#hist-sel-idx textarea, #hist-sel-idx input');
+            if (wasSelected) {
+              if (tb) { tb.value = '-1'; tb.dispatchEvent(new Event('input', {bubbles:true})); }
+            } else {
+              tr.classList.add('st-row-selected');
+              if (tb) { tb.value = String(idx); tb.dispatchEvent(new Event('input', {bubbles:true})); }
+            }
           });
         });
       });
@@ -826,8 +875,10 @@ def render_history_page(app=None) -> None:
                                     elem_classes=["st-hist-btn"])
             save_fav_btn = gr.Button("⭐ Save to Favorites", variant="secondary", size="sm",
                                      elem_classes=["st-hist-btn"])
-            view_chart_btn = gr.Button("📊 View Chart", variant="secondary", size="sm",
-                                       elem_classes=["st-hist-btn"])
+            export_sel_btn = gr.DownloadButton("📥 Export Selected", variant="secondary", size="sm",
+                                                elem_classes=["st-hist-btn"])
+            export_all_btn = gr.DownloadButton("📥 Export All CSV", variant="secondary", size="sm",
+                                                elem_classes=["st-hist-btn"])
             delete_btn = gr.Button("✕ Delete Selected", variant="stop", size="sm",
                                    elem_classes=["st-hist-btn"])
             clear_btn = gr.Button("Clear All", variant="stop", size="sm",
@@ -835,6 +886,7 @@ def render_history_page(app=None) -> None:
 
         selected_state = gr.State([])
         selected_info = gr.Markdown("", elem_classes=["st-hist-sel-info"])
+        selected_idx_box = gr.Textbox(visible=False, elem_id="hist-sel-idx")
 
         history_table = gr.Dataframe(
             headers=["#", "Time", "Question", "", "Elapsed", "SQL"],
@@ -844,7 +896,8 @@ def render_history_page(app=None) -> None:
             column_widths=["36px", "140px", "32%", "32px", "60px", "38%"],
             elem_classes=["st-hist-table"],
         )
-        chart_preview_html = gr.HTML("", visible=False, elem_classes=["st-hist-chart-preview"])
+
+        detail_html = gr.HTML("", elem_classes=["st-hist-detail"])
 
         gr.HTML(
             '<style>'
@@ -856,27 +909,78 @@ def render_history_page(app=None) -> None:
             '  .st-fav-table table tbody tr.st-row-selected'
             '  { background: #1e3a5f !important; }'
             '}'
+            '.st-hist-detail { padding: 0 8px; }'
             '</style>'
         )
+
+    def _build_detail(row: int) -> str:
+        records = list(reversed(logger.recent(100)))
+        if row < 0 or row >= len(records):
+            return ""
+        rec = records[row]
+        question = _esc_html(rec.get("user_query", ""))
+        sql = _esc_html(rec.get("generated_sql", ""))
+        ts = _esc_html(rec.get("timestamp", "").replace("T", " "))
+        status = rec.get("status", "")
+        elapsed = rec.get("exec_time_ms")
+        badge = "✅" if status == "success" else "❌" if status == "error" else "⏳"
+        elapsed_str = f"{elapsed}ms" if elapsed is not None else ""
+        html = (
+            f'<div style="border:1px solid var(--border-color-primary, #e5e7eb);'
+            f'border-radius:8px;padding:12px;margin:8px 0;'
+            f'background:var(--background-fill-secondary, #f9fafb);font-size:13px;">'
+            f'<div style="margin-bottom:8px;"><b>Row #{row}</b> &nbsp; {badge} &nbsp; '
+            f'<span style="color:var(--body-text-color-subdued, #6b7280);">{ts}</span> &nbsp; '
+            f'<span style="color:var(--body-text-color-subdued, #6b7280);">{elapsed_str}</span></div>'
+            f'<div style="margin-bottom:6px;"><b>Question:</b> {question}</div>'
+            f'<div><b>SQL:</b></div>'
+            f'<pre style="background:#1e293b;color:#e2e8f0;padding:10px;border-radius:6px;'
+            f'overflow-x:auto;white-space:pre-wrap;word-break:break-all;font-size:12px;">'
+            f'{sql}</pre>'
+            f'</div>'
+        )
+        return html
 
     def _on_select(evt: gr.SelectData, current: list):
         row = evt.index[0]
         if current == [row]:
-            return [], ""
-        info = f"**Selected:** #{row}"
-        return [row], info
+            return [], "", ""
+        question = ""
+        records = list(reversed(logger.recent(100)))
+        if 0 <= row < len(records):
+            question = records[row].get("user_query", "")
+            if len(question) > 60:
+                question = question[:60] + "..."
+        info = f"**Selected row #{row}:** {question}"
+        return [row], info, _build_detail(row)
+
+    def _on_js_select(idx_str: str):
+        try:
+            row = int(idx_str)
+        except (ValueError, TypeError):
+            return [], "", ""
+        if row < 0:
+            return [], "", ""
+        records = list(reversed(logger.recent(100)))
+        question = ""
+        if 0 <= row < len(records):
+            question = records[row].get("user_query", "")
+            if len(question) > 60:
+                question = question[:60] + "..."
+        info = f"**Selected row #{row}:** {question}"
+        return [row], info, _build_detail(row)
 
     def _refresh():
-        return _history_rows(logger), [], ""
+        return _history_rows(logger), [], "", ""
 
     def _delete_selected(selected: list):
         if selected:
             logger.delete(selected)
-        return _history_rows(logger), [], ""
+        return _history_rows(logger), [], "", ""
 
     def _clear():
         logger.clear()
-        return [], [], ""
+        return [], [], "", ""
 
     def _save_to_favorites(selected: list, lang: str):
         if not selected:
@@ -896,26 +1000,36 @@ def render_history_page(app=None) -> None:
         if saved:
             gr.Info(_t2s(lang, "hist_favorite_saved").format(name=f"{saved}"))
 
-    def _view_chart(selected: list, lang: str):
+    def _export_selected(selected: list, lang: str):
         if not selected:
-            gr.Warning(_t2s(lang, "hist_no_selection"))
-            return gr.update(visible=False)
+            raise gr.Error(_t2s(lang, "hist_no_selection"))
         records = list(reversed(logger.recent(100)))
-        idx = selected[0]
-        if 0 <= idx < len(records):
-            rec = records[idx]
-            sql = rec.get("generated_sql", "")
-            sql_hash = hashlib.md5(sql.encode()).hexdigest()
-            b64 = _chart_cache.get(sql_hash)
-            if b64:
-                return gr.update(
-                    value=f'<div style="text-align:center;padding:12px;">'
-                          f'<img src="{b64}" style="max-width:100%;border-radius:8px;" />'
-                          f'</div>',
-                    visible=True,
-                )
-        gr.Warning(_t2s(lang, "hist_chart_unavailable"))
-        return gr.update(visible=False)
+        records = [records[i] for i in selected if 0 <= i < len(records)]
+        if not records:
+            raise gr.Error(_t2s(lang, "hist_no_selection"))
+        import tempfile
+        from .text2sql.exporter import export_csv
+        out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
+        out_dir.mkdir(exist_ok=True)
+        columns = ["Time", "Question", "Status", "Elapsed(ms)", "SQL"]
+        rows = [(r.get("timestamp", ""), r.get("user_query", ""),
+                 r.get("status", ""), r.get("exec_time_ms", ""),
+                 r.get("generated_sql", "")) for r in records]
+        return export_csv(columns=columns, rows=rows, path=str(out_dir), name_hint="query_selected")
+
+    def _export_all(lang: str):
+        records = list(reversed(logger.recent(100)))
+        if not records:
+            raise gr.Error(_t2s(lang, "hist_empty"))
+        import tempfile
+        from .text2sql.exporter import export_csv
+        out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
+        out_dir.mkdir(exist_ok=True)
+        columns = ["Time", "Question", "Status", "Elapsed(ms)", "SQL"]
+        rows = [(r.get("timestamp", ""), r.get("user_query", ""),
+                 r.get("status", ""), r.get("exec_time_ms", ""),
+                 r.get("generated_sql", "")) for r in records]
+        return export_csv(columns=columns, rows=rows, path=str(out_dir), name_hint="query_history_all")
 
     def _switch_lang(choice):
         lang = "zh" if choice == "中文" else "en"
@@ -926,7 +1040,8 @@ def render_history_page(app=None) -> None:
                     gr.update(value="← 返回"),
                     gr.update(value="↻ 刷新"),
                     gr.update(value="⭐ 收藏此查询"),
-                    gr.update(value="📊 查看图表"),
+                    gr.update(label="📥 导出所选"),
+                    gr.update(label="📥 导出全部"),
                     gr.update(value="✕ 删除所选"),
                     gr.update(value="清空全部"))
         return (lang,
@@ -935,19 +1050,28 @@ def render_history_page(app=None) -> None:
                 gr.update(value="← Back"),
                 gr.update(value="↻ Refresh"),
                 gr.update(value="⭐ Save to Favorites"),
-                gr.update(value="📊 View Chart"),
+                gr.update(label="📥 Export Selected"),
+                gr.update(label="📥 Export All CSV"),
                 gr.update(value="✕ Delete Selected"),
                 gr.update(value="Clear All"))
+
+    _sel_outputs = [selected_state, selected_info, detail_html]
+    _refresh_outputs = [history_table, selected_state, selected_info, detail_html]
 
     lang_dd.change(
         fn=_switch_lang,
         inputs=[lang_dd],
-        outputs=[lang_state, title_md, resume_btn, back_btn, refresh_btn, save_fav_btn, view_chart_btn, delete_btn, clear_btn],
+        outputs=[lang_state, title_md, resume_btn, back_btn, refresh_btn, save_fav_btn, export_sel_btn, export_all_btn, delete_btn, clear_btn],
     )
     history_table.select(
         fn=_on_select,
         inputs=[selected_state],
-        outputs=[selected_state, selected_info],
+        outputs=_sel_outputs,
+    )
+    selected_idx_box.input(
+        fn=_on_js_select,
+        inputs=[selected_idx_box],
+        outputs=_sel_outputs,
     )
     def _resume_set(choice: str):
         if not choice:
@@ -957,7 +1081,8 @@ def render_history_page(app=None) -> None:
             return
         sid = parts[1].rstrip("]").strip()
         if sid:
-            _shared_holder["_pending_resume"] = sid
+            with _shared_holder_lock:
+                _shared_holder["_pending_resume"] = sid
 
     _RESUME_OPEN_JS = "() => { window.open('/text2sql', '_blank'); }"
     resume_btn.click(fn=_resume_set, inputs=[session_dd]).then(
@@ -967,19 +1092,20 @@ def render_history_page(app=None) -> None:
     def _refresh_sessions():
         return gr.update(choices=_session_choices_global(), value=None)
 
-    refresh_btn.click(fn=_refresh, outputs=[history_table, selected_state, selected_info])
+    refresh_btn.click(fn=_refresh, outputs=_refresh_outputs)
     refresh_btn.click(fn=_refresh_sessions, outputs=[session_dd])
     save_fav_btn.click(fn=_save_to_favorites, inputs=[selected_state, lang_state])
-    view_chart_btn.click(fn=_view_chart, inputs=[selected_state, lang_state], outputs=[chart_preview_html])
+    export_sel_btn.click(fn=_export_selected, inputs=[selected_state, lang_state], outputs=[export_sel_btn])
+    export_all_btn.click(fn=_export_all, inputs=[lang_state], outputs=[export_all_btn])
     delete_btn.click(
         fn=_delete_selected,
         inputs=[selected_state],
-        outputs=[history_table, selected_state, selected_info],
+        outputs=_refresh_outputs,
     )
-    clear_btn.click(fn=_clear, outputs=[history_table, selected_state, selected_info])
+    clear_btn.click(fn=_clear, outputs=_refresh_outputs)
 
     if app is not None:
-        app.load(fn=_refresh, outputs=[history_table, selected_state, selected_info])
+        app.load(fn=_refresh, outputs=_refresh_outputs)
         app.load(fn=None, js=_HIST_ROW_HL_JS)
 
     history_table.change(fn=None, js=_HIST_ROW_HL_JS)
@@ -1052,7 +1178,7 @@ def render_favorites_page(app=None) -> None:
                 show_label=False, lines=1, scale=2,
                 interactive=True,
             )
-            rename_save_btn = gr.Button("✏️", variant="primary", size="sm",
+            rename_save_btn = gr.Button("✓", variant="primary", size="sm",
                                         scale=0, min_width=36)
             delete_btn = gr.Button("✕ Delete", variant="stop", size="sm",
                                    elem_classes=["st-hist-btn"])
@@ -1149,7 +1275,7 @@ def render_favorites_page(app=None) -> None:
                     gr.update(value="✕ 删除"),
                     gr.update(value="清空全部"),
                     gr.update(placeholder=_t2s("zh", "fav_rename_placeholder")),
-                    gr.update(value="✏️"))
+                    gr.update(value="✓"))
         return (lang,
                 gr.update(value="#### ⭐ SQL Favorites"),
                 gr.update(placeholder=_t2s("en", "fav_search_placeholder")),
@@ -1158,7 +1284,7 @@ def render_favorites_page(app=None) -> None:
                 gr.update(value="✕ Delete"),
                 gr.update(value="Clear All"),
                 gr.update(placeholder=_t2s("en", "fav_rename_placeholder")),
-                gr.update(value="✏️"))
+                gr.update(value="✓"))
 
     lang_dd.change(
         fn=_switch_lang,
@@ -1359,13 +1485,11 @@ def render_text2sql_page(app=None) -> None:
                                     elem_classes=["st-sidebar-status"])
             new_chat_btn = gr.Button(t("new_chat"), variant="primary", size="sm",
                                      elem_classes=["st-new-chat-btn"])
-            export_btn = gr.DownloadButton(t("export_csv"), variant="secondary", size="sm",
-                                           elem_classes=["st-connect-btn"])
             history_link = gr.Button(t("history"), variant="secondary", size="sm",
                                      elem_classes=["st-connect-btn"])
             history_link.click(fn=None, js="() => { window.open('/history', '_blank'); }")
 
-            fav_section_md = gr.Markdown(f"---\n**{t('fav_section_title')}**")
+            fav_section_md = gr.Markdown(f"**{t('fav_section_title')}**")
             save_fav_btn = gr.Button(
                 t("save_favorite"), variant="primary", size="sm",
                 elem_classes=["st-connect-btn"],
@@ -1374,7 +1498,7 @@ def render_text2sql_page(app=None) -> None:
                                  elem_classes=["st-connect-btn"])
             fav_link.click(fn=None, js="() => { window.open('/favorites', '_blank'); }")
 
-            gr.Markdown(f"---\n**{t('template_label')}**")
+            gr.Markdown(f"**{t('template_label')}**")
             template_dd = gr.Dropdown(
                 choices=template_choices("en"),
                 value=None,
@@ -1383,19 +1507,6 @@ def render_text2sql_page(app=None) -> None:
                 elem_classes=["st-sidebar-control"],
             )
             template_preview = gr.Markdown("", elem_classes=["st-template-preview"])
-
-            gr.Markdown(f"---\n**{t('session_label')}**")
-            session_dd = gr.Dropdown(
-                choices=[], value=None,
-                label=t("session_label"),
-                show_label=False,
-                elem_classes=["st-sidebar-control"],
-            )
-            with gr.Row(elem_classes=["st-sidebar-row"]):
-                load_session_btn = gr.Button(t("load_session"), size="sm",
-                                             elem_classes=["st-filter-act-btn"])
-                delete_session_btn = gr.Button(t("delete_session"), variant="stop", size="sm",
-                                               elem_classes=["st-filter-act-btn"])
 
         # ── Right panel (chat) ──
         with gr.Column(scale=1, elem_classes=["st-main"]):
@@ -1419,6 +1530,7 @@ def render_text2sql_page(app=None) -> None:
                 buttons=["copy"],
                 elem_classes=["st-chatbot"],
                 height=None,
+                sanitize_html=False,
             )
             chart_plot = gr.Plot(visible=False, elem_classes=["st-chart"], show_label=False)
             def _chart_choices(lang):
@@ -1596,10 +1708,13 @@ def render_text2sql_page(app=None) -> None:
             holder["settings"] = settings
             holder["store"] = store
             holder["full_store"] = store
-            _shared_holder["full_store"] = store
             holder["ds_type"] = ds_type
             holder["db_config"] = db_config
             holder["agent"] = None
+        with _shared_holder_lock:
+            _shared_holder["full_store"] = store
+            _shared_holder["db_config"] = db_config
+            _shared_holder["ds_type"] = ds_type
 
         def _warmup():
             try:
@@ -1636,7 +1751,8 @@ def render_text2sql_page(app=None) -> None:
 
         chat_up = no
         input_up = no
-        rsid = _shared_holder.pop("_pending_resume", "")
+        with _shared_holder_lock:
+            rsid = _shared_holder.pop("_pending_resume", "")
         if rsid:
             session = load_t2s_session(rsid)
             if session is not None:
@@ -1712,16 +1828,31 @@ def render_text2sql_page(app=None) -> None:
         prev = 0
         fmt = _IncrementalFormatter(start, lang, store_ref)
         user_msg = [{"role": "user", "content": msg}]
+        _result_snapshots: list = []
         while not collector.done:
             collector.wait_for_event(timeout=0.3)
             count = collector.event_count
             if count > prev:
                 new_events = collector.snapshot_since(prev)
                 prev = count
+                for _ev in new_events:
+                    if (isinstance(_ev, dict)
+                            and _ev.get("type") == "tool_result"
+                            and _ev.get("name") == "execute_sql"):
+                        _rt = agent.runtime if agent else None
+                        if _rt and _rt.last_result:
+                            _result_snapshots.append(_rt.last_result)
                 yield history + user_msg + fmt.feed(new_events), gr.update()
         thread.join(timeout=120)
         remaining = collector.snapshot_since(prev)
         if remaining:
+            for _ev in remaining:
+                if (isinstance(_ev, dict)
+                        and _ev.get("type") == "tool_result"
+                        and _ev.get("name") == "execute_sql"):
+                    _rt = agent.runtime if agent else None
+                    if _rt and _rt.last_result:
+                        _result_snapshots.append(_rt.last_result)
             fmt.feed(remaining)
         final = fmt.finalize()
         if error_msg:
@@ -1741,28 +1872,66 @@ def render_text2sql_page(app=None) -> None:
                 holder["_last_question"] = last_q
 
         chart_update = gr.update(visible=False)
-        if rt and rt.last_result and rt.last_result.columns and rt.last_result.rows:
-            if chart_pref == _t2s(lang, "chart_none"):
-                ct = None
-            elif _chart_pref_to_type(chart_pref, lang):
-                ct = _chart_pref_to_type(chart_pref, lang)
-            else:
-                ct = detect_chart_type(rt.last_result.columns, rt.last_result.rows)
-            if ct:
-                fig = build_chart(rt.last_result.columns, rt.last_result.rows, ct)
-                if fig:
-                    data_uri = fig_to_base64(fig)
-                    chart_html = (
-                        f'<div class="st-inline-chart">'
-                        f'<img src="{data_uri}" alt="chart" '
-                        f'style="max-width:100%;border-radius:8px;margin:8px 0;" />'
-                        f'</div>'
-                    )
-                    final.append({"role": "assistant", "content": chart_html})
-                    if rt.last_sql:
-                        sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
-                        _chart_cache[sql_hash] = data_uri
-                    plt.close(fig)
+        _dl_messages: list[tuple[int, dict]] = []
+        for _si, _snap in enumerate(_result_snapshots):
+            _csv_uri = _build_csv_data_uri(_snap.columns, _snap.rows)
+            _ts = time.strftime("%Y%m%d_%H%M%S")
+            dl_parts: list[str] = [
+                f'<a href="{_csv_uri}" download="query_{_ts}_{_si}.csv" '
+                f'style="{_DL_BTN_STYLE}">\U0001f4e5 CSV</a>'
+            ]
+            chart_block = ""
+            cols, rows = _snap.columns, _snap.rows
+            if cols and rows:
+                if chart_pref == _t2s(lang, "chart_none"):
+                    ct = None
+                elif _chart_pref_to_type(chart_pref, lang):
+                    ct = _chart_pref_to_type(chart_pref, lang)
+                else:
+                    ct = detect_chart_type(cols, rows)
+                if ct:
+                    fig = build_chart(cols, rows, ct)
+                    if fig:
+                        _chart_uri = fig_to_base64(fig)
+                        _cts = time.strftime("%Y%m%d_%H%M%S")
+                        dl_parts.append(
+                            f'<a href="{_chart_uri}" download="chart_{_cts}_{_si}.png" '
+                            f'style="{_DL_BTN_STYLE}">\U0001f5bc️ Chart</a>'
+                        )
+                        chart_block = (
+                            f'<div class="st-inline-chart">'
+                            f'<img src="{_chart_uri}" alt="chart" '
+                            f'style="max-width:100%;border-radius:8px;margin:8px 0;" />'
+                            f'</div>'
+                        )
+                        try:
+                            import tempfile as _tmp
+                            _dl_dir = Path(_tmp.gettempdir()) / "text2sql_exports"
+                            _dl_dir.mkdir(parents=True, exist_ok=True)
+                            _png_path = str(_dl_dir / f"chart_{_cts}_{_si}.png")
+                            fig.savefig(_png_path, format="png", bbox_inches="tight", dpi=120)
+                            with holder_lock:
+                                holder["_last_chart_png"] = _png_path
+                        except Exception:
+                            pass
+                        if rt and rt.last_sql and _si == len(_result_snapshots) - 1:
+                            sql_hash = hashlib.md5(rt.last_sql.encode()).hexdigest()
+                            _chart_cache_put(sql_hash, _chart_uri)
+                        plt.close(fig)
+
+            bar_html = (
+                '<div class="st-dl-btns">'
+                + "".join(dl_parts)
+                + '</div>'
+            )
+            content = chart_block + bar_html
+            _dl_messages.append((_si, {"role": "assistant", "content": content}))
+
+        if _dl_messages:
+            done_msg = final.pop()
+            for _, dm in _dl_messages:
+                final.append(dm)
+            final.append(done_msg)
 
         yield history + [{"role": "user", "content": msg}] + final, chart_update
 
@@ -1783,17 +1952,20 @@ def render_text2sql_page(app=None) -> None:
 
     def _handle_stop(lang: str):
         t = lambda k: _t2s(lang, k)
-        c = holder.get("collector")
+        with holder_lock:
+            c = holder.get("collector")
         if c and not c.done:
             c.on_event("final_answer", {"text": t("stopped")})
         return gr.update(visible=True), gr.update(visible=False)
 
     def _new_chat(lang):
         t = lambda k: _t2s(lang, k)
-        agent = holder.get("agent")
-        if agent is not None:
-            agent.reset()
-        holder["session_id"] = None
+        with holder_lock:
+            agent = holder.get("agent")
+            if agent is not None:
+                agent.reset()
+            holder["session_id"] = None
+            holder.pop("_last_chart_png", None)
         return (
             [],
             gr.update(placeholder=t("input_placeholder")),
@@ -1801,23 +1973,6 @@ def render_text2sql_page(app=None) -> None:
             gr.update(visible=False),
             gr.update(value=""),
             1,
-        )
-
-    def _handle_export(lang: str):
-        t = lambda k: _t2s(lang, k)
-        agent = holder.get("agent")
-        rt = agent.runtime if agent else None
-        if rt is None or rt.last_result is None:
-            raise gr.Error(t("no_export"))
-        import tempfile
-        from .text2sql.exporter import export_csv
-        out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
-        out_dir.mkdir(exist_ok=True)
-        return export_csv(
-            columns=rt.last_result.columns,
-            rows=rt.last_result.rows,
-            path=str(out_dir),
-            name_hint="query_result",
         )
 
     def _reload_schema(lang: str):
@@ -1839,8 +1994,9 @@ def render_text2sql_page(app=None) -> None:
             with holder_lock:
                 holder["store"] = new_store
                 holder["full_store"] = new_store
-                _shared_holder["full_store"] = new_store
                 _sync_agent_store(new_store)
+            with _shared_holder_lock:
+                _shared_holder["full_store"] = new_store
             agent = holder.get("agent")
             if agent is not None:
                 agent.runtime.cache.invalidate()
@@ -1860,12 +2016,14 @@ def render_text2sql_page(app=None) -> None:
 
     def _save_favorite(lang: str):
         t = lambda k: _t2s(lang, k)
-        agent = holder.get("agent")
+        with holder_lock:
+            agent = holder.get("agent")
+            sql_fallback = holder.get("_last_sql", "")
+            last_question = holder.get("_last_question", "")
         rt = agent.runtime if agent else None
-        sql = (rt.last_sql if rt else "") or holder.get("_last_sql", "")
+        sql = (rt.last_sql if rt else "") or sql_fallback
         if not sql:
             raise gr.Error(t("no_sql_to_save"))
-        last_question = holder.get("_last_question", "")
         if not last_question and agent and agent.messages:
             for m in reversed(agent.messages):
                 if m.get("role") == "user":
@@ -1928,7 +2086,6 @@ def render_text2sql_page(app=None) -> None:
             gr.update(value=t("connect")),
             gr.update(label=t("status_label")),
             gr.update(value=t("new_chat")),
-            gr.update(label=t("export_csv")),
             gr.update(value=t("history")),
             gr.update(placeholder=t("input_placeholder")),
             gr.update(placeholder=_placeholder(lang)),
@@ -1940,15 +2097,12 @@ def render_text2sql_page(app=None) -> None:
             gr.update(value=f"✕ {t('cancel')}"),
             gr.update(placeholder=t("search_placeholder")),
             gr.update(choices=choices, value=new_selected),
-            gr.update(value=f"---\n**{t('fav_section_title')}**"),
+            gr.update(value=f"**{t('fav_section_title')}**"),
             gr.update(value=t("save_favorite")),
             gr.update(value=t("favorites")),
             gr.update(label=t("chart_type_label"), choices=_chart_choices(lang), value=t("chart_auto")),
             gr.update(choices=template_choices(lang), value=None),
             gr.update(value=""),
-            gr.update(label=t("session_label")),
-            gr.update(value=t("load_session")),
-            gr.update(value=t("delete_session")),
             gr.update(value=t("schema_browse_btn")),
         )
 
@@ -1970,7 +2124,6 @@ def render_text2sql_page(app=None) -> None:
             connect_btn,
             status_box,
             new_chat_btn,
-            export_btn,
             history_link,
             user_input,
             chatbot,
@@ -1988,9 +2141,6 @@ def render_text2sql_page(app=None) -> None:
             chart_type_radio,
             template_dd,
             template_preview,
-            session_dd,
-            load_session_btn,
-            delete_session_btn,
             schema_browse_btn,
         ],
     )
@@ -2016,6 +2166,8 @@ def render_text2sql_page(app=None) -> None:
         page_vis, page_info_val, page_num = _show_pagination(lang)
         llm_st = holder.get("llm_status")
         status_upd = gr.update(value=llm_st) if llm_st else gr.update()
+        with holder_lock:
+            agent = holder.get("agent")
         return (
             gr.update(value="", placeholder=t("conversation_active")),
             gr.update(visible=True),
@@ -2024,12 +2176,11 @@ def render_text2sql_page(app=None) -> None:
             page_info_val,
             page_num,
             gr.update(visible=False),
-            gr.update(choices=_session_choices()),
             status_upd,
         )
 
     submit_io = dict(fn=_handle_submit, inputs=[user_input, chatbot, lang_state, chart_type_radio], outputs=[chatbot, chart_plot])
-    _post_outputs = [user_input, send_btn, stop_btn, page_nav_row, page_info_md, page_state, page_table_md, session_dd, status_box]
+    _post_outputs = [user_input, send_btn, stop_btn, page_nav_row, page_info_md, page_state, page_table_md, status_box]
     send_btn.click(fn=_show_stop, outputs=[send_btn, stop_btn]) \
         .then(**submit_io) \
         .then(fn=_post_submit, inputs=[lang_state, chatbot], outputs=_post_outputs)
@@ -2040,7 +2191,6 @@ def render_text2sql_page(app=None) -> None:
     stop_btn.click(fn=_handle_stop, inputs=[lang_state], outputs=[send_btn, stop_btn])
     new_chat_btn.click(fn=_new_chat, inputs=[lang_state],
                        outputs=[chatbot, user_input, chart_plot, page_nav_row, page_table_md, page_state])
-    export_btn.click(fn=_handle_export, inputs=[lang_state], outputs=export_btn)
     reload_schema_btn.click(fn=_reload_schema, inputs=[lang_state],
                             outputs=[status_box, table_filter, filter_accordion, confirmed_sel])
 
@@ -2138,11 +2288,6 @@ def render_text2sql_page(app=None) -> None:
 
     # ── Session management ──
 
-    _session_choices = _session_choices_global
-
-    def _refresh_sessions():
-        return gr.update(choices=_session_choices(), value=None)
-
     def _save_current_session(chat_messages: list):
         sid = holder.get("session_id")
         agent = holder.get("agent")
@@ -2166,42 +2311,6 @@ def render_text2sql_page(app=None) -> None:
             agent_messages=agent.messages if agent else [],
         )
         save_t2s_session(session)
-
-    def _load_session_handler(session_choice: str, lang: str):
-        t = lambda k: _t2s(lang, k)
-        if not session_choice:
-            return gr.update(), gr.update()
-        sid_match = session_choice.rsplit("[", 1)
-        if len(sid_match) < 2:
-            return gr.update(), gr.update()
-        sid = sid_match[1].rstrip("]")
-        session = load_t2s_session(sid)
-        if session is None:
-            return gr.update(), gr.update()
-        holder["session_id"] = sid
-        agent = holder.get("agent")
-        if agent is not None:
-            agent.messages = session.agent_messages
-        return session.chat_messages, gr.update(value="", placeholder=t("conversation_active"))
-
-    def _delete_session_handler(session_choice: str):
-        if not session_choice:
-            return gr.update()
-        sid_match = session_choice.rsplit("[", 1)
-        if len(sid_match) < 2:
-            return gr.update()
-        sid = sid_match[1].rstrip("]")
-        delete_t2s_session(sid)
-        return gr.update(choices=_session_choices(), value=None)
-
-    load_session_btn.click(
-        fn=_load_session_handler, inputs=[session_dd, lang_state],
-        outputs=[chatbot, user_input],
-    )
-    delete_session_btn.click(
-        fn=_delete_session_handler, inputs=[session_dd],
-        outputs=[session_dd],
-    )
 
     _PAGE_SIZE = 50
 
@@ -2286,7 +2395,8 @@ def render_text2sql_page(app=None) -> None:
     _hint_delegate_js = (_res / "hint_delegate.js").read_text(encoding="utf-8")
     _tab_fill_js = (_res / "tab_fill.js").read_text(encoding="utf-8")
     def _auto_resume_on_load(lang: str):
-        sid = _shared_holder.pop("_pending_resume", "")
+        with _shared_holder_lock:
+            sid = _shared_holder.pop("_pending_resume", "")
         if not sid:
             return gr.update(), gr.update(), gr.update()
         session = load_t2s_session(sid)
