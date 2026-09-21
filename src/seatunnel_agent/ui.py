@@ -1638,16 +1638,16 @@ body:has(.st-history-page) .gradio-container > .main > .wrap {
     overflow-x: auto !important;
 }
 
-/* ── Download row (CSV + Chart) — flush against chatbot bottom ── */
-.st-dl-row {
-    margin: -4px 0 4px 0 !important;
-    padding: 0 12px !important;
-    gap: 8px !important;
-    justify-content: flex-start !important;
-    flex-wrap: nowrap !important;
-    flex: 0 0 auto !important;
+/* ── Inline download buttons inside chat messages ── */
+.st-dl-btns {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    flex-wrap: wrap;
 }
-.st-dl-btn { min-width: 0 !important; }
+.st-dl-btns a:hover {
+    background: var(--background-fill-primary, #eee) !important;
+}
 
 /* ── Input row — pinned to bottom of viewport ── */
 .st-input-row,

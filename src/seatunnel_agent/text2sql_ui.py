@@ -399,6 +399,25 @@ def _md_table(columns: list[str], rows: list[list[Any]], max_rows: int = 20, lan
     return "\n".join(lines)
 
 
+def _build_csv_data_uri(columns: list[str], rows: list) -> str:
+    import csv as _csv, io as _io, base64 as _b64
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(columns)
+    w.writerows(rows)
+    b64 = _b64.b64encode(buf.getvalue().encode("utf-8-sig")).decode("ascii")
+    return f"data:text/csv;base64,{b64}"
+
+
+_DL_BTN_STYLE = (
+    "display:inline-flex;align-items:center;gap:4px;"
+    "padding:4px 12px;margin:4px 4px 4px 0;"
+    "border:1px solid var(--border-color-primary,#e0e0e0);"
+    "border-radius:6px;background:var(--background-fill-secondary,#f7f7f7);"
+    "color:var(--body-text-color,#333);font-size:13px;cursor:pointer;"
+    "text-decoration:none;"
+)
+
 
 def _format_tool_result(name: str, raw: str, lang: str = "en",
                         store: SchemaStore | None = None) -> str:
@@ -1489,19 +1508,6 @@ def render_text2sql_page(app=None) -> None:
             )
             template_preview = gr.Markdown("", elem_classes=["st-template-preview"])
 
-            gr.Markdown(f"**{t('session_label')}**")
-            session_dd = gr.Dropdown(
-                choices=[], value=None,
-                label=t("session_label"),
-                show_label=False,
-                elem_classes=["st-sidebar-control"],
-            )
-            with gr.Row(elem_classes=["st-sidebar-row"]):
-                load_session_btn = gr.Button(t("load_session"), size="sm",
-                                             elem_classes=["st-filter-act-btn"])
-                delete_session_btn = gr.Button(t("delete_session"), variant="stop", size="sm",
-                                               elem_classes=["st-filter-act-btn"])
-
         # ── Right panel (chat) ──
         with gr.Column(scale=1, elem_classes=["st-main"]):
             with gr.Row(elem_classes=["st-topbar-row"]):
@@ -1526,15 +1532,6 @@ def render_text2sql_page(app=None) -> None:
                 height=None,
                 sanitize_html=False,
             )
-            with gr.Row(visible=False, elem_classes=["st-dl-row"]) as dl_row:
-                export_btn = gr.DownloadButton(
-                    "📥 CSV", variant="secondary", size="sm",
-                    elem_classes=["st-dl-btn"], scale=0, min_width=80,
-                )
-                chart_dl_btn = gr.DownloadButton(
-                    "🖼️ Chart", variant="secondary", size="sm",
-                    elem_classes=["st-dl-btn"], scale=0, min_width=80,
-                )
             chart_plot = gr.Plot(visible=False, elem_classes=["st-chart"], show_label=False)
             def _chart_choices(lang):
                 _t = lambda k: _t2s(lang, k)
@@ -1831,21 +1828,51 @@ def render_text2sql_page(app=None) -> None:
         prev = 0
         fmt = _IncrementalFormatter(start, lang, store_ref)
         user_msg = [{"role": "user", "content": msg}]
+        _result_snapshots: list = []
         while not collector.done:
             collector.wait_for_event(timeout=0.3)
             count = collector.event_count
             if count > prev:
                 new_events = collector.snapshot_since(prev)
                 prev = count
+                for _ev in new_events:
+                    if (isinstance(_ev, dict)
+                            and _ev.get("type") == "tool_result"
+                            and _ev.get("name") == "execute_sql"):
+                        _rt = agent.runtime if agent else None
+                        if _rt and _rt.last_result:
+                            _result_snapshots.append(_rt.last_result)
                 yield history + user_msg + fmt.feed(new_events), gr.update()
         thread.join(timeout=120)
         remaining = collector.snapshot_since(prev)
         if remaining:
+            for _ev in remaining:
+                if (isinstance(_ev, dict)
+                        and _ev.get("type") == "tool_result"
+                        and _ev.get("name") == "execute_sql"):
+                    _rt = agent.runtime if agent else None
+                    if _rt and _rt.last_result:
+                        _result_snapshots.append(_rt.last_result)
             fmt.feed(remaining)
         final = fmt.finalize()
         if error_msg:
             final.append({"role": "assistant", "content": f"⚠️ **Error**: {error_msg}"})
         final.append({"role": "assistant", "content": f"⏱️ {t('done')} {time.time() - start:.1f}s"})
+
+        _snap_idx = 0
+        for _fi, _fm in enumerate(final):
+            _fc = _fm.get("content", "")
+            if _fm.get("role") == "assistant" and "⚡" in _fc and "```sql" in _fc:
+                if _snap_idx < len(_result_snapshots):
+                    _snap = _result_snapshots[_snap_idx]
+                    _csv_uri = _build_csv_data_uri(_snap.columns, _snap.rows)
+                    _ts = time.strftime("%Y%m%d_%H%M%S")
+                    final[_fi]["content"] += (
+                        f'\n\n<div class="st-dl-btns">'
+                        f'<a href="{_csv_uri}" download="query_{_ts}.csv" '
+                        f'style="{_DL_BTN_STYLE}">\U0001f4e5 CSV</a></div>'
+                    )
+                    _snap_idx += 1
 
         rt = agent.runtime if agent else None
         if rt and rt.last_sql:
@@ -1871,10 +1898,14 @@ def render_text2sql_page(app=None) -> None:
                 fig = build_chart(rt.last_result.columns, rt.last_result.rows, ct)
                 if fig:
                     data_uri = fig_to_base64(fig)
+                    _cts = time.strftime("%Y%m%d_%H%M%S")
                     chart_html = (
                         f'<div class="st-inline-chart">'
                         f'<img src="{data_uri}" alt="chart" '
                         f'style="max-width:100%;border-radius:8px;margin:8px 0;" />'
+                        f'<div class="st-dl-btns">'
+                        f'<a href="{data_uri}" download="chart_{_cts}.png" '
+                        f'style="{_DL_BTN_STYLE}">\U0001f5bc️ Chart</a></div>'
                         f'</div>'
                     )
                     try:
@@ -1934,34 +1965,7 @@ def render_text2sql_page(app=None) -> None:
             gr.update(visible=False),
             gr.update(value=""),
             1,
-            gr.update(visible=False),
         )
-
-    def _handle_export(lang: str):
-        t = lambda k: _t2s(lang, k)
-        with holder_lock:
-            agent = holder.get("agent")
-        rt = agent.runtime if agent else None
-        if rt is None or rt.last_result is None:
-            raise gr.Error(t("no_export"))
-        import tempfile
-        from .text2sql.exporter import export_csv
-        out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
-        out_dir.mkdir(exist_ok=True)
-        return export_csv(
-            columns=rt.last_result.columns,
-            rows=rt.last_result.rows,
-            path=str(out_dir),
-            name_hint="query_result",
-        )
-
-    def _handle_chart_dl(lang: str):
-        t = lambda k: _t2s(lang, k)
-        with holder_lock:
-            png_path = holder.get("_last_chart_png")
-        if not png_path or not Path(png_path).is_file():
-            raise gr.Error(t("hist_chart_unavailable"))
-        return png_path
 
     def _reload_schema(lang: str):
         t = lambda k: _t2s(lang, k)
@@ -2091,9 +2095,6 @@ def render_text2sql_page(app=None) -> None:
             gr.update(label=t("chart_type_label"), choices=_chart_choices(lang), value=t("chart_auto")),
             gr.update(choices=template_choices(lang), value=None),
             gr.update(value=""),
-            gr.update(label=t("session_label")),
-            gr.update(value=t("load_session")),
-            gr.update(value=t("delete_session")),
             gr.update(value=t("schema_browse_btn")),
         )
 
@@ -2132,9 +2133,6 @@ def render_text2sql_page(app=None) -> None:
             chart_type_radio,
             template_dd,
             template_preview,
-            session_dd,
-            load_session_btn,
-            delete_session_btn,
             schema_browse_btn,
         ],
     )
@@ -2162,8 +2160,6 @@ def render_text2sql_page(app=None) -> None:
         status_upd = gr.update(value=llm_st) if llm_st else gr.update()
         with holder_lock:
             agent = holder.get("agent")
-        rt = agent.runtime if agent else None
-        has_result = rt is not None and rt.last_result is not None
         return (
             gr.update(value="", placeholder=t("conversation_active")),
             gr.update(visible=True),
@@ -2172,13 +2168,11 @@ def render_text2sql_page(app=None) -> None:
             page_info_val,
             page_num,
             gr.update(visible=False),
-            gr.update(choices=_session_choices()),
             status_upd,
-            gr.update(visible=has_result),
         )
 
     submit_io = dict(fn=_handle_submit, inputs=[user_input, chatbot, lang_state, chart_type_radio], outputs=[chatbot, chart_plot])
-    _post_outputs = [user_input, send_btn, stop_btn, page_nav_row, page_info_md, page_state, page_table_md, session_dd, status_box, dl_row]
+    _post_outputs = [user_input, send_btn, stop_btn, page_nav_row, page_info_md, page_state, page_table_md, status_box]
     send_btn.click(fn=_show_stop, outputs=[send_btn, stop_btn]) \
         .then(**submit_io) \
         .then(fn=_post_submit, inputs=[lang_state, chatbot], outputs=_post_outputs)
@@ -2188,9 +2182,7 @@ def render_text2sql_page(app=None) -> None:
 
     stop_btn.click(fn=_handle_stop, inputs=[lang_state], outputs=[send_btn, stop_btn])
     new_chat_btn.click(fn=_new_chat, inputs=[lang_state],
-                       outputs=[chatbot, user_input, chart_plot, page_nav_row, page_table_md, page_state, dl_row])
-    export_btn.click(fn=_handle_export, inputs=[lang_state], outputs=export_btn)
-    chart_dl_btn.click(fn=_handle_chart_dl, inputs=[lang_state], outputs=chart_dl_btn)
+                       outputs=[chatbot, user_input, chart_plot, page_nav_row, page_table_md, page_state])
     reload_schema_btn.click(fn=_reload_schema, inputs=[lang_state],
                             outputs=[status_box, table_filter, filter_accordion, confirmed_sel])
 
@@ -2288,11 +2280,6 @@ def render_text2sql_page(app=None) -> None:
 
     # ── Session management ──
 
-    _session_choices = _session_choices_global
-
-    def _refresh_sessions():
-        return gr.update(choices=_session_choices(), value=None)
-
     def _save_current_session(chat_messages: list):
         sid = holder.get("session_id")
         agent = holder.get("agent")
@@ -2316,42 +2303,6 @@ def render_text2sql_page(app=None) -> None:
             agent_messages=agent.messages if agent else [],
         )
         save_t2s_session(session)
-
-    def _load_session_handler(session_choice: str, lang: str):
-        t = lambda k: _t2s(lang, k)
-        if not session_choice:
-            return gr.update(), gr.update()
-        sid_match = session_choice.rsplit("[", 1)
-        if len(sid_match) < 2:
-            return gr.update(), gr.update()
-        sid = sid_match[1].rstrip("]")
-        session = load_t2s_session(sid)
-        if session is None:
-            return gr.update(), gr.update()
-        holder["session_id"] = sid
-        agent = holder.get("agent")
-        if agent is not None:
-            agent.messages = session.agent_messages
-        return session.chat_messages, gr.update(value="", placeholder=t("conversation_active"))
-
-    def _delete_session_handler(session_choice: str):
-        if not session_choice:
-            return gr.update()
-        sid_match = session_choice.rsplit("[", 1)
-        if len(sid_match) < 2:
-            return gr.update()
-        sid = sid_match[1].rstrip("]")
-        delete_t2s_session(sid)
-        return gr.update(choices=_session_choices(), value=None)
-
-    load_session_btn.click(
-        fn=_load_session_handler, inputs=[session_dd, lang_state],
-        outputs=[chatbot, user_input],
-    )
-    delete_session_btn.click(
-        fn=_delete_session_handler, inputs=[session_dd],
-        outputs=[session_dd],
-    )
 
     _PAGE_SIZE = 50
 
