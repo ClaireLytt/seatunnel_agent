@@ -75,17 +75,32 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                                 "type": "string",
                                 "description": "One of the 15 checklist keys",
                             },
-                            "description": {"type": "string", "description": "问题描述"},
-                            "location": {"type": "string", "description": "代码位置, e.g. 行 6"},
-                            "impact": {"type": "string", "description": "影响范围/风险说明"},
-                            "suggestion": {"type": "string", "description": "修复/优化建议"},
+                            "description": {
+                                "type": "string",
+                                "description": "Issue description, in the report language",
+                            },
+                            "location": {
+                                "type": "string",
+                                "description": 'Code location, e.g. "Line 6" / "行 6"',
+                            },
+                            "impact": {
+                                "type": "string",
+                                "description": "Impact / risk, in the report language",
+                            },
+                            "suggestion": {
+                                "type": "string",
+                                "description": "Fix / optimization advice, in the report language",
+                            },
                         },
                         "required": ["severity", "category", "description", "location"],
                     },
                 },
                 "summary": {
                     "type": "string",
-                    "description": "总体评价, one or two sentences in Chinese",
+                    "description": (
+                        "Overall verdict, one or two sentences, written in the "
+                        "report language requested by the system prompt"
+                    ),
                 },
             },
             "required": ["findings", "summary"],

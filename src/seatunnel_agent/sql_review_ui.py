@@ -27,13 +27,6 @@ from .text2sql.schema import SchemaStore
 _DIALECT_CHOICES = [("Hive SQL", "hive"), ("Spark SQL", "spark"),
                     ("Flink SQL", "flink"), ("MaxCompute SQL", "maxcompute")]
 
-_EXAMPLE_SQL = """\
-INSERT OVERWRITE TABLE dw.ads_user_stat
-SELECT *
-FROM ods.user_log a
-JOIN dim.user_info b ON a.user_id = b.user_id
-ORDER BY a.user_id"""
-
 _DEFAULT_LANG = "en"
 
 
@@ -50,6 +43,10 @@ def _err_md(exc: Exception, lang: str) -> str:
 def render_sql_review_page(app: gr.Blocks) -> None:
     t0 = lambda k: sr(_DEFAULT_LANG, k)  # noqa: E731 — initial labels
 
+    # marker: body:has(.st-review-page) re-enables page scrolling
+    # (the global CSS locks .gradio-container to 100vh / overflow hidden)
+    gr.HTML('<div class="st-review-page" style="display:none"></div>')
+
     with gr.Row():
         title_md = gr.Markdown(f"{t0('sr_title')}\n{t0('sr_subtitle')}")
         lang_dd = gr.Dropdown(
@@ -59,10 +56,14 @@ def render_sql_review_page(app: gr.Blocks) -> None:
     lang_state = gr.State(_DEFAULT_LANG)
 
     with gr.Row():
-        with gr.Column(scale=3):
+        with gr.Column(scale=3, elem_classes=["sr-input-col"]):
+            # max_lines pins the height: beyond 12 lines the textarea
+            # scrolls (Gradio 6 default max_lines=None grows unbounded,
+            # so the box would never show a scrollbar)
             sql_box = gr.Textbox(
-                label="SQL", lines=12, placeholder=t0("sr_sql_placeholder"),
-                value=_EXAMPLE_SQL,
+                label="SQL", lines=12, max_lines=12,
+                placeholder=t0("sr_sql_placeholder"),
+                buttons=["copy"], elem_id="sr-sql-box",
             )
             with gr.Row():
                 dialect_dd = gr.Dropdown(
@@ -74,23 +75,26 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                 )
             with gr.Accordion(t0("sr_ddl_accordion"), open=False) as ddl_acc:
                 ddl_box = gr.Textbox(
-                    label=t0("sr_ddl_label"), lines=6,
+                    label=t0("sr_ddl_label"), lines=6, max_lines=10,
                     placeholder="CREATE TABLE ods.user_log (user_id BIGINT, dt STRING) ...",
                 )
             with gr.Accordion(t0("sr_rules_accordion"), open=False) as rules_acc:
                 rules_box = gr.Textbox(
-                    label=t0("sr_rules_label"), lines=6,
+                    label=t0("sr_rules_label"), lines=6, max_lines=10,
                     placeholder=t0("sr_rules_placeholder"),
                 )
             with gr.Row():
                 review_btn = gr.Button(t0("sr_review_btn"), variant="primary")
                 fix_btn = gr.Button(t0("sr_fix_btn"))
-        with gr.Column(scale=4):
-            report_md = gr.Markdown(t0("sr_report_placeholder"))
+                clear_btn = gr.Button(t0("sr_clear_btn"), scale=0, min_width=80)
+        with gr.Column(scale=4, elem_classes=["sr-report-col"]):
+            report_md = gr.Markdown(t0("sr_report_placeholder"),
+                                    buttons=["copy"],
+                                    elem_classes=["sr-report-card"])
             download_btn = gr.DownloadButton(t0("sr_download_report"),
                                              visible=False, size="sm")
             fixed_sql_box = gr.Code(label=t0("sr_fixed_sql"), language="sql",
-                                    visible=False)
+                                    visible=False, buttons=["copy"])
 
     report_state = gr.State("")
 
@@ -131,7 +135,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             if mode == "static":
                 rep = static_review_report(sql, dialect, store=store,
                                            config=config)
-                report = render_report(rep, lang=lang)
+                report = render_report(rep, lang=lang, line_links=True)
                 findings, stats = rep.findings, rep.stats()
             else:
                 settings = load_settings()
@@ -174,10 +178,38 @@ def render_sql_review_page(app: gr.Blocks) -> None:
         inputs=[sql_box, dialect_dd, mode_radio, ddl_box, rules_box, lang_state],
         outputs=[report_md, report_state, fixed_sql_box, download_btn],
     )
+    # Show the (initially hidden) fixed-SQL box with a "generating…" note
+    # right away — the LLM call can take tens of seconds and would otherwise
+    # give no visual feedback at all.
+    def _fix_start(sql: str, report: str, lang: str):
+        if not (sql or "").strip() or not report:
+            return (gr.update(value=sr(lang, "sr_fix_need_review"),
+                              visible=True),
+                    gr.update())
+        return (gr.update(value=sr(lang, "sr_fix_generating"), visible=True),
+                gr.update(interactive=False))
+
     fix_btn.click(
+        _fix_start,
+        inputs=[sql_box, report_state, lang_state],
+        outputs=[fixed_sql_box, fix_btn],
+    ).then(
         do_fix,
         inputs=[sql_box, dialect_dd, report_state, lang_state],
         outputs=[fixed_sql_box],
+    ).then(
+        lambda: gr.update(interactive=True),
+        outputs=[fix_btn],
+    )
+
+    def do_clear(lang: str):
+        return ("", sr(lang, "sr_report_placeholder"), "",
+                gr.update(visible=False), gr.update(visible=False))
+
+    clear_btn.click(
+        do_clear,
+        inputs=[lang_state],
+        outputs=[sql_box, report_md, report_state, fixed_sql_box, download_btn],
     )
 
     with gr.Accordion(t0("sr_stats_accordion"), open=False) as stats_acc:
@@ -280,6 +312,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                       placeholder=t("sr_rules_placeholder")),       # rules_box
             gr.update(value=t("sr_review_btn")),                    # review_btn
             gr.update(value=t("sr_fix_btn")),                       # fix_btn
+            gr.update(value=t("sr_clear_btn")),                     # clear_btn
             _placeholder_update(report_cur, "sr_report_placeholder", lg),  # report_md
             gr.update(label=t("sr_download_report")),               # download_btn
             gr.update(label=t("sr_fixed_sql")),                     # fixed_sql_box
@@ -303,6 +336,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             rules_box,
             review_btn,
             fix_btn,
+            clear_btn,
             report_md,
             download_btn,
             fixed_sql_box,
@@ -311,3 +345,44 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             refresh_btn,
         ],
     )
+
+    # ── URL prefill: /sqlreview?sql=...&dialect=... (used by the Text2SQL
+    # inline review card's "full review" link) ──────────────────────────────
+    _MAX_URL_SQL = 20000
+
+    def _prefill(request: gr.Request):
+        params = dict(request.query_params or {})
+        sql = (params.get("sql") or "").strip()
+        sql_upd = gr.update(value=sql[:_MAX_URL_SQL]) if sql else gr.update()
+        dialect = (params.get("dialect") or "").strip()
+        dial_upd = (gr.update(value=normalize_dialect(dialect)) if dialect
+                    else gr.update())
+        return sql_upd, dial_upd
+
+    app.load(_prefill, inputs=None, outputs=[sql_box, dialect_dd])
+
+    # ── Line jump: report locations render as [行 N](#srline-N); clicking
+    # selects and scrolls to that line in the SQL box ───────────────────────
+    app.load(fn=None, js="""
+    () => {
+        if (window.__srLineJump) return;
+        window.__srLineJump = true;
+        document.addEventListener('click', (e) => {
+            const a = e.target.closest('a[href*="#srline-"]');
+            if (!a) return;
+            e.preventDefault();
+            const line = parseInt(a.getAttribute('href').split('#srline-')[1], 10);
+            const box = document.querySelector('#sr-sql-box textarea');
+            if (!box || !line) return;
+            const rows = box.value.split('\\n');
+            if (line > rows.length) return;
+            let start = 0;
+            for (let i = 0; i < line - 1; i++) start += rows[i].length + 1;
+            box.focus();
+            box.setSelectionRange(start, start + rows[line - 1].length);
+            const lh = parseFloat(getComputedStyle(box).lineHeight) || 20;
+            box.scrollTop = Math.max(0, (line - 3) * lh);
+            box.scrollIntoView({behavior: 'smooth', block: 'center'});
+        }, true);
+    }
+    """)

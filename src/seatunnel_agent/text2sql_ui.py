@@ -299,6 +299,79 @@ def build_quality_card(warnings: list[dict], lang: str = "en") -> str:
     )
 
 
+_MAX_REVIEW_URL_SQL = 1800  # keep the prefill URL well under browser limits
+
+
+def _review_page_url(sql: str, dialect: str) -> str:
+    from urllib.parse import quote
+    encoded = quote(sql, safe="")
+    if len(encoded) > _MAX_REVIEW_URL_SQL:
+        return "/sqlreview"
+    return f"/sqlreview?sql={encoded}&dialect={quote(dialect, safe='')}"
+
+
+def build_review_card(sql: str, dialect: str, store: SchemaStore | None,
+                      lang: str = "en") -> str:
+    """Compact SQL-review card: static-lint the executed SQL and summarize.
+
+    Links to /sqlreview for the full (LLM-assisted) review page.
+    """
+    from .sql_review.agent import static_review_report
+    from .sql_review.i18n import catalog_label
+    from .sql_review.linter import normalize_dialect
+
+    t = lambda k: _t2s(lang, k)
+    esc = _esc_html
+    dialect = normalize_dialect(dialect)
+    rep = static_review_report(sql, dialect, store=store)
+    if not rep.findings:
+        return (
+            f'<div style="margin-top:6px;font-size:11px;color:#10b981;">'
+            f'✅ {t("review_card_pass")}</div>'
+        )
+
+    review_url = _review_page_url(sql, dialect)
+    n_crit, n_risk = len(rep.criticals), len(rep.risks)
+    n_sugg = len(rep.suggestions)
+    counts = t("review_card_counts").format(c=n_crit, r=n_risk, s=n_sugg)
+    header_color = "#dc2626" if n_crit else "#f59e0b" if n_risk else "#10b981"
+
+    sev_label = {"critical": t("review_sev_critical"),
+                 "risk": t("review_sev_risk"),
+                 "suggestion": t("review_sev_suggestion")}
+    sev_color = {"critical": "#dc2626", "risk": "#f59e0b",
+                 "suggestion": "#10b981"}
+    items: list[str] = []
+    for f in rep.findings[:5]:
+        sev = f.severity.value
+        items.append(
+            f'<div style="font-size:11px;padding:2px 0;">'
+            f'<span style="display:inline-block;padding:0 5px;border-radius:3px;'
+            f'font-size:9px;color:#fff;background:{sev_color.get(sev, "#6b7280")};'
+            f'margin-right:4px;">{esc(sev_label.get(sev, sev))}</span>'
+            f'<b>{esc(catalog_label(f.category, lang))}</b> — '
+            f'{esc(f.description)}</div>'
+        )
+    if len(rep.findings) > 5:
+        items.append(
+            f'<div style="font-size:11px;padding:2px 0;color:#6b7280;">'
+            f'… +{len(rep.findings) - 5}</div>'
+        )
+    items.append(
+        f'<div style="font-size:11px;padding:4px 0 0;">'
+        f'<a href="{review_url}" target="_blank" style="color:#0ea5e9;'
+        f'text-decoration:none;">{t("review_card_more")}</a></div>'
+    )
+    body = "\n".join(items)
+    return (
+        f'<details style="margin-top:6px;">'
+        f'<summary style="cursor:pointer;font-weight:600;font-size:12px;'
+        f'color:{header_color};">\U0001f50d {t("review_card_title")} — {esc(counts)}</summary>'
+        f'<div style="font-size:12px;line-height:1.5;padding:4px;margin-top:4px;'
+        f'border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;">{body}</div></details>'
+    )
+
+
 def build_diff_card(diff_data: dict, lang: str = "en") -> str:
     """Build an inline-styled HTML card for result diff."""
     t = lambda k: _t2s(lang, k)
@@ -515,6 +588,16 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
             if card:
                 lines.append("")
                 lines.append(card)
+        if sql:
+            try:
+                with _shared_holder_lock:
+                    ds_type = _shared_holder.get("ds_type", "hive")
+                card = build_review_card(sql, ds_type, store, lang)
+                if card:
+                    lines.append("")
+                    lines.append(card)
+            except Exception:  # noqa: BLE001 — the review card is optional
+                pass
         return "\n".join(lines)
 
     if name == "export_csv":

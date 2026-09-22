@@ -140,16 +140,27 @@ _LINE_LOC_RE = re.compile(r"行\s*(\d+)")
 _EN_LINE_LOC_RE = re.compile(r"\bline\s*(\d+)", re.IGNORECASE)
 
 
-def _loc(location: str, lang: str) -> str:
+def _loc(location: str, lang: str, line_links: bool = False) -> str:
     """Localize a finding location for display ("行 6" <-> "Line 6")."""
     if lang == "en":
         loc = _LINE_LOC_RE.sub(lambda m: f"Line {m.group(1)}", location)
-        return loc.replace("全局", "Global")
-    loc = _EN_LINE_LOC_RE.sub(lambda m: f"行 {m.group(1)}", location)
-    return re.sub(r"\bglobal\b", "全局", loc, flags=re.IGNORECASE)
+        loc = loc.replace("全局", "Global")
+    else:
+        loc = _EN_LINE_LOC_RE.sub(lambda m: f"行 {m.group(1)}", location)
+        loc = re.sub(r"\bglobal\b", "全局", loc, flags=re.IGNORECASE)
+    if line_links:
+        # "#srline-N" anchors are intercepted client-side (sql_review_ui)
+        # to select/scroll that line in the SQL input box
+        loc = re.sub(
+            r"(行\s*|Line\s*)(\d+)",
+            lambda m: f"[{m.group(1)}{m.group(2)}](#srline-{m.group(2)})",
+            loc,
+        )
+    return loc
 
 
-def render_report(report: ReviewReport, lang: str = "zh") -> str:
+def render_report(report: ReviewReport, lang: str = "zh",
+                  line_links: bool = False) -> str:
     """Render the CR report in the fixed markdown format (zh or en chrome)."""
     from .i18n import sr
 
@@ -162,7 +173,8 @@ def render_report(report: ReviewReport, lang: str = "zh") -> str:
     parts.append(f"\n{t('sr_sec_critical')}\n")
     if report.criticals:
         rows = [
-            [str(i), f.description, _loc(f.location, lang), f.impact, f.suggestion]
+            [str(i), f.description, _loc(f.location, lang, line_links),
+             f.impact, f.suggestion]
             for i, f in enumerate(report.criticals, 1)
         ]
         parts.append(_table(
@@ -174,7 +186,8 @@ def render_report(report: ReviewReport, lang: str = "zh") -> str:
     parts.append(f"\n{t('sr_sec_risk')}\n")
     if report.risks:
         rows = [
-            [str(i), f.description, _loc(f.location, lang), f.impact, f.suggestion]
+            [str(i), f.description, _loc(f.location, lang, line_links),
+             f.impact, f.suggestion]
             for i, f in enumerate(report.risks, 1)
         ]
         parts.append(_table(

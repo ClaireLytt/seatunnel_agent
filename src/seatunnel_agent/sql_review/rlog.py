@@ -8,6 +8,7 @@ into totals and the most frequent problem categories.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -20,6 +21,11 @@ from .report import CHECK_CATALOG, Finding
 
 _MAX_LOG_BYTES = 10 * 1024 * 1024  # 10 MB
 _SQL_PREVIEW_CHARS = 300
+
+
+def sql_hash(sql: str) -> str:
+    """Stable key for matching the same SQL across logs (harness LLM cache)."""
+    return hashlib.sha256((sql or "").strip().encode("utf-8")).hexdigest()
 
 
 def default_log_dir() -> str:
@@ -51,6 +57,7 @@ class ReviewLogger:
             "dialect": dialect,
             "target": target,
             "sql_preview": sql[:_SQL_PREVIEW_CHARS],
+            "sql_sha256": sql_hash(sql),
             "stats": stats or {},
             "categories": [f.category for f in findings],
             "severities": dict(Counter(f.severity.value for f in findings)),

@@ -523,6 +523,116 @@ def review(
         sys.exit(1)
 
 
+@cli.command(name="review-harness")
+@click.option("--log", "log_path", type=click.Path(exists=True),
+              default=None,
+              help="Text2SQL query log (default: logs/text2sql_queries.jsonl)")
+@click.option("--dialect", "-d",
+              type=click.Choice(["hive", "spark", "flink", "maxcompute"]),
+              default="hive", help="SQL dialect for the linter")
+@click.option("--limit", "-n", type=int, default=None,
+              help="Only replay the most recent N log records")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="Optional DDL file for schema-aware review")
+@click.option("--rules", type=click.Path(exists=True), default=None,
+              help="Rule config file (default: auto-discover .sqlreview.yaml)")
+@click.option("--lang", type=click.Choice(["en", "zh"]), default="zh",
+              help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Output format")
+@click.option("--fail-on", type=click.Choice(["critical", "risk", "suggestion"]),
+              default=None,
+              help="Exit 1 when findings at/above this severity exist (CI gate)")
+@click.option("--baseline", type=click.Path(exists=True), default=None,
+              help="Previous run's JSON report (-F json -o ...) to diff against")
+@click.option("--llm-cache", "llm_cache_flag", is_flag=True, default=False,
+              help="Replay cached LLM reviews (logs/sql_review.jsonl) for "
+                   "matching SQL")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def review_harness(
+    log_path: str | None,
+    dialect: str,
+    limit: int | None,
+    ddl: str | None,
+    rules: str | None,
+    lang: str,
+    fmt: str,
+    fail_on: str | None,
+    baseline: str | None,
+    llm_cache_flag: bool,
+    output: str | None,
+) -> None:
+    """Replay Text2SQL query logs through the static reviewer.
+
+    Every generated SQL in logs/text2sql_queries.jsonl is linted and the
+    results are aggregated — a regression harness tying Text2SQL output
+    to the SQL Review rules. No LLM, no database connection needed."""
+    import json as _json
+    from pathlib import Path
+
+    from .sql_review import load_review_config
+    from .sql_review.harness import (
+        DEFAULT_LOG, diff_against_baseline, load_llm_cache,
+        render_harness_report, run_harness,
+    )
+
+    try:
+        review_config = load_review_config(rules)
+    except ValueError as e:
+        raise click.UsageError(str(e))
+
+    store = None
+    if ddl:
+        from .text2sql.schema import SchemaStore, parse_ddl
+        tables = parse_ddl(Path(ddl).read_text(encoding="utf-8"))
+        store = SchemaStore(tables) if tables else None
+
+    llm_cache = load_llm_cache() if llm_cache_flag else None
+
+    try:
+        result = run_harness(
+            log_path or DEFAULT_LOG, dialect=dialect, limit=limit,
+            store=store, config=review_config, llm_cache=llm_cache,
+        )
+    except FileNotFoundError as e:
+        raise click.UsageError(str(e))
+
+    baseline_diff = None
+    if baseline:
+        try:
+            baseline_doc = _json.loads(
+                Path(baseline).read_text(encoding="utf-8"))
+            if not isinstance(baseline_doc, dict):
+                raise ValueError("baseline must be a JSON object")
+        except (ValueError, OSError) as e:
+            raise click.UsageError(f"invalid baseline file: {e}")
+        baseline_diff = diff_against_baseline(baseline_doc, result)
+
+    if fmt == "json":
+        payload = result.to_dict()
+        if baseline_diff is not None:
+            payload["baseline_diff"] = baseline_diff
+        doc = _json.dumps(payload, ensure_ascii=False, indent=2)
+    else:
+        doc = render_harness_report(result, lang=lang,
+                                    baseline_diff=baseline_diff)
+    if output:
+        _write_output(output, doc)
+    else:
+        click.echo(doc)
+
+    if fail_on:
+        counts = {"critical": result.criticals,
+                  "risk": result.criticals + result.risks,
+                  "suggestion": result.criticals + result.risks
+                  + result.suggestions}
+        if counts.get(fail_on, 0) > 0:
+            console.print(
+                f"\n[red]存在 {fail_on} 及以上级别的问题，harness 未通过。[/red]")
+            sys.exit(1)
+
+
 @cli.command(name="review-stats")
 @click.option("--recent", "-n", type=int, default=None,
               help="Only aggregate the most recent N reviews")

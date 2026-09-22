@@ -812,6 +812,72 @@ def _build_hub_html() -> str:
 </div>'''
 
 
+# Drag-to-resize for the left sidebar: restores the saved width, appends a
+# handle to .st-page-row (not inside .st-sidebar — sidebar_fix.js forces
+# inline width on its direct div children) and drives --st-sidebar-w.
+_SIDEBAR_RESIZE_JS = """
+() => {
+    if (window.__stSidebarResize) return;
+    window.__stSidebarResize = true;
+    const MIN = 180, MAX = 520, KEY = 'stSidebarW';
+    try {
+        const saved = parseInt(localStorage.getItem(KEY), 10);
+        if (saved >= MIN && saved <= MAX) {
+            document.documentElement.style.setProperty('--st-sidebar-w', saved + 'px');
+        }
+    } catch (e) {}
+    let tries = 0;
+    const init = () => {
+        const row = document.querySelector('.st-page-row');
+        const sb = row && row.querySelector('.st-sidebar');
+        if (!row || !sb) {
+            if (tries++ < 50) setTimeout(init, 200);
+            return;
+        }
+        if (row.querySelector('.st-sidebar-resize')) return;
+        const handle = document.createElement('span');
+        handle.className = 'st-sidebar-resize';
+        handle.title = 'Drag to resize sidebar';
+        row.appendChild(handle);
+        const syncVisible = () => {
+            handle.style.display =
+                getComputedStyle(sb).display === 'none' ? 'none' : '';
+        };
+        syncVisible();
+        new MutationObserver(syncVisible)
+            .observe(sb, {attributes: true, attributeFilter: ['style', 'class']});
+        let startX = 0, startW = 0;
+        const onMove = (e) => {
+            const w = Math.min(MAX, Math.max(MIN, startW + e.clientX - startX));
+            document.documentElement.style.setProperty('--st-sidebar-w', w + 'px');
+        };
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            handle.classList.remove('st-resizing');
+            document.body.classList.remove('st-sidebar-dragging');
+            try {
+                const w = parseInt(
+                    getComputedStyle(document.documentElement)
+                        .getPropertyValue('--st-sidebar-w'), 10);
+                if (w) localStorage.setItem(KEY, String(w));
+            } catch (e) {}
+        };
+        handle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startX = e.clientX;
+            startW = sb.getBoundingClientRect().width;
+            handle.classList.add('st-resizing');
+            document.body.classList.add('st-sidebar-dragging');
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    };
+    init();
+}
+"""
+
+
 def create_ui() -> gr.Blocks:
     """Multipage app: hub landing page + one dedicated page per agent."""
     from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
@@ -862,9 +928,11 @@ def create_ui() -> gr.Blocks:
 
     with app.route("SeaTunnel", "/seatunnel"):
         _render_seatunnel_page(app)
+        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
 
     with app.route("Text2SQL", "/text2sql"):
         render_text2sql_page(app)
+        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
 
     with app.route("Query History", "/history"):
         render_history_page(app)
@@ -877,6 +945,7 @@ def create_ui() -> gr.Blocks:
 
     with app.route("Data Comparison", "/datacompare"):
         render_data_comparison_page(app)
+        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
 
     with app.route("SQL Review", "/sqlreview"):
         render_sql_review_page(app)
@@ -1356,21 +1425,84 @@ footer { display: none !important; }
     box-shadow: none !important;
 }
 
-/* Standalone pages (history, favorites, schema) need scrolling.
+/* Standalone pages (history, favorites, schema, sql review) need scrolling.
    Only the outermost .gradio-container scrolls; everything inside is visible. */
-body:has(.st-history-page) {
+body:has(.st-history-page),
+body:has(.st-review-page) {
     overflow: hidden !important;
 }
-body:has(.st-history-page) .gradio-container {
+body:has(.st-history-page) .gradio-container,
+body:has(.st-review-page) .gradio-container {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     height: 100vh !important;
 }
 body:has(.st-history-page) .gradio-container > .main,
-body:has(.st-history-page) .gradio-container > .main > .wrap {
+body:has(.st-history-page) .gradio-container > .main > .wrap,
+body:has(.st-review-page) .gradio-container > .main,
+body:has(.st-review-page) .gradio-container > .main > .wrap {
     overflow: visible !important;
     height: auto !important;
     min-height: auto !important;
+}
+
+/* ══════════════════════════════════════════
+   SQL Review page polish
+   ══════════════════════════════════════════ */
+body:has(.st-review-page) .gradio-container > .main > .wrap {
+    max-width: 1500px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 14px 28px 48px !important;
+}
+/* SQL input box: fixed height with a visible vertical scrollbar
+   (max_lines pins the textarea; long SQL scrolls inside the box) */
+#sr-sql-box textarea {
+    overflow-y: auto !important;
+    scrollbar-width: thin;
+}
+/* Keep the SQL input visible while scrolling a long report
+   (pairs with the "行 N" line-jump links) */
+body:has(.st-review-page) .sr-input-col {
+    position: sticky !important;
+    top: 12px !important;
+    align-self: flex-start !important;
+}
+/* Report as a card */
+.gradio-container .sr-report-card {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    padding: 14px 18px !important;
+    min-height: 320px !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+.sr-report-card h2 { margin-top: 0 !important; }
+.sr-report-card h3 { margin: 16px 0 6px !important; }
+/* Report tables: bordered, striped, comfortable padding */
+.sr-report-card table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 6px 0 !important;
+}
+.sr-report-card th, .sr-report-card td {
+    border: 1px solid #e5e7eb !important;
+    padding: 6px 10px !important;
+    text-align: left !important;
+    vertical-align: top !important;
+    line-height: 1.5 !important;
+}
+.sr-report-card th { background: #f3f4f6 !important; }
+.sr-report-card tbody tr:nth-child(even) td { background: #fafafa !important; }
+/* Line-jump links: dashed underline, no visited-color drift */
+.sr-report-card a[href*="#srline-"] {
+    color: #2563eb !important;
+    text-decoration: none !important;
+    border-bottom: 1px dashed #93c5fd !important;
+    cursor: pointer !important;
+}
+.sr-report-card a[href*="#srline-"]:hover {
+    border-bottom-style: solid !important;
 }
 
 /* ══════════════════════════════════════════════
@@ -1388,11 +1520,11 @@ body:has(.st-history-page) .gradio-container > .main > .wrap {
     padding: 0 !important;
     flex-wrap: nowrap !important;
 }
-/* Left sidebar column */
+/* Left sidebar column (width adjustable via drag handle, see _SIDEBAR_RESIZE_JS) */
 .st-sidebar {
-    width: 260px !important;
-    min-width: 260px !important;
-    max-width: 260px !important;
+    width: var(--st-sidebar-w, 260px) !important;
+    min-width: var(--st-sidebar-w, 260px) !important;
+    max-width: var(--st-sidebar-w, 260px) !important;
     height: 100% !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
@@ -1474,6 +1606,26 @@ body:has(.st-history-page) .gradio-container > .main > .wrap {
 }
 /* Hide Gradio's native sidebar if accidentally present */
 .gradio-sidebar { display: none !important; }
+/* Drag handle on the sidebar's right edge (appended to .st-page-row by JS) */
+.st-sidebar-resize {
+    position: absolute !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: calc(var(--st-sidebar-w, 260px) - 3px) !important;
+    width: 7px !important;
+    cursor: col-resize !important;
+    z-index: 150 !important;
+    background: transparent;
+    transition: background 0.15s;
+}
+.st-sidebar-resize:hover,
+.st-sidebar-resize.st-resizing {
+    background: rgba(59, 130, 246, 0.35);
+}
+body.st-sidebar-dragging {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
 
 /* ══════════════════════════
    Hub landing page

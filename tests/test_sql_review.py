@@ -1854,3 +1854,273 @@ def test_api_env_db_defaults(monkeypatch):
         monkeypatch.delenv("SQLREVIEW_DB_PORT")
         monkeypatch.delenv("SQLREVIEW_DB_DATABASE")
         importlib.reload(api_mod)
+
+
+# ---------------------------------------------------------------------------
+# Text2SQL review harness
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.harness import (  # noqa: E402
+    HarnessResult,
+    iter_log_records,
+    render_harness_report,
+    run_harness,
+)
+
+_BAD_SQL = "SELECT * FROM orders o JOIN users u WHERE o.dt > '2024-01-01'"
+_CLEAN_SQL = (
+    "SELECT o.id, o.amount FROM orders o "
+    "WHERE o.dt = '2024-01-01' LIMIT 100"
+)
+
+
+def _write_log(tmp_path, records, extra_lines=()):
+    path = tmp_path / "queries.jsonl"
+    lines = [json.dumps(r, ensure_ascii=False) for r in records]
+    lines.extend(extra_lines)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def test_iter_log_records_skips_corrupt_lines(tmp_path):
+    path = _write_log(
+        tmp_path,
+        [{"user_query": "q1", "generated_sql": _CLEAN_SQL, "status": "success"}],
+        extra_lines=["{not json", "", "[1, 2]"],
+    )
+    recs = list(iter_log_records(path))
+    assert len(recs) == 1
+    assert recs[0]["user_query"] == "q1"
+
+
+def test_iter_log_records_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        list(iter_log_records(tmp_path / "nope.jsonl"))
+
+
+def test_run_harness_aggregates(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": "bad", "generated_sql": _BAD_SQL, "status": "success"},
+        {"user_query": "clean", "generated_sql": _CLEAN_SQL, "status": "success"},
+        {"user_query": "no sql", "generated_sql": "", "status": "error"},
+    ])
+    result = run_harness(path, dialect="hive")
+    assert result.total_records == 3
+    assert result.reviewed == 2
+    assert result.skipped == 1
+    assert result.criticals >= 1  # SELECT * + missing ON
+    bad = result.entries[0]
+    assert bad.user_query == "bad"
+    assert bad.findings == bad.criticals + bad.risks + bad.suggestions
+    assert bad.categories
+    assert result.top_categories
+    assert result.top_categories[0][1] >= 1
+
+
+def test_run_harness_clean_query_counted(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": "clean", "generated_sql": _CLEAN_SQL, "status": "success"},
+    ])
+    result = run_harness(path, dialect="hive")
+    if result.clean:
+        assert result.clean_rate == 1.0
+    assert 0.0 <= result.clean_rate <= 1.0
+
+
+def test_run_harness_limit_takes_most_recent(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": f"q{i}", "generated_sql": _CLEAN_SQL, "status": "success"}
+        for i in range(5)
+    ])
+    result = run_harness(path, dialect="hive", limit=2)
+    assert result.total_records == 2
+    assert [e.user_query for e in result.entries] == ["q3", "q4"]
+
+
+def test_run_harness_normalizes_dialect(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": "q", "generated_sql": _CLEAN_SQL, "status": "success"},
+    ])
+    result = run_harness(path, dialect="unknown-db")
+    assert result.dialect == "hive"
+
+
+def test_harness_result_to_dict(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": "bad", "generated_sql": _BAD_SQL, "status": "success"},
+    ])
+    result = run_harness(path, dialect="spark")
+    d = result.to_dict()
+    assert d["dialect"] == "spark"
+    assert d["reviewed"] == 1
+    assert isinstance(d["clean_rate"], float)
+    assert d["entries"][0]["sql"] == _BAD_SQL
+    assert all(isinstance(c["category"], str) for c in d["top_categories"])
+    json.dumps(d)  # must be JSON-serializable
+
+
+def test_render_harness_report_en_zh(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": "bad | pipe\nnewline", "generated_sql": _BAD_SQL,
+         "status": "success"},
+    ])
+    result = run_harness(path, dialect="hive")
+    en = render_harness_report(result, lang="en")
+    assert "# Text2SQL Review Harness" in en
+    assert "Worst queries" in en
+    assert "\\|" in en  # pipe escaped in table cell
+    zh = render_harness_report(result, lang="zh")
+    assert "Text2SQL 审查 Harness" in zh
+    assert "问题最多的查询" in zh
+
+
+def test_render_harness_report_all_clean():
+    result = HarnessResult(dialect="hive", log_path="x.jsonl",
+                           total_records=1, reviewed=1, clean=1)
+    en = render_harness_report(result, lang="en")
+    assert "all reviewed queries are clean" in en
+    assert "Worst queries" not in en
+
+
+# ---------------------------------------------------------------------------
+# Harness: LLM cache + baseline diff; report line links; rlog sql hash
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.harness import (  # noqa: E402
+    diff_against_baseline,
+    load_llm_cache,
+)
+from seatunnel_agent.sql_review.rlog import sql_hash  # noqa: E402
+
+
+def _write_review_log(tmp_path, records):
+    path = tmp_path / "sql_review.jsonl"
+    path.write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_sql_hash_stable_and_stripped():
+    assert sql_hash("SELECT 1") == sql_hash("  SELECT 1  \n")
+    assert sql_hash("SELECT 1") != sql_hash("SELECT 2")
+
+
+def test_load_llm_cache_latest_llm_record_wins(tmp_path):
+    sha = sql_hash(_BAD_SQL)
+    path = _write_review_log(tmp_path, [
+        {"mode": "agent", "sql_sha256": sha, "timestamp": "t1",
+         "severities": {"critical": 1}, "categories": ["join_condition"]},
+        {"mode": "static", "sql_sha256": sha, "timestamp": "t2",
+         "severities": {"risk": 9}, "categories": ["dedup"]},
+        {"mode": "agent", "sql_sha256": sha, "timestamp": "t3",
+         "severities": {"critical": 2, "risk": 1, "suggestion": 3},
+         "categories": ["join_condition", "resource_usage"]},
+        {"mode": "agent", "timestamp": "t4", "severities": {}},  # no sha
+    ])
+    cache = load_llm_cache(path)
+    assert set(cache) == {sha}
+    assert cache[sha]["criticals"] == 2
+    assert cache[sha]["risks"] == 1
+    assert cache[sha]["suggestions"] == 3
+    assert cache[sha]["timestamp"] == "t3"
+
+
+def test_load_llm_cache_missing_file(tmp_path):
+    assert load_llm_cache(tmp_path / "nope.jsonl") == {}
+
+
+def test_run_harness_merges_llm_cache(tmp_path):
+    qlog = _write_log(tmp_path, [
+        {"user_query": "bad", "generated_sql": _BAD_SQL, "status": "success"},
+        {"user_query": "clean", "generated_sql": _CLEAN_SQL, "status": "success"},
+    ])
+    cache = {sql_hash(_BAD_SQL): {"timestamp": "t", "criticals": 1,
+                                  "risks": 2, "suggestions": 0,
+                                  "categories": ["join_condition"]}}
+    result = run_harness(qlog, dialect="hive", llm_cache=cache)
+    assert result.llm_matched == 1
+    assert result.llm_criticals == 1
+    assert result.llm_risks == 2
+    matched = [e for e in result.entries if e.llm_matched]
+    assert len(matched) == 1
+    assert matched[0].user_query == "bad"
+    d = result.to_dict()
+    assert d["llm"]["matched"] == 1
+    assert d["entries"][0]["llm"]["risks"] == 2
+    # report shows the cached-LLM section
+    md = render_harness_report(result, lang="zh")
+    assert "LLM 审查缓存复用" in md
+
+
+def test_run_harness_without_llm_cache_has_no_llm_key(tmp_path):
+    qlog = _write_log(tmp_path, [
+        {"user_query": "bad", "generated_sql": _BAD_SQL, "status": "success"},
+    ])
+    result = run_harness(qlog, dialect="hive")
+    d = result.to_dict()
+    assert "llm" not in d
+    assert "llm" not in d["entries"][0]
+
+
+def test_diff_against_baseline(tmp_path):
+    qlog = _write_log(tmp_path, [
+        {"user_query": "bad", "generated_sql": _BAD_SQL, "status": "success"},
+        {"user_query": "clean", "generated_sql": _CLEAN_SQL, "status": "success"},
+    ])
+    current = run_harness(qlog, dialect="hive")
+    baseline = {
+        "log_path": "old.jsonl",
+        "reviewed": 5,
+        "clean_rate": 1.0,
+        "criticals": 0, "risks": 0, "suggestions": 0,
+        "entries": [{"categories": ["dedup"]}],
+    }
+    diff = diff_against_baseline(baseline, current)
+    assert diff["baseline_log"] == "old.jsonl"
+    assert diff["reviewed"] == {"baseline": 5, "current": current.reviewed}
+    assert diff["clean_rate"]["delta"] == round(current.clean_rate - 1.0, 4)
+    assert diff["severity_delta"]["critical"] == current.criticals
+    assert "dedup" in diff["resolved_categories"]
+    assert set(diff["new_categories"]) == {c for e in current.entries
+                                           for c in e.categories}
+    json.dumps(diff)
+
+    md = render_harness_report(current, lang="zh", baseline_diff=diff)
+    assert "与基线对比" in md
+    en = render_harness_report(current, lang="en", baseline_diff=diff)
+    assert "Baseline comparison" in en
+
+
+def test_diff_no_change():
+    result = HarnessResult(dialect="hive", log_path="x", reviewed=1, clean=1)
+    baseline = {"log_path": "x", "reviewed": 1, "clean_rate": 1.0,
+                "criticals": 0, "risks": 0, "suggestions": 0, "entries": []}
+    diff = diff_against_baseline(baseline, result)
+    assert not diff["new_categories"]
+    assert not diff["resolved_categories"]
+    assert not diff["category_delta"]
+    md = render_harness_report(result, lang="zh", baseline_diff=diff)
+    assert "与基线相比无变化" in md
+
+
+def test_render_report_line_links():
+    rep = ReviewReport(findings=[
+        Finding(Severity.CRITICAL, "join_condition", "desc", "行 3",
+                "impact", "fix"),
+    ])
+    plain = render_report(rep, lang="zh")
+    assert "#srline-" not in plain
+    linked = render_report(rep, lang="zh", line_links=True)
+    assert "[行 3](#srline-3)" in linked
+    linked_en = render_report(rep, lang="en", line_links=True)
+    assert "[Line 3](#srline-3)" in linked_en
+
+
+def test_rlog_records_sql_sha(tmp_path, monkeypatch):
+    from seatunnel_agent.sql_review.rlog import ReviewLogger
+    logger = ReviewLogger(log_dir=tmp_path)
+    logger.log(sql="SELECT 1", dialect="hive", mode="agent", findings=[])
+    rec = logger.recent(1)[0]
+    assert rec["sql_sha256"] == sql_hash("SELECT 1")
