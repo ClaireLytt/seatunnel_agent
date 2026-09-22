@@ -1266,12 +1266,17 @@ def test_custom_rule_severity_not_clobbered_by_override():
 
 def test_custom_rule_match_cap():
     from seatunnel_agent.sql_review.config import _parse_config
-    from seatunnel_agent.sql_review.linter import _MAX_CUSTOM_MATCHES
     cfg = _parse_config({"custom_rules": [
         {"pattern": r"\bfoo\b", "message": "no foo"}]})
     sql = "SELECT " + ", ".join(["foo"] * 100) + " FROM t WHERE pt='1'"
     fs = [f for f in lint_sql(sql, config=cfg) if f.description == "no foo"]
-    assert len(fs) == _MAX_CUSTOM_MATCHES
+    assert len(fs) == cfg.max_custom_matches
+    cfg2 = _parse_config({
+        "custom_rules": [{"pattern": r"\bfoo\b", "message": "no foo"}],
+        "thresholds": {"max_custom_matches": 3},
+    })
+    fs2 = [f for f in lint_sql(sql, config=cfg2) if f.description == "no foo"]
+    assert len(fs2) == 3
 
 
 def test_custom_rule_category_case_insensitive():
@@ -1507,3 +1512,345 @@ def test_changed_sql_files_from_subdirectory(tmp_path):
     files = changed_sql_files("HEAD", cwd=sub)
     assert [p.name for p in files] == ["q.sql"]
     assert all(p.is_file() for p in files)
+
+
+# ---------------------------------------------------------------------------
+# Bilingual location handling (en-mode dedup / line parsing)
+# ---------------------------------------------------------------------------
+
+def test_norm_location_bilingual():
+    from seatunnel_agent.sql_review.tools import _norm_location
+    assert _norm_location("行 6") == "line:6"
+    assert _norm_location("Line 6") == "line:6"
+    assert _norm_location("line 6") == "line:6"
+    assert _norm_location("全局") == "global"
+    assert _norm_location("Global") == "global"
+
+
+def test_merge_findings_dedup_across_languages():
+    from seatunnel_agent.sql_review.tools import _merge_findings
+    lint = [Finding(Severity.RISK, "partition_pruning", "d", "行 6", "i", "s"),
+            Finding(Severity.RISK, "readability", "d", "全局", "i", "s")]
+    llm = [Finding(Severity.RISK, "partition_pruning", "dup", "Line 6", "i", "s"),
+           Finding(Severity.RISK, "readability", "dup", "Global", "i", "s"),
+           Finding(Severity.RISK, "calculation", "new", "Line 9", "i", "s")]
+    merged = _merge_findings(lint, llm)
+    assert len(merged) == 3
+    assert {f.category for f in merged} == {
+        "partition_pruning", "readability", "calculation"}
+
+
+def test_formats_parse_english_line_numbers():
+    import json as _json
+    from seatunnel_agent.sql_review.formats import results_to_json, results_to_sarif
+    rep = ReviewReport(findings=[
+        Finding(Severity.RISK, "calculation", "d", "Line 6", "i", "s")])
+    doc = _json.loads(results_to_json([("q.sql", rep)]))
+    assert doc["findings"][0]["line"] == 6
+    sarif = _json.loads(results_to_sarif([("q.sql", rep)]))
+    region = sarif["runs"][0]["results"][0]["locations"][0][
+        "physicalLocation"]["region"]
+    assert region["startLine"] == 6
+
+
+def test_report_loc_bidirectional():
+    findings = [Finding(Severity.CRITICAL, "calculation", "d", "Line 6", "i", "s"),
+                Finding(Severity.RISK, "readability", "d", "Global", "i", "s")]
+    md_zh = render_report(ReviewReport(findings=findings), lang="zh")
+    assert "行 6" in md_zh and "全局" in md_zh
+    findings2 = [Finding(Severity.CRITICAL, "calculation", "d", "行 6", "i", "s"),
+                 Finding(Severity.RISK, "readability", "d", "全局", "i", "s")]
+    md_en = render_report(ReviewReport(findings=findings2), lang="en")
+    assert "Line 6" in md_en and "Global" in md_en
+
+
+# ---------------------------------------------------------------------------
+# Configurable thresholds (.sqlreview.yaml)
+# ---------------------------------------------------------------------------
+
+def test_parse_config_text_thresholds():
+    from seatunnel_agent.sql_review.config import parse_config_text
+    cfg = parse_config_text(
+        "thresholds:\n  max_joins: 2\n  max_subquery_depth: 1\n"
+        "  max_stmt_lines: 50\n  readability_min_lines: 5\n"
+        "  max_custom_matches: 3\n")
+    assert cfg.max_joins == 2
+    assert cfg.max_subquery_depth == 1
+    assert cfg.max_stmt_lines == 50
+    assert cfg.readability_min_lines == 5
+    assert cfg.max_custom_matches == 3
+
+
+def test_parse_config_text_empty_and_invalid():
+    from seatunnel_agent.sql_review.config import (DEFAULT_CONFIG,
+                                                   parse_config_text)
+    assert parse_config_text("") is DEFAULT_CONFIG
+    with pytest.raises(ValueError):
+        parse_config_text("- just\n- a list\n")
+
+
+@pytest.mark.parametrize("yaml_text", [
+    "thresholds:\n  nope: 3\n",           # unknown key
+    "thresholds:\n  max_joins: zero\n",   # non-int
+    "thresholds:\n  max_joins: true\n",   # bool
+    "thresholds:\n  max_joins: 0\n",      # < 1
+    "thresholds: 5\n",                    # not a mapping
+])
+def test_parse_config_thresholds_invalid(yaml_text):
+    from seatunnel_agent.sql_review.config import parse_config_text
+    with pytest.raises(ValueError):
+        parse_config_text(yaml_text)
+
+
+def test_parse_config_data_rejects_non_dict():
+    from seatunnel_agent.sql_review.config import parse_config_data
+    with pytest.raises(ValueError):
+        parse_config_data(["not", "a", "dict"])
+
+
+def test_lint_honors_custom_join_threshold():
+    sql = ("select a.id from t1 a join t2 b on a.id=b.id "
+           "join t3 c on a.id=c.id where a.pt='1'")
+    from seatunnel_agent.sql_review.config import ReviewConfig as _RC
+    default = [f for f in lint_sql(sql, "hive")
+               if f.category == "readability" and "JOIN" in f.description]
+    cfg = _RC(max_joins=1)
+    tight = [f for f in lint_sql(sql, "hive", config=cfg)
+             if "JOIN" in f.description]
+    assert tight  # 2 joins > 1 triggers the complexity rule
+    assert not default  # 2 joins <= default 5 stays silent
+
+
+def test_lint_honors_readability_min_lines():
+    from seatunnel_agent.sql_review.config import ReviewConfig as _RC
+    sql = "SELECT id\n,a\n,b\nfrom t\nwhere pt='1'\nlimit 1"
+    small = [f for f in lint_sql(sql, "hive", config=_RC(readability_min_lines=2))
+             if f.category == "readability"]
+    big = [f for f in lint_sql(sql, "hive", config=_RC(readability_min_lines=100))
+           if f.category == "readability"]
+    assert len(small) >= len(big)
+
+
+# ---------------------------------------------------------------------------
+# Env-var configurability
+# ---------------------------------------------------------------------------
+
+def test_default_log_dir_env(monkeypatch, tmp_path):
+    from seatunnel_agent.sql_review import rlog
+    monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path / "mylogs"))
+    assert rlog.default_log_dir() == str(tmp_path / "mylogs")
+    from pathlib import Path as _P
+    assert rlog.ReviewLogger().log_dir == _P(str(tmp_path / "mylogs"))
+    monkeypatch.delenv("SQLREVIEW_LOG_DIR")
+    assert rlog.default_log_dir() == "logs"
+
+
+def test_max_iterations_env(monkeypatch):
+    from seatunnel_agent.sql_review.agent import _max_iterations
+    monkeypatch.setenv("SQLREVIEW_MAX_ITERATIONS", "3")
+    assert _max_iterations() == 3
+    monkeypatch.setenv("SQLREVIEW_MAX_ITERATIONS", "bogus")
+    assert _max_iterations() == 10
+    monkeypatch.setenv("SQLREVIEW_MAX_ITERATIONS", "0")
+    assert _max_iterations() == 1
+
+
+def test_max_column_lineage_env(monkeypatch):
+    from seatunnel_agent.sql_review.lineage import _max_column_lineage
+    monkeypatch.setenv("SQLREVIEW_MAX_COLUMN_LINEAGE", "5")
+    assert _max_column_lineage() == 5
+    monkeypatch.setenv("SQLREVIEW_MAX_COLUMN_LINEAGE", "x")
+    assert _max_column_lineage() == 30
+
+
+def test_report_env_int(monkeypatch):
+    from seatunnel_agent.sql_review.report import _env_int
+    monkeypatch.setenv("X_TEST_INT", "7")
+    assert _env_int("X_TEST_INT", 15) == 7
+    monkeypatch.setenv("X_TEST_INT", "nan")
+    assert _env_int("X_TEST_INT", 15) == 15
+    monkeypatch.delenv("X_TEST_INT")
+    assert _env_int("X_TEST_INT", 15) == 15
+
+
+# ---------------------------------------------------------------------------
+# Prompt resource caching
+# ---------------------------------------------------------------------------
+
+def test_load_resource_cached():
+    from seatunnel_agent.sql_review.prompts import _load_resource
+    _load_resource.cache_clear()
+    a = _load_resource("review_checklist.md")
+    b = _load_resource("review_checklist.md")
+    assert a == b and a
+    assert _load_resource.cache_info().hits >= 1
+
+
+# ---------------------------------------------------------------------------
+# Agent report-marker fallback (i18n-derived, mock LLM)
+# ---------------------------------------------------------------------------
+
+class _AgentFakeResp:
+    def __init__(self, text):
+        self.reply_text = text
+        self.raw_content = text
+        self.usage = None
+        self.thinking_text = ""
+        self.wants_tool_use = False
+        self.tool_calls = []
+
+
+class _AgentFakeLLM:
+    def __init__(self, text, hook=None):
+        self._text = text
+        self._hook = hook
+
+    def chat(self, system, messages, on_text_delta=None):
+        if self._hook:
+            self._hook()
+        return _AgentFakeResp(self._text)
+
+    def append_assistant(self, raw):
+        return {"role": "assistant", "content": raw}
+
+
+def _make_agent(monkeypatch, reply, lang="zh"):
+    from seatunnel_agent.sql_review import agent as agent_mod
+    holder = {}
+
+    def hook():
+        # simulate submit_review having produced a rendered report
+        holder["agent"].runtime.last_report = "## CR 报告\n\n(rendered)"
+
+    fake = _AgentFakeLLM(reply, hook=hook)
+    monkeypatch.setattr(agent_mod, "LLMClient", lambda s, tools=None: fake)
+    ag = agent_mod.SQLReviewAgent(None, dialect="hive", lang=lang)
+    holder["agent"] = ag
+    return ag
+
+
+def test_agent_falls_back_to_rendered_report(monkeypatch):
+    ag = _make_agent(monkeypatch, "Here is a paraphrased summary.")
+    out = ag.review("select 1")
+    assert out.startswith("## CR 报告")
+
+
+def test_agent_keeps_answer_containing_en_marker(monkeypatch):
+    ag = _make_agent(monkeypatch, "## CR Report\n\nfull report", lang="en")
+    out = ag.review("select 1")
+    assert out == "## CR Report\n\nfull report"
+
+
+# ---------------------------------------------------------------------------
+# REST API: rules param, warnings, /fix endpoint
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def api_client(tmp_path, monkeypatch):
+    fastapi = pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+    from seatunnel_agent.sql_review.api import router
+    monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path / "logs"))
+    app = fastapi.FastAPI()
+    app.include_router(router)
+    return TestClient(app)
+
+
+def test_api_static_review_with_rules(api_client):
+    r = api_client.post("/api/sql_review/review", json={
+        "sql": "select * from t where pt='1'",
+        "mode": "static",
+        "rules": {"disable": ["resource_usage"]},
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert all(f["category"] != "resource_usage" for f in data["findings"])
+    assert data["warnings"] == []
+
+
+def test_api_static_instructions_warning(api_client):
+    r = api_client.post("/api/sql_review/review", json={
+        "sql": "select 1",
+        "mode": "static",
+        "instructions": "focus on joins",
+    })
+    assert r.status_code == 200
+    assert any("instructions" in w for w in r.json()["warnings"])
+
+
+def test_api_invalid_rules_400(api_client):
+    r = api_client.post("/api/sql_review/review", json={
+        "sql": "select 1", "mode": "static",
+        "rules": {"thresholds": {"max_joins": 0}},
+    })
+    assert r.status_code == 400
+    assert "Invalid rules" in r.json()["detail"]
+
+
+def test_api_maxcompute_downgrade_warning(monkeypatch, api_client):
+    from seatunnel_agent.sql_review import api as api_mod
+    from seatunnel_agent.text2sql.schema import SchemaStore as _SS
+
+    captured = {}
+
+    def fake_create_executor(cfg):
+        captured["ds_type"] = cfg.ds_type
+        return object()
+
+    monkeypatch.setattr(api_mod, "create_executor", fake_create_executor)
+    monkeypatch.setattr(api_mod.SchemaStore, "from_db",
+                        classmethod(lambda cls, ex: _SS([])))
+    r = api_client.post("/api/sql_review/review", json={
+        "sql": "select 1", "mode": "static", "dialect": "maxcompute",
+        "db_config": {"host": "h", "port": 1, "database": "d"},
+    })
+    assert r.status_code == 200
+    assert captured["ds_type"] == "hive"
+    assert any("hive executor" in w for w in r.json()["warnings"])
+
+
+def test_api_fix_endpoint(monkeypatch, api_client):
+    from seatunnel_agent.sql_review import api as api_mod
+    monkeypatch.setattr(api_mod, "load_settings", lambda: None)
+    monkeypatch.setattr(
+        fixer_mod, "LLMClient",
+        lambda settings: _FakeLLM("```sql\nselect id from t\n```"))
+    r = api_client.post("/api/sql_review/fix", json={
+        "sql": "select * from t", "dialect": "hive",
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["fixed_sql"] == "select id from t"
+    assert "CR" in data["report"]  # static review ran first
+
+
+def test_api_fix_with_given_report(monkeypatch, api_client):
+    from seatunnel_agent.sql_review import api as api_mod
+    monkeypatch.setattr(api_mod, "load_settings", lambda: None)
+    monkeypatch.setattr(
+        fixer_mod, "LLMClient",
+        lambda settings: _FakeLLM("```sql\nselect 2\n```"))
+    r = api_client.post("/api/sql_review/fix", json={
+        "sql": "select 1", "report": "my custom report",
+    })
+    assert r.status_code == 200
+    assert r.json()["report"] == "my custom report"
+
+
+def test_api_env_db_defaults(monkeypatch):
+    import importlib
+    monkeypatch.setenv("SQLREVIEW_DB_HOST", "envhost")
+    monkeypatch.setenv("SQLREVIEW_DB_PORT", "9999")
+    monkeypatch.setenv("SQLREVIEW_DB_DATABASE", "envdb")
+    from seatunnel_agent.sql_review import api as api_mod
+    importlib.reload(api_mod)
+    try:
+        assert api_mod._DEFAULT_DB_HOST == "envhost"
+        assert api_mod._DEFAULT_DB_PORT == "9999"
+        assert api_mod._DEFAULT_DB_DATABASE == "envdb"
+    finally:
+        monkeypatch.delenv("SQLREVIEW_DB_HOST")
+        monkeypatch.delenv("SQLREVIEW_DB_PORT")
+        monkeypatch.delenv("SQLREVIEW_DB_DATABASE")
+        importlib.reload(api_mod)

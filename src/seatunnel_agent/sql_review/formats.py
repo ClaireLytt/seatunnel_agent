@@ -12,7 +12,8 @@ from typing import Any
 
 from .report import CHECK_CATALOG, ReviewReport, Severity
 
-_LINE_RE = re.compile(r"行 (\d+)")
+# findings cite locations as "行 6" (zh linter/LLM) or "Line 6" (en LLM)
+_LINE_RE = re.compile(r"(?:行|line)\s*(\d+)", re.IGNORECASE)
 
 _SARIF_LEVEL = {
     Severity.CRITICAL: "error",

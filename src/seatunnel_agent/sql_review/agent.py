@@ -8,6 +8,7 @@ and event protocol so the existing UI streaming machinery works unchanged.
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Callable
 
 from rich.console import Console
@@ -26,7 +27,14 @@ from .prompts import build_review_prompt
 from .report import ReviewReport, render_report
 from .tools import TOOL_DEFINITIONS, SQLReviewRuntime, execute_review_tool
 
-MAX_LOOP_ITERATIONS = 10
+def _max_iterations() -> int:
+    try:
+        return max(1, int(os.getenv("SQLREVIEW_MAX_ITERATIONS", "10")))
+    except ValueError:
+        return 10
+
+
+MAX_LOOP_ITERATIONS = _max_iterations()
 
 EventCallback = Callable[[str, dict[str, Any]], None]
 
@@ -109,10 +117,12 @@ class SQLReviewAgent:
 
         answer = self._agent_loop()
         # The prompt asks the model to echo the rendered report verbatim; if it
-        # paraphrased instead, prefer the deterministic render.
-        if self.runtime.last_report and not any(
-            marker in answer for marker in ("CR 报告", "CR Report")
-        ):
+        # paraphrased instead, prefer the deterministic render. The markers come
+        # from i18n so a wording change there cannot silently break this check.
+        markers = {
+            sr(lg, "sr_report_title").lstrip("#").strip() for lg in ("zh", "en")
+        }
+        if self.runtime.last_report and not any(m in answer for m in markers):
             return self.runtime.last_report
         return answer
 

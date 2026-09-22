@@ -59,9 +59,9 @@ def suggest_joins(table_name: str, store: SchemaStore) -> list[JoinSuggestion]:
             if key not in seen:
                 seen.add(key)
                 suggestions.append(JoinSuggestion(
-                    table_a=target.name,
+                    table_a=target.full_name,
                     column_a=col,
-                    table_b=other.name,
+                    table_b=other.full_name,
                     column_b=col,
                     confidence=0.9,
                     match_type="exact_name",
@@ -76,9 +76,9 @@ def suggest_joins(table_name: str, store: SchemaStore) -> list[JoinSuggestion]:
                 if key not in seen:
                     seen.add(key)
                     suggestions.append(JoinSuggestion(
-                        table_a=target.name,
+                        table_a=target.full_name,
                         column_a="id",
-                        table_b=other.name,
+                        table_b=other.full_name,
                         column_b=fk_col,
                         confidence=0.85,
                         match_type="fk_pattern",
@@ -93,9 +93,9 @@ def suggest_joins(table_name: str, store: SchemaStore) -> list[JoinSuggestion]:
                     if key not in seen:
                         seen.add(key)
                         suggestions.append(JoinSuggestion(
-                            table_a=target.name,
+                            table_a=target.full_name,
                             column_a=col,
-                            table_b=other.name,
+                            table_b=other.full_name,
                             column_b="id",
                             confidence=0.85,
                             match_type="fk_pattern",

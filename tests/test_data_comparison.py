@@ -3649,43 +3649,102 @@ class TestPhase3I18nKeys:
 # ---------------------------------------------------------------------------
 
 
-class TestPasswordObfuscation:
-    """Password obfuscation/deobfuscation in presets."""
+@pytest.fixture()
+def _isolated_key(tmp_path, monkeypatch):
+    """Point the encryption key file at tmp_path and clear the cached key."""
+    from seatunnel_agent.data_comparison import presets as presets_mod
+    key_path = tmp_path / "dc_secret.key"
+    monkeypatch.setattr(presets_mod, "_KEY_PATH", key_path)
+    monkeypatch.setattr(presets_mod, "_cached_key", None)
+    yield key_path
+    presets_mod._cached_key = None
 
-    def test_obfuscate_roundtrip(self):
-        from seatunnel_agent.data_comparison.presets import _obfuscate, _deobfuscate
+
+class TestPasswordEncryption:
+    """Password encryption/decryption in presets."""
+
+    def test_encrypt_roundtrip(self, _isolated_key):
+        from seatunnel_agent.data_comparison.presets import _encrypt, _decrypt
         pwd = "s3cret!@#"
-        encoded = _obfuscate(pwd)
-        assert encoded.startswith("b64:")
-        assert _deobfuscate(encoded) == pwd
+        encoded = _encrypt(pwd)
+        assert encoded.startswith(("enc1:", "obf1:"))
+        assert pwd not in encoded
+        assert _decrypt(encoded) == pwd
 
-    def test_empty_password(self):
-        from seatunnel_agent.data_comparison.presets import _obfuscate, _deobfuscate
-        assert _obfuscate("") == ""
-        assert _deobfuscate("") == ""
+    def test_empty_password(self, _isolated_key):
+        from seatunnel_agent.data_comparison.presets import _encrypt, _decrypt
+        assert _encrypt("") == ""
+        assert _decrypt("") == ""
 
-    def test_backward_compat_plain_password(self):
-        from seatunnel_agent.data_comparison.presets import _deobfuscate
-        assert _deobfuscate("plain_password") == "plain_password"
+    def test_backward_compat_plain_password(self, _isolated_key):
+        from seatunnel_agent.data_comparison.presets import _decrypt
+        assert _decrypt("plain_password") == "plain_password"
 
-    def test_preset_password_stored_obfuscated(self, tmp_path):
+    def test_backward_compat_b64_password(self, _isolated_key):
+        import base64
+        from seatunnel_agent.data_comparison.presets import _decrypt
+        legacy = "b64:" + base64.b64encode(b"oldpwd").decode()
+        assert _decrypt(legacy) == "oldpwd"
+
+    def test_key_file_created(self, _isolated_key):
+        from seatunnel_agent.data_comparison.presets import _encrypt
+        _encrypt("x")
+        assert _isolated_key.is_file()
+        assert _isolated_key.read_bytes().strip()
+
+    def test_corrupt_token_returns_empty(self, _isolated_key):
+        from seatunnel_agent.data_comparison.presets import _decrypt
+        assert _decrypt("enc1:not-a-valid-token") == ""
+
+    def test_preset_password_stored_encrypted(self, _isolated_key, tmp_path):
         import json
         store = ConnectionPresetsStore(tmp_path / "presets.json")
         store.save("test", "mysql", "localhost", 3306, "db", "user", "secret123")
         raw = json.loads((tmp_path / "presets.json").read_text())
-        assert raw[0]["password"].startswith("b64:")
+        assert raw[0]["password"].startswith(("enc1:", "obf1:"))
+        assert "secret123" not in raw[0]["password"]
 
-    def test_preset_password_loaded_clear(self, tmp_path):
+    def test_preset_password_loaded_clear(self, _isolated_key, tmp_path):
         store = ConnectionPresetsStore(tmp_path / "presets.json")
         store.save("test", "mysql", "localhost", 3306, "db", "user", "secret123")
         presets = store.list()
         assert presets[0]["password"] == "secret123"
 
-    def test_get_by_name_deobfuscates(self, tmp_path):
+    def test_get_by_name_decrypts(self, _isolated_key, tmp_path):
         store = ConnectionPresetsStore(tmp_path / "presets.json")
         store.save("test", "mysql", "localhost", 3306, "db", "user", "secret123")
         preset = store.get_by_name("test")
         assert preset["password"] == "secret123"
+
+    def test_legacy_b64_auto_migrated_on_list(self, _isolated_key, tmp_path):
+        import base64
+        import json
+        path = tmp_path / "presets.json"
+        legacy_pwd = "b64:" + base64.b64encode(b"oldpwd").decode()
+        path.write_text(json.dumps([{
+            "id": "abc", "name": "old", "ds_type": "mysql",
+            "host": "h", "port": 3306, "database": "d",
+            "username": "u", "password": legacy_pwd,
+        }]), encoding="utf-8")
+        store = ConnectionPresetsStore(path)
+        presets = store.list()
+        assert presets[0]["password"] == "oldpwd"
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        assert raw[0]["password"].startswith(("enc1:", "obf1:"))
+
+    def test_legacy_plaintext_auto_migrated_on_get(self, _isolated_key, tmp_path):
+        import json
+        path = tmp_path / "presets.json"
+        path.write_text(json.dumps([{
+            "id": "abc", "name": "old", "ds_type": "mysql",
+            "host": "h", "port": 3306, "database": "d",
+            "username": "u", "password": "plainpwd",
+        }]), encoding="utf-8")
+        store = ConnectionPresetsStore(path)
+        preset = store.get_by_name("old")
+        assert preset["password"] == "plainpwd"
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        assert raw[0]["password"].startswith(("enc1:", "obf1:"))
 
 
 class TestWebhookSummary:
@@ -4195,3 +4254,85 @@ class TestWebhookPayloadStructure:
         assert summary["schema_diffs"][0]["column"] == "c1"
         assert "agg_mismatches" in summary
         assert len(summary["agg_mismatches"]) == 1
+
+
+# ---------------------------------------------------------------------------
+# Dialect-aware SQL generation
+# ---------------------------------------------------------------------------
+
+
+class TestDialectQuoting:
+    """quote_identifier / _sql_literal dialect behavior."""
+
+    def test_mysql_backtick_quoting(self):
+        from seatunnel_agent.data_comparison.comparator import quote_identifier
+        assert quote_identifier("my col", "mysql") == "`my col`"
+
+    def test_postgres_double_quote(self):
+        from seatunnel_agent.data_comparison.comparator import quote_identifier
+        assert quote_identifier("my col", "postgresql") == '"my col"'
+
+    def test_default_double_quote_unchanged(self):
+        from seatunnel_agent.data_comparison.comparator import quote_identifier
+        assert quote_identifier("my col") == '"my col"'
+
+    def test_safe_identifier_not_quoted(self):
+        from seatunnel_agent.data_comparison.comparator import quote_identifier
+        assert quote_identifier("orders", "mysql") == "orders"
+
+    def test_backtick_escaped_in_backtick_dialect(self):
+        from seatunnel_agent.data_comparison.comparator import quote_identifier
+        assert quote_identifier("a`b", "mysql") == "`a``b`"
+
+    def test_sql_literal_mysql_backslash_escaped(self):
+        assert _sql_literal("a\\b", "mysql") == "'a\\\\b'"
+
+    def test_sql_literal_postgres_backslash_kept(self):
+        assert _sql_literal("a\\b", "postgresql") == "'a\\b'"
+
+    def test_sql_literal_quote_doubled_everywhere(self):
+        assert _sql_literal("o'brien", "postgresql") == "'o''brien'"
+        assert _sql_literal("o'brien", "mysql") == "'o''brien'"
+
+
+class TestDialectCastAndChecksum:
+    """CAST/hash function selection per dialect."""
+
+    def test_checksum_mysql_uses_crc32_and_char(self):
+        sql = build_checksum_sql("orders", ["id"], "mysql")
+        assert "CRC32" in sql
+        assert "AS CHAR" in sql
+        assert "VARCHAR(200)" not in sql
+
+    def test_checksum_postgres_uses_hashtext(self):
+        sql = build_checksum_sql("orders", ["id"], "postgresql")
+        assert "HASHTEXT" in sql.upper()
+        assert "CRC32" not in sql
+
+    def test_checksum_sqlserver_uses_checksum(self):
+        sql = build_checksum_sql("orders", ["id"], "sqlserver")
+        assert "CHECKSUM" in sql
+        assert "CRC32" not in sql
+
+    def test_skew_sql_mysql_char_cast(self):
+        sql = build_skew_sql("orders", "status", ds_type="mysql")
+        assert "AS CHAR" in sql
+        assert "VARCHAR(200)" not in sql
+
+    def test_skew_sql_postgres_varchar_cast(self):
+        sql = build_skew_sql("orders", "status", ds_type="postgresql")
+        assert "VARCHAR(200)" in sql
+
+    def test_partition_sql_mysql_char_cast(self):
+        sql = build_partition_count_sql("orders", "region", ds_type="mysql")
+        assert "AS CHAR" in sql
+
+    def test_diff_sql_mysql_backtick_table(self):
+        from seatunnel_agent.data_comparison.comparator import generate_diff_sql
+        result = KeyedDiffResult(
+            key_columns=["id"],
+            columns=["id", "name"],
+            added=[(1, "x")],
+        )
+        sql = generate_diff_sql(result, "my table", ds_type="mysql")
+        assert "`my table`" in sql

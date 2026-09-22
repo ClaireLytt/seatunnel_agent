@@ -7,6 +7,7 @@ the accumulated findings across tool calls in one review session.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -161,16 +162,31 @@ def _parse_llm_finding(raw: dict[str, Any]) -> Finding | None:
     )
 
 
+# linter emits "行 N"; the en-mode LLM cites "Line N" and "Global" — both
+# spellings must dedupe against each other
+_LOC_LINE_RE = re.compile(r"(?:行|line)\s*(\d+)", re.IGNORECASE)
+_GLOBAL_MARKERS = {"全局", "global"}
+
+
+def _norm_location(location: str) -> str:
+    m = _LOC_LINE_RE.search(location)
+    if m:
+        return f"line:{m.group(1)}"
+    loc = location.strip().lower()
+    return "global" if loc in _GLOBAL_MARKERS else loc
+
+
 def _merge_findings(
     lint: list[Finding], llm: list[Finding]
 ) -> list[Finding]:
     """Linter findings first; drop LLM findings duplicating (category, location)."""
-    seen = {(f.category, f.location) for f in lint}
+    seen = {(f.category, _norm_location(f.location)) for f in lint}
     merged = list(lint)
     for f in llm:
-        if (f.category, f.location) in seen:
+        key = (f.category, _norm_location(f.location))
+        if key in seen:
             continue
-        seen.add((f.category, f.location))
+        seen.add(key)
         merged.append(f)
     return merged
 

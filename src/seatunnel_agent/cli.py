@@ -335,6 +335,12 @@ def review(
             raise click.UsageError("--db 格式应为 host:port/database")
         from .text2sql.executor import DatabaseConfig, create_executor
         from .text2sql.schema import SchemaStore
+        if dialect not in ("hive", "spark", "flink"):
+            click.echo(
+                f"Warning: dialect '{dialect}' has no dedicated database executor — "
+                "falling back to the hive executor for schema fetching.",
+                err=True,
+            )
         try:
             db_config = DatabaseConfig(
                 ds_type=dialect if dialect in ("hive", "spark", "flink") else "hive",

@@ -8,12 +8,42 @@ as UTF-8 with BOM so Excel renders Chinese headers correctly.
 from __future__ import annotations
 
 import csv
+import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+NOTO_SANS_SC_URL = (
+    "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/"
+    "SimplifiedChinese/NotoSansSC-Regular.otf"
+)
+FONT_CACHE_DIR = Path.home() / ".seatunnel-agent" / "fonts"
+NOTO_FONT_PATH = FONT_CACHE_DIR / "NotoSansSC-Regular.otf"
+_FONT_DOWNLOAD_TIMEOUT_S = 15
+
+
+def download_noto_font(timeout: int = _FONT_DOWNLOAD_TIMEOUT_S) -> Path | None:
+    """Download the Noto Sans SC font to the local cache. Returns the path or None."""
+    try:
+        FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        import urllib.request
+        resp = urllib.request.urlopen(NOTO_SANS_SC_URL, timeout=timeout)  # noqa: S310
+        with open(NOTO_FONT_PATH, "wb") as f:
+            f.write(resp.read())
+        return NOTO_FONT_PATH if NOTO_FONT_PATH.is_file() else None
+    except Exception:
+        return None
+
 
 def default_desktop_dir() -> Path:
+    override = os.getenv("EXPORT_DIR", "").strip()
+    if override:
+        p = Path(override)
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        except OSError:
+            pass
     desktop = Path.home() / "Desktop"
     return desktop if desktop.is_dir() else Path.home()
 
@@ -22,9 +52,22 @@ def safe_stem(name: str) -> str:
     return re.sub(r"[^\w\-]", "_", name)[:60] or "query_result"
 
 
-def _timestamped_name(name_hint: str) -> str:
+def _timestamped_name(name_hint: str, ext: str = "csv") -> str:
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    return f"{safe_stem(name_hint)}_{ts}.csv"
+    return f"{safe_stem(name_hint)}_{ts}.{ext}"
+
+
+def _resolve_target(path: str | None, name_hint: str, ext: str) -> Path:
+    """Resolve the output file path: explicit file, directory, or default dir."""
+    fname = _timestamped_name(name_hint, ext)
+    if path:
+        target = Path(path)
+        if target.is_dir() or not target.suffix:
+            target.mkdir(parents=True, exist_ok=True)
+            return target / fname
+        target.parent.mkdir(parents=True, exist_ok=True)
+        return target
+    return default_desktop_dir() / fname
 
 
 def export_csv(
@@ -34,15 +77,7 @@ def export_csv(
     name_hint: str = "query_result",
 ) -> str:
     """Write rows to CSV and return the absolute file path."""
-    if path:
-        target = Path(path)
-        if target.is_dir() or not target.suffix:
-            target.mkdir(parents=True, exist_ok=True)
-            target = target / _timestamped_name(name_hint)
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-    else:
-        target = default_desktop_dir() / _timestamped_name(name_hint)
+    target = _resolve_target(path, name_hint, "csv")
 
     with open(target, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
@@ -72,18 +107,7 @@ def export_excel(
             "Install it with: pip install openpyxl"
         )
 
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    fname = f"{safe_stem(name_hint)}_{ts}.xlsx"
-
-    if path:
-        target = Path(path)
-        if target.is_dir() or not target.suffix:
-            target.mkdir(parents=True, exist_ok=True)
-            target = target / fname
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-    else:
-        target = default_desktop_dir() / fname
+    target = _resolve_target(path, name_hint, "xlsx")
 
     wb = Workbook()
     ws = wb.active
@@ -131,27 +155,14 @@ def export_pdf(
         )
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    fname = f"{safe_stem(name_hint)}_{ts}.pdf"
-
-    if path:
-        target = Path(path)
-        if target.is_dir() or not target.suffix:
-            target.mkdir(parents=True, exist_ok=True)
-            target = target / fname
-        else:
-            target.parent.mkdir(parents=True, exist_ok=True)
-    else:
-        target = default_desktop_dir() / fname
+    target = _resolve_target(path, name_hint, "pdf")
 
     pdf = FPDF(orientation="L", unit="mm", format="A4")
     pdf.set_auto_page_break(auto=True, margin=15)
 
     _font_family = "Helvetica"
-    _NOTO_URL = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Regular.otf"
-    _font_cache = Path.home() / ".seatunnel-agent" / "fonts"
-    _noto_path = _font_cache / "NotoSansSC-Regular.otf"
-    if _noto_path.is_file():
-        pdf.add_font("NotoSansSC", "", str(_noto_path), uni=True)
+    if NOTO_FONT_PATH.is_file():
+        pdf.add_font("NotoSansSC", "", str(NOTO_FONT_PATH), uni=True)
         _font_family = "NotoSansSC"
     else:
         import unicodedata
@@ -159,15 +170,9 @@ def export_pdf(
             unicodedata.category(ch).startswith("Lo")
             for col in columns for ch in str(col)
         )
-        if has_cjk:
-            try:
-                _font_cache.mkdir(parents=True, exist_ok=True)
-                import urllib.request
-                urllib.request.urlretrieve(_NOTO_URL, str(_noto_path))
-                pdf.add_font("NotoSansSC", "", str(_noto_path), uni=True)
-                _font_family = "NotoSansSC"
-            except Exception:
-                pass
+        if has_cjk and download_noto_font() is not None:
+            pdf.add_font("NotoSansSC", "", str(NOTO_FONT_PATH), uni=True)
+            _font_family = "NotoSansSC"
 
     pdf.add_page()
 

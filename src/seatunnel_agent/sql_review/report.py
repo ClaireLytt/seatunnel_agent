@@ -7,9 +7,21 @@ review — static-only or LLM-assisted — looks the same to the reader.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(1, int(os.getenv(name, "") or default))
+    except ValueError:
+        return default
+
+
+# max column-lineage rows shown in the rendered report
+LINEAGE_DISPLAY_LIMIT = _env_int("SQLREVIEW_LINEAGE_DISPLAY_LIMIT", 15)
 
 
 class Severity(str, Enum):
@@ -125,14 +137,16 @@ def _table(headers: list[str], rows: list[list[str]]) -> str:
 
 
 _LINE_LOC_RE = re.compile(r"行\s*(\d+)")
+_EN_LINE_LOC_RE = re.compile(r"\bline\s*(\d+)", re.IGNORECASE)
 
 
 def _loc(location: str, lang: str) -> str:
-    """Localize a finding location for display ("行 6" -> "Line 6")."""
-    if lang != "en":
-        return location
-    loc = _LINE_LOC_RE.sub(lambda m: f"Line {m.group(1)}", location)
-    return loc.replace("全局", "Global")
+    """Localize a finding location for display ("行 6" <-> "Line 6")."""
+    if lang == "en":
+        loc = _LINE_LOC_RE.sub(lambda m: f"Line {m.group(1)}", location)
+        return loc.replace("全局", "Global")
+    loc = _EN_LINE_LOC_RE.sub(lambda m: f"行 {m.group(1)}", location)
+    return re.sub(r"\bglobal\b", "全局", loc, flags=re.IGNORECASE)
 
 
 def render_report(report: ReviewReport, lang: str = "zh") -> str:
@@ -192,7 +206,7 @@ def render_report(report: ReviewReport, lang: str = "zh") -> str:
         )
         if lin.columns:
             col_lines = [f"- {t('sr_lin_columns')}"]
-            for col in lin.columns[:15]:
+            for col in lin.columns[:LINEAGE_DISPLAY_LIMIT]:
                 agg = t("sr_lin_agg") if col.get("aggregated") else ""
                 col_lines.append(f"  - {col['output']} ← {col['source']}{agg}")
             lineage_md += "\n" + "\n".join(col_lines)

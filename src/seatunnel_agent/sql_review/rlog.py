@@ -9,6 +9,7 @@ into totals and the most frequent problem categories.
 from __future__ import annotations
 
 import json
+import os
 import threading
 from collections import Counter
 from datetime import datetime, timezone
@@ -21,9 +22,14 @@ _MAX_LOG_BYTES = 10 * 1024 * 1024  # 10 MB
 _SQL_PREVIEW_CHARS = 300
 
 
+def default_log_dir() -> str:
+    """Review-log directory: $SQLREVIEW_LOG_DIR, falling back to ./logs."""
+    return os.getenv("SQLREVIEW_LOG_DIR") or "logs"
+
+
 class ReviewLogger:
-    def __init__(self, log_dir: str | Path = "logs") -> None:
-        self.log_dir = Path(log_dir)
+    def __init__(self, log_dir: str | Path | None = None) -> None:
+        self.log_dir = Path(log_dir) if log_dir is not None else Path(default_log_dir())
         self.log_file = self.log_dir / "sql_review.jsonl"
         self._lock = threading.Lock()
 

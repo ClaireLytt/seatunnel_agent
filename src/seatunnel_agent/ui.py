@@ -18,8 +18,12 @@ from typing import Any
 
 import gradio as gr
 
-from .config import Settings, load_settings
+from .config import Settings, env_float, load_settings
 from .agent import SeaTunnelAgent
+
+_DOCS_URL = "https://github.com/ClaireLytt/seatunnel_agent#readme"
+_EVENT_POLL_INTERVAL = env_float("UI_EVENT_POLL_INTERVAL", 0.3)
+_DEMO_STEP_DELAY = env_float("UI_DEMO_STEP_DELAY", 0.35)
 from .history import (
     Session, delete_session, extract_title, list_sessions,
     load_session, new_session_id, rename_session, save_session,
@@ -303,7 +307,7 @@ def _run_demo(
 
     for step in steps:
         t = step["type"]
-        time.sleep(0.35)
+        time.sleep(_DEMO_STEP_DELAY)
 
         if t == "thinking":
             collector.on_event("thinking", {"text": step["text"]})
@@ -604,12 +608,18 @@ def _run_agent_streaming(user_message, chat_history, mode, config_path, settings
     thread.start()
     prev_count = 0
     while not collector.done:
-        collector.wait_for_event(timeout=0.3)
+        collector.wait_for_event(timeout=_EVENT_POLL_INTERVAL)
         events = collector.snapshot()
         if len(events) > prev_count:
             prev_count = len(events)
             yield chat_history + [{"role": "user", "content": user_message}] + _format_events_as_chat(events, start_time)
     thread.join(timeout=5)
+    if thread.is_alive():
+        import logging
+        logging.getLogger(__name__).warning(
+            "Agent worker thread is still running after stop/finish; "
+            "it will exit at the next loop-iteration check."
+        )
     elapsed = time.time() - start_time
     final = _format_events_as_chat(collector.snapshot(), start_time)
     if error_msg:
@@ -679,7 +689,7 @@ def _build_placeholder(lang: str) -> str:
     <div class="st-hint-card">{_t(lang, "placeholder_hint2")}</div>
     <div class="st-hint-card">{_t(lang, "placeholder_hint3")}</div>
   </div>
-  <a href="https://github.com/ClaireLytt/seatunnel_agent#readme"
+  <a href="{_DOCS_URL}"
      target="_blank" class="st-docs-link">{docs_text}</a>
 </div>'''
 
@@ -754,28 +764,6 @@ _MODE_MAP = {
     "自然语言描述": "run", "运行配置文件": "run_config",
     "验证配置": "validate", "诊断日志": "diagnose",
 }
-
-
-_HUB_AGENTS: list[dict[str, Any]] = [
-    {
-        "name": "SeaTunnel Pipeline Builder",
-        "name_zh": "数据管道构建",
-        "desc_en": "Generate / validate / run SeaTunnel configs with natural language, auto-diagnose & fix",
-        "desc_zh": "自然语言生成 / 验证 / 运行 SeaTunnel 配置，自动诊断修复",
-        "href": "/seatunnel",
-        "logo": "ST",
-        "color": "#f76707",
-    },
-    {
-        "name": "Text2SQL · Chat BI",
-        "name_zh": "智能问数",
-        "desc_en": "Ask in natural language → auto match table schema → generate & run Hive SQL → preview & CSV export",
-        "desc_zh": "自然语言提问 → 自动匹配表结构 → 生成并执行 Hive SQL → 结果预览与 CSV 导出",
-        "href": "/text2sql",
-        "logo": "SQL",
-        "color": "#0ea5e9",
-    },
-]
 
 
 def _build_hub_html() -> str:
@@ -1187,6 +1175,9 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
 
     # ── Stop handler ──
     def _handle_stop(lang):
+        agent = agent_holder.get("agent")
+        if agent is not None:
+            agent.stop_event.set()
         c = collector_holder.get("current")
         if c and not c.done:
             c.on_event("final_answer", {"text": _t(lang, "stopped")})
@@ -2196,9 +2187,10 @@ def _kill_port(port: int) -> bool:
         ["netstat", "-ano"], capture_output=True, text=True,
     )
     for line in r.stdout.splitlines():
-        if f":{port}" in line and "LISTENING" in line:
-            pid = line.strip().split()[-1]
-            subprocess.run(["taskkill", "/F", "/PID", pid],
+        parts = line.split()
+        # netstat -ano: Proto  Local Address  Foreign Address  State  PID
+        if len(parts) >= 5 and parts[3] == "LISTENING" and parts[1].endswith(f":{port}"):
+            subprocess.run(["taskkill", "/F", "/PID", parts[4]],
                            capture_output=True)
             return True
     return False
@@ -2217,9 +2209,16 @@ def _port_has_listener(port: int) -> bool:
 
 def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
     if _port_has_listener(port):
-        print(f"[ui] Port {port} in use — killing old process...")
-        _kill_port(port)
-        import time; time.sleep(0.5)
+        import os
+        if os.getenv("SEATUNNEL_UI_KILL_PORT", "").lower() in ("1", "true", "yes"):
+            print(f"[ui] Port {port} in use — killing old process (SEATUNNEL_UI_KILL_PORT is set)...")
+            _kill_port(port)
+            import time; time.sleep(0.5)
+        else:
+            raise SystemExit(
+                f"[ui] Port {port} is already in use. Stop the process using it, "
+                f"choose another port, or set SEATUNNEL_UI_KILL_PORT=1 to kill it automatically."
+            )
 
     if api:
         from .text2sql.api import router as t2s_api_router

@@ -42,6 +42,13 @@ SR_I18N: dict[str, dict[str, str]] = {
         "sr_mode_llm": "LLM deep review",
         "sr_ddl_accordion": "Table DDL (optional, for schema checks)",
         "sr_ddl_label": "CREATE TABLE statements",
+        "sr_rules_accordion": "Rule config (optional, .sqlreview.yaml format)",
+        "sr_rules_label": "YAML rules",
+        "sr_rules_placeholder": (
+            "partition_columns: [dt, ds]\nthresholds:\n  max_joins: 5"
+        ),
+        "sr_rules_invalid": "❌ **Invalid rule config**",
+        "sr_download_report": "Download Report (.md)",
         "sr_review_btn": "Start Review",
         "sr_fix_btn": "Generate Fixed SQL (LLM)",
         "sr_report_placeholder": "*The review report will appear here*",
@@ -113,6 +120,13 @@ SR_I18N: dict[str, dict[str, str]] = {
         "sr_mode_llm": "LLM 深度审查",
         "sr_ddl_accordion": "表结构 DDL（可选，用于 schema 校验）",
         "sr_ddl_label": "CREATE TABLE 语句",
+        "sr_rules_accordion": "规则配置（可选，.sqlreview.yaml 格式）",
+        "sr_rules_label": "YAML 规则",
+        "sr_rules_placeholder": (
+            "partition_columns: [dt, ds]\nthresholds:\n  max_joins: 5"
+        ),
+        "sr_rules_invalid": "❌ **规则配置无效**",
+        "sr_download_report": "下载报告（.md）",
         "sr_review_btn": "开始审查",
         "sr_fix_btn": "生成修复 SQL（LLM）",
         "sr_report_placeholder": "*审查报告将显示在这里*",

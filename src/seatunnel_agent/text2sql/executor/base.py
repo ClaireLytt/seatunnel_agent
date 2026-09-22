@@ -154,8 +154,13 @@ class DatabaseExecutor(ABC):
 
 def schema_ddl_path_from_env() -> str:
     raw = os.getenv("SCHEMA_DDL_PATH", DEFAULT_SCHEMA_DDL_PATH)
-    resolved = os.path.normpath(raw)
-    if os.path.isabs(resolved) and ".." in os.path.relpath(resolved, os.getcwd()):
+    base = os.path.realpath(os.getcwd())
+    resolved = os.path.realpath(os.path.join(base, raw))
+    try:
+        if os.path.commonpath([base, resolved]) != base:
+            return DEFAULT_SCHEMA_DDL_PATH
+    except ValueError:
+        # different drives on Windows — cannot be inside the workspace
         return DEFAULT_SCHEMA_DDL_PATH
     return resolved
 

@@ -7,6 +7,7 @@ provided.
 
 from __future__ import annotations
 
+from functools import lru_cache
 from pathlib import Path
 
 from ..text2sql.schema import SchemaStore
@@ -22,7 +23,9 @@ DIALECT_NAMES = {
 }
 
 
+@lru_cache(maxsize=8)
 def _load_resource(name: str) -> str:
+    """Resource files ship with the package and never change at runtime."""
     path = _RESOURCE_DIR / name
     return path.read_text(encoding="utf-8") if path.is_file() else ""
 

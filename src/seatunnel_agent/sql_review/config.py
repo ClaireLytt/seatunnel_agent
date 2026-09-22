@@ -8,6 +8,12 @@ Example file::
     severity:
       resource_usage: suggestion
     fail_on: critical
+    thresholds:
+      max_subquery_depth: 2
+      max_joins: 5
+      max_stmt_lines: 200
+      readability_min_lines: 20
+      max_custom_matches: 20
     custom_rules:
       - pattern: '\\border\\s+by\\b'
         message: 禁止在离线任务中使用 ORDER BY
@@ -48,6 +54,13 @@ class CustomRule:
         return re.compile(self.pattern, re.IGNORECASE)
 
 
+DEFAULT_MAX_SUBQUERY_DEPTH = 2
+DEFAULT_MAX_JOINS = 5
+DEFAULT_MAX_STMT_LINES = 200
+DEFAULT_READABILITY_MIN_LINES = 20
+DEFAULT_MAX_CUSTOM_MATCHES = 20
+
+
 @dataclass
 class ReviewConfig:
     partition_cols: tuple[str, ...] = DEFAULT_PARTITION_COLS
@@ -57,6 +70,11 @@ class ReviewConfig:
     fail_on: str | None = None
     custom_rules: tuple[CustomRule, ...] = ()
     source_path: str | None = None
+    max_subquery_depth: int = DEFAULT_MAX_SUBQUERY_DEPTH
+    max_joins: int = DEFAULT_MAX_JOINS
+    max_stmt_lines: int = DEFAULT_MAX_STMT_LINES
+    readability_min_lines: int = DEFAULT_READABILITY_MIN_LINES
+    max_custom_matches: int = DEFAULT_MAX_CUSTOM_MATCHES
 
 
 DEFAULT_CONFIG = ReviewConfig()
@@ -71,11 +89,17 @@ def _as_str_tuple(value: Any, key: str) -> tuple[str, ...]:
     return items
 
 
+_THRESHOLD_KEYS = {
+    "max_subquery_depth", "max_joins", "max_stmt_lines",
+    "readability_min_lines", "max_custom_matches",
+}
+
+
 def _parse_config(data: dict[str, Any], path: str | None = None) -> ReviewConfig:
     cfg = ReviewConfig(source_path=path)
     unknown = set(data) - {
         "partition_columns", "incremental_suffixes", "disable", "severity",
-        "fail_on", "custom_rules",
+        "fail_on", "custom_rules", "thresholds",
     }
     if unknown:
         raise ValueError(f"未知配置项: {', '.join(sorted(unknown))}")
@@ -115,7 +139,50 @@ def _parse_config(data: dict[str, Any], path: str | None = None) -> ReviewConfig
         cfg.fail_on = fo.lower()
     if "custom_rules" in data:
         cfg.custom_rules = _parse_custom_rules(data["custom_rules"])
+    if "thresholds" in data:
+        thresholds = data["thresholds"]
+        if not isinstance(thresholds, dict):
+            raise ValueError("'thresholds' 必须是 {阈值名: 整数} 映射")
+        bad_keys = set(thresholds) - _THRESHOLD_KEYS
+        if bad_keys:
+            raise ValueError(
+                f"thresholds 中的未知阈值: {', '.join(sorted(bad_keys))}"
+                f"（有效值: {', '.join(sorted(_THRESHOLD_KEYS))}）"
+            )
+        for key, value in thresholds.items():
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f"thresholds.{key} 必须是正整数: {value}")
+            setattr(cfg, key, value)
     return cfg
+
+
+def parse_config_data(data: dict[str, Any]) -> ReviewConfig:
+    """Parse an in-memory rule config mapping (same schema as .sqlreview.yaml)."""
+    if not isinstance(data, dict):
+        raise ValueError("规则配置的顶层必须是映射")
+    return _parse_config(dict(data))
+
+
+def parse_config_text(text: str) -> ReviewConfig:
+    """Parse a YAML rule-config string (same schema as .sqlreview.yaml)."""
+    text = (text or "").strip()
+    if not text:
+        return DEFAULT_CONFIG
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ValueError(
+            "解析规则配置需要 PyYAML: pip install pyyaml"
+        ) from exc
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"规则配置解析失败: {exc}") from exc
+    if data is None:
+        return DEFAULT_CONFIG
+    if not isinstance(data, dict):
+        raise ValueError("规则配置的顶层必须是映射")
+    return _parse_config(data)
 
 
 _CUSTOM_RULE_KEYS = {"pattern", "message", "severity", "category", "suggestion"}

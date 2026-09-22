@@ -170,6 +170,34 @@ def test_read_log_nonexistent():
     assert "error" in result
 
 
+def test_read_log_negative_tail_lines_clamped(tmp_path):
+    log_file = tmp_path / "seatunnel.log"
+    log_file.write_text("\n".join(f"line {i}" for i in range(10)))
+    result = json.loads(
+        execute_tool(
+            "read_log",
+            {"log_path": str(log_file), "tail_lines": -5},
+            FAKE_SETTINGS,
+        )
+    )
+    assert "error" not in result
+    assert result["returned_lines"] == 1
+
+
+def test_read_log_non_numeric_tail_lines_falls_back(tmp_path):
+    log_file = tmp_path / "seatunnel.log"
+    log_file.write_text("\n".join(f"line {i}" for i in range(200)))
+    result = json.loads(
+        execute_tool(
+            "read_log",
+            {"log_path": str(log_file), "tail_lines": "abc"},
+            FAKE_SETTINGS,
+        )
+    )
+    assert "error" not in result
+    assert result["returned_lines"] == 100
+
+
 # --- run_seatunnel_job ---
 
 

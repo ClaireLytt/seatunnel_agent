@@ -1,20 +1,23 @@
 from __future__ import annotations
 
 import json
+import threading
 from typing import Any, Callable
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from .config import Settings
+from .config import Settings, env_int
 from .context import truncate_messages
 from .llm import LLMClient
 from .prompts import build_system_prompt
 from .tools import TOOL_DEFINITIONS, execute_tool
 from .utils import truncate
 
-MAX_LOOP_ITERATIONS = 20
+MAX_LOOP_ITERATIONS = env_int("AGENT_MAX_ITERATIONS", 20)
+
+STOPPED_MESSAGE = "Agent stopped by user."
 
 EventCallback = Callable[[str, dict[str, Any]], None]
 
@@ -31,6 +34,7 @@ class SeaTunnelAgent:
         self.retry_count = 0
         self.console = Console()
         self._on_event = on_event
+        self.stop_event = threading.Event()
         self.context: dict[str, Any] = {
             "last_config_path": None,
             "last_job_success": None,
@@ -112,7 +116,12 @@ class SeaTunnelAgent:
             def text_delta_cb(chunk: str) -> None:
                 self._emit("text_delta", {"text": chunk})
 
+        self.stop_event.clear()
+
         for iteration in range(MAX_LOOP_ITERATIONS):
+            if self.stop_event.is_set():
+                return self._finish_stopped()
+
             self._emit("step", {
                 "iteration": iteration + 1,
                 "max": MAX_LOOP_ITERATIONS,
@@ -148,7 +157,18 @@ class SeaTunnelAgent:
             })
 
             tool_results = []
+            stopped_mid_tools = False
             for tc in resp.tool_calls:
+                if self.stop_event.is_set():
+                    # Keep history valid: every tool_use needs a tool_result.
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tc.id,
+                        "content": json.dumps({"error": "Cancelled: stopped by user"}),
+                    })
+                    stopped_mid_tools = True
+                    continue
+
                 self._display_tool_call(tc.name, tc.input)
                 self._emit("tool_call", {"name": tc.name, "input": tc.input})
 
@@ -174,6 +194,9 @@ class SeaTunnelAgent:
             else:
                 self.messages.append(result_msg)
 
+            if stopped_mid_tools:
+                return self._finish_stopped()
+
             if self.retry_count >= self.settings.max_retries:
                 self.messages.append({
                     "role": "user",
@@ -191,6 +214,10 @@ class SeaTunnelAgent:
         msg = "Agent loop reached maximum iterations without completing."
         self._emit("final_answer", {"text": msg})
         return msg
+
+    def _finish_stopped(self) -> str:
+        self._emit("final_answer", {"text": STOPPED_MESSAGE})
+        return STOPPED_MESSAGE
 
     # ------------------------------------------------------------------
     # Helpers

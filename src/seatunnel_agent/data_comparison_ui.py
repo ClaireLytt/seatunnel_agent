@@ -10,7 +10,9 @@ from __future__ import annotations
 import csv
 import json
 import logging
+import os
 import re
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -133,10 +135,19 @@ _DDL_KEYWORDS = re.compile(
     re.IGNORECASE,
 )
 
-_REPORTS_DIR = Path.home() / ".seatunnel-agent" / "reports"
+_REPORTS_DIR = Path(os.getenv(
+    "DC_REPORTS_DIR", str(Path.home() / ".seatunnel-agent" / "reports")))
 _PRESETS_STORE = ConnectionPresetsStore()
 _TEMPLATES_STORE = ComparisonTemplatesStore()
 _SAMPLE_STRATEGIES = ["TOP N", "RANDOM", "STRATIFIED"]
+
+# Tunable limits (override via environment)
+_DEFAULT_LANG = os.getenv("SEATUNNEL_UI_LANG", "en")
+_CHECKSUM_MAX_ROWS = int(os.getenv("DC_CHECKSUM_MAX_ROWS", "100"))
+_PARTITION_MAX_ROWS = int(os.getenv("DC_PARTITION_MAX_ROWS", "1000"))
+_INCREMENTAL_LIMIT = int(os.getenv("DC_INCREMENTAL_LIMIT", "1000"))
+_WEBHOOK_TIMEOUT = int(os.getenv("DC_WEBHOOK_TIMEOUT", "10"))
+_LIST_LIMIT = int(os.getenv("DC_LIST_LIMIT", "50"))
 
 _TH = 'style="text-align:left;padding:4px 6px;font-size:11px;border-bottom:1px solid #e5e7eb;"'
 _TD = 'style="padding:4px 6px;font-size:11px;border-bottom:1px solid #f3f4f6;"'
@@ -181,7 +192,7 @@ def _send_webhook(url: str, payload: dict) -> tuple[bool, str]:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=_WEBHOOK_TIMEOUT) as resp:
             return True, f"{resp.status}"
     except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
         return False, str(exc)
@@ -573,7 +584,7 @@ def build_keyed_diff_card(result: KeyedDiffResult, lang: str = "en") -> str:
             f'<tr><th {th}>Key</th><th {th}>{t("dc_column")}</th>'
             f'<th {th}>{t("dc_old_val")}</th><th {th}>{t("dc_new_val")}</th></tr>'
         )
-        for mr in result.modified[:50]:
+        for mr in result.modified[:_LIST_LIMIT]:
             key_str = esc(str(mr.key))
             for col, old_v, new_v in mr.changes:
                 html += (
@@ -586,7 +597,7 @@ def build_keyed_diff_card(result: KeyedDiffResult, lang: str = "en") -> str:
 
     # Feature F — drill-down per modified row
     if result.modified:
-        for mr in result.modified[:50]:
+        for mr in result.modified[:_LIST_LIMIT]:
             if mr.row_a is not None or mr.row_b is not None:
                 key_str = _esc_html(str(mr.key))
                 detail_th = 'style="padding:2px 6px;text-align:left;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:600;"'
@@ -1395,7 +1406,7 @@ def _export_report_excel(report: CompareReport) -> str:
 def render_data_comparison_page(app=None) -> None:  # noqa: C901
     """Render the Data Comparison page components."""
 
-    lang = "en"
+    lang = _DEFAULT_LANG
     t = lambda k: dc(lang, k)
 
     holder: dict[str, Any] = {
@@ -1769,8 +1780,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         sql_a = build_checksum_sql(table_a, cols, ex_a.config.ds_type, where_val)
         sql_b = build_checksum_sql(table_b, cols, ex_b.config.ds_type, where_val)
         ra, rb = run_parallel(
-            lambda: ex_a.run(sql_a, max_rows=100),
-            lambda: ex_b.run(sql_b, max_rows=100),
+            lambda: ex_a.run(sql_a, max_rows=_CHECKSUM_MAX_ROWS),
+            lambda: ex_b.run(sql_b, max_rows=_CHECKSUM_MAX_ROWS),
         )
         result = compare_checksums(table_a, table_b, ra.rows, rb.rows)
         return result, build_checksum_card(result, lang_val)
@@ -1797,8 +1808,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         sql_b = build_partition_count_sql(table_b, partition_col.strip(), where_val,
                                           ds_type=ex_b.config.ds_type)
         ra, rb = run_parallel(
-            lambda: ex_a.run(sql_a, max_rows=1000),
-            lambda: ex_b.run(sql_b, max_rows=1000),
+            lambda: ex_a.run(sql_a, max_rows=_PARTITION_MAX_ROWS),
+            lambda: ex_b.run(sql_b, max_rows=_PARTITION_MAX_ROWS),
         )
         result = compare_partitions(table_a, table_b, partition_col.strip(),
                                     ra.rows, rb.rows)
@@ -2095,7 +2106,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         if not _REPORTS_DIR.is_dir():
             return gr.update(choices=[], value=None)
         files = sorted(_REPORTS_DIR.glob("compare_*.json"), reverse=True)
-        names = [f.name for f in files[:50]]
+        names = [f.name for f in files[:_LIST_LIMIT]]
         return gr.update(choices=names, value=None)
 
     def _load_report(filename, lang_val):
@@ -2144,23 +2155,23 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         with holder_lock:
             report = holder.get("last_report")
         if not report:
-            return None
+            raise gr.Error(dc(lang_val, "dc_no_reports"))
         try:
             return _export_report_csv(report)
-        except Exception:
+        except Exception as e:
             _log.warning("CSV export failed", exc_info=True)
-            return None
+            raise gr.Error(f"{dc(lang_val, 'dc_error')}: {e}") from e
 
     def _export_excel(lang_val):
         with holder_lock:
             report = holder.get("last_report")
         if not report:
-            return None
+            raise gr.Error(dc(lang_val, "dc_no_reports"))
         try:
             return _export_report_excel(report)
-        except Exception:
+        except Exception as e:
             _log.warning("Excel export failed", exc_info=True)
-            return None
+            raise gr.Error(f"{dc(lang_val, 'dc_error')}: {e}") from e
 
     # ── Connection presets (A) ──
 
@@ -2284,48 +2295,77 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             ex_a = holder.get("executor_a")
             ex_b = holder.get("executor_b")
         if not ex_a or not ex_b:
-            return dc(lang_val, "dc_connect_both")
+            return dc(lang_val, "dc_connect_both"), gr.update(visible=False)
         if not table_a or not table_b:
-            return dc(lang_val, "dc_select_tables")
+            return dc(lang_val, "dc_select_tables"), gr.update(visible=False)
         try:
             cfg_a, cfg_b = ex_a.config, ex_b.config
             mapping = parse_column_mapping(col_mapping_str) if col_mapping_str else None
-            config_text = generate_sync_config(
-                cfg_a.ds_type, cfg_a.host, cfg_a.port, cfg_a.database,
-                cfg_a.username, cfg_a.password, table_a,
-                cfg_b.ds_type, cfg_b.host, cfg_b.port, cfg_b.database,
-                cfg_b.username, cfg_b.password, table_b,
-                column_mapping=mapping,
+
+            def _gen(pwd_a, pwd_b):
+                return generate_sync_config(
+                    cfg_a.ds_type, cfg_a.host, cfg_a.port, cfg_a.database,
+                    cfg_a.username, pwd_a, table_a,
+                    cfg_b.ds_type, cfg_b.host, cfg_b.port, cfg_b.database,
+                    cfg_b.username, pwd_b, table_b,
+                    column_mapping=mapping,
+                )
+
+            # Page shows a masked config; the real passwords only go to the
+            # downloadable file so they never land in the rendered HTML.
+            masked_text = _gen(
+                "******" if cfg_a.password else None,
+                "******" if cfg_b.password else None,
             )
+            full_text = _gen(cfg_a.password, cfg_b.password)
+            fd, tmp_path = tempfile.mkstemp(prefix="seatunnel_sync_", suffix=".conf")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(full_text)
+
             header = f'<div style="color:#16a34a;font-weight:600;margin-bottom:8px;">✅ {dc(lang_val, "dc_sync_generated")}</div>'
-            code_block = f'<pre style="background:#1e293b;color:#e2e8f0;padding:16px;border-radius:8px;overflow-x:auto;font-size:12px;">{_esc_html(config_text)}</pre>'
-            return header + code_block
+            code_block = f'<pre style="background:#1e293b;color:#e2e8f0;padding:16px;border-radius:8px;overflow-x:auto;font-size:12px;">{_esc_html(masked_text)}</pre>'
+            return header + code_block, gr.update(value=tmp_path, visible=True)
         except Exception as e:
-            return _error_html(lang_val, e)
+            return _error_html(lang_val, e), gr.update(visible=False)
 
     # ── Scheduled comparison (E) ──
 
-    def _schedule_tick(table_a, table_b, lang_val, where_val, key_cols_str, interval_min):
+    def _schedule_tick(table_a, table_b, lang_val, where_val, key_cols_str, interval_min,
+                       threshold_str="", webhook_url="", notify_on_fail=False):
         """Background timer callback — run comparison and reschedule."""
         try:
-            _compare_all(table_a, table_b, lang_val, where_val, key_cols_str)
+            _compare_all(table_a, table_b, lang_val, where_val, key_cols_str,
+                         threshold_str=threshold_str,
+                         webhook_url=webhook_url,
+                         notify_on_fail=bool(notify_on_fail))
             _save_report(lang_val)
             with holder_lock:
                 holder["schedule_last_run"] = datetime.now(timezone.utc).strftime("%H:%M:%S")
-        except Exception:
+                holder["schedule_last_error"] = None
+        except Exception as exc:
             _log.warning("Scheduled comparison failed", exc_info=True)
+            with holder_lock:
+                holder["schedule_last_error"] = str(exc)
+            if webhook_url and webhook_url.strip():
+                _send_webhook(webhook_url.strip(), {
+                    "event": "scheduled_comparison_error",
+                    "table_a": table_a, "table_b": table_b,
+                    "error": str(exc),
+                })
         with holder_lock:
             if holder["schedule_active"]:
                 t = threading.Timer(
                     float(interval_min) * 60,
                     _schedule_tick,
-                    args=(table_a, table_b, lang_val, where_val, key_cols_str, interval_min),
+                    args=(table_a, table_b, lang_val, where_val, key_cols_str,
+                          interval_min, threshold_str, webhook_url, notify_on_fail),
                 )
                 t.daemon = True
                 holder["schedule_timer"] = t
                 t.start()
 
-    def _schedule_start(table_a, table_b, lang_val, where_val, key_cols_str, interval_str):
+    def _schedule_start(table_a, table_b, lang_val, where_val, key_cols_str, interval_str,
+                        threshold_str="", webhook_url="", notify_on_fail=False):
         if not table_a or not table_b:
             return dc(lang_val, "dc_select_tables")
         try:
@@ -2339,7 +2379,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         t = threading.Timer(
             float(interval_min) * 60,
             _schedule_tick,
-            args=(table_a, table_b, lang_val, where_val, key_cols_str, interval_min),
+            args=(table_a, table_b, lang_val, where_val, key_cols_str,
+                  interval_min, threshold_str, webhook_url, notify_on_fail),
         )
         t.daemon = True
         with holder_lock:
@@ -2456,13 +2497,15 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         try:
             ex_a, ex_b = holder["executor_a"], holder["executor_b"]
             last_val = watermark_val.strip()
-            sql_a = build_incremental_sql(table_a, watermark_col.strip(), last_val, 1000, where_val,
+            sql_a = build_incremental_sql(table_a, watermark_col.strip(), last_val,
+                                         _INCREMENTAL_LIMIT, where_val,
                                          ds_type=ex_a.config.ds_type)
-            sql_b = build_incremental_sql(table_b, watermark_col.strip(), last_val, 1000, where_val,
+            sql_b = build_incremental_sql(table_b, watermark_col.strip(), last_val,
+                                         _INCREMENTAL_LIMIT, where_val,
                                          ds_type=ex_b.config.ds_type)
             ra, rb = run_parallel(
-                lambda: ex_a.run(sql_a, max_rows=1000),
-                lambda: ex_b.run(sql_b, max_rows=1000),
+                lambda: ex_a.run(sql_a, max_rows=_INCREMENTAL_LIMIT),
+                lambda: ex_b.run(sql_b, max_rows=_INCREMENTAL_LIMIT),
             )
             mapping = parse_column_mapping(col_mapping_str) if col_mapping_str else {}
             rb_cols = apply_column_mapping(rb.columns, mapping) if mapping else rb.columns
@@ -2978,6 +3021,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             with gr.Accordion(t("dc_gen_sync"), open=False) as sync_accordion:
                 gen_sync_btn = gr.Button(t("dc_gen_sync"), size="sm",
                                           elem_classes=["st-connect-btn"])
+                sync_download_btn = gr.DownloadButton(
+                    "⬇ config (.conf)", size="sm", visible=False,
+                    elem_classes=["st-connect-btn"])
                 gen_diff_sql_btn = gr.Button(t("dc_gen_diff_sql"), size="sm",
                                               elem_classes=["st-connect-btn"])
 
@@ -3196,7 +3242,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     # C — Sync config + Diff SQL
     gen_sync_btn.click(fn=_gen_sync_config,
                        inputs=[table_a, table_b, mapping_input, lang_state],
-                       outputs=[result_html])
+                       outputs=[result_html, sync_download_btn])
     gen_diff_sql_btn.click(fn=_gen_diff_sql_fn,
                            inputs=[table_a, table_b, lang_state],
                            outputs=[result_html])
@@ -3262,7 +3308,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     # E — Schedule
     schedule_start_btn.click(
         fn=_schedule_start,
-        inputs=[table_a, table_b, lang_state, where_input, key_input, schedule_interval],
+        inputs=[table_a, table_b, lang_state, where_input, key_input, schedule_interval,
+                threshold_input, webhook_url_input, webhook_on_fail],
         outputs=[schedule_status],
     )
     schedule_stop_btn.click(fn=_schedule_stop, inputs=[lang_state],
@@ -3277,7 +3324,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         if not _REPORTS_DIR.is_dir():
             return gr.update(choices=[]), gr.update(choices=[])
         files = sorted(_REPORTS_DIR.glob("compare_*.json"), reverse=True)
-        names = [f.name for f in files[:50]]
+        names = [f.name for f in files[:_LIST_LIMIT]]
         return gr.update(choices=names), gr.update(choices=names)
 
     report_diff_btn.click(fn=_compare_reports_fn,

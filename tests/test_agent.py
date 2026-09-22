@@ -5,8 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from seatunnel_agent.agent import SeaTunnelAgent
+from seatunnel_agent.agent import STOPPED_MESSAGE, SeaTunnelAgent
 from seatunnel_agent.config import Settings
+from seatunnel_agent.context import truncate_messages
 from seatunnel_agent.llm import LLMResponse, ToolCall
 
 SETTINGS = Settings(
@@ -324,3 +325,123 @@ class TestEntryPoints:
              patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}):
             result = agent.diagnose_log("/tmp/seatunnel.log")
         assert result == "Root cause found"
+
+
+class TestStopEvent:
+    def test_stop_before_loop_returns_stopped_message(self):
+        agent = SeaTunnelAgent(SETTINGS)
+        resp = _end_response("should not matter")
+
+        def chat_then_stop(*args, **kwargs):
+            agent.stop_event.set()
+            return _tool_response(
+                "working",
+                [ToolCall(id="t1", name="read_config", input={"config_path": "/tmp/a.conf"})],
+            )
+
+        with patch.object(agent.llm, "chat", side_effect=chat_then_stop), \
+             patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
+             patch.object(agent.llm, "build_tool_result_message", return_value={"role": "user", "content": []}), \
+             patch("seatunnel_agent.agent.execute_tool") as mock_exec:
+            result = agent.run("task")
+
+        assert result == STOPPED_MESSAGE
+        mock_exec.assert_not_called()
+
+    def test_stop_mid_tools_fills_cancelled_results(self):
+        agent = SeaTunnelAgent(SETTINGS)
+        tcs = [
+            ToolCall(id="t1", name="read_config", input={"config_path": "/tmp/a.conf"}),
+            ToolCall(id="t2", name="read_config", input={"config_path": "/tmp/b.conf"}),
+        ]
+        resp = _tool_response("working", tcs)
+
+        captured_results = []
+
+        def fake_build(results):
+            captured_results.extend(results)
+            return {"role": "user", "content": results}
+
+        def exec_and_stop(name, tool_input, settings):
+            agent.stop_event.set()
+            return json.dumps({"content": "data"})
+
+        with patch.object(agent.llm, "chat", return_value=resp), \
+             patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
+             patch.object(agent.llm, "build_tool_result_message", side_effect=fake_build), \
+             patch("seatunnel_agent.agent.execute_tool", side_effect=exec_and_stop) as mock_exec:
+            result = agent.run("task")
+
+        assert result == STOPPED_MESSAGE
+        # First tool executed, second got a synthetic cancelled result
+        assert mock_exec.call_count == 1
+        assert len(captured_results) == 2
+        assert "Cancelled" in str(captured_results[1]["content"])
+
+    def test_stop_event_cleared_on_next_run(self):
+        agent = SeaTunnelAgent(SETTINGS)
+        agent.stop_event.set()
+        resp = _end_response("fresh run ok")
+        with patch.object(agent.llm, "chat", return_value=resp), \
+             patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}):
+            result = agent.run("task")
+        assert result == "fresh run ok"
+
+
+class TestTruncatePairing:
+    def _big(self, n: int) -> str:
+        return "x" * n
+
+    def test_orphan_tool_result_dropped_at_boundary(self):
+        msgs = [
+            {"role": "user", "content": self._big(500)},
+            {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "input": self._big(500)}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": self._big(300)}]},
+            {"role": "assistant", "content": self._big(300)},
+            {"role": "user", "content": self._big(300)},
+        ]
+        # Budget fits the last 3 messages; the first kept one is a
+        # tool_result whose tool_use was cut — it must be dropped too.
+        result = truncate_messages(msgs, max_chars=950)
+        for m in result:
+            content = m.get("content")
+            if isinstance(content, list):
+                assert not any(
+                    isinstance(b, dict) and b.get("type") == "tool_result"
+                    for b in content
+                )
+
+    def test_sole_tool_result_pulls_in_owning_assistant(self):
+        msgs = [
+            {"role": "user", "content": self._big(500)},
+            {"role": "assistant", "content": [{"type": "tool_use", "id": "t1", "input": self._big(200)}]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": self._big(400)}]},
+        ]
+        result = truncate_messages(msgs, max_chars=450)
+        roles_and_kinds = [
+            ("tool_use" if any(isinstance(b, dict) and b.get("type") == "tool_use" for b in m["content"]) else m["role"])
+            if isinstance(m.get("content"), list) else m["role"]
+            for m in result
+        ]
+        # The assistant tool_use message must precede the tool_result
+        joined = str(result)
+        assert "tool_use" in joined
+        assert joined.index("tool_use") < joined.index("tool_result")
+
+    def test_openai_role_tool_orphan_dropped(self):
+        msgs = [
+            {"role": "user", "content": self._big(500)},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "t1"}]},
+            {"role": "tool", "tool_call_id": "t1", "content": self._big(300)},
+            {"role": "assistant", "content": self._big(300)},
+            {"role": "user", "content": self._big(300)},
+        ]
+        result = truncate_messages(msgs, max_chars=700)
+        assert all(m.get("role") != "tool" for m in result)
+
+    def test_no_truncation_when_under_budget(self):
+        msgs = [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello"},
+        ]
+        assert truncate_messages(msgs, max_chars=1000) == msgs

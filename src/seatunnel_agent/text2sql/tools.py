@@ -434,7 +434,7 @@ def _tool_explain_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
     try:
         result = rt.executor.run(f"EXPLAIN {sql}", max_rows=200)
     except Exception as exc:
-        return {"error": f"EXPLAIN failed: {exc}"}
+        return {"error": f"EXPLAIN failed: {_sanitize_db_error(str(exc))}"}
 
     plan_lines = []
     for row in result.rows:
@@ -540,6 +540,54 @@ def _tool_get_result_page(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
     }
 
 
+def _tool_export_csv(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    if rt.last_result is None:
+        return {"error": "No query result to export. Run execute_sql first."}
+    try:
+        path = export_csv(
+            rt.last_result.columns,
+            rt.last_result.rows,
+            path=inp.get("path"),
+            name_hint=inp.get("name_hint", "query_result"),
+        )
+    except Exception as exc:
+        return {"error": f"CSV export failed: {exc}"}
+    return {"success": True, "csv_path": path, "row_count": rt.last_result.row_count}
+
+
+def _tool_export_excel(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    if rt.last_result is None:
+        return {"error": "No query result to export. Run execute_sql first."}
+    from .exporter import export_excel
+    try:
+        path = export_excel(
+            rt.last_result.columns,
+            rt.last_result.rows,
+            path=inp.get("path"),
+            name_hint=inp.get("name_hint", "query_result"),
+        )
+    except Exception as exc:
+        return {"error": f"Excel export failed: {exc}"}
+    return {"success": True, "excel_path": path, "row_count": rt.last_result.row_count}
+
+
+def _tool_export_pdf(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    if rt.last_result is None:
+        return {"error": "No query result to export. Run execute_sql first."}
+    from .exporter import export_pdf
+    try:
+        path = export_pdf(
+            rt.last_result.columns,
+            rt.last_result.rows,
+            path=inp.get("path"),
+            name_hint=inp.get("name_hint", "query_result"),
+            title=inp.get("title", "Query Result Report"),
+        )
+    except Exception as exc:
+        return {"error": f"PDF export failed: {exc}"}
+    return {"success": True, "pdf_path": path, "row_count": rt.last_result.row_count}
+
+
 _TOOL_HANDLERS = {
     "match_tables": _tool_match_tables,
     "get_table_schema": _tool_get_table_schema,
@@ -547,6 +595,9 @@ _TOOL_HANDLERS = {
     "explain_sql": _tool_explain_sql,
     "execute_sql": _tool_execute_sql,
     "get_result_page": _tool_get_result_page,
+    "export_csv": _tool_export_csv,
+    "export_excel": _tool_export_excel,
+    "export_pdf": _tool_export_pdf,
 }
 
 

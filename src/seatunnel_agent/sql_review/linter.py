@@ -778,11 +778,11 @@ def _check_insert_overwrite(
 
 
 def _check_readability(
-    sql: str, cleaned: str, depth_at: list[int]
+    sql: str, cleaned: str, depth_at: list[int], config: ReviewConfig
 ) -> list[Finding]:
     lines = sql.count("\n") + 1
     has_comment = "--" in sql or "/*" in sql
-    if lines >= 20 and not has_comment:
+    if lines >= config.readability_min_lines and not has_comment:
         return [Finding(
             severity=Severity.SUGGESTION,
             category="readability",
@@ -815,12 +815,8 @@ def _check_distinct_with_groupby(
 
 
 # ---------------------------------------------------------------------------
-# Complexity scoring
+# Complexity scoring — thresholds come from ReviewConfig (.sqlreview.yaml)
 # ---------------------------------------------------------------------------
-
-_MAX_SUBQUERY_DEPTH = 2
-_MAX_JOINS = 5
-_MAX_STMT_LINES = 200
 
 _SUBQ_OPEN_RE = re.compile(r"\s*select\b", re.IGNORECASE)
 
@@ -841,34 +837,36 @@ def _subquery_depth(cleaned: str) -> int:
     return max_depth
 
 
-def _check_complexity(sql: str, cleaned: str, depth_at: list[int]) -> list[Finding]:
+def _check_complexity(
+    sql: str, cleaned: str, depth_at: list[int], config: ReviewConfig
+) -> list[Finding]:
     findings: list[Finding] = []
     subq = _subquery_depth(cleaned)
-    if subq > _MAX_SUBQUERY_DEPTH:
+    if subq > config.max_subquery_depth:
         findings.append(Finding(
             severity=Severity.SUGGESTION,
             category="readability",
-            description=f"子查询嵌套达 {subq} 层（阈值 {_MAX_SUBQUERY_DEPTH}）",
+            description=f"子查询嵌套达 {subq} 层（阈值 {config.max_subquery_depth}）",
             location="行 1",
             impact="嵌套过深难以阅读和维护，优化器也难以优化",
             suggestion="用 WITH（CTE）把子查询拆平",
         ))
     joins = len(re.findall(r"\bjoin\b", cleaned, re.IGNORECASE))
-    if joins > _MAX_JOINS:
+    if joins > config.max_joins:
         findings.append(Finding(
             severity=Severity.SUGGESTION,
             category="readability",
-            description=f"单条语句包含 {joins} 个 JOIN（阈值 {_MAX_JOINS}）",
+            description=f"单条语句包含 {joins} 个 JOIN（阈值 {config.max_joins}）",
             location="行 1",
             impact="过多 JOIN 使执行计划复杂、排查困难",
             suggestion="拆分为中间表/CTE，分步落地",
         ))
     lines = sql.count("\n") + 1
-    if lines > _MAX_STMT_LINES:
+    if lines > config.max_stmt_lines:
         findings.append(Finding(
             severity=Severity.SUGGESTION,
             category="readability",
-            description=f"单条语句长达 {lines} 行（阈值 {_MAX_STMT_LINES}）",
+            description=f"单条语句长达 {lines} 行（阈值 {config.max_stmt_lines}）",
             location="行 1",
             impact="超长语句难以 review 与维护",
             suggestion="拆分为多个步骤或视图",
@@ -885,8 +883,12 @@ _RULES = (
     _check_select_star,
     _check_union,
     _check_count_distinct,
-    _check_readability,
     _check_distinct_with_groupby,
+)
+
+# rules that read thresholds from ReviewConfig
+_CONFIG_RULES = (
+    _check_readability,
     _check_complexity,
 )
 
@@ -931,14 +933,12 @@ def _shift_finding_lines(findings: list[Finding], delta: int) -> None:
             lambda m: f"行 {int(m.group(1)) + delta}", f.location)
 
 
-_MAX_CUSTOM_MATCHES = 20  # per rule, guards against pathological patterns
-
-
 def _run_custom_rules(sql: str, config: ReviewConfig) -> list[Finding]:
     findings: list[Finding] = []
     for rule in config.custom_rules:
+        # per-rule match cap guards against pathological patterns
         for i, m in enumerate(rule.compiled.finditer(sql)):
-            if i >= _MAX_CUSTOM_MATCHES:
+            if i >= config.max_custom_matches:
                 break
             findings.append(Finding(
                 severity=rule.severity,
@@ -1043,6 +1043,8 @@ def _lint_statement(
     findings: list[Finding] = []
     for rule in _RULES:
         findings.extend(rule(sql, cleaned, depth_at))
+    for rule in _CONFIG_RULES:
+        findings.extend(rule(sql, cleaned, depth_at, config))
     for rule in _DIALECT_RULES:
         findings.extend(rule(sql, cleaned, depth_at, dialect, config))
     findings.extend(_check_join_key_types(sql, cleaned, depth_at, store))

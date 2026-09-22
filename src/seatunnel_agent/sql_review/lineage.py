@@ -7,6 +7,7 @@ OVERWRITE and CREATE TABLE ... AS.
 
 from __future__ import annotations
 
+import os
 import re
 
 from .linter import _cte_names, _extract_table_refs, clean_sql
@@ -30,7 +31,14 @@ def _norm(name: str) -> str:
     return name.replace("`", "").replace('"', "").lower()
 
 
-_MAX_COLUMN_LINEAGE = 30
+def _max_column_lineage() -> int:
+    try:
+        return max(1, int(os.getenv("SQLREVIEW_MAX_COLUMN_LINEAGE", "30")))
+    except ValueError:
+        return 30
+
+
+_MAX_COLUMN_LINEAGE = _max_column_lineage()
 
 
 def _column_lineage(sql: str, store=None) -> list[dict[str, object]]:
