@@ -1428,9 +1428,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     # ── Connection helper (shared by A / B) ──
     def _do_connect(ds_label, host, port, db, username, password, lang_val, side):
         t_fn = lambda k: dc(lang_val, k)
+
+        def _err(msg):
+            return msg, gr.update(), gr.update(), gr.update(), gr.update()
+
         ds_type = _DS_LABEL_TO_KEY.get(ds_label)
         if ds_type is None:
-            return f"❌ {t_fn('dc_error')}: unknown datasource {_esc_html(str(ds_label))}", gr.update()
+            return _err(f"❌ {t_fn('dc_error')}: unknown datasource {_esc_html(str(ds_label))}")
         # Hidden Gradio textboxes (auth/host fields for engines that don't
         # need them) submit None from the browser, not "".
         h = (host or "").strip()
@@ -1456,12 +1460,12 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
             if not h:
                 var = f"{ENV_PREFIX.get(ds_type, ds_type.upper())}_HOST"
-                return f"❌ {t_fn('dc_host_required').format(var=var)}", gr.update()
+                return _err(f"❌ {t_fn('dc_host_required').format(var=var)}")
 
             try:
                 port_int = int(p or default_port)
             except ValueError:
-                return f"❌ {t_fn('dc_port_not_number')}", gr.update()
+                return _err(f"❌ {t_fn('dc_port_not_number')}")
 
             cfg = DatabaseConfig(
                 ds_type=ds_type,
@@ -1474,15 +1478,15 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         try:
             executor = create_executor(cfg)
         except Exception as e:
-            return f"❌ {_esc_html(str(e))}", gr.update()
+            return _err(f"❌ {_esc_html(str(e))}")
         ok, msg = executor.test_connection()
         if not ok:
-            return f"❌ {_esc_html(msg)}", gr.update()
+            return _err(f"❌ {_esc_html(msg)}")
 
         try:
             tables = executor.show_tables()
         except Exception as e:
-            return f"❌ {_esc_html(str(e))}", gr.update()
+            return _err(f"❌ {_esc_html(str(e))}")
 
         with holder_lock:
             holder[f"executor_{side}"] = executor
@@ -1490,7 +1494,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
         dialect = DIALECT_NAMES.get(ds_type, ds_type)
         status = f"✅ {dialect} {msg} · {t_fn('dc_tables_loaded').format(n=len(tables))}"
-        return status, gr.update(choices=tables, value=None)
+        # Backfill connection fields so env/default fallbacks are visible
+        if ds_type == "sqlite":
+            host_upd, port_upd = gr.update(), gr.update()
+        else:
+            host_upd, port_upd = gr.update(value=cfg.host), gr.update(value=str(cfg.port))
+        return (status, gr.update(choices=tables, value=None),
+                host_upd, port_upd, gr.update(value=cfg.database))
 
     # ── Table search filter (G) ──
 
@@ -3179,12 +3189,12 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     conn_a.click(
         fn=lambda *args: _do_connect(*args, side="a"),
         inputs=[ds_a, host_a, port_a, db_a, user_a, pwd_a, lang_state],
-        outputs=[status_a, table_a],
+        outputs=[status_a, table_a, host_a, port_a, db_a],
     )
     conn_b.click(
         fn=lambda *args: _do_connect(*args, side="b"),
         inputs=[ds_b, host_b, port_b, db_b, user_b, pwd_b, lang_state],
-        outputs=[status_b, table_b],
+        outputs=[status_b, table_b, host_b, port_b, db_b],
     )
 
     # G — Table search filters
