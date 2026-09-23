@@ -422,3 +422,263 @@ def test_write_optimized_adds_sql_suffix(tmp_path):
     assert out is not None
     assert out.suffix == ".sql"
     assert out.read_text(encoding="utf-8").strip() == "select 1"
+
+
+# ---------------------------------------------------------------------------
+# probe: target extraction
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.probe import (  # noqa: E402
+    ProbeResult,
+    ProbeTarget,
+    extract_probe_targets,
+    probe_lines_for_prompt,
+    render_probe_section,
+    run_probes,
+)
+
+
+def tkeys(targets):
+    return {(t.table, t.column) for t in targets}
+
+
+def test_extract_targets_join_keys_via_alias():
+    sql = "SELECT * FROM orders o JOIN users u ON o.user_id = u.id"
+    targets = extract_probe_targets(sql)
+    assert tkeys(targets) == {("orders", "user_id"), ("users", "id")}
+    assert all(t.reason == "join_key" for t in targets)
+
+
+def test_extract_targets_bare_table_name_as_alias():
+    sql = "SELECT * FROM orders JOIN users ON orders.user_id = users.id"
+    assert tkeys(extract_probe_targets(sql)) == {
+        ("orders", "user_id"),
+        ("users", "id"),
+    }
+
+
+def test_extract_targets_db_qualified_table():
+    sql = "SELECT * FROM dw.orders o JOIN dw.users u ON o.uid = u.id"
+    assert tkeys(extract_probe_targets(sql)) == {("dw.orders", "uid"), ("dw.users", "id")}
+
+
+def test_extract_targets_subquery_alias_skipped():
+    sql = (
+        "SELECT * FROM orders o "
+        "JOIN (SELECT id FROM users WHERE active = 1) v ON o.user_id = v.id"
+    )
+    targets = extract_probe_targets(sql)
+    # v resolves to nothing probeable at the outer level; users.id comes only
+    # from the inner FROM being in the alias map — o.user_id must be present.
+    assert ("orders", "user_id") in tkeys(targets)
+    assert not any(t.table.lower() == "v" for t in targets)
+
+
+def test_extract_targets_count_distinct_single_table():
+    sql = "SELECT COUNT(DISTINCT user_id) FROM orders"
+    targets = extract_probe_targets(sql)
+    assert tkeys(targets) == {("orders", "user_id")}
+    assert targets[0].reason == "count_distinct"
+
+
+def test_extract_targets_count_distinct_qualified():
+    sql = "SELECT COUNT(DISTINCT o.user_id) FROM orders o JOIN users u ON o.uid = u.id"
+    targets = extract_probe_targets(sql)
+    assert ("orders", "user_id") in tkeys(targets)
+
+
+def test_extract_targets_count_distinct_multi_table_unqualified_skipped():
+    sql = "SELECT COUNT(DISTINCT user_id) FROM orders o JOIN users u ON o.uid = u.id"
+    targets = extract_probe_targets(sql)
+    assert ("orders", "user_id") not in tkeys(targets)
+    assert ("users", "user_id") not in tkeys(targets)
+
+
+def test_extract_targets_dedupe_and_cap():
+    sql = "SELECT * FROM a JOIN b ON a.k = b.k JOIN c ON a.k = c.k JOIN d ON a.k = d.k"
+    targets = extract_probe_targets(sql, max_targets=3)
+    assert len(targets) == 3
+    assert len(tkeys(targets)) == 3
+
+
+def test_extract_targets_ignores_string_literals():
+    sql = "SELECT * FROM t WHERE note = 'from x join y on x.a = y.b'"
+    assert extract_probe_targets(sql) == []
+
+
+# ---------------------------------------------------------------------------
+# probe: execution (real sqlite database)
+# ---------------------------------------------------------------------------
+
+def _sqlite_executor(tmp_path, setup_sql):
+    import sqlite3
+
+    from seatunnel_agent.text2sql.executor.base import DatabaseConfig, create_executor
+
+    db = tmp_path / "probe.db"
+    conn = sqlite3.connect(db)
+    conn.executescript(setup_sql)
+    conn.commit()
+    conn.close()
+    return create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db))
+    )
+
+
+def test_run_probes_confirms_hot_key_and_nulls(tmp_path):
+    rows = []
+    rows += ["(1, 'hot')"] * 40          # 40% hot key
+    rows += [f"({i}, 'k{i}')" for i in range(2, 47)]  # 45 distinct
+    rows += ["(999, NULL)"] * 15         # 15% NULL
+    setup = (
+        "CREATE TABLE orders (id INTEGER, user_id TEXT);"
+        + "INSERT INTO orders VALUES " + ",".join(rows) + ";"
+    )
+    ex = _sqlite_executor(tmp_path, setup)
+    results = run_probes(ex, [ProbeTarget("orders", "user_id", "join_key")])
+    r = results[0]
+    assert r.error == ""
+    assert r.total == 100
+    assert r.null_count == 15
+    assert abs(r.null_ratio - 0.15) < 1e-9
+    assert r.top[0] == ("hot", 40)
+    assert abs(r.top1_ratio - 0.40) < 1e-9
+    assert r.verdict == "confirmed"
+
+
+def test_run_probes_balanced_is_ok(tmp_path):
+    rows = ",".join(f"({i}, 'u{i}')" for i in range(100))
+    setup = f"CREATE TABLE t (id INTEGER, k TEXT); INSERT INTO t VALUES {rows};"
+    ex = _sqlite_executor(tmp_path, setup)
+    r = run_probes(ex, [ProbeTarget("t", "k", "count_distinct")])[0]
+    assert r.verdict == "ok"
+    assert r.total == 100
+    assert r.null_count == 0
+    assert len(r.top) == 10  # LIMIT TOP_N respected
+
+
+def test_run_probes_null_share_alone_confirms(tmp_path):
+    rows = ",".join(f"({i}, 'u{i}')" for i in range(88)) + "," + ",".join(
+        f"({i}, NULL)" for i in range(88, 100)
+    )
+    setup = f"CREATE TABLE t (id INTEGER, k TEXT); INSERT INTO t VALUES {rows};"
+    ex = _sqlite_executor(tmp_path, setup)
+    r = run_probes(ex, [ProbeTarget("t", "k", "join_key")])[0]
+    assert r.top[0] == ("NULL", 12)  # NULL rendered as literal string
+    assert r.verdict == "confirmed"  # null_ratio 0.12 >= 0.10
+
+
+def test_run_probes_empty_table(tmp_path):
+    ex = _sqlite_executor(tmp_path, "CREATE TABLE t (k TEXT);")
+    r = run_probes(ex, [ProbeTarget("t", "k", "join_key")])[0]
+    assert r.total == 0
+    assert r.verdict == "empty"
+
+
+def test_run_probes_error_isolated_per_target(tmp_path):
+    rows = ",".join(f"('u{i}')" for i in range(100))
+    setup = f"CREATE TABLE good (k TEXT); INSERT INTO good VALUES {rows};"
+    ex = _sqlite_executor(tmp_path, setup)
+    results = run_probes(
+        ex,
+        [
+            ProbeTarget("missing_table", "k", "join_key"),
+            ProbeTarget("good", "k", "join_key"),
+        ],
+    )
+    assert results[0].verdict == "error"
+    assert results[0].error
+    assert results[1].verdict == "ok"
+
+
+def test_end_to_end_extract_then_probe(tmp_path):
+    setup = (
+        "CREATE TABLE orders (user_id TEXT);"
+        "CREATE TABLE users (id TEXT);"
+        "INSERT INTO orders VALUES " + ",".join(["('hot')"] * 30 + [f"('u{i}')" for i in range(70)]) + ";"
+        "INSERT INTO users VALUES " + ",".join(f"('u{i}')" for i in range(50)) + ";"
+    )
+    ex = _sqlite_executor(tmp_path, setup)
+    targets = extract_probe_targets(
+        "SELECT * FROM orders o JOIN users u ON o.user_id = u.id"
+    )
+    results = run_probes(ex, targets)
+    by_key = {(r.target.table, r.target.column): r for r in results}
+    assert by_key[("orders", "user_id")].verdict == "confirmed"
+    assert by_key[("users", "id")].verdict == "ok"
+
+
+# ---------------------------------------------------------------------------
+# probe: rendering
+# ---------------------------------------------------------------------------
+
+def _fake_result(verdict="confirmed"):
+    r = ProbeResult(target=ProbeTarget("orders", "user_id", "join_key"))
+    if verdict == "confirmed":
+        r.total, r.null_count, r.top = 100, 0, [("hot", 40), ("b", 5)]
+    elif verdict == "ok":
+        r.total, r.null_count, r.top = 100, 0, [("a", 2), ("b", 2)]
+    elif verdict == "error":
+        r.error = "no such table: orders"
+    return r
+
+
+def test_render_probe_section_zh_and_en():
+    zh = render_probe_section([_fake_result()], "zh")
+    assert "## 倾斜验证（实测）" in zh
+    assert "实测数据确认 1 个键存在倾斜" in zh
+    assert "`orders.user_id`" in zh
+    assert "40.0%" in zh
+    en = render_probe_section([_fake_result()], "en")
+    assert "## Skew Verification (measured)" in en
+    assert "confirms skew on 1 key(s)" in en
+    assert "⛔ skew confirmed" in en
+
+
+def test_render_probe_section_no_targets():
+    zh = render_probe_section([], "zh")
+    assert "## 倾斜验证（实测）" in zh
+    assert "未解析到可探查的基表键" in zh
+
+
+def test_render_probe_section_clean_and_error_rows():
+    md = render_probe_section([_fake_result("ok"), _fake_result("error")], "en")
+    assert "No significant skew measured" in md
+    assert "✅ balanced" in md
+    assert "probe failed" in md
+    assert "no such table" in md
+
+
+def test_probe_lines_for_prompt():
+    lines = probe_lines_for_prompt([_fake_result(), _fake_result("error")], "en")
+    assert lines.count("\n") == 0  # error result skipped → single line
+    assert "orders.user_id" in lines
+    assert "rows=100" in lines
+    assert "top1=40.0%" in lines
+    assert "hot=40" in lines
+
+
+def test_agent_probe_context_injected_into_prompt(tmp_path):
+    from seatunnel_agent.config import Settings
+    from seatunnel_agent.data_skew.agent import DataSkewAgent
+
+    captured = {}
+
+    class FakeResp:
+        reply_text = "## 优化后 SQL\n```sql\nselect 1\n```"
+
+    class FakeLLM:
+        def chat(self, system_prompt, messages, on_text_delta=None):
+            captured["system"] = system_prompt
+            return FakeResp()
+
+    agent = DataSkewAgent(Settings(api_key="x"), dialect="spark", lang="zh")
+    agent._llm = FakeLLM()
+    agent.analyze(
+        "select count(distinct a) from t",
+        use_llm=True,
+        output_path=tmp_path / "opt.sql",
+        probe_context="- t.a (join key): rows=100, top1=40.0%",
+    )
+    assert "实测键值分布" in captured["system"]
+    assert "top1=40.0%" in captured["system"]

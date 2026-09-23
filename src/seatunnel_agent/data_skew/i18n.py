@@ -18,8 +18,9 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_title": "## ⚖️ SQL Data Skew Analyzer",
         "dsk_subtitle": (
             "Static skew-pattern rules + LLM rewrite. Supports Spark SQL (Spark 3) "
-            "and MaxCompute SQL (Hive accepted as compatible input). Pure static "
-            "analysis — the SQL is never executed and no connection is required."
+            "and MaxCompute SQL (Hive accepted as compatible input). Static analysis "
+            "by default — optionally connect a data source to verify skew with real "
+            "key distributions."
         ),
         "dsk_sql_placeholder": "Paste the SQL to analyze for data skew…",
         "dsk_dialect": "SQL Dialect",
@@ -40,6 +41,43 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_running_static": "Running static skew scan…",
         "dsk_running_llm": "LLM is analyzing and rewriting the SQL…",
         "dsk_error": "Error",
+        # --- datasource connection (optional) ---
+        "dsk_conn_accordion": "Connect data source (optional — verify skew with real data)",
+        "dsk_ds_type": "Datasource type",
+        "dsk_host": "Host",
+        "dsk_port": "Port",
+        "dsk_db": "Database",
+        "dsk_user": "Username",
+        "dsk_pwd": "Password",
+        "dsk_connect_btn": "Connect",
+        "dsk_conn_status_none": "Not connected",
+        "dsk_conn_ok": "✅ Connected: {info}",
+        "dsk_conn_fail": "❌ Connection failed: {err}",
+        "dsk_verify_btn": "Verify Skew (live data)",
+        "dsk_verify_running": "Probing key distributions on the database…",
+        "dsk_verify_need_conn": "⚠️ Connect a data source first.",
+        "dsk_verify_need_analyze": "⚠️ Run an analysis first, then verify.",
+        # --- probe section ---
+        "prb_section": "## Skew Verification (measured)",
+        "prb_no_targets": (
+            "No probeable base-table keys were found in the script "
+            "(subquery-only keys cannot be probed)."
+        ),
+        "prb_summary_confirmed": "⛔ Measured data confirms skew on {n} key(s).",
+        "prb_summary_clean": "✅ No significant skew measured on the probed keys.",
+        "prb_col_target": "Table.Column",
+        "prb_col_reason": "Probed because",
+        "prb_col_rows": "Rows",
+        "prb_col_null": "NULL ratio",
+        "prb_col_top": "Top values (share)",
+        "prb_col_verdict": "Verdict",
+        "prb_reason_join_key": "join key",
+        "prb_reason_count_distinct": "COUNT(DISTINCT) column",
+        "prb_verdict_confirmed": "⛔ skew confirmed",
+        "prb_verdict_suspect": "⚠️ mild skew",
+        "prb_verdict_ok": "✅ balanced",
+        "prb_verdict_empty": "empty table",
+        "prb_verdict_error": "probe failed",
         # --- report chrome ---
         "rpt_title": "# 📊 Data Skew Analysis Report",
         "rpt_dialect": "Dialect",
@@ -77,7 +115,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_title": "## ⚖️ SQL 数据倾斜分析",
         "dsk_subtitle": (
             "静态倾斜规则 + LLM 改写。支持 Spark SQL（Spark 3）与 MaxCompute SQL"
-            "（Hive 作为兼容输入）。纯语法级静态分析——不执行 SQL，无需连接数据源。"
+            "（Hive 作为兼容输入）。默认纯静态分析不执行 SQL；"
+            "可选连接数据源，用真实键值分布验证倾斜。"
         ),
         "dsk_sql_placeholder": "粘贴需要分析数据倾斜的 SQL 脚本…",
         "dsk_dialect": "SQL 方言",
@@ -96,6 +135,40 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_running_static": "正在执行静态倾斜扫描…",
         "dsk_running_llm": "LLM 正在分析并改写 SQL…",
         "dsk_error": "错误",
+        # --- datasource connection (optional) ---
+        "dsk_conn_accordion": "连接数据源（可选——用真实数据验证倾斜）",
+        "dsk_ds_type": "数据源类型",
+        "dsk_host": "主机",
+        "dsk_port": "端口",
+        "dsk_db": "数据库",
+        "dsk_user": "用户名",
+        "dsk_pwd": "密码",
+        "dsk_connect_btn": "连接",
+        "dsk_conn_status_none": "未连接",
+        "dsk_conn_ok": "✅ 已连接：{info}",
+        "dsk_conn_fail": "❌ 连接失败：{err}",
+        "dsk_verify_btn": "验证倾斜（实测数据）",
+        "dsk_verify_running": "正在探查数据库中键值分布…",
+        "dsk_verify_need_conn": "⚠️ 请先连接数据源。",
+        "dsk_verify_need_analyze": "⚠️ 请先执行一次分析，再进行验证。",
+        # --- probe section ---
+        "prb_section": "## 倾斜验证（实测）",
+        "prb_no_targets": "脚本中未解析到可探查的基表键（仅子查询内的键无法探查）。",
+        "prb_summary_confirmed": "⛔ 实测数据确认 {n} 个键存在倾斜。",
+        "prb_summary_clean": "✅ 探查的键未测得明显倾斜。",
+        "prb_col_target": "表.列",
+        "prb_col_reason": "探查原因",
+        "prb_col_rows": "总行数",
+        "prb_col_null": "NULL 占比",
+        "prb_col_top": "Top 值（占比）",
+        "prb_col_verdict": "判定",
+        "prb_reason_join_key": "JOIN 关联键",
+        "prb_reason_count_distinct": "COUNT(DISTINCT) 列",
+        "prb_verdict_confirmed": "⛔ 确认倾斜",
+        "prb_verdict_suspect": "⚠️ 轻度倾斜",
+        "prb_verdict_ok": "✅ 分布均衡",
+        "prb_verdict_empty": "空表",
+        "prb_verdict_error": "探查失败",
         # --- report chrome ---
         "rpt_title": "# 📊 数据倾斜分析报告",
         "rpt_dialect": "方言",

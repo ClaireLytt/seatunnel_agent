@@ -10,6 +10,7 @@ as the SQL Review / Data Comparison pages.
 from __future__ import annotations
 
 import tempfile
+import threading
 from pathlib import Path
 
 import gradio as gr
@@ -18,6 +19,19 @@ from .config import load_settings
 from .data_skew.agent import DataSkewAgent, static_skew_check
 from .data_skew.detector import DIALECTS, normalize_dialect
 from .data_skew.i18n import dsk
+from .data_skew.probe import (
+    extract_probe_targets,
+    probe_lines_for_prompt,
+    render_probe_section,
+    run_probes,
+)
+from .text2sql.executor.base import (
+    DIALECT_NAMES,
+    DS_DEFAULTS,
+    DatabaseConfig,
+    config_from_env,
+    create_executor,
+)
 
 _DIALECT_LABELS = {
     "spark": "Spark SQL (Spark 3)",
@@ -25,6 +39,11 @@ _DIALECT_LABELS = {
     "hive": "Hive SQL",
 }
 _DIALECT_CHOICES = [(_DIALECT_LABELS[d], d) for d in DIALECTS]
+
+# Probe queries use GROUP BY ... ORDER BY ... LIMIT — restrict the
+# connection panel to LIMIT-compatible engines.
+_PROBE_DS = ("hive", "sparksql", "mysql", "postgresql", "sqlite")
+_CONN_DS_CHOICES = [(DIALECT_NAMES[d], d) for d in _PROBE_DS]
 
 _DEFAULT_LANG = "en"
 
@@ -72,6 +91,22 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             with gr.Row():
                 analyze_btn = gr.Button(t0("dsk_analyze_btn"), variant="primary")
                 clear_btn = gr.Button(t0("dsk_clear_btn"), scale=0, min_width=80)
+            with gr.Accordion(t0("dsk_conn_accordion"), open=False) as conn_acc:
+                ds_dd = gr.Dropdown(choices=_CONN_DS_CHOICES, value="hive",
+                                    label=t0("dsk_ds_type"))
+                with gr.Row():
+                    host_tb = gr.Textbox(label=t0("dsk_host"),
+                                         placeholder="empty → .env")
+                    port_tb = gr.Textbox(label=t0("dsk_port"), placeholder="10000")
+                with gr.Row():
+                    db_tb = gr.Textbox(label=t0("dsk_db"), placeholder="default")
+                    user_tb = gr.Textbox(label=t0("dsk_user"))
+                    pwd_tb = gr.Textbox(label=t0("dsk_pwd"), type="password")
+                with gr.Row():
+                    connect_btn = gr.Button(t0("dsk_connect_btn"), size="sm")
+                    verify_btn = gr.Button(t0("dsk_verify_btn"), size="sm",
+                                           variant="secondary")
+                conn_status = gr.Markdown(t0("dsk_conn_status_none"))
         with gr.Column(scale=4):
             report_md = gr.Markdown(t0("dsk_report_placeholder"),
                                     buttons=["copy"])
@@ -88,6 +123,105 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         path = Path(tempfile.mkdtemp(prefix="dataskew_")) / name
         path.write_text(content, encoding="utf-8")
         return str(path)
+
+    # ── Optional datasource connection (skew verification) ──
+
+    holder: dict[str, object] = {"executor": None}
+    holder_lock = threading.Lock()
+
+    def _on_ds_change(ds: str):
+        d = DS_DEFAULTS.get(ds, {})
+        return (gr.update(placeholder=str(d.get("port", ""))),
+                gr.update(placeholder=str(d.get("database", ""))))
+
+    def do_connect(ds: str, host: str, port: str, db: str,
+                   user: str, pwd: str, lang: str) -> str:
+        defaults = DS_DEFAULTS.get(ds, {})
+        host = (host or "").strip()
+        db = (db or "").strip() or str(defaults.get("database", ""))
+        try:
+            if ds == "sqlite":
+                cfg = DatabaseConfig(ds_type="sqlite", host="", port=0, database=db)
+            elif not host:
+                cfg = config_from_env(ds)
+                if cfg is None:
+                    raise RuntimeError(
+                        "host is empty and no .env config found" if lang == "en"
+                        else "主机为空且 .env 中未配置该数据源"
+                    )
+            else:
+                try:
+                    port_n = int((port or "").strip() or defaults.get("port", 0))
+                except ValueError:
+                    port_n = int(defaults.get("port", 0))
+                cfg = DatabaseConfig(
+                    ds_type=ds, host=host, port=port_n, database=db,
+                    username=(user or "").strip() or None,
+                    password=(pwd or "").strip() or None,
+                )
+            executor = create_executor(cfg)
+            ok, info = executor.test_connection()
+            if not ok:
+                raise RuntimeError(info)
+        except Exception as exc:  # noqa: BLE001 — surface in the UI
+            with holder_lock:
+                holder["executor"] = None
+                holder["status"] = ""
+            return dsk(lang, "dsk_conn_fail").format(err=exc)
+        status = dsk(lang, "dsk_conn_ok").format(info=info)
+        with holder_lock:
+            holder["executor"] = executor
+            holder["status"] = status
+        return status
+
+    _PROBE_HEADS = (dsk("zh", "prb_section"), dsk("en", "prb_section"))
+
+    def _strip_probe_section(report: str) -> str:
+        for head in _PROBE_HEADS:
+            idx = report.find(head)
+            if idx != -1:
+                report = report[:idx].rstrip()
+        return report
+
+    def do_verify(sql: str, report_cur: str, lang: str):
+        with holder_lock:
+            executor = holder.get("executor")
+        if executor is None:
+            return gr.update(), dsk(lang, "dsk_verify_need_conn")
+        sql = (sql or "").strip()
+        if not sql:
+            return gr.update(), dsk(lang, "dsk_empty_sql")
+        try:
+            targets = extract_probe_targets(sql)
+            section = render_probe_section(run_probes(executor, targets), lang)
+        except Exception as exc:  # noqa: BLE001 — surface in the UI
+            return gr.update(), _err_md(exc, lang)
+        report_cur = (report_cur or "").strip()
+        placeholders = {dsk("zh", "dsk_report_placeholder"),
+                        dsk("en", "dsk_report_placeholder")}
+        if report_cur and report_cur not in placeholders:
+            report = _strip_probe_section(report_cur) + "\n\n" + section
+        else:
+            report = section
+        with holder_lock:
+            status = holder.get("status") or dsk(lang, "dsk_conn_status_none")
+        return report, status
+
+    def _probe_for_llm(sql: str, lang: str) -> tuple[str, str]:
+        """(prompt_context, report_section) from a connected datasource, or empties."""
+        with holder_lock:
+            executor = holder.get("executor")
+        if executor is None:
+            return "", ""
+        targets = extract_probe_targets(sql)
+        if not targets:
+            return "", ""
+        try:
+            results = run_probes(executor, targets)
+        except Exception:  # noqa: BLE001 — probing must never break the analysis
+            return "", ""
+        return (probe_lines_for_prompt(results, lang),
+                render_probe_section(results, lang))
 
     def do_analyze(sql: str, dialect: str, mode: str, lang: str):
         sql = (sql or "").strip()
@@ -111,8 +245,12 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                             hide, hide)
                 agent = DataSkewAgent(settings, dialect=dialect, lang=lang)
                 out_path = Path(tempfile.mkdtemp(prefix="dataskew_")) / "my_task_optimized.sql"
-                result = agent.analyze(sql, use_llm=True, output_path=out_path)
+                probe_ctx, probe_section = _probe_for_llm(sql, lang)
+                result = agent.analyze(sql, use_llm=True, output_path=out_path,
+                                       probe_context=probe_ctx)
                 report = result.markdown
+                if probe_section:
+                    report = report.rstrip() + "\n\n" + probe_section
                 optimized = result.optimized_sql
         except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
             return _err_md(exc, lang), hide, hide, hide
@@ -156,6 +294,24 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         outputs=[sql_box, report_md, dl_report_btn, dl_sql_btn, optimized_box],
     )
 
+    ds_dd.change(_on_ds_change, inputs=[ds_dd], outputs=[port_tb, db_tb])
+
+    connect_btn.click(
+        do_connect,
+        inputs=[ds_dd, host_tb, port_tb, db_tb, user_tb, pwd_tb, lang_state],
+        outputs=[conn_status],
+    )
+
+    verify_btn.click(
+        lambda lang: gr.update(value=f"⏳ {dsk(lang, 'dsk_verify_running')}"),
+        inputs=[lang_state],
+        outputs=[conn_status],
+    ).then(
+        do_verify,
+        inputs=[sql_box, report_md, lang_state],
+        outputs=[report_md, conn_status],
+    )
+
     # Language switch — the returned tuple must stay positionally aligned
     # with the outputs list below.
     def _placeholder_update(current: str, key: str, lg: str):
@@ -164,7 +320,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             return gr.update(value=dsk(lg, key))
         return gr.update()
 
-    def _switch_lang(choice: str, report_cur: str):
+    def _switch_lang(choice: str, report_cur: str, conn_cur: str):
         lg = "zh" if choice == "中文" else "en"
         t = lambda k: dsk(lg, k)  # noqa: E731
         return (
@@ -179,14 +335,26 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             gr.update(label=t("dsk_download_report")),             # dl_report_btn
             gr.update(label=t("dsk_download_sql")),                # dl_sql_btn
             gr.update(label=t("dsk_optimized_sql")),               # optimized_box
+            gr.update(label=t("dsk_conn_accordion")),              # conn_acc
+            gr.update(label=t("dsk_ds_type")),                     # ds_dd
+            gr.update(label=t("dsk_host")),                        # host_tb
+            gr.update(label=t("dsk_port")),                        # port_tb
+            gr.update(label=t("dsk_db")),                          # db_tb
+            gr.update(label=t("dsk_user")),                        # user_tb
+            gr.update(label=t("dsk_pwd")),                         # pwd_tb
+            gr.update(value=t("dsk_connect_btn")),                 # connect_btn
+            gr.update(value=t("dsk_verify_btn")),                  # verify_btn
+            _placeholder_update(conn_cur, "dsk_conn_status_none", lg),  # conn_status
         )
 
     lang_dd.change(
         _switch_lang,
-        inputs=[lang_dd, report_md],
+        inputs=[lang_dd, report_md, conn_status],
         outputs=[
             lang_state, title_md, sql_box, dialect_dd, mode_radio,
             analyze_btn, clear_btn, report_md, dl_report_btn,
             dl_sql_btn, optimized_box,
+            conn_acc, ds_dd, host_tb, port_tb, db_tb, user_tb, pwd_tb,
+            connect_btn, verify_btn, conn_status,
         ],
     )

@@ -206,6 +206,7 @@ class DataSkewAgent:
         use_llm: bool = True,
         output_path: str | Path | None = None,
         on_text_delta: Callable[[str], None] | None = None,
+        probe_context: str = "",
     ) -> SkewAnalysisResult:
         sql = (sql or "").strip()
         if not sql:
@@ -222,9 +223,12 @@ class DataSkewAgent:
                 used_llm=False,
             )
 
-        system = build_system_prompt(
-            self.dialect, self.lang, self._findings_for_prompt(report, self.lang)
-        )
+        findings_md = self._findings_for_prompt(report, self.lang)
+        if probe_context.strip():
+            head = ("【实测键值分布（来自用户数据库探查）】" if self.lang == "zh"
+                    else "[Measured key distributions (probed from the user's database)]")
+            findings_md = f"{findings_md}\n\n{head}\n{probe_context.strip()}"
+        system = build_system_prompt(self.dialect, self.lang, findings_md)
         user = build_user_prompt(sql, self.lang)
         self._emit("llm_start", {})
         resp = self.llm.chat(
