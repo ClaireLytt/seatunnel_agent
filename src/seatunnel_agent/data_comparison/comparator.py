@@ -6,6 +6,7 @@ import atexit
 import json
 import logging
 import math
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -13,13 +14,24 @@ from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 _log = logging.getLogger(__name__)
-_POOL = ThreadPoolExecutor(max_workers=4)
+
+try:
+    _POOL_WORKERS = max(1, int(os.getenv("DC_POOL_WORKERS", "4")))
+except ValueError:
+    _POOL_WORKERS = 4
+_POOL = ThreadPoolExecutor(max_workers=_POOL_WORKERS)
 atexit.register(_POOL.shutdown, wait=False)
 
 _T = TypeVar("_T")
 _U = TypeVar("_U")
 
 _SAFE_IDENT = re.compile(r"^[\w][\w.$]*$", re.ASCII)
+
+# Tunable limits (previously scattered magic numbers)
+MAX_AGG_COLUMNS = 20
+DEFAULT_CHECKSUM_SEGMENTS = 10
+STR_CAST_LEN = 200
+GINI_SKEW_THRESHOLD = 0.6
 
 
 # ---------------------------------------------------------------------------
@@ -347,10 +359,23 @@ class CompareReport:
         partition = _ri(d.get("partition"), PartitionCompareItem, PartitionResult)
         custom_agg = _ri(d.get("custom_agg"), CustomAggItem, CustomAggResult)
 
+        sample = None
+        if d.get("sample"):
+            from ..text2sql.differ import ResultDiff
+            sd = d["sample"]
+            sample = ResultDiff(
+                added_rows=[tuple(r) for r in sd.get("added_rows", [])],
+                removed_rows=[tuple(r) for r in sd.get("removed_rows", [])],
+                columns_added=list(sd.get("columns_added", [])),
+                columns_removed=list(sd.get("columns_removed", [])),
+                old_count=sd.get("old_count", 0),
+                new_count=sd.get("new_count", 0),
+            )
+
         return cls(
             schema=schema,
             row_count=row_count,
-            sample=d.get("sample"),
+            sample=sample,
             aggregate=aggregate,
             batch_counts=batch_counts,
             profile=profile,
@@ -368,15 +393,43 @@ class CompareReport:
 # Identifier quoting
 # ---------------------------------------------------------------------------
 
-def quote_identifier(name: str) -> str:
-    """Quote a SQL identifier to prevent injection.
+# Engines that quote identifiers with backticks; SQL Server uses brackets;
+# everything else gets ANSI double quotes.
+_BACKTICK_ENGINES = frozenset({
+    "mysql", "doris", "hive", "sparksql", "flinksql", "clickhouse",
+})
+
+
+def quote_identifier(name: str, ds_type: str = "") -> str:
+    """Quote a SQL identifier to prevent injection, using the dialect's style.
 
     Simple names (alphanumeric + underscore/dot/$) pass through unchanged.
-    Anything else is double-quoted with embedded quotes escaped.
+    Anything else is quoted with the engine-appropriate delimiter:
+    backticks (MySQL family), brackets (SQL Server), or ANSI double quotes.
     """
     if _SAFE_IDENT.match(name):
         return name
+    if ds_type in _BACKTICK_ENGINES:
+        return "`" + name.replace("`", "``") + "`"
+    if ds_type == "sqlserver":
+        return "[" + name.replace("]", "]]") + "]"
     return '"' + name.replace('"', '""') + '"'
+
+
+_STR_CAST_TYPE: dict[str, str] = {
+    "hive":     "STRING",
+    "sparksql": "STRING",
+    "flinksql": "STRING",
+    "mysql":    f"CHAR({STR_CAST_LEN})",
+    "sqlite":   "TEXT",
+}
+
+
+def cast_to_string(expr: str, ds_type: str = "") -> str:
+    """Portable "cast to string" expression for *expr* in the given dialect."""
+    if ds_type == "clickhouse":
+        return f"toString({expr})"
+    return f"CAST({expr} AS {_STR_CAST_TYPE.get(ds_type, f'VARCHAR({STR_CAST_LEN})')})"
 
 
 # ---------------------------------------------------------------------------
@@ -459,22 +512,25 @@ def is_numeric_type(dtype: str) -> bool:
     return base in _NUMERIC_KEYWORDS
 
 
-def build_aggregate_sql(table_name: str, columns: list[str], where: str = "") -> str:
+def build_aggregate_sql(table_name: str, columns: list[str], where: str = "",
+                        ds_type: str = "") -> str:
     """Build SQL to compute SUM/AVG/MIN/MAX and NULL count for *columns*."""
     if not columns:
         return build_count_sql(table_name, where)
     exprs: list[str] = ["COUNT(*) AS cnt"]
-    if len(columns) > 20:
-        _log.warning("Truncating columns from %d to 20 for aggregate SQL on %s", len(columns), table_name)
-    for c in columns[:20]:
-        qc = quote_identifier(c)
-        exprs.append(f"SUM({qc}) AS {quote_identifier(c + '__sum')}")
-        exprs.append(f"AVG({qc}) AS {quote_identifier(c + '__avg')}")
-        exprs.append(f"MIN({qc}) AS {quote_identifier(c + '__min')}")
-        exprs.append(f"MAX({qc}) AS {quote_identifier(c + '__max')}")
-        exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) AS {quote_identifier(c + '__null')}")
+    if len(columns) > MAX_AGG_COLUMNS:
+        _log.warning("Truncating columns from %d to %d for aggregate SQL on %s",
+                     len(columns), MAX_AGG_COLUMNS, table_name)
+    for c in columns[:MAX_AGG_COLUMNS]:
+        qc = quote_identifier(c, ds_type)
+        exprs.append(f"SUM({qc}) AS {quote_identifier(c + '__sum', ds_type)}")
+        exprs.append(f"AVG({qc}) AS {quote_identifier(c + '__avg', ds_type)}")
+        exprs.append(f"MIN({qc}) AS {quote_identifier(c + '__min', ds_type)}")
+        exprs.append(f"MAX({qc}) AS {quote_identifier(c + '__max', ds_type)}")
+        exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) "
+                     f"AS {quote_identifier(c + '__null', ds_type)}")
     return ("SELECT " + ",\n       ".join(exprs)
-            + f"\n  FROM {quote_identifier(table_name)}{_where_clause(where)}")
+            + f"\n  FROM {quote_identifier(table_name, ds_type)}{_where_clause(where)}")
 
 
 # ---------------------------------------------------------------------------
@@ -514,9 +570,10 @@ def compare_aggregates(
     """Compare aggregate stats from SQL built by ``build_aggregate_sql``."""
     items: list[AggregateItem] = []
     mismatches = 0
-    if len(columns) > 20:
-        _log.warning("Truncating columns from %d to 20 for aggregate comparison on %s / %s", len(columns), table_a, table_b)
-    for i, col in enumerate(columns[:20]):
+    if len(columns) > MAX_AGG_COLUMNS:
+        _log.warning("Truncating columns from %d to %d for aggregate comparison on %s / %s",
+                     len(columns), MAX_AGG_COLUMNS, table_a, table_b)
+    for i, col in enumerate(columns[:MAX_AGG_COLUMNS]):
         base = 1 + i * 5  # skip cnt at index 0
         for metric, offset in _METRIC_OFFSETS.items():
             idx = base + offset
@@ -575,12 +632,26 @@ def diff_by_key(
     key_cols: list[str],
     max_rows: int = 200,
 ) -> KeyedDiffResult:
-    """Compare rows by primary key columns."""
-    key_idx_a = [cols_a.index(k) for k in key_cols]
-    key_idx_b = [cols_b.index(k) for k in key_cols]
+    """Compare rows by primary key columns (matched case-insensitively)."""
+    def _key_index(cols: list[str], name: str, side: str) -> int:
+        try:
+            return cols.index(name)
+        except ValueError:
+            lower_map = {c.lower(): i for i, c in enumerate(cols)}
+            idx = lower_map.get(name.lower())
+            if idx is None:
+                raise ValueError(
+                    f"Key column {name!r} not found in table {side} "
+                    f"(available: {', '.join(cols)})"
+                ) from None
+            return idx
+
+    key_idx_a = [_key_index(cols_a, k, "A") for k in key_cols]
+    key_idx_b = [_key_index(cols_b, k, "B") for k in key_cols]
 
     shared = [c for c in cols_a if c in cols_b]
-    val_cols = [c for c in shared if c not in key_cols]
+    key_lower = {k.lower() for k in key_cols}
+    val_cols = [c for c in shared if c.lower() not in key_lower]
 
     shared_idx_a = [cols_a.index(c) for c in shared]
     shared_idx_b = [cols_b.index(c) for c in shared]
@@ -637,9 +708,10 @@ def build_profile_sql(table_name: str, columns: list[str], where: str = "") -> s
     if not columns:
         return build_count_sql(table_name, where)
     exprs: list[str] = ["COUNT(*) AS cnt"]
-    if len(columns) > 20:
-        _log.warning("Truncating columns from %d to 20 for profile SQL on %s", len(columns), table_name)
-    for c in columns[:20]:
+    if len(columns) > MAX_AGG_COLUMNS:
+        _log.warning("Truncating columns from %d to %d for profile SQL on %s",
+                     len(columns), MAX_AGG_COLUMNS, table_name)
+    for c in columns[:MAX_AGG_COLUMNS]:
         qc = quote_identifier(c)
         exprs.append(f"COUNT(DISTINCT {qc}) AS {quote_identifier(c + '__dist')}")
         exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) AS {quote_identifier(c + '__null')}")
@@ -865,6 +937,7 @@ def generate_sync_config(
     ds_type_b: str, host_b: str, port_b: int, db_b: str,
     user_b: str | None, pwd_b: str | None, table_b: str,
     column_mapping: ColumnMapping | None = None,
+    parallelism: int = 2,
 ) -> str:
     """Generate a SeaTunnel HOCON sync job config: source A -> sink B."""
     url_a = build_jdbc_url(ds_type_a, host_a, port_a, db_a)
@@ -875,13 +948,13 @@ def generate_sync_config(
     transform_block = "transform {\n}"
     if column_mapping:
         field_list = ", ".join(
-            f"{quote_identifier(v)} AS {quote_identifier(k)}"
+            f"{quote_identifier(v, ds_type_b)} AS {quote_identifier(k, ds_type_b)}"
             for k, v in column_mapping.items()
         )
         transform_block = (
             'transform {\n'
             '  Sql {\n'
-            f'    query = "SELECT *, {field_list} FROM source_table"\n'
+            f'    query = "{_escape_hocon(f"SELECT *, {field_list} FROM source_table")}"\n'
             '  }\n'
             '}'
         )
@@ -889,12 +962,12 @@ def generate_sync_config(
     lines = [
         'env {',
         '  job.mode = "BATCH"',
-        '  parallelism = 2',
+        f'  parallelism = {int(parallelism)}',
         '}',
         '',
         'source {',
         '  Jdbc {',
-        f'    url = "{url_a}"',
+        f'    url = "{_escape_hocon(url_a)}"',
         f'    driver = "{drv_a}"',
     ]
     if user_a:
@@ -902,7 +975,7 @@ def generate_sync_config(
     if pwd_a:
         lines.append(f'    password = "{_escape_hocon(pwd_a)}"')
     lines += [
-        f'    query = "SELECT * FROM {quote_identifier(table_a)}"',
+        f'    query = "{_escape_hocon(f"SELECT * FROM {quote_identifier(table_a, ds_type_a)}")}"',
         '  }',
         '}',
         '',
@@ -910,7 +983,7 @@ def generate_sync_config(
         '',
         'sink {',
         '  Jdbc {',
-        f'    url = "{url_b}"',
+        f'    url = "{_escape_hocon(url_b)}"',
         f'    driver = "{drv_b}"',
     ]
     if user_b:
@@ -918,8 +991,8 @@ def generate_sync_config(
     if pwd_b:
         lines.append(f'    password = "{_escape_hocon(pwd_b)}"')
     lines += [
-        f'    database = "{db_b}"',
-        f'    table = "{table_b}"',
+        f'    database = "{_escape_hocon(db_b)}"',
+        f'    table = "{_escape_hocon(table_b)}"',
         '    generate_sink_sql = true',
         '  }',
         '}',
@@ -1113,13 +1186,13 @@ def generate_diff_sql(
 ) -> str:
     """Generate INSERT/UPDATE/DELETE SQL from a keyed diff result."""
     stmts: list[str] = []
-    tbl = quote_identifier(table_target)
+    tbl = quote_identifier(table_target, ds_type)
     cols = keyed_diff.columns
     key_cols = keyed_diff.key_columns
     col_set = set(cols)
 
     for row in keyed_diff.added:
-        col_names = ", ".join(quote_identifier(c) for c in cols)
+        col_names = ", ".join(quote_identifier(c, ds_type) for c in cols)
         values = ", ".join(_sql_literal(row[i]) if i < len(row) else "NULL"
                            for i in range(len(cols)))
         stmts.append(f"INSERT INTO {tbl} ({col_names}) VALUES ({values});")
@@ -1130,17 +1203,18 @@ def generate_diff_sql(
             if kc not in col_set:
                 continue
             idx = cols.index(kc)
-            wheres.append(f"{quote_identifier(kc)} = {_sql_literal(row[idx] if idx < len(row) else None)}")
+            wheres.append(f"{quote_identifier(kc, ds_type)} = "
+                          f"{_sql_literal(row[idx] if idx < len(row) else None)}")
         if wheres:
             stmts.append(f"DELETE FROM {tbl} WHERE {' AND '.join(wheres)};")
 
     for mod in keyed_diff.modified:
         sets = []
         for col, _old, new in mod.changes:
-            sets.append(f"{quote_identifier(col)} = {_sql_literal(new)}")
+            sets.append(f"{quote_identifier(col, ds_type)} = {_sql_literal(new)}")
         wheres = []
         for i, kc in enumerate(key_cols):
-            wheres.append(f"{quote_identifier(kc)} = {_sql_literal(mod.key[i])}")
+            wheres.append(f"{quote_identifier(kc, ds_type)} = {_sql_literal(mod.key[i])}")
         stmts.append(f"UPDATE {tbl} SET {', '.join(sets)} WHERE {' AND '.join(wheres)};")
 
     return "\n".join(stmts)
@@ -1191,7 +1265,7 @@ def mask_value(value: Any, mask_type: str) -> str:
         parts = domain.rsplit(".", 1)
         dom = parts[0] if parts else domain
         tld = ("." + parts[1]) if len(parts) > 1 else ""
-        return f"{local[0]}***@{dom[0]}***{tld}"
+        return f"{local[:1] or '*'}***@{dom[:1] or '*'}***{tld}"
     if mask_type == "phone" and len(s) >= 7:
         return s[:3] + "****" + s[-4:]
     if mask_type == "id_number" and len(s) >= 7:
@@ -1236,14 +1310,14 @@ def build_skew_sql(
     ds_type: str = "mysql",
 ) -> str:
     """Build SQL to get top-N value frequencies for one column."""
-    qc = quote_identifier(column)
-    qt = quote_identifier(table_name)
+    qc = quote_identifier(column, ds_type)
+    qt = quote_identifier(table_name, ds_type)
     if top_n > 0 and ds_type == "sqlserver":
         top_clause = f"TOP {int(top_n)} "
     else:
         top_clause = ""
     sql = (
-        f"SELECT {top_clause}CAST({qc} AS VARCHAR(200)) AS val, COUNT(*) AS cnt"
+        f"SELECT {top_clause}{cast_to_string(qc, ds_type)} AS val, COUNT(*) AS cnt"
         f"\n  FROM {qt}{_where_clause(where)}"
         f"\n GROUP BY {qc}"
         f"\n ORDER BY cnt DESC"
@@ -1352,39 +1426,72 @@ def compare_skew(
 # Checksum comparison  (F1)
 # ---------------------------------------------------------------------------
 
+# Row-hash expression per dialect ({cols} = comma-joined string-cast columns).
+# SQL Server needs CONVERT to get a hex string (HASHBYTES returns varbinary);
+# ClickHouse is handled separately (its MD5 returns binary FixedString(16)).
 _HASH_FUNC: dict[str, str] = {
     "mysql":      "MD5(CONCAT_WS(',', {cols}))",
     "postgresql": "MD5(CONCAT_WS(',', {cols}))",
     "hive":       "MD5(CONCAT_WS(',', {cols}))",
     "sparksql":   "MD5(CONCAT_WS(',', {cols}))",
-    "clickhouse": "MD5(CONCAT(toString({cols_ts})))",
     "doris":      "MD5(CONCAT_WS(',', {cols}))",
     "flinksql":   "MD5(CONCAT_WS(',', {cols}))",
-    "sqlserver":  "HASHBYTES('MD5', CONCAT_WS(',', {cols}))",
+    "sqlserver":  "CONVERT(VARCHAR(32), HASHBYTES('MD5', CONCAT_WS(',', {cols})), 2)",
+}
+
+# Segment-bucketing expression per dialect. Engines without a portable
+# non-cryptographic hash (Flink SQL, SQLite) fall back to a single segment.
+_SEG_FUNC: dict[str, str] = {
+    "mysql":      "MOD(CRC32(CONCAT_WS(',', {cols})), {n})",
+    "doris":      "MOD(CRC32(CONCAT_WS(',', {cols})), {n})",
+    "postgresql": "MOD(ABS(HASHTEXT(CONCAT_WS(',', {cols}))), {n})",
+    "hive":       "PMOD(HASH({raw_cols}), {n})",
+    "sparksql":   "PMOD(HASH({raw_cols}), {n})",
+    "sqlserver":  "ABS(CHECKSUM(CONCAT_WS(',', {cols}))) % {n}",
 }
 
 
 def build_checksum_sql(
     table_name: str, columns: list[str], ds_type: str = "mysql",
-    where: str = "", segments: int = 10,
+    where: str = "", segments: int = DEFAULT_CHECKSUM_SEGMENTS,
 ) -> str:
     """Build SQL to compute per-segment checksums for data verification."""
     segments = max(1, int(segments))
-    qt = quote_identifier(table_name)
-    cols_quoted = ", ".join(f"CAST({quote_identifier(c)} AS VARCHAR(200))" for c in columns)
+    qt = quote_identifier(table_name, ds_type)
+    qcols = [quote_identifier(c, ds_type) for c in columns]
+    cols_cast = ", ".join(cast_to_string(qc, ds_type) for qc in qcols)
 
-    tpl = _HASH_FUNC.get(ds_type, _HASH_FUNC["mysql"])
+    if ds_type == "sqlite":
+        # SQLite has neither MD5 nor a hash function: single segment with a
+        # length-sum fingerprint (valid SQL, same-engine comparisons only).
+        concat = " || ',' || ".join(f"COALESCE(CAST({qc} AS TEXT), '')" for qc in qcols)
+        return (
+            f"SELECT 0 AS seg,"
+            f"\n  COUNT(*) AS cnt,"
+            f"\n  COALESCE(SUM(LENGTH({concat})), 0) AS seg_hash"
+            f"\n  FROM {qt}{_where_clause(where)}"
+        )
+
     if ds_type == "clickhouse":
-        cols_ts = ", ".join(f"toString({quote_identifier(c)})" for c in columns)
-        hash_expr = tpl.format(cols=cols_quoted, cols_ts=cols_ts)
+        ts_cols = [f"toString({qc})" for qc in qcols]
+        hash_expr = "hex(MD5(concat(" + ", ',', ".join(ts_cols) + ")))"
+        seg_expr = f"cityHash64({', '.join(ts_cols)}) % {segments}"
     else:
-        hash_expr = tpl.format(cols=cols_quoted)
+        hash_expr = _HASH_FUNC.get(ds_type, _HASH_FUNC["mysql"]).format(cols=cols_cast)
+        seg_tpl = _SEG_FUNC.get(ds_type)
+        if seg_tpl is None:
+            seg_expr = "0"
+        else:
+            seg_expr = seg_tpl.format(cols=cols_cast, raw_cols=", ".join(qcols),
+                                      n=segments)
 
-    if ds_type in ("mysql", "postgresql", "clickhouse", "doris"):
-        seg_expr = f"MOD(ABS(CRC32(CONCAT_WS(',', {cols_quoted}))), {segments})"
-    else:
-        seg_expr = f"ABS(CHECKSUM(CONCAT_WS(',', {cols_quoted}))) % {segments}"
-
+    if seg_expr == "0":
+        return (
+            f"SELECT 0 AS seg,"
+            f"\n  COUNT(*) AS cnt,"
+            f"\n  MIN({hash_expr}) AS seg_hash"
+            f"\n  FROM {qt}{_where_clause(where)}"
+        )
     return (
         f"SELECT {seg_expr} AS seg,"
         f"\n  COUNT(*) AS cnt,"
@@ -1440,10 +1547,10 @@ def build_partition_count_sql(
     ds_type: str = "mysql",
 ) -> str:
     """Build SQL to get row counts grouped by partition column."""
-    qt = quote_identifier(table_name)
-    qp = quote_identifier(partition_col)
+    qt = quote_identifier(table_name, ds_type)
+    qp = quote_identifier(partition_col, ds_type)
     return (
-        f"SELECT CAST({qp} AS VARCHAR(200)) AS part_val, COUNT(*) AS cnt"
+        f"SELECT {cast_to_string(qp, ds_type)} AS part_val, COUNT(*) AS cnt"
         f"\n  FROM {qt}{_where_clause(where)}"
         f"\n GROUP BY {qp}"
         f"\n ORDER BY cnt DESC"
@@ -1535,11 +1642,19 @@ def compare_custom_aggs(
     expressions: list[tuple[str, str]],
 ) -> CustomAggResult:
     """Compare custom aggregate results."""
+    def _coerce(row: tuple, i: int) -> Any:
+        if i >= len(row) or row[i] is None:
+            return None
+        try:
+            return float(row[i])
+        except (TypeError, ValueError):
+            return row[i]
+
     items: list[CustomAggItem] = []
     mismatches = 0
     for i, (alias, expr) in enumerate(expressions):
-        va = float(row_a[i]) if i < len(row_a) and row_a[i] is not None else None
-        vb = float(row_b[i]) if i < len(row_b) and row_b[i] is not None else None
+        va = _coerce(row_a, i)
+        vb = _coerce(row_b, i)
         matched = _close_enough(va, vb)
         if not matched:
             mismatches += 1

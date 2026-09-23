@@ -160,7 +160,7 @@ def schema_ddl_path_from_env() -> str:
     return resolved
 
 
-_ENV_PREFIX: dict[str, str] = {
+ENV_PREFIX: dict[str, str] = {
     "hive":       "HIVE",
     "mysql":      "MYSQL",
     "sqlserver":  "MSSQL",
@@ -178,7 +178,7 @@ def config_from_env(ds_type: str) -> DatabaseConfig | None:
     Returns ``None`` when the HOST variable is unset / empty, meaning
     the user hasn't configured this engine in ``.env``.
     """
-    prefix = _ENV_PREFIX.get(ds_type)
+    prefix = ENV_PREFIX.get(ds_type)
     if prefix is None:
         return None
 
