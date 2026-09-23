@@ -21,9 +21,10 @@ RULES_ZH = """\
    DISTRIBUTE BY + SORT BY 局部有序；不改变结果集内容，只改变有序性承诺时
    必须在一致性检查中说明。
 3. UNION：两侧数据不重复或允许重复时改 UNION ALL，省去隐式去重 shuffle。
-4. JOIN NULL 键倾斜：外连接关联键 NULL 多时，用
-   ON coalesce(k, concat('rn_', rand())) = ... 打散，或先过滤 NULL 再
-   UNION ALL 回来；打散值必须保证不与真实键冲突。
+4. JOIN NULL 键倾斜：外连接关联键 NULL 多时，先过滤 NULL 再 UNION ALL
+   回来；或在子查询中把 NULL 键物化为随机盐值列（如
+   coalesce(k, concat('rn_', rand())) AS join_k）后再用该列关联——
+   rand() 不能直接写在 ON 条件里（Spark 会报错）；盐值必须不与真实键冲突。
 5. 大小表 JOIN：小表（维表 / 聚合结果 / 有 LIMIT 的子查询）加广播提示 —
    Spark: /*+ BROADCAST(t) */，MaxCompute/Hive: /*+ MAPJOIN(t) */。
 6. 热点 Key 加盐：聚合键存在热点时做两阶段聚合 —— 第一阶段
@@ -56,9 +57,11 @@ RULES_EN = """\
    changes, state it in the consistency check.
 3. UNION: when both sides don't overlap (or duplicates are acceptable) use
    UNION ALL to skip the implicit dedup shuffle.
-4. NULL-heavy join keys: scatter with
-   ON coalesce(k, concat('rn_', rand())) = ... or filter NULLs first and
-   UNION ALL them back; the scatter value must never collide with real keys.
+4. NULL-heavy join keys: filter NULLs first and UNION ALL them back; or
+   materialize a random salt column in a subquery (e.g.
+   coalesce(k, concat('rn_', rand())) AS join_k) and join on that column —
+   never call rand() directly inside ON (Spark rejects it); the salt must
+   never collide with real keys.
 5. Big-small table join: broadcast the small side — Spark: /*+ BROADCAST(t) */,
    MaxCompute/Hive: /*+ MAPJOIN(t) */.
 6. Hot-key salting: two-stage aggregation — stage 1

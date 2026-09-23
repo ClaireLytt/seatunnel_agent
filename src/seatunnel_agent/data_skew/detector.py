@@ -22,8 +22,11 @@ DIALECTS = ("spark", "maxcompute", "hive")
 _DIALECT_ALIASES = {
     "sparksql": "spark",
     "spark3": "spark",
+    "sparksql(spark3)": "spark",
     "odps": "maxcompute",
+    "odpssql": "maxcompute",
     "mc": "maxcompute",
+    "maxcomputesql": "maxcompute",
     "hivesql": "hive",
 }
 
@@ -102,6 +105,19 @@ def split_statements(sql: str) -> list[tuple[int, str]]:
 
 def line_of(sql: str, offset: int) -> int:
     return sql.count("\n", 0, max(0, offset)) + 1
+
+
+def _balanced_end(text: str, open_idx: int) -> int:
+    """Index of the ')' matching the '(' at ``open_idx``, or -1."""
+    depth = 0
+    for j in range(open_idx, len(text)):
+        if text[j] == "(":
+            depth += 1
+        elif text[j] == ")":
+            depth -= 1
+            if depth == 0:
+                return j
+    return -1
 
 
 # ---------------------------------------------------------------------------
@@ -197,13 +213,13 @@ RULE_TEXTS: dict[str, dict[str, dict[str, str]]] = {
         "zh": {
             "desc": "{jt} JOIN 的关联键 {key} 未做 NULL 过滤/打散，NULL 值会全部落到同一个 Task",
             "impact": "关联键 NULL 占比高时形成超大热点分区",
-            "suggestion": "主表 NULL 键先过滤（WHERE {key} IS NOT NULL 后 UNION ALL 回来），或打散：ON coalesce({key}, concat('rn_', rand())) = ...",
+            "suggestion": "主表 NULL 键先过滤（WHERE {key} IS NOT NULL，NULL 部分 UNION ALL 回来），或在子查询中先把 NULL 键物化为随机盐值列再关联（rand() 不要直接写在 ON 条件里，Spark 会报错）",
             "benefit": "NULL 热点被过滤或随机打散到多个 Task",
         },
         "en": {
             "desc": "{jt} JOIN key {key} has no NULL filter/scatter — all NULL keys hash to the same task",
             "impact": "A NULL-heavy key creates one oversized hot partition",
-            "suggestion": "Filter NULL keys first (WHERE {key} IS NOT NULL, UNION ALL them back), or scatter: ON coalesce({key}, concat('rn_', rand())) = ...",
+            "suggestion": "Filter NULL keys first (WHERE {key} IS NOT NULL, UNION ALL them back), or materialize a random salt column for NULL keys in a subquery and join on it (never call rand() inside ON — Spark rejects it)",
             "benefit": "NULL hotspot filtered out or randomly spread over many tasks",
         },
     },
@@ -411,16 +427,22 @@ def _snippet(sql: str, start: int, end: int, limit: int = 60) -> str:
 # Individual rules — each takes (sql, cleaned, dialect, lang) and yields findings
 # ---------------------------------------------------------------------------
 
-_CD_RE = re.compile(r"\bcount\s*\(\s*distinct\b\s*([^)]*)\)", re.IGNORECASE)
+_CD_RE = re.compile(r"\bcount\s*(\()\s*distinct\b", re.IGNORECASE)
 
 
 def _rule_count_distinct(sql: str, cleaned: str, dialect: str, lang: str) -> list[SkewFinding]:
     out: list[SkewFinding] = []
-    matches = list(_CD_RE.finditer(cleaned))
+    # (start, end, col) with the argument scanned to the balanced close paren
+    # so nested calls like count(distinct coalesce(a, b)) keep the full column.
+    matches: list[tuple[int, int, str]] = []
+    for m in _CD_RE.finditer(cleaned):
+        close = _balanced_end(cleaned, m.start(1))
+        end = close + 1 if close != -1 else len(cleaned)
+        col = " ".join(sql[m.end():close if close != -1 else end].split()) or "col"
+        matches.append((m.start(), end, col))
     sugg_map = _CD_SUGG if lang == "zh" else _CD_SUGG_EN
-    for m in matches:
-        col = " ".join((m.group(1) or "col").split()) or "col"
-        before = _snippet(sql, m.start(), m.end())
+    for start, end, col in matches:
+        before = _snippet(sql, start, end)
         if dialect == "spark":
             after = f"approx_count_distinct({col}) / 两阶段 GROUP BY" if lang == "zh" else f"approx_count_distinct({col}) / two-stage GROUP BY"
         else:
@@ -430,7 +452,7 @@ def _rule_count_distinct(sql: str, cleaned: str, dialect: str, lang: str) -> lis
         out.append(
             _finding(
                 "DS001", Severity.MEDIUM, "count_distinct", lang,
-                line_of(sql, m.start()), before=before, after=after,
+                line_of(sql, start), before=before, after=after,
                 col=col, sugg=sugg_map[dialect].format(col=col),
             )
         )
@@ -439,7 +461,7 @@ def _rule_count_distinct(sql: str, cleaned: str, dialect: str, lang: str) -> lis
         out.append(
             _finding(
                 "DS002", Severity.HIGH, "multi_count_distinct", lang,
-                line_of(sql, matches[0].start()),
+                line_of(sql, matches[0][0]),
                 before=f"{len(matches)} × COUNT(DISTINCT …)",
                 after="GROUPING SETS / 分列子查询 JOIN" if lang == "zh" else "GROUPING SETS / split subqueries + JOIN",
                 n=len(matches),
@@ -531,13 +553,25 @@ def _inside_over(cleaned: str, pos: int) -> bool:
 
 
 _JOIN_RE = re.compile(
-    r"\b(?:(left|right|full|inner|cross)\s+(?:outer\s+)?)?join\s+([\w.`\"]+)",
+    r"\b(?:(left|right|full|inner|cross)\s+(?:outer\s+)?|(?:left|right)\s+(?:semi|anti)\s+)?join\b",
     re.IGNORECASE,
 )
 _CLAUSE_AFTER_JOIN_RE = re.compile(
     r"\b(on|using|join|where|group\s+by|order\s+by|having|union|limit|window|select)\b",
     re.IGNORECASE,
 )
+
+
+def _after_join_target(cleaned: str, pos: int) -> int:
+    """Skip the join target (table name or parenthesized subquery) after a
+    JOIN keyword so the ON/USING lookup never scans inside a subquery."""
+    n = len(cleaned)
+    while pos < n and cleaned[pos].isspace():
+        pos += 1
+    if pos < n and cleaned[pos] == "(":
+        close = _balanced_end(cleaned, pos)
+        return close + 1 if close != -1 else n
+    return pos
 
 
 def _rule_joins(sql: str, cleaned: str, dialect: str, lang: str) -> list[SkewFinding]:
@@ -550,26 +584,27 @@ def _rule_joins(sql: str, cleaned: str, dialect: str, lang: str) -> list[SkewFin
 
     for m in joins:
         jt = (m.group(1) or "inner").lower()
-        # look ahead: does an ON/USING arrive before the next clause?
-        nxt = _CLAUSE_AFTER_JOIN_RE.search(cleaned, m.end())
-        kw = nxt.group(1).lower().replace(" ", "") if nxt else ""
         if jt == "cross":
             out.append(
                 _finding(
                     "DS006", Severity.HIGH, "join_cartesian", lang,
                     line_of(sql, m.start()),
-                    before=_snippet(sql, m.start(), m.end()),
+                    before=_snippet(sql, m.start(), min(m.end() + 20, len(sql))),
                     after="JOIN … ON a.key = b.key",
                 )
             )
             continue
+        # look ahead: does an ON/USING arrive before the next clause?
+        scan_from = _after_join_target(cleaned, m.end())
+        nxt = _CLAUSE_AFTER_JOIN_RE.search(cleaned, scan_from)
+        kw = nxt.group(1).lower().replace(" ", "") if nxt else ""
         if kw not in ("on", "using"):
             # comma-separated FROM lists aren't matched here; only bare JOIN
             out.append(
                 _finding(
                     "DS006", Severity.HIGH, "join_cartesian", lang,
                     line_of(sql, m.start()),
-                    before=_snippet(sql, m.start(), m.end()),
+                    before=_snippet(sql, m.start(), min(m.end() + 20, len(sql))),
                     after="JOIN … ON a.key = b.key",
                 )
             )
@@ -601,7 +636,9 @@ def _rule_joins(sql: str, cleaned: str, dialect: str, lang: str) -> list[SkewFin
 
 
 _ON_CLAUSE_RE = re.compile(r"\bon\b(.{1,400}?)(?=\b(?:left|right|full|inner|cross|join|where|group\s+by|order\s+by|having|union|limit|select)\b|;|$)", re.IGNORECASE | re.DOTALL)
-_ON_FUNC_RE = re.compile(r"\b(cast|coalesce|nvl|substr|substring|concat|trim|upper|lower|to_date|date_format|from_unixtime|unix_timestamp|regexp_replace|split|if)\s*\(", re.IGNORECASE)
+# coalesce/nvl deliberately excluded: ON coalesce(k, …) = … is the remedy
+# DS007 recommends for NULL-key skew and must not be re-flagged as DS008.
+_ON_FUNC_RE = re.compile(r"\b(cast|substr|substring|concat|trim|upper|lower|to_date|date_format|from_unixtime|unix_timestamp|regexp_replace|split|if)\s*\(", re.IGNORECASE)
 _ON_RAND_RE = re.compile(r"\b(rand|random|uuid|current_timestamp|now)\s*\(", re.IGNORECASE)
 
 
@@ -645,7 +682,7 @@ def _rule_null_key(sql: str, cleaned: str, dialect: str, lang: str) -> list[Skew
     out: list[SkewFinding] = []
     for m in _OUTER_JOIN_RE.finditer(cleaned):
         jt = m.group(1).upper()
-        on_m = _ON_CLAUSE_RE.search(cleaned, m.end())
+        on_m = _ON_CLAUSE_RE.search(cleaned, _after_join_target(cleaned, m.end()))
         if not on_m:
             continue
         clause = on_m.group(1)
@@ -663,7 +700,9 @@ def _rule_null_key(sql: str, cleaned: str, dialect: str, lang: str) -> list[Skew
                 "DS007", Severity.MEDIUM, "join_null_key", lang,
                 line_of(sql, m.start()),
                 before=f"{jt} JOIN … ON {key} = …",
-                after=f"ON coalesce({key}, concat('rn_', rand())) = …",
+                after=(f"WHERE {key} IS NOT NULL + UNION ALL / 子查询盐值列"
+                       if lang == "zh"
+                       else f"WHERE {key} IS NOT NULL + UNION ALL / salted key column"),
                 jt=jt, key=key,
             )
         )
@@ -690,7 +729,7 @@ def _rule_window(sql: str, cleaned: str, dialect: str, lang: str) -> list[SkewFi
 
 
 _DYN_PART_RE = re.compile(
-    r"\binsert\s+(?:overwrite|into)\s+(?:table\s+)?[\w.]+\s+partition\s*\(\s*([\w]+)\s*\)",
+    r"\binsert\s+(?:overwrite|into)\s+(?:table\s+)?[\w.]+\s+partition\s*\(([^)]*)\)",
     re.IGNORECASE,
 )
 _DISTRIBUTE_RE = re.compile(r"\bdistribute\s+by\b", re.IGNORECASE)
@@ -699,7 +738,12 @@ _DISTRIBUTE_RE = re.compile(r"\bdistribute\s+by\b", re.IGNORECASE)
 def _rule_dynamic_partition(sql: str, cleaned: str, dialect: str, lang: str) -> list[SkewFinding]:
     out = []
     for m in _DYN_PART_RE.finditer(cleaned):
-        col = m.group(1)
+        # dynamic columns have no '=value'; static ones (dt='2024') are fine
+        dyn_cols = [c.strip() for c in m.group(1).split(",")
+                    if c.strip() and "=" not in c]
+        if not dyn_cols:
+            continue
+        col = ", ".join(dyn_cols)
         if _DISTRIBUTE_RE.search(cleaned, m.end()):
             continue
         out.append(

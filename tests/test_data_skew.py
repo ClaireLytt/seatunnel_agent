@@ -36,6 +36,8 @@ def test_normalize_dialect():
     assert normalize_dialect("spark3") == "spark"
     assert normalize_dialect("ODPS") == "maxcompute"
     assert normalize_dialect("mc") == "maxcompute"
+    assert normalize_dialect("MaxCompute SQL") == "maxcompute"
+    assert normalize_dialect("Hive SQL") == "hive"
     assert normalize_dialect("hive") == "hive"
     assert normalize_dialect("unknown") == "spark"
     assert normalize_dialect("") == "spark"
@@ -121,10 +123,12 @@ def test_null_key_outer_join():
     sql = "select * from a left join b on a.uid = b.uid"
     findings, _ = detect_skew(sql, "spark", "zh")
     assert "DS007" in keys(findings)
-    # coalesce guard suppresses the finding
+    # coalesce guard suppresses the finding — and must NOT be re-flagged
+    # as DS008 (it is the very remedy DS007 recommends)
     sql2 = "select * from a left join b on coalesce(a.uid, '-') = b.uid"
     findings2, _ = detect_skew(sql2, "spark", "zh")
     assert "DS007" not in keys(findings2)
+    assert "DS008" not in keys(findings2)
 
 
 def test_function_on_join_key():
@@ -191,6 +195,67 @@ def test_line_numbers_across_statements():
     findings, _ = detect_skew(sql, "spark", "zh")
     ds001 = next(f for f in findings if f.key == "DS001")
     assert ds001.line == 3
+
+
+# --- regression tests for review fixes -------------------------------------
+
+def test_count_distinct_nested_parens():
+    sql = "select count(distinct coalesce(a, b)) from t"
+    findings, _ = detect_skew(sql, "spark", "zh")
+    ds001 = next(f for f in findings if f.key == "DS001")
+    assert ds001.args["col"] == "coalesce(a, b)"
+    assert "coalesce(a, b))" in ds001.before
+
+
+def test_subquery_join_counted_not_cartesian():
+    # JOIN (subquery) must be recognized as a join and, with ON present,
+    # must not be flagged as cartesian even though the subquery contains SELECT
+    sql = ("select * from big t "
+           "join (select id from dim where dt='x') d on t.id = d.id")
+    findings, _ = detect_skew(sql, "spark", "zh")
+    assert "DS006" not in keys(findings)
+    assert "DS013" in keys(findings)  # the join itself was counted
+
+
+def test_subquery_join_without_on_is_cartesian():
+    sql = "select * from big t join (select id from dim) d where t.x = 1"
+    findings, _ = detect_skew(sql, "spark", "zh")
+    assert "DS006" in keys(findings)
+
+
+def test_outer_join_subquery_null_key_uses_outer_on():
+    # the ON inside the subquery must not be mistaken for the outer join's ON
+    sql = ("select * from a left join "
+           "(select x.id from x join y on x.id = y.id) b "
+           "on coalesce(a.id, '-') = b.id")
+    findings, _ = detect_skew(sql, "spark", "zh")
+    assert "DS007" not in keys(findings)
+
+
+def test_dynamic_partition_multi_column():
+    sql = "insert overwrite table t partition (dt, hr) select id, dt, hr from s"
+    findings, _ = detect_skew(sql, "spark", "zh")
+    ds010 = next(f for f in findings if f.key == "DS010")
+    assert ds010.args["col"] == "dt, hr"
+
+
+def test_dynamic_partition_mixed_static_dynamic():
+    sql = "insert overwrite table t partition (region='cn', dt) select id, dt from s"
+    findings, _ = detect_skew(sql, "spark", "zh")
+    ds010 = next(f for f in findings if f.key == "DS010")
+    assert ds010.args["col"] == "dt"
+
+
+def test_static_partition_not_flagged():
+    sql = "insert overwrite table t partition (dt='2024-01-01') select id from s"
+    findings, _ = detect_skew(sql, "spark", "zh")
+    assert "DS010" not in keys(findings)
+
+
+def test_semi_join_recognized():
+    sql = "select * from a left semi join b on a.id = b.id"
+    findings, _ = detect_skew(sql, "spark", "zh")
+    assert "DS006" not in keys(findings)
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +381,13 @@ def test_parse_english_reply_sections():
 def test_extract_sql_fallback_without_headings():
     reply = "here\n```sql\nselect 1\n```"
     assert extract_optimized_sql(reply) == "select 1"
+
+
+def test_heading_quoted_midline_not_a_section():
+    # the heading text quoted inside a sentence must not start a section
+    reply = ('先说明：下文的 "## 优化后 SQL" 一节给出结果。\n\n'
+             "## 优化后 SQL\n```sql\nselect 2\n```\n")
+    assert extract_optimized_sql(reply) == "select 2"
 
 
 # ---------------------------------------------------------------------------

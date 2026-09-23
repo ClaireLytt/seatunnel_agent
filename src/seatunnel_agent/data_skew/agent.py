@@ -60,12 +60,19 @@ _SECTION_HEADS = {
 }
 
 
+def _find_heading(text: str, head: str) -> int:
+    """Position of ``head`` at the start of a line (avoids matching the
+    heading text quoted mid-sentence), or -1."""
+    m = re.search(rf"(?m)^[ \t]{{0,3}}#{{2,3}}\s*{re.escape(head.lstrip('# '))}", text)
+    return m.start() if m else -1
+
+
 def _split_sections(text: str) -> dict[str, str]:
     """Split the LLM reply on the three fixed '## ' headings."""
     positions: list[tuple[int, str]] = []
     for name, heads in _SECTION_HEADS.items():
         for head in heads:
-            idx = text.find(head)
+            idx = _find_heading(text, head)
             if idx != -1:
                 positions.append((idx, name))
                 break
