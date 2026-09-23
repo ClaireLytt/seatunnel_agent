@@ -22,6 +22,7 @@ from .data_skew.consistency import check_consistency, render_consistency_section
 from .data_skew.detector import DIALECTS, normalize_dialect
 from .data_skew.i18n import dsk
 from .data_skew.probe import (
+    ProbeCache,
     effective_sample_pct,
     extract_probe_targets,
     probe_lines_for_prompt,
@@ -165,6 +166,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
 
     holder: dict[str, object] = {"executor": None}
     holder_lock = threading.Lock()
+    probe_cache = ProbeCache()
 
     def _on_ds_change(ds: str):
         d = DS_DEFAULTS.get(ds, {})
@@ -204,12 +206,14 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             with holder_lock:
                 holder["executor"] = None
                 holder["status"] = ""
+                probe_cache.clear()
             return dsk(lang, "dsk_conn_fail").format(err=exc)
         status = dsk(lang, "dsk_conn_ok").format(info=info)
         with holder_lock:
             holder["executor"] = executor
             holder["ds_type"] = ds
             holder["status"] = status
+            probe_cache.clear()
         return status
 
     def _append_section(report_cur: str, section: str, head_re: re.Pattern[str]) -> str:
@@ -236,8 +240,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             return gr.update(), dsk(lang, "dsk_empty_sql")
         pct = effective_sample_pct(ds_type, int(sample or 0))
         try:
-            targets = extract_probe_targets(sql)
-            results = run_probes(executor, targets, ds_type=ds_type, sample_pct=pct)
+            results = _cached_probes(executor, ds_type, sql, pct)
             section = render_probe_section(
                 results, lang, dialect=normalize_dialect(dialect), sample_pct=pct)
         except Exception as exc:  # noqa: BLE001 — surface in the UI
@@ -261,6 +264,19 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             return gr.update(), _err_md(exc, lang)
         return _append_section(report_cur, section, _CST_HEAD_RE), _restored_status(lang)
 
+    def _cached_probes(executor, ds_type: str, sql: str, pct: int):
+        """Probe results for (sql, datasource, sampling), reusing the last run."""
+        key = (sql, ds_type, pct)
+        with holder_lock:
+            cached = probe_cache.get(key)
+        if cached is not None:
+            return cached
+        results = run_probes(executor, extract_probe_targets(sql),
+                             ds_type=ds_type, sample_pct=pct)
+        with holder_lock:
+            probe_cache.put(key, results)
+        return results
+
     def _probe_for_llm(sql: str, lang: str, dialect: str, sample: int) -> tuple[str, str]:
         """(prompt_context, report_section) from a connected datasource, or empties."""
         with holder_lock:
@@ -268,12 +284,11 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             ds_type = str(holder.get("ds_type") or "")
         if executor is None:
             return "", ""
-        targets = extract_probe_targets(sql)
-        if not targets:
+        if not extract_probe_targets(sql):
             return "", ""
         pct = effective_sample_pct(ds_type, int(sample or 0))
         try:
-            results = run_probes(executor, targets, ds_type=ds_type, sample_pct=pct)
+            results = _cached_probes(executor, ds_type, sql, pct)
         except Exception:  # noqa: BLE001 — probing must never break the analysis
             return "", ""
         return (probe_lines_for_prompt(results, lang),

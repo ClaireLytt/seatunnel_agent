@@ -965,3 +965,109 @@ def test_render_consistency_section_strings():
     err = render_consistency_section(
         ConsistencyResult(comparable=True, error="boom\nline2"), "zh")
     assert "boom line2" in err
+
+
+# ---------------------------------------------------------------------------
+# probe: GROUP BY keys
+# ---------------------------------------------------------------------------
+
+def _by_reason(sql):
+    out = {}
+    for t in extract_probe_targets(sql):
+        out.setdefault(t.reason, []).append((t.table, t.column))
+    return out
+
+
+def test_extract_targets_group_by_single_table():
+    got = _by_reason("SELECT dt, COUNT(*) FROM orders GROUP BY dt")
+    assert got["group_key"] == [("orders", "dt")]
+
+
+def test_extract_targets_group_by_qualified_multi_table():
+    sql = ("SELECT o.dt, COUNT(*) FROM orders o JOIN users u "
+           "ON o.uid = u.id GROUP BY o.dt")
+    got = _by_reason(sql)
+    assert ("orders", "dt") in got["group_key"]
+    assert ("orders", "uid") in got["join_key"]  # join keys still extracted
+
+
+def test_extract_targets_group_by_multiple_columns():
+    got = _by_reason("SELECT dt, region FROM t GROUP BY dt, region")
+    assert got["group_key"] == [("t", "dt"), ("t", "region")]
+
+
+def test_extract_targets_group_by_skips_non_columns():
+    # positional, expressions, ALL, rollup constructs — none probeable
+    assert "group_key" not in _by_reason("SELECT 1 FROM t GROUP BY 1, 2")
+    assert "group_key" not in _by_reason("SELECT date(c) FROM t GROUP BY date(c)")
+    assert "group_key" not in _by_reason("SELECT a, b FROM t GROUP BY ALL")
+
+
+def test_extract_targets_group_by_clause_ends_at_having():
+    got = _by_reason("SELECT dt FROM t GROUP BY dt HAVING COUNT(*) > 10 ORDER BY dt")
+    assert got["group_key"] == [("t", "dt")]
+
+
+def test_extract_targets_group_by_bare_col_ambiguous_tables_skipped():
+    sql = ("SELECT dt FROM a JOIN b ON a.id = b.id GROUP BY dt")
+    got = _by_reason(sql)
+    assert "group_key" not in got  # bare column, two candidate tables
+
+
+def test_extract_targets_join_key_wins_dedup_over_group_key():
+    sql = ("SELECT o.uid FROM orders o JOIN users u ON o.uid = u.id "
+           "GROUP BY o.uid")
+    targets = {(t.table, t.column): t.reason for t in extract_probe_targets(sql)}
+    assert targets[("orders", "uid")] == "join_key"
+
+
+def test_engine_params_agg_triggered_by_group_key():
+    r = ProbeResult(target=ProbeTarget("t", "dt", "group_key"))
+    r.total, r.top = 100, [("hot", 40)]
+    block = engine_params_for_results([r], "spark", "en")
+    assert "spark.sql.shuffle.partitions=400" in block
+    assert "skewJoin" not in block
+
+
+def test_render_probe_section_group_key_reason_label():
+    r = ProbeResult(target=ProbeTarget("t", "dt", "group_key"))
+    r.total, r.top = 100, [("hot", 40)]
+    assert "GROUP BY key" in render_probe_section([r], "en")
+    assert "GROUP BY 分组键" in render_probe_section([r], "zh")
+
+
+# ---------------------------------------------------------------------------
+# probe: parallel execution and cache
+# ---------------------------------------------------------------------------
+
+def test_run_probes_parallel_preserves_target_order(tmp_path):
+    setup = "".join(
+        f"CREATE TABLE t{i} (k TEXT); INSERT INTO t{i} VALUES " +
+        ",".join(f"('v{j}')" for j in range(20)) + ";"
+        for i in range(6)
+    )
+    ex = _sqlite_executor(tmp_path, setup)
+    targets = [ProbeTarget(f"t{i}", "k", "join_key") for i in range(6)]
+    results = run_probes(ex, targets)
+    assert [r.target.table for r in results] == [f"t{i}" for i in range(6)]
+    assert all(r.error == "" and r.total == 20 for r in results)
+
+
+def test_probe_cache_roundtrip():
+    from seatunnel_agent.data_skew.probe import ProbeCache
+
+    c = ProbeCache()
+    key = ("select 1", "sqlite", 0)
+    assert c.get(key) is None
+    results = [_fake_result()]
+    c.put(key, results)
+    assert c.get(key) is results
+    # any component of the key changing is a miss
+    assert c.get(("select 2", "sqlite", 0)) is None
+    assert c.get(("select 1", "hive", 0)) is None
+    assert c.get(("select 1", "sqlite", 10)) is None
+    # a new run replaces the previous entry
+    c.put(("select 2", "sqlite", 0), [])
+    assert c.get(key) is None
+    c.clear()
+    assert c.get(("select 2", "sqlite", 0)) is None

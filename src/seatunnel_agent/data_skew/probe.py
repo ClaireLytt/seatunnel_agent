@@ -14,6 +14,7 @@ target is one scan of that table.
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from .detector import clean_sql, split_statements
@@ -58,6 +59,15 @@ _CD_COL_RE = re.compile(
     r"\bcount\s*\(\s*distinct\s+(?:([A-Za-z_]\w*)\.)?([A-Za-z_]\w*)\s*\)",
     re.IGNORECASE,
 )
+_GROUP_BY_RE = re.compile(r"\bgroup\s+by\s+", re.IGNORECASE)
+# A ')' also ends the clause so a subquery's GROUP BY never leaks columns
+# into the outer scope.
+_GROUP_END_RE = re.compile(r"\b(?:having|order|limit|union|window|qualify)\b|[;)]",
+                           re.IGNORECASE)
+# GROUPING SETS / ROLLUP / CUBE arguments and Spark's GROUP BY ALL are not
+# plain columns.
+_GROUP_SKIP = frozenset({"all", "grouping", "sets", "rollup", "cube"})
+_PLAIN_COL_RE = re.compile(r"(?:([A-Za-z_]\w*)\.)?([A-Za-z_]\w*)")
 
 
 @dataclass
@@ -116,6 +126,17 @@ def _on_clause(cleaned_stmt: str, on_end: int) -> str:
     return cleaned_stmt[on_end:m.start() if m else len(cleaned_stmt)]
 
 
+def _group_by_cols(cleaned_stmt: str):
+    """Yield (alias_or_None, column) for plain GROUP BY columns."""
+    for m in _GROUP_BY_RE.finditer(cleaned_stmt):
+        end = _GROUP_END_RE.search(cleaned_stmt, m.end())
+        clause = cleaned_stmt[m.end(): end.start() if end else len(cleaned_stmt)]
+        for piece in clause.split(","):
+            qm = _PLAIN_COL_RE.fullmatch(piece.strip())
+            if qm and qm.group(2).lower() not in _GROUP_SKIP:
+                yield qm.group(1), qm.group(2)
+
+
 def extract_probe_targets(sql: str, max_targets: int = MAX_TARGETS) -> list[ProbeTarget]:
     """Parse (table, column) probe targets out of the script.
 
@@ -152,6 +173,11 @@ def extract_probe_targets(sql: str, max_targets: int = MAX_TARGETS) -> list[Prob
             table = amap.get(alias.lower()) if alias else single_table
             if table:
                 add(table, col, "count_distinct")
+
+        for alias, col in _group_by_cols(cleaned):
+            table = amap.get(alias.lower()) if alias else single_table
+            if table:
+                add(table, col, "group_key")
 
     return targets
 
@@ -193,6 +219,26 @@ def _null_sql(t: ProbeTarget, table_expr: str) -> str:
     )
 
 
+# Executors open a fresh connection per run(), so probing targets in
+# parallel is safe; keep the fan-out modest to not hammer the engine.
+MAX_PARALLEL_PROBES = 4
+
+
+def _probe_one(executor, t: ProbeTarget, top_n: int, expr: str) -> ProbeResult:
+    r = ProbeResult(target=t)
+    try:
+        nq = executor.run(_null_sql(t, expr), max_rows=1)
+        r.total = int(nq.rows[0][0] or 0)
+        r.null_count = int(nq.rows[0][1] or 0)
+        r.elapsed_ms += nq.elapsed_ms
+        tq = executor.run(_top_sql(t, top_n, expr), max_rows=top_n)
+        r.top = [("NULL" if v is None else str(v), int(c)) for v, c in tq.rows]
+        r.elapsed_ms += tq.elapsed_ms
+    except Exception as exc:  # noqa: BLE001 — per-target failure stays local
+        r.error = str(exc)
+    return r
+
+
 def run_probes(
     executor,
     targets: list[ProbeTarget],
@@ -200,23 +246,37 @@ def run_probes(
     ds_type: str = "",
     sample_pct: int = 0,
 ) -> list[ProbeResult]:
-    """Run the two bounded probe queries per target via a DatabaseExecutor."""
-    results: list[ProbeResult] = []
-    for t in targets[:MAX_TARGETS]:
-        expr = _table_expr(t.table, ds_type, sample_pct)
-        r = ProbeResult(target=t)
-        try:
-            nq = executor.run(_null_sql(t, expr), max_rows=1)
-            r.total = int(nq.rows[0][0] or 0)
-            r.null_count = int(nq.rows[0][1] or 0)
-            r.elapsed_ms += nq.elapsed_ms
-            tq = executor.run(_top_sql(t, top_n, expr), max_rows=top_n)
-            r.top = [("NULL" if v is None else str(v), int(c)) for v, c in tq.rows]
-            r.elapsed_ms += tq.elapsed_ms
-        except Exception as exc:  # noqa: BLE001 — per-target failure stays local
-            r.error = str(exc)
-        results.append(r)
-    return results
+    """Run the two bounded probe queries per target, targets in parallel."""
+    targets = targets[:MAX_TARGETS]
+    if not targets:
+        return []
+
+    def probe(t: ProbeTarget) -> ProbeResult:
+        return _probe_one(executor, t, top_n, _table_expr(t.table, ds_type, sample_pct))
+
+    if len(targets) == 1:
+        return [probe(targets[0])]
+    with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_PROBES, len(targets))) as pool:
+        return list(pool.map(probe, targets))  # map preserves target order
+
+
+class ProbeCache:
+    """Remembers the last probe run so 'verify' then 'analyze' (or repeated
+    runs on the same SQL) reuse the measurements instead of re-querying.
+    Not thread-safe on its own — callers guard it with their own lock."""
+
+    def __init__(self) -> None:
+        self._key: tuple | None = None
+        self._results: list[ProbeResult] | None = None
+
+    def get(self, key: tuple) -> list[ProbeResult] | None:
+        return self._results if key == self._key else None
+
+    def put(self, key: tuple, results: list[ProbeResult]) -> None:
+        self._key, self._results = key, results
+
+    def clear(self) -> None:
+        self._key = self._results = None
 
 
 # ---------------------------------------------------------------------------
@@ -286,7 +346,7 @@ def engine_params_for_results(results: list[ProbeResult], dialect: str, lang: st
     lines = list(cfg["base"])
     if any(r.target.reason == "join_key" for r in confirmed):
         lines += cfg["join"]
-    if any(r.target.reason == "count_distinct" for r in confirmed):
+    if any(r.target.reason in ("count_distinct", "group_key") for r in confirmed):
         lines += cfg["agg"]
     head = dsk(normalize_lang(lang), "prb_engine_params")
     return head + "\n\n```sql\n" + "\n".join(lines) + "\n```"
