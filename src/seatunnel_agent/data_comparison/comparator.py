@@ -703,7 +703,8 @@ def diff_by_key(
 # Column profile  (C)
 # ---------------------------------------------------------------------------
 
-def build_profile_sql(table_name: str, columns: list[str], where: str = "") -> str:
+def build_profile_sql(table_name: str, columns: list[str], where: str = "",
+                      ds_type: str = "") -> str:
     """Build SQL to compute distinct count, null count, min, max per column."""
     if not columns:
         return build_count_sql(table_name, where)
@@ -712,13 +713,14 @@ def build_profile_sql(table_name: str, columns: list[str], where: str = "") -> s
         _log.warning("Truncating columns from %d to %d for profile SQL on %s",
                      len(columns), MAX_AGG_COLUMNS, table_name)
     for c in columns[:MAX_AGG_COLUMNS]:
-        qc = quote_identifier(c)
-        exprs.append(f"COUNT(DISTINCT {qc}) AS {quote_identifier(c + '__dist')}")
-        exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) AS {quote_identifier(c + '__null')}")
-        exprs.append(f"MIN({qc}) AS {quote_identifier(c + '__min')}")
-        exprs.append(f"MAX({qc}) AS {quote_identifier(c + '__max')}")
+        qc = quote_identifier(c, ds_type)
+        exprs.append(f"COUNT(DISTINCT {qc}) AS {quote_identifier(c + '__dist', ds_type)}")
+        exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) "
+                     f"AS {quote_identifier(c + '__null', ds_type)}")
+        exprs.append(f"MIN({qc}) AS {quote_identifier(c + '__min', ds_type)}")
+        exprs.append(f"MAX({qc}) AS {quote_identifier(c + '__max', ds_type)}")
     return ("SELECT " + ",\n       ".join(exprs)
-            + f"\n  FROM {quote_identifier(table_name)}{_where_clause(where)}")
+            + f"\n  FROM {quote_identifier(table_name, ds_type)}{_where_clause(where)}")
 
 
 def compare_profiles(
@@ -947,8 +949,10 @@ def generate_sync_config(
 
     transform_block = "transform {\n}"
     if column_mapping:
+        # SeaTunnel's SQL transform runs in its own engine, which quotes
+        # identifiers with backticks regardless of source/sink dialect.
         field_list = ", ".join(
-            f"{quote_identifier(v, ds_type_b)} AS {quote_identifier(k, ds_type_b)}"
+            f"{quote_identifier(v, 'mysql')} AS {quote_identifier(k, 'mysql')}"
             for k, v in column_mapping.items()
         )
         transform_block = (

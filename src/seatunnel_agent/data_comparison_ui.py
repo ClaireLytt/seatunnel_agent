@@ -1651,8 +1651,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             return ProfileResult(table_a, table_b), build_profile_card(
                 ProfileResult(table_a, table_b), lang_val)
 
-        sql_a = build_profile_sql(table_a, shared_cols, where_val)
-        sql_b = build_profile_sql(table_b, shared_cols, where_val)
+        sql_a = build_profile_sql(table_a, shared_cols, where_val,
+                                  ds_type=ex_a.config.ds_type)
+        sql_b = build_profile_sql(table_b, shared_cols, where_val,
+                                  ds_type=ex_b.config.ds_type)
         ra, rb = run_parallel(
             lambda: ex_a.run(sql_a, max_rows=1),
             lambda: ex_b.run(sql_b, max_rows=1),
