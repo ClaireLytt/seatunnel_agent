@@ -1504,15 +1504,25 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Table search filter (G) ──
 
-    def _filter_tables(search_text, current, side):
+    def _filter_tables(search_text, current, lang_val, side):
         with holder_lock:
             all_tables = list(holder[f"tables_{side}"])
         q = (search_text or "").strip().lower()
-        filtered = [t for t in all_tables if q in t.lower()] if q else all_tables
-        # Keep the current selection when it survives the filter; Gradio
-        # silently wipes the value otherwise.
-        value = current if current in filtered else None
-        return gr.update(choices=filtered, value=value)
+        base_label = dc(lang_val, "dc_select_table")
+        if not q:
+            value = current if current in all_tables else None
+            return gr.update(choices=all_tables, value=value, label=base_label)
+        filtered = [t for t in all_tables if q in t.lower()]
+        # Visible feedback while typing: match count in the label, and
+        # auto-select when exactly one table matches.
+        if len(filtered) == 1:
+            value = filtered[0]
+        else:
+            # Keep the current selection when it survives the filter;
+            # Gradio silently wipes the value otherwise.
+            value = current if current in filtered else None
+        label = f"{base_label} ({len(filtered)}/{len(all_tables)})"
+        return gr.update(choices=filtered, value=value, label=label)
 
     # ── Inner comparison logic (no validation — used by both single + all) ──
 
@@ -3199,10 +3209,14 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     )
 
     # G — Table search filters
-    search_a.change(fn=lambda s, cur: _filter_tables(s, cur, "a"),
-                    inputs=[search_a, table_a], outputs=[table_a])
-    search_b.change(fn=lambda s, cur: _filter_tables(s, cur, "b"),
-                    inputs=[search_b, table_b], outputs=[table_b])
+    # Bind both events: .input fires on typed insertions, .change on
+    # deletions/programmatic clears — neither alone covers everything in
+    # this Gradio version. The handler is idempotent, double-fires are fine.
+    for _ev in ("input", "change"):
+        getattr(search_a, _ev)(fn=lambda s, cur, lg: _filter_tables(s, cur, lg, "a"),
+                               inputs=[search_a, table_a, lang_state], outputs=[table_a])
+        getattr(search_b, _ev)(fn=lambda s, cur, lg: _filter_tables(s, cur, lg, "b"),
+                               inputs=[search_b, table_b, lang_state], outputs=[table_b])
 
     # Strategy change — show/hide stratified column input
     sample_strategy.change(
