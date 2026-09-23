@@ -31,6 +31,7 @@ def build_tool_functions(
     meta_table: str | None = None,
     partition: str | None = None,
     graph: Any = None,
+    sql_dialect: str = "hive",
 ) -> dict[str, Callable[..., str]]:
     """Lineage tool callables keyed by name; the graph is built lazily once."""
     state: dict[str, Any] = {"graph": graph, "warnings": []}
@@ -40,6 +41,7 @@ def build_tool_functions(
             built, warnings = build_graph(
                 sql_dir=sql_dir, seatunnel_dir=seatunnel_dir, use_hive=use_hive,
                 meta_table=meta_table, partition=partition,
+                sql_dialect=sql_dialect,
             )
             state["graph"], state["warnings"] = built, warnings
         return state["graph"]
@@ -117,6 +119,7 @@ def create_mcp_server(
     use_hive: bool = False,
     meta_table: str | None = None,
     partition: str | None = None,
+    sql_dialect: str = "hive",
 ):
     """FastMCP server (stdio) wrapping the lineage tools."""
     try:
@@ -129,7 +132,7 @@ def create_mcp_server(
     server = FastMCP("seatunnel-lineage", instructions=_INSTRUCTIONS)
     functions = build_tool_functions(
         sql_dir=sql_dir, seatunnel_dir=seatunnel_dir, use_hive=use_hive,
-        meta_table=meta_table, partition=partition,
+        meta_table=meta_table, partition=partition, sql_dialect=sql_dialect,
     )
     for fn in functions.values():
         server.tool()(fn)

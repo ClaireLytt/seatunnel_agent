@@ -58,6 +58,7 @@ def from_sql_files(
     paths: list[Path] | list[str],
     store: SchemaStore | None = None,
     cache_base: str | Path = "logs",
+    dialect: str = "hive",
 ) -> tuple[LineageGraph, list[str]]:
     """Parse each SQL file and merge table- and column-level lineage.
 
@@ -74,7 +75,7 @@ def from_sql_files(
         # 文件级缓存仅在无 SchemaStore 时启用：store 会影响解析结果，
         # 缓存键无法感知 schema 变化。
         if store is None:
-            cached = load_file_fragment(path, base=cache_base)
+            cached = load_file_fragment(path, base=cache_base, dialect=dialect)
             if cached is not None:
                 graph.merge(cached)
                 continue
@@ -89,13 +90,15 @@ def from_sql_files(
         fragment = LineageGraph()
         parsed_ok = True
         try:
-            _load_sql_script(fragment, sql_text, origin=f"sql:{path.name}", store=store)
+            _load_sql_script(fragment, sql_text, origin=f"sql:{path.name}",
+                             store=store, dialect=dialect)
         except Exception as exc:  # noqa: BLE001 — one bad file must not kill the build
             warnings.append(f"解析 {path} 失败: {exc}")
             parsed_ok = False
         graph.merge(fragment)
         if parsed_ok and store is None:
-            save_file_fragment(fragment, path, base=cache_base, stat=pre_stat)
+            save_file_fragment(fragment, path, base=cache_base, stat=pre_stat,
+                               dialect=dialect)
     return graph, warnings
 
 
@@ -103,11 +106,12 @@ def from_sql_dir(
     directory: str | Path,
     store: SchemaStore | None = None,
     cache_base: str | Path = "logs",
+    dialect: str = "hive",
 ) -> tuple[LineageGraph, list[str]]:
     files = collect_sql_files(directory)
     if not files:
         return LineageGraph(), [f"目录 {directory} 下没有找到 *.sql 文件"]
-    return from_sql_files(files, store=store, cache_base=cache_base)
+    return from_sql_files(files, store=store, cache_base=cache_base, dialect=dialect)
 
 
 def _load_sql_script(
@@ -115,6 +119,7 @@ def _load_sql_script(
     sql_text: str,
     origin: str,
     store: SchemaStore | None = None,
+    dialect: str = "hive",
 ) -> None:
     for _offset, statement in split_statements(sql_text):
         lineage = extract_table_lineage(statement, store=store)
@@ -127,7 +132,8 @@ def _load_sql_script(
                 graph.add_edge(source, target, source="sql", confidence="high")
         if lineage.targets:
             _load_column_edges(
-                graph, statement, lineage.targets[0], lineage.sources, store
+                graph, statement, lineage.targets[0], lineage.sources, store,
+                dialect=dialect,
             )
 
 
@@ -137,12 +143,13 @@ def _load_column_edges(
     target: str,
     sources: list[str],
     store: SchemaStore | None,
+    dialect: str = "hive",
 ) -> None:
     from .sqlglot_lineage import extract_column_edges
 
     # AST-based lineage when sqlglot is installed (extras: lineage);
     # None or empty means fall through to the regex tracer below.
-    ast_edges = extract_column_edges(statement, target, sources)
+    ast_edges = extract_column_edges(statement, target, sources, dialect=dialect)
     if ast_edges:
         for edge in ast_edges:
             edge.source = "sql"
@@ -318,12 +325,14 @@ def build_graph(
     seatunnel_dir: str | Path | None = None,
     store: SchemaStore | None = None,
     use_cache: bool = True,
+    sql_dialect: str = "hive",
 ) -> tuple[LineageGraph, list[str]]:
     """Build and merge the graph from every requested source.
 
     Hive failures never raise when another source is also present (offline
     mode) — the error is surfaced as a warning instead. The Hive graph is
     served from the local TTL cache when fresh (see ``cache.py``).
+    ``sql_dialect`` picks the sqlglot dialect used to parse SQL files.
     """
     from .seatunnel_loader import from_seatunnel_dir
 
@@ -332,11 +341,11 @@ def build_graph(
     has_sql_source = bool(sql_dir or sql_files or seatunnel_dir)
 
     if sql_dir:
-        sub, warns = from_sql_dir(sql_dir, store=store)
+        sub, warns = from_sql_dir(sql_dir, store=store, dialect=sql_dialect)
         graph.merge(sub)
         warnings.extend(warns)
     if sql_files:
-        sub, warns = from_sql_files(sql_files, store=store)
+        sub, warns = from_sql_files(sql_files, store=store, dialect=sql_dialect)
         graph.merge(sub)
         warnings.extend(warns)
     if seatunnel_dir:

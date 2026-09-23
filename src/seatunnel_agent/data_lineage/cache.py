@@ -159,6 +159,7 @@ def load_file_fragment(
     path: Path,
     base: str | Path = "logs",
     ttl: int | None = None,
+    dialect: str = "hive",
 ) -> LineageGraph | None:
     """Cached lineage fragment for one SQL file, or None on any miss.
 
@@ -178,6 +179,9 @@ def load_file_fragment(
             return None
         if doc.get("mtime_ns") != stat.st_mtime_ns or doc.get("size") != stat.st_size:
             return None
+        # 方言影响解析结果：老缓存没有该字段时按 hive（原有唯一行为）对待
+        if doc.get("dialect", "hive") != dialect:
+            return None
         return graph_from_dict(doc)
     except (OSError, json.JSONDecodeError, KeyError, IndexError, TypeError, ValueError):
         return None
@@ -188,6 +192,7 @@ def save_file_fragment(
     path: Path,
     base: str | Path = "logs",
     stat: os.stat_result | None = None,
+    dialect: str = "hive",
 ) -> None:
     """Best-effort write; failures never break the build.
 
@@ -204,6 +209,7 @@ def save_file_fragment(
         doc = graph_to_dict(graph)
         doc["mtime_ns"] = stat.st_mtime_ns
         doc["size"] = stat.st_size
+        doc["dialect"] = dialect
         atomic_write_json(cache_path, doc)
     except OSError:
         pass

@@ -18,6 +18,37 @@ except ImportError:  # pragma: no cover — exercised via monkeypatch in tests
     sqlglot = None
     exp = None
 
+# 血缘方言 → sqlglot 方言名；未列出的一律按 hive 解析（flink/maxcompute
+# 没有对应的 sqlglot 方言，hive 是语法上最接近的近似）。
+_SQLGLOT_DIALECTS = {
+    "hive": "hive",
+    "spark": "spark",
+    "flink": "hive",
+    "maxcompute": "hive",
+    "mysql": "mysql",
+    "postgresql": "postgres",
+    "postgres": "postgres",
+    "clickhouse": "clickhouse",
+    "doris": "doris",
+    "starrocks": "starrocks",
+    "sqlite": "sqlite",
+}
+
+SQL_DIALECTS = ("hive", "spark", "flink", "maxcompute", "mysql",
+                "postgresql", "clickhouse", "doris", "starrocks", "sqlite")
+
+
+def resolve_sqlglot_dialect(dialect: str | None) -> str:
+    """Map a lineage dialect name to one this sqlglot install understands."""
+    name = _SQLGLOT_DIALECTS.get((dialect or "").strip().lower(), "hive")
+    if sqlglot is not None:
+        try:
+            if sqlglot.Dialect.get(name) is None:
+                return "hive"
+        except Exception:  # noqa: BLE001 — old sqlglot without Dialect.get
+            return "hive"
+    return name
+
 
 def _top_selects(tree) -> list:
     """Top-level SELECTs feeding the target (INSERT/CTAS body, UNION branches)."""
@@ -61,12 +92,14 @@ def extract_column_edges(
     statement: str,
     target: str,
     sources: list[str],
+    dialect: str = "hive",
 ) -> list[ColumnEdge] | None:
     """Column edges from the AST, or None to signal regex fallback."""
     if sqlglot is None:
         return None
+    read = resolve_sqlglot_dialect(dialect)
     try:
-        tree = sqlglot.parse_one(statement, read="hive")
+        tree = sqlglot.parse_one(statement, read=read)
     except Exception:  # noqa: BLE001 — any parse failure means fallback
         return None
 
@@ -100,7 +133,7 @@ def extract_column_edges(
             if not out_name or out_name == "*":
                 continue
             is_agg = proj.find(exp.AggFunc) is not None
-            expression = proj.sql(dialect="hive")
+            expression = proj.sql(dialect=read)
             for col in proj.find_all(exp.Column):
                 if col.table:
                     src_table = mapping.get(col.table.lower(), "")

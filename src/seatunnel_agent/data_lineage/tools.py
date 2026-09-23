@@ -250,6 +250,7 @@ class LineageRuntime:
     graph: LineageGraph = field(default_factory=LineageGraph)
     config: LineageConfig = field(default_factory=LineageConfig)
     sql_dir: str | None = None
+    sql_dialect: str = "hive"
     seatunnel_dir: str | None = None
     hive_available: bool = False
     meta_table: str | None = None
@@ -333,7 +334,7 @@ def _tool_load_from_sql(inp: dict[str, Any], rt: LineageRuntime) -> dict[str, An
         return {"error": "本会话未指定 SQL 目录"}
     from .loaders import from_sql_dir
 
-    sub, warnings = from_sql_dir(rt.sql_dir)
+    sub, warnings = from_sql_dir(rt.sql_dir, dialect=rt.sql_dialect)
     rt.graph.merge(sub)
     rt.warnings.extend(warnings)
     return {

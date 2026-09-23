@@ -1490,13 +1490,23 @@ footer { display: none !important; }
     padding: 12px 16px 24px !important;
     box-sizing: border-box !important;
 }
-.st-lin-side, .st-lin-main {
-    height: calc(100vh - 140px) !important;
-    max-height: calc(100vh - 140px) !important;
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-    align-self: flex-start !important;
+.st-lin-page {
     scrollbar-width: thin;
+    scrollbar-gutter: stable;
+}
+.st-lin-page::-webkit-scrollbar { width: 8px; }
+.st-lin-page::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+.st-lin-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+/* Panels grow with their content (e.g. the expanded Hive advanced
+   accordion); the page scrollbar above is the only vertical scroll. */
+.st-lin-side, .st-lin-main {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    align-self: flex-start !important;
 }
 .st-lin-side {
     padding-right: 6px !important;

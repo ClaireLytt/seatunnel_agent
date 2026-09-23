@@ -37,6 +37,7 @@ _logger = LineageLogger()
 
 class SourceRequest(BaseModel):
     sql_dir: str | None = Field(None, description="从该目录的 *.sql 文件构建血缘图")
+    sql_dialect: str = Field("hive", description="解析 sql_dir 脚本用的 SQL 方言")
     seatunnel_dir: str | None = Field(None, description="从该目录的 SeaTunnel 配置构建血缘图")
     use_hive: bool = Field(False, description="从 Hive 元数据血缘表构建")
     meta_table: str | None = Field(None, description="覆盖血缘元数据表名")
@@ -135,6 +136,7 @@ def _build(req: QueryRequest | AnalyzeRequest | SourceRequest):
             sql_dir=req.sql_dir, use_hive=req.use_hive,
             meta_table=req.meta_table, partition=req.partition,
             seatunnel_dir=req.seatunnel_dir, use_cache=req.use_cache,
+            sql_dialect=req.sql_dialect,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=f"血缘图构建失败: {exc}")
@@ -309,6 +311,7 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     settings = load_settings()
     agent = LineageAgent(
         settings, graph=graph, sql_dir=req.sql_dir,
+        sql_dialect=req.sql_dialect,
         seatunnel_dir=req.seatunnel_dir,
         hive_available=req.use_hive, meta_table=req.meta_table,
         partition=req.partition,

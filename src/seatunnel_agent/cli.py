@@ -559,6 +559,11 @@ def review_stats(recent: int | None) -> None:
               help="治理体检：环依赖 / 孤立表 / 无下游可下线表")
 @click.option("--sql-dir", type=click.Path(exists=True, file_okay=False), default=None,
               help="从目录下的 *.sql 文件构建血缘图（递归）")
+@click.option("--sql-dialect", type=click.Choice(
+                  ["hive", "spark", "flink", "maxcompute", "mysql",
+                   "postgresql", "clickhouse", "doris", "starrocks", "sqlite"]),
+              default="hive", show_default=True,
+              help="解析 --sql-dir 脚本用的 SQL 方言（影响字段级血缘的 AST 解析）")
 @click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False), default=None,
               help="从目录下的 SeaTunnel 配置（*.conf/*.config/*.json）构建 source→sink 血缘")
 @click.option("--hive", "use_hive", is_flag=True,
@@ -589,6 +594,7 @@ def lineage(
     sla_delay: float | None,
     health: bool,
     sql_dir: str | None,
+    sql_dialect: str,
     seatunnel_dir: str | None,
     use_hive: bool,
     meta_table: str | None,
@@ -626,6 +632,7 @@ def lineage(
             sql_dir=sql_dir, use_hive=use_hive,
             meta_table=config.meta_table, partition=partition,
             seatunnel_dir=seatunnel_dir, use_cache=not no_cache,
+            sql_dialect=sql_dialect,
         )
     except KeyboardInterrupt:
         console.print("\n[yellow]Interrupted by user.[/yellow]")
@@ -667,6 +674,7 @@ def lineage(
         settings = load_settings()
         agent = LineageAgent(
             settings, graph=graph, config=config, sql_dir=sql_dir,
+            sql_dialect=sql_dialect,
             seatunnel_dir=seatunnel_dir,
             hive_available=use_hive, meta_table=config.meta_table,
             partition=partition,
@@ -811,6 +819,11 @@ def lineage_stats(recent: int) -> None:
 @cli.command(name="lineage-mcp")
 @click.option("--sql-dir", type=click.Path(exists=True, file_okay=False), default=None,
               help="从目录下的 *.sql 文件构建血缘图（递归）")
+@click.option("--sql-dialect", type=click.Choice(
+                  ["hive", "spark", "flink", "maxcompute", "mysql",
+                   "postgresql", "clickhouse", "doris", "starrocks", "sqlite"]),
+              default="hive", show_default=True,
+              help="解析 --sql-dir 脚本用的 SQL 方言（影响字段级血缘的 AST 解析）")
 @click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False), default=None,
               help="从目录下的 SeaTunnel 配置（*.conf/*.config/*.json）构建 source→sink 血缘")
 @click.option("--hive", "use_hive", is_flag=True,
@@ -821,6 +834,7 @@ def lineage_stats(recent: int) -> None:
               help="指定 pt 分区（默认自动取最新分区）")
 def lineage_mcp(
     sql_dir: str | None,
+    sql_dialect: str,
     seatunnel_dir: str | None,
     use_hive: bool,
     meta_table: str | None,
@@ -834,7 +848,7 @@ def lineage_mcp(
     try:
         server = create_mcp_server(
             sql_dir=sql_dir, seatunnel_dir=seatunnel_dir, use_hive=use_hive,
-            meta_table=meta_table, partition=partition,
+            meta_table=meta_table, partition=partition, sql_dialect=sql_dialect,
         )
     except RuntimeError as exc:
         raise click.ClickException(str(exc))

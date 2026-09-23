@@ -31,6 +31,7 @@ from .data_lineage import (
     render_sla_impact,
     static_lineage,
 )
+from .data_lineage.sqlglot_lineage import SQL_DIALECTS
 from .data_lineage.snapshot import (
     diff_graphs,
     list_snapshots,
@@ -51,6 +52,8 @@ _I18N = {
         "ds_heading": "### Data Sources",
         "sql_dir_label": "SQL directory",
         "sql_dir_ph": "Directory containing *.sql files (scanned recursively)",
+        "sql_dialect_label": "SQL dialect",
+        "sql_dialect_info": "Dialect used to parse the SQL files (column-level lineage AST)",
         "st_dir_label": "SeaTunnel config directory",
         "st_dir_ph": "Directory with SeaTunnel configs (*.conf/*.config/*.json), source→sink lineage",
         "use_hive": "Load from the Hive metadata lineage table (requires HIVE_HOST in .env)",
@@ -118,6 +121,8 @@ _I18N = {
         "ds_heading": "### 数据源",
         "sql_dir_label": "SQL 目录",
         "sql_dir_ph": "包含 *.sql 文件的目录（递归扫描）",
+        "sql_dialect_label": "SQL 方言",
+        "sql_dialect_info": "解析 SQL 文件用的方言（影响字段级血缘 AST 解析）",
         "st_dir_label": "SeaTunnel 配置目录",
         "st_dir_ph": "包含 SeaTunnel 配置（*.conf/*.config/*.json）的目录，提取 source→sink 血缘",
         "use_hive": "从 Hive 元数据血缘表加载（需 .env 配置 HIVE_HOST）",
@@ -298,6 +303,10 @@ def render_lineage_page(app: gr.Blocks) -> None:
                 sql_dir_box = gr.Textbox(
                     label=t("sql_dir_label"), placeholder=t("sql_dir_ph"),
                 )
+                sql_dialect_dd = gr.Dropdown(
+                    choices=list(SQL_DIALECTS), value="hive",
+                    label=t("sql_dialect_label"), info=t("sql_dialect_info"),
+                )
                 st_dir_box = gr.Textbox(
                     label=t("st_dir_label"), placeholder=t("st_dir_ph"),
                 )
@@ -379,8 +388,8 @@ def render_lineage_page(app: gr.Blocks) -> None:
 
     # ── callbacks ──
 
-    def do_load(sql_dir: str, st_dir: str, use_hive: bool, meta_table: str,
-                partition: str, lang: str):
+    def do_load(sql_dir: str, sql_dialect: str, st_dir: str, use_hive: bool,
+                meta_table: str, partition: str, lang: str):
         sql_dir = (sql_dir or "").strip()
         st_dir = (st_dir or "").strip()
         meta_table = (meta_table or "").strip() or None
@@ -392,6 +401,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
                 sql_dir=sql_dir or None, use_hive=use_hive,
                 meta_table=meta_table, partition=partition,
                 seatunnel_dir=st_dir or None,
+                sql_dialect=sql_dialect or "hive",
             )
         except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
             return None, _err_md(exc, lang), gr.update(), gr.update()
@@ -556,8 +566,8 @@ def render_lineage_page(app: gr.Blocks) -> None:
         )
 
     def do_ask(graph: LineageGraph | None, question: str,
-               sql_dir: str, st_dir: str, use_hive: bool, meta_table: str,
-               partition: str, lang: str):
+               sql_dir: str, sql_dialect: str, st_dir: str, use_hive: bool,
+               meta_table: str, partition: str, lang: str):
         question = (question or "").strip()
         if not question:
             yield _lt(lang, "need_question"), gr.update(), gr.update()
@@ -576,6 +586,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
                 agent = LineageAgent(
                     settings, graph=graph,
                     sql_dir=(sql_dir or "").strip() or None,
+                    sql_dialect=sql_dialect or "hive",
                     seatunnel_dir=(st_dir or "").strip() or None,
                     hive_available=use_hive,
                     meta_table=(meta_table or "").strip() or None,
@@ -614,6 +625,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
             gr.update(value=s("title")),
             gr.update(value=s("ds_heading")),
             gr.update(label=s("sql_dir_label"), placeholder=s("sql_dir_ph")),
+            gr.update(label=s("sql_dialect_label"), info=s("sql_dialect_info")),
             gr.update(label=s("st_dir_label"), placeholder=s("st_dir_ph")),
             gr.update(label=s("use_hive")),
             gr.update(label=s("hive_adv")),
@@ -650,8 +662,8 @@ def render_lineage_page(app: gr.Blocks) -> None:
         switch_lang,
         inputs=[lang_dd, direction_dd],
         outputs=[
-            lang_state, title_md, ds_heading_md, sql_dir_box, st_dir_box,
-            use_hive_cb,
+            lang_state, title_md, ds_heading_md, sql_dir_box, sql_dialect_dd,
+            st_dir_box, use_hive_cb,
             hive_acc, meta_table_box, partition_box, load_btn,
             query_heading_md, table_box, direction_dd, depth_sl, column_box,
             query_btn, search_box, search_btn, adv_heading_md, path_dst_dd,
@@ -663,8 +675,8 @@ def render_lineage_page(app: gr.Blocks) -> None:
     )
     load_btn.click(
         do_load,
-        inputs=[sql_dir_box, st_dir_box, use_hive_cb, meta_table_box,
-                partition_box, lang_state],
+        inputs=[sql_dir_box, sql_dialect_dd, st_dir_box, use_hive_cb,
+                meta_table_box, partition_box, lang_state],
         outputs=[graph_state, graph_stats_md, table_box, path_dst_dd],
     )
     query_btn.click(
@@ -705,8 +717,8 @@ def render_lineage_page(app: gr.Blocks) -> None:
     )
     ask_btn.click(
         do_ask,
-        inputs=[graph_state, ask_box, sql_dir_box, st_dir_box, use_hive_cb,
-                meta_table_box, partition_box, lang_state],
+        inputs=[graph_state, ask_box, sql_dir_box, sql_dialect_dd, st_dir_box,
+                use_hive_cb, meta_table_box, partition_box, lang_state],
         outputs=[answer_md, mermaid_frame, mermaid_src_box],
     )
     # Snapshot listing reads every snapshot JSON — defer it off server startup
