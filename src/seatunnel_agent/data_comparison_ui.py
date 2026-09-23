@@ -1504,14 +1504,15 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Table search filter (G) ──
 
-    def _filter_tables(search_text, side):
+    def _filter_tables(search_text, current, side):
         with holder_lock:
             all_tables = list(holder[f"tables_{side}"])
-        if not search_text.strip():
-            return gr.update(choices=all_tables)
-        q = search_text.strip().lower()
-        filtered = [t for t in all_tables if q in t.lower()]
-        return gr.update(choices=filtered)
+        q = (search_text or "").strip().lower()
+        filtered = [t for t in all_tables if q in t.lower()] if q else all_tables
+        # Keep the current selection when it survives the filter; Gradio
+        # silently wipes the value otherwise.
+        value = current if current in filtered else None
+        return gr.update(choices=filtered, value=value)
 
     # ── Inner comparison logic (no validation — used by both single + all) ──
 
@@ -2868,7 +2869,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                        elem_classes=["st-connect-btn"])
                     status_a = gr.Textbox(label=t("dc_status"), value=t("dc_not_connected"),
                                           interactive=False, elem_classes=["st-sidebar-status"])
-                    search_a = gr.Textbox(label="", placeholder=t("dc_search_tables"),
+                    search_a = gr.Textbox(show_label=False, placeholder=t("dc_search_tables"),
                                           elem_classes=["st-sidebar-control"])
                     table_a = gr.Dropdown(choices=[], label=t("dc_select_table"),
                                           elem_classes=["st-sidebar-control"])
@@ -2893,7 +2894,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                        elem_classes=["st-connect-btn"])
                     status_b = gr.Textbox(label=t("dc_status"), value=t("dc_not_connected"),
                                           interactive=False, elem_classes=["st-sidebar-status"])
-                    search_b = gr.Textbox(label="", placeholder=t("dc_search_tables"),
+                    search_b = gr.Textbox(show_label=False, placeholder=t("dc_search_tables"),
                                           elem_classes=["st-sidebar-control"])
                     table_b = gr.Dropdown(choices=[], label=t("dc_select_table"),
                                           elem_classes=["st-sidebar-control"])
@@ -3198,8 +3199,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     )
 
     # G — Table search filters
-    search_a.change(fn=lambda s: _filter_tables(s, "a"), inputs=[search_a], outputs=[table_a])
-    search_b.change(fn=lambda s: _filter_tables(s, "b"), inputs=[search_b], outputs=[table_b])
+    search_a.change(fn=lambda s, cur: _filter_tables(s, cur, "a"),
+                    inputs=[search_a, table_a], outputs=[table_a])
+    search_b.change(fn=lambda s, cur: _filter_tables(s, cur, "b"),
+                    inputs=[search_b, table_b], outputs=[table_b])
 
     # Strategy change — show/hide stratified column input
     sample_strategy.change(
