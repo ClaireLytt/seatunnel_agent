@@ -67,7 +67,14 @@ def test_line_of():
     ("odps", "maxcompute"),
     ("MaxCompute", "maxcompute"),
     ("", "hive"),
-    ("mysql", "hive"),
+    ("mysql", "mysql"),
+    ("Postgres", "postgresql"),
+    ("pg", "postgresql"),
+    ("MSSQL", "sqlserver"),
+    ("ClickHouse", "clickhouse"),
+    ("doris", "doris"),
+    ("sqlite", "sqlite"),
+    ("oracle", "hive"),
 ])
 def test_normalize_dialect(raw, expected):
     assert normalize_dialect(raw) == expected
@@ -620,7 +627,9 @@ def test_is_known_dialect():
     assert is_known_dialect("hive")
     assert is_known_dialect("ODPS")
     assert is_known_dialect(" Spark SQL ")
-    assert not is_known_dialect("mysql")
+    assert is_known_dialect("mysql")
+    assert is_known_dialect("Postgres")
+    assert not is_known_dialect("oracle")
     assert not is_known_dialect("")
 
 
@@ -2124,3 +2133,166 @@ def test_rlog_records_sql_sha(tmp_path, monkeypatch):
     logger.log(sql="SELECT 1", dialect="hive", mode="agent", findings=[])
     rec = logger.recent(1)[0]
     assert rec["sql_sha256"] == sql_hash("SELECT 1")
+
+
+# ---------------------------------------------------------------------------
+# New dialects: engine-family rule gating + OLTP/OLAP rules
+# ---------------------------------------------------------------------------
+
+_PARTITION_SQL = "SELECT id FROM dw.fact_order_di ORDER BY id"
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "postgresql", "sqlserver",
+                                     "sqlite", "clickhouse", "doris"])
+def test_partition_rules_skipped_for_non_warehouse(dialect):
+    findings = lint_sql(_PARTITION_SQL, dialect)
+    assert not by_category(findings, "partition_pruning")
+
+
+def test_partition_rules_still_fire_for_hive():
+    findings = lint_sql(_PARTITION_SQL, "hive")
+    assert by_category(findings, "partition_pruning")
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "postgresql", "sqlserver", "sqlite"])
+def test_order_by_no_limit_skipped_for_oltp(dialect):
+    findings = lint_sql("SELECT id FROM t ORDER BY id", dialect)
+    assert not any("ORDER BY" in f.description for f in findings)
+
+
+def test_order_by_no_limit_fires_for_clickhouse():
+    findings = lint_sql("SELECT id FROM t ORDER BY id", "clickhouse")
+    assert any("ORDER BY" in f.description for f in findings)
+
+
+def test_count_distinct_skipped_for_oltp():
+    sql = "SELECT COUNT(DISTINCT uid) FROM t"
+    assert not by_category(lint_sql(sql, "mysql"), "data_skew")
+    assert by_category(lint_sql(sql, "hive"), "data_skew")
+
+
+def test_update_without_where_is_critical():
+    findings = lint_sql("UPDATE users SET status = 1", "mysql")
+    hits = by_category(findings, "where_syntax")
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.CRITICAL
+    assert "UPDATE" in hits[0].description
+
+
+def test_delete_without_where_is_critical():
+    findings = lint_sql("DELETE FROM users", "postgresql")
+    hits = by_category(findings, "where_syntax")
+    assert len(hits) == 1
+    assert "DELETE" in hits[0].description
+
+
+def test_dml_with_where_passes():
+    assert not by_category(
+        lint_sql("UPDATE users SET status = 1 WHERE id = 3", "mysql"),
+        "where_syntax")
+    assert not by_category(
+        lint_sql("DELETE FROM users WHERE id = 3", "mysql"), "where_syntax")
+
+
+def test_dml_without_where_fires_on_warehouse_too():
+    findings = lint_sql("DELETE FROM dw.dim_user", "hive")
+    assert by_category(findings, "where_syntax")
+
+
+def test_select_for_update_not_flagged():
+    findings = lint_sql("SELECT * FROM users WHERE id = 1 FOR UPDATE", "mysql")
+    assert not by_category(findings, "where_syntax")
+
+
+def test_leading_wildcard_like_is_risk():
+    findings = lint_sql("SELECT id FROM t WHERE name LIKE '%abc'", "mysql")
+    hits = [f for f in findings if "通配符" in f.description]
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.RISK
+
+
+def test_prefix_like_passes():
+    findings = lint_sql("SELECT id FROM t WHERE name LIKE 'abc%'", "mysql")
+    assert not any("通配符" in f.description for f in findings)
+
+
+def test_leading_wildcard_like_skipped_for_hive():
+    findings = lint_sql("SELECT id FROM t WHERE name LIKE '%abc'", "hive")
+    assert not any("通配符" in f.description for f in findings)
+
+
+def test_where_func_on_column_is_suggestion():
+    sql = "SELECT id FROM orders WHERE DATE(create_time) = '2026-01-01'"
+    findings = lint_sql(sql, "mysql")
+    hits = [f for f in findings if "使用函数" in f.description]
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.SUGGESTION
+
+
+def test_where_func_skipped_for_warehouse():
+    sql = "SELECT id FROM orders WHERE DATE(create_time) = '2026-01-01'"
+    findings = lint_sql(sql, "spark")
+    assert not any("使用函数" in f.description for f in findings)
+
+
+def test_deep_offset_is_risk():
+    findings = lint_sql("SELECT id FROM t ORDER BY id LIMIT 100000, 20", "mysql")
+    hits = [f for f in findings if "深分页" in f.description]
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.RISK
+    findings2 = lint_sql("SELECT id FROM t ORDER BY id LIMIT 20 OFFSET 100000",
+                         "postgresql")
+    assert any("深分页" in f.description for f in findings2)
+
+
+def test_shallow_offset_passes():
+    findings = lint_sql("SELECT id FROM t ORDER BY id LIMIT 20, 20", "mysql")
+    assert not any("深分页" in f.description for f in findings)
+
+
+def test_clickhouse_final_is_risk():
+    findings = lint_sql("SELECT id FROM orders FINAL WHERE dt = '2026-01-01'",
+                        "clickhouse")
+    hits = [f for f in findings if "FINAL" in f.description]
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.RISK
+    assert not any(
+        "FINAL" in f.description
+        for f in lint_sql("SELECT id FROM orders FINAL", "mysql"))
+
+
+def test_universal_rules_still_apply_to_new_dialects():
+    sql = "SELECT * FROM a JOIN b WHERE a.x = NULL"
+    findings = lint_sql(sql, "mysql")
+    cats = categories(findings)
+    assert "join_cartesian" in cats
+    assert "where_syntax" in cats     # = NULL
+    assert "resource_usage" in cats   # SELECT *
+
+
+def test_on_duplicate_key_update_not_flagged():
+    sql = ("INSERT INTO t (id, cnt) VALUES (1, 1) "
+           "ON DUPLICATE KEY UPDATE cnt = cnt + 1")
+    findings = lint_sql(sql, "mysql")
+    assert not any("WHERE 条件" in f.description for f in findings)
+
+
+def test_for_no_key_update_not_flagged():
+    sql = "SELECT * FROM users WHERE id = 1 FOR NO KEY UPDATE"
+    findings = lint_sql(sql, "postgresql")
+    assert not by_category(findings, "where_syntax")
+
+
+def test_ilike_leading_wildcard_is_risk():
+    findings = lint_sql("SELECT id FROM t WHERE name ILIKE '%abc'", "postgresql")
+    hits = [f for f in findings if "通配符" in f.description]
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.RISK
+
+
+def test_deep_offset_threshold_configurable():
+    sql = "SELECT id FROM t ORDER BY id LIMIT 500, 20"
+    assert not any("深分页" in f.description for f in lint_sql(sql, "mysql"))
+    cfg = ReviewConfig(deep_offset_threshold=100)
+    findings = lint_sql(sql, "mysql", config=cfg)
+    assert any("深分页" in f.description for f in findings)

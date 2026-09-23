@@ -23,12 +23,14 @@ from ..text2sql.schema import SchemaStore, parse_ddl
 from .agent import SQLReviewAgent
 from .config import ReviewConfig, parse_config_data
 from .i18n import normalize_lang
-from .linter import DIALECTS, is_known_dialect, normalize_dialect
+from .linter import DIALECTS, EXECUTOR_DS_TYPES, is_known_dialect, normalize_dialect
 from .rlog import ReviewLogger
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/sql_review", tags=["sql_review"])
+
+_DIALECT_DESC = " | ".join(DIALECTS)
 
 # connection fallbacks when db_config omits them (overridable via env)
 _DEFAULT_DB_HOST = os.getenv("SQLREVIEW_DB_HOST", "localhost")
@@ -38,7 +40,7 @@ _DEFAULT_DB_DATABASE = os.getenv("SQLREVIEW_DB_DATABASE", "default")
 
 class ReviewRequest(BaseModel):
     sql: str = Field(..., min_length=1, description="SQL statement/script to review")
-    dialect: str = Field("hive", description="hive | spark | flink | maxcompute")
+    dialect: str = Field("hive", description=_DIALECT_DESC)
     mode: str = Field("agent", description="'agent' (LLM review) or 'static' (linter only)")
     db_config: dict[str, Any] | None = Field(
         None, description="Optional connection for schema-aware review: host, port, database, username, password"
@@ -63,7 +65,7 @@ class ReviewResponse(BaseModel):
 
 class FixRequest(BaseModel):
     sql: str = Field(..., min_length=1, description="SQL to fix")
-    dialect: str = Field("hive", description="hive | spark | flink | maxcompute")
+    dialect: str = Field("hive", description=_DIALECT_DESC)
     report: str | None = Field(
         None, description="Review report markdown; when omitted a static review runs first"
     )
@@ -97,8 +99,8 @@ def _build_store(
 ) -> SchemaStore | None:
     store: SchemaStore | None = None
     if db_config_dict:
-        ds_type = dialect
-        if dialect not in ("hive", "spark", "flink"):
+        ds_type = EXECUTOR_DS_TYPES.get(dialect)
+        if ds_type is None:
             ds_type = "hive"
             msg = (
                 f"dialect '{dialect}' has no dedicated executor; "

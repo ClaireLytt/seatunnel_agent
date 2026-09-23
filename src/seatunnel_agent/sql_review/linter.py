@@ -19,13 +19,38 @@ from typing import Any
 from .config import DEFAULT_CONFIG, ReviewConfig
 from .report import Finding, Severity
 
-DIALECTS = ("hive", "spark", "flink", "maxcompute")
+DIALECTS = (
+    "hive", "spark", "flink", "maxcompute",
+    "mysql", "postgresql", "sqlserver", "clickhouse", "doris", "sqlite",
+)
+
+# Engine families — rules gate on these instead of listing dialects inline.
+# BATCH_WAREHOUSES: partitioned batch engines where partition pruning /
+# INSERT OVERWRITE PARTITION semantics apply. OLTP: row stores where index
+# usage matters and global ORDER BY is normal.
+BATCH_WAREHOUSES = frozenset({"hive", "spark", "maxcompute"})
+OLTP = frozenset({"mysql", "postgresql", "sqlserver", "sqlite"})
+OLAP_MPP = frozenset({"clickhouse", "doris"})
 
 _DIALECT_ALIASES = {
     "odps": "maxcompute",
     "sparksql": "spark",
     "flinksql": "flink",
     "hivesql": "hive",
+    "postgres": "postgresql",
+    "pg": "postgresql",
+    "mssql": "sqlserver",
+    "tsql": "sqlserver",
+    "ck": "clickhouse",
+}
+
+# text2sql executor ds_type for each review dialect (None = no executor;
+# callers fall back to hive for schema introspection)
+EXECUTOR_DS_TYPES: dict[str, str | None] = {
+    "hive": "hive", "spark": "sparksql", "flink": "flinksql",
+    "maxcompute": None, "mysql": "mysql", "postgresql": "postgresql",
+    "sqlserver": "sqlserver", "clickhouse": "clickhouse",
+    "doris": "doris", "sqlite": "sqlite",
 }
 
 _AGG_FUNCS = (
@@ -625,7 +650,7 @@ def _partition_filter_re(cols: tuple[str, ...]) -> re.Pattern[str]:
 def _check_partition_filter(
     sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
 ) -> list[Finding]:
-    if dialect == "flink":
+    if dialect not in BATCH_WAREHOUSES:
         return []
     findings: list[Finding] = []
 
@@ -666,7 +691,7 @@ def _check_partition_filter(
 def _check_partition_value_quoting(
     sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
 ) -> list[Finding]:
-    if dialect == "flink":
+    if dialect not in BATCH_WAREHOUSES:
         return []
     findings: list[Finding] = []
     for col in config.partition_cols:
@@ -703,7 +728,9 @@ def _check_select_star(
 def _check_order_by_no_limit(
     sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
 ) -> list[Finding]:
-    if dialect == "flink":
+    # streaming has no global sort; OLTP result sets are small enough
+    # that a bare ORDER BY is normal
+    if dialect == "flink" or dialect in OLTP:
         return []
     findings: list[Finding] = []
     for m in re.finditer(r"\border\s+by\b", cleaned, re.IGNORECASE):
@@ -742,8 +769,11 @@ def _check_union(sql: str, cleaned: str, depth_at: list[int]) -> list[Finding]:
 
 
 def _check_count_distinct(
-    sql: str, cleaned: str, depth_at: list[int]
+    sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
 ) -> list[Finding]:
+    # data skew is a distributed-engine concern
+    if dialect in OLTP:
+        return []
     findings: list[Finding] = []
     for m in re.finditer(r"\bcount\s*\(\s*distinct\b", cleaned, re.IGNORECASE):
         findings.append(Finding(
@@ -760,7 +790,7 @@ def _check_count_distinct(
 def _check_insert_overwrite(
     sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
 ) -> list[Finding]:
-    if dialect == "flink":
+    if dialect not in BATCH_WAREHOUSES:
         return []
     findings: list[Finding] = []
     for m in re.finditer(r"\binsert\s+overwrite\s+table\s+([`\w.]+)", cleaned, re.IGNORECASE):
@@ -774,6 +804,148 @@ def _check_insert_overwrite(
                 impact="将覆盖整张表数据",
                 suggestion="指定 PARTITION(pt='${bizdate}') 只覆盖目标分区",
             ))
+    return findings
+
+
+def _check_dml_without_where(
+    sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
+) -> list[Finding]:
+    """UPDATE / DELETE with no top-level WHERE — full-table write."""
+    findings: list[Finding] = []
+    dml_re = re.compile(
+        r"\b(?:(update)\s+([`\w.]+)|(delete)\s+from\s+([`\w.]+))\b",
+        re.IGNORECASE,
+    )
+    for m in dml_re.finditer(cleaned):
+        if depth_at[m.start()] != 0:
+            continue
+        # skip UPDATE keywords that are not statements: "SELECT ... FOR
+        # UPDATE" (lock hint), "FOR NO KEY UPDATE" (PG), and MySQL's
+        # "INSERT ... ON DUPLICATE KEY UPDATE"
+        if m.group(1) and re.search(
+            r"\b(?:for|key)\s*$", cleaned[:m.start()], re.IGNORECASE
+        ):
+            continue
+        verb = (m.group(1) or m.group(3)).upper()
+        table = m.group(2) or m.group(4)
+        has_where = any(
+            depth_at[w.start()] == 0
+            for w in re.finditer(r"\bwhere\b", cleaned, re.IGNORECASE)
+            if w.start() > m.end()
+        )
+        if not has_where:
+            findings.append(Finding(
+                severity=Severity.CRITICAL,
+                category="where_syntax",
+                description=f"{verb} {table} 没有 WHERE 条件",
+                location=f"行 {line_of(sql, m.start())}",
+                impact="将更新/删除整张表的数据",
+                suggestion="添加 WHERE 条件限定范围；确需全表操作请显式注释说明",
+            ))
+    return findings
+
+
+def _check_leading_wildcard_like(
+    sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
+) -> list[Finding]:
+    """LIKE '%xxx' defeats index usage on row stores."""
+    if dialect not in OLTP:
+        return []
+    findings: list[Finding] = []
+    for m in re.finditer(r"\bi?like\b", cleaned, re.IGNORECASE):
+        # literals are blanked in `cleaned` (as spaces), so skip whitespace in
+        # the ORIGINAL sql and read the pattern's first characters from there
+        i = m.end()
+        while i < len(sql) and sql[i] in " \t\r\n":
+            i += 1
+        if sql[i:i + 2] in ("'%", '"%'):
+            findings.append(Finding(
+                severity=Severity.RISK,
+                category="resource_usage",
+                description="LIKE 使用前导通配符 '%...'",
+                location=f"行 {line_of(sql, m.start())}",
+                impact="无法使用索引，触发全表扫描",
+                suggestion="尽量改为前缀匹配 'xxx%'，或使用全文索引",
+            ))
+    return findings
+
+
+_WHERE_FUNC_RE = re.compile(
+    r"\b(date|year|month|day|substr|substring|date_format|to_char|"
+    r"date_trunc|trunc|lower|upper|left|right)\s*\(\s*[`\w.]+\s*[,)]",
+    re.IGNORECASE,
+)
+_CLAUSE_END_RE = re.compile(
+    r"\b(group\s+by|order\s+by|limit|having|union|window)\b", re.IGNORECASE,
+)
+
+
+def _check_where_func_on_column(
+    sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
+) -> list[Finding]:
+    """Function wrapped around a column inside WHERE — index cannot be used."""
+    if dialect not in OLTP:
+        return []
+    findings: list[Finding] = []
+    for w in re.finditer(r"\bwhere\b", cleaned, re.IGNORECASE):
+        base_depth = depth_at[w.start()]
+        end_m = _CLAUSE_END_RE.search(cleaned, w.end())
+        end = end_m.start() if end_m else len(cleaned)
+        for m in _WHERE_FUNC_RE.finditer(cleaned, w.end(), end):
+            if depth_at[m.start()] != base_depth:
+                continue
+            findings.append(Finding(
+                severity=Severity.SUGGESTION,
+                category="resource_usage",
+                description=f"WHERE 条件对列使用函数 {m.group(1).upper()}(...)",
+                location=f"行 {line_of(sql, m.start())}",
+                impact="列上函数使索引失效，可能全表扫描",
+                suggestion="改写为对常量侧计算的范围条件，如 col >= '...' AND col < '...'",
+            ))
+    return findings
+
+
+def _check_deep_offset(
+    sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
+) -> list[Finding]:
+    """LIMIT big_offset, n / OFFSET big_n — deep pagination scans and discards."""
+    if dialect == "flink":
+        return []
+    findings: list[Finding] = []
+    for m in re.finditer(
+        r"\blimit\s+(\d+)\s*,\s*\d+|\boffset\s+(\d+)\b", cleaned, re.IGNORECASE
+    ):
+        off = int(m.group(1) or m.group(2))
+        if off < config.deep_offset_threshold:
+            continue
+        findings.append(Finding(
+            severity=Severity.RISK,
+            category="resource_usage",
+            description=f"深分页 OFFSET {off}",
+            location=f"行 {line_of(sql, m.start())}",
+            impact=f"需要扫描并丢弃前 {off} 行，越翻越慢",
+            suggestion="改用游标分页（WHERE id > 上页末尾 id ORDER BY id LIMIT n）",
+        ))
+    return findings
+
+
+def _check_clickhouse_final(
+    sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
+) -> list[Finding]:
+    if dialect != "clickhouse":
+        return []
+    findings: list[Finding] = []
+    for m in re.finditer(
+        r"\b(?:from|join)\s+[`\w.]+\s+final\b", cleaned, re.IGNORECASE
+    ):
+        findings.append(Finding(
+            severity=Severity.RISK,
+            category="resource_usage",
+            description="查询使用了 FINAL 修饰符",
+            location=f"行 {line_of(sql, m.start())}",
+            impact="FINAL 强制读时合并，显著降低查询性能",
+            suggestion="改用 argMax / GROUP BY 取最新版本，或依赖后台 merge",
+        ))
     return findings
 
 
@@ -882,7 +1054,6 @@ _RULES = (
     _check_division,
     _check_select_star,
     _check_union,
-    _check_count_distinct,
     _check_distinct_with_groupby,
 )
 
@@ -897,6 +1068,12 @@ _DIALECT_RULES = (
     _check_partition_value_quoting,
     _check_order_by_no_limit,
     _check_insert_overwrite,
+    _check_count_distinct,
+    _check_dml_without_where,
+    _check_leading_wildcard_like,
+    _check_where_func_on_column,
+    _check_deep_offset,
+    _check_clickhouse_final,
 )
 
 

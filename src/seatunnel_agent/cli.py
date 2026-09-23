@@ -7,6 +7,7 @@ import click
 from rich.console import Console
 
 from . import __version__
+from .sql_review.linter import DIALECTS as REVIEW_DIALECTS
 
 console = Console()
 
@@ -211,7 +212,7 @@ def batch(ctx: click.Context, configs: tuple[str, ...], stop_on_failure: bool) -
               help="Review *.sql files changed vs git base (see --diff-base)")
 @click.option("--diff-base", type=str, default="HEAD",
               help="Git ref to diff against (default: HEAD)")
-@click.option("--dialect", "-d", type=click.Choice(["hive", "spark", "flink", "maxcompute"]),
+@click.option("--dialect", "-d", type=click.Choice(list(REVIEW_DIALECTS)),
               default="hive", help="SQL dialect")
 @click.option("--static-only", is_flag=True,
               help="Run only the deterministic linter (no LLM, no API key needed)")
@@ -333,17 +334,20 @@ def review(
         m = re.fullmatch(r"([\w.\-]+):(\d+)/([\w.\-]+)", db.strip())
         if not m:
             raise click.UsageError("--db 格式应为 host:port/database")
+        from .sql_review.linter import EXECUTOR_DS_TYPES
         from .text2sql.executor import DatabaseConfig, create_executor
         from .text2sql.schema import SchemaStore
-        if dialect not in ("hive", "spark", "flink"):
+        ds_type = EXECUTOR_DS_TYPES.get(dialect)
+        if ds_type is None:
             click.echo(
                 f"Warning: dialect '{dialect}' has no dedicated database executor — "
                 "falling back to the hive executor for schema fetching.",
                 err=True,
             )
+            ds_type = "hive"
         try:
             db_config = DatabaseConfig(
-                ds_type=dialect if dialect in ("hive", "spark", "flink") else "hive",
+                ds_type=ds_type,
                 host=m.group(1), port=int(m.group(2)), database=m.group(3),
                 username=db_user, password=db_password,
             )
@@ -528,7 +532,7 @@ def review(
               default=None,
               help="Text2SQL query log (default: logs/text2sql_queries.jsonl)")
 @click.option("--dialect", "-d",
-              type=click.Choice(["hive", "spark", "flink", "maxcompute"]),
+              type=click.Choice(list(REVIEW_DIALECTS)),
               default="hive", help="SQL dialect for the linter")
 @click.option("--limit", "-n", type=int, default=None,
               help="Only replay the most recent N log records")

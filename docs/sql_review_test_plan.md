@@ -87,6 +87,26 @@ python -m seatunnel_agent.cli ui
 - 中英文切换：切换语言后按钮 / 报告标签跟随切换。
 - 报告下载：Markdown / JSON 下载按钮仍可用。
 
+### 1.8 多数据库方言支持（新功能）
+
+方言下拉扩展为 10 种：Hive / Spark / Flink / MaxCompute / MySQL /
+PostgreSQL / SQL Server / ClickHouse / Doris / SQLite。规则按引擎家族门控：
+
+| 用例 | 方言 | 输入 SQL | 预期结果 |
+|---|---|---|---|
+| 1 | MySQL | `UPDATE users SET status = 1` | 🔴 严重：UPDATE 没有 WHERE 条件 |
+| 2 | PostgreSQL | `DELETE FROM users` | 🔴 严重：DELETE 没有 WHERE 条件 |
+| 3 | MySQL | `SELECT id FROM t WHERE name LIKE '%abc'` | 🟡 风险：LIKE 前导通配符（索引失效） |
+| 4 | MySQL | `SELECT id FROM orders WHERE DATE(create_time) = '2026-01-01'` | 🟢 建议：WHERE 列上函数使索引失效 |
+| 5 | MySQL | `SELECT id FROM t ORDER BY id LIMIT 100000, 20` | 🟡 风险：深分页 OFFSET |
+| 6 | ClickHouse | `SELECT id FROM orders FINAL` | 🟡 风险：FINAL 强制读时合并 |
+| 7 | MySQL | `SELECT id FROM dw.fact_order_di ORDER BY id` | 不报「缺分区过滤」「ORDER BY 无 LIMIT」（OLTP 不适用） |
+| 8 | Hive | 同上 | 仍报分区过滤 + ORDER BY 无 LIMIT（大数据引擎规则保留） |
+| 9 | 任意新方言 | `SELECT * FROM a JOIN b WHERE x = NULL` | 通用规则（SELECT \* / 笛卡尔积 / = NULL）照常触发 |
+
+CLI 同步：`seatunnel-agent review -d mysql ...` 与 `review-harness -d clickhouse ...`
+可直接使用新方言；`--db` 现在按方言正确映射执行器（spark→sparksql 等）。
+
 ---
 
 ## 2. Text2SQL 集成：内联审查卡片

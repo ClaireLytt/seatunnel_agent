@@ -19,13 +19,13 @@ from .sql_review.agent import SQLReviewAgent, static_review_report
 from .sql_review.config import ReviewConfig, parse_config_text
 from .sql_review.fixer import generate_fix
 from .sql_review.i18n import catalog_label, sr
-from .sql_review.linter import normalize_dialect
+from .sql_review.linter import DIALECTS, normalize_dialect
+from .sql_review.prompts import DIALECT_NAMES
 from .sql_review.report import render_report
 from .sql_review.rlog import ReviewLogger
 from .text2sql.schema import SchemaStore
 
-_DIALECT_CHOICES = [("Hive SQL", "hive"), ("Spark SQL", "spark"),
-                    ("Flink SQL", "flink"), ("MaxCompute SQL", "maxcompute")]
+_DIALECT_CHOICES = [(DIALECT_NAMES.get(d, d), d) for d in DIALECTS]
 
 _DEFAULT_LANG = "en"
 

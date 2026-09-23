@@ -14,6 +14,7 @@ Example file::
       max_stmt_lines: 200
       readability_min_lines: 20
       max_custom_matches: 20
+      deep_offset_threshold: 10000
     custom_rules:
       - pattern: '\\border\\s+by\\b'
         message: 禁止在离线任务中使用 ORDER BY
@@ -59,6 +60,7 @@ DEFAULT_MAX_JOINS = 5
 DEFAULT_MAX_STMT_LINES = 200
 DEFAULT_READABILITY_MIN_LINES = 20
 DEFAULT_MAX_CUSTOM_MATCHES = 20
+DEFAULT_DEEP_OFFSET_THRESHOLD = 10000
 
 
 @dataclass
@@ -75,6 +77,7 @@ class ReviewConfig:
     max_stmt_lines: int = DEFAULT_MAX_STMT_LINES
     readability_min_lines: int = DEFAULT_READABILITY_MIN_LINES
     max_custom_matches: int = DEFAULT_MAX_CUSTOM_MATCHES
+    deep_offset_threshold: int = DEFAULT_DEEP_OFFSET_THRESHOLD
 
 
 DEFAULT_CONFIG = ReviewConfig()
@@ -91,7 +94,7 @@ def _as_str_tuple(value: Any, key: str) -> tuple[str, ...]:
 
 _THRESHOLD_KEYS = {
     "max_subquery_depth", "max_joins", "max_stmt_lines",
-    "readability_min_lines", "max_custom_matches",
+    "readability_min_lines", "max_custom_matches", "deep_offset_threshold",
 }
 
 

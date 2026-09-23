@@ -20,6 +20,12 @@ DIALECT_NAMES = {
     "spark": "Spark SQL",
     "flink": "Flink SQL",
     "maxcompute": "MaxCompute SQL",
+    "mysql": "MySQL",
+    "postgresql": "PostgreSQL",
+    "sqlserver": "SQL Server (T-SQL)",
+    "clickhouse": "ClickHouse SQL",
+    "doris": "Apache Doris SQL",
+    "sqlite": "SQLite",
 }
 
 
@@ -31,7 +37,8 @@ def _load_resource(name: str) -> str:
 
 
 _BASE_PROMPT = """\
-You are an expert SQL Code Reviewer for data warehouse pipelines. You review
+You are an expert SQL Code Reviewer for data warehouse pipelines and
+application databases. You review
 {dialect_name} statically — you never execute the SQL — and produce a
 structured CR report in {report_language}. Your goal: catch the problems a
 human reviewer would otherwise only find by running the query step by step.
