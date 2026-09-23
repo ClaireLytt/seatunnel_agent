@@ -1388,10 +1388,12 @@ body:has(.st-history-page) .gradio-container > .main > .wrap {
     flex-wrap: nowrap !important;
 }
 /* Left sidebar column */
-.st-sidebar {
+.st-sidebar:not(.st-dc-sidebar) {
     width: 260px !important;
     min-width: 260px !important;
     max-width: 260px !important;
+}
+.st-sidebar {
     height: 100% !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
@@ -1463,15 +1465,20 @@ body:has(.st-history-page) .gradio-container > .main > .wrap {
 /* Data Comparison sidebar: wider, user-resizable via right-edge drag,
    horizontal scrollbar when content overflows */
 .st-sidebar.st-dc-sidebar {
-    width: 560px !important;
-    min-width: 320px !important;
-    max-width: 80vw !important;
+    /* flex-basis auto lets `width` control the size (Gradio columns default
+       to flex-basis 0%, which ignores width and collapses to min-width);
+       width stays non-!important so the browser's drag-resize inline style
+       can override it */
+    flex: 0 0 auto !important;
+    width: 720px;
+    min-width: 360px !important;
+    max-width: 85vw !important;
     resize: horizontal !important;
     overflow-x: auto !important;
     overflow-y: auto !important;
 }
 .st-sidebar.st-dc-sidebar > * {
-    min-width: 500px !important;
+    min-width: 640px !important;
 }
 
 /* Right main content: fill remaining width, flex column to pin input at bottom */

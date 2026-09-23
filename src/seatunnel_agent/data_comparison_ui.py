@@ -2833,7 +2833,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         lang_state = gr.State("en")
 
         # ── Left sidebar ──
-        with gr.Column(scale=0, min_width=560,
+        with gr.Column(scale=0, min_width=720,
                        elem_classes=["st-sidebar", "st-dc-sidebar"]):
             title_md = gr.Markdown(t("dc_title"))
 
