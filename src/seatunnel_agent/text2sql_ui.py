@@ -1622,11 +1622,12 @@ def render_text2sql_page(app=None) -> None:
 
         # ── Build DatabaseConfig ──
         db_config = None
-        h = host.strip()
-        p = port.strip()
-        d = db.strip()
-        u = username.strip() or None
-        pw = password.strip() or None
+        # Hidden Gradio textboxes submit None from the browser, not "".
+        h = (host or "").strip()
+        p = (port or "").strip()
+        d = (db or "").strip()
+        u = (username or "").strip() or None
+        pw = (password or "").strip() or None
 
         defaults = DS_DEFAULTS.get(ds_type, {})
         default_port = str(defaults.get("port", 10000))

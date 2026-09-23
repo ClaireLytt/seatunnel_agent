@@ -1431,11 +1431,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         ds_type = _DS_LABEL_TO_KEY.get(ds_label)
         if ds_type is None:
             return f"❌ {t_fn('dc_error')}: unknown datasource {_esc_html(str(ds_label))}", gr.update()
-        h = host.strip()
-        p = port.strip()
-        d = db.strip()
-        u = username.strip() or None
-        pw = password.strip() or None
+        # Hidden Gradio textboxes (auth/host fields for engines that don't
+        # need them) submit None from the browser, not "".
+        h = (host or "").strip()
+        p = (port or "").strip()
+        d = (db or "").strip()
+        u = (username or "").strip() or None
+        pw = (password or "").strip() or None
         defaults = DS_DEFAULTS[ds_type]
         default_port = str(defaults["port"])
         default_db = defaults["database"]
@@ -1542,6 +1544,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                       stratified_col=""):
         ex_a, ex_b = _snap_executors()
         limit = _SAMPLE_LIMIT
+        stratified_col = stratified_col or ""  # hidden textbox submits None
         if strategy == "STRATIFIED" and stratified_col.strip():
             sql_a = build_stratified_sample_sql(table_a, stratified_col.strip(),
                                                 _STRATIFIED_PER_GROUP,
@@ -2205,7 +2208,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         return gr.update(choices=names, value=None), gr.update(choices=names, value=None)
 
     def _save_preset(name, ds_label, host, port, db, user, pwd, env_val, lang_val):
-        if not name.strip():
+        # Hidden auth/host textboxes submit None from the browser, not "".
+        name = (name or "").strip()
+        if not name:
             return dc(lang_val, "dc_error")
         ds_type = _DS_LABEL_TO_KEY.get(ds_label)
         if ds_type is None:
@@ -2215,10 +2220,11 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         except ValueError:
             port_int = 0
         try:
-            _PRESETS_STORE.save(name.strip(), ds_type, host.strip(), port_int,
-                                db.strip(), user.strip(), pwd.strip(),
+            _PRESETS_STORE.save(name, ds_type, (host or "").strip(), port_int,
+                                (db or "").strip(), (user or "").strip(),
+                                (pwd or "").strip(),
                                 environment=env_val.strip() if env_val else "")
-            return f"✅ {dc(lang_val, 'dc_preset_saved')}: {_esc_html(name.strip())}"
+            return f"✅ {dc(lang_val, 'dc_preset_saved')}: {_esc_html(name)}"
         except Exception as e:
             return _error_html(lang_val, e)
 
