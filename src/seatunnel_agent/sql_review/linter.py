@@ -358,6 +358,7 @@ def _check_groupby_completeness(
                 location=f"行 {line_of(sql, gm.start())}",
                 impact="数据错误",
                 suggestion="GROUP BY 应包含所有非聚合字段",
+                key="groupby_missing", args={"cols": ", ".join(missing)},
             ))
     return findings
 
@@ -392,6 +393,7 @@ def _check_joins(sql: str, cleaned: str, depth_at: list[int]) -> list[Finding]:
                 location=f"行 {line}",
                 impact="数据量爆炸",
                 suggestion="确认是否确实需要笛卡尔积，否则改为带 ON 条件的 JOIN",
+                key="cross_join",
             ))
             continue
 
@@ -407,6 +409,7 @@ def _check_joins(sql: str, cleaned: str, depth_at: list[int]) -> list[Finding]:
                 location=f"行 {line}",
                 impact="数据量爆炸/结果错误",
                 suggestion="为 JOIN 添加正确的 ON 关联条件",
+                key="join_no_on",
             ))
             continue
 
@@ -424,6 +427,7 @@ def _check_joins(sql: str, cleaned: str, depth_at: list[int]) -> list[Finding]:
                     location=f"行 {line_of(sql, nxt.start())}",
                     impact="可能产生多对多放大且无法走高效 JOIN",
                     suggestion="拆分为 UNION ALL 或改写关联逻辑",
+                    key="join_on_or",
                 ))
             has_equality = bool(re.search(r"(?<![<>!])=(?!=)", on_body))
             has_range = bool(re.search(r"[<>]", on_body))
@@ -435,6 +439,7 @@ def _check_joins(sql: str, cleaned: str, depth_at: list[int]) -> list[Finding]:
                     location=f"行 {line_of(sql, nxt.start())}",
                     impact="可能产生多对多关联放大",
                     suggestion="确认关联键，尽量使用等值 JOIN",
+                    key="join_non_equi",
                 ))
     return findings
 
@@ -459,16 +464,16 @@ def _type_family(dtype: str) -> str | None:
     return _TYPE_FAMILIES.get(m.group(1).lower()) if m else None
 
 
-def _check_join_key_types(
-    sql: str, cleaned: str, depth_at: list[int], store: Any
-) -> list[Finding]:
-    """Schema-aware: flag equality comparisons whose column type families differ
-    (e.g. string = bigint). Only runs when a SchemaStore is available."""
-    if store is None or len(store) == 0:
-        return []
+def _resolve_tables(
+    cleaned: str, store: Any
+) -> tuple[dict[str, Any], list[tuple[int, str, str | None]], set[str]]:
+    """Map alias / bare name / full name -> TableSchema for every FROM/JOIN
+    reference that resolves in the store. Also returns the raw refs and the
+    CTE names so callers can tell "unknown" from "not a physical table"."""
     ctes = _cte_names(cleaned)
+    refs = _extract_table_refs(cleaned)
     resolve: dict[str, Any] = {}
-    for _off, name, alias in _extract_table_refs(cleaned):
+    for _off, name, alias in refs:
         if name in ctes:
             continue
         table = store.get(name)
@@ -482,6 +487,17 @@ def _check_join_key_types(
         for key in (alias, base, name):
             if key:
                 resolve.setdefault(key, table)
+    return resolve, refs, ctes
+
+
+def _check_join_key_types(
+    sql: str, cleaned: str, depth_at: list[int], store: Any
+) -> list[Finding]:
+    """Schema-aware: flag equality comparisons whose column type families differ
+    (e.g. string = bigint). Only runs when a SchemaStore is available."""
+    if store is None or len(store) == 0:
+        return []
+    resolve, _refs, _ctes = _resolve_tables(cleaned, store)
 
     findings: list[Finding] = []
     seen: set[tuple[str, str]] = set()
@@ -510,7 +526,144 @@ def _check_join_key_types(
             location=f"行 {line_of(sql, m.start())}",
             impact="隐式类型转换可能导致关联不上、结果错误或数据倾斜",
             suggestion="用 CAST 显式统一两侧类型后再关联",
+            key="join_key_type",
+            args={"left": f"{lq}.{lc}", "ltype": lcol.dtype,
+                  "right": f"{rq}.{rc}", "rtype": rcol.dtype},
         ))
+    return findings
+
+
+_QUAL_COL_RE = re.compile(r"(`?\w+`?)\s*\.\s*(`?\w+`?)")
+_QUAL_STAR_RE = re.compile(r"(`?\w+`?)\s*\.\s*\*")
+_BARE_STAR_RE = re.compile(r"\bselect\s+\*", re.IGNORECASE)
+
+
+def _check_schema_refs(
+    sql: str, cleaned: str, depth_at: list[int], store: Any,
+    config: ReviewConfig,
+) -> list[Finding]:
+    """Schema-aware: unknown tables/columns, SELECT * on wide tables, and
+    filters that look like partition pruning but hit a non-partition column.
+    Only runs when a SchemaStore is available."""
+    if store is None or len(store) == 0:
+        return []
+    resolve, refs, ctes = _resolve_tables(cleaned, store)
+    findings: list[Finding] = []
+
+    # ── unknown table ──
+    seen_tables: set[str] = set()
+    for off, name, _alias in refs:
+        if name in ctes or name in seen_tables:
+            continue
+        seen_tables.add(name)
+        base = name.split(".")[-1]
+        if store.get(name) is not None or any(
+            t.name.lower() == base for t in store.tables
+        ):
+            continue
+        findings.append(Finding(
+            severity=Severity.RISK,
+            category="schema_ref",
+            description=f"表 {name} 在提供的 schema 中不存在",
+            location=f"行 {line_of(sql, off)}",
+            impact="语句将执行失败，或 schema 信息已过期",
+            suggestion="检查表名，或更新 DDL / 数据库连接",
+            key="unknown_table", args={"table": name},
+        ))
+
+    # ── unknown qualified column ──
+    seen_cols: set[tuple[str, str]] = set()
+    for m in _QUAL_COL_RE.finditer(cleaned):
+        qual, col = (g.strip("`").lower() for g in m.groups())
+        table = resolve.get(qual)
+        if table is None or col.isdigit():
+            continue
+        # skip when the match is itself a table reference (db.table)
+        if resolve.get(f"{qual}.{col}") is not None:
+            continue
+        if table.find_column(col) is not None:
+            continue
+        key = (table.full_name.lower(), col)
+        if key in seen_cols:
+            continue
+        seen_cols.add(key)
+        findings.append(Finding(
+            severity=Severity.RISK,
+            category="schema_ref",
+            description=f"列 {col} 在表 {table.full_name} 中不存在",
+            location=f"行 {line_of(sql, m.start())}",
+            impact="语句将执行失败，或 schema 信息已过期",
+            suggestion="对照表定义检查列名",
+            key="unknown_column",
+            args={"column": col, "table": table.full_name},
+        ))
+
+    # ── SELECT * on a wide table ──
+    resolved_tables = {id(t): t for t in resolve.values()}
+    seen_star: set[str] = set()
+
+    def star_finding(table: Any, off: int) -> None:
+        n = len(table.columns) + len(table.partition_columns)
+        if n < config.select_star_wide_cols or table.full_name.lower() in seen_star:
+            return
+        seen_star.add(table.full_name.lower())
+        findings.append(Finding(
+            severity=Severity.RISK,
+            category="resource_usage",
+            description=f"对 {table.full_name} 使用 SELECT * 将展开为 {n} 列",
+            location=f"行 {line_of(sql, off)}",
+            impact="读取远超实际所需的数据量",
+            suggestion="只选择需要的列",
+            key="select_star_wide",
+            args={"table": table.full_name, "n": n},
+        ))
+
+    for m in _QUAL_STAR_RE.finditer(cleaned):
+        table = resolve.get(m.group(1).strip("`").lower())
+        if table is not None:
+            star_finding(table, m.start())
+    single = (next(iter(resolved_tables.values()))
+              if len(resolved_tables) == 1 else None)
+    if single is not None:
+        for m in _BARE_STAR_RE.finditer(cleaned):
+            star_finding(single, m.start())
+
+    # ── filter on a pseudo partition column ──
+    if config.partition_cols:
+        cols_alt = "|".join(re.escape(c) for c in config.partition_cols)
+        part_re = re.compile(
+            rf"(?:(`?\w+`?)\s*\.\s*)?\b({cols_alt})\b"
+            rf"(?:\s*(?:=|!=|<>|>=|<=|<|>)|\s+(?:in|between|like)\b)",
+            re.IGNORECASE,
+        )
+        seen_part: set[tuple[str, str]] = set()
+        for m in part_re.finditer(cleaned):
+            qual = (m.group(1) or "").strip("`").lower()
+            col = m.group(2).lower()
+            table = resolve.get(qual) if qual else single
+            if table is None or not table.is_partitioned:
+                continue
+            parts = [c.name for c in table.partition_columns]
+            if col in {p.lower() for p in parts}:
+                continue
+            key = (table.full_name.lower(), col)
+            if key in seen_part:
+                continue
+            seen_part.add(key)
+            parts_str = ", ".join(parts)
+            findings.append(Finding(
+                severity=Severity.RISK,
+                category="partition_pruning",
+                description=(
+                    f"{col} 被当作分区列过滤，但 {table.full_name} 并未按它分区"
+                ),
+                location=f"行 {line_of(sql, m.start(2))}",
+                impact="该条件无法裁剪分区",
+                suggestion=f"改用表的真实分区列过滤：{parts_str}",
+                key="not_partition_column",
+                args={"col": col, "table": table.full_name,
+                      "parts": parts_str},
+            ))
     return findings
 
 
@@ -555,6 +708,7 @@ def _check_comma_join(sql: str, cleaned: str, depth_at: list[int]) -> list[Findi
                 location=f"行 {line}",
                 impact="关联条件混在 WHERE 中，可读性差且易漏写",
                 suggestion="改为显式 JOIN ... ON 写法",
+                key="comma_join_style", args={"line": line},
             ))
         else:
             findings.append(Finding(
@@ -564,6 +718,7 @@ def _check_comma_join(sql: str, cleaned: str, depth_at: list[int]) -> list[Findi
                 location=f"行 {line}",
                 impact="数据量爆炸/结果错误",
                 suggestion="改为显式 JOIN ... ON 并补充关联条件",
+                key="comma_join_cartesian",
             ))
     return findings
 
@@ -585,6 +740,7 @@ def _check_null_comparison(
             location=f"行 {line_of(sql, m.start())}",
             impact="条件永远不成立，数据错误",
             suggestion=f"改为 {fixed}",
+            key="null_eq", args={"op": op, "fixed": fixed},
         ))
     return findings
 
@@ -613,6 +769,7 @@ def _check_division(sql: str, cleaned: str, depth_at: list[int]) -> list[Finding
             location=f"行 {line_of(sql, m.start())}",
             impact="除零错误",
             suggestion="检查计算逻辑，避免除以 0",
+            key="div_zero_const",
         ))
     seen_lines: set[int] = set()
     for m in _DIV_RE.finditer(cleaned):
@@ -632,6 +789,7 @@ def _check_division(sql: str, cleaned: str, depth_at: list[int]) -> list[Finding
             location=f"行 {line}",
             impact="除数为 0 或 NULL 时结果异常",
             suggestion=f"改为 / NULLIF({m.group(1)}, 0)",
+            key="div_no_guard", args={"denom": m.group(1)},
         ))
     return findings
 
@@ -684,6 +842,7 @@ def _check_partition_filter(
             location=f"行 {line_of(sql, off)}",
             impact="全表扫描",
             suggestion="添加分区条件如 pt = '${bizdate}'",
+            key="partition_missing", args={"table": name},
         ))
     return findings
 
@@ -705,6 +864,7 @@ def _check_partition_value_quoting(
                 location=f"行 {line_of(sql, m.start())}",
                 impact="隐式类型转换可能导致分区裁剪失效",
                 suggestion=f"改为 {col} = '{m.group(1)}'",
+                key="partition_numeric", args={"col": col, "val": m.group(1)},
             ))
     return findings
 
@@ -721,6 +881,7 @@ def _check_select_star(
             location=f"行 {line_of(sql, m.start())}",
             impact="不必要的大表扫描 / 列裁剪失效",
             suggestion="只 SELECT 需要的字段",
+            key="select_star",
         ))
     return findings
 
@@ -750,6 +911,7 @@ def _check_order_by_no_limit(
                 location=f"行 {line_of(sql, m.start())}",
                 impact="单 reducer 全局排序，性能极差",
                 suggestion="添加 LIMIT，或改用 SORT BY / DISTRIBUTE BY",
+                key="order_by_no_limit",
             ))
     return findings
 
@@ -764,6 +926,7 @@ def _check_union(sql: str, cleaned: str, depth_at: list[int]) -> list[Finding]:
             location=f"行 {line_of(sql, m.start())}",
             impact="额外的去重开销",
             suggestion="确认是否需要去重；不需要时改用 UNION ALL",
+            key="union_dedup", args={"line": line_of(sql, m.start())},
         ))
     return findings
 
@@ -783,6 +946,7 @@ def _check_count_distinct(
             location=f"行 {line_of(sql, m.start())}",
             impact="单点聚合可能倾斜",
             suggestion="数据量大时可改为两阶段 GROUP BY 去重再计数",
+            key="count_distinct", args={"line": line_of(sql, m.start())},
         ))
     return findings
 
@@ -803,6 +967,7 @@ def _check_insert_overwrite(
                 location=f"行 {line_of(sql, m.start())}",
                 impact="将覆盖整张表数据",
                 suggestion="指定 PARTITION(pt='${bizdate}') 只覆盖目标分区",
+                key="insert_overwrite_no_partition", args={"table": m.group(1)},
             ))
     return findings
 
@@ -841,6 +1006,7 @@ def _check_dml_without_where(
                 location=f"行 {line_of(sql, m.start())}",
                 impact="将更新/删除整张表的数据",
                 suggestion="添加 WHERE 条件限定范围；确需全表操作请显式注释说明",
+                key="dml_no_where", args={"verb": verb, "table": table},
             ))
     return findings
 
@@ -866,6 +1032,7 @@ def _check_leading_wildcard_like(
                 location=f"行 {line_of(sql, m.start())}",
                 impact="无法使用索引，触发全表扫描",
                 suggestion="尽量改为前缀匹配 'xxx%'，或使用全文索引",
+                key="leading_wildcard_like",
             ))
     return findings
 
@@ -901,6 +1068,7 @@ def _check_where_func_on_column(
                 location=f"行 {line_of(sql, m.start())}",
                 impact="列上函数使索引失效，可能全表扫描",
                 suggestion="改写为对常量侧计算的范围条件，如 col >= '...' AND col < '...'",
+                key="where_func_on_column", args={"func": m.group(1).upper()},
             ))
     return findings
 
@@ -925,6 +1093,7 @@ def _check_deep_offset(
             location=f"行 {line_of(sql, m.start())}",
             impact=f"需要扫描并丢弃前 {off} 行，越翻越慢",
             suggestion="改用游标分页（WHERE id > 上页末尾 id ORDER BY id LIMIT n）",
+            key="deep_offset", args={"off": off},
         ))
     return findings
 
@@ -945,6 +1114,7 @@ def _check_clickhouse_final(
             location=f"行 {line_of(sql, m.start())}",
             impact="FINAL 强制读时合并，显著降低查询性能",
             suggestion="改用 argMax / GROUP BY 取最新版本，或依赖后台 merge",
+            key="clickhouse_final",
         ))
     return findings
 
@@ -962,6 +1132,7 @@ def _check_readability(
             location="全局",
             impact="可读性差",
             suggestion="为复杂逻辑段落添加注释说明",
+            key="readability_no_comment",
         )]
     return []
 
@@ -982,6 +1153,8 @@ def _check_distinct_with_groupby(
                 location=f"行 {line_of(sql, m.start())}",
                 impact="冗余去重",
                 suggestion="GROUP BY 已保证去重，可去掉 DISTINCT",
+                key="distinct_with_groupby",
+                args={"line": line_of(sql, m.start())},
             ))
     return findings
 
@@ -1022,6 +1195,8 @@ def _check_complexity(
             location="行 1",
             impact="嵌套过深难以阅读和维护，优化器也难以优化",
             suggestion="用 WITH（CTE）把子查询拆平",
+            key="subquery_depth",
+            args={"depth": subq, "max": config.max_subquery_depth},
         ))
     joins = len(re.findall(r"\bjoin\b", cleaned, re.IGNORECASE))
     if joins > config.max_joins:
@@ -1032,6 +1207,8 @@ def _check_complexity(
             location="行 1",
             impact="过多 JOIN 使执行计划复杂、排查困难",
             suggestion="拆分为中间表/CTE，分步落地",
+            key="too_many_joins",
+            args={"joins": joins, "max": config.max_joins},
         ))
     lines = sql.count("\n") + 1
     if lines > config.max_stmt_lines:
@@ -1042,6 +1219,8 @@ def _check_complexity(
             location="行 1",
             impact="超长语句难以 review 与维护",
             suggestion="拆分为多个步骤或视图",
+            key="stmt_too_long",
+            args={"lines": lines, "max": config.max_stmt_lines},
         ))
     return findings
 
@@ -1225,6 +1404,7 @@ def _lint_statement(
     for rule in _DIALECT_RULES:
         findings.extend(rule(sql, cleaned, depth_at, dialect, config))
     findings.extend(_check_join_key_types(sql, cleaned, depth_at, store))
+    findings.extend(_check_schema_refs(sql, cleaned, depth_at, store, config))
     return findings
 
 
@@ -1246,6 +1426,8 @@ def lint_sql(
     dialect = normalize_dialect(dialect)
     config = config or DEFAULT_CONFIG
     findings: list[Finding] = []
+    from .ast_check import check_syntax
+    findings.extend(check_syntax(sql, dialect))
     for offset, stmt in split_statements(sql):
         stmt_findings = _lint_statement(stmt, dialect, store, config)
         _shift_finding_lines(stmt_findings, offset)

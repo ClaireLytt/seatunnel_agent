@@ -33,6 +33,8 @@ class Severity(str, Enum):
 # The fixed catalog of check items. 检查统计's 检查项总数 is the size of
 # this catalog; a category "passes" when no finding references it.
 CHECK_CATALOG: dict[str, str] = {
+    "syntax": "SQL 语法有效性（方言解析）",
+    "schema_ref": "表/列存在性（schema 校验）",
     "join_condition": "JOIN 关联条件与字段准确性",
     "join_cartesian": "JOIN 类型一致性 / 多对多与笛卡尔积",
     "where_syntax": "WHERE 条件语法与 NULL 判断",
@@ -60,6 +62,10 @@ class Finding:
     impact: str            # 影响范围 / 风险说明
     suggestion: str        # 修复建议 / 优化建议
     source: str = "linter"  # "linter" or "llm"
+    # i18n: rule template key into i18n.RULE_TEXTS_EN plus its format args;
+    # empty for LLM findings and custom rules (their text passes through)
+    key: str = ""
+    args: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -162,7 +168,7 @@ def _loc(location: str, lang: str, line_links: bool = False) -> str:
 def render_report(report: ReviewReport, lang: str = "zh",
                   line_links: bool = False) -> str:
     """Render the CR report in the fixed markdown format (zh or en chrome)."""
-    from .i18n import sr
+    from .i18n import finding_texts, sr
 
     def t(key: str) -> str:
         return sr(lang, key)
@@ -172,11 +178,11 @@ def render_report(report: ReviewReport, lang: str = "zh",
 
     parts.append(f"\n{t('sr_sec_critical')}\n")
     if report.criticals:
-        rows = [
-            [str(i), f.description, _loc(f.location, lang, line_links),
-             f.impact, f.suggestion]
-            for i, f in enumerate(report.criticals, 1)
-        ]
+        rows = []
+        for i, f in enumerate(report.criticals, 1):
+            desc, impact, sugg = finding_texts(f, lang)
+            rows.append([str(i), desc, _loc(f.location, lang, line_links),
+                         impact, sugg])
         parts.append(_table(
             [t("sr_h_no"), t("sr_h_desc"), t("sr_h_loc"), t("sr_h_impact"), t("sr_h_fix")],
             rows))
@@ -185,11 +191,11 @@ def render_report(report: ReviewReport, lang: str = "zh",
 
     parts.append(f"\n{t('sr_sec_risk')}\n")
     if report.risks:
-        rows = [
-            [str(i), f.description, _loc(f.location, lang, line_links),
-             f.impact, f.suggestion]
-            for i, f in enumerate(report.risks, 1)
-        ]
+        rows = []
+        for i, f in enumerate(report.risks, 1):
+            desc, impact, sugg = finding_texts(f, lang)
+            rows.append([str(i), desc, _loc(f.location, lang, line_links),
+                         impact, sugg])
         parts.append(_table(
             [t("sr_h_no"), t("sr_h_desc"), t("sr_h_loc"), t("sr_h_risk"), t("sr_h_opt")],
             rows))
@@ -198,13 +204,14 @@ def render_report(report: ReviewReport, lang: str = "zh",
 
     parts.append(f"\n{t('sr_sec_suggestion')}\n")
     if report.suggestions:
-        if lang == "en":
-            fmt = lambda f: (f"- {f.description} ({f.suggestion})"  # noqa: E731
-                             if f.suggestion else f"- {f.description}")
-        else:
-            fmt = lambda f: (f"- {f.description}（{f.suggestion}）"  # noqa: E731
-                             if f.suggestion else f"- {f.description}")
-        parts.append("\n".join(fmt(f) for f in report.suggestions))
+        lines = []
+        for f in report.suggestions:
+            desc, _impact, sugg = finding_texts(f, lang)
+            if lang == "en":
+                lines.append(f"- {desc} ({sugg})" if sugg else f"- {desc}")
+            else:
+                lines.append(f"- {desc}（{sugg}）" if sugg else f"- {desc}")
+        parts.append("\n".join(lines))
     else:
         parts.append(t("sr_none"))
 

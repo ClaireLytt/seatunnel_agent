@@ -7,7 +7,7 @@
 #         - id: sqlreview
 - id: sqlreview
   name: SQL Code Review (static)
-  description: Static SQL review for Hive/Spark/Flink/MaxCompute (no LLM needed)
+  description: Static SQL review — 10 dialects (Hive/Spark/Flink/MaxCompute/MySQL/PostgreSQL/ClickHouse/Doris/StarRocks/SQLite), no LLM needed
   entry: seatunnel-agent review --static-only --fail-on critical
   language: python
   files: \.sql$

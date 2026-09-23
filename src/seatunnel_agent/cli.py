@@ -234,6 +234,8 @@ def batch(ctx: click.Context, configs: tuple[str, ...], stop_on_failure: bool) -
               help="Baseline file: suppress known findings, only report new ones")
 @click.option("--update-baseline", is_flag=True,
               help="Record current findings into the baseline file and exit")
+@click.option("--no-cache", is_flag=True,
+              help="Skip the LLM review cache (always call the LLM afresh)")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
 @click.pass_context
 def review(
@@ -256,6 +258,7 @@ def review(
     fmt: str,
     baseline: str | None,
     update_baseline: bool,
+    no_cache: bool,
     output: str | None,
 ) -> None:
     """SQL Code Review — static analysis + LLM review, no execution needed.
@@ -327,6 +330,7 @@ def review(
 
     # ── schema store (--ddl and/or --db) ──
     store = None
+    db_executor = None
     if ddl:
         from .text2sql.schema import SchemaStore
         store = SchemaStore.from_file(ddl)
@@ -351,7 +355,8 @@ def review(
                 host=m.group(1), port=int(m.group(2)), database=m.group(3),
                 username=db_user, password=db_password,
             )
-            db_store = SchemaStore.from_db(create_executor(db_config))
+            db_executor = create_executor(db_config)
+            db_store = SchemaStore.from_db(db_executor)
         except Exception as e:
             console.print(f"[red]数据库 schema 拉取失败:[/red] {e}")
             if verbose:
@@ -363,9 +368,9 @@ def review(
             for t in db_store.tables:
                 store.add(t)
 
-    # ── LLM settings (agent mode and/or --fix) ──
+    # ── LLM settings (agent mode; static --fix is deterministic, no LLM) ──
     settings = None
-    if not static_only or fix:
+    if not static_only:
         from .config import load_settings
         if ctx.obj.get("model"):
             os.environ["MODEL_NAME"] = ctx.obj["model"]
@@ -395,7 +400,8 @@ def review(
             else:
                 from .sql_review import SQLReviewAgent
                 agent = SQLReviewAgent(
-                    settings, dialect=dialect, store=store, config=review_config
+                    settings, dialect=dialect, store=store, config=review_config,
+                    use_cache=not no_cache,
                 )
                 report_md = agent.review(text)
                 rep = agent.runtime.report if agent.runtime else None
@@ -410,6 +416,14 @@ def review(
             if not multi:
                 sys.exit(1)
             continue
+
+        # ── EXPLAIN verification (live DB + OLTP dialect only) ──
+        if rep and db_executor is not None:
+            from .sql_review.explain import verify_with_explain
+            verified = verify_with_explain(rep.findings, text, dialect, db_executor)
+            if verified != rep.findings:
+                rep.findings = verified
+                report_md = render_report(rep)
 
         findings = rep.findings if rep else []
         baseline_entries.extend((label, f) for f in findings)
@@ -455,13 +469,27 @@ def review(
             console.print(f"\n[bold]CR report:[/bold]\n{report_md}")
 
         if fix and findings:
-            from .sql_review.fixer import generate_fix
-            try:
-                fixed_sql = generate_fix(settings, text, dialect, report_md)
-            except Exception as e:
-                # stderr: must not pollute --format json/sarif stdout
-                click.echo(f"生成修复 SQL 失败: {e}", err=True)
+            fixed_sql = None
+            if static_only:
+                from .sql_review.autofix import apply_static_fixes, describe_fixes
+                fixed_sql, applied = apply_static_fixes(
+                    text, dialect, config=review_config)
+                if not applied:
+                    fixed_sql = None
+                    click.echo(
+                        "没有可静态自动修复的问题；其余问题需去掉 --static-only "
+                        "用 LLM 修复", err=True)
+                elif not machine:
+                    console.print(f"\n[bold green]静态修复（{len(applied)} 处）:"
+                                  f"[/bold green]\n{describe_fixes(applied)}")
             else:
+                from .sql_review.fixer import generate_fix
+                try:
+                    fixed_sql = generate_fix(settings, text, dialect, report_md)
+                except Exception as e:
+                    # stderr: must not pollute --format json/sarif stdout
+                    click.echo(f"生成修复 SQL 失败: {e}", err=True)
+            if fixed_sql is not None:
                 if not machine:
                     console.print(f"\n[bold green]修复后 SQL:[/bold green]\n{fixed_sql}")
                 if label != "<inline>":

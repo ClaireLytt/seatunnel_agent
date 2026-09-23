@@ -10,6 +10,8 @@ from __future__ import annotations
 
 # English labels for report.CHECK_CATALOG (keys must stay in sync).
 CHECK_CATALOG_EN: dict[str, str] = {
+    "syntax": "SQL syntax validity (dialect parse)",
+    "schema_ref": "Table/column existence (schema check)",
     "join_condition": "JOIN condition & key accuracy",
     "join_cartesian": "JOIN type consistency / many-to-many & cartesian product",
     "where_syntax": "WHERE syntax & NULL comparison",
@@ -32,8 +34,9 @@ SR_I18N: dict[str, dict[str, str]] = {
         # --- UI chrome ---
         "sr_title": "## 🔍 SQL Code Review",
         "sr_subtitle": (
-            "Static rules + LLM semantic review. Supports Hive / Spark / "
-            "Flink / MaxCompute. Pure static analysis — the SQL is never executed."
+            "Static rules + LLM semantic review. Supports Hive / Spark / Flink / "
+            "MaxCompute / MySQL / PostgreSQL / SQL Server / ClickHouse / Doris / "
+            "SQLite. Pure static analysis — the SQL is never executed."
         ),
         "sr_sql_placeholder": "Paste the SQL to review…",
         "sr_dialect": "SQL Dialect",
@@ -63,6 +66,8 @@ SR_I18N: dict[str, dict[str, str]] = {
         "sr_fix_need_review": "-- Run a review first",
         "sr_fix_generating": "-- Calling the LLM to generate fixed SQL, please wait…",
         "sr_fix_failed": "-- Fix failed",
+        "sr_fix_none_static": "-- No mechanically fixable issue found; switch to LLM review mode for a full rewrite",
+        "sr_cache_hit": "Review cache hit (same SQL / dialect / rules) — skipping the LLM call",
         "sr_no_records": "No review records yet.",
         "sr_stat_reviews": "Reviews",
         "sr_stat_findings": "Total findings",
@@ -112,7 +117,8 @@ SR_I18N: dict[str, dict[str, str]] = {
         # --- UI chrome ---
         "sr_title": "## 🔍 SQL 代码审查",
         "sr_subtitle": (
-            "静态规则 + LLM 语义审查，支持 Hive / Spark / Flink / MaxCompute。"
+            "静态规则 + LLM 语义审查，支持 Hive / Spark / Flink / MaxCompute / "
+            "MySQL / PostgreSQL / SQL Server / ClickHouse / Doris / SQLite。"
             "纯静态分析，不执行 SQL。"
         ),
         "sr_sql_placeholder": "粘贴要审查的 SQL……",
@@ -143,6 +149,8 @@ SR_I18N: dict[str, dict[str, str]] = {
         "sr_fix_need_review": "-- 请先完成一次审查",
         "sr_fix_generating": "-- 正在调用 LLM 生成修复 SQL，请稍候……",
         "sr_fix_failed": "-- 修复失败",
+        "sr_fix_none_static": "-- 没有可静态自动修复的问题；如需完整改写请切换到 LLM 审查模式",
+        "sr_cache_hit": "命中审查缓存（相同 SQL/方言/规则），跳过 LLM 调用",
         "sr_no_records": "暂无审查记录。",
         "sr_stat_reviews": "审查次数",
         "sr_stat_findings": "发现问题总数",
@@ -188,6 +196,205 @@ SR_I18N: dict[str, dict[str, str]] = {
         "sr_fix_no_sql": "模型未返回可用的修复 SQL",
     },
 }
+
+
+# English templates for linter rule texts. Finding.key selects the entry,
+# Finding.args fills the {placeholders}. Chinese stays the source language
+# on the Finding itself; these are applied at render time for lang="en".
+RULE_TEXTS_EN: dict[str, dict[str, str]] = {
+    "groupby_missing": {
+        "description": "GROUP BY is missing {cols}",
+        "impact": "Incorrect results",
+        "suggestion": "GROUP BY must include every non-aggregated column",
+    },
+    "cross_join": {
+        "description": "CROSS JOIN (Cartesian product) used",
+        "impact": "Row-count explosion",
+        "suggestion": "Confirm the Cartesian product is intended; otherwise use a JOIN with an ON condition",
+    },
+    "join_no_on": {
+        "description": "JOIN has no ON condition (Cartesian product)",
+        "impact": "Row-count explosion / wrong results",
+        "suggestion": "Add a proper ON condition to the JOIN",
+    },
+    "join_on_or": {
+        "description": "OR inside a JOIN ON condition",
+        "impact": "May cause many-to-many blowup and prevents efficient join strategies",
+        "suggestion": "Split into UNION ALL branches or rewrite the join logic",
+    },
+    "join_non_equi": {
+        "description": "Non-equi JOIN condition",
+        "impact": "May cause many-to-many row amplification",
+        "suggestion": "Verify the join keys; prefer equality joins",
+    },
+    "join_key_type": {
+        "description": "Join key type mismatch: {left} ({ltype}) = {right} ({rtype})",
+        "impact": "Implicit casts can break matches, produce wrong results, or cause skew",
+        "suggestion": "CAST both sides to a common type explicitly before joining",
+    },
+    "comma_join_style": {
+        "description": "Implicit comma join at line {line}",
+        "impact": "Join predicates hidden in WHERE hurt readability and are easy to miss",
+        "suggestion": "Rewrite as an explicit JOIN ... ON",
+    },
+    "comma_join_cartesian": {
+        "description": "Comma join with no join predicate (Cartesian product)",
+        "impact": "Row-count explosion / wrong results",
+        "suggestion": "Rewrite as an explicit JOIN ... ON with proper join keys",
+    },
+    "null_eq": {
+        "description": "NULL compared with {op}",
+        "impact": "The predicate never matches; wrong results",
+        "suggestion": "Use {fixed}",
+    },
+    "div_zero_const": {
+        "description": "Division by literal 0",
+        "impact": "Division-by-zero error",
+        "suggestion": "Fix the calculation; never divide by zero",
+    },
+    "div_no_guard": {
+        "description": "Division by {denom} without a zero guard",
+        "impact": "A zero or NULL denominator yields errors or unexpected results",
+        "suggestion": "Use / NULLIF({denom}, 0)",
+    },
+    "partition_missing": {
+        "description": "Table {table} has no partition filter",
+        "impact": "Full table scan",
+        "suggestion": "Add a partition predicate such as pt = '${{bizdate}}'",
+    },
+    "partition_numeric": {
+        "description": "Partition predicate {col} = {val} uses a numeric literal",
+        "impact": "Implicit type conversion can disable partition pruning",
+        "suggestion": "Use {col} = '{val}'",
+    },
+    "select_star": {
+        "description": "SELECT * reads every column",
+        "impact": "Unnecessary wide scan; column pruning disabled",
+        "suggestion": "Select only the columns you need",
+    },
+    "order_by_no_limit": {
+        "description": "Global ORDER BY without LIMIT",
+        "impact": "Single-reducer global sort; very slow",
+        "suggestion": "Add LIMIT, or use SORT BY / DISTRIBUTE BY",
+    },
+    "union_dedup": {
+        "description": "UNION at line {line} triggers deduplication",
+        "impact": "Extra deduplication cost",
+        "suggestion": "Use UNION ALL when deduplication is not needed",
+    },
+    "count_distinct": {
+        "description": "COUNT(DISTINCT) at line {line} can skew on large data",
+        "impact": "Single-point aggregation may skew",
+        "suggestion": "For large data, dedup with a two-stage GROUP BY then count",
+    },
+    "insert_overwrite_no_partition": {
+        "description": "INSERT OVERWRITE {table} without PARTITION",
+        "impact": "Overwrites the entire table",
+        "suggestion": "Specify PARTITION(pt='${{bizdate}}') to overwrite only the target partition",
+    },
+    "dml_no_where": {
+        "description": "{verb} {table} has no WHERE clause",
+        "impact": "Updates/deletes every row in the table",
+        "suggestion": "Add a WHERE clause; if a full-table operation is intended, state it in a comment",
+    },
+    "leading_wildcard_like": {
+        "description": "LIKE with a leading wildcard '%...'",
+        "impact": "Cannot use an index; full table scan",
+        "suggestion": "Prefer prefix matching 'xxx%', or use a full-text index",
+    },
+    "where_func_on_column": {
+        "description": "Function {func}(...) applied to a column in WHERE",
+        "impact": "Disables index usage; may cause a full scan",
+        "suggestion": "Rewrite as a range predicate computed on the constant side, e.g. col >= '...' AND col < '...'",
+    },
+    "deep_offset": {
+        "description": "Deep pagination OFFSET {off}",
+        "impact": "Scans and discards the first {off} rows; each page gets slower",
+        "suggestion": "Use keyset pagination (WHERE id > last_page_id ORDER BY id LIMIT n)",
+    },
+    "clickhouse_final": {
+        "description": "Query uses the FINAL modifier",
+        "impact": "FINAL forces merge-on-read and significantly slows queries",
+        "suggestion": "Use argMax / GROUP BY to read the latest version, or rely on background merges",
+    },
+    "readability_no_comment": {
+        "description": "Long SQL with no comments",
+        "impact": "Poor readability",
+        "suggestion": "Add comments to the complex sections",
+    },
+    "subquery_depth": {
+        "description": "Subqueries nested {depth} levels deep (threshold {max})",
+        "impact": "Deep nesting is hard to read, maintain, and optimize",
+        "suggestion": "Flatten the subqueries with WITH (CTEs)",
+    },
+    "too_many_joins": {
+        "description": "{joins} JOINs in one statement (threshold {max})",
+        "impact": "Complex execution plans that are hard to debug",
+        "suggestion": "Split into intermediate tables / CTEs",
+    },
+    "stmt_too_long": {
+        "description": "Statement is {lines} lines long (threshold {max})",
+        "impact": "Very long statements are hard to review and maintain",
+        "suggestion": "Split into multiple steps or views",
+    },
+    "distinct_with_groupby": {
+        "description": "DISTINCT together with GROUP BY at line {line}",
+        "impact": "Redundant deduplication",
+        "suggestion": "GROUP BY already deduplicates; drop DISTINCT",
+    },
+    "syntax_error": {
+        "description": "SQL parse failed: {error}",
+        "impact": "The statement is likely to fail at runtime",
+        "suggestion": "Fix the syntax error before further review",
+    },
+    "unknown_table": {
+        "description": "Table {table} not found in the provided schema",
+        "impact": "The statement will fail, or the schema info is stale",
+        "suggestion": "Check the table name, or update the DDL / connection",
+    },
+    "unknown_column": {
+        "description": "Column {column} not found in table {table}",
+        "impact": "The statement will fail, or the schema info is stale",
+        "suggestion": "Check the column name against the table definition",
+    },
+    "select_star_wide": {
+        "description": "SELECT * on {table} expands to {n} columns",
+        "impact": "Reads far more data than needed",
+        "suggestion": "Select only the columns you need",
+    },
+    "not_partition_column": {
+        "description": "{col} is filtered as a partition column but {table} is not partitioned by it",
+        "impact": "The predicate does not prune partitions",
+        "suggestion": "Filter on the table's real partition column(s): {parts}",
+    },
+    "explain_full_scan": {
+        "description": "EXPLAIN confirms a full table scan on {table}",
+        "impact": "The query does not hit an index; slow on large tables",
+        "suggestion": "Index the filter column(s), or rewrite the query to use an existing index",
+    },
+}
+
+
+def finding_texts(finding, lang: str) -> tuple[str, str, str]:
+    """(description, impact, suggestion) localized for *lang*.
+
+    Chinese is the source language stored on the Finding; English comes from
+    RULE_TEXTS_EN via finding.key/args. Findings without a key (LLM output,
+    custom rules) pass through unchanged.
+    """
+    if lang == "en" and getattr(finding, "key", ""):
+        t = RULE_TEXTS_EN.get(finding.key)
+        if t:
+            try:
+                args = finding.args or {}
+                return (
+                    t["description"].format(**args),
+                    t["impact"].format(**args),
+                    t["suggestion"].format(**args),
+                )
+            except (KeyError, IndexError):
+                pass
+    return finding.description, finding.impact, finding.suggestion
 
 
 def normalize_lang(lang: str | None) -> str:

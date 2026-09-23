@@ -73,6 +73,7 @@ class SQLReviewAgent:
         config: ReviewConfig | None = None,
         on_event: EventCallback | None = None,
         lang: str = "zh",
+        use_cache: bool = True,
     ) -> None:
         self.settings = settings
         self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
@@ -85,6 +86,8 @@ class SQLReviewAgent:
         self.console = Console()
         self._on_event = on_event
         self._system_prompt = build_review_prompt(self.dialect, store, lang=self.lang)
+        from .cache import ReviewCache, cache_enabled
+        self._cache = ReviewCache() if (use_cache and cache_enabled()) else None
 
     def _emit(self, event_type: str, data: dict[str, Any]) -> None:
         if self._on_event:
@@ -115,7 +118,30 @@ class SQLReviewAgent:
         self.messages = [{"role": "user", "content": prompt}]
         self.console.print(Panel(truncate(sql, 800), title="SQL Review", border_style="cyan"))
 
+        # ── LLM review cache: same SQL + dialect + lang + model + rules +
+        # schema → replay the stored conclusion instead of spending tokens ──
+        model = getattr(self.settings, "model_name", "") or ""
+        if self._cache is not None and not instructions:
+            hit = self._cache.get(sql, self.dialect, lang=self.lang,
+                                  model=model, config=self.config,
+                                  store=self.store)
+            if hit is not None:
+                report_md, report = hit
+                self.runtime.report = report
+                self.runtime.last_report = report_md
+                self.messages.append({"role": "assistant", "content": report_md})
+                self._emit("cache_hit", {"dialect": self.dialect})
+                self.console.print(
+                    "[dim]" + sr(self.lang, "sr_cache_hit") + "[/dim]"
+                )
+                return report_md
+
         answer = self._agent_loop()
+        if (self._cache is not None and not instructions
+                and self.runtime.report is not None and self.runtime.last_report):
+            self._cache.put(sql, self.dialect, self.runtime.report,
+                            self.runtime.last_report, lang=self.lang,
+                            model=model, config=self.config, store=self.store)
         # The prompt asks the model to echo the rendered report verbatim; if it
         # paraphrased instead, prefer the deterministic render. The markers come
         # from i18n so a wording change there cannot silently break this check.

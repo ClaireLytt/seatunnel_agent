@@ -159,14 +159,27 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             dl = no_dl
         return report, report, gr.update(visible=False), dl
 
-    def do_fix(sql: str, dialect: str, report: str, lang: str):
+    def do_fix(sql: str, dialect: str, mode: str, report: str,
+               rules_text: str, lang: str):
         sql = (sql or "").strip()
         if not sql or not report:
             return gr.update(value=sr(lang, "sr_fix_need_review"), visible=True)
         try:
-            settings = load_settings()
-            fixed = generate_fix(settings, sql, normalize_dialect(dialect),
-                                 report, lang=lang)
+            if mode == "static":
+                from .sql_review.autofix import apply_static_fixes
+                try:
+                    config = _parse_rules(rules_text)
+                except ValueError:
+                    config = None
+                fixed, applied = apply_static_fixes(
+                    sql, normalize_dialect(dialect), config=config)
+                if not applied:
+                    return gr.update(value=sr(lang, "sr_fix_none_static"),
+                                     visible=True)
+            else:
+                settings = load_settings()
+                fixed = generate_fix(settings, sql, normalize_dialect(dialect),
+                                     report, lang=lang)
         except Exception as exc:  # noqa: BLE001
             sep = ": " if lang == "en" else "："
             return gr.update(value=f"{sr(lang, 'sr_fix_failed')}{sep}{exc}",
@@ -181,21 +194,24 @@ def render_sql_review_page(app: gr.Blocks) -> None:
     # Show the (initially hidden) fixed-SQL box with a "generating…" note
     # right away — the LLM call can take tens of seconds and would otherwise
     # give no visual feedback at all.
-    def _fix_start(sql: str, report: str, lang: str):
+    def _fix_start(sql: str, mode: str, report: str, lang: str):
         if not (sql or "").strip() or not report:
             return (gr.update(value=sr(lang, "sr_fix_need_review"),
                               visible=True),
                     gr.update())
+        if mode == "static":  # instant, no LLM wait note
+            return gr.update(), gr.update(interactive=False)
         return (gr.update(value=sr(lang, "sr_fix_generating"), visible=True),
                 gr.update(interactive=False))
 
     fix_btn.click(
         _fix_start,
-        inputs=[sql_box, report_state, lang_state],
+        inputs=[sql_box, mode_radio, report_state, lang_state],
         outputs=[fixed_sql_box, fix_btn],
     ).then(
         do_fix,
-        inputs=[sql_box, dialect_dd, report_state, lang_state],
+        inputs=[sql_box, dialect_dd, mode_radio, report_state, rules_box,
+                lang_state],
         outputs=[fixed_sql_box],
     ).then(
         lambda: gr.update(interactive=True),
