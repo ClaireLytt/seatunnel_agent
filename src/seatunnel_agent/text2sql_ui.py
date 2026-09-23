@@ -758,7 +758,7 @@ def render_schema_browser_page(app=None) -> None:
             "",
         )
 
-    with gr.Column():
+    with gr.Column(elem_classes=["st-history-page"]):
         lang_state = gr.State("en")
         with gr.Row(elem_classes=["st-topbar-row"]):
             gr.HTML('<div class="st-topbar-spacer"></div>')

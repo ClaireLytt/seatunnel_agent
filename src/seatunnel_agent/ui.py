@@ -1365,21 +1365,38 @@ footer { display: none !important; }
     box-shadow: none !important;
 }
 
-/* Standalone pages (history, favorites, schema) need scrolling.
-   Only the outermost .gradio-container scrolls; everything inside is visible. */
-body:has(.st-history-page) {
+/* Standalone pages (history, favorites, schema browser, data comparison,
+   data skew) need page scrolling — mark them with .st-history-page or the
+   generic .st-scroll-page. Only the outermost .gradio-container scrolls;
+   everything inside is visible. */
+body:has(.st-history-page),
+body:has(.st-scroll-page),
+body:has(.st-hub) {
     overflow: hidden !important;
 }
-body:has(.st-history-page) .gradio-container {
+body:has(.st-history-page) .gradio-container,
+body:has(.st-scroll-page) .gradio-container,
+body:has(.st-hub) .gradio-container {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     height: 100vh !important;
 }
 body:has(.st-history-page) .gradio-container > .main,
-body:has(.st-history-page) .gradio-container > .main > .wrap {
+body:has(.st-history-page) .gradio-container > .main > .wrap,
+body:has(.st-scroll-page) .gradio-container > .main,
+body:has(.st-scroll-page) .gradio-container > .main > .wrap,
+body:has(.st-hub) .gradio-container > .main,
+body:has(.st-hub) .gradio-container > .main > .wrap {
     overflow: visible !important;
     height: auto !important;
     min-height: auto !important;
+}
+
+/* Data Comparison keeps the fixed sidebar+main layout, so the page itself
+   cannot scroll — let the main result panel scroll internally instead. */
+body:has(.st-dc-page) .st-main {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
 }
 
 /* ══════════════════════════════════════════════

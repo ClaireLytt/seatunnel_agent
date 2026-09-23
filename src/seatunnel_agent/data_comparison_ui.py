@@ -2777,6 +2777,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Layout ──
 
+    # marker: body:has(.st-dc-page) makes .st-main scroll internally
+    gr.HTML('<div class="st-dc-page" style="display:none"></div>')
+
     with gr.Row(elem_classes=["st-page-row"]):
         lang_state = gr.State("en")
 

@@ -42,8 +42,8 @@ def _err_md(exc: Exception, lang: str) -> str:
 def render_data_skew_page(app: gr.Blocks) -> None:
     t0 = lambda k: dsk(_DEFAULT_LANG, k)  # noqa: E731 — initial labels
 
-    # marker: body:has(.st-skew-page) re-enables page scrolling
-    gr.HTML('<div class="st-skew-page st-review-page" style="display:none"></div>')
+    # marker: body:has(.st-scroll-page) re-enables page scrolling
+    gr.HTML('<div class="st-scroll-page" style="display:none"></div>')
 
     with gr.Row():
         title_md = gr.Markdown(f"{t0('dsk_title')}\n{t0('dsk_subtitle')}")
