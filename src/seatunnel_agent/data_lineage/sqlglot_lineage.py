@@ -19,10 +19,6 @@ except ImportError:  # pragma: no cover — exercised via monkeypatch in tests
     exp = None
 
 
-def sqlglot_available() -> bool:
-    return sqlglot is not None
-
-
 def _top_selects(tree) -> list:
     """Top-level SELECTs feeding the target (INSERT/CTAS body, UNION branches)."""
     node = tree
@@ -78,12 +74,27 @@ def extract_column_edges(
     if not selects:
         return None
 
+    # CTE aliases are not physical tables: edges must never use them as a
+    # source (phantom nodes break impact_of_column). References to a CTE
+    # are dropped here; if nothing survives, the empty list makes the
+    # caller fall back to the CTE-aware regex tracer.
+    cte_names = {
+        cte.alias_or_name.lower()
+        for cte in tree.find_all(exp.CTE)
+        if cte.alias_or_name
+    }
+
     fallback_sole = sources[0] if len(sources) == 1 else ""
     edges: list[ColumnEdge] = []
     seen: set[tuple[str, str, str]] = set()
     for select in selects:
         mapping = _table_mapping(select)
-        sole = next(iter(mapping.values())) if len(mapping) == 1 else fallback_sole
+        if len(mapping) == 1:
+            only = next(iter(mapping.values()))
+            sole = only if only not in cte_names else fallback_sole
+        else:
+            sole = fallback_sole
+        mapping = {k: v for k, v in mapping.items() if v not in cte_names}
         for proj in select.expressions:
             out_name = proj.alias_or_name
             if not out_name or out_name == "*":

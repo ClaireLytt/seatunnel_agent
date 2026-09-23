@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import re
 
+from .config import MAX_MERMAID_NODES
 from .graph import (
     FIELD_LABELS,
     ChainResult,
@@ -16,7 +17,6 @@ from .graph import (
 )
 from .report import LineageReport
 
-MAX_MERMAID_NODES = 80
 AGGREGATE_THRESHOLD = 150
 
 LAYER_COLORS = {
@@ -232,6 +232,21 @@ def render_column_mermaid(impact: ColumnImpactResult) -> str:
     return "\n".join(lines)
 
 
+def select_mermaid(
+    chain: ChainResult | None,
+    impact: ColumnImpactResult | None,
+    max_nodes: int = MAX_MERMAID_NODES,
+    prefer_impact: bool = True,
+) -> str:
+    """Column-level graph when a usable impact result exists (and is preferred),
+    else the table-level chain graph, else empty."""
+    if prefer_impact and impact is not None and not impact.degraded and impact.edges:
+        return render_column_mermaid(impact)
+    if chain is not None and not chain.missing_root:
+        return render_mermaid(chain, max_nodes)
+    return ""
+
+
 def render_tree(chain: ChainResult) -> str:
     """Markdown indented tree fallback (upstream above root, downstream below)."""
     if chain.missing_root:
@@ -398,20 +413,6 @@ def render_health(report: HealthReport, sample: int = 30) -> str:
             lines.append(f"- …另有 {len(report.no_downstream) - sample} 张未展示")
     else:
         lines.append("没有可下线候选表。")
-    return "\n".join(lines)
-
-
-def render_node_detail(node: TableNode) -> str:
-    rows = [
-        (FIELD_LABELS["table"], node.name),
-        (FIELD_LABELS["source_type"], node.source_type or "-"),
-        (FIELD_LABELS["layer"], node.layer or "-"),
-        (FIELD_LABELS["is_sla"], "是" if node.is_sla else "否"),
-        (FIELD_LABELS["sla_time"], node.sla_time or "-"),
-        (FIELD_LABELS["baselines"], "、".join(node.baselines) or "-"),
-    ]
-    lines = ["| 属性 | 值 |", "| --- | --- |"]
-    lines.extend(f"| {k} | {v} |" for k, v in rows)
     return "\n".join(lines)
 
 

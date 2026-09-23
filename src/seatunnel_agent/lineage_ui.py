@@ -38,6 +38,9 @@ from .data_lineage.snapshot import (
     render_diff_markdown,
     save_snapshot,
 )
+from .ui import EventCollector
+
+_logger = LineageLogger()
 
 _I18N = {
     "en": {
@@ -183,6 +186,15 @@ _PHASE_LABELS = {
 }
 
 
+def _log_ui(start: float, graph: LineageGraph, *, query: str, mode: str,
+            direction: str = "", chain_stats: dict | None = None) -> None:
+    _logger.log(
+        query=query, direction=direction, mode=mode, source="ui",
+        graph_stats=graph.stats(), chain_stats=chain_stats,
+        elapsed_ms=int((time.time() - start) * 1000),
+    )
+
+
 def _lt(lang: str, key: str) -> str:
     return _I18N.get(lang, _I18N["en"]).get(key, _I18N["en"].get(key, key))
 
@@ -225,10 +237,10 @@ def _snapshot_choices() -> list[tuple[str, str]]:
 
 def _not_found_md(graph: LineageGraph, table: str, lang: str) -> str:
     msg = _lt(lang, "not_found").format(table=table)
-    suggestions = graph.search(table.rsplit(".", 1)[-1])
+    suggestions = graph.suggest(table, 10)
     if suggestions:
         msg += f"\n\n{_lt(lang, 'similar')}\n" + "\n".join(
-            f"- `{n.name}`" for n in suggestions[:10]
+            f"- `{name}`" for name in suggestions
         )
     return msg
 
@@ -336,7 +348,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
                 snap_name_box = gr.Textbox(label=t("snap_name_label"))
                 save_snap_btn = gr.Button(t("save_snap_btn"), size="sm")
                 snap_dd = gr.Dropdown(
-                    choices=_snapshot_choices(), value=None,
+                    choices=[], value=None,
                     label=t("snap_dd_label"),
                 )
                 diff_snap_btn = gr.Button(t("diff_snap_btn"), size="sm")
@@ -406,14 +418,12 @@ def render_lineage_page(app: gr.Blocks) -> None:
         chain = report.chain
         if chain and chain.missing_root:
             return _no_graph_html(lang), _not_found_md(graph, table, lang), ""
-        LineageLogger().log(
-            query=table, direction=direction, mode="static", source="ui",
-            graph_stats=graph.stats(),
+        _log_ui(
+            start, graph, query=table, direction=direction, mode="static",
             chain_stats={
                 "upstream": chain.upstream_count if chain else 0,
                 "downstream": chain.downstream_count if chain else 0,
             },
-            elapsed_ms=int((time.time() - start) * 1000),
         )
         return (
             _mermaid_iframe(report.mermaid, lang),
@@ -464,11 +474,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
                 return gr.update(), _not_found_md(graph, name, lang), gr.update()
         start = time.time()
         path = graph.path_between(src, dst)
-        LineageLogger().log(
-            query=f"{src}->{dst}", mode="path", source="ui",
-            graph_stats=graph.stats(),
-            elapsed_ms=int((time.time() - start) * 1000),
-        )
+        _log_ui(start, graph, query=f"{src}->{dst}", mode="path")
         mermaid = render_path_mermaid(path, graph) if path else ""
         return (
             _mermaid_iframe(mermaid, lang) if mermaid else gr.update(),
@@ -485,20 +491,16 @@ def render_lineage_page(app: gr.Blocks) -> None:
             return gr.update(), _lt(lang, "need_table"), gr.update()
         start = time.time()
         config = load_lineage_config()
-        # 报表和图使用同一深度，否则报表列出的表可能不在图中
+        # 报表和图使用同一深度（同一次 BFS 结果），否则报表列出的表可能不在图中
+        chain = graph.downstream_of(table, int(depth), config.max_nodes)
         impact = graph.sla_impact(
             table, float(delay or 0), depth=int(depth),
-            max_nodes=config.max_nodes,
+            max_nodes=config.max_nodes, chain=chain,
         )
         if impact.missing_root:
             return gr.update(), _not_found_md(graph, table, lang), gr.update()
-        chain = graph.downstream_of(table, int(depth), config.max_nodes)
         mermaid = render_mermaid(chain, config.max_mermaid_nodes)
-        LineageLogger().log(
-            query=table, mode="sla", source="ui",
-            graph_stats=graph.stats(),
-            elapsed_ms=int((time.time() - start) * 1000),
-        )
+        _log_ui(start, graph, query=table, mode="sla")
         return (
             _mermaid_iframe(mermaid, lang),
             render_sla_impact(impact),
@@ -510,11 +512,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
             return _lt(lang, "need_graph")
         start = time.time()
         report = graph.health_check()
-        LineageLogger().log(
-            query="health_check", mode="health", source="ui",
-            graph_stats=graph.stats(),
-            elapsed_ms=int((time.time() - start) * 1000),
-        )
+        _log_ui(start, graph, query="health_check", mode="health")
         return render_health(report)
 
     def do_save_snap(graph: LineageGraph | None, name: str, lang: str):
@@ -568,14 +566,9 @@ def render_lineage_page(app: gr.Blocks) -> None:
             yield _lt(lang, "need_graph"), gr.update(), gr.update()
             return
 
-        events: list[dict] = []
-        lock = threading.Lock()
+        collector = EventCollector()
         done = threading.Event()
         result: dict = {}
-
-        def on_event(event_type: str, data: dict) -> None:
-            with lock:
-                events.append({"type": event_type, **data})
 
         def worker() -> None:
             try:
@@ -587,7 +580,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
                     hive_available=use_hive,
                     meta_table=(meta_table or "").strip() or None,
                     partition=(partition or "").strip() or None,
-                    on_event=on_event,
+                    on_event=collector.on_event,
                 )
                 result["answer"] = agent.analyze(question)
                 result["mermaid"] = agent.runtime.last_mermaid
@@ -600,18 +593,12 @@ def render_lineage_page(app: gr.Blocks) -> None:
         threading.Thread(target=worker, daemon=True).start()
         yield _lt(lang, "agent_running"), gr.update(), gr.update()
         while not done.wait(0.4):
-            with lock:
-                snapshot = list(events)
-            yield _fmt_agent_events(snapshot, lang), gr.update(), gr.update()
+            yield _fmt_agent_events(collector.snapshot(), lang), gr.update(), gr.update()
 
         if "error" in result:
             yield _err_md(result["error"], lang), gr.update(), gr.update()
             return
-        LineageLogger().log(
-            query=question, mode="agent", source="ui",
-            graph_stats=graph.stats(),
-            elapsed_ms=int((time.time() - start) * 1000),
-        )
+        _log_ui(start, graph, query=question, mode="agent")
         answer = result.get("answer", "")
         mermaid = result.get("mermaid", "")
         if mermaid:
@@ -721,4 +708,9 @@ def render_lineage_page(app: gr.Blocks) -> None:
         inputs=[graph_state, ask_box, sql_dir_box, st_dir_box, use_hive_cb,
                 meta_table_box, partition_box, lang_state],
         outputs=[answer_md, mermaid_frame, mermaid_src_box],
+    )
+    # Snapshot listing reads every snapshot JSON — defer it off server startup
+    # to page load so building the app stays cheap.
+    app.load(
+        lambda: gr.update(choices=_snapshot_choices()), outputs=[snap_dd],
     )

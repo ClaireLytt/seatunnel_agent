@@ -15,10 +15,11 @@ The graph comes from the process-wide lazy cache shared with SQL Review
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
 
+from ..data_lineage.config import COLUMN_IMPACT_DEPTH, MAX_DEPTH
 from ..sql_review.lineage_context import get_lineage_graph
+from ..utils import safe_json
 
 if TYPE_CHECKING:
     from ..data_lineage.graph import LineageGraph
@@ -48,7 +49,7 @@ TOOL_DEFINITION: dict[str, Any] = {
 def trace_common_upstream(
     table_a: str,
     table_b: str,
-    depth: int = 5,
+    depth: int = COLUMN_IMPACT_DEPTH,
     graph: "LineageGraph | None" = None,
 ) -> dict[str, Any]:
     """Common upstream of two tables, or an ``error`` dict when unavailable."""
@@ -63,16 +64,21 @@ def trace_common_upstream(
             return {"error": hint}
 
     try:
-        depth = max(1, min(int(depth), 10))
+        depth = max(1, min(int(depth), MAX_DEPTH))
     except (TypeError, ValueError):
-        depth = 5
+        depth = COLUMN_IMPACT_DEPTH
+
+    def _missing(name: str) -> dict[str, Any]:
+        suggestions = graph.suggest(name)
+        hint = f"，相近的表：{', '.join(suggestions)}" if suggestions else ""
+        return {"error": f"血缘图中不存在表 {name}{hint}"}
 
     up_a = graph.upstream_of(table_a, depth=depth)
     if up_a.missing_root:
-        return {"error": f"血缘图中不存在表 {table_a}"}
+        return _missing(table_a)
     up_b = graph.upstream_of(table_b, depth=depth)
     if up_b.missing_root:
-        return {"error": f"血缘图中不存在表 {table_b}"}
+        return _missing(table_b)
 
     common = sorted((set(up_a.nodes) & set(up_b.nodes)) - {up_a.root, up_b.root})
     entries = []
@@ -106,13 +112,13 @@ def trace_common_upstream(
 
 def execute_lineage_link_tool(name: str, tool_input: dict[str, Any]) -> str:
     if name != TOOL_DEFINITION["name"]:
-        return json.dumps({"error": f"Unknown tool: {name}"}, ensure_ascii=False)
+        return safe_json({"error": f"Unknown tool: {name}"})
     try:
         result = trace_common_upstream(
             str(tool_input.get("table_a") or ""),
             str(tool_input.get("table_b") or ""),
-            depth=tool_input.get("depth") or 5,
+            depth=tool_input.get("depth") or COLUMN_IMPACT_DEPTH,
         )
     except Exception as exc:  # noqa: BLE001 — tool errors go back as JSON
         result = {"error": f"trace_common_upstream failed: {exc}"}
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return safe_json(result)

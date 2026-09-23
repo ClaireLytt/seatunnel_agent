@@ -24,6 +24,14 @@ _CACHE_VERSION = 2
 _UNSAFE_RE = re.compile(r"[^\w.\-]")
 
 
+def atomic_write_json(path: Path, doc: dict) -> None:
+    """tmp-write + rename so readers never see a half-written JSON file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)
+
+
 def cache_ttl() -> int:
     raw = os.getenv("LINEAGE_CACHE_TTL", "").strip()
     if not raw:
@@ -196,10 +204,7 @@ def save_file_fragment(
         doc = graph_to_dict(graph)
         doc["mtime_ns"] = stat.st_mtime_ns
         doc["size"] = stat.st_size
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cache_path.with_suffix(".tmp")
-        tmp.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(cache_path)
+        atomic_write_json(cache_path, doc)
     except OSError:
         pass
 
@@ -215,12 +220,6 @@ def save_cached_graph(
         return
     path = _cache_path(meta_table, partition, base)
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps(graph_to_dict(graph), ensure_ascii=False),
-            encoding="utf-8",
-        )
-        tmp.replace(path)
+        atomic_write_json(path, graph_to_dict(graph))
     except OSError:
         pass

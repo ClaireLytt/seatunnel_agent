@@ -146,8 +146,7 @@ def _qualify(table: str, database: str) -> str:
     return f"{database}.{table}"
 
 
-def _plugin_tables(body: str, allow_query: bool) -> list[str]:
-    pairs = _kv_pairs(body)
+def _plugin_tables(pairs: list[tuple[str, str]], allow_query: bool) -> list[str]:
     database = next(
         (v for k, v in pairs if k in _DATABASE_KEYS and v), ""
     ).strip().strip("`")
@@ -184,19 +183,24 @@ def _load_config(graph: LineageGraph, text: str, origin: str) -> None:
         role = section.lower()
         if role == "transform":
             for plugin, plugin_body in _blocks(body):
-                pairs = dict(_kv_pairs(plugin_body))
+                pairs_list = _kv_pairs(plugin_body)
+                pairs = dict(pairs_list)
                 transforms.append({
                     "plugin": plugin,
                     "body": plugin_body,
                     "source_name": pairs.get("source_table_name", ""),
                     "result_name": pairs.get("result_table_name", ""),
+                    "query": next(
+                        (v for k, v in pairs_list if k in _QUERY_KEYS and v), ""
+                    ),
                 })
             continue
         if role not in ("source", "sink"):
             continue
         for plugin, plugin_body in _blocks(body):
-            pairs = dict(_kv_pairs(plugin_body))
-            for table in _plugin_tables(plugin_body, allow_query=(role == "source")):
+            pairs_list = _kv_pairs(plugin_body)
+            pairs = dict(pairs_list)
+            for table in _plugin_tables(pairs_list, allow_query=(role == "source")):
                 if role == "source":
                     sources.append((table, plugin))
                     source_infos.append({
@@ -283,9 +287,7 @@ def _transform_column_edges(
             ))
     if edges:
         return edges
-    query = next(
-        (v for k, v in _kv_pairs(tr["body"]) if k in _QUERY_KEYS and v), ""
-    )
+    query = tr["query"]
     if not query:
         return []
     parsed = extract_column_edges(query, target=dst, sources=[src])

@@ -21,10 +21,10 @@ from ..config import Settings
 from ..context import truncate_messages
 from ..llm import LLMClient
 from ..utils import truncate
-from .config import LineageConfig
+from .config import COLUMN_IMPACT_DEPTH, LineageConfig
 from .graph import LineageGraph
 from .prompts import build_lineage_prompt
-from .render import render_column_mermaid, render_mermaid, render_report
+from .render import select_mermaid
 from .report import LineageReport
 from .tools import TOOL_DEFINITIONS, LineageRuntime, execute_lineage_tool
 
@@ -55,14 +55,11 @@ def static_lineage(
 
     impact = None
     if column and not chain.missing_root:
-        impact = graph.impact_of_column(table, column, depth=5, max_nodes=config.max_nodes)
+        impact = graph.impact_of_column(
+            table, column, depth=COLUMN_IMPACT_DEPTH, max_nodes=config.max_nodes,
+        )
 
-    if impact and not impact.degraded and impact.edges:
-        mermaid = render_column_mermaid(impact)
-    elif not chain.missing_root:
-        mermaid = render_mermaid(chain, config.max_mermaid_nodes)
-    else:
-        mermaid = ""
+    mermaid = select_mermaid(chain, impact, config.max_mermaid_nodes)
 
     return LineageReport(
         root_table=chain.root,
@@ -119,13 +116,7 @@ class LineageAgent:
         question = question.strip()
         if not question:
             return "请提供要分析的血缘问题。"
-        # Fresh question — drop per-question state so a previous question's
-        # chain/impact never leaks into this report.
-        self.runtime.last_chain = None
-        self.runtime.last_impact = None
-        self.runtime.last_report = ""
-        self.runtime.last_mermaid = ""
-        self.runtime.report = None
+        self.runtime.reset_question_state()
         self.messages = [{"role": "user", "content": question}]
         self.console.print(Panel(truncate(question, 800), title="Lineage", border_style="cyan"))
 
@@ -140,13 +131,8 @@ class LineageAgent:
         """Follow-up conversation about the loaded lineage graph."""
         if not self.messages:
             return self.analyze(message)
-        # 追问是新的问题：清掉上一轮的 per-question 状态（尤其 last_impact，
-        # 否则旧的列级影响会混进新报告），但保留图和对话历史。
-        self.runtime.last_chain = None
-        self.runtime.last_impact = None
-        self.runtime.last_report = ""
-        self.runtime.last_mermaid = ""
-        self.runtime.report = None
+        # 追问是新的问题：清掉上一轮的 per-question 状态，保留图和对话历史。
+        self.runtime.reset_question_state()
         self.messages.append({"role": "user", "content": message})
         self.console.print(Panel(message, title="Lineage", border_style="cyan"))
         return self._agent_loop()
@@ -154,11 +140,7 @@ class LineageAgent:
     def reset(self) -> None:
         """Clear the conversation; the loaded graph is kept."""
         self.messages = []
-        self.runtime.last_chain = None
-        self.runtime.last_impact = None
-        self.runtime.last_report = ""
-        self.runtime.last_mermaid = ""
-        self.runtime.report = None
+        self.runtime.reset_question_state()
 
     # ------------------------------------------------------------------
     # Core ReAct loop

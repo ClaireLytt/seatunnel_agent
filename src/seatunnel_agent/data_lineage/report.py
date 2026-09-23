@@ -8,6 +8,14 @@ from typing import Any
 from .graph import ChainResult, ColumnImpactResult, TableNode
 
 
+def sla_nodes_of(chain: ChainResult) -> list[TableNode]:
+    return [n for _, n in sorted(chain.nodes.items()) if n.is_sla]
+
+
+def baseline_nodes_of(chain: ChainResult) -> list[TableNode]:
+    return [n for _, n in sorted(chain.nodes.items()) if n.baselines]
+
+
 @dataclass
 class LineageReport:
     root_table: str
@@ -21,13 +29,9 @@ class LineageReport:
 
     def __post_init__(self) -> None:
         if self.chain and not self.sla_nodes:
-            self.sla_nodes = [
-                n for _, n in sorted(self.chain.nodes.items()) if n.is_sla
-            ]
+            self.sla_nodes = sla_nodes_of(self.chain)
         if self.chain and not self.baseline_nodes:
-            self.baseline_nodes = [
-                n for _, n in sorted(self.chain.nodes.items()) if n.baselines
-            ]
+            self.baseline_nodes = baseline_nodes_of(self.chain)
 
     def stats(self) -> dict[str, int]:
         if not self.chain:

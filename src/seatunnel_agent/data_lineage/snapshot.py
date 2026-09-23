@@ -14,11 +14,14 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .cache import graph_from_dict, graph_to_dict
+from .cache import _UNSAFE_RE, atomic_write_json, graph_from_dict, graph_to_dict
 from .graph import LineageGraph
 
-_UNSAFE_RE = re.compile(r"[^\w.\-]")
 _DEFAULT_NAME = "snapshot"
+# Collision-counter suffix appended by save_snapshot (name_1, name_2 ...).
+_COUNTER_SUFFIX_RE = re.compile(r"_\d+\Z")
+# Max items listed per section in the diff markdown.
+_DIFF_SAMPLE_LIMIT = 50
 
 
 def snapshot_dir(base: str | Path = "logs") -> Path:
@@ -34,7 +37,6 @@ def save_snapshot(
     graph: LineageGraph, name: str = "", base: str | Path = "logs"
 ) -> Path:
     directory = snapshot_dir(base)
-    directory.mkdir(parents=True, exist_ok=True)
     stamp = time.strftime("%Y%m%d_%H%M%S")
     safe = _safe_name(name)
     path = directory / f"{stamp}__{safe}.json"
@@ -44,8 +46,8 @@ def save_snapshot(
         counter += 1
     doc = graph_to_dict(graph)
     doc["saved_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-    doc["name"] = _safe_name(name) if name.strip() else ""
-    path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    doc["name"] = safe if name.strip() else ""
+    atomic_write_json(path, doc)
     return path
 
 
@@ -91,11 +93,23 @@ def load_snapshot(
     if direct.is_file():
         candidates.append(direct)
     else:
+        safe = _safe_name(name)
+        # Exact stem match preferred; the collision-counter suffix that
+        # save_snapshot appends (name_1, name_2 ...) must stay loadable too.
+        fallback: Path | None = None
         for p in sorted(directory.glob("*.json"), reverse=True):
             stem_name = p.stem.split("__", 1)[-1]
-            if stem_name == _safe_name(name):
+            if stem_name == safe:
                 candidates.append(p)
                 break
+            if (
+                fallback is None
+                and stem_name.startswith(safe)
+                and _COUNTER_SUFFIX_RE.fullmatch(stem_name[len(safe):])
+            ):
+                fallback = p
+        if not candidates and fallback is not None:
+            candidates.append(fallback)
     for path in candidates:
         try:
             doc = json.loads(path.read_text(encoding="utf-8"))
@@ -158,14 +172,15 @@ def render_diff_markdown(diff: dict[str, Any]) -> str:
         items = diff.get(key) or []
         if items:
             lines.append(f"\n### {label}（{len(items)}）")
-            lines.extend(f"- `{item}`" for item in items[:50])
-            if len(items) > 50:
-                lines.append(f"- …（其余 {len(items) - 50} 条省略）")
+            lines.extend(f"- `{item}`" for item in items[:_DIFF_SAMPLE_LIMIT])
+            if len(items) > _DIFF_SAMPLE_LIMIT:
+                lines.append(f"- …（其余 {len(items) - _DIFF_SAMPLE_LIMIT} 条省略）")
     changes = diff.get("confidence_changes") or []
     if changes:
         lines.append(f"\n### 置信度变化（{len(changes)}）")
         lines.extend(
-            f"- `{c['edge']}`：{c['old']} → {c['new']}" for c in changes[:50]
+            f"- `{c['edge']}`：{c['old']} → {c['new']}"
+            for c in changes[:_DIFF_SAMPLE_LIMIT]
         )
     if not any(diff.get(k) for k, _ in sections) and not changes:
         lines.append("\n无变化。")

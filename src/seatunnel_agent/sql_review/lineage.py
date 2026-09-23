@@ -13,7 +13,10 @@ from .linter import _cte_names, _extract_table_refs, clean_sql
 from .report import TableLineage
 
 _INSERT_TARGET_RE = re.compile(
+    # INSERT OVERWRITE [LOCAL] DIRECTORY '/path' writes to a filesystem
+    # path, not a table — the lookahead keeps those keywords out of targets.
     r"\binsert\s+(?:overwrite\s+(?:table\s+)?|into\s+(?:table\s+)?)"
+    r"(?!(?:local\s+)?directory\b)"
     r"([`\"]?\w+[`\"]?(?:\.[`\"]?\w+[`\"]?)?)",
     re.IGNORECASE,
 )

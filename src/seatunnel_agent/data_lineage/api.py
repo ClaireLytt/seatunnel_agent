@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from ..config import load_settings
 from .agent import LineageAgent, static_lineage
-from .config import load_lineage_config
+from .config import DEFAULT_DEPTH, DIRECTIONS, MAX_DEPTH, load_lineage_config
 from .loaders import build_graph
 from .render import (
     render_health,
@@ -32,20 +32,23 @@ from .rlog import LineageLogger
 
 router = APIRouter(prefix="/api/lineage", tags=["lineage"])
 
-_DIRECTIONS = ("upstream", "downstream", "both")
+_logger = LineageLogger()
 
 
-class QueryRequest(BaseModel):
-    table: str = Field(..., min_length=1, description="目标表，如 zz.dwm_orders_df")
-    direction: str = Field("both", description="upstream | downstream | both")
-    depth: int = Field(3, ge=1, le=10, description="遍历深度")
-    column: str | None = Field(None, description="可选：字段级影响分析的字段名")
+class SourceRequest(BaseModel):
     sql_dir: str | None = Field(None, description="从该目录的 *.sql 文件构建血缘图")
     seatunnel_dir: str | None = Field(None, description="从该目录的 SeaTunnel 配置构建血缘图")
     use_hive: bool = Field(False, description="从 Hive 元数据血缘表构建")
     meta_table: str | None = Field(None, description="覆盖血缘元数据表名")
     partition: str | None = Field(None, description="覆盖 pt 分区（默认最新）")
     use_cache: bool = Field(True, description="使用 Hive 血缘图的本地 TTL 缓存")
+
+
+class QueryRequest(SourceRequest):
+    table: str = Field(..., min_length=1, description="目标表，如 zz.dwm_orders_df")
+    direction: str = Field("both", description="upstream | downstream | both")
+    depth: int = Field(DEFAULT_DEPTH, ge=1, le=MAX_DEPTH, description="遍历深度")
+    column: str | None = Field(None, description="可选：字段级影响分析的字段名")
 
 
 class QueryResponse(BaseModel):
@@ -57,15 +60,6 @@ class QueryResponse(BaseModel):
     column_impact: dict[str, Any] | None = None
     warnings: list[str]
     elapsed_ms: int
-
-
-class SourceRequest(BaseModel):
-    sql_dir: str | None = Field(None, description="从该目录的 *.sql 文件构建血缘图")
-    seatunnel_dir: str | None = Field(None, description="从该目录的 SeaTunnel 配置构建血缘图")
-    use_hive: bool = Field(False, description="从 Hive 元数据血缘表构建")
-    meta_table: str | None = Field(None, description="覆盖血缘元数据表名")
-    partition: str | None = Field(None, description="覆盖 pt 分区（默认最新）")
-    use_cache: bool = Field(True, description="使用 Hive 血缘图的本地 TTL 缓存")
 
 
 class SnapshotRequest(SourceRequest):
@@ -84,17 +78,11 @@ class PathRequest(SourceRequest):
 class SlaImpactRequest(SourceRequest):
     table: str = Field(..., min_length=1, description="延迟的表")
     delay_hours: float = Field(0.0, ge=0, description="假设延迟小时数")
-    depth: int = Field(10, ge=1, le=10, description="遍历深度")
+    depth: int = Field(MAX_DEPTH, ge=1, le=MAX_DEPTH, description="遍历深度")
 
 
-class AnalyzeRequest(BaseModel):
+class AnalyzeRequest(SourceRequest):
     question: str = Field(..., min_length=1, description="自然语言血缘问题")
-    sql_dir: str | None = Field(None, description="从该目录的 *.sql 文件构建血缘图")
-    seatunnel_dir: str | None = Field(None, description="从该目录的 SeaTunnel 配置构建血缘图")
-    use_hive: bool = Field(False, description="从 Hive 元数据血缘表构建")
-    meta_table: str | None = Field(None, description="覆盖血缘元数据表名")
-    partition: str | None = Field(None, description="覆盖 pt 分区（默认最新）")
-    use_cache: bool = Field(True, description="使用 Hive 血缘图的本地 TTL 缓存")
 
 
 class AnalyzeResponse(BaseModel):
@@ -152,13 +140,40 @@ def _build(req: QueryRequest | AnalyzeRequest | SourceRequest):
         raise HTTPException(status_code=400, detail=f"血缘图构建失败: {exc}")
 
 
+def _missing_404(graph, name: str) -> HTTPException:
+    return HTTPException(
+        status_code=404,
+        detail={
+            "message": f"表 '{name}' 不在血缘图中",
+            "suggestions": graph.suggest(name),
+        },
+    )
+
+
+def _log_elapsed(
+    start: float,
+    graph_stats: dict[str, Any],
+    *,
+    query: str,
+    mode: str,
+    direction: str = "",
+    chain_stats: dict[str, int] | None = None,
+) -> int:
+    elapsed_ms = int((time.time() - start) * 1000)
+    _logger.log(
+        query=query, direction=direction, mode=mode, source="api",
+        graph_stats=graph_stats, chain_stats=chain_stats, elapsed_ms=elapsed_ms,
+    )
+    return elapsed_ms
+
+
 @router.post("/query", response_model=QueryResponse)
 def query(req: QueryRequest) -> QueryResponse:
     start = time.time()
-    if req.direction not in _DIRECTIONS:
+    if req.direction not in DIRECTIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"direction 必须是 {', '.join(_DIRECTIONS)} 之一",
+            detail=f"direction 必须是 {', '.join(DIRECTIONS)} 之一",
         )
     graph, warnings = _build(req)
     config = load_lineage_config()
@@ -168,28 +183,22 @@ def query(req: QueryRequest) -> QueryResponse:
     )
     chain = report.chain
     if chain and chain.missing_root:
-        suggestions = [n.name for n in graph.search(req.table.rsplit(".", 1)[-1])]
-        raise HTTPException(
-            status_code=404,
-            detail={"message": f"表 '{req.table}' 不在血缘图中", "suggestions": suggestions},
-        )
+        raise _missing_404(graph, req.table)
 
-    elapsed_ms = int((time.time() - start) * 1000)
-    LineageLogger().log(
-        query=req.table, direction=req.direction, mode="static", source="api",
-        graph_stats=graph.stats(),
+    graph_stats = graph.stats()
+    elapsed_ms = _log_elapsed(
+        start, graph_stats, query=req.table, direction=req.direction, mode="static",
         chain_stats={
             "upstream": chain.upstream_count if chain else 0,
             "downstream": chain.downstream_count if chain else 0,
         },
-        elapsed_ms=elapsed_ms,
     )
     return QueryResponse(
         report=render_report(report),
         mermaid=report.mermaid,
         nodes={k: v.to_dict() for k, v in (chain.nodes if chain else {}).items()},
         edges=[list(e) for e in (chain.edges if chain else [])],
-        stats={**report.stats(), "graph": graph.stats()},
+        stats={**report.stats(), "graph": graph_stats},
         column_impact=report.column_impact.to_dict() if report.column_impact else None,
         warnings=warnings,
         elapsed_ms=elapsed_ms,
@@ -202,18 +211,10 @@ def find_path(req: PathRequest) -> dict[str, Any]:
     graph, warnings = _build(req)
     for name in (req.src, req.dst):
         if graph.get(name) is None:
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "message": f"表 '{name}' 不在血缘图中",
-                    "suggestions": [n.name for n in graph.search(name.rsplit(".", 1)[-1])],
-                },
-            )
+            raise _missing_404(graph, name)
     path = graph.path_between(req.src, req.dst)
-    elapsed_ms = int((time.time() - start) * 1000)
-    LineageLogger().log(
-        query=f"{req.src}->{req.dst}", mode="path", source="api",
-        graph_stats=graph.stats(), elapsed_ms=elapsed_ms,
+    elapsed_ms = _log_elapsed(
+        start, graph.stats(), query=f"{req.src}->{req.dst}", mode="path",
     )
     return {
         "found": path is not None,
@@ -232,18 +233,8 @@ def sla_impact(req: SlaImpactRequest) -> dict[str, Any]:
     graph, warnings = _build(req)
     impact = graph.sla_impact(req.table, req.delay_hours, req.depth)
     if impact.missing_root:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "message": f"表 '{req.table}' 不在血缘图中",
-                "suggestions": [n.name for n in graph.search(req.table.rsplit(".", 1)[-1])],
-            },
-        )
-    elapsed_ms = int((time.time() - start) * 1000)
-    LineageLogger().log(
-        query=req.table, mode="sla", source="api",
-        graph_stats=graph.stats(), elapsed_ms=elapsed_ms,
-    )
+        raise _missing_404(graph, req.table)
+    elapsed_ms = _log_elapsed(start, graph.stats(), query=req.table, mode="sla")
     return {
         **impact.to_dict(),
         "markdown": render_sla_impact(impact),
@@ -257,11 +248,7 @@ def health_check(req: SourceRequest) -> dict[str, Any]:
     start = time.time()
     graph, warnings = _build(req)
     report = graph.health_check()
-    elapsed_ms = int((time.time() - start) * 1000)
-    LineageLogger().log(
-        query="health_check", mode="health", source="api",
-        graph_stats=graph.stats(), elapsed_ms=elapsed_ms,
-    )
+    elapsed_ms = _log_elapsed(start, graph.stats(), query="health_check", mode="health")
     return {
         **report.to_dict(),
         "markdown": render_health(report),
@@ -280,14 +267,13 @@ def save_snapshot_endpoint(req: SnapshotRequest) -> dict[str, Any]:
         path = save_snapshot(graph, name=req.name)
     except OSError as exc:
         raise HTTPException(status_code=500, detail=f"快照保存失败: {exc}")
-    elapsed_ms = int((time.time() - start) * 1000)
-    LineageLogger().log(
-        query=req.name or path.name, mode="snapshot", source="api",
-        graph_stats=graph.stats(), elapsed_ms=elapsed_ms,
+    graph_stats = graph.stats()
+    elapsed_ms = _log_elapsed(
+        start, graph_stats, query=req.name or path.name, mode="snapshot",
     )
     return {
         "file": path.name,
-        "stats": graph.stats(),
+        "stats": graph_stats,
         "warnings": warnings,
         "elapsed_ms": elapsed_ms,
     }
@@ -305,10 +291,8 @@ def snapshot_diff(req: SnapshotDiffRequest) -> dict[str, Any]:
             status_code=404, detail=f"找不到快照 '{req.snapshot}'"
         )
     diff = diff_graphs(old_graph, graph)
-    elapsed_ms = int((time.time() - start) * 1000)
-    LineageLogger().log(
-        query=req.snapshot, mode="snapshot_diff", source="api",
-        graph_stats=graph.stats(), elapsed_ms=elapsed_ms,
+    elapsed_ms = _log_elapsed(
+        start, graph.stats(), query=req.snapshot, mode="snapshot_diff",
     )
     return {
         **diff,
@@ -334,15 +318,12 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Agent execution failed: {exc}")
 
-    elapsed_ms = int((time.time() - start) * 1000)
-    LineageLogger().log(
-        query=req.question, mode="agent", source="api",
-        graph_stats=graph.stats(), elapsed_ms=elapsed_ms,
-    )
+    graph_stats = graph.stats()
+    elapsed_ms = _log_elapsed(start, graph_stats, query=req.question, mode="agent")
     return AnalyzeResponse(
         answer=answer,
         mermaid=agent.runtime.last_mermaid,
-        stats=graph.stats(),
+        stats=graph_stats,
         warnings=warnings,
         elapsed_ms=elapsed_ms,
     )

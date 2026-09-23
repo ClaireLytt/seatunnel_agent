@@ -24,7 +24,6 @@ from seatunnel_agent.data_lineage.render import (
     mermaid_id,
     render_column_mermaid,
     render_mermaid,
-    render_node_detail,
     render_report,
     render_tree,
 )
@@ -523,16 +522,6 @@ def test_render_tree_upstream_nearest_first_zero_indent():
     lines = render_tree(g.upstream_of("root", depth=5)).splitlines()
     assert lines[0] == "- ⬆ `near`"  # no leading spaces → never a code block
     assert lines[1] == "  - ⬆ `far`"
-
-
-def test_render_node_detail_chinese_labels():
-    g = LineageGraph()
-    node = g.add_node("zz.t", layer="dws", is_sla=True, sla_time="07:00",
-                      baselines=["核心基线"])
-    md = render_node_detail(node)
-    for label in ("表分层", "是否在SLA", "SLA产出时间", "所在基线"):
-        assert label in md
-    assert "核心基线" in md
 
 
 def test_render_report_sections(fixture_graph):
@@ -1158,13 +1147,10 @@ def test_build_graph_no_cache_forces_refresh(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 from seatunnel_agent.data_lineage import sqlglot_lineage as _sgl
-from seatunnel_agent.data_lineage.sqlglot_lineage import (
-    extract_column_edges,
-    sqlglot_available,
-)
+from seatunnel_agent.data_lineage.sqlglot_lineage import extract_column_edges
 
 needs_sqlglot = pytest.mark.skipif(
-    not sqlglot_available(), reason="sqlglot 未安装（pip install .[lineage]）"
+    _sgl.sqlglot is None, reason="sqlglot 未安装（pip install .[lineage]）"
 )
 
 

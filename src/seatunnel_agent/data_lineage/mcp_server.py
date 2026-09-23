@@ -14,11 +14,9 @@ import json
 from typing import Any, Callable
 
 from .agent import static_lineage
-from .config import load_lineage_config
+from .config import DIRECTIONS, MAX_DEPTH, load_lineage_config
 from .loaders import build_graph
 from .render import render_health, render_path, render_report, render_sla_impact
-
-_DIRECTIONS = ("upstream", "downstream", "both")
 
 _INSTRUCTIONS = (
     "数据表全链路血缘分析：上下游链路、字段级影响、最短路径、SLA 延迟影响、"
@@ -47,7 +45,7 @@ def build_tool_functions(
         return state["graph"]
 
     def _missing(g, table: str) -> str:
-        names = [n.name for n in g.search(table.rsplit(".", 1)[-1])]
+        names = g.suggest(table)
         hint = f"，相近的表：{', '.join(names)}" if names else ""
         return f"表 '{table}' 不在血缘图中{hint}"
 
@@ -57,8 +55,8 @@ def build_tool_functions(
     ) -> str:
         """查询表的上下游血缘链路，返回中文 Markdown 报告（含 mermaid 图）。
         direction: upstream / downstream / both；column 可选，做字段级影响分析。"""
-        if direction not in _DIRECTIONS:
-            return f"direction 必须是 {', '.join(_DIRECTIONS)} 之一"
+        if direction not in DIRECTIONS:
+            return f"direction 必须是 {', '.join(DIRECTIONS)} 之一"
         g = _graph()
         report = static_lineage(
             g, table, direction, depth, column=column, config=load_lineage_config()
@@ -76,7 +74,7 @@ def build_tool_functions(
         return render_path(g.path_between(src, dst), src, dst, g)
 
     def lineage_sla_impact(
-        table: str, delay_hours: float = 0.0, depth: int = 10
+        table: str, delay_hours: float = 0.0, depth: int = MAX_DEPTH
     ) -> str:
         """SLA 延迟影响分析：假设某表延迟 N 小时，列出受影响的下游 SLA/基线任务。"""
         g = _graph()

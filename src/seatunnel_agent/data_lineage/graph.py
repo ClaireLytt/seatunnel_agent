@@ -11,8 +11,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
-MAX_DEPTH = 10
-MAX_NODES = 200
+from .config import COLUMN_IMPACT_DEPTH, MAX_DEPTH, MAX_NODES
 
 # Display labels use the Chinese comments from zz.dwm_meta_table_lineage_df.
 FIELD_LABELS = {
@@ -46,7 +45,9 @@ class EdgeMeta:
     def update(self, source: str, confidence: str) -> None:
         if source:
             self.sources.add(source)
-        if _CONF_RANK.get(confidence, 2) > _CONF_RANK.get(self.confidence, 2):
+        # Unknown confidence strings rank lowest (0), matching
+        # add_column_edge — a malformed label must never upgrade an edge.
+        if _CONF_RANK.get(confidence, 0) > _CONF_RANK.get(self.confidence, 0):
             self.confidence = confidence
 
     def to_dict(self) -> dict[str, Any]:
@@ -212,6 +213,12 @@ class LineageGraph:
         self.column_down: dict[tuple[str, str], list[ColumnEdge]] = {}
         self.column_up: dict[tuple[str, str], list[ColumnEdge]] = {}
         self.edge_meta: dict[tuple[str, str], EdgeMeta] = {}
+        # bare table name -> full keys, for get()'s "orders" → "zz.orders" lookup
+        self._bare_names: dict[str, set[str]] = {}
+        # (src_table, src_col, dst_table, dst_col) -> position in the
+        # column_down/column_up lists, for O(1) duplicate detection
+        self._column_edge_pos: dict[tuple[str, str, str, str], tuple[int, int]] = {}
+        self._stats_cache: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------
     # Mutation
@@ -225,6 +232,9 @@ class LineageGraph:
             db, _, tbl = key.rpartition(".")
             node = TableNode(name=key, database=db, table=tbl or key)
             self.nodes[key] = node
+            if db:
+                self._bare_names.setdefault(tbl, set()).add(key)
+        self._stats_cache = None
         for attr, value in attrs.items():
             if attr == "origins":
                 node.origins.update(value)
@@ -273,20 +283,23 @@ class LineageGraph:
             return
         src_key = (edge.src_table, edge.src_column)
         dst_key = (edge.dst_table, edge.dst_column)
-        existing = self.column_down.setdefault(src_key, [])
-        for i, e in enumerate(existing):
-            if e.dst_table == edge.dst_table and e.dst_column == edge.dst_column:
-                # 同一条列边重复出现时，置信度严格更高的新边替换旧边
-                if _CONF_RANK.get(edge.confidence, 0) > _CONF_RANK.get(e.confidence, 0):
-                    existing[i] = edge
-                    ups = self.column_up.setdefault(dst_key, [])
-                    for j, u in enumerate(ups):
-                        if u is e:
-                            ups[j] = edge
-                            break
-                return
-        existing.append(edge)
-        self.column_up.setdefault(dst_key, []).append(edge)
+        quad = (edge.src_table, edge.src_column, edge.dst_table, edge.dst_column)
+        pos = self._column_edge_pos.get(quad)
+        if pos is not None:
+            down_i, up_i = pos
+            old = self.column_down[src_key][down_i]
+            # 同一条列边重复出现时，置信度严格更高的新边替换旧边
+            if _CONF_RANK.get(edge.confidence, 0) > _CONF_RANK.get(old.confidence, 0):
+                self.column_down[src_key][down_i] = edge
+                self.column_up[dst_key][up_i] = edge
+                self._stats_cache = None
+            return
+        downs = self.column_down.setdefault(src_key, [])
+        ups = self.column_up.setdefault(dst_key, [])
+        self._column_edge_pos[quad] = (len(downs), len(ups))
+        downs.append(edge)
+        ups.append(edge)
+        self._stats_cache = None
 
     def merge(self, other: LineageGraph) -> None:
         for node in other.nodes.values():
@@ -299,13 +312,14 @@ class LineageGraph:
                 baselines=node.baselines,
                 origins=node.origins,
             )
+        # Keys in ``other`` are already normalized (all mutation goes through
+        # norm_table), so edge lookups can use them directly.
         for src, dsts in other.downstream.items():
             for dst in dsts:
-                meta = other.edge_meta.get((norm_table(src), norm_table(dst)))
+                meta = other.edge_meta.get((src, dst))
                 if meta is not None:
                     self.add_edge(src, dst, confidence=meta.confidence)
-                    my_meta = self.edge_meta[(norm_table(src), norm_table(dst))]
-                    my_meta.sources.update(meta.sources)
+                    self.edge_meta[(src, dst)].sources.update(meta.sources)
                 else:
                     self.add_edge(src, dst)
         for edges in other.column_down.values():
@@ -325,38 +339,54 @@ class LineageGraph:
         if node is not None:
             return node
         if "." not in key:
-            matches = [n for k, n in self.nodes.items() if k.endswith(f".{key}")]
+            matches = self._bare_names.get(key, ())
             if len(matches) == 1:
-                return matches[0]
+                return self.nodes[next(iter(matches))]
         return None
 
     def search(self, keyword: str, limit: int = 20) -> list[TableNode]:
         kw = keyword.strip().lower()
         if not kw:
             return []
-        return [n for k, n in sorted(self.nodes.items()) if kw in k][:limit]
+        return [self.nodes[k] for k in sorted(k for k in self.nodes if kw in k)[:limit]]
+
+    def suggest(self, name: str, limit: int = 20) -> list[str]:
+        """Similar table names for a missing-table error message, matched on
+        the bare table name (shared by tools/API/MCP/UI error payloads)."""
+        return [
+            n.name
+            for n in self.search(norm_table(name).rsplit(".", 1)[-1], limit)
+        ]
 
     def stats(self) -> dict[str, Any]:
-        edge_count = sum(len(v) for v in self.downstream.values())
-        column_edge_count = sum(len(v) for v in self.column_down.values())
-        layers: dict[str, int] = {}
-        for node in self.nodes.values():
-            layer = node.layer or "unknown"
-            layers[layer] = layers.get(layer, 0) + 1
-        edge_sources: dict[str, int] = {}
-        confidence: dict[str, int] = {}
-        for meta in self.edge_meta.values():
-            for s in meta.sources:
-                edge_sources[s] = edge_sources.get(s, 0) + 1
-            confidence[meta.confidence] = confidence.get(meta.confidence, 0) + 1
+        # O(V+E) walk, called per query by the API/UI — cache until mutated.
+        if self._stats_cache is None:
+            layers: dict[str, int] = {}
+            for node in self.nodes.values():
+                layer = node.layer or "unknown"
+                layers[layer] = layers.get(layer, 0) + 1
+            edge_sources: dict[str, int] = {}
+            confidence: dict[str, int] = {}
+            for meta in self.edge_meta.values():
+                for s in meta.sources:
+                    edge_sources[s] = edge_sources.get(s, 0) + 1
+                confidence[meta.confidence] = confidence.get(meta.confidence, 0) + 1
+            self._stats_cache = {
+                "tables": len(self.nodes),
+                "edges": sum(len(v) for v in self.downstream.values()),
+                "column_edges": sum(len(v) for v in self.column_down.values()),
+                "sla_tables": sum(1 for n in self.nodes.values() if n.is_sla),
+                "layers": layers,
+                "edge_sources": edge_sources,
+                "edge_confidence": confidence,
+            }
+        cached = self._stats_cache
+        # Fresh copies so callers can embed/mutate the dict safely.
         return {
-            "tables": len(self.nodes),
-            "edges": edge_count,
-            "column_edges": column_edge_count,
-            "sla_tables": sum(1 for n in self.nodes.values() if n.is_sla),
-            "layers": layers,
-            "edge_sources": edge_sources,
-            "edge_confidence": confidence,
+            **cached,
+            "layers": dict(cached["layers"]),
+            "edge_sources": dict(cached["edge_sources"]),
+            "edge_confidence": dict(cached["edge_confidence"]),
         }
 
     # ------------------------------------------------------------------
@@ -469,7 +499,7 @@ class LineageGraph:
         self,
         table: str,
         column: str,
-        depth: int = 5,
+        depth: int = COLUMN_IMPACT_DEPTH,
         max_nodes: int = MAX_NODES,
     ) -> ColumnImpactResult:
         """Column-level downstream impact; degrades to table-level when no
@@ -534,12 +564,16 @@ class LineageGraph:
         delay_hours: float = 0.0,
         depth: int = MAX_DEPTH,
         max_nodes: int = MAX_NODES,
+        chain: ChainResult | None = None,
     ) -> SlaImpactResult:
         """Downstream SLA/baseline tasks reachable from ``table``, ordered by
         hop distance then SLA time. ``delay_hours`` is carried through for the
         report — actual breach math needs the root's own schedule, which the
-        metadata table does not record."""
-        chain = self.downstream_of(table, depth, max_nodes)
+        metadata table does not record. A caller that already traversed the
+        downstream chain (e.g. to render it) can pass it via ``chain`` to
+        avoid a second BFS."""
+        if chain is None:
+            chain = self.downstream_of(table, depth, max_nodes)
         result = SlaImpactResult(
             root=chain.root,
             delay_hours=max(0.0, delay_hours),

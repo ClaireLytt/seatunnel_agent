@@ -7,22 +7,21 @@ report deterministically.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from .config import LineageConfig
+from ..utils import safe_json
+from .config import COLUMN_IMPACT_DEPTH, LineageConfig
 from .graph import ChainResult, ColumnImpactResult, LineageGraph
 from .render import (
-    render_column_mermaid,
     render_health,
-    render_mermaid,
     render_path,
     render_report,
     render_sla_impact,
     render_tree,
+    select_mermaid,
 )
-from .report import LineageReport
+from .report import LineageReport, baseline_nodes_of, sla_nodes_of
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -258,9 +257,29 @@ class LineageRuntime:
     warnings: list[str] = field(default_factory=list)
     last_chain: ChainResult | None = None
     last_impact: ColumnImpactResult | None = None
+    # Which query ran most recently ("chain" / "impact") — the report's
+    # mermaid follows the latest result instead of always preferring impact.
+    last_kind: str = ""
     last_report: str = ""
     last_mermaid: str = ""
     report: LineageReport | None = None
+
+    def reset_question_state(self) -> None:
+        """Drop per-question results so an old chain/impact never leaks into
+        the next report. The loaded graph is kept."""
+        self.last_chain = None
+        self.last_impact = None
+        self.last_kind = ""
+        self.last_report = ""
+        self.last_mermaid = ""
+        self.report = None
+
+
+def _missing_table(graph: LineageGraph, name: str) -> dict[str, Any]:
+    return {
+        "error": f"表 '{name}' 不在血缘图中",
+        "suggestions": graph.suggest(name),
+    }
 
 
 def _depth(inp: dict[str, Any], key: str, default: int, cap: int) -> int:
@@ -273,11 +292,9 @@ def _depth(inp: dict[str, Any], key: str, default: int, cap: int) -> int:
 
 def _chain_payload(rt: LineageRuntime, chain: ChainResult) -> dict[str, Any]:
     if chain.missing_root:
-        return {
-            "error": f"表 '{chain.root}' 不在血缘图中",
-            "suggestions": [n.name for n in rt.graph.search(chain.root.rsplit(".", 1)[-1])],
-        }
+        return _missing_table(rt.graph, chain.root)
     rt.last_chain = chain
+    rt.last_kind = "chain"
     return {
         "root": chain.root,
         "direction": chain.direction,
@@ -285,27 +302,30 @@ def _chain_payload(rt: LineageRuntime, chain: ChainResult) -> dict[str, Any]:
         "downstream_count": chain.downstream_count,
         "truncated": chain.truncated,
         "tree": render_tree(chain),
-        "sla_tables": [
-            n.to_dict() for _, n in sorted(chain.nodes.items()) if n.is_sla
-        ],
-        "baseline_tables": [
-            n.to_dict() for _, n in sorted(chain.nodes.items()) if n.baselines
-        ],
+        "sla_tables": [n.to_dict() for n in sla_nodes_of(chain)],
+        "baseline_tables": [n.to_dict() for n in baseline_nodes_of(chain)],
     }
 
 
 def _tool_load_from_hive(inp: dict[str, Any], rt: LineageRuntime) -> dict[str, Any]:
     if not rt.hive_available:
         return {"error": "本会话未配置 Hive 连接（HIVE_HOST），无法加载元数据血缘"}
-    from .loaders import from_hive_meta, hive_executor_from_env
+    # Reuse the TTL-cached loader (same one the CLI/API/UI use) — a full
+    # metadata scan can take minutes and must not be repeated per call.
+    from .loaders import _hive_graph_cached
 
-    executor = hive_executor_from_env()
-    if executor is None:
-        return {"error": "未配置 HIVE_HOST（.env）"}
     partition = str(inp.get("partition") or "").strip() or rt.partition
-    sub = from_hive_meta(executor, meta_table=rt.meta_table, partition=partition)
+    sub, pt, from_cache = _hive_graph_cached(
+        rt.meta_table, partition, use_cache=True
+    )
     rt.graph.merge(sub)
-    return {"success": True, "loaded": sub.stats(), "graph": rt.graph.stats()}
+    return {
+        "success": True,
+        "loaded": sub.stats(),
+        "graph": rt.graph.stats(),
+        "partition": pt,
+        "from_cache": from_cache,
+    }
 
 
 def _tool_load_from_sql(inp: dict[str, Any], rt: LineageRuntime) -> dict[str, Any]:
@@ -366,19 +386,15 @@ def _tool_get_full_chain(inp: dict[str, Any], rt: LineageRuntime) -> dict[str, A
 
 
 def _tool_impact_analysis(inp: dict[str, Any], rt: LineageRuntime) -> dict[str, Any]:
-    depth = _depth(inp, "depth", 5, rt.config.max_depth)
+    depth = _depth(inp, "depth", COLUMN_IMPACT_DEPTH, rt.config.max_depth)
     impact = rt.graph.impact_of_column(
         str(inp.get("table", "")), str(inp.get("column", "")),
         depth, rt.config.max_nodes,
     )
     if impact.missing_root:
-        return {
-            "error": f"表 '{impact.root_table}' 不在血缘图中",
-            "suggestions": [
-                n.name for n in rt.graph.search(impact.root_table.rsplit(".", 1)[-1])
-            ],
-        }
+        return _missing_table(rt.graph, impact.root_table)
     rt.last_impact = impact
+    rt.last_kind = "impact"
     payload = impact.to_dict()
     if impact.degraded and impact.table_fallback:
         rt.last_chain = impact.table_fallback
@@ -391,12 +407,7 @@ def _tool_find_path(inp: dict[str, Any], rt: LineageRuntime) -> dict[str, Any]:
     dst = str(inp.get("dst", "")).strip()
     for name in (src, dst):
         if rt.graph.get(name) is None:
-            return {
-                "error": f"表 '{name}' 不在血缘图中",
-                "suggestions": [
-                    n.name for n in rt.graph.search(name.rsplit(".", 1)[-1])
-                ],
-            }
+            return _missing_table(rt.graph, name)
     path = rt.graph.path_between(src, dst)
     return {
         "found": path is not None,
@@ -416,12 +427,7 @@ def _tool_sla_impact(inp: dict[str, Any], rt: LineageRuntime) -> dict[str, Any]:
         str(inp.get("table", "")), delay, depth, rt.config.max_nodes
     )
     if impact.missing_root:
-        return {
-            "error": f"表 '{impact.root}' 不在血缘图中",
-            "suggestions": [
-                n.name for n in rt.graph.search(impact.root.rsplit(".", 1)[-1])
-            ],
-        }
+        return _missing_table(rt.graph, impact.root)
     payload = impact.to_dict()
     payload["markdown"] = render_sla_impact(impact)
     return payload
@@ -445,10 +451,7 @@ def _tool_get_table_detail(inp: dict[str, Any], rt: LineageRuntime) -> dict[str,
     name = str(inp.get("table", ""))
     node = rt.graph.get(name)
     if node is None:
-        return {
-            "error": f"表 '{name}' 不在血缘图中",
-            "suggestions": [n.name for n in rt.graph.search(name.rsplit(".", 1)[-1])],
-        }
+        return _missing_table(rt.graph, name)
     def _neighbours(names: set[str], as_src: bool) -> list[dict[str, Any]]:
         out = []
         for n in sorted(names):
@@ -512,12 +515,12 @@ def _tool_submit_report(inp: dict[str, Any], rt: LineageRuntime) -> dict[str, An
     if not root and rt.last_impact:
         root = rt.last_impact.root_table
 
-    if rt.last_impact and not rt.last_impact.degraded:
-        mermaid = render_column_mermaid(rt.last_impact)
-    elif rt.last_chain:
-        mermaid = render_mermaid(rt.last_chain, rt.config.max_mermaid_nodes)
-    else:
-        mermaid = ""
+    # The mermaid follows the most recent query: a chain query after an
+    # impact_analysis must not be shadowed by the older column graph.
+    mermaid = select_mermaid(
+        rt.last_chain, rt.last_impact, rt.config.max_mermaid_nodes,
+        prefer_impact=rt.last_kind == "impact" or rt.last_chain is None,
+    )
 
     report = LineageReport(
         root_table=root,
@@ -557,9 +560,9 @@ def execute_lineage_tool(
 ) -> str:
     handler = _TOOL_HANDLERS.get(name)
     if handler is None:
-        return json.dumps({"error": f"Unknown tool: {name}"}, ensure_ascii=False)
+        return safe_json({"error": f"Unknown tool: {name}"})
     try:
         result = handler(tool_input, runtime)
     except Exception as exc:  # noqa: BLE001 — tool errors go back to the model
         result = {"error": f"Tool '{name}' failed: {exc}"}
-    return json.dumps(result, ensure_ascii=False, default=str)
+    return safe_json(result)

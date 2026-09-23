@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 from pathlib import Path
 
@@ -23,11 +22,13 @@ from ..text2sql.executor.base import (
 )
 from ..text2sql.lineage import trace_lineage
 from ..text2sql.schema import SchemaStore
-from .config import DEFAULT_META_TABLE
+from .config import load_lineage_config
 from .graph import ColumnEdge, LineageGraph
 
 _META_TABLE_RE = re.compile(r"^\w+(?:\.\w+)?$")
 _PARTITION_RE = re.compile(r"^[\w\-]+$")
+
+_HIVE_MAX_ROWS = 200_000
 
 _META_COLUMNS = (
     "source_type_name", "database_name", "table_name", "table_layer",
@@ -39,7 +40,14 @@ _META_COLUMNS = (
 
 
 def meta_table_from_env() -> str:
-    return os.getenv("LINEAGE_META_TABLE", DEFAULT_META_TABLE).strip() or DEFAULT_META_TABLE
+    return load_lineage_config().meta_table
+
+
+def _validated_meta_table(meta_table: str | None) -> str:
+    meta_table = (meta_table or meta_table_from_env()).strip()
+    if not _META_TABLE_RE.match(meta_table):
+        raise ValueError(f"非法的血缘元数据表名: {meta_table!r}")
+    return meta_table
 
 
 # ----------------------------------------------------------------------
@@ -202,11 +210,9 @@ def from_hive_meta(
     executor: DatabaseExecutor,
     meta_table: str | None = None,
     partition: str | None = None,
-    max_rows: int = 200_000,
+    max_rows: int = _HIVE_MAX_ROWS,
 ) -> LineageGraph:
-    meta_table = (meta_table or meta_table_from_env()).strip()
-    if not _META_TABLE_RE.match(meta_table):
-        raise ValueError(f"非法的血缘元数据表名: {meta_table!r}")
+    meta_table = _validated_meta_table(meta_table)
     if partition is None or not str(partition).strip():
         partition = resolve_partition(executor, meta_table)
     partition = str(partition).strip()
@@ -279,9 +285,7 @@ def _hive_graph_cached(
     """Hive graph with local TTL cache → (graph, partition, from_cache)."""
     from .cache import load_cached_graph, save_cached_graph
 
-    meta_table = (meta_table or meta_table_from_env()).strip()
-    if not _META_TABLE_RE.match(meta_table):
-        raise ValueError(f"非法的血缘元数据表名: {meta_table!r}")
+    meta_table = _validated_meta_table(meta_table)
     pt = str(partition).strip() if partition and str(partition).strip() else None
 
     if use_cache and pt:

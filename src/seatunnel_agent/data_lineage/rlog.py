@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 _MAX_LOG_BYTES = 10 * 1024 * 1024  # 10 MB
+_MAX_QUERY_CHARS = 300  # keep one JSONL line readable even for pasted SQL
 
 
 class LineageLogger:
@@ -34,7 +35,7 @@ class LineageLogger:
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "source": source,
             "mode": mode,
-            "query": query[:300],
+            "query": query[:_MAX_QUERY_CHARS],
             "direction": direction,
             "graph_stats": graph_stats or {},
             "chain_stats": chain_stats or {},
