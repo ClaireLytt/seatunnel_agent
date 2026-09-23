@@ -160,32 +160,57 @@ def extract_probe_targets(sql: str, max_targets: int = MAX_TARGETS) -> list[Prob
 # Probe execution
 # ---------------------------------------------------------------------------
 
-def _top_sql(t: ProbeTarget, top_n: int) -> str:
+# Engines whose SQL supports table sampling for cheaper probes on big tables.
+SAMPLE_DS = ("hive", "sparksql", "postgresql")
+
+
+def effective_sample_pct(ds_type: str, sample_pct: int) -> int:
+    """The sampling percentage actually applied (0 = full scan)."""
+    return sample_pct if ds_type in SAMPLE_DS and 0 < sample_pct < 100 else 0
+
+
+def _table_expr(table: str, ds_type: str, sample_pct: int) -> str:
+    pct = effective_sample_pct(ds_type, sample_pct)
+    if not pct:
+        return table
+    if ds_type == "postgresql":
+        return f"{table} TABLESAMPLE SYSTEM ({pct})"
+    return f"{table} TABLESAMPLE ({pct} PERCENT)"
+
+
+def _top_sql(t: ProbeTarget, top_n: int, table_expr: str) -> str:
     return (
-        f"SELECT {t.column} AS k, COUNT(*) AS cnt FROM {t.table} "
+        f"SELECT {t.column} AS k, COUNT(*) AS cnt FROM {table_expr} "
         f"GROUP BY {t.column} ORDER BY cnt DESC LIMIT {top_n}"
     )
 
 
-def _null_sql(t: ProbeTarget) -> str:
+def _null_sql(t: ProbeTarget, table_expr: str) -> str:
     return (
         f"SELECT COUNT(*) AS total, "
         f"SUM(CASE WHEN {t.column} IS NULL THEN 1 ELSE 0 END) AS nulls "
-        f"FROM {t.table}"
+        f"FROM {table_expr}"
     )
 
 
-def run_probes(executor, targets: list[ProbeTarget], top_n: int = TOP_N) -> list[ProbeResult]:
+def run_probes(
+    executor,
+    targets: list[ProbeTarget],
+    top_n: int = TOP_N,
+    ds_type: str = "",
+    sample_pct: int = 0,
+) -> list[ProbeResult]:
     """Run the two bounded probe queries per target via a DatabaseExecutor."""
     results: list[ProbeResult] = []
     for t in targets[:MAX_TARGETS]:
+        expr = _table_expr(t.table, ds_type, sample_pct)
         r = ProbeResult(target=t)
         try:
-            nq = executor.run(_null_sql(t), max_rows=1)
+            nq = executor.run(_null_sql(t, expr), max_rows=1)
             r.total = int(nq.rows[0][0] or 0)
             r.null_count = int(nq.rows[0][1] or 0)
             r.elapsed_ms += nq.elapsed_ms
-            tq = executor.run(_top_sql(t, top_n), max_rows=top_n)
+            tq = executor.run(_top_sql(t, top_n, expr), max_rows=top_n)
             r.top = [("NULL" if v is None else str(v), int(c)) for v, c in tq.rows]
             r.elapsed_ms += tq.elapsed_ms
         except Exception as exc:  # noqa: BLE001 — per-target failure stays local
@@ -227,17 +252,63 @@ def _top_preview(r: ProbeResult, n: int = 3) -> str:
     )
 
 
-def render_probe_section(results: list[ProbeResult], lang: str) -> str:
+# SET blocks per analysis dialect; join-key skew and aggregation skew pick
+# different switches.
+_ENGINE_PARAMS: dict[str, dict[str, list[str]]] = {
+    "spark": {
+        "base": ["SET spark.sql.adaptive.enabled=true;"],
+        "join": [
+            "SET spark.sql.adaptive.skewJoin.enabled=true;",
+            "SET spark.sql.adaptive.skewJoin.skewedPartitionFactor=5;",
+            "SET spark.sql.adaptive.skewJoin.skewedPartitionThresholdInBytes=256m;",
+        ],
+        "agg": ["SET spark.sql.shuffle.partitions=400;"],
+    },
+    "hive": {
+        "base": [],
+        "join": ["SET hive.optimize.skewjoin=true;", "SET hive.skewjoin.key=100000;"],
+        "agg": ["SET hive.groupby.skewindata=true;"],
+    },
+    "maxcompute": {
+        "base": [],
+        "join": ["SET odps.sql.skewjoin=true;"],
+        "agg": ["SET odps.sql.groupby.skewindata=true;"],
+    },
+}
+
+
+def engine_params_for_results(results: list[ProbeResult], dialect: str, lang: str) -> str:
+    """A paste-ready SET block for the measured skew, or '' when nothing confirmed."""
+    confirmed = [r for r in results if r.verdict == "confirmed"]
+    cfg = _ENGINE_PARAMS.get(dialect)
+    if not confirmed or not cfg:
+        return ""
+    lines = list(cfg["base"])
+    if any(r.target.reason == "join_key" for r in confirmed):
+        lines += cfg["join"]
+    if any(r.target.reason == "count_distinct" for r in confirmed):
+        lines += cfg["agg"]
+    head = dsk(normalize_lang(lang), "prb_engine_params")
+    return head + "\n\n```sql\n" + "\n".join(lines) + "\n```"
+
+
+def render_probe_section(
+    results: list[ProbeResult],
+    lang: str,
+    dialect: str = "",
+    sample_pct: int = 0,
+) -> str:
     """Bilingual '## 倾斜验证（实测）' markdown section."""
     lang = normalize_lang(lang)
     if not results:
         return f"{dsk(lang, 'prb_section')}\n\n{dsk(lang, 'prb_no_targets')}\n"
     parts = [dsk(lang, "prb_section"), ""]
     confirmed = sum(1 for r in results if r.verdict == "confirmed")
-    if confirmed:
-        parts.append(dsk(lang, "prb_summary_confirmed").format(n=confirmed))
-    else:
-        parts.append(dsk(lang, "prb_summary_clean"))
+    summary = (dsk(lang, "prb_summary_confirmed").format(n=confirmed)
+               if confirmed else dsk(lang, "prb_summary_clean"))
+    if sample_pct:
+        summary += " " + dsk(lang, "prb_sampled_note").format(pct=sample_pct)
+    parts.append(summary)
     parts.append("")
     parts.append(
         f"| {dsk(lang, 'prb_col_target')} | {dsk(lang, 'prb_col_reason')} | "
@@ -258,12 +329,36 @@ def render_probe_section(results: list[ProbeResult], lang: str) -> str:
             f"| `{t.table}.{t.column}` | {reason} | {r.total} | "
             f"{_pct(r.null_ratio)} | {_top_preview(r)} | {verdict} |"
         )
+    if dialect:
+        params = engine_params_for_results(results, dialect, lang)
+        if params:
+            parts += ["", params]
     parts.append("")
     return "\n".join(parts)
 
 
+def _hot_values(r: ProbeResult) -> list[str]:
+    """The concrete hot values worth isolating in a rewrite (NULL included)."""
+    vals: list[str] = []
+    null_listed = False
+    for v, c in r.top:
+        if not r.total or c / r.total < HOT_KEY_SUSPECT:
+            break  # top is count-descending
+        if v == "NULL":
+            vals.append(f"NULL ({_pct(c / r.total)})")
+            null_listed = True
+        else:
+            vals.append(f"'{_safe_value(v)}' ({_pct(c / r.total)})")
+    if not null_listed and r.null_ratio >= NULL_CONFIRMED:
+        vals.append(f"NULL ({_pct(r.null_ratio)})")
+    return vals
+
+
 def probe_lines_for_prompt(results: list[ProbeResult], lang: str) -> str:
-    """Compact per-target measurement lines injected into the LLM prompt."""
+    """Compact per-target measurement lines injected into the LLM prompt.
+
+    Confirmed/suspect targets also list their concrete hot values so the
+    rewrite can isolate them by value instead of guessing."""
     lang = normalize_lang(lang)
     lines = []
     for r in results:
@@ -271,9 +366,14 @@ def probe_lines_for_prompt(results: list[ProbeResult], lang: str) -> str:
             continue
         t = r.target
         top = ", ".join(f"{_safe_value(v)}={c}" for v, c in r.top[:3])
-        lines.append(
+        line = (
             f"- {t.table}.{t.column} ({dsk(lang, f'prb_reason_{t.reason}')}): "
             f"rows={r.total}, null={_pct(r.null_ratio)}, "
             f"top1={_pct(r.top1_ratio)}, top: {top}"
         )
+        hot = _hot_values(r)
+        if hot:
+            label = "热点值" if lang == "zh" else "hot values"
+            line += f"\n  {label}: " + ", ".join(hot)
+        lines.append(line)
     return "\n".join(lines)

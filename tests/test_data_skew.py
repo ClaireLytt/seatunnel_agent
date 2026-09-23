@@ -662,31 +662,48 @@ def test_probe_lines_for_prompt_escapes_multiline_values():
     r = ProbeResult(target=ProbeTarget("t", "k", "join_key"))
     r.total, r.top = 100, [("a\nb", 40)]
     lines = probe_lines_for_prompt([r], "en")
-    assert "\n" not in lines
+    assert "a\nb" not in lines  # raw value newline collapsed everywhere
     assert "a b=40" in lines
+    assert "'a b' (40.0%)" in lines  # hot-values list uses the same escaping
 
 
-def test_strip_probe_section_line_anchored():
-    from seatunnel_agent.data_skew_ui import _strip_probe_section
+def test_remove_section_line_anchored():
+    from seatunnel_agent.data_skew_ui import _PROBE_HEAD_RE, _remove_section
 
     section = render_probe_section([_fake_result()], "en")
     report = "# Report\n\nbody text\n\n" + section
-    assert _strip_probe_section(report) == "# Report\n\nbody text"
+    assert _remove_section(report, _PROBE_HEAD_RE) == "# Report\n\nbody text"
     # A mid-sentence quote of the heading must NOT truncate the report.
     quoted = "# Report\n\nsee the ## Skew Verification (measured) section below\n"
-    assert _strip_probe_section(quoted) == quoted
-    # Repeated verify: only content from the first real heading is dropped.
-    doubled = report + "\n\n" + section
-    assert _strip_probe_section(doubled) == "# Report\n\nbody text"
+    assert _remove_section(quoted, _PROBE_HEAD_RE) == quoted
+
+
+def test_remove_section_only_touches_its_own_section():
+    from seatunnel_agent.data_skew import consistency
+    from seatunnel_agent.data_skew_ui import _CST_HEAD_RE, _PROBE_HEAD_RE, _remove_section
+
+    probe_sec = render_probe_section([_fake_result()], "en")
+    res = consistency.ConsistencyResult(comparable=True, orig_count=5, opt_count=5,
+                                        rows_compared=True, rows_match=True)
+    cst_sec = consistency.render_consistency_section(res, "en")
+    report = "# Report\n\nbody\n\n" + probe_sec + "\n\n" + cst_sec
+    without_probe = _remove_section(report, _PROBE_HEAD_RE)
+    assert "Skew Verification" not in without_probe
+    assert "Consistency Measurement" in without_probe
+    without_cst = _remove_section(report, _CST_HEAD_RE)
+    assert "Skew Verification" in without_cst
+    assert "Consistency Measurement" not in without_cst
 
 
 def test_probe_lines_for_prompt():
     lines = probe_lines_for_prompt([_fake_result(), _fake_result("error")], "en")
-    assert lines.count("\n") == 0  # error result skipped → single line
+    # error result skipped → one target: measurement line + hot-values line
+    assert lines.count("\n") == 1
     assert "orders.user_id" in lines
     assert "rows=100" in lines
     assert "top1=40.0%" in lines
     assert "hot=40" in lines
+    assert "hot values: 'hot' (40.0%)" in lines
 
 
 def test_agent_probe_context_injected_into_prompt(tmp_path):
@@ -713,3 +730,238 @@ def test_agent_probe_context_injected_into_prompt(tmp_path):
     )
     assert "实测键值分布" in captured["system"]
     assert "top1=40.0%" in captured["system"]
+
+
+# ---------------------------------------------------------------------------
+# probe: sampling (TABLESAMPLE)
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.probe import (  # noqa: E402
+    _table_expr,
+    effective_sample_pct,
+    engine_params_for_results,
+)
+
+
+def test_effective_sample_pct_gating():
+    assert effective_sample_pct("hive", 10) == 10
+    assert effective_sample_pct("sparksql", 1) == 1
+    assert effective_sample_pct("postgresql", 10) == 10
+    # non-sampling engines and out-of-range values fall back to full scan
+    assert effective_sample_pct("sqlite", 10) == 0
+    assert effective_sample_pct("mysql", 10) == 0
+    assert effective_sample_pct("hive", 0) == 0
+    assert effective_sample_pct("hive", 100) == 0
+    assert effective_sample_pct("", 10) == 0
+
+
+def test_table_expr_dialect_syntax():
+    assert _table_expr("orders", "hive", 10) == "orders TABLESAMPLE (10 PERCENT)"
+    assert _table_expr("orders", "sparksql", 1) == "orders TABLESAMPLE (1 PERCENT)"
+    assert _table_expr("orders", "postgresql", 10) == "orders TABLESAMPLE SYSTEM (10)"
+    assert _table_expr("orders", "sqlite", 10) == "orders"
+    assert _table_expr("orders", "hive", 0) == "orders"
+
+
+def test_run_probes_sampling_ignored_on_sqlite(tmp_path):
+    rows = ",".join(f"('u{i}')" for i in range(100))
+    setup = f"CREATE TABLE t (k TEXT); INSERT INTO t VALUES {rows};"
+    ex = _sqlite_executor(tmp_path, setup)
+    r = run_probes(ex, [ProbeTarget("t", "k", "join_key")],
+                   ds_type="sqlite", sample_pct=10)[0]
+    assert r.error == ""       # TABLESAMPLE never reached sqlite
+    assert r.total == 100
+
+
+def test_render_probe_section_sampled_note():
+    md = render_probe_section([_fake_result()], "en", sample_pct=10)
+    assert "10% table sample" in md
+    zh = render_probe_section([_fake_result()], "zh", sample_pct=1)
+    assert "按 1% 表采样估算" in zh
+    plain = render_probe_section([_fake_result()], "en")
+    assert "table sample" not in plain
+
+
+# ---------------------------------------------------------------------------
+# probe: measured engine parameters
+# ---------------------------------------------------------------------------
+
+def test_engine_params_join_key_spark():
+    block = engine_params_for_results([_fake_result()], "spark", "en")
+    assert "spark.sql.adaptive.skewJoin.enabled=true" in block
+    assert "skewedPartitionFactor=5" in block
+    assert "spark.sql.shuffle.partitions" not in block  # no agg skew confirmed
+    assert block.startswith("**Suggested engine settings")
+    assert "```sql" in block
+
+
+def test_engine_params_agg_hive_and_maxcompute():
+    r = ProbeResult(target=ProbeTarget("t", "k", "count_distinct"))
+    r.total, r.top = 100, [("hot", 40)]
+    hive = engine_params_for_results([r], "hive", "zh")
+    assert "hive.groupby.skewindata=true" in hive
+    assert "hive.optimize.skewjoin" not in hive
+    mc = engine_params_for_results([r], "maxcompute", "zh")
+    assert "odps.sql.groupby.skewindata=true" in mc
+
+
+def test_engine_params_empty_when_nothing_confirmed_or_unknown_dialect():
+    assert engine_params_for_results([_fake_result("ok")], "spark", "en") == ""
+    assert engine_params_for_results([_fake_result()], "presto", "en") == ""
+    assert engine_params_for_results([], "spark", "en") == ""
+
+
+def test_render_probe_section_appends_engine_params():
+    md = render_probe_section([_fake_result()], "en", dialect="spark")
+    assert "spark.sql.adaptive.skewJoin.enabled=true" in md
+    md_zh = render_probe_section([_fake_result()], "zh", dialect="spark")
+    assert "建议引擎参数" in md_zh
+    plain = render_probe_section([_fake_result()], "en")
+    assert "skewJoin" not in plain
+
+
+# ---------------------------------------------------------------------------
+# probe: hot values in the LLM prompt
+# ---------------------------------------------------------------------------
+
+def test_probe_lines_for_prompt_lists_hot_values():
+    r = ProbeResult(target=ProbeTarget("orders", "user_id", "join_key"))
+    r.total, r.null_count = 100, 12
+    r.top = [("hot", 35), ("NULL", 12), ("warm", 6), ("cold", 1)]
+    lines = probe_lines_for_prompt([r], "en")
+    assert "hot values: 'hot' (35.0%), NULL (12.0%), 'warm' (6.0%)" in lines
+    assert "'cold'" not in lines  # below the 5% suspect threshold
+    zh = probe_lines_for_prompt([r], "zh")
+    assert "热点值: 'hot' (35.0%)" in zh
+
+
+def test_probe_lines_hot_values_null_appended_when_not_in_top():
+    r = ProbeResult(target=ProbeTarget("t", "k", "join_key"))
+    r.total, r.null_count = 100, 11
+    r.top = [("hot", 30), ("a", 2)]  # NULL not among the listed top values
+    lines = probe_lines_for_prompt([r], "en")
+    assert "NULL (11.0%)" in lines
+
+
+def test_probe_lines_balanced_target_has_no_hot_values():
+    r = ProbeResult(target=ProbeTarget("t", "k", "join_key"))
+    r.total, r.top = 100, [("a", 2), ("b", 2)]
+    lines = probe_lines_for_prompt([r], "en")
+    assert "hot values" not in lines
+    assert "\n" not in lines
+
+
+# ---------------------------------------------------------------------------
+# consistency: extraction and comparison
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.consistency import (  # noqa: E402
+    ConsistencyResult,
+    check_consistency,
+    extract_single_select,
+    render_consistency_section,
+)
+
+
+def test_extract_single_select_basic():
+    assert extract_single_select("SELECT * FROM t") == "SELECT * FROM t"
+    assert extract_single_select("  with x as (select 1) select * from x; ") \
+        == "with x as (select 1) select * from x"
+
+
+def test_extract_single_select_skips_leading_set_lines():
+    sql = ("SET spark.sql.adaptive.enabled=true;\n"
+           "SET hive.skewjoin.key=100000;\nSELECT * FROM t;")
+    assert extract_single_select(sql) == "SELECT * FROM t"
+
+
+def test_extract_single_select_refuses_writes_and_multi_statement():
+    assert extract_single_select("INSERT INTO t SELECT * FROM s") is None
+    assert extract_single_select("DROP TABLE t") is None
+    assert extract_single_select("SELECT 1; SELECT 2") is None
+    assert extract_single_select("") is None
+    assert extract_single_select("SET a=1;") is None
+
+
+def test_check_consistency_full_match(tmp_path):
+    setup = ("CREATE TABLE t (id INTEGER, v TEXT);"
+             "INSERT INTO t VALUES (1,'a'),(2,'b'),(3,'c');")
+    ex = _sqlite_executor(tmp_path, setup)
+    res = check_consistency(ex, "SELECT id, v FROM t ORDER BY id",
+                            "SELECT id, v FROM t ORDER BY id DESC")
+    assert res.comparable and res.error == ""
+    assert res.orig_count == res.opt_count == 3
+    assert res.rows_compared and res.rows_match  # order-insensitive
+
+
+def test_check_consistency_count_mismatch(tmp_path):
+    setup = ("CREATE TABLE t (id INTEGER);"
+             "INSERT INTO t VALUES (1),(2),(3);")
+    ex = _sqlite_executor(tmp_path, setup)
+    res = check_consistency(ex, "SELECT id FROM t", "SELECT id FROM t WHERE id > 1")
+    assert res.comparable
+    assert (res.orig_count, res.opt_count) == (3, 2)
+    assert not res.rows_compared
+
+
+def test_check_consistency_same_count_different_rows(tmp_path):
+    setup = ("CREATE TABLE t (id INTEGER);"
+             "INSERT INTO t VALUES (1),(2),(3);")
+    ex = _sqlite_executor(tmp_path, setup)
+    res = check_consistency(ex, "SELECT id FROM t WHERE id <= 2",
+                            "SELECT id FROM t WHERE id >= 2")
+    assert res.orig_count == res.opt_count == 2
+    assert res.rows_compared and not res.rows_match
+
+
+def test_check_consistency_large_result_counts_only(tmp_path):
+    rows = ",".join(f"({i})" for i in range(600))
+    setup = f"CREATE TABLE t (id INTEGER); INSERT INTO t VALUES {rows};"
+    ex = _sqlite_executor(tmp_path, setup)
+    res = check_consistency(ex, "SELECT id FROM t", "SELECT id FROM t")
+    assert res.orig_count == res.opt_count == 600
+    assert not res.rows_compared  # above MAX_COMPARE_ROWS → count check only
+
+
+def test_check_consistency_not_comparable_runs_nothing():
+    calls = []
+
+    class Spy:
+        def run(self, sql, max_rows=0):
+            calls.append(sql)
+
+    res = check_consistency(Spy(), "INSERT INTO t SELECT 1", "SELECT 1")
+    assert not res.comparable
+    assert calls == []  # refused scripts never reach the database
+
+
+def test_check_consistency_error_surfaced(tmp_path):
+    ex = _sqlite_executor(tmp_path, "CREATE TABLE t (id INTEGER);")
+    res = check_consistency(ex, "SELECT id FROM missing", "SELECT id FROM t")
+    assert res.comparable
+    assert res.error
+
+
+def test_render_consistency_section_strings():
+    ok = ConsistencyResult(comparable=True, orig_count=3, opt_count=3,
+                           rows_compared=True, rows_match=True,
+                           orig_ms=5, opt_ms=4)
+    en = render_consistency_section(ok, "en")
+    assert "## Consistency Measurement" in en
+    assert "5 ms" in en
+    zh = render_consistency_section(ok, "zh")
+    assert "## 一致性实测" in zh
+
+    bad = ConsistencyResult(comparable=True, orig_count=3, opt_count=2)
+    assert render_consistency_section(bad, "en")
+
+    differ = ConsistencyResult(comparable=True, orig_count=2, opt_count=2,
+                               rows_compared=True, rows_match=False)
+    assert render_consistency_section(differ, "en")
+
+    nc = render_consistency_section(ConsistencyResult(), "en")
+    assert "## Consistency Measurement" in nc
+
+    err = render_consistency_section(
+        ConsistencyResult(comparable=True, error="boom\nline2"), "zh")
+    assert "boom line2" in err

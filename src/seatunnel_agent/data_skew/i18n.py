@@ -57,6 +57,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_verify_running": "Probing key distributions on the database…",
         "dsk_verify_need_conn": "⚠️ Connect a data source first.",
         "dsk_verify_need_analyze": "⚠️ Run an analysis first, then verify.",
+        "dsk_sample": "Probe sampling",
+        "dsk_sample_full": "Full scan (no sampling)",
         # --- probe section ---
         "prb_section": "## Skew Verification (measured)",
         "prb_no_targets": (
@@ -78,6 +80,33 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_verdict_ok": "✅ balanced",
         "prb_verdict_empty": "empty table",
         "prb_verdict_error": "probe failed",
+        "prb_sampled_note": "(estimated from a {pct}% table sample)",
+        "prb_engine_params": "**Suggested engine settings (based on measured skew)**",
+        # --- consistency measurement ---
+        "cst_btn": "Measure Consistency (runs both SQLs)",
+        "cst_running": "Running the original and the optimized SQL for comparison…",
+        "cst_need_opt": "⚠️ Generate the optimized SQL first (LLM mode).",
+        "cst_section": "## Consistency Measurement (original vs optimized)",
+        "cst_not_single": (
+            "Only a single SELECT / WITH statement can be measured — the script "
+            "contains multiple statements or write operations, so it was not executed."
+        ),
+        "cst_error": "❌ Measurement failed: {err}",
+        "cst_mismatch": (
+            "⛔ Row counts differ: original {a} vs optimized {b} — review the rewrite."
+        ),
+        "cst_match_full": "✅ Row counts match and all {n} rows are identical.",
+        "cst_rows_differ": (
+            "⛔ Same row count but the row contents differ — review the rewrite."
+        ),
+        "cst_match_count": (
+            "✅ Row counts match (result too large for a row-level diff)."
+        ),
+        "cst_col_metric": "Metric",
+        "cst_col_orig": "Original SQL",
+        "cst_col_opt": "Optimized SQL",
+        "cst_rows": "Row count",
+        "cst_elapsed": "Elapsed",
         # --- report chrome ---
         "rpt_title": "# 📊 Data Skew Analysis Report",
         "rpt_dialect": "Dialect",
@@ -151,6 +180,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_verify_running": "正在探查数据库中键值分布…",
         "dsk_verify_need_conn": "⚠️ 请先连接数据源。",
         "dsk_verify_need_analyze": "⚠️ 请先执行一次分析，再进行验证。",
+        "dsk_sample": "探查采样",
+        "dsk_sample_full": "全量（不采样）",
         # --- probe section ---
         "prb_section": "## 倾斜验证（实测）",
         "prb_no_targets": "脚本中未解析到可探查的基表键（仅子查询内的键无法探查）。",
@@ -169,6 +200,27 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_verdict_ok": "✅ 分布均衡",
         "prb_verdict_empty": "空表",
         "prb_verdict_error": "探查失败",
+        "prb_sampled_note": "（按 {pct}% 表采样估算）",
+        "prb_engine_params": "**建议引擎参数（基于实测倾斜）**",
+        # --- consistency measurement ---
+        "cst_btn": "一致性实测（运行两版 SQL）",
+        "cst_running": "正在运行原 SQL 与优化后 SQL 进行对比…",
+        "cst_need_opt": "⚠️ 请先在 LLM 模式下生成优化后 SQL。",
+        "cst_section": "## 一致性实测（原 SQL vs 优化 SQL）",
+        "cst_not_single": (
+            "仅支持单条 SELECT / WITH 查询的实测对比——脚本包含多条语句或写操作，"
+            "未执行。"
+        ),
+        "cst_error": "❌ 实测失败：{err}",
+        "cst_mismatch": "⛔ 行数不一致：原 {a} 行 vs 优化后 {b} 行——请人工复核改写。",
+        "cst_match_full": "✅ 行数一致，且全部 {n} 行结果完全一致。",
+        "cst_rows_differ": "⛔ 行数一致但结果内容存在差异——请人工复核改写。",
+        "cst_match_count": "✅ 行数一致（结果集较大，未逐行比对）。",
+        "cst_col_metric": "指标",
+        "cst_col_orig": "原 SQL",
+        "cst_col_opt": "优化后 SQL",
+        "cst_rows": "返回行数",
+        "cst_elapsed": "耗时",
         # --- report chrome ---
         "rpt_title": "# 📊 数据倾斜分析报告",
         "rpt_dialect": "方言",

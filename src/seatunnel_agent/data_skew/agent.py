@@ -225,8 +225,28 @@ class DataSkewAgent:
 
         findings_md = self._findings_for_prompt(report, self.lang)
         if probe_context.strip():
-            head = ("【实测键值分布（来自用户数据库探查）】" if self.lang == "zh"
-                    else "[Measured key distributions (probed from the user's database)]")
+            if self.lang == "zh":
+                head = (
+                    "【实测键值分布（来自用户数据库探查）】\n"
+                    "以下分布来自真实数据，可信度高于静态推测。请针对列出的热点值做精准改写：\n"
+                    "- 热点键隔离：对列出的热点值走独立分支（小表侧可 MAPJOIN/BROADCAST），"
+                    "其余键正常 JOIN，最后 UNION ALL 合并；\n"
+                    "- NULL 占比高的关联键：先过滤 NULL 再 UNION ALL 回来，或物化盐值列；\n"
+                    "- 按实测 top1 占比选择加盐系数 N（如 top1≈35% 时 N 取 10~20）。"
+                )
+            else:
+                head = (
+                    "[Measured key distributions (probed from the user's database)]\n"
+                    "These are real measurements — trust them over static guesses. "
+                    "Rewrite specifically for the listed hot values:\n"
+                    "- Isolate hot keys: route the listed hot values through a dedicated "
+                    "branch (MAPJOIN/BROADCAST where the other side is small), join the "
+                    "rest normally, then UNION ALL;\n"
+                    "- For NULL-heavy join keys: filter NULLs first and UNION ALL them "
+                    "back, or materialize a salt column;\n"
+                    "- Pick the salting factor N from the measured top1 share "
+                    "(e.g. N=10–20 for top1≈35%)."
+                )
             findings_md = f"{findings_md}\n\n{head}\n{probe_context.strip()}"
         system = build_system_prompt(self.dialect, self.lang, findings_md)
         user = build_user_prompt(sql, self.lang)
