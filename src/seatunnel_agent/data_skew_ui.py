@@ -9,6 +9,7 @@ as the SQL Review / Data Comparison pages.
 
 from __future__ import annotations
 
+import re
 import tempfile
 import threading
 from pathlib import Path
@@ -56,6 +57,21 @@ def _mode_choices(lang: str) -> list[tuple[str, str]]:
 def _err_md(exc: Exception, lang: str) -> str:
     sep = ": " if lang == "en" else "："
     return f"❌ **{dsk(lang, 'dsk_error')}**{sep}{exc}"
+
+
+_PROBE_HEADS = (dsk("zh", "prb_section"), dsk("en", "prb_section"))
+# Line-anchored so a report merely *quoting* the heading mid-sentence
+# is not truncated at that point.
+_PROBE_HEAD_RE = re.compile(
+    r"(?m)^[ \t]{0,3}#{2,3}\s*(?:"
+    + "|".join(re.escape(h.lstrip("# ")) for h in _PROBE_HEADS)
+    + r")\s*$"
+)
+
+
+def _strip_probe_section(report: str) -> str:
+    m = _PROBE_HEAD_RE.search(report)
+    return report[: m.start()].rstrip() if m else report
 
 
 def render_data_skew_page(app: gr.Blocks) -> None:
@@ -173,15 +189,6 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             holder["executor"] = executor
             holder["status"] = status
         return status
-
-    _PROBE_HEADS = (dsk("zh", "prb_section"), dsk("en", "prb_section"))
-
-    def _strip_probe_section(report: str) -> str:
-        for head in _PROBE_HEADS:
-            idx = report.find(head)
-            if idx != -1:
-                report = report[:idx].rstrip()
-        return report
 
     def do_verify(sql: str, report_cur: str, lang: str):
         with holder_lock:

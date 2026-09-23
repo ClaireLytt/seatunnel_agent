@@ -649,6 +649,37 @@ def test_render_probe_section_clean_and_error_rows():
     assert "no such table" in md
 
 
+def test_render_probe_section_escapes_multiline_values():
+    r = ProbeResult(target=ProbeTarget("t", "k", "join_key"))
+    r.total, r.top = 100, [("bad\nvalue|x", 40)]
+    md = render_probe_section([r], "en")
+    row = next(l for l in md.splitlines() if "`t.k`" in l)
+    assert "\n" not in row  # value newline must not split the table row
+    assert "bad value\\|x" in row
+
+
+def test_probe_lines_for_prompt_escapes_multiline_values():
+    r = ProbeResult(target=ProbeTarget("t", "k", "join_key"))
+    r.total, r.top = 100, [("a\nb", 40)]
+    lines = probe_lines_for_prompt([r], "en")
+    assert "\n" not in lines
+    assert "a b=40" in lines
+
+
+def test_strip_probe_section_line_anchored():
+    from seatunnel_agent.data_skew_ui import _strip_probe_section
+
+    section = render_probe_section([_fake_result()], "en")
+    report = "# Report\n\nbody text\n\n" + section
+    assert _strip_probe_section(report) == "# Report\n\nbody text"
+    # A mid-sentence quote of the heading must NOT truncate the report.
+    quoted = "# Report\n\nsee the ## Skew Verification (measured) section below\n"
+    assert _strip_probe_section(quoted) == quoted
+    # Repeated verify: only content from the first real heading is dropped.
+    doubled = report + "\n\n" + section
+    assert _strip_probe_section(doubled) == "# Report\n\nbody text"
+
+
 def test_probe_lines_for_prompt():
     lines = probe_lines_for_prompt([_fake_result(), _fake_result("error")], "en")
     assert lines.count("\n") == 0  # error result skipped → single line

@@ -211,15 +211,20 @@ def _pct(x: float) -> str:
     return f"{x * 100:.1f}%"
 
 
+def _safe_value(v: str, max_len: int = 20) -> str:
+    """A key value safe for one markdown-table cell / prompt line."""
+    v = re.sub(r"\s+", " ", v)
+    if len(v) > max_len:
+        v = v[: max_len - 1] + "…"
+    return v.replace("|", "\\|").replace("`", "'")
+
+
 def _top_preview(r: ProbeResult, n: int = 3) -> str:
     if not r.top or not r.total:
         return "-"
-    parts = []
-    for v, c in r.top[:n]:
-        v = v if len(v) <= 20 else v[:19] + "…"
-        v = v.replace("|", "\\|").replace("`", "'")
-        parts.append(f"`{v}` ({_pct(c / r.total)})")
-    return ", ".join(parts)
+    return ", ".join(
+        f"`{_safe_value(v)}` ({_pct(c / r.total)})" for v, c in r.top[:n]
+    )
 
 
 def render_probe_section(results: list[ProbeResult], lang: str) -> str:
@@ -265,7 +270,7 @@ def probe_lines_for_prompt(results: list[ProbeResult], lang: str) -> str:
         if r.error or not r.total:
             continue
         t = r.target
-        top = ", ".join(f"{v}={c}" for v, c in r.top[:3])
+        top = ", ".join(f"{_safe_value(v)}={c}" for v, c in r.top[:3])
         lines.append(
             f"- {t.table}.{t.column} ({dsk(lang, f'prb_reason_{t.reason}')}): "
             f"rows={r.total}, null={_pct(r.null_ratio)}, "
