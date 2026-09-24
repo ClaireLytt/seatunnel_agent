@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import os
 import re
 import shutil
 import socket
@@ -11,8 +12,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .config import Settings
+from .config import Settings, env_float, env_int
 from .utils import safe_json, truncate
+
+CONNECTION_TEST_TIMEOUT = env_float("CONNECTION_TEST_TIMEOUT", 5.0)
+MAX_BATCH_CONFIGS = env_int("MAX_BATCH_CONFIGS", 20)
 
 # ---------------------------------------------------------------------------
 # Tool JSON schemas (sent to Claude)
@@ -469,6 +473,11 @@ def _read_log(settings: Settings, log_path: str, tail_lines: int = 100) -> str:
         return safe_json({"error": f"Invalid path: {log_path}"})
 
     try:
+        tail_lines = max(1, int(tail_lines))
+    except (TypeError, ValueError):
+        tail_lines = 100
+
+    try:
         lines = Path(resolved).read_text(encoding="utf-8", errors="replace").splitlines()
         tail = lines[-tail_lines:] if len(lines) > tail_lines else lines
         return safe_json({
@@ -557,11 +566,20 @@ def _write_config(settings: Settings, config_path: str, content: str) -> str:
     old_content = None
     if path.exists():
         old_content = path.read_text(encoding="utf-8")
-        backup = path.with_suffix(path.suffix + ".bak")
-        shutil.copy2(path, backup)
 
+    # Atomic write: stage to a temp file, then replace — a failed write
+    # never leaves a truncated config or a stray backup behind.
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8")
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+        if old_content is not None:
+            backup = path.with_suffix(path.suffix + ".bak")
+            shutil.copy2(path, backup)
+        os.replace(tmp, path)
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        return safe_json({"error": f"Failed to write config: {e}"})
 
     version = _save_config_version(path, content)
 
@@ -689,7 +707,7 @@ def _list_connectors(settings: Settings) -> str:
 def _test_connection(settings: Settings, host: str, port: int, service_type: str = "") -> str:
     start = time.monotonic()
     try:
-        sock = socket.create_connection((host, port), timeout=5)
+        sock = socket.create_connection((host, port), timeout=CONNECTION_TEST_TIMEOUT)
         latency_ms = round((time.monotonic() - start) * 1000, 1)
         sock.close()
         label = f"{service_type} at " if service_type else ""
@@ -775,8 +793,8 @@ def _list_config_versions(settings: Settings, config_path: str) -> str:
 def _run_batch(settings: Settings, config_paths: list[str], stop_on_failure: bool = True) -> str:
     if not config_paths:
         return safe_json({"error": "No config paths provided"})
-    if len(config_paths) > 20:
-        return safe_json({"error": "Too many configs (max 20)"})
+    if len(config_paths) > MAX_BATCH_CONFIGS:
+        return safe_json({"error": f"Too many configs (max {MAX_BATCH_CONFIGS})"})
     results = []
     passed = 0
     failed = 0

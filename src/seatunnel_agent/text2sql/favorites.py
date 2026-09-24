@@ -46,9 +46,14 @@ def apply_params(sql: str, values: dict[str, str]) -> str:
     return _PARAM_RE.sub(_replace, sql)
 
 
+_DEFAULT_FAVORITES_PATH = os.getenv(
+    "SQL_FAVORITES_PATH", "config/sql_favorites.json"
+)
+
+
 class FavoritesStore:
-    def __init__(self, path: str | Path = "config/sql_favorites.json") -> None:
-        self.path = Path(path)
+    def __init__(self, path: str | Path | None = None) -> None:
+        self.path = Path(path if path is not None else _DEFAULT_FAVORITES_PATH)
         self._lock = threading.Lock()
 
     def _read(self) -> list[dict[str, Any]]:

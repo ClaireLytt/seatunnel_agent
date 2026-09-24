@@ -1,0 +1,2832 @@
+# -*- coding: utf-8 -*-
+"""Tests for the SQL Code Review module (linter, report, tools)."""
+
+from __future__ import annotations
+
+import json
+
+import pytest
+
+from seatunnel_agent.sql_review.linter import (
+    clean_sql,
+    is_known_dialect,
+    lint_sql,
+    line_of,
+    normalize_dialect,
+)
+from seatunnel_agent.sql_review.report import (
+    CHECK_CATALOG,
+    Finding,
+    ReviewReport,
+    Severity,
+    render_report,
+)
+from seatunnel_agent.sql_review.tools import (
+    SQLReviewRuntime,
+    execute_review_tool,
+)
+from seatunnel_agent.sql_review.agent import static_review
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def categories(findings):
+    return {f.category for f in findings}
+
+
+def by_category(findings, cat):
+    return [f for f in findings if f.category == cat]
+
+
+# ---------------------------------------------------------------------------
+# clean_sql / dialect
+# ---------------------------------------------------------------------------
+
+def test_clean_sql_preserves_length_and_newlines():
+    sql = "select 'a--b' -- comment\nfrom t /* block\ncomment */ where x=1"
+    cleaned = clean_sql(sql)
+    assert len(cleaned) == len(sql)
+    assert cleaned.count("\n") == sql.count("\n")
+    assert "comment" not in cleaned
+    assert "a--b" not in cleaned
+
+
+def test_line_of():
+    sql = "a\nb\nc"
+    assert line_of(sql, 0) == 1
+    assert line_of(sql, 2) == 2
+    assert line_of(sql, 4) == 3
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ("hive", "hive"),
+    ("Spark SQL", "spark"),
+    ("FlinkSQL", "flink"),
+    ("odps", "maxcompute"),
+    ("MaxCompute", "maxcompute"),
+    ("", "hive"),
+    ("mysql", "mysql"),
+    ("Postgres", "postgresql"),
+    ("pg", "postgresql"),
+    ("MSSQL", "sqlserver"),
+    ("ClickHouse", "clickhouse"),
+    ("doris", "doris"),
+    ("sqlite", "sqlite"),
+    ("oracle", "hive"),
+])
+def test_normalize_dialect(raw, expected):
+    assert normalize_dialect(raw) == expected
+
+
+# ---------------------------------------------------------------------------
+# Linter rules
+# ---------------------------------------------------------------------------
+
+SPEC_EXAMPLE = """select level1_category_name
+          ,level1_category_code
+          ,count(1)
+from zz.dwm_scm_detail_di
+group by level1_category_name"""
+
+
+def test_groupby_missing_column_is_critical():
+    findings = lint_sql(SPEC_EXAMPLE, "hive")
+    gb = by_category(findings, "groupby_completeness")
+    assert len(gb) == 1
+    assert gb[0].severity == Severity.CRITICAL
+    assert "level1_category_code" in gb[0].description
+
+
+def test_groupby_complete_passes():
+    sql = """select level1_category_name, level1_category_code, count(1)
+from zz.dwm_scm_detail_di
+where pt = '20260313'
+group by level1_category_name, level1_category_code"""
+    assert not by_category(lint_sql(sql), "groupby_completeness")
+
+
+def test_groupby_aggregates_and_window_ignored():
+    sql = """select uid, sum(amt), row_number() over (partition by uid order by dt) as rn
+from t where pt='20260101' group by uid"""
+    assert not by_category(lint_sql(sql), "groupby_completeness")
+
+
+def test_groupby_positional_skipped():
+    sql = "select uid, dt, count(1) from t where pt='1' group by 1, 2"
+    assert not by_category(lint_sql(sql), "groupby_completeness")
+
+
+def test_groupby_subquery_checked_independently():
+    sql = """select uid, cnt from (
+    select uid, dt, count(1) as cnt from t where pt='1' group by uid
+) x"""
+    gb = by_category(lint_sql(sql), "groupby_completeness")
+    assert len(gb) == 1
+    assert "dt" in gb[0].description
+
+
+def test_join_without_on_is_critical():
+    sql = "select * from a join b where a.pt='1'"
+    js = by_category(lint_sql(sql), "join_cartesian")
+    assert js and js[0].severity == Severity.CRITICAL
+
+
+def test_join_with_on_passes():
+    sql = "select a.x from a join b on a.id = b.id where a.pt='1'"
+    assert not by_category(lint_sql(sql), "join_cartesian")
+
+
+def test_cross_join_is_risk():
+    sql = "select a.x from a cross join b where a.pt='1'"
+    js = by_category(lint_sql(sql), "join_cartesian")
+    assert js and js[0].severity == Severity.RISK
+
+
+def test_join_on_with_or_flagged():
+    sql = "select a.x from a join b on a.id = b.id or a.code = b.code where a.pt='1'"
+    assert by_category(lint_sql(sql), "join_condition")
+
+
+def test_null_equality_is_critical():
+    for op in ("=", "!=", "<>"):
+        sql = f"select x from t where pt='1' and name {op} null"
+        fs = by_category(lint_sql(sql), "where_syntax")
+        assert fs and fs[0].severity == Severity.CRITICAL
+
+
+def test_is_null_passes():
+    sql = "select x from t where pt='1' and name is not null"
+    assert not by_category(lint_sql(sql), "where_syntax")
+
+
+def test_division_without_guard_is_risk():
+    sql = "select amt / cnt from t where pt='1'"
+    fs = by_category(lint_sql(sql), "calculation")
+    assert fs and fs[0].severity == Severity.RISK
+
+
+def test_division_with_nullif_passes():
+    sql = "select amt / nullif(cnt, 0) from t where pt='1'"
+    assert not by_category(lint_sql(sql), "calculation")
+
+
+def test_division_by_zero_literal_is_critical():
+    sql = "select amt / 0 from t where pt='1'"
+    fs = by_category(lint_sql(sql), "calculation")
+    assert any(f.severity == Severity.CRITICAL for f in fs)
+
+
+def test_missing_partition_filter_on_suffix_table():
+    sql = "select x from zz.dwd_order_di"
+    fs = by_category(lint_sql(sql, "hive"), "partition_pruning")
+    assert fs and "dwd_order_di" in fs[0].description
+
+
+def test_partition_filter_present_passes():
+    sql = "select x from zz.dwd_order_di where pt = '20260313'"
+    assert not by_category(lint_sql(sql, "hive"), "partition_pruning")
+
+
+def test_partition_rules_skipped_for_flink():
+    sql = "select x from zz.dwd_order_di"
+    assert not by_category(lint_sql(sql, "flink"), "partition_pruning")
+
+
+def test_unquoted_partition_value_is_risk():
+    sql = "select x from t_di where pt = 20260313"
+    fs = by_category(lint_sql(sql), "where_partition")
+    assert fs and "20260313" in fs[0].description
+
+
+def test_select_star_is_risk():
+    sql = "select * from t where pt='1'"
+    assert by_category(lint_sql(sql), "resource_usage")
+
+
+def test_count_star_not_flagged_as_select_star():
+    sql = "select count(*) from t where pt='1'"
+    fs = [f for f in lint_sql(sql) if "SELECT *" in f.description]
+    assert not fs
+
+
+def test_order_by_without_limit_is_risk():
+    sql = "select x from t where pt='1' order by x"
+    fs = [f for f in lint_sql(sql, "hive") if "ORDER BY" in f.description]
+    assert fs and fs[0].severity == Severity.RISK
+
+
+def test_order_by_with_limit_passes():
+    sql = "select x from t where pt='1' order by x limit 100"
+    assert not [f for f in lint_sql(sql, "hive") if "ORDER BY" in f.description]
+
+
+def test_union_without_all_is_suggestion():
+    sql = "select x from a where pt='1' union select x from b where pt='1'"
+    fs = [f for f in lint_sql(sql) if "UNION" in f.description]
+    assert fs and fs[0].severity == Severity.SUGGESTION
+
+
+def test_union_all_passes():
+    sql = "select x from a where pt='1' union all select x from b where pt='1'"
+    assert not [f for f in lint_sql(sql) if "UNION" in f.description and "UNION ALL" not in f.description]
+
+
+def test_count_distinct_is_suggestion():
+    sql = "select count(distinct uid) from t where pt='1'"
+    fs = by_category(lint_sql(sql), "data_skew")
+    assert fs and fs[0].severity == Severity.SUGGESTION
+
+
+def test_insert_overwrite_without_partition_is_risk():
+    sql = "insert overwrite table dw.t_target select x from t where pt='1'"
+    fs = by_category(lint_sql(sql, "hive"), "where_partition")
+    assert fs and "PARTITION" in fs[0].description
+
+
+def test_insert_overwrite_with_partition_passes():
+    sql = "insert overwrite table dw.t_target partition (pt='${bizdate}') select x from t where pt='1'"
+    assert not by_category(lint_sql(sql, "hive"), "where_partition")
+
+
+def test_distinct_with_groupby_is_suggestion():
+    sql = "select distinct uid from t where pt='1' group by uid"
+    assert by_category(lint_sql(sql), "dedup")
+
+
+def test_long_sql_without_comments_readability():
+    sql = "\n".join(["select x"] + [f",col_{i}" for i in range(20)] + ["from t where pt='1'"])
+    assert by_category(lint_sql(sql), "readability")
+
+
+def test_comments_and_literals_not_linted():
+    sql = "-- select * from bad_table\nselect x from t where pt='1' and note = 'a = null'"
+    findings = lint_sql(sql)
+    assert not by_category(findings, "where_syntax")
+    assert not [f for f in findings if "SELECT *" in f.description]
+
+
+def test_clean_sql_passes_clean_query():
+    sql = """select uid, count(1) as cnt
+from dw.t_order_di
+where pt = '${bizdate}' and uid is not null
+group by uid"""
+    findings = lint_sql(sql, "hive")
+    assert not [f for f in findings if f.severity == Severity.CRITICAL]
+
+
+def test_findings_sorted_by_severity():
+    sql = "select * from t_di where a != null order by x"
+    sev = [f.severity for f in lint_sql(sql)]
+    assert sev == sorted(sev, key=lambda s: {Severity.CRITICAL: 0, Severity.RISK: 1, Severity.SUGGESTION: 2}[s])
+
+
+# ---------------------------------------------------------------------------
+# Report rendering
+# ---------------------------------------------------------------------------
+
+def test_render_report_sections_present():
+    report = ReviewReport(findings=lint_sql(SPEC_EXAMPLE), summary="测试总结")
+    md = render_report(report)
+    for section in ("## CR 报告", "🔴 严重问题", "🟡 潜在风险", "🟢 优化建议",
+                    "📊 检查统计", "💡 总体评价"):
+        assert section in md
+    assert "测试总结" in md
+    assert "GROUP BY 缺少 level1_category_code" in md
+
+
+def test_render_report_empty_findings():
+    md = render_report(ReviewReport(findings=[]))
+    assert "无" in md
+    assert f"检查项总数：{len(CHECK_CATALOG)}" in md
+    assert f"通过：{len(CHECK_CATALOG)}" in md
+    assert "代码检查通过" in md
+
+
+def test_stats_counting():
+    findings = [
+        Finding(Severity.CRITICAL, "groupby_completeness", "d", "行 1", "i", "s"),
+        Finding(Severity.RISK, "partition_pruning", "d", "行 2", "i", "s"),
+        Finding(Severity.RISK, "partition_pruning", "d", "行 3", "i", "s"),
+        Finding(Severity.SUGGESTION, "readability", "d", "全局", "i", "s"),
+    ]
+    stats = ReviewReport(findings=findings).stats()
+    assert stats["total"] == len(CHECK_CATALOG)
+    assert stats["problems"] == 1
+    assert stats["risks"] == 2
+    # suggestions don't fail a category; 2 categories flagged
+    assert stats["passed"] == len(CHECK_CATALOG) - 2
+
+
+def test_table_cells_escaped():
+    findings = [Finding(Severity.CRITICAL, "calculation", "a|b\nc", "行 1", "i", "s")]
+    md = render_report(ReviewReport(findings=findings))
+    assert "a\\|b c" in md
+
+
+# ---------------------------------------------------------------------------
+# i18n (English rendering)
+# ---------------------------------------------------------------------------
+
+def test_render_report_en_sections_and_locations():
+    findings = [
+        Finding(Severity.CRITICAL, "groupby_completeness", "d", "行 6", "i", "s"),
+        Finding(Severity.RISK, "readability", "d", "全局", "i", "s"),
+    ]
+    md = render_report(ReviewReport(findings=findings), lang="en")
+    for section in ("## CR Report", "Critical Issues", "Potential Risks",
+                    "Suggestions", "Check Statistics", "Overall Verdict"):
+        assert section in md
+    assert "Line 6" in md
+    assert "Global" in md
+    assert "行 6" not in md
+    assert "## CR 报告" not in md
+
+
+def test_render_report_en_empty():
+    md = render_report(ReviewReport(findings=[]), lang="en")
+    assert "None" in md
+    assert f"Total checks: {len(CHECK_CATALOG)}" in md
+    assert "Checks passed" in md
+
+
+def test_render_report_zh_default_unchanged():
+    md_default = render_report(ReviewReport(findings=lint_sql(SPEC_EXAMPLE)))
+    md_zh = render_report(ReviewReport(findings=lint_sql(SPEC_EXAMPLE)), lang="zh")
+    assert md_default == md_zh
+    assert "## CR 报告" in md_default
+
+
+def test_i18n_key_parity():
+    from seatunnel_agent.sql_review.i18n import CHECK_CATALOG_EN, SR_I18N
+    assert set(SR_I18N["en"]) == set(SR_I18N["zh"])
+    assert set(CHECK_CATALOG_EN) == set(CHECK_CATALOG)
+
+
+def test_i18n_normalize_and_fallback():
+    from seatunnel_agent.sql_review.i18n import normalize_lang, sr
+    assert normalize_lang("en") == "en"
+    assert normalize_lang("English") == "en"
+    assert normalize_lang("zh") == "zh"
+    assert normalize_lang(None) == "zh"
+    assert normalize_lang("") == "zh"
+    assert sr("en", "sr_none") == "None"
+    assert sr("fr", "sr_none") == "无"  # unknown lang falls back to zh
+    assert sr("en", "nonexistent_key") == "nonexistent_key"
+
+
+def test_catalog_label():
+    from seatunnel_agent.sql_review.i18n import catalog_label
+    assert catalog_label("groupby_completeness", "en") == "GROUP BY completeness"
+    assert catalog_label("groupby_completeness", "zh") == CHECK_CATALOG["groupby_completeness"]
+    assert catalog_label("unknown_cat", "en") == "unknown_cat"
+
+
+def test_build_review_prompt_language():
+    from seatunnel_agent.sql_review.prompts import build_review_prompt
+    en = build_review_prompt("hive", lang="en")
+    assert "English" in en and 'like "Line 6"' in en
+    zh = build_review_prompt("hive", lang="zh")
+    assert "Chinese" in zh and 'like "行 6"' in zh
+    assert build_review_prompt("hive") == zh
+
+
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+
+def test_tool_lint_sql():
+    rt = SQLReviewRuntime(sql=SPEC_EXAMPLE, dialect="hive")
+    out = json.loads(execute_review_tool("lint_sql", {}, rt))
+    assert out["success"] and out["finding_count"] >= 2
+    assert rt.lint_findings
+
+
+def test_tool_get_table_schema_without_store():
+    rt = SQLReviewRuntime(sql="select 1", dialect="hive")
+    out = json.loads(execute_review_tool("get_table_schema", {"table": "t"}, rt))
+    assert "error" in out
+
+
+def test_tool_submit_review_merges_and_dedupes():
+    rt = SQLReviewRuntime(sql=SPEC_EXAMPLE, dialect="hive")
+    execute_review_tool("lint_sql", {}, rt)
+    lint_gb = [f for f in rt.lint_findings if f.category == "groupby_completeness"][0]
+    out = json.loads(execute_review_tool("submit_review", {
+        "findings": [
+            {  # duplicate of a linter finding -> dropped
+                "severity": "critical",
+                "category": "groupby_completeness",
+                "description": "duplicate",
+                "location": lint_gb.location,
+            },
+            {  # new LLM finding -> kept
+                "severity": "suggestion",
+                "category": "readability",
+                "description": "建议添加表别名注释",
+                "location": "全局",
+                "suggestion": "加注释",
+            },
+            {  # invalid severity -> dropped
+                "severity": "fatal",
+                "category": "calculation",
+                "description": "x",
+                "location": "行 1",
+            },
+        ],
+        "summary": "总体评价文本",
+    }, rt))
+    assert out["success"]
+    assert "总体评价文本" in out["report"]
+    assert "duplicate" not in out["report"]
+    assert "建议添加表别名注释" in out["report"]
+    assert rt.report is not None
+
+
+def test_tool_submit_review_runs_lint_if_not_called():
+    rt = SQLReviewRuntime(sql=SPEC_EXAMPLE, dialect="hive")
+    out = json.loads(execute_review_tool("submit_review", {"findings": [], "summary": "s"}, rt))
+    assert out["success"]
+    assert "GROUP BY 缺少 level1_category_code" in out["report"]
+
+
+def test_tool_unknown():
+    rt = SQLReviewRuntime(sql="select 1", dialect="hive")
+    out = json.loads(execute_review_tool("nope", {}, rt))
+    assert "error" in out
+
+
+def test_unknown_llm_category_mapped_to_readability():
+    rt = SQLReviewRuntime(sql="select 1", dialect="hive")
+    out = json.loads(execute_review_tool("submit_review", {
+        "findings": [{
+            "severity": "risk",
+            "category": "made_up_category",
+            "description": "某发现",
+            "location": "行 1",
+        }],
+        "summary": "s",
+    }, rt))
+    assert out["success"]
+    assert "某发现" in out["report"]
+
+
+# ---------------------------------------------------------------------------
+# Regressions: depth-aware scanning, alias/keyword handling
+# ---------------------------------------------------------------------------
+
+def _cats(findings, cat):
+    return [f for f in findings if f.category == cat]
+
+
+def test_join_subquery_with_on_not_cartesian():
+    sql = ("select a.x from a join (select id from b where pt='1') t "
+           "on a.id = t.id where a.pt='1'")
+    assert not _cats(lint_sql(sql, "hive"), "join_cartesian")
+
+
+def test_join_in_subquery_without_on_still_flagged():
+    sql = "select t.x from (select a.x from a join b) t where t.pt='1'"
+    found = _cats(lint_sql(sql, "hive"), "join_cartesian")
+    assert found and found[0].severity == Severity.CRITICAL
+
+
+def test_join_on_not_borrowed_across_scopes():
+    # inner join has no ON; outer join's ON must not satisfy it
+    sql = ("select t.x from (select a.x, a.id from a join b) t "
+           "join c on t.id = c.id where t.pt='1'")
+    assert _cats(lint_sql(sql, "hive"), "join_cartesian")
+
+
+def test_groupby_suffix_columns_not_confused():
+    sql = ("select category_code, code, count(1) from t "
+           "where pt='1' group by category_code")
+    found = _cats(lint_sql(sql, "hive"), "groupby_completeness")
+    assert found and "code" in found[0].description
+
+
+def test_groupby_qualified_vs_bare_column_covered():
+    sql = "select t.uid, count(1) from t where pt='1' group by uid"
+    assert not _cats(lint_sql(sql, "hive"), "groupby_completeness")
+
+
+def test_select_distinct_not_treated_as_column():
+    sql = "select distinct uid from t where pt='1' group by uid"
+    assert not _cats(lint_sql(sql, "hive"), "groupby_completeness")
+
+
+def test_group_by_select_alias_covered():
+    sql = ("select substr(dt,1,6) as month, count(1) from t "
+           "where pt='1' group by month")
+    assert not _cats(lint_sql(sql, "maxcompute"), "groupby_completeness")
+
+
+def test_group_by_cube_skipped():
+    sql = "select a, b, count(1) from t where pt='1' group by cube(a, b)"
+    assert not _cats(lint_sql(sql, "hive"), "groupby_completeness")
+
+
+def test_division_with_case_zero_guard_not_flagged():
+    sql = "select case when cnt = 0 then 0 else amt / cnt end from t where pt='1'"
+    assert not _cats(lint_sql(sql, "hive"), "calculation")
+
+
+def test_division_by_keyword_not_flagged():
+    sql = "select case when a > 1 then x else y end / nullif(z, 0) from t where pt='1'"
+    assert not _cats(lint_sql(sql, "hive"), "calculation")
+
+
+def test_unguarded_division_still_flagged():
+    sql = "select amt / cnt from t where pt='1'"
+    assert _cats(lint_sql(sql, "hive"), "calculation")
+
+
+def test_cte_name_not_flagged_as_unpartitioned_table():
+    sql = ("with tmp_di as (select id from src group by id) "
+           "select id from tmp_di group by id")
+    assert not _cats(lint_sql(sql, "hive"), "partition_pruning")
+
+
+def test_partition_finding_deduped_per_table():
+    sql = ("select a.id from ods_x_di a join ods_x_di b on a.id = b.id "
+           "join ods_x_di c on a.id = c.id")
+    found = _cats(lint_sql(sql, "hive"), "partition_pruning")
+    assert len(found) == 1
+
+
+def test_order_by_limit_in_other_statement_not_counted():
+    sql = ("select id from t where pt='1' order by id;\n"
+           "select id from u where pt='1' limit 10")
+    found = [f for f in lint_sql(sql, "hive") if "ORDER BY" in f.description]
+    assert found
+
+
+def test_qualified_partition_filter_covers_only_its_table():
+    sql = ("select a.id from ods_a_di a join ods_b_di b on a.id = b.id "
+           "where a.pt = '20260101'")
+    found = _cats(lint_sql(sql, "hive"), "partition_pruning")
+    assert len(found) == 1
+    assert "ods_b_di" in found[0].description
+
+
+def test_all_tables_qualified_filtered_clean():
+    sql = ("select a.id from ods_a_di a join ods_b_di b on a.id = b.id "
+           "where a.pt='1' and b.pt='1'")
+    assert not _cats(lint_sql(sql, "hive"), "partition_pruning")
+
+
+def test_bare_partition_filter_suppresses_all():
+    sql = "select id from ods_a_di where pt = '20260101' group by id"
+    assert not _cats(lint_sql(sql, "hive"), "partition_pruning")
+
+
+def _type_check_store():
+    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+    ddl = """
+    create table zz.orders_di (
+      order_id bigint comment 'id',
+      user_id string comment 'uid'
+    ) partitioned by (pt string comment '');
+    create table zz.users_df (
+      user_id bigint comment 'uid',
+      name string comment ''
+    ) partitioned by (pt string comment '');
+    """
+    return SchemaStore(parse_ddl(ddl))
+
+
+def test_join_key_type_mismatch_flagged_with_store():
+    sql = ("select o.order_id from zz.orders_di o join zz.users_df u "
+           "on o.user_id = u.user_id where o.pt='1' and u.pt='1'")
+    found = _cats(lint_sql(sql, "hive", store=_type_check_store()), "join_condition")
+    assert found
+    assert "类型不一致" in found[0].description
+    assert "string" in found[0].description and "bigint" in found[0].description
+
+
+def test_join_key_same_type_family_clean():
+    sql = ("select o.order_id from zz.orders_di o join zz.users_df u "
+           "on o.order_id = u.user_id where o.pt='1' and u.pt='1'")
+    assert not _cats(lint_sql(sql, "hive", store=_type_check_store()), "join_condition")
+
+
+def test_join_key_type_check_skipped_without_store():
+    sql = ("select o.order_id from zz.orders_di o join zz.users_df u "
+           "on o.user_id = u.user_id where o.pt='1' and u.pt='1'")
+    assert not _cats(lint_sql(sql, "hive"), "join_condition")
+
+
+def test_join_key_unknown_table_not_flagged():
+    sql = ("select o.id from zz.unknown_di o join zz.users_df u "
+           "on o.user_id = u.user_id where o.pt='1' and u.pt='1'")
+    assert not _cats(lint_sql(sql, "hive", store=_type_check_store()), "join_condition")
+
+
+def test_is_known_dialect():
+    assert is_known_dialect("hive")
+    assert is_known_dialect("ODPS")
+    assert is_known_dialect(" Spark SQL ")
+    assert is_known_dialect("mysql")
+    assert is_known_dialect("Postgres")
+    assert not is_known_dialect("oracle")
+    assert not is_known_dialect("")
+
+
+# ---------------------------------------------------------------------------
+# static_review (no-LLM entry point)
+# ---------------------------------------------------------------------------
+
+def test_static_review_end_to_end():
+    md = static_review(SPEC_EXAMPLE, "hive")
+    assert "## CR 报告" in md
+    assert "GROUP BY 缺少 level1_category_code" in md
+    assert "缺少分区过滤条件" in md
+
+
+# ---------------------------------------------------------------------------
+# Regression: bare aliases (no AS) & comma joins
+# ---------------------------------------------------------------------------
+
+def test_bare_alias_after_function_grouped_by_alias_clean():
+    sql = "select substr(dt,1,6) mon, count(1) from t where pt='1' group by mon"
+    assert not _cats(lint_sql(sql, "hive"), "groupby_completeness")
+
+
+def test_bare_alias_after_case_when_grouped_by_alias_clean():
+    sql = ("select case when a=1 then b else c end flag, count(1) "
+           "from t where pt='1' group by flag")
+    assert not _cats(lint_sql(sql, "hive"), "groupby_completeness")
+
+
+def test_bare_alias_after_arithmetic_grouped_by_alias_clean():
+    sql = "select amt + fee total, count(1) from t where pt='1' group by total"
+    assert not _cats(lint_sql(sql, "hive"), "groupby_completeness")
+
+
+def test_case_when_without_alias_grouped_by_expr_clean():
+    sql = ("select case when a=1 then b else c end, count(1) "
+           "from t where pt='1' group by case when a=1 then b else c end")
+    assert not _cats(lint_sql(sql, "hive"), "groupby_completeness")
+
+
+def test_comma_join_without_condition_is_cartesian_critical():
+    sql = "select a.x, b.y from ta a, tb b where a.pt='1'"
+    found = _cats(lint_sql(sql, "hive"), "join_cartesian")
+    assert found
+    assert found[0].severity is Severity.CRITICAL
+
+
+def test_comma_join_with_link_only_style_suggestion():
+    sql = "select a.x, b.y from ta a, tb b where a.id = b.id and a.pt='1'"
+    findings = lint_sql(sql, "hive")
+    assert not _cats(findings, "join_cartesian")
+    styles = _cats(findings, "join_condition")
+    assert styles and styles[0].severity is Severity.SUGGESTION
+
+
+def test_single_table_from_no_comma_join_finding():
+    sql = "select uid, count(1) from t where pt='1' group by uid"
+    findings = lint_sql(sql, "hive")
+    assert not _cats(findings, "join_cartesian")
+    assert not _cats(findings, "join_condition")
+
+
+# ---------------------------------------------------------------------------
+# ReviewConfig / .sqlreview.yaml
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.config import (
+    DEFAULT_CONFIG,
+    ReviewConfig,
+    load_review_config,
+)
+
+
+def test_load_config_absent_returns_default(tmp_path):
+    cfg = load_review_config(cwd=tmp_path)
+    assert cfg is DEFAULT_CONFIG
+
+
+def test_load_config_explicit_missing_path_raises(tmp_path):
+    with pytest.raises(ValueError, match="不存在"):
+        load_review_config(path=tmp_path / "nope.yaml")
+
+
+def test_load_config_full_file(tmp_path):
+    f = tmp_path / ".sqlreview.yaml"
+    f.write_text(
+        "partition_columns: [biz_date, pt]\n"
+        "incremental_suffixes: [_di]\n"
+        "disable: [readability]\n"
+        "severity:\n  resource_usage: suggestion\n"
+        "fail_on: critical\n",
+        encoding="utf-8",
+    )
+    cfg = load_review_config(path=f)
+    assert cfg.partition_cols == ("biz_date", "pt")
+    assert cfg.incremental_suffixes == ("_di",)
+    assert cfg.disabled_categories == frozenset({"readability"})
+    assert cfg.severity_overrides == {"resource_usage": Severity.SUGGESTION}
+    assert cfg.fail_on == "critical"
+    assert cfg.source_path == str(f)
+
+
+def test_load_config_auto_discover(tmp_path):
+    (tmp_path / ".sqlreview.yml").write_text("fail_on: risk\n", encoding="utf-8")
+    cfg = load_review_config(cwd=tmp_path)
+    assert cfg.fail_on == "risk"
+
+
+def test_load_config_unknown_key_raises(tmp_path):
+    f = tmp_path / ".sqlreview.yaml"
+    f.write_text("bogus_key: 1\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="未知配置项"):
+        load_review_config(path=f)
+
+
+def test_load_config_unknown_category_raises(tmp_path):
+    f = tmp_path / ".sqlreview.yaml"
+    f.write_text("disable: [not_a_category]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="未知检查类别"):
+        load_review_config(path=f)
+
+
+def test_load_config_bad_severity_raises(tmp_path):
+    f = tmp_path / ".sqlreview.yaml"
+    f.write_text("severity:\n  readability: fatal\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="级别无效"):
+        load_review_config(path=f)
+
+
+def test_load_config_empty_file_ok(tmp_path):
+    f = tmp_path / ".sqlreview.yaml"
+    f.write_text("", encoding="utf-8")
+    cfg = load_review_config(path=f)
+    assert cfg.partition_cols == DEFAULT_CONFIG.partition_cols
+
+
+def test_lint_with_custom_partition_column():
+    # biz_date is not a default partition column: the incremental table t_di
+    # looks unfiltered under the default config, filtered under a custom one.
+    sql = "select id from t_di where biz_date = '20240101'"
+    assert by_category(lint_sql(sql, "hive"), "partition_pruning")
+    cfg = ReviewConfig(partition_cols=("biz_date",))
+    assert not by_category(lint_sql(sql, "hive", config=cfg), "partition_pruning")
+
+
+def test_lint_custom_partition_column_quoting():
+    sql = "select id from t where biz_date = 20240101"
+    assert not by_category(lint_sql(sql, "hive"), "where_partition")
+    cfg = ReviewConfig(partition_cols=("biz_date",))
+    found = by_category(lint_sql(sql, "hive", config=cfg), "where_partition")
+    assert found and "biz_date" in found[0].description
+
+
+def test_lint_custom_incremental_suffix():
+    sql = "select id from t_custom"
+    assert not by_category(lint_sql(sql, "hive"), "partition_pruning")
+    cfg = ReviewConfig(incremental_suffixes=("_custom",))
+    assert by_category(lint_sql(sql, "hive", config=cfg), "partition_pruning")
+
+
+def test_lint_with_disabled_category():
+    sql = "select * from t where pt = '20240101'"
+    assert by_category(lint_sql(sql, "hive"), "resource_usage")
+    cfg = ReviewConfig(disabled_categories=frozenset({"resource_usage"}))
+    assert not by_category(lint_sql(sql, "hive", config=cfg), "resource_usage")
+
+
+def test_lint_with_severity_override():
+    sql = "select * from t where pt = '20240101'"
+    cfg = ReviewConfig(severity_overrides={"resource_usage": Severity.CRITICAL})
+    found = by_category(lint_sql(sql, "hive", config=cfg), "resource_usage")
+    assert found and all(f.severity is Severity.CRITICAL for f in found)
+
+
+# ---------------------------------------------------------------------------
+# Table lineage
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.lineage import extract_table_lineage
+from seatunnel_agent.sql_review.report import TableLineage
+
+
+def test_lineage_insert_overwrite():
+    sql = ("insert overwrite table dw.ads_x partition (pt='1') "
+           "select a.id from ods.t1 a join ods.t2 b on a.id = b.id "
+           "where a.pt='1' and b.pt='1'")
+    lin = extract_table_lineage(sql)
+    assert lin.targets == ["dw.ads_x"]
+    assert lin.sources == ["ods.t1", "ods.t2"]
+
+
+def test_lineage_ctas():
+    sql = "create table tmp.res as select id from src.t where pt='1'"
+    lin = extract_table_lineage(sql)
+    assert lin.targets == ["tmp.res"]
+    assert lin.sources == ["src.t"]
+
+
+def test_lineage_cte_excluded_from_sources():
+    sql = ("with base as (select id from ods.t where pt='1') "
+           "select * from base")
+    lin = extract_table_lineage(sql)
+    assert lin.sources == ["ods.t"]
+    assert lin.targets == []
+
+
+def test_lineage_select_only_no_targets():
+    lin = extract_table_lineage("select 1 from t where pt='1'")
+    assert lin.targets == []
+    assert lin.sources == ["t"]
+    assert bool(lin)
+
+
+def test_lineage_empty_is_falsy():
+    assert not TableLineage()
+
+
+def test_report_renders_lineage_section():
+    rep = ReviewReport(
+        findings=[], dialect="hive",
+        lineage=TableLineage(sources=["ods.a"], targets=["dw.b"]),
+    )
+    md = render_report(rep)
+    assert "🔗 表级血缘" in md
+    assert "来源表：ods.a" in md
+    assert "目标表：dw.b" in md
+
+
+def test_report_without_lineage_no_section():
+    md = render_report(ReviewReport(findings=[], dialect="hive"))
+    assert "表级血缘" not in md
+
+
+def test_static_review_report_includes_lineage():
+    from seatunnel_agent.sql_review.agent import static_review_report
+    rep = static_review_report(
+        "insert into dw.x select id from ods.y where pt='1'", "hive")
+    assert rep.lineage and rep.lineage.targets == ["dw.x"]
+
+
+# ---------------------------------------------------------------------------
+# runner: collect_sql_files / severity_reached
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.runner import collect_sql_files, severity_reached
+
+
+def test_collect_sql_files_recursive_sorted(tmp_path):
+    (tmp_path / "b.sql").write_text("select 1", encoding="utf-8")
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    (sub / "a.sql").write_text("select 2", encoding="utf-8")
+    (tmp_path / "note.txt").write_text("x", encoding="utf-8")
+    files = collect_sql_files(tmp_path)
+    assert [f.name for f in files] == ["b.sql", "a.sql"]
+
+
+def _mk_finding(sev):
+    return Finding(category="readability", severity=sev, description="d",
+                   location="行 1", impact="i", suggestion="s")
+
+
+def test_severity_reached_thresholds():
+    crit = [_mk_finding(Severity.CRITICAL)]
+    risk = [_mk_finding(Severity.RISK)]
+    sugg = [_mk_finding(Severity.SUGGESTION)]
+    assert severity_reached(crit, "critical")
+    assert not severity_reached(risk, "critical")
+    assert severity_reached(risk, "risk")
+    assert severity_reached(crit, "risk")
+    assert not severity_reached(sugg, "risk")
+    assert severity_reached(sugg, "suggestion")
+    assert not severity_reached([], "suggestion")
+
+
+# ---------------------------------------------------------------------------
+# ReviewLogger (jsonl history)
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.rlog import ReviewLogger
+
+
+def test_review_logger_log_and_recent(tmp_path):
+    logger = ReviewLogger(log_dir=tmp_path)
+    logger.log(
+        sql="select * from t", dialect="hive", mode="static",
+        findings=[_mk_finding(Severity.RISK)], stats={"risk": 1},
+        target="a.sql", elapsed_ms=5,
+    )
+    recs = logger.recent()
+    assert len(recs) == 1
+    r = recs[0]
+    assert r["dialect"] == "hive"
+    assert r["mode"] == "static"
+    assert r["target"] == "a.sql"
+    assert r["categories"] == ["readability"]
+    assert r["severities"] == {"risk": 1}
+    assert r["elapsed_ms"] == 5
+
+
+def test_review_logger_summarize(tmp_path):
+    logger = ReviewLogger(log_dir=tmp_path)
+    logger.log("s1", "hive", "static",
+               [_mk_finding(Severity.CRITICAL), _mk_finding(Severity.RISK)])
+    logger.log("s2", "spark", "agent", [_mk_finding(Severity.RISK)])
+    s = logger.summarize()
+    assert s["reviews"] == 2
+    assert s["findings"] == 3
+    assert s["severities"] == {"critical": 1, "risk": 2}
+    assert s["top_categories"][0]["category"] == "readability"
+    assert s["top_categories"][0]["count"] == 3
+
+
+def test_review_logger_recent_empty(tmp_path):
+    logger = ReviewLogger(log_dir=tmp_path / "none")
+    assert logger.recent() == []
+    assert logger.summarize()["reviews"] == 0
+
+
+def test_review_logger_skips_corrupt_lines(tmp_path):
+    logger = ReviewLogger(log_dir=tmp_path)
+    logger.log("s", "hive", "static", [])
+    with open(logger.log_file, "a", encoding="utf-8") as f:
+        f.write("{broken json\n")
+    logger.log("s2", "hive", "static", [])
+    assert len(logger.recent()) == 2
+
+
+# ---------------------------------------------------------------------------
+# Fixer (mock LLM)
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review import fixer as fixer_mod
+
+
+class _FakeResp:
+    def __init__(self, text):
+        self.reply_text = text
+
+
+class _FakeLLM:
+    def __init__(self, text):
+        self._text = text
+
+    def chat(self, system, messages, **kw):
+        return _FakeResp(self._text)
+
+
+def test_generate_fix_extracts_sql_block(monkeypatch):
+    monkeypatch.setattr(
+        fixer_mod, "LLMClient",
+        lambda settings: _FakeLLM("before\n```sql\nselect id from t\n```\nafter"))
+    out = fixer_mod.generate_fix(None, "select * from t", "hive", "report")
+    assert out == "select id from t"
+
+
+def test_generate_fix_accepts_bare_sql(monkeypatch):
+    monkeypatch.setattr(
+        fixer_mod, "LLMClient",
+        lambda settings: _FakeLLM("SELECT id FROM t WHERE pt='1'"))
+    out = fixer_mod.generate_fix(None, "select * from t", "hive", "report")
+    assert out.startswith("SELECT id")
+
+
+def test_generate_fix_no_sql_raises(monkeypatch):
+    monkeypatch.setattr(
+        fixer_mod, "LLMClient",
+        lambda settings: _FakeLLM("I cannot help with that."))
+    with pytest.raises(RuntimeError, match="修复"):
+        fixer_mod.generate_fix(None, "select * from t", "hive", "report")
+
+
+# ---------------------------------------------------------------------------
+# CLI: --dir / --fail-on / --rules / --output
+# ---------------------------------------------------------------------------
+
+from click.testing import CliRunner
+
+from seatunnel_agent.cli import cli as _cli_root
+
+
+def _run_cli(args):
+    return CliRunner().invoke(_cli_root, args)
+
+
+def test_cli_review_static_inline():
+    r = _run_cli(["review", "--sql", "select id from t where pt='1'",
+                  "--static-only"])
+    assert r.exit_code == 0
+    assert "CR 报告" in r.output
+
+
+def test_cli_review_fail_on_gate():
+    r = _run_cli(["review", "--sql", "select * from t order by id",
+                  "--static-only", "--fail-on", "risk"])
+    assert r.exit_code == 1
+    r2 = _run_cli(["review", "--sql", "select * from t order by id",
+                   "--static-only", "--fail-on", "critical"])
+    assert r2.exit_code == 0
+
+
+def test_cli_review_dir_batch(tmp_path):
+    (tmp_path / "a.sql").write_text("select * from t where pt='1'",
+                                    encoding="utf-8")
+    (tmp_path / "b.sql").write_text("select id from t where pt='1'",
+                                    encoding="utf-8")
+    r = _run_cli(["review", "--dir", str(tmp_path), "--static-only"])
+    assert r.exit_code == 0
+    assert "a.sql" in r.output and "b.sql" in r.output
+    assert "批量审查汇总" in r.output
+
+
+def test_cli_review_dir_empty_errors(tmp_path):
+    r = _run_cli(["review", "--dir", str(tmp_path), "--static-only"])
+    assert r.exit_code != 0
+
+
+def test_cli_review_no_input_errors():
+    r = _run_cli(["review", "--static-only"])
+    assert r.exit_code != 0
+
+
+def test_cli_review_output_file(tmp_path):
+    out = tmp_path / "report.md"
+    r = _run_cli(["review", "--sql", "select id from t where pt='1'",
+                  "--static-only", "-o", str(out)])
+    assert r.exit_code == 0
+    assert "CR 报告" in out.read_text(encoding="utf-8")
+
+
+def test_cli_review_rules_file(tmp_path):
+    rules = tmp_path / ".sqlreview.yaml"
+    rules.write_text("disable: [resource_usage]\nfail_on: risk\n",
+                     encoding="utf-8")
+    r = _run_cli(["review", "--sql", "select * from t where pt='1'",
+                  "--static-only", "--rules", str(rules)])
+    assert r.exit_code == 0
+    assert "SELECT *" not in r.output
+
+
+def test_cli_review_rules_fail_on_from_config(tmp_path):
+    rules = tmp_path / ".sqlreview.yaml"
+    rules.write_text("fail_on: risk\n", encoding="utf-8")
+    r = _run_cli(["review", "--sql", "select * from t order by id",
+                  "--static-only", "--rules", str(rules)])
+    assert r.exit_code == 1
+
+
+def test_cli_review_bad_rules_file(tmp_path):
+    rules = tmp_path / "rules.yaml"
+    rules.write_text("bogus: 1\n", encoding="utf-8")
+    r = _run_cli(["review", "--sql", "select 1", "--static-only",
+                  "--rules", str(rules)])
+    assert r.exit_code != 0
+
+
+def test_cli_review_stats_runs():
+    r = _run_cli(["review-stats"])
+    assert r.exit_code == 0
+
+
+def test_cli_review_dedupes_overlapping_sources(tmp_path):
+    f = tmp_path / "a.sql"
+    f.write_text("select id from t where pt='1'", encoding="utf-8")
+    # --file and --dir both resolve to the same file -> reviewed once
+    r = _run_cli(["review", "--file", str(f), "--dir", str(tmp_path),
+                  "--static-only"])
+    assert r.exit_code == 0
+    assert "批量审查汇总" not in r.output
+
+
+# ---------------------------------------------------------------------------
+# Multi-statement splitting
+# ---------------------------------------------------------------------------
+
+def test_split_statements_top_level_semicolon():
+    from seatunnel_agent.sql_review.linter import split_statements
+    sql = "SELECT 1;\nSELECT 2"
+    parts = split_statements(sql)
+    assert len(parts) == 2
+    assert parts[0][0] == 0
+    # the second segment keeps its leading newline, so offset + local line = 2
+    off, seg = parts[1]
+    assert off + seg[:seg.index("SELECT")].count("\n") + 1 == 2
+
+
+def test_split_statements_ignores_semicolon_in_parens_and_strings():
+    from seatunnel_agent.sql_review.linter import split_statements
+    sql = "SELECT concat(a, ';') FROM (SELECT 1) t"
+    assert len(split_statements(sql)) == 1
+
+
+def test_split_statements_empty_returns_whole():
+    from seatunnel_agent.sql_review.linter import split_statements
+    assert split_statements("") == [(0, "")]
+
+
+def test_lint_multi_statement_line_numbers_remapped():
+    sql = "SELECT id FROM t WHERE pt='1';\nSELECT * FROM b"
+    fs = by_category(lint_sql(sql), "resource_usage")
+    star = [f for f in fs if "SELECT *" in f.description]
+    assert star and "行 2" in star[0].location
+
+
+def test_lint_multi_statement_each_checked():
+    sql = "SELECT * FROM a;\nSELECT * FROM b"
+    fs = [f for f in lint_sql(sql) if "SELECT *" in f.description]
+    assert len(fs) == 2
+    assert {"行 1", "行 2"} <= {f.location for f in fs}
+
+
+# ---------------------------------------------------------------------------
+# Inline disable comments
+# ---------------------------------------------------------------------------
+
+def test_inline_disable_same_line():
+    fs = lint_sql("SELECT * FROM a -- sqlreview-disable")
+    assert fs == []
+
+
+def test_inline_disable_next_line_with_category():
+    sql = "-- sqlreview-disable-next-line: resource_usage\nSELECT * FROM a"
+    assert lint_sql(sql) == []
+
+
+def test_inline_disable_wrong_category_kept():
+    sql = "-- sqlreview-disable-next-line: readability\nSELECT * FROM a"
+    assert "resource_usage" in categories(lint_sql(sql))
+
+
+def test_inline_disable_file_scope():
+    sql = "-- sqlreview-disable-file\nSELECT * FROM a;\nSELECT * FROM b"
+    assert lint_sql(sql) == []
+
+
+def test_inline_disable_file_scope_with_category():
+    sql = ("-- sqlreview-disable-file: resource_usage\n"
+           "SELECT a.x FROM a JOIN b")
+    fs = lint_sql(sql)
+    assert "resource_usage" not in categories(fs)
+    assert "join_cartesian" in categories(fs)  # JOIN without ON still flagged
+
+
+# ---------------------------------------------------------------------------
+# Complexity scoring
+# ---------------------------------------------------------------------------
+
+def test_complexity_deep_subquery_nesting():
+    sql = ("SELECT * FROM (SELECT * FROM (SELECT * FROM "
+           "(SELECT id FROM t) x) y) z")
+    fs = by_category(lint_sql(sql), "readability")
+    assert any("子查询嵌套" in f.description for f in fs)
+
+
+def test_complexity_shallow_nesting_ok():
+    sql = "SELECT id FROM (SELECT id FROM t WHERE pt='1') x"
+    fs = by_category(lint_sql(sql), "readability")
+    assert not any("子查询嵌套" in f.description for f in fs)
+
+
+def test_complexity_many_joins():
+    joins = " ".join(f"JOIN t{i} ON t0.id = t{i}.id" for i in range(1, 7))
+    sql = f"SELECT t0.id FROM t0 {joins} WHERE t0.pt='1'"
+    fs = by_category(lint_sql(sql), "readability")
+    assert any("JOIN（阈值" in f.description for f in fs)
+
+
+def test_complexity_long_statement():
+    sql = "SELECT id\nFROM t\nWHERE pt='1'" + "\n" * 210
+    fs = by_category(lint_sql(sql), "readability")
+    assert any("行（阈值" in f.description for f in fs)
+
+
+# ---------------------------------------------------------------------------
+# Custom regex rules
+# ---------------------------------------------------------------------------
+
+def test_custom_rule_fires():
+    from seatunnel_agent.sql_review.config import _parse_config
+    cfg = _parse_config({"custom_rules": [
+        {"pattern": r"\border\s+by\b", "message": "禁止 ORDER BY",
+         "severity": "critical", "category": "resource_usage",
+         "suggestion": "用 SORT BY"},
+    ]})
+    fs = lint_sql("SELECT id FROM t WHERE pt='1' ORDER BY id LIMIT 10",
+                  config=cfg)
+    hit = [f for f in fs if f.description == "禁止 ORDER BY"]
+    assert hit and hit[0].severity is Severity.CRITICAL
+    assert hit[0].suggestion == "用 SORT BY"
+
+
+def test_custom_rule_validation_errors():
+    from seatunnel_agent.sql_review.config import _parse_config
+    with pytest.raises(ValueError, match="必须是规则列表"):
+        _parse_config({"custom_rules": {"pattern": "x"}})
+    with pytest.raises(ValueError, match="缺少 pattern"):
+        _parse_config({"custom_rules": [{"message": "m"}]})
+    with pytest.raises(ValueError, match="缺少 message"):
+        _parse_config({"custom_rules": [{"pattern": "x"}]})
+    with pytest.raises(ValueError, match="pattern 无效"):
+        _parse_config({"custom_rules": [{"pattern": "([", "message": "m"}]})
+    with pytest.raises(ValueError, match="severity 无效"):
+        _parse_config({"custom_rules": [
+            {"pattern": "x", "message": "m", "severity": "fatal"}]})
+    with pytest.raises(ValueError, match="未知检查类别"):
+        _parse_config({"custom_rules": [
+            {"pattern": "x", "message": "m", "category": "nope"}]})
+    with pytest.raises(ValueError, match="未知字段"):
+        _parse_config({"custom_rules": [
+            {"pattern": "x", "message": "m", "extra": 1}]})
+
+
+def test_custom_rule_defaults():
+    from seatunnel_agent.sql_review.config import _parse_config
+    cfg = _parse_config({"custom_rules": [{"pattern": "x", "message": "m"}]})
+    rule = cfg.custom_rules[0]
+    assert rule.severity is Severity.SUGGESTION
+    assert rule.category == "readability"
+
+
+def test_custom_rule_survives_disabled_category():
+    # `disable: [readability]` must not swallow the user's own custom rule
+    from seatunnel_agent.sql_review.config import _parse_config
+    cfg = _parse_config({
+        "disable": ["readability"],
+        "custom_rules": [{"pattern": r"\bfoo\b", "message": "no foo"}],
+    })
+    fs = lint_sql("SELECT foo FROM t WHERE pt='1'", config=cfg)
+    assert any(f.description == "no foo" for f in fs)
+
+
+def test_custom_rule_severity_not_clobbered_by_override():
+    from seatunnel_agent.sql_review.config import _parse_config
+    cfg = _parse_config({
+        "severity": {"readability": "suggestion"},
+        "custom_rules": [{"pattern": r"\bfoo\b", "message": "no foo",
+                          "severity": "critical"}],
+    })
+    fs = [f for f in lint_sql("SELECT foo FROM t WHERE pt='1'", config=cfg)
+          if f.description == "no foo"]
+    assert fs and fs[0].severity is Severity.CRITICAL
+
+
+def test_custom_rule_match_cap():
+    from seatunnel_agent.sql_review.config import _parse_config
+    cfg = _parse_config({"custom_rules": [
+        {"pattern": r"\bfoo\b", "message": "no foo"}]})
+    sql = "SELECT " + ", ".join(["foo"] * 100) + " FROM t WHERE pt='1'"
+    fs = [f for f in lint_sql(sql, config=cfg) if f.description == "no foo"]
+    assert len(fs) == cfg.max_custom_matches
+    cfg2 = _parse_config({
+        "custom_rules": [{"pattern": r"\bfoo\b", "message": "no foo"}],
+        "thresholds": {"max_custom_matches": 3},
+    })
+    fs2 = [f for f in lint_sql(sql, config=cfg2) if f.description == "no foo"]
+    assert len(fs2) == 3
+
+
+def test_custom_rule_category_case_insensitive():
+    from seatunnel_agent.sql_review.config import _parse_config
+    cfg = _parse_config({"custom_rules": [
+        {"pattern": "x", "message": "m", "category": "Readability"}]})
+    assert cfg.custom_rules[0].category == "readability"
+
+
+def test_custom_rule_finding_source_is_custom():
+    from seatunnel_agent.sql_review.config import _parse_config
+    cfg = _parse_config({"custom_rules": [
+        {"pattern": r"\bfoo\b", "message": "no foo"}]})
+    fs = [f for f in lint_sql("SELECT foo FROM t WHERE pt='1'", config=cfg)
+          if f.description == "no foo"]
+    assert fs[0].source == "custom"
+
+
+def test_inline_disable_in_string_literal_ignored():
+    # directive text inside a string literal must not suppress anything
+    sql = "SELECT * FROM a WHERE note = '-- sqlreview-disable'"
+    assert "resource_usage" in categories(lint_sql(sql))
+
+
+def test_inline_disable_in_block_comment_ignored():
+    sql = "/* -- sqlreview-disable */\nSELECT * FROM a"
+    assert "resource_usage" in categories(lint_sql(sql))
+
+
+# ---------------------------------------------------------------------------
+# Baseline
+# ---------------------------------------------------------------------------
+
+def test_baseline_roundtrip(tmp_path):
+    from seatunnel_agent.sql_review.baseline import (
+        load_baseline, save_baseline, split_by_baseline,
+    )
+    f1 = _mk_finding(Severity.RISK)
+    path = tmp_path / "base.json"
+    n = save_baseline(path, [("a.sql", f1)])
+    assert n == 1
+    prints = load_baseline(path)
+    new, known = split_by_baseline("a.sql", [f1], prints)
+    assert new == [] and known == [f1]
+    # different file label -> not suppressed
+    new2, known2 = split_by_baseline("b.sql", [f1], prints)
+    assert new2 == [f1] and known2 == []
+
+
+def test_baseline_fingerprint_path_normalized(tmp_path):
+    from seatunnel_agent.sql_review.baseline import save_baseline, split_by_baseline, load_baseline
+    f1 = _mk_finding(Severity.RISK)
+    path = tmp_path / "base.json"
+    save_baseline(path, [("sql\\a.sql", f1)])
+    prints = load_baseline(path)
+    new, known = split_by_baseline("sql/a.sql", [f1], prints)
+    assert known == [f1]
+
+
+def test_baseline_invalid_file(tmp_path):
+    from seatunnel_agent.sql_review.baseline import load_baseline
+    bad = tmp_path / "bad.json"
+    bad.write_text("not json", encoding="utf-8")
+    with pytest.raises(ValueError, match="解析失败"):
+        load_baseline(bad)
+    bad.write_text('{"no": "findings"}', encoding="utf-8")
+    with pytest.raises(ValueError, match="格式无效"):
+        load_baseline(bad)
+    with pytest.raises(ValueError, match="不存在"):
+        load_baseline(tmp_path / "missing.json")
+
+
+def test_cli_baseline_workflow(tmp_path):
+    f = tmp_path / "q.sql"
+    f.write_text("SELECT * FROM a", encoding="utf-8")
+    base = tmp_path / "base.json"
+    r1 = _run_cli(["review", str(f), "--static-only",
+                   "--update-baseline", "--baseline", str(base)])
+    assert r1.exit_code == 0 and base.is_file()
+    # gate passes because the known finding is suppressed
+    r2 = _run_cli(["review", str(f), "--static-only",
+                   "--baseline", str(base), "--fail-on", "risk"])
+    assert r2.exit_code == 0
+    assert "基线抑制" in r2.output
+    # without the baseline the same gate fails
+    r3 = _run_cli(["review", str(f), "--static-only", "--fail-on", "risk"])
+    assert r3.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# JSON / SARIF output
+# ---------------------------------------------------------------------------
+
+def test_formats_json_single_source():
+    import json as _json
+    from seatunnel_agent.sql_review.agent import static_review_report
+    from seatunnel_agent.sql_review.formats import results_to_json
+    rep = static_review_report("SELECT * FROM a", "hive")
+    doc = _json.loads(results_to_json([("q.sql", rep)]))
+    assert doc["source"] == "q.sql"
+    assert doc["findings"] and doc["findings"][0]["line"] == 1
+    assert "stats" in doc
+
+
+def test_formats_json_multi_source_is_list():
+    import json as _json
+    from seatunnel_agent.sql_review.agent import static_review_report
+    from seatunnel_agent.sql_review.formats import results_to_json
+    rep = static_review_report("SELECT 1", "hive")
+    doc = _json.loads(results_to_json([("a.sql", rep), ("b.sql", rep)]))
+    assert isinstance(doc, list) and len(doc) == 2
+
+
+def test_formats_sarif_structure():
+    import json as _json
+    from seatunnel_agent.sql_review.agent import static_review_report
+    from seatunnel_agent.sql_review.formats import results_to_sarif
+    rep = static_review_report("SELECT * FROM a", "hive")
+    doc = _json.loads(results_to_sarif([("sql\\q.sql", rep)]))
+    assert doc["version"] == "2.1.0"
+    run = doc["runs"][0]
+    assert run["tool"]["driver"]["name"] == "seatunnel-sqlreview"
+    res = run["results"][0]
+    assert res["level"] in ("error", "warning", "note")
+    loc = res["locations"][0]["physicalLocation"]
+    assert loc["artifactLocation"]["uri"] == "sql/q.sql"  # backslash normalized
+    assert loc["region"]["startLine"] >= 1
+
+
+def test_cli_format_json(tmp_path):
+    import json as _json
+    r = _run_cli(["review", "--sql", "SELECT * FROM a",
+                  "--static-only", "--format", "json"])
+    assert r.exit_code == 0
+    doc = _json.loads(r.output[r.output.index("{"):])
+    assert doc["findings"]
+    assert "CR report" not in r.output
+
+
+def test_cli_format_sarif_to_file(tmp_path):
+    import json as _json
+    out = tmp_path / "results.sarif"
+    r = _run_cli(["review", "--sql", "SELECT * FROM a", "--static-only",
+                  "--format", "sarif", "-o", str(out)])
+    assert r.exit_code == 0
+    doc = _json.loads(out.read_text(encoding="utf-8"))
+    assert doc["runs"][0]["results"]
+
+
+# ---------------------------------------------------------------------------
+# Column lineage
+# ---------------------------------------------------------------------------
+
+def test_column_lineage_extracted():
+    from seatunnel_agent.sql_review.lineage import extract_table_lineage
+    lin = extract_table_lineage(
+        "INSERT OVERWRITE TABLE dw.t SELECT a.id, SUM(a.amt) AS total "
+        "FROM ods.pay a GROUP BY a.id"
+    )
+    outputs = {c["output"]: c for c in lin.columns}
+    assert outputs["id"]["source"] == "ods.pay.id"
+    assert outputs["total"]["aggregated"] is True
+
+
+def test_column_lineage_in_rendered_report():
+    from seatunnel_agent.sql_review.agent import static_review_report
+    md = render_report(static_review_report(
+        "SELECT a.id FROM ods.pay a WHERE a.pt='1'", "hive"))
+    assert "列级血缘" in md
+    assert "id ← ods.pay.id" in md
+
+
+def test_column_lineage_in_to_dict():
+    from seatunnel_agent.sql_review.lineage import extract_table_lineage
+    lin = extract_table_lineage("SELECT a.id FROM t a")
+    assert "columns" in lin.to_dict()
+
+
+# ---------------------------------------------------------------------------
+# CLI positional paths (pre-commit style)
+# ---------------------------------------------------------------------------
+
+def test_cli_positional_paths(tmp_path):
+    f1 = tmp_path / "a.sql"
+    f2 = tmp_path / "b.sql"
+    f1.write_text("select id from t where pt='1'", encoding="utf-8")
+    f2.write_text("select id from u where pt='1'", encoding="utf-8")
+    r = _run_cli(["review", str(f1), str(f2), "--static-only"])
+    assert r.exit_code == 0
+    assert "批量审查汇总" in r.output
+
+
+def test_cli_positional_dir(tmp_path):
+    (tmp_path / "a.sql").write_text("select 1", encoding="utf-8")
+    r = _run_cli(["review", str(tmp_path), "--static-only"])
+    assert r.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# Quality-pass regressions
+# ---------------------------------------------------------------------------
+
+def test_partition_cols_with_regex_metachars_do_not_crash():
+    # user config values are escaped before being embedded in patterns
+    cfg = ReviewConfig(partition_cols=("dt(1)", "a|b"))
+    sql = "select id from zz.dwd_order_di"
+    fs = by_category(lint_sql(sql, "hive", config=cfg), "partition_pruning")
+    assert fs  # no re.error, table still flagged as unfiltered
+
+
+def test_changed_sql_files_from_subdirectory(tmp_path):
+    import subprocess
+    from seatunnel_agent.sql_review.runner import changed_sql_files
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=tmp_path, check=True,
+                       capture_output=True)
+
+    git("init")
+    git("config", "user.email", "t@t")
+    git("config", "user.name", "t")
+    (tmp_path / "sql").mkdir()
+    f = tmp_path / "sql" / "q.sql"
+    f.write_text("select 1", encoding="utf-8")
+    git("add", ".")
+    git("commit", "-m", "init")
+    f.write_text("select 2", encoding="utf-8")
+
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    # git diff prints repo-root-relative paths; resolving them must work
+    # even when invoked from a subdirectory of the repo
+    files = changed_sql_files("HEAD", cwd=sub)
+    assert [p.name for p in files] == ["q.sql"]
+    assert all(p.is_file() for p in files)
+
+
+# ---------------------------------------------------------------------------
+# Bilingual location handling (en-mode dedup / line parsing)
+# ---------------------------------------------------------------------------
+
+def test_norm_location_bilingual():
+    from seatunnel_agent.sql_review.tools import _norm_location
+    assert _norm_location("行 6") == "line:6"
+    assert _norm_location("Line 6") == "line:6"
+    assert _norm_location("line 6") == "line:6"
+    assert _norm_location("全局") == "global"
+    assert _norm_location("Global") == "global"
+
+
+def test_merge_findings_dedup_across_languages():
+    from seatunnel_agent.sql_review.tools import _merge_findings
+    lint = [Finding(Severity.RISK, "partition_pruning", "d", "行 6", "i", "s"),
+            Finding(Severity.RISK, "readability", "d", "全局", "i", "s")]
+    llm = [Finding(Severity.RISK, "partition_pruning", "dup", "Line 6", "i", "s"),
+           Finding(Severity.RISK, "readability", "dup", "Global", "i", "s"),
+           Finding(Severity.RISK, "calculation", "new", "Line 9", "i", "s")]
+    merged = _merge_findings(lint, llm)
+    assert len(merged) == 3
+    assert {f.category for f in merged} == {
+        "partition_pruning", "readability", "calculation"}
+
+
+def test_formats_parse_english_line_numbers():
+    import json as _json
+    from seatunnel_agent.sql_review.formats import results_to_json, results_to_sarif
+    rep = ReviewReport(findings=[
+        Finding(Severity.RISK, "calculation", "d", "Line 6", "i", "s")])
+    doc = _json.loads(results_to_json([("q.sql", rep)]))
+    assert doc["findings"][0]["line"] == 6
+    sarif = _json.loads(results_to_sarif([("q.sql", rep)]))
+    region = sarif["runs"][0]["results"][0]["locations"][0][
+        "physicalLocation"]["region"]
+    assert region["startLine"] == 6
+
+
+def test_report_loc_bidirectional():
+    findings = [Finding(Severity.CRITICAL, "calculation", "d", "Line 6", "i", "s"),
+                Finding(Severity.RISK, "readability", "d", "Global", "i", "s")]
+    md_zh = render_report(ReviewReport(findings=findings), lang="zh")
+    assert "行 6" in md_zh and "全局" in md_zh
+    findings2 = [Finding(Severity.CRITICAL, "calculation", "d", "行 6", "i", "s"),
+                 Finding(Severity.RISK, "readability", "d", "全局", "i", "s")]
+    md_en = render_report(ReviewReport(findings=findings2), lang="en")
+    assert "Line 6" in md_en and "Global" in md_en
+
+
+# ---------------------------------------------------------------------------
+# Configurable thresholds (.sqlreview.yaml)
+# ---------------------------------------------------------------------------
+
+def test_parse_config_text_thresholds():
+    from seatunnel_agent.sql_review.config import parse_config_text
+    cfg = parse_config_text(
+        "thresholds:\n  max_joins: 2\n  max_subquery_depth: 1\n"
+        "  max_stmt_lines: 50\n  readability_min_lines: 5\n"
+        "  max_custom_matches: 3\n")
+    assert cfg.max_joins == 2
+    assert cfg.max_subquery_depth == 1
+    assert cfg.max_stmt_lines == 50
+    assert cfg.readability_min_lines == 5
+    assert cfg.max_custom_matches == 3
+
+
+def test_parse_config_text_empty_and_invalid():
+    from seatunnel_agent.sql_review.config import (DEFAULT_CONFIG,
+                                                   parse_config_text)
+    assert parse_config_text("") is DEFAULT_CONFIG
+    with pytest.raises(ValueError):
+        parse_config_text("- just\n- a list\n")
+
+
+@pytest.mark.parametrize("yaml_text", [
+    "thresholds:\n  nope: 3\n",           # unknown key
+    "thresholds:\n  max_joins: zero\n",   # non-int
+    "thresholds:\n  max_joins: true\n",   # bool
+    "thresholds:\n  max_joins: 0\n",      # < 1
+    "thresholds: 5\n",                    # not a mapping
+])
+def test_parse_config_thresholds_invalid(yaml_text):
+    from seatunnel_agent.sql_review.config import parse_config_text
+    with pytest.raises(ValueError):
+        parse_config_text(yaml_text)
+
+
+def test_parse_config_data_rejects_non_dict():
+    from seatunnel_agent.sql_review.config import parse_config_data
+    with pytest.raises(ValueError):
+        parse_config_data(["not", "a", "dict"])
+
+
+def test_lint_honors_custom_join_threshold():
+    sql = ("select a.id from t1 a join t2 b on a.id=b.id "
+           "join t3 c on a.id=c.id where a.pt='1'")
+    from seatunnel_agent.sql_review.config import ReviewConfig as _RC
+    default = [f for f in lint_sql(sql, "hive")
+               if f.category == "readability" and "JOIN" in f.description]
+    cfg = _RC(max_joins=1)
+    tight = [f for f in lint_sql(sql, "hive", config=cfg)
+             if "JOIN" in f.description]
+    assert tight  # 2 joins > 1 triggers the complexity rule
+    assert not default  # 2 joins <= default 5 stays silent
+
+
+def test_lint_honors_readability_min_lines():
+    from seatunnel_agent.sql_review.config import ReviewConfig as _RC
+    sql = "SELECT id\n,a\n,b\nfrom t\nwhere pt='1'\nlimit 1"
+    small = [f for f in lint_sql(sql, "hive", config=_RC(readability_min_lines=2))
+             if f.category == "readability"]
+    big = [f for f in lint_sql(sql, "hive", config=_RC(readability_min_lines=100))
+           if f.category == "readability"]
+    assert len(small) >= len(big)
+
+
+# ---------------------------------------------------------------------------
+# Env-var configurability
+# ---------------------------------------------------------------------------
+
+def test_default_log_dir_env(monkeypatch, tmp_path):
+    from seatunnel_agent.sql_review import rlog
+    monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path / "mylogs"))
+    assert rlog.default_log_dir() == str(tmp_path / "mylogs")
+    from pathlib import Path as _P
+    assert rlog.ReviewLogger().log_dir == _P(str(tmp_path / "mylogs"))
+    monkeypatch.delenv("SQLREVIEW_LOG_DIR")
+    assert rlog.default_log_dir() == "logs"
+
+
+def test_max_iterations_env(monkeypatch):
+    from seatunnel_agent.sql_review.agent import _max_iterations
+    monkeypatch.setenv("SQLREVIEW_MAX_ITERATIONS", "3")
+    assert _max_iterations() == 3
+    monkeypatch.setenv("SQLREVIEW_MAX_ITERATIONS", "bogus")
+    assert _max_iterations() == 10
+    monkeypatch.setenv("SQLREVIEW_MAX_ITERATIONS", "0")
+    assert _max_iterations() == 1
+
+
+def test_max_column_lineage_env(monkeypatch):
+    from seatunnel_agent.sql_review.lineage import _max_column_lineage
+    monkeypatch.setenv("SQLREVIEW_MAX_COLUMN_LINEAGE", "5")
+    assert _max_column_lineage() == 5
+    monkeypatch.setenv("SQLREVIEW_MAX_COLUMN_LINEAGE", "x")
+    assert _max_column_lineage() == 30
+
+
+def test_report_env_int(monkeypatch):
+    from seatunnel_agent.sql_review.report import _env_int
+    monkeypatch.setenv("X_TEST_INT", "7")
+    assert _env_int("X_TEST_INT", 15) == 7
+    monkeypatch.setenv("X_TEST_INT", "nan")
+    assert _env_int("X_TEST_INT", 15) == 15
+    monkeypatch.delenv("X_TEST_INT")
+    assert _env_int("X_TEST_INT", 15) == 15
+
+
+# ---------------------------------------------------------------------------
+# Prompt resource caching
+# ---------------------------------------------------------------------------
+
+def test_load_resource_cached():
+    from seatunnel_agent.sql_review.prompts import _load_resource
+    _load_resource.cache_clear()
+    a = _load_resource("review_checklist.md")
+    b = _load_resource("review_checklist.md")
+    assert a == b and a
+    assert _load_resource.cache_info().hits >= 1
+
+
+# ---------------------------------------------------------------------------
+# Agent report-marker fallback (i18n-derived, mock LLM)
+# ---------------------------------------------------------------------------
+
+class _AgentFakeResp:
+    def __init__(self, text):
+        self.reply_text = text
+        self.raw_content = text
+        self.usage = None
+        self.thinking_text = ""
+        self.wants_tool_use = False
+        self.tool_calls = []
+
+
+class _AgentFakeLLM:
+    def __init__(self, text, hook=None):
+        self._text = text
+        self._hook = hook
+
+    def chat(self, system, messages, on_text_delta=None):
+        if self._hook:
+            self._hook()
+        return _AgentFakeResp(self._text)
+
+    def append_assistant(self, raw):
+        return {"role": "assistant", "content": raw}
+
+
+def _make_agent(monkeypatch, reply, lang="zh"):
+    from seatunnel_agent.sql_review import agent as agent_mod
+    holder = {}
+
+    def hook():
+        # simulate submit_review having produced a rendered report
+        holder["agent"].runtime.last_report = "## CR 报告\n\n(rendered)"
+
+    fake = _AgentFakeLLM(reply, hook=hook)
+    monkeypatch.setattr(agent_mod, "LLMClient", lambda s, tools=None: fake)
+    ag = agent_mod.SQLReviewAgent(None, dialect="hive", lang=lang)
+    holder["agent"] = ag
+    return ag
+
+
+def test_agent_falls_back_to_rendered_report(monkeypatch):
+    ag = _make_agent(monkeypatch, "Here is a paraphrased summary.")
+    out = ag.review("select 1")
+    assert out.startswith("## CR 报告")
+
+
+def test_agent_keeps_answer_containing_en_marker(monkeypatch):
+    ag = _make_agent(monkeypatch, "## CR Report\n\nfull report", lang="en")
+    out = ag.review("select 1")
+    assert out == "## CR Report\n\nfull report"
+
+
+# ---------------------------------------------------------------------------
+# REST API: rules param, warnings, /fix endpoint
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def api_client(tmp_path, monkeypatch):
+    fastapi = pytest.importorskip("fastapi")
+    pytest.importorskip("httpx")
+    from fastapi.testclient import TestClient
+    from seatunnel_agent.sql_review.api import router
+    monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path / "logs"))
+    app = fastapi.FastAPI()
+    app.include_router(router)
+    return TestClient(app)
+
+
+def test_api_static_review_with_rules(api_client):
+    r = api_client.post("/api/sql_review/review", json={
+        "sql": "select * from t where pt='1'",
+        "mode": "static",
+        "rules": {"disable": ["resource_usage"]},
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert all(f["category"] != "resource_usage" for f in data["findings"])
+    assert data["warnings"] == []
+
+
+def test_api_static_instructions_warning(api_client):
+    r = api_client.post("/api/sql_review/review", json={
+        "sql": "select 1",
+        "mode": "static",
+        "instructions": "focus on joins",
+    })
+    assert r.status_code == 200
+    assert any("instructions" in w for w in r.json()["warnings"])
+
+
+def test_api_invalid_rules_400(api_client):
+    r = api_client.post("/api/sql_review/review", json={
+        "sql": "select 1", "mode": "static",
+        "rules": {"thresholds": {"max_joins": 0}},
+    })
+    assert r.status_code == 400
+    assert "Invalid rules" in r.json()["detail"]
+
+
+def test_api_maxcompute_downgrade_warning(monkeypatch, api_client):
+    from seatunnel_agent.sql_review import api as api_mod
+    from seatunnel_agent.text2sql.schema import SchemaStore as _SS
+
+    captured = {}
+
+    def fake_create_executor(cfg):
+        captured["ds_type"] = cfg.ds_type
+        return object()
+
+    monkeypatch.setattr(api_mod, "create_executor", fake_create_executor)
+    monkeypatch.setattr(api_mod.SchemaStore, "from_db",
+                        classmethod(lambda cls, ex: _SS([])))
+    r = api_client.post("/api/sql_review/review", json={
+        "sql": "select 1", "mode": "static", "dialect": "maxcompute",
+        "db_config": {"host": "h", "port": 1, "database": "d"},
+    })
+    assert r.status_code == 200
+    assert captured["ds_type"] == "hive"
+    assert any("hive executor" in w for w in r.json()["warnings"])
+
+
+def test_api_fix_endpoint(monkeypatch, api_client):
+    from seatunnel_agent.sql_review import api as api_mod
+    monkeypatch.setattr(api_mod, "load_settings", lambda: None)
+    monkeypatch.setattr(
+        fixer_mod, "LLMClient",
+        lambda settings: _FakeLLM("```sql\nselect id from t\n```"))
+    r = api_client.post("/api/sql_review/fix", json={
+        "sql": "select * from t", "dialect": "hive",
+    })
+    assert r.status_code == 200
+    data = r.json()
+    assert data["fixed_sql"] == "select id from t"
+    assert "CR" in data["report"]  # static review ran first
+
+
+def test_api_fix_with_given_report(monkeypatch, api_client):
+    from seatunnel_agent.sql_review import api as api_mod
+    monkeypatch.setattr(api_mod, "load_settings", lambda: None)
+    monkeypatch.setattr(
+        fixer_mod, "LLMClient",
+        lambda settings: _FakeLLM("```sql\nselect 2\n```"))
+    r = api_client.post("/api/sql_review/fix", json={
+        "sql": "select 1", "report": "my custom report",
+    })
+    assert r.status_code == 200
+    assert r.json()["report"] == "my custom report"
+
+
+def test_api_env_db_defaults(monkeypatch):
+    import importlib
+    monkeypatch.setenv("SQLREVIEW_DB_HOST", "envhost")
+    monkeypatch.setenv("SQLREVIEW_DB_PORT", "9999")
+    monkeypatch.setenv("SQLREVIEW_DB_DATABASE", "envdb")
+    from seatunnel_agent.sql_review import api as api_mod
+    importlib.reload(api_mod)
+    try:
+        assert api_mod._DEFAULT_DB_HOST == "envhost"
+        assert api_mod._DEFAULT_DB_PORT == "9999"
+        assert api_mod._DEFAULT_DB_DATABASE == "envdb"
+    finally:
+        monkeypatch.delenv("SQLREVIEW_DB_HOST")
+        monkeypatch.delenv("SQLREVIEW_DB_PORT")
+        monkeypatch.delenv("SQLREVIEW_DB_DATABASE")
+        importlib.reload(api_mod)
+
+
+# ---------------------------------------------------------------------------
+# Text2SQL review harness
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.harness import (  # noqa: E402
+    HarnessResult,
+    iter_log_records,
+    render_harness_report,
+    run_harness,
+)
+
+_BAD_SQL = "SELECT * FROM orders o JOIN users u WHERE o.dt > '2024-01-01'"
+_CLEAN_SQL = (
+    "SELECT o.id, o.amount FROM orders o "
+    "WHERE o.dt = '2024-01-01' LIMIT 100"
+)
+
+
+def _write_log(tmp_path, records, extra_lines=()):
+    path = tmp_path / "queries.jsonl"
+    lines = [json.dumps(r, ensure_ascii=False) for r in records]
+    lines.extend(extra_lines)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def test_iter_log_records_skips_corrupt_lines(tmp_path):
+    path = _write_log(
+        tmp_path,
+        [{"user_query": "q1", "generated_sql": _CLEAN_SQL, "status": "success"}],
+        extra_lines=["{not json", "", "[1, 2]"],
+    )
+    recs = list(iter_log_records(path))
+    assert len(recs) == 1
+    assert recs[0]["user_query"] == "q1"
+
+
+def test_iter_log_records_missing_file(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        list(iter_log_records(tmp_path / "nope.jsonl"))
+
+
+def test_run_harness_aggregates(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": "bad", "generated_sql": _BAD_SQL, "status": "success"},
+        {"user_query": "clean", "generated_sql": _CLEAN_SQL, "status": "success"},
+        {"user_query": "no sql", "generated_sql": "", "status": "error"},
+    ])
+    result = run_harness(path, dialect="hive")
+    assert result.total_records == 3
+    assert result.reviewed == 2
+    assert result.skipped == 1
+    assert result.criticals >= 1  # SELECT * + missing ON
+    bad = result.entries[0]
+    assert bad.user_query == "bad"
+    assert bad.findings == bad.criticals + bad.risks + bad.suggestions
+    assert bad.categories
+    assert result.top_categories
+    assert result.top_categories[0][1] >= 1
+
+
+def test_run_harness_clean_query_counted(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": "clean", "generated_sql": _CLEAN_SQL, "status": "success"},
+    ])
+    result = run_harness(path, dialect="hive")
+    if result.clean:
+        assert result.clean_rate == 1.0
+    assert 0.0 <= result.clean_rate <= 1.0
+
+
+def test_run_harness_limit_takes_most_recent(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": f"q{i}", "generated_sql": _CLEAN_SQL, "status": "success"}
+        for i in range(5)
+    ])
+    result = run_harness(path, dialect="hive", limit=2)
+    assert result.total_records == 2
+    assert [e.user_query for e in result.entries] == ["q3", "q4"]
+
+
+def test_run_harness_normalizes_dialect(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": "q", "generated_sql": _CLEAN_SQL, "status": "success"},
+    ])
+    result = run_harness(path, dialect="unknown-db")
+    assert result.dialect == "hive"
+
+
+def test_harness_result_to_dict(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": "bad", "generated_sql": _BAD_SQL, "status": "success"},
+    ])
+    result = run_harness(path, dialect="spark")
+    d = result.to_dict()
+    assert d["dialect"] == "spark"
+    assert d["reviewed"] == 1
+    assert isinstance(d["clean_rate"], float)
+    assert d["entries"][0]["sql"] == _BAD_SQL
+    assert all(isinstance(c["category"], str) for c in d["top_categories"])
+    json.dumps(d)  # must be JSON-serializable
+
+
+def test_render_harness_report_en_zh(tmp_path):
+    path = _write_log(tmp_path, [
+        {"user_query": "bad | pipe\nnewline", "generated_sql": _BAD_SQL,
+         "status": "success"},
+    ])
+    result = run_harness(path, dialect="hive")
+    en = render_harness_report(result, lang="en")
+    assert "# Text2SQL Review Harness" in en
+    assert "Worst queries" in en
+    assert "\\|" in en  # pipe escaped in table cell
+    zh = render_harness_report(result, lang="zh")
+    assert "Text2SQL 审查 Harness" in zh
+    assert "问题最多的查询" in zh
+
+
+def test_render_harness_report_all_clean():
+    result = HarnessResult(dialect="hive", log_path="x.jsonl",
+                           total_records=1, reviewed=1, clean=1)
+    en = render_harness_report(result, lang="en")
+    assert "all reviewed queries are clean" in en
+    assert "Worst queries" not in en
+
+
+# ---------------------------------------------------------------------------
+# Harness: LLM cache + baseline diff; report line links; rlog sql hash
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.harness import (  # noqa: E402
+    diff_against_baseline,
+    load_llm_cache,
+)
+from seatunnel_agent.sql_review.rlog import sql_hash  # noqa: E402
+
+
+def _write_review_log(tmp_path, records):
+    path = tmp_path / "sql_review.jsonl"
+    path.write_text(
+        "\n".join(json.dumps(r, ensure_ascii=False) for r in records) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_sql_hash_stable_and_stripped():
+    assert sql_hash("SELECT 1") == sql_hash("  SELECT 1  \n")
+    assert sql_hash("SELECT 1") != sql_hash("SELECT 2")
+
+
+def test_load_llm_cache_latest_llm_record_wins(tmp_path):
+    sha = sql_hash(_BAD_SQL)
+    path = _write_review_log(tmp_path, [
+        {"mode": "agent", "sql_sha256": sha, "timestamp": "t1",
+         "severities": {"critical": 1}, "categories": ["join_condition"]},
+        {"mode": "static", "sql_sha256": sha, "timestamp": "t2",
+         "severities": {"risk": 9}, "categories": ["dedup"]},
+        {"mode": "agent", "sql_sha256": sha, "timestamp": "t3",
+         "severities": {"critical": 2, "risk": 1, "suggestion": 3},
+         "categories": ["join_condition", "resource_usage"]},
+        {"mode": "agent", "timestamp": "t4", "severities": {}},  # no sha
+    ])
+    cache = load_llm_cache(path)
+    assert set(cache) == {sha}
+    assert cache[sha]["criticals"] == 2
+    assert cache[sha]["risks"] == 1
+    assert cache[sha]["suggestions"] == 3
+    assert cache[sha]["timestamp"] == "t3"
+
+
+def test_load_llm_cache_missing_file(tmp_path):
+    assert load_llm_cache(tmp_path / "nope.jsonl") == {}
+
+
+def test_run_harness_merges_llm_cache(tmp_path):
+    qlog = _write_log(tmp_path, [
+        {"user_query": "bad", "generated_sql": _BAD_SQL, "status": "success"},
+        {"user_query": "clean", "generated_sql": _CLEAN_SQL, "status": "success"},
+    ])
+    cache = {sql_hash(_BAD_SQL): {"timestamp": "t", "criticals": 1,
+                                  "risks": 2, "suggestions": 0,
+                                  "categories": ["join_condition"]}}
+    result = run_harness(qlog, dialect="hive", llm_cache=cache)
+    assert result.llm_matched == 1
+    assert result.llm_criticals == 1
+    assert result.llm_risks == 2
+    matched = [e for e in result.entries if e.llm_matched]
+    assert len(matched) == 1
+    assert matched[0].user_query == "bad"
+    d = result.to_dict()
+    assert d["llm"]["matched"] == 1
+    assert d["entries"][0]["llm"]["risks"] == 2
+    # report shows the cached-LLM section
+    md = render_harness_report(result, lang="zh")
+    assert "LLM 审查缓存复用" in md
+
+
+def test_run_harness_without_llm_cache_has_no_llm_key(tmp_path):
+    qlog = _write_log(tmp_path, [
+        {"user_query": "bad", "generated_sql": _BAD_SQL, "status": "success"},
+    ])
+    result = run_harness(qlog, dialect="hive")
+    d = result.to_dict()
+    assert "llm" not in d
+    assert "llm" not in d["entries"][0]
+
+
+def test_diff_against_baseline(tmp_path):
+    qlog = _write_log(tmp_path, [
+        {"user_query": "bad", "generated_sql": _BAD_SQL, "status": "success"},
+        {"user_query": "clean", "generated_sql": _CLEAN_SQL, "status": "success"},
+    ])
+    current = run_harness(qlog, dialect="hive")
+    baseline = {
+        "log_path": "old.jsonl",
+        "reviewed": 5,
+        "clean_rate": 1.0,
+        "criticals": 0, "risks": 0, "suggestions": 0,
+        "entries": [{"categories": ["dedup"]}],
+    }
+    diff = diff_against_baseline(baseline, current)
+    assert diff["baseline_log"] == "old.jsonl"
+    assert diff["reviewed"] == {"baseline": 5, "current": current.reviewed}
+    assert diff["clean_rate"]["delta"] == round(current.clean_rate - 1.0, 4)
+    assert diff["severity_delta"]["critical"] == current.criticals
+    assert "dedup" in diff["resolved_categories"]
+    assert set(diff["new_categories"]) == {c for e in current.entries
+                                           for c in e.categories}
+    json.dumps(diff)
+
+    md = render_harness_report(current, lang="zh", baseline_diff=diff)
+    assert "与基线对比" in md
+    en = render_harness_report(current, lang="en", baseline_diff=diff)
+    assert "Baseline comparison" in en
+
+
+def test_diff_no_change():
+    result = HarnessResult(dialect="hive", log_path="x", reviewed=1, clean=1)
+    baseline = {"log_path": "x", "reviewed": 1, "clean_rate": 1.0,
+                "criticals": 0, "risks": 0, "suggestions": 0, "entries": []}
+    diff = diff_against_baseline(baseline, result)
+    assert not diff["new_categories"]
+    assert not diff["resolved_categories"]
+    assert not diff["category_delta"]
+    md = render_harness_report(result, lang="zh", baseline_diff=diff)
+    assert "与基线相比无变化" in md
+
+
+def test_render_report_line_links():
+    rep = ReviewReport(findings=[
+        Finding(Severity.CRITICAL, "join_condition", "desc", "行 3",
+                "impact", "fix"),
+    ])
+    plain = render_report(rep, lang="zh")
+    assert "#srline-" not in plain
+    linked = render_report(rep, lang="zh", line_links=True)
+    assert "[行 3](#srline-3)" in linked
+    linked_en = render_report(rep, lang="en", line_links=True)
+    assert "[Line 3](#srline-3)" in linked_en
+
+
+def test_rlog_records_sql_sha(tmp_path, monkeypatch):
+    from seatunnel_agent.sql_review.rlog import ReviewLogger
+    logger = ReviewLogger(log_dir=tmp_path)
+    logger.log(sql="SELECT 1", dialect="hive", mode="agent", findings=[])
+    rec = logger.recent(1)[0]
+    assert rec["sql_sha256"] == sql_hash("SELECT 1")
+
+
+# ---------------------------------------------------------------------------
+# New dialects: engine-family rule gating + OLTP/OLAP rules
+# ---------------------------------------------------------------------------
+
+_PARTITION_SQL = "SELECT id FROM dw.fact_order_di ORDER BY id"
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "postgresql", "sqlserver",
+                                     "sqlite", "clickhouse", "doris"])
+def test_partition_rules_skipped_for_non_warehouse(dialect):
+    findings = lint_sql(_PARTITION_SQL, dialect)
+    assert not by_category(findings, "partition_pruning")
+
+
+def test_partition_rules_still_fire_for_hive():
+    findings = lint_sql(_PARTITION_SQL, "hive")
+    assert by_category(findings, "partition_pruning")
+
+
+@pytest.mark.parametrize("dialect", ["mysql", "postgresql", "sqlserver", "sqlite"])
+def test_order_by_no_limit_skipped_for_oltp(dialect):
+    findings = lint_sql("SELECT id FROM t ORDER BY id", dialect)
+    assert not any("ORDER BY" in f.description for f in findings)
+
+
+def test_order_by_no_limit_fires_for_clickhouse():
+    findings = lint_sql("SELECT id FROM t ORDER BY id", "clickhouse")
+    assert any("ORDER BY" in f.description for f in findings)
+
+
+def test_count_distinct_skipped_for_oltp():
+    sql = "SELECT COUNT(DISTINCT uid) FROM t"
+    assert not by_category(lint_sql(sql, "mysql"), "data_skew")
+    assert by_category(lint_sql(sql, "hive"), "data_skew")
+
+
+def test_update_without_where_is_critical():
+    findings = lint_sql("UPDATE users SET status = 1", "mysql")
+    hits = by_category(findings, "where_syntax")
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.CRITICAL
+    assert "UPDATE" in hits[0].description
+
+
+def test_delete_without_where_is_critical():
+    findings = lint_sql("DELETE FROM users", "postgresql")
+    hits = by_category(findings, "where_syntax")
+    assert len(hits) == 1
+    assert "DELETE" in hits[0].description
+
+
+def test_dml_with_where_passes():
+    assert not by_category(
+        lint_sql("UPDATE users SET status = 1 WHERE id = 3", "mysql"),
+        "where_syntax")
+    assert not by_category(
+        lint_sql("DELETE FROM users WHERE id = 3", "mysql"), "where_syntax")
+
+
+def test_dml_without_where_fires_on_warehouse_too():
+    findings = lint_sql("DELETE FROM dw.dim_user", "hive")
+    assert by_category(findings, "where_syntax")
+
+
+def test_select_for_update_not_flagged():
+    findings = lint_sql("SELECT * FROM users WHERE id = 1 FOR UPDATE", "mysql")
+    assert not by_category(findings, "where_syntax")
+
+
+def test_leading_wildcard_like_is_risk():
+    findings = lint_sql("SELECT id FROM t WHERE name LIKE '%abc'", "mysql")
+    hits = [f for f in findings if "通配符" in f.description]
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.RISK
+
+
+def test_prefix_like_passes():
+    findings = lint_sql("SELECT id FROM t WHERE name LIKE 'abc%'", "mysql")
+    assert not any("通配符" in f.description for f in findings)
+
+
+def test_leading_wildcard_like_skipped_for_hive():
+    findings = lint_sql("SELECT id FROM t WHERE name LIKE '%abc'", "hive")
+    assert not any("通配符" in f.description for f in findings)
+
+
+def test_where_func_on_column_is_suggestion():
+    sql = "SELECT id FROM orders WHERE DATE(create_time) = '2026-01-01'"
+    findings = lint_sql(sql, "mysql")
+    hits = [f for f in findings if "使用函数" in f.description]
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.SUGGESTION
+
+
+def test_where_func_skipped_for_warehouse():
+    sql = "SELECT id FROM orders WHERE DATE(create_time) = '2026-01-01'"
+    findings = lint_sql(sql, "spark")
+    assert not any("使用函数" in f.description for f in findings)
+
+
+def test_deep_offset_is_risk():
+    findings = lint_sql("SELECT id FROM t ORDER BY id LIMIT 100000, 20", "mysql")
+    hits = [f for f in findings if "深分页" in f.description]
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.RISK
+    findings2 = lint_sql("SELECT id FROM t ORDER BY id LIMIT 20 OFFSET 100000",
+                         "postgresql")
+    assert any("深分页" in f.description for f in findings2)
+
+
+def test_shallow_offset_passes():
+    findings = lint_sql("SELECT id FROM t ORDER BY id LIMIT 20, 20", "mysql")
+    assert not any("深分页" in f.description for f in findings)
+
+
+def test_clickhouse_final_is_risk():
+    findings = lint_sql("SELECT id FROM orders FINAL WHERE dt = '2026-01-01'",
+                        "clickhouse")
+    hits = [f for f in findings if "FINAL" in f.description]
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.RISK
+    assert not any(
+        "FINAL" in f.description
+        for f in lint_sql("SELECT id FROM orders FINAL", "mysql"))
+
+
+def test_universal_rules_still_apply_to_new_dialects():
+    sql = "SELECT * FROM a JOIN b WHERE a.x = NULL"
+    findings = lint_sql(sql, "mysql")
+    cats = categories(findings)
+    assert "join_cartesian" in cats
+    assert "where_syntax" in cats     # = NULL
+    assert "resource_usage" in cats   # SELECT *
+
+
+def test_on_duplicate_key_update_not_flagged():
+    sql = ("INSERT INTO t (id, cnt) VALUES (1, 1) "
+           "ON DUPLICATE KEY UPDATE cnt = cnt + 1")
+    findings = lint_sql(sql, "mysql")
+    assert not any("WHERE 条件" in f.description for f in findings)
+
+
+def test_for_no_key_update_not_flagged():
+    sql = "SELECT * FROM users WHERE id = 1 FOR NO KEY UPDATE"
+    findings = lint_sql(sql, "postgresql")
+    assert not by_category(findings, "where_syntax")
+
+
+def test_ilike_leading_wildcard_is_risk():
+    findings = lint_sql("SELECT id FROM t WHERE name ILIKE '%abc'", "postgresql")
+    hits = [f for f in findings if "通配符" in f.description]
+    assert len(hits) == 1
+    assert hits[0].severity == Severity.RISK
+
+
+def test_deep_offset_threshold_configurable():
+    sql = "SELECT id FROM t ORDER BY id LIMIT 500, 20"
+    assert not any("深分页" in f.description for f in lint_sql(sql, "mysql"))
+    cfg = ReviewConfig(deep_offset_threshold=100)
+    findings = lint_sql(sql, "mysql", config=cfg)
+    assert any("深分页" in f.description for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# Rule-text i18n: English rendering via Finding.key / args
+# ---------------------------------------------------------------------------
+
+def test_en_report_renders_english_rule_texts():
+    from seatunnel_agent.sql_review.report import ReviewReport, render_report
+    findings = lint_sql("SELECT * FROM t", "hive")
+    report = ReviewReport(findings=findings, dialect="hive")
+    md = render_report(report, lang="en")
+    assert "SELECT * reads every column" in md
+    assert "SELECT * 会读取全部列" not in md
+
+
+def test_en_report_formats_args():
+    from seatunnel_agent.sql_review.report import ReviewReport, render_report
+    sql = "SELECT a, b, SUM(c) FROM t GROUP BY a"
+    findings = lint_sql(sql, "hive")
+    report = ReviewReport(findings=findings, dialect="hive")
+    md = render_report(report, lang="en")
+    assert "GROUP BY is missing" in md
+    assert "b" in md
+
+
+def test_zh_report_unchanged_by_i18n_keys():
+    from seatunnel_agent.sql_review.report import ReviewReport, render_report
+    findings = lint_sql("SELECT * FROM t", "hive")
+    report = ReviewReport(findings=findings, dialect="hive")
+    md = render_report(report, lang="zh")
+    assert "SELECT * 会读取全部列" in md or "SELECT *" in md
+
+
+def test_finding_without_key_passes_through_in_en():
+    from seatunnel_agent.sql_review.i18n import finding_texts
+    f = Finding(
+        severity=Severity.RISK, category="calculation",
+        description="LLM 发现的问题", location="行 1",
+        impact="影响", suggestion="建议",
+        source="llm",
+    )
+    assert finding_texts(f, "en") == ("LLM 发现的问题", "影响", "建议")
+
+
+def test_all_linter_keys_have_en_templates():
+    from seatunnel_agent.sql_review.i18n import RULE_TEXTS_EN
+    samples = [
+        ("SELECT * FROM t", "hive"),
+        ("SELECT a, SUM(b) FROM t GROUP BY a, c", "hive"),
+        ("SELECT a FROM t1 JOIN t2", "hive"),
+        ("SELECT a FROM t1 CROSS JOIN t2", "hive"),
+        ("SELECT a FROM t WHERE b = NULL", "hive"),
+        ("SELECT a/0 FROM t", "hive"),
+        ("UPDATE t SET a = 1", "mysql"),
+        ("DELETE FROM t", "mysql"),
+        ("SELECT a FROM t WHERE name LIKE '%x'", "mysql"),
+        ("SELECT a FROM t WHERE DATE(dt) = '2024-01-01'", "mysql"),
+        ("SELECT a FROM t FINAL", "clickhouse"),
+        ("SELECT DISTINCT a FROM t GROUP BY a", "hive"),
+        ("SELECT a FROM t1 UNION SELECT a FROM t2", "hive"),
+        ("SELECT COUNT(DISTINCT a) FROM t", "hive"),
+        ("SELECT a FROM t ORDER BY a", "mysql"),
+    ]
+    for sql, dialect in samples:
+        for f in lint_sql(sql, dialect):
+            if f.key:
+                assert f.key in RULE_TEXTS_EN, f"missing EN template: {f.key}"
+                t = RULE_TEXTS_EN[f.key]
+                # every template must format cleanly with the finding's args
+                t["description"].format(**f.args)
+                t["impact"].format(**f.args)
+                t["suggestion"].format(**f.args)
+
+
+# ---------------------------------------------------------------------------
+# Static auto-fix (autofix.py)
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.autofix import apply_static_fixes, describe_fixes
+
+
+def test_autofix_null_eq():
+    fixed, applied = apply_static_fixes(
+        "SELECT a FROM t WHERE b = NULL AND c != NULL AND d <> NULL")
+    assert "b IS NULL" in fixed
+    assert "c IS NOT NULL" in fixed
+    assert "d IS NOT NULL" in fixed
+    assert len(applied) == 3
+    assert all(f.rule == "null_eq" for f in applied)
+
+
+def test_autofix_quotes_partition_value():
+    fixed, applied = apply_static_fixes(
+        "SELECT a FROM t WHERE dt = 20240101")
+    assert "dt = '20240101'" in fixed
+    assert applied[0].rule == "partition_numeric"
+
+
+def test_autofix_removes_redundant_distinct():
+    fixed, applied = apply_static_fixes(
+        "SELECT DISTINCT a, b FROM t GROUP BY a, b")
+    assert "DISTINCT" not in fixed
+    assert "SELECT a, b" in fixed
+    assert applied[0].rule == "distinct_with_groupby"
+
+
+def test_autofix_skips_literals_and_comments():
+    sql = "SELECT a FROM t WHERE x = 'b = NULL' -- dt = 20240101\nAND dt = '20240101'"
+    fixed, applied = apply_static_fixes(sql)
+    assert fixed == sql
+    assert applied == []
+
+
+def test_autofix_clean_sql_untouched():
+    sql = "SELECT id, name FROM t WHERE dt = '2024-01-01'"
+    fixed, applied = apply_static_fixes(sql)
+    assert fixed == sql
+    assert applied == []
+
+
+def test_autofix_result_passes_lint():
+    sql = ("SELECT DISTINCT a FROM t "
+           "WHERE b = NULL AND dt = 20240101 GROUP BY a")
+    fixed, applied = apply_static_fixes(sql)
+    assert len(applied) == 3
+    after = lint_sql(fixed, "hive")
+    fixed_rules = {f.rule for f in applied}
+    assert not any(f.key in fixed_rules for f in after)
+
+
+def test_describe_fixes_langs():
+    _, applied = apply_static_fixes("SELECT a FROM t WHERE b = NULL")
+    zh = describe_fixes(applied, "zh")
+    en = describe_fixes(applied, "en")
+    assert "行 1" in zh
+    assert "Line 1" in en
+
+
+# ---------------------------------------------------------------------------
+# sqlglot syntax validation (ast_check.py)
+# ---------------------------------------------------------------------------
+
+def test_syntax_error_flagged():
+    findings = lint_sql("SELECT a FRM t", "mysql")
+    syn = by_category(findings, "syntax")
+    assert syn, "parse failure should yield a syntax finding"
+    assert syn[0].severity == Severity.CRITICAL
+    assert syn[0].key == "syntax_error"
+
+
+def test_valid_sql_no_syntax_finding():
+    ok = [
+        ("SELECT id, name FROM t WHERE dt = '2024-01-01'", "hive"),
+        ("INSERT INTO t (id) VALUES (1) ON DUPLICATE KEY UPDATE id = 1", "mysql"),
+        ("SELECT id FROM t WHERE name ILIKE 'a%' LIMIT 10", "postgresql"),
+        ("SELECT TOP 10 id FROM t", "sqlserver"),
+    ]
+    for sql, dialect in ok:
+        assert not by_category(lint_sql(sql, dialect), "syntax"), (sql, dialect)
+
+
+def test_syntax_check_tolerates_template_vars():
+    sql = "SELECT id FROM t WHERE dt = ${bizdate}"
+    assert not by_category(lint_sql(sql, "hive"), "syntax")
+
+
+def test_syntax_skipped_for_flink():
+    # no sqlglot reader for Flink SQL — never a false positive
+    assert not by_category(lint_sql("SELECT a FRM t", "flink"), "syntax")
+
+
+def test_syntax_error_does_not_stop_other_rules():
+    findings = lint_sql("SELECT * FRM t WHERE b = NULL", "mysql")
+    cats = categories(findings)
+    assert "syntax" in cats
+    assert "where_syntax" in cats
+
+
+# ---------------------------------------------------------------------------
+# Schema-aware static checks (schema_ref / select_star_wide / not_partition_column)
+# ---------------------------------------------------------------------------
+
+def _schema_ref_store(extra_cols: int = 0):
+    from seatunnel_agent.text2sql.schema import ColumnSchema, SchemaStore, TableSchema
+    cols = [ColumnSchema("order_id", "bigint"), ColumnSchema("amount", "decimal(10,2)"),
+            ColumnSchema("create_time", "timestamp")]
+    cols += [ColumnSchema(f"ext_{i}", "string") for i in range(extra_cols)]
+    orders = TableSchema(database="dw", name="orders_di", columns=cols,
+                         partition_columns=[ColumnSchema("pt", "string")])
+    users = TableSchema(database="dw", name="users_df",
+                        columns=[ColumnSchema("user_id", "bigint"),
+                                 ColumnSchema("name", "string"),
+                                 ColumnSchema("dt", "string")],
+                        partition_columns=[ColumnSchema("pt", "string")])
+    return SchemaStore([orders, users])
+
+
+def test_unknown_table_flagged_with_store():
+    sql = "select a.id from dw.nope_di a where a.pt = '1'"
+    found = by_category(lint_sql(sql, "hive", store=_schema_ref_store()), "schema_ref")
+    assert any(f.key == "unknown_table" and "dw.nope_di" in f.description for f in found)
+
+
+def test_known_table_and_cte_not_flagged_unknown():
+    sql = ("with tmp as (select order_id from dw.orders_di where pt='1') "
+           "select t.order_id from tmp t where 1=1")
+    found = by_category(lint_sql(sql, "hive", store=_schema_ref_store()), "schema_ref")
+    assert not [f for f in found if f.key == "unknown_table"]
+
+
+def test_unknown_column_flagged_with_store():
+    sql = ("select o.order_id, o.ghost_col from dw.orders_di o "
+           "where o.pt = '20240101'")
+    found = by_category(lint_sql(sql, "hive", store=_schema_ref_store()), "schema_ref")
+    unk = [f for f in found if f.key == "unknown_column"]
+    assert unk and "ghost_col" in unk[0].description
+    assert unk[0].args == {"column": "ghost_col", "table": "dw.orders_di"}
+
+
+def test_existing_and_partition_columns_not_flagged_unknown():
+    sql = ("select o.order_id, o.amount from dw.orders_di o "
+           "where o.pt = '20240101'")
+    found = by_category(lint_sql(sql, "hive", store=_schema_ref_store()), "schema_ref")
+    assert not found
+
+
+def test_select_star_wide_flagged():
+    store = _schema_ref_store(extra_cols=40)
+    sql = "select * from dw.orders_di where pt = '20240101'"
+    found = by_category(lint_sql(sql, "hive", store=store), "resource_usage")
+    wide = [f for f in found if f.key == "select_star_wide"]
+    assert wide and wide[0].args["n"] == 44
+
+
+def test_select_star_narrow_table_not_flagged_wide():
+    sql = "select * from dw.orders_di where pt = '20240101'"
+    found = by_category(lint_sql(sql, "hive", store=_schema_ref_store()),
+                        "resource_usage")
+    assert not [f for f in found if f.key == "select_star_wide"]
+
+
+def test_qualified_star_wide_flagged_multi_table():
+    store = _schema_ref_store(extra_cols=40)
+    sql = ("select o.* from dw.orders_di o join dw.users_df u "
+           "on o.order_id = u.user_id where o.pt='1' and u.pt='1'")
+    found = by_category(lint_sql(sql, "hive", store=store), "resource_usage")
+    assert [f for f in found if f.key == "select_star_wide"]
+
+
+def test_not_partition_column_flagged():
+    # users_df has a normal `dt` column but is partitioned by `pt`
+    sql = "select u.name from dw.users_df u where u.dt = '20240101'"
+    found = by_category(lint_sql(sql, "hive", store=_schema_ref_store()),
+                        "partition_pruning")
+    fake = [f for f in found if f.key == "not_partition_column"]
+    assert fake and fake[0].args == {"col": "dt", "table": "dw.users_df", "parts": "pt"}
+
+
+def test_real_partition_column_not_flagged():
+    sql = "select u.name from dw.users_df u where u.pt = '20240101'"
+    found = by_category(lint_sql(sql, "hive", store=_schema_ref_store()),
+                        "partition_pruning")
+    assert not [f for f in found if f.key == "not_partition_column"]
+
+
+def test_schema_ref_checks_skipped_without_store():
+    sql = "select o.ghost_col from dw.nope_di o where o.dt = '1'"
+    assert not by_category(lint_sql(sql, "hive"), "schema_ref")
+
+
+def test_schema_ref_en_templates_render():
+    store = _schema_ref_store(extra_cols=40)
+    sql = ("select *, o.ghost_col from dw.orders_di o "
+           "join dw.nope_di x on o.order_id = x.id "
+           "where o.dt = '1'")
+    report = ReviewReport(findings=lint_sql(sql, "hive", store=store), dialect="hive")
+    md = render_report(report, lang="en")
+    assert "not found in the provided schema" in md
+    assert "not found in table" in md
+
+
+# ---------------------------------------------------------------------------
+# EXPLAIN verification (OLTP dialects)
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.explain import (  # noqa: E402
+    explain_full_scan_tables,
+    verify_with_explain,
+)
+
+
+class _FakeExecutor:
+    def __init__(self, columns, rows, error=None):
+        self.columns, self.rows, self.error = columns, rows, error
+        self.seen_sql: list[str] = []
+
+    def run(self, sql, max_rows=1000):
+        self.seen_sql.append(sql)
+        if self.error:
+            raise self.error
+        from seatunnel_agent.text2sql.executor.base import QueryResult
+        return QueryResult(columns=self.columns, rows=self.rows,
+                           elapsed_ms=1, row_count=len(self.rows))
+
+
+_MYSQL_COLS = ["id", "select_type", "table", "partitions", "type",
+               "possible_keys", "key", "key_len", "ref", "rows", "Extra"]
+
+
+def _mysql_row(table, scan_type):
+    return ("1", "SIMPLE", table, None, scan_type,
+            None, None, None, None, 1000, None)
+
+
+def test_explain_mysql_full_scan_detected():
+    ex = _FakeExecutor(_MYSQL_COLS, [_mysql_row("t", "ALL")])
+    scan = explain_full_scan_tables("SELECT * FROM t WHERE name LIKE '%x'",
+                                    "mysql", ex)
+    assert scan == {"t"}
+    assert ex.seen_sql[0].startswith("EXPLAIN SELECT")
+
+
+def test_explain_mysql_index_used():
+    ex = _FakeExecutor(_MYSQL_COLS, [_mysql_row("t", "range")])
+    scan = explain_full_scan_tables("SELECT * FROM t WHERE id > 5", "mysql", ex)
+    assert scan == set()
+
+
+def test_explain_postgres_seq_scan():
+    ex = _FakeExecutor(["QUERY PLAN"],
+                       [("Seq Scan on orders  (cost=0.00..15.00 rows=500)",)])
+    scan = explain_full_scan_tables("SELECT * FROM orders", "postgresql", ex)
+    assert scan == {"orders"}
+
+
+def test_explain_sqlite_query_plan():
+    ex = _FakeExecutor(["id", "parent", "notused", "detail"],
+                       [(2, 0, 0, "SCAN t"), (3, 0, 0, "SEARCH u USING INDEX idx_u")])
+    scan = explain_full_scan_tables("SELECT * FROM t JOIN u ON t.id=u.id",
+                                    "sqlite", ex)
+    assert scan == {"t"}
+    assert ex.seen_sql[0].startswith("EXPLAIN QUERY PLAN")
+
+
+def test_explain_skipped_for_unsupported_or_templated():
+    ex = _FakeExecutor(["QUERY PLAN"], [])
+    assert explain_full_scan_tables("SELECT 1", "hive", ex) is None
+    assert explain_full_scan_tables(
+        "SELECT * FROM t WHERE dt = ${bizdate}", "mysql", ex) is None
+    assert explain_full_scan_tables(
+        "SELECT 1; SELECT 2", "mysql", ex) is None
+    assert not ex.seen_sql
+
+
+def test_explain_error_returns_none():
+    ex = _FakeExecutor([], [], error=RuntimeError("boom"))
+    assert explain_full_scan_tables("SELECT * FROM t", "mysql", ex) is None
+
+
+def test_verify_drops_index_guess_when_plan_uses_index():
+    sql = "SELECT id FROM t WHERE name LIKE '%x' LIMIT 10"
+    findings = lint_sql(sql, "mysql")
+    assert any(f.key == "leading_wildcard_like" for f in findings)
+    ex = _FakeExecutor(_MYSQL_COLS, [_mysql_row("t", "range")])
+    verified = verify_with_explain(findings, sql, "mysql", ex)
+    assert not [f for f in verified if f.key == "leading_wildcard_like"]
+    assert not [f for f in verified if f.key == "explain_full_scan"]
+
+
+def test_verify_confirms_full_scan():
+    sql = "SELECT id FROM t WHERE name LIKE '%x' LIMIT 10"
+    findings = lint_sql(sql, "mysql")
+    ex = _FakeExecutor(_MYSQL_COLS, [_mysql_row("t", "ALL")])
+    verified = verify_with_explain(findings, sql, "mysql", ex)
+    assert [f for f in verified if f.key == "leading_wildcard_like"]
+    confirmed = [f for f in verified if f.key == "explain_full_scan"]
+    assert confirmed and confirmed[0].args == {"table": "t"}
+    assert confirmed[0].severity == Severity.RISK
+
+
+def test_verify_no_plan_keeps_findings_unchanged():
+    sql = "SELECT id FROM t WHERE name LIKE '%x' LIMIT 10"
+    findings = lint_sql(sql, "mysql")
+    ex = _FakeExecutor([], [], error=RuntimeError("no db"))
+    assert verify_with_explain(findings, sql, "mysql", ex) == findings
+
+
+def test_explain_full_scan_en_template():
+    from seatunnel_agent.sql_review.i18n import finding_texts
+    f = Finding(severity=Severity.RISK, category="resource_usage",
+                description="EXPLAIN 证实对 t 的全表扫描", location="全局",
+                impact="x", suggestion="y",
+                key="explain_full_scan", args={"table": "t"})
+    desc, impact, sugg = finding_texts(f, "en")
+    assert desc == "EXPLAIN confirms a full table scan on t"
+    assert "index" in impact
+
+
+# ---------------------------------------------------------------------------
+# LLM review cache (live path)
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.sql_review.cache import (  # noqa: E402
+    ReviewCache,
+    cache_enabled,
+    config_fingerprint,
+    store_fingerprint,
+)
+
+
+def test_config_fingerprint_stable_and_sensitive():
+    from seatunnel_agent.sql_review.config import ReviewConfig
+    assert config_fingerprint(None) == config_fingerprint(ReviewConfig())
+    assert config_fingerprint(ReviewConfig(max_joins=9)) != config_fingerprint(None)
+
+
+def test_store_fingerprint_changes_with_schema():
+    assert store_fingerprint(None) == "-"
+    assert store_fingerprint(_schema_ref_store()) == store_fingerprint(_schema_ref_store())
+    assert (store_fingerprint(_schema_ref_store())
+            != store_fingerprint(_schema_ref_store(extra_cols=1)))
+
+
+def test_review_cache_roundtrip(tmp_path):
+    cache = ReviewCache(cache_dir=tmp_path)
+    f = Finding(severity=Severity.RISK, category="resource_usage",
+                description="d", location="行 2", impact="i", suggestion="s",
+                key="leading_wildcard_like")
+    rep = ReviewReport(findings=[f], summary="ok", dialect="mysql")
+    cache.put("select 1", "mysql", rep, "## CR 报告\n\nx", lang="zh", model="m1")
+    hit = cache.get("select 1", "mysql", lang="zh", model="m1")
+    assert hit is not None
+    md, back = hit
+    assert md.startswith("## CR 报告")
+    assert back.summary == "ok"
+    assert back.findings[0].key == "leading_wildcard_like"
+    assert back.findings[0].severity == Severity.RISK
+
+
+def test_review_cache_miss_on_changed_key(tmp_path):
+    from seatunnel_agent.sql_review.config import ReviewConfig
+    cache = ReviewCache(cache_dir=tmp_path)
+    rep = ReviewReport(findings=[], summary="ok", dialect="mysql")
+    cache.put("select 1", "mysql", rep, "md", lang="zh", model="m1")
+    assert cache.get("select 2", "mysql", lang="zh", model="m1") is None
+    assert cache.get("select 1", "hive", lang="zh", model="m1") is None
+    assert cache.get("select 1", "mysql", lang="en", model="m1") is None
+    assert cache.get("select 1", "mysql", lang="zh", model="m2") is None
+    assert cache.get("select 1", "mysql", lang="zh", model="m1",
+                     config=ReviewConfig(max_joins=9)) is None
+    assert cache.get("select 1", "mysql", lang="zh", model="m1") is not None
+
+
+def test_review_cache_lineage_roundtrip(tmp_path):
+    from seatunnel_agent.sql_review.report import TableLineage
+    cache = ReviewCache(cache_dir=tmp_path)
+    rep = ReviewReport(findings=[], summary="ok", dialect="hive",
+                       lineage=TableLineage(sources=["a.t"], targets=["b.t"]))
+    cache.put("insert x", "hive", rep, "md")
+    _md, back = cache.get("insert x", "hive")
+    assert back.lineage and back.lineage.sources == ["a.t"]
+    assert back.lineage.targets == ["b.t"]
+
+
+def test_cache_enabled_env(monkeypatch):
+    monkeypatch.delenv("SQLREVIEW_CACHE", raising=False)
+    assert cache_enabled()
+    monkeypatch.setenv("SQLREVIEW_CACHE", "0")
+    assert not cache_enabled()
+    monkeypatch.setenv("SQLREVIEW_CACHE", "false")
+    assert not cache_enabled()
+
+
+def _make_caching_agent(monkeypatch, calls, holder):
+    from seatunnel_agent.sql_review import agent as agent_mod
+
+    def hook():
+        calls["n"] += 1
+        ag = holder["agent"]
+        ag.runtime.report = ReviewReport(findings=[], summary="fine", dialect="hive")
+        ag.runtime.last_report = "## CR 报告\n\ncached body"
+
+    fake = _AgentFakeLLM("## CR 报告\n\ncached body", hook=hook)
+    monkeypatch.setattr(agent_mod, "LLMClient", lambda s, tools=None: fake)
+    return agent_mod
+
+
+def test_agent_review_cache_skips_llm(tmp_path, monkeypatch):
+    monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path))
+    monkeypatch.delenv("SQLREVIEW_CACHE", raising=False)
+    calls = {"n": 0}
+    holder = {}
+    agent_mod = _make_caching_agent(monkeypatch, calls, holder)
+
+    ag1 = agent_mod.SQLReviewAgent(None, dialect="hive")
+    holder["agent"] = ag1
+    ag1.review("select cache_me from t where pt='1'")
+    assert calls["n"] == 1
+    assert (tmp_path / "sql_review_cache.jsonl").is_file()
+
+    ag2 = agent_mod.SQLReviewAgent(None, dialect="hive")
+    holder["agent"] = ag2
+    out2 = ag2.review("select cache_me from t where pt='1'")
+    assert calls["n"] == 1  # cache hit — LLM never called
+    assert "cached body" in out2
+    assert ag2.runtime.report is not None and ag2.runtime.report.summary == "fine"
+
+
+def test_agent_use_cache_false_always_calls_llm(tmp_path, monkeypatch):
+    monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path))
+    monkeypatch.delenv("SQLREVIEW_CACHE", raising=False)
+    calls = {"n": 0}
+    holder = {}
+    agent_mod = _make_caching_agent(monkeypatch, calls, holder)
+    for _ in range(2):
+        ag = agent_mod.SQLReviewAgent(None, dialect="hive", use_cache=False)
+        holder["agent"] = ag
+        ag.review("select cache_me from t where pt='1'")
+    assert calls["n"] == 2
+
+
+def test_agent_instructions_bypass_cache(tmp_path, monkeypatch):
+    monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path))
+    monkeypatch.delenv("SQLREVIEW_CACHE", raising=False)
+    calls = {"n": 0}
+    holder = {}
+    agent_mod = _make_caching_agent(monkeypatch, calls, holder)
+    ag1 = agent_mod.SQLReviewAgent(None, dialect="hive")
+    holder["agent"] = ag1
+    ag1.review("select cache_me from t where pt='1'")
+    ag2 = agent_mod.SQLReviewAgent(None, dialect="hive")
+    holder["agent"] = ag2
+    ag2.review("select cache_me from t where pt='1'", instructions="focus on joins")
+    assert calls["n"] == 2

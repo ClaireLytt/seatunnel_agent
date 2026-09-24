@@ -7,6 +7,21 @@ from typing import Any
 
 _MAX_PROFILE_COLUMNS = 20
 
+_BACKTICK_DIALECTS = frozenset({
+    "hive", "mysql", "sparksql", "flinksql", "clickhouse", "doris", "sqlite",
+})
+
+
+def quote_identifier(name: str, dialect: str = "hive") -> str:
+    """Quote an identifier for *dialect*, stripping embedded quote chars."""
+    safe = name.replace("`", "").replace('"', "").replace("[", "").replace("]", "")
+    if dialect in _BACKTICK_DIALECTS:
+        return f"`{safe}`"
+    if dialect == "sqlserver":
+        return f"[{safe}]"
+    # postgresql and other ANSI dialects
+    return f'"{safe}"'
+
 
 @dataclass
 class ColumnProfile:
@@ -26,24 +41,26 @@ class TableProfile:
     columns: list[ColumnProfile] = field(default_factory=list)
 
 
-def build_profile_sql(table_name: str, columns: list[dict[str, str]]) -> str:
+def build_profile_sql(table_name: str, columns: list[dict[str, str]],
+                      dialect: str = "hive") -> str:
     """Generate a single SQL query that profiles up to 20 columns.
 
     Each column produces: COUNT(col), COUNT(DISTINCT col), MIN(col), MAX(col).
-    Always starts with COUNT(*) for row count.
+    Always starts with COUNT(*) for row count. Identifiers are quoted per
+    *dialect* (backticks for hive/mysql-family, [..] for sqlserver,
+    double quotes for postgresql).
     """
+    q = lambda n: quote_identifier(n, dialect)
     cols = columns[:_MAX_PROFILE_COLUMNS]
     parts = ["COUNT(*) AS _row_count_"]
     for c in cols:
         name = c["name"]
-        safe = name.replace("`", "")
-        parts.append(f"COUNT(`{safe}`) AS `{safe}__non_null`")
-        parts.append(f"COUNT(DISTINCT `{safe}`) AS `{safe}__distinct`")
-        parts.append(f"MIN(`{safe}`) AS `{safe}__min`")
-        parts.append(f"MAX(`{safe}`) AS `{safe}__max`")
+        parts.append(f"COUNT({q(name)}) AS {q(name + '__non_null')}")
+        parts.append(f"COUNT(DISTINCT {q(name)}) AS {q(name + '__distinct')}")
+        parts.append(f"MIN({q(name)}) AS {q(name + '__min')}")
+        parts.append(f"MAX({q(name)}) AS {q(name + '__max')}")
     select = ",\n  ".join(parts)
-    safe_table = table_name.replace("`", "")
-    return f"SELECT\n  {select}\nFROM `{safe_table}`"
+    return f"SELECT\n  {select}\nFROM {q(table_name)}"
 
 
 def parse_profile_result(

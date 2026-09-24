@@ -9,13 +9,26 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
-from .config import Settings
+from .config import Settings, env_float, env_int
+
+DEFAULT_LLM_MAX_RETRIES = env_int("LLM_MAX_RETRIES", 3)
+LLM_RETRY_BACKOFF_BASE = env_float("LLM_RETRY_BACKOFF_BASE", 2.0)
+
+# Comma-separated substrings of model names that support extended thinking.
+_THINKING_MODEL_KEYWORDS = tuple(
+    k.strip()
+    for k in os.getenv(
+        "THINKING_MODEL_KEYWORDS", "claude-sonnet,claude-opus,claude-fable"
+    ).split(",")
+    if k.strip()
+)
 
 
 @dataclass
@@ -162,7 +175,7 @@ class LLMClient:
         self,
         fn: Callable[..., LLMResponse],
         *args: Any,
-        max_retries: int = 3,
+        max_retries: int = DEFAULT_LLM_MAX_RETRIES,
         **kwargs: Any,
     ) -> LLMResponse:
         for attempt in range(max_retries):
@@ -185,7 +198,7 @@ class LLMClient:
                 )
                 if not retryable or attempt == max_retries - 1:
                     raise
-                wait = 2 ** attempt
+                wait = LLM_RETRY_BACKOFF_BASE ** attempt
                 logger.warning("Retryable error (attempt %d/%d), waiting %ds: %s",
                                attempt + 1, max_retries, wait, exc)
                 time.sleep(wait)
@@ -197,7 +210,7 @@ class LLMClient:
 
     @staticmethod
     def _supports_thinking(model_name: str) -> bool:
-        return any(k in model_name for k in ("claude-sonnet", "claude-opus", "claude-fable"))
+        return any(k in model_name for k in _THINKING_MODEL_KEYWORDS)
 
     def _call_anthropic(self, system_prompt: str, messages: list) -> LLMResponse:
         kwargs: dict[str, Any] = dict(

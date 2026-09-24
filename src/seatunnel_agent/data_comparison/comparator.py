@@ -6,6 +6,7 @@ import atexit
 import json
 import logging
 import math
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -13,13 +14,37 @@ from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 _log = logging.getLogger(__name__)
-_POOL = ThreadPoolExecutor(max_workers=4)
+_POOL_WORKERS = int(os.getenv("DC_POOL_WORKERS", "4"))
+_POOL = ThreadPoolExecutor(max_workers=_POOL_WORKERS)
 atexit.register(_POOL.shutdown, wait=False)
 
 _T = TypeVar("_T")
 _U = TypeVar("_U")
 
 _SAFE_IDENT = re.compile(r"^[\w][\w.$]*$", re.ASCII)
+
+_MAX_COMPARE_COLUMNS = int(os.getenv("DC_MAX_COMPARE_COLUMNS", "20"))
+
+# ---------------------------------------------------------------------------
+# SQL dialect differences, centralized
+# ---------------------------------------------------------------------------
+
+# Dialects whose identifier quote character is the backtick.
+_BACKTICK_DIALECTS = frozenset(
+    {"mysql", "doris", "hive", "sparksql", "clickhouse", "flinksql"})
+
+# Dialects where backslash is an escape character inside string literals.
+_BACKSLASH_ESCAPE_DIALECTS = frozenset(
+    {"mysql", "doris", "hive", "sparksql", "clickhouse"})
+
+
+def _cast_str(expr: str, ds_type: str) -> str:
+    """Cast an expression to a string type, per dialect."""
+    if ds_type in ("mysql", "doris"):
+        return f"CAST({expr} AS CHAR)"
+    if ds_type == "clickhouse":
+        return f"toString({expr})"
+    return f"CAST({expr} AS VARCHAR(200))"
 
 
 # ---------------------------------------------------------------------------
@@ -368,14 +393,17 @@ class CompareReport:
 # Identifier quoting
 # ---------------------------------------------------------------------------
 
-def quote_identifier(name: str) -> str:
+def quote_identifier(name: str, ds_type: str = "") -> str:
     """Quote a SQL identifier to prevent injection.
 
     Simple names (alphanumeric + underscore/dot/$) pass through unchanged.
-    Anything else is double-quoted with embedded quotes escaped.
+    Backtick dialects (MySQL/Hive/Doris/...) get backticks; everything else
+    gets standard double quotes, with embedded quote chars escaped.
     """
     if _SAFE_IDENT.match(name):
         return name
+    if ds_type in _BACKTICK_DIALECTS:
+        return "`" + name.replace("`", "``") + "`"
     return '"' + name.replace('"', '""') + '"'
 
 
@@ -466,7 +494,7 @@ def build_aggregate_sql(table_name: str, columns: list[str], where: str = "") ->
     exprs: list[str] = ["COUNT(*) AS cnt"]
     if len(columns) > 20:
         _log.warning("Truncating columns from %d to 20 for aggregate SQL on %s", len(columns), table_name)
-    for c in columns[:20]:
+    for c in columns[:_MAX_COMPARE_COLUMNS]:
         qc = quote_identifier(c)
         exprs.append(f"SUM({qc}) AS {quote_identifier(c + '__sum')}")
         exprs.append(f"AVG({qc}) AS {quote_identifier(c + '__avg')}")
@@ -516,7 +544,7 @@ def compare_aggregates(
     mismatches = 0
     if len(columns) > 20:
         _log.warning("Truncating columns from %d to 20 for aggregate comparison on %s / %s", len(columns), table_a, table_b)
-    for i, col in enumerate(columns[:20]):
+    for i, col in enumerate(columns[:_MAX_COMPARE_COLUMNS]):
         base = 1 + i * 5  # skip cnt at index 0
         for metric, offset in _METRIC_OFFSETS.items():
             idx = base + offset
@@ -639,7 +667,7 @@ def build_profile_sql(table_name: str, columns: list[str], where: str = "") -> s
     exprs: list[str] = ["COUNT(*) AS cnt"]
     if len(columns) > 20:
         _log.warning("Truncating columns from %d to 20 for profile SQL on %s", len(columns), table_name)
-    for c in columns[:20]:
+    for c in columns[:_MAX_COMPARE_COLUMNS]:
         qc = quote_identifier(c)
         exprs.append(f"COUNT(DISTINCT {qc}) AS {quote_identifier(c + '__dist')}")
         exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) AS {quote_identifier(c + '__null')}")
@@ -658,7 +686,7 @@ def compare_profiles(
     items: list[ProfileItem] = []
     if len(columns) > 20:
         _log.warning("Truncating columns from %d to 20 for profile comparison on %s / %s", len(columns), table_a, table_b)
-    for i, col in enumerate(columns[:20]):
+    for i, col in enumerate(columns[:_MAX_COMPARE_COLUMNS]):
         base = 1 + i * 4
         dist_a = row_a[base] if base < len(row_a) else 0
         null_a = row_a[base + 1] if base + 1 < len(row_a) else 0
@@ -1095,7 +1123,7 @@ def check_quality_rules(
 # Diff → SQL generation  (C)
 # ---------------------------------------------------------------------------
 
-def _sql_literal(value: Any) -> str:
+def _sql_literal(value: Any, ds_type: str = "mysql") -> str:
     """Format a Python value as a SQL literal."""
     if value is None:
         return "NULL"
@@ -1103,7 +1131,10 @@ def _sql_literal(value: Any) -> str:
         if math.isnan(value) or math.isinf(value):
             return "NULL"
         return str(value)
-    s = str(value).replace("\\", "\\\\").replace("'", "''")
+    s = str(value)
+    if ds_type in _BACKSLASH_ESCAPE_DIALECTS:
+        s = s.replace("\\", "\\\\")
+    s = s.replace("'", "''")
     return f"'{s}'"
 
 
@@ -1113,14 +1144,14 @@ def generate_diff_sql(
 ) -> str:
     """Generate INSERT/UPDATE/DELETE SQL from a keyed diff result."""
     stmts: list[str] = []
-    tbl = quote_identifier(table_target)
+    tbl = quote_identifier(table_target, ds_type)
     cols = keyed_diff.columns
     key_cols = keyed_diff.key_columns
     col_set = set(cols)
 
     for row in keyed_diff.added:
-        col_names = ", ".join(quote_identifier(c) for c in cols)
-        values = ", ".join(_sql_literal(row[i]) if i < len(row) else "NULL"
+        col_names = ", ".join(quote_identifier(c, ds_type) for c in cols)
+        values = ", ".join(_sql_literal(row[i], ds_type) if i < len(row) else "NULL"
                            for i in range(len(cols)))
         stmts.append(f"INSERT INTO {tbl} ({col_names}) VALUES ({values});")
 
@@ -1130,17 +1161,17 @@ def generate_diff_sql(
             if kc not in col_set:
                 continue
             idx = cols.index(kc)
-            wheres.append(f"{quote_identifier(kc)} = {_sql_literal(row[idx] if idx < len(row) else None)}")
+            wheres.append(f"{quote_identifier(kc, ds_type)} = {_sql_literal(row[idx] if idx < len(row) else None, ds_type)}")
         if wheres:
             stmts.append(f"DELETE FROM {tbl} WHERE {' AND '.join(wheres)};")
 
     for mod in keyed_diff.modified:
         sets = []
         for col, _old, new in mod.changes:
-            sets.append(f"{quote_identifier(col)} = {_sql_literal(new)}")
+            sets.append(f"{quote_identifier(col, ds_type)} = {_sql_literal(new, ds_type)}")
         wheres = []
         for i, kc in enumerate(key_cols):
-            wheres.append(f"{quote_identifier(kc)} = {_sql_literal(mod.key[i])}")
+            wheres.append(f"{quote_identifier(kc, ds_type)} = {_sql_literal(mod.key[i], ds_type)}")
         stmts.append(f"UPDATE {tbl} SET {', '.join(sets)} WHERE {' AND '.join(wheres)};")
 
     return "\n".join(stmts)
@@ -1236,14 +1267,14 @@ def build_skew_sql(
     ds_type: str = "mysql",
 ) -> str:
     """Build SQL to get top-N value frequencies for one column."""
-    qc = quote_identifier(column)
-    qt = quote_identifier(table_name)
+    qc = quote_identifier(column, ds_type)
+    qt = quote_identifier(table_name, ds_type)
     if top_n > 0 and ds_type == "sqlserver":
         top_clause = f"TOP {int(top_n)} "
     else:
         top_clause = ""
     sql = (
-        f"SELECT {top_clause}CAST({qc} AS VARCHAR(200)) AS val, COUNT(*) AS cnt"
+        f"SELECT {top_clause}{_cast_str(qc, ds_type)} AS val, COUNT(*) AS cnt"
         f"\n  FROM {qt}{_where_clause(where)}"
         f"\n GROUP BY {qc}"
         f"\n ORDER BY cnt DESC"
@@ -1370,20 +1401,27 @@ def build_checksum_sql(
 ) -> str:
     """Build SQL to compute per-segment checksums for data verification."""
     segments = max(1, int(segments))
-    qt = quote_identifier(table_name)
-    cols_quoted = ", ".join(f"CAST({quote_identifier(c)} AS VARCHAR(200))" for c in columns)
+    qt = quote_identifier(table_name, ds_type)
+    cols_quoted = ", ".join(
+        _cast_str(quote_identifier(c, ds_type), ds_type) for c in columns)
 
     tpl = _HASH_FUNC.get(ds_type, _HASH_FUNC["mysql"])
     if ds_type == "clickhouse":
-        cols_ts = ", ".join(f"toString({quote_identifier(c)})" for c in columns)
+        cols_ts = ", ".join(f"toString({quote_identifier(c, ds_type)})" for c in columns)
         hash_expr = tpl.format(cols=cols_quoted, cols_ts=cols_ts)
     else:
         hash_expr = tpl.format(cols=cols_quoted)
 
-    if ds_type in ("mysql", "postgresql", "clickhouse", "doris"):
-        seg_expr = f"MOD(ABS(CRC32(CONCAT_WS(',', {cols_quoted}))), {segments})"
-    else:
+    if ds_type == "postgresql":
+        # PostgreSQL has no CRC32; HASHTEXT gives a stable int hash.
+        seg_expr = f"ABS(HASHTEXT(CONCAT_WS(',', {cols_quoted}))) % {segments}"
+    elif ds_type == "sqlserver":
         seg_expr = f"ABS(CHECKSUM(CONCAT_WS(',', {cols_quoted}))) % {segments}"
+    elif ds_type == "clickhouse":
+        cols_ts = ", ".join(f"toString({quote_identifier(c, ds_type)})" for c in columns)
+        seg_expr = f"ABS(CRC32(CONCAT({cols_ts}))) % {segments}"
+    else:
+        seg_expr = f"MOD(ABS(CRC32(CONCAT_WS(',', {cols_quoted}))), {segments})"
 
     return (
         f"SELECT {seg_expr} AS seg,"
@@ -1440,10 +1478,10 @@ def build_partition_count_sql(
     ds_type: str = "mysql",
 ) -> str:
     """Build SQL to get row counts grouped by partition column."""
-    qt = quote_identifier(table_name)
-    qp = quote_identifier(partition_col)
+    qt = quote_identifier(table_name, ds_type)
+    qp = quote_identifier(partition_col, ds_type)
     return (
-        f"SELECT CAST({qp} AS VARCHAR(200)) AS part_val, COUNT(*) AS cnt"
+        f"SELECT {_cast_str(qp, ds_type)} AS part_val, COUNT(*) AS cnt"
         f"\n  FROM {qt}{_where_clause(where)}"
         f"\n GROUP BY {qp}"
         f"\n ORDER BY cnt DESC"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -10,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+
+logger = logging.getLogger(__name__)
 
 HISTORY_DIR = Path.home() / ".seatunnel-agent" / "chat_history"
 _OLD_HISTORY_DIR = Path("chat_history")
@@ -76,7 +79,8 @@ def load_session(session_id: str) -> Session | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
         return Session(**data)
-    except (json.JSONDecodeError, TypeError, KeyError):
+    except (json.JSONDecodeError, TypeError, KeyError) as e:
+        logger.warning("Failed to load chat session from %s: %s", path, e)
         return None
 
 

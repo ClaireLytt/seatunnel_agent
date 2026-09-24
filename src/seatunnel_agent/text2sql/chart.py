@@ -25,43 +25,34 @@ def _configure_cjk_font() -> None:
     with _cjk_font_lock:
         if _cjk_font_configured:
             return
-        _cjk_font_configured = True
-    import matplotlib.font_manager as fm
-    from pathlib import Path
+        import matplotlib.font_manager as fm
+        from .exporter import NOTO_FONT_PATH, download_noto_font
 
-    for name in ("Microsoft YaHei", "SimHei", "PingFang SC", "Noto Sans SC"):
-        if any(name.lower() in f.name.lower() for f in fm.fontManager.ttflist):
+        def _use(name: str) -> None:
             plt.rcParams["font.sans-serif"] = [name] + plt.rcParams.get(
                 "font.sans-serif", []
             )
             plt.rcParams["axes.unicode_minus"] = False
+
+        for name in ("Microsoft YaHei", "SimHei", "PingFang SC", "Noto Sans SC"):
+            if any(name.lower() in f.name.lower() for f in fm.fontManager.ttflist):
+                _use(name)
+                _cjk_font_configured = True
+                return
+
+        if NOTO_FONT_PATH.is_file():
+            fm.fontManager.addfont(str(NOTO_FONT_PATH))
+            _use("Noto Sans SC")
+            _cjk_font_configured = True
             return
 
-    noto = Path.home() / ".seatunnel-agent" / "fonts" / "NotoSansSC-Regular.otf"
-    if noto.is_file():
-        fm.fontManager.addfont(str(noto))
-        plt.rcParams["font.sans-serif"] = ["Noto Sans SC"] + plt.rcParams.get(
-            "font.sans-serif", []
-        )
-        plt.rcParams["axes.unicode_minus"] = False
-        return
+        _cjk_font_configured = True
 
     def _download_font():
-        try:
-            noto.parent.mkdir(parents=True, exist_ok=True)
-            import urllib.request
-            _url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/SimplifiedChinese/NotoSansSC-Regular.otf"
-            resp = urllib.request.urlopen(_url, timeout=15)  # noqa: S310
-            with open(noto, "wb") as _f:
-                _f.write(resp.read())
-            if noto.is_file():
-                fm.fontManager.addfont(str(noto))
-                plt.rcParams["font.sans-serif"] = ["Noto Sans SC"] + plt.rcParams.get(
-                    "font.sans-serif", []
-                )
-                plt.rcParams["axes.unicode_minus"] = False
-        except Exception:
-            pass
+        if download_noto_font() is not None:
+            with _cjk_font_lock:
+                fm.fontManager.addfont(str(NOTO_FONT_PATH))
+                _use("Noto Sans SC")
 
     threading.Thread(target=_download_font, daemon=True).start()
 

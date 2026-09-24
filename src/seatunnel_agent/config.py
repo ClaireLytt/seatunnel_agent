@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import platform
 from dataclasses import dataclass
@@ -7,7 +8,61 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 _VALID_PROVIDERS = ("anthropic", "openai")
+
+
+def env_int(name: str, default: int) -> int:
+    """Read an int env var; on a bad value warn and fall back to the default."""
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Environment variable %s=%r is not a valid integer; using default %d",
+            name, raw, default,
+        )
+        return default
+
+
+def env_float(name: str, default: float) -> float:
+    """Read a float env var; on a bad value warn and fall back to the default."""
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        logger.warning(
+            "Environment variable %s=%r is not a valid number; using default %s",
+            name, raw, default,
+        )
+        return default
+
+
+def _require_int(name: str, default: str) -> int:
+    raw = os.getenv(name, default)
+    try:
+        return int(raw)
+    except ValueError:
+        raise RuntimeError(
+            f"Environment variable {name}={raw!r} is not a valid integer. "
+            f"Fix it in your .env file (example: {name}={default})."
+        )
+
+
+def _require_float(name: str, default: str) -> float:
+    raw = os.getenv(name, default)
+    try:
+        return float(raw)
+    except ValueError:
+        raise RuntimeError(
+            f"Environment variable {name}={raw!r} is not a valid number. "
+            f"Fix it in your .env file (example: {name}={default})."
+        )
 
 
 @dataclass(frozen=True)
@@ -49,14 +104,14 @@ def load_settings() -> Settings:
 
     seatunnel_home = os.getenv("SEATUNNEL_HOME", "")
 
-    max_retries = int(os.getenv("MAX_RETRIES", "3"))
+    max_retries = _require_int("MAX_RETRIES", "3")
     model_name = os.getenv("MODEL_NAME", "claude-opus-5")
-    max_tokens = int(os.getenv("MAX_TOKENS", "16000"))
+    max_tokens = _require_int("MAX_TOKENS", "16000")
     llm_base_url = os.getenv("LLM_BASE_URL", "")
-    job_timeout = int(os.getenv("JOB_TIMEOUT", "120"))
-    temperature = float(os.getenv("TEMPERATURE", "0.0"))
+    job_timeout = _require_int("JOB_TIMEOUT", "120")
+    temperature = _require_float("TEMPERATURE", "0.0")
     config_dir = os.getenv("CONFIG_DIR", "configs")
-    llm_timeout = int(os.getenv("LLM_TIMEOUT", "120"))
+    llm_timeout = _require_int("LLM_TIMEOUT", "120")
 
     seatunnel_bin = ""
     if seatunnel_home:

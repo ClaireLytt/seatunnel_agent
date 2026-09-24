@@ -457,3 +457,34 @@ class TestRetryStringCodeIgnored:
             result = client._call_with_retry(fn, "a", max_retries=3)
         assert result == expected
         assert fn.call_count == 2
+
+
+class TestSupportsThinking:
+    def test_default_keywords_match_claude_models(self):
+        assert LLMClient._supports_thinking("claude-sonnet-5")
+        assert LLMClient._supports_thinking("claude-opus-5")
+        assert LLMClient._supports_thinking("claude-fable-5-1")
+
+    def test_non_thinking_model(self):
+        assert not LLMClient._supports_thinking("gpt-4o")
+        assert not LLMClient._supports_thinking("deepseek-chat")
+
+    def test_custom_keywords_respected(self):
+        with patch("seatunnel_agent.llm._THINKING_MODEL_KEYWORDS", ("deepseek-r1",)):
+            assert LLMClient._supports_thinking("deepseek-r1-distill")
+            assert not LLMClient._supports_thinking("claude-sonnet-5")
+
+    def test_default_retry_count_from_constant(self):
+        import seatunnel_agent.llm as llm_mod
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            client = LLMClient(ANTHROPIC_SETTINGS)
+        err = Exception("boom")
+        resp_mock = MagicMock()
+        resp_mock.status_code = 502
+        err.response = resp_mock
+        fn = MagicMock(side_effect=err)
+        with patch("seatunnel_agent.llm.time.sleep"), \
+             pytest.raises(Exception, match="boom"):
+            client._call_with_retry(fn, "a")
+        assert fn.call_count == llm_mod.DEFAULT_LLM_MAX_RETRIES

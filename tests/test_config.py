@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from seatunnel_agent.config import Settings, load_settings
+from seatunnel_agent.config import Settings, env_float, env_int, load_settings
 
 
 @pytest.fixture(autouse=True)
@@ -121,3 +121,42 @@ def test_load_settings_max_tokens(monkeypatch):
     monkeypatch.setenv("MAX_TOKENS", "32000")
     settings = load_settings()
     assert settings.max_tokens == 32000
+
+
+def test_load_settings_invalid_int_names_variable(monkeypatch):
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.setenv("MAX_RETRIES", "three")
+    with pytest.raises(RuntimeError, match="MAX_RETRIES"):
+        load_settings()
+
+
+def test_load_settings_invalid_float_names_variable(monkeypatch):
+    monkeypatch.setenv("API_KEY", "sk-test")
+    monkeypatch.setenv("TEMPERATURE", "hot")
+    with pytest.raises(RuntimeError, match="TEMPERATURE"):
+        load_settings()
+
+
+def test_env_int_fallback_on_garbage(monkeypatch):
+    monkeypatch.setenv("SOME_INT_VAR", "not-a-number")
+    assert env_int("SOME_INT_VAR", 42) == 42
+
+
+def test_env_int_reads_valid_value(monkeypatch):
+    monkeypatch.setenv("SOME_INT_VAR", "7")
+    assert env_int("SOME_INT_VAR", 42) == 7
+
+
+def test_env_int_unset_returns_default(monkeypatch):
+    monkeypatch.delenv("SOME_INT_VAR", raising=False)
+    assert env_int("SOME_INT_VAR", 42) == 42
+
+
+def test_env_float_fallback_on_garbage(monkeypatch):
+    monkeypatch.setenv("SOME_FLOAT_VAR", "abc")
+    assert env_float("SOME_FLOAT_VAR", 1.5) == 1.5
+
+
+def test_env_float_reads_valid_value(monkeypatch):
+    monkeypatch.setenv("SOME_FLOAT_VAR", "0.25")
+    assert env_float("SOME_FLOAT_VAR", 1.5) == 0.25

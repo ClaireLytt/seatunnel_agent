@@ -299,6 +299,79 @@ def build_quality_card(warnings: list[dict], lang: str = "en") -> str:
     )
 
 
+_MAX_REVIEW_URL_SQL = 1800  # keep the prefill URL well under browser limits
+
+
+def _review_page_url(sql: str, dialect: str) -> str:
+    from urllib.parse import quote
+    encoded = quote(sql, safe="")
+    if len(encoded) > _MAX_REVIEW_URL_SQL:
+        return "/sqlreview"
+    return f"/sqlreview?sql={encoded}&dialect={quote(dialect, safe='')}"
+
+
+def build_review_card(sql: str, dialect: str, store: SchemaStore | None,
+                      lang: str = "en") -> str:
+    """Compact SQL-review card: static-lint the executed SQL and summarize.
+
+    Links to /sqlreview for the full (LLM-assisted) review page.
+    """
+    from .sql_review.agent import static_review_report
+    from .sql_review.i18n import catalog_label
+    from .sql_review.linter import normalize_dialect
+
+    t = lambda k: _t2s(lang, k)
+    esc = _esc_html
+    dialect = normalize_dialect(dialect)
+    rep = static_review_report(sql, dialect, store=store)
+    if not rep.findings:
+        return (
+            f'<div style="margin-top:6px;font-size:11px;color:#10b981;">'
+            f'✅ {t("review_card_pass")}</div>'
+        )
+
+    review_url = _review_page_url(sql, dialect)
+    n_crit, n_risk = len(rep.criticals), len(rep.risks)
+    n_sugg = len(rep.suggestions)
+    counts = t("review_card_counts").format(c=n_crit, r=n_risk, s=n_sugg)
+    header_color = "#dc2626" if n_crit else "#f59e0b" if n_risk else "#10b981"
+
+    sev_label = {"critical": t("review_sev_critical"),
+                 "risk": t("review_sev_risk"),
+                 "suggestion": t("review_sev_suggestion")}
+    sev_color = {"critical": "#dc2626", "risk": "#f59e0b",
+                 "suggestion": "#10b981"}
+    items: list[str] = []
+    for f in rep.findings[:5]:
+        sev = f.severity.value
+        items.append(
+            f'<div style="font-size:11px;padding:2px 0;">'
+            f'<span style="display:inline-block;padding:0 5px;border-radius:3px;'
+            f'font-size:9px;color:#fff;background:{sev_color.get(sev, "#6b7280")};'
+            f'margin-right:4px;">{esc(sev_label.get(sev, sev))}</span>'
+            f'<b>{esc(catalog_label(f.category, lang))}</b> — '
+            f'{esc(f.description)}</div>'
+        )
+    if len(rep.findings) > 5:
+        items.append(
+            f'<div style="font-size:11px;padding:2px 0;color:#6b7280;">'
+            f'… +{len(rep.findings) - 5}</div>'
+        )
+    items.append(
+        f'<div style="font-size:11px;padding:4px 0 0;">'
+        f'<a href="{review_url}" target="_blank" style="color:#0ea5e9;'
+        f'text-decoration:none;">{t("review_card_more")}</a></div>'
+    )
+    body = "\n".join(items)
+    return (
+        f'<details style="margin-top:6px;">'
+        f'<summary style="cursor:pointer;font-weight:600;font-size:12px;'
+        f'color:{header_color};">\U0001f50d {t("review_card_title")} — {esc(counts)}</summary>'
+        f'<div style="font-size:12px;line-height:1.5;padding:4px;margin-top:4px;'
+        f'border:1px solid #e5e7eb;border-radius:6px;background:#f9fafb;">{body}</div></details>'
+    )
+
+
 def build_diff_card(diff_data: dict, lang: str = "en") -> str:
     """Build an inline-styled HTML card for result diff."""
     t = lambda k: _t2s(lang, k)
@@ -434,15 +507,15 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
     label = labels.get(name, name)
 
     if data.get("error"):
-        return f"❌ **{label} {t('failed')}**\n\n{str(data['error'])[:500]}"
+        return f"❌ **{label} {t('failed')}**\n\n{_esc_html(str(data['error'])[:500])}"
 
     if name == "match_tables":
         lines = [f"\U0001f50d **{t('candidates')}** ({data.get('count', 0)}):", ""]
         for c in data.get("candidates", []):
-            cols = ", ".join(c.get("matched_columns", [])[:5])
+            cols = _esc_html(", ".join(c.get("matched_columns", [])[:5]))
             lines.append(
-                f"- **`{c['table']}`** — {c.get('comment', '')} "
-                f"({t('score')} {c.get('score', 0)}, {t('type')} {c.get('table_type', '?')})"
+                f"- **`{c['table']}`** — {_esc_html(str(c.get('comment', '')))} "
+                f"({t('score')} {c.get('score', 0)}, {t('type')} {_esc_html(str(c.get('table_type', '?')))})"
                 + (f", {t('matched_cols')}: {cols}" if cols else "")
             )
         return "\n".join(lines)
@@ -450,13 +523,13 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
     if name == "get_table_schema":
         cols = data.get("columns", [])
         parts = [
-            f"\U0001f4d6 **`{data.get('table', '?')}`** — {data.get('comment', '')}",
-            f"{t('table_type')}: {data.get('table_type', '?')} · {t('cols_count')}: {len(cols)}"
+            f"\U0001f4d6 **`{data.get('table', '?')}`** — {_esc_html(str(data.get('comment', '')))}",
+            f"{t('table_type')}: {_esc_html(str(data.get('table_type', '?')))} · {t('cols_count')}: {len(cols)}"
             + (f" · {t('partitioned')}" if data.get("partitioned") else ""),
         ]
         if data.get("partition_columns"):
             pc = ", ".join(
-                f"`{p['name']}`({p.get('comment', '')})"
+                f"`{p['name']}`({_esc_html(str(p.get('comment', '')))})"
                 for p in data["partition_columns"]
             )
             parts.append(f"Partition: {pc}")
@@ -515,6 +588,16 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
             if card:
                 lines.append("")
                 lines.append(card)
+        if sql:
+            try:
+                with _shared_holder_lock:
+                    ds_type = _shared_holder.get("ds_type", "hive")
+                card = build_review_card(sql, ds_type, store, lang)
+                if card:
+                    lines.append("")
+                    lines.append(card)
+            except Exception:  # noqa: BLE001 — the review card is optional
+                pass
         return "\n".join(lines)
 
     if name == "export_csv":
@@ -638,7 +721,7 @@ class _IncrementalFormatter:
                 max_r = ev.get("max", 3)
                 etype = ev.get("error_type", "execution_error")
                 etype_label = t(f"error_type_{etype}") if t(f"error_type_{etype}") != f"error_type_{etype}" else etype
-                hint = ev.get("retry_hint", "")
+                hint = _esc_html(str(ev.get("retry_hint", "")))
                 header = t("sql_retry").format(attempt=attempt, max=max_r)
                 detail = t("sql_retry_hint").format(error_type=etype_label, hint=hint)
                 failed_sql = ev.get("failed_sql", "")
@@ -1564,8 +1647,8 @@ def render_text2sql_page(app=None) -> None:
     # ── Datasource type change callback ──
     def _on_ds_change(ds_label: str):
         ds = _DS_LABEL_TO_KEY.get(ds_label, "hive")
-        defaults = DS_DEFAULTS.get(ds, {})
-        default_port = str(defaults.get("port", 10000))
+        defaults = DS_DEFAULTS.get(ds, DS_DEFAULTS["hive"])
+        default_port = str(defaults.get("port", 0))
         default_db = defaults.get("database", "default")
         show_auth = ds in _NEEDS_AUTH
         show_host = ds in _NEEDS_HOST
@@ -1628,8 +1711,8 @@ def render_text2sql_page(app=None) -> None:
         u = username.strip() or None
         pw = password.strip() or None
 
-        defaults = DS_DEFAULTS.get(ds_type, {})
-        default_port = str(defaults.get("port", 10000))
+        defaults = DS_DEFAULTS.get(ds_type, DS_DEFAULTS["hive"])
+        default_port = str(defaults.get("port", 0))
         default_db = defaults.get("database", "default")
 
         if not h and ds_type in _NEEDS_HOST:
@@ -1821,7 +1904,7 @@ def render_text2sql_page(app=None) -> None:
                     agent.chat(msg)
             except Exception as e:
                 error_msg = str(e)
-                collector.on_event("final_answer", {"text": f"Error: {e}"})
+                collector.on_event("final_answer", {"text": f"Error: {_esc_html(str(e))}"})
 
         thread = threading.Thread(target=_worker, daemon=True)
         thread.start()
@@ -1844,6 +1927,7 @@ def render_text2sql_page(app=None) -> None:
                             _result_snapshots.append(_rt.last_result)
                 yield history + user_msg + fmt.feed(new_events), gr.update()
         thread.join(timeout=120)
+        timed_out = thread.is_alive()
         remaining = collector.snapshot_since(prev)
         if remaining:
             for _ev in remaining:
@@ -1855,8 +1939,10 @@ def render_text2sql_page(app=None) -> None:
                         _result_snapshots.append(_rt.last_result)
             fmt.feed(remaining)
         final = fmt.finalize()
+        if timed_out:
+            final.append({"role": "assistant", "content": f"⚠️ {t('agent_timeout').format(s=120)}"})
         if error_msg:
-            final.append({"role": "assistant", "content": f"⚠️ **Error**: {error_msg}"})
+            final.append({"role": "assistant", "content": f"⚠️ **Error**: {_esc_html(error_msg)}"})
         final.append({"role": "assistant", "content": f"⏱️ {t('done')} {time.time() - start:.1f}s"})
 
         rt = agent.runtime if agent else None

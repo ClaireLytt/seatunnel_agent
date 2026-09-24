@@ -32,6 +32,34 @@ class MySQLExecutor(DatabaseExecutor):
     def run(self, sql: str, max_rows: int = 1000) -> QueryResult:
         return self._run_dbapi(sql, max_rows)
 
+    def _describe_with(self, cursor, table_name: str) -> TableSchema:
+        from ..schema import ColumnSchema, TableSchema
+
+        cursor.execute(
+            "SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT "
+            "FROM INFORMATION_SCHEMA.COLUMNS "
+            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
+            "ORDER BY ORDINAL_POSITION",
+            (self.config.database, table_name),
+        )
+        columns = [
+            ColumnSchema(name=r[0], dtype=r[1], comment=r[2] or "")
+            for r in cursor.fetchall()
+        ]
+        cursor.execute(
+            "SELECT TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
+            (self.config.database, table_name),
+        )
+        cr = cursor.fetchone()
+        return TableSchema(
+            database=self.config.database,
+            name=table_name,
+            comment=cr[0] if cr else "",
+            columns=columns,
+            partition_columns=[],
+        )
+
     def show_tables(self) -> list[str]:
         conn = self._connect()
         cursor = None
@@ -45,80 +73,24 @@ class MySQLExecutor(DatabaseExecutor):
             conn.close()
 
     def describe_table(self, table_name: str) -> TableSchema:
-        from ..schema import ColumnSchema, TableSchema
-
         conn = self._connect()
         cursor = None
         try:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT "
-                "FROM INFORMATION_SCHEMA.COLUMNS "
-                "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
-                "ORDER BY ORDINAL_POSITION",
-                (self.config.database, table_name),
-            )
-            columns = []
-            for row in cursor.fetchall():
-                columns.append(ColumnSchema(
-                    name=row[0], dtype=row[1], comment=row[2] or "",
-                ))
-
-            cursor.execute(
-                "SELECT TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES "
-                "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
-                (self.config.database, table_name),
-            )
-            comment_row = cursor.fetchone()
-            comment = comment_row[0] if comment_row else ""
+            return self._describe_with(cursor, table_name)
         finally:
             if cursor:
                 cursor.close()
             conn.close()
 
-        return TableSchema(
-            database=self.config.database,
-            name=table_name,
-            comment=comment,
-            columns=columns,
-            partition_columns=[],
-        )
-
     def fetch_all_schemas(self) -> list[TableSchema]:
-        from ..schema import ColumnSchema, TableSchema
-
         conn = self._connect()
         cursor = None
         try:
             cursor = conn.cursor()
             cursor.execute("SHOW TABLES")
             tables = [row[0] for row in cursor.fetchall()]
-
-            schemas = []
-            for tbl in tables:
-                cursor.execute(
-                    "SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_COMMENT "
-                    "FROM INFORMATION_SCHEMA.COLUMNS "
-                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
-                    "ORDER BY ORDINAL_POSITION",
-                    (self.config.database, tbl),
-                )
-                columns = [
-                    ColumnSchema(name=r[0], dtype=r[1], comment=r[2] or "")
-                    for r in cursor.fetchall()
-                ]
-                cursor.execute(
-                    "SELECT TABLE_COMMENT FROM INFORMATION_SCHEMA.TABLES "
-                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
-                    (self.config.database, tbl),
-                )
-                cr = cursor.fetchone()
-                schemas.append(TableSchema(
-                    database=self.config.database, name=tbl,
-                    comment=cr[0] if cr else "",
-                    columns=columns, partition_columns=[],
-                ))
-            return schemas
+            return [self._describe_with(cursor, tbl) for tbl in tables]
         finally:
             if cursor:
                 cursor.close()

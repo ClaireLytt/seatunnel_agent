@@ -1,0 +1,13 @@
+# pre-commit hook definitions for this repo.
+# Usage in a consumer repo's .pre-commit-config.yaml:
+#   repos:
+#     - repo: https://github.com/ClaireLytt/seatunnel_agent
+#       rev: main
+#       hooks:
+#         - id: sqlreview
+- id: sqlreview
+  name: SQL Code Review (static)
+  description: Static SQL review — 10 dialects (Hive/Spark/Flink/MaxCompute/MySQL/PostgreSQL/ClickHouse/Doris/StarRocks/SQLite), no LLM needed
+  entry: seatunnel-agent review --static-only --fail-on critical
+  language: python
+  files: \.sql$

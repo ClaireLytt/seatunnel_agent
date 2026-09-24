@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -11,7 +12,7 @@ from .base import DatabaseConfig, DatabaseExecutor, QueryResult
 if TYPE_CHECKING:
     from ..schema import TableSchema
 
-_DEFAULT_DB_PATH = "config/demo.db"
+_DEFAULT_DB_PATH = os.getenv("SQLITE_DB_PATH", "config/demo.db")
 
 
 class SQLiteExecutor(DatabaseExecutor):
@@ -35,21 +36,15 @@ class SQLiteExecutor(DatabaseExecutor):
             cursor.close()
             conn.close()
 
-    def describe_table(self, table_name: str) -> TableSchema:
+    def _describe_with(self, cursor, table_name: str) -> TableSchema:
         from ..schema import ColumnSchema, TableSchema
 
-        conn = self._connect()
-        cursor = conn.cursor()
-        try:
-            cursor.execute(f"PRAGMA table_info(`{table_name}`)")
-            columns = [
-                ColumnSchema(name=r[1], dtype=r[2] or "TEXT", comment="")
-                for r in cursor.fetchall()
-            ]
-        finally:
-            cursor.close()
-            conn.close()
-
+        safe = table_name.replace("`", "").replace('"', "")
+        cursor.execute(f'PRAGMA table_info("{safe}")')
+        columns = [
+            ColumnSchema(name=r[1], dtype=r[2] or "TEXT", comment="")
+            for r in cursor.fetchall()
+        ]
         return TableSchema(
             database=self.config.database,
             name=table_name,
@@ -58,9 +53,27 @@ class SQLiteExecutor(DatabaseExecutor):
             partition_columns=[],
         )
 
+    def describe_table(self, table_name: str) -> TableSchema:
+        conn = self._connect()
+        cursor = conn.cursor()
+        try:
+            return self._describe_with(cursor, table_name)
+        finally:
+            cursor.close()
+            conn.close()
+
     def fetch_all_schemas(self) -> list[TableSchema]:
-        tables = self.show_tables()
-        return [self.describe_table(t) for t in tables]
+        conn = self._connect()
+        cursor = conn.cursor()
+        try:
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+            )
+            tables = [r[0] for r in cursor.fetchall()]
+            return [self._describe_with(cursor, t) for t in tables]
+        finally:
+            cursor.close()
+            conn.close()
 
     def test_connection(self) -> tuple[bool, str]:
         try:

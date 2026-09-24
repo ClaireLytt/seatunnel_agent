@@ -89,12 +89,14 @@ def _build_agent(
     db_config: DatabaseConfig | None = None
 
     if db_config_dict:
+        from .executor import DS_DEFAULTS
+        defaults = DS_DEFAULTS.get(ds_type, {})
         try:
             db_config = DatabaseConfig(
                 ds_type=ds_type,
                 host=db_config_dict.get("host", "localhost"),
-                port=int(db_config_dict.get("port", 10000)),
-                database=db_config_dict.get("database", "default"),
+                port=int(db_config_dict.get("port", defaults.get("port", 0))),
+                database=db_config_dict.get("database", str(defaults.get("database", "default"))),
                 username=db_config_dict.get("username"),
                 password=db_config_dict.get("password"),
             )
@@ -138,7 +140,11 @@ def query(req: QueryRequest) -> QueryResponse:
         else:
             answer = agent.run(req.question)
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Agent execution failed: {exc}")
+        from .tools import _sanitize_db_error
+        raise HTTPException(
+            status_code=500,
+            detail=f"Agent execution failed: {_sanitize_db_error(str(exc))}",
+        )
 
     rt = agent.runtime
     columns: list[str] = []

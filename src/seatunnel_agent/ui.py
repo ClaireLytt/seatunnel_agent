@@ -18,8 +18,12 @@ from typing import Any
 
 import gradio as gr
 
-from .config import Settings, load_settings
+from .config import Settings, env_float, load_settings
 from .agent import SeaTunnelAgent
+
+_DOCS_URL = "https://github.com/ClaireLytt/seatunnel_agent#readme"
+_EVENT_POLL_INTERVAL = env_float("UI_EVENT_POLL_INTERVAL", 0.3)
+_DEMO_STEP_DELAY = env_float("UI_DEMO_STEP_DELAY", 0.35)
 from .history import (
     Session, delete_session, extract_title, list_sessions,
     load_session, new_session_id, rename_session, save_session,
@@ -303,7 +307,7 @@ def _run_demo(
 
     for step in steps:
         t = step["type"]
-        time.sleep(0.35)
+        time.sleep(_DEMO_STEP_DELAY)
 
         if t == "thinking":
             collector.on_event("thinking", {"text": step["text"]})
@@ -604,12 +608,18 @@ def _run_agent_streaming(user_message, chat_history, mode, config_path, settings
     thread.start()
     prev_count = 0
     while not collector.done:
-        collector.wait_for_event(timeout=0.3)
+        collector.wait_for_event(timeout=_EVENT_POLL_INTERVAL)
         events = collector.snapshot()
         if len(events) > prev_count:
             prev_count = len(events)
             yield chat_history + [{"role": "user", "content": user_message}] + _format_events_as_chat(events, start_time)
     thread.join(timeout=5)
+    if thread.is_alive():
+        import logging
+        logging.getLogger(__name__).warning(
+            "Agent worker thread is still running after stop/finish; "
+            "it will exit at the next loop-iteration check."
+        )
     elapsed = time.time() - start_time
     final = _format_events_as_chat(collector.snapshot(), start_time)
     if error_msg:
@@ -679,7 +689,7 @@ def _build_placeholder(lang: str) -> str:
     <div class="st-hint-card">{_t(lang, "placeholder_hint2")}</div>
     <div class="st-hint-card">{_t(lang, "placeholder_hint3")}</div>
   </div>
-  <a href="https://github.com/ClaireLytt/seatunnel_agent#readme"
+  <a href="{_DOCS_URL}"
      target="_blank" class="st-docs-link">{docs_text}</a>
 </div>'''
 
@@ -756,28 +766,6 @@ _MODE_MAP = {
 }
 
 
-_HUB_AGENTS: list[dict[str, Any]] = [
-    {
-        "name": "SeaTunnel Pipeline Builder",
-        "name_zh": "数据管道构建",
-        "desc_en": "Generate / validate / run SeaTunnel configs with natural language, auto-diagnose & fix",
-        "desc_zh": "自然语言生成 / 验证 / 运行 SeaTunnel 配置，自动诊断修复",
-        "href": "/seatunnel",
-        "logo": "ST",
-        "color": "#f76707",
-    },
-    {
-        "name": "Text2SQL · Chat BI",
-        "name_zh": "智能问数",
-        "desc_en": "Ask in natural language → auto match table schema → generate & run Hive SQL → preview & CSV export",
-        "desc_zh": "自然语言提问 → 自动匹配表结构 → 生成并执行 Hive SQL → 结果预览与 CSV 导出",
-        "href": "/text2sql",
-        "logo": "SQL",
-        "color": "#0ea5e9",
-    },
-]
-
-
 def _build_hub_html() -> str:
     return '''<div class="st-hub" id="st-hub">
   <div class="st-hub-lang-row">
@@ -809,6 +797,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Compare schemas, row counts, and data across two data sources" data-zh="跨数据源比对表结构、行数、数据差异">Compare schemas, row counts, and data across two data sources</div>
       <div class="st-hub-enter" style="color:#8b5cf6;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/sqlreview">
+      <div class="st-hub-logo" style="background:#10b981;">CR</div>
+      <div class="st-hub-card-title" data-en="SQL Code Review" data-zh="SQL 代码审查">SQL Code Review</div>
+      <div class="st-hub-card-desc" data-en="Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards" data-zh="Hive / Spark / Flink / MaxCompute SQL 静态 + LLM 审查 — 性能、质量与规范">Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards</div>
+      <div class="st-hub-enter" style="color:#10b981;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <div class="st-hub-card st-hub-card-soon">
       <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
       <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
@@ -818,10 +812,77 @@ def _build_hub_html() -> str:
 </div>'''
 
 
+# Drag-to-resize for the left sidebar: restores the saved width, appends a
+# handle to .st-page-row (not inside .st-sidebar — sidebar_fix.js forces
+# inline width on its direct div children) and drives --st-sidebar-w.
+_SIDEBAR_RESIZE_JS = """
+() => {
+    if (window.__stSidebarResize) return;
+    window.__stSidebarResize = true;
+    const MIN = 180, MAX = 520, KEY = 'stSidebarW';
+    try {
+        const saved = parseInt(localStorage.getItem(KEY), 10);
+        if (saved >= MIN && saved <= MAX) {
+            document.documentElement.style.setProperty('--st-sidebar-w', saved + 'px');
+        }
+    } catch (e) {}
+    let tries = 0;
+    const init = () => {
+        const row = document.querySelector('.st-page-row');
+        const sb = row && row.querySelector('.st-sidebar');
+        if (!row || !sb) {
+            if (tries++ < 50) setTimeout(init, 200);
+            return;
+        }
+        if (row.querySelector('.st-sidebar-resize')) return;
+        const handle = document.createElement('span');
+        handle.className = 'st-sidebar-resize';
+        handle.title = 'Drag to resize sidebar';
+        row.appendChild(handle);
+        const syncVisible = () => {
+            handle.style.display =
+                getComputedStyle(sb).display === 'none' ? 'none' : '';
+        };
+        syncVisible();
+        new MutationObserver(syncVisible)
+            .observe(sb, {attributes: true, attributeFilter: ['style', 'class']});
+        let startX = 0, startW = 0;
+        const onMove = (e) => {
+            const w = Math.min(MAX, Math.max(MIN, startW + e.clientX - startX));
+            document.documentElement.style.setProperty('--st-sidebar-w', w + 'px');
+        };
+        const onUp = () => {
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            handle.classList.remove('st-resizing');
+            document.body.classList.remove('st-sidebar-dragging');
+            try {
+                const w = parseInt(
+                    getComputedStyle(document.documentElement)
+                        .getPropertyValue('--st-sidebar-w'), 10);
+                if (w) localStorage.setItem(KEY, String(w));
+            } catch (e) {}
+        };
+        handle.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            startX = e.clientX;
+            startW = sb.getBoundingClientRect().width;
+            handle.classList.add('st-resizing');
+            document.body.classList.add('st-sidebar-dragging');
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
+    };
+    init();
+}
+"""
+
+
 def create_ui() -> gr.Blocks:
     """Multipage app: hub landing page + one dedicated page per agent."""
     from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
     from .data_comparison_ui import render_data_comparison_page
+    from .sql_review_ui import render_sql_review_page
 
     _hide_sub_nav_js = """
     () => {
@@ -867,9 +928,11 @@ def create_ui() -> gr.Blocks:
 
     with app.route("SeaTunnel", "/seatunnel"):
         _render_seatunnel_page(app)
+        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
 
     with app.route("Text2SQL", "/text2sql"):
         render_text2sql_page(app)
+        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
 
     with app.route("Query History", "/history"):
         render_history_page(app)
@@ -882,6 +945,10 @@ def create_ui() -> gr.Blocks:
 
     with app.route("Data Comparison", "/datacompare"):
         render_data_comparison_page(app)
+        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
+
+    with app.route("SQL Review", "/sqlreview"):
+        render_sql_review_page(app)
 
     return app
 
@@ -1177,6 +1244,9 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
 
     # ── Stop handler ──
     def _handle_stop(lang):
+        agent = agent_holder.get("agent")
+        if agent is not None:
+            agent.stop_event.set()
         c = collector_holder.get("current")
         if c and not c.done:
             c.on_event("final_answer", {"text": _t(lang, "stopped")})
@@ -1355,21 +1425,84 @@ footer { display: none !important; }
     box-shadow: none !important;
 }
 
-/* Standalone pages (history, favorites, schema) need scrolling.
+/* Standalone pages (history, favorites, schema, sql review) need scrolling.
    Only the outermost .gradio-container scrolls; everything inside is visible. */
-body:has(.st-history-page) {
+body:has(.st-history-page),
+body:has(.st-review-page) {
     overflow: hidden !important;
 }
-body:has(.st-history-page) .gradio-container {
+body:has(.st-history-page) .gradio-container,
+body:has(.st-review-page) .gradio-container {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     height: 100vh !important;
 }
 body:has(.st-history-page) .gradio-container > .main,
-body:has(.st-history-page) .gradio-container > .main > .wrap {
+body:has(.st-history-page) .gradio-container > .main > .wrap,
+body:has(.st-review-page) .gradio-container > .main,
+body:has(.st-review-page) .gradio-container > .main > .wrap {
     overflow: visible !important;
     height: auto !important;
     min-height: auto !important;
+}
+
+/* ══════════════════════════════════════════
+   SQL Review page polish
+   ══════════════════════════════════════════ */
+body:has(.st-review-page) .gradio-container > .main > .wrap {
+    max-width: 1500px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 14px 28px 48px !important;
+}
+/* SQL input box: fixed height with a visible vertical scrollbar
+   (max_lines pins the textarea; long SQL scrolls inside the box) */
+#sr-sql-box textarea {
+    overflow-y: auto !important;
+    scrollbar-width: thin;
+}
+/* Keep the SQL input visible while scrolling a long report
+   (pairs with the "行 N" line-jump links) */
+body:has(.st-review-page) .sr-input-col {
+    position: sticky !important;
+    top: 12px !important;
+    align-self: flex-start !important;
+}
+/* Report as a card */
+.gradio-container .sr-report-card {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    padding: 14px 18px !important;
+    min-height: 320px !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+.sr-report-card h2 { margin-top: 0 !important; }
+.sr-report-card h3 { margin: 16px 0 6px !important; }
+/* Report tables: bordered, striped, comfortable padding */
+.sr-report-card table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 6px 0 !important;
+}
+.sr-report-card th, .sr-report-card td {
+    border: 1px solid #e5e7eb !important;
+    padding: 6px 10px !important;
+    text-align: left !important;
+    vertical-align: top !important;
+    line-height: 1.5 !important;
+}
+.sr-report-card th { background: #f3f4f6 !important; }
+.sr-report-card tbody tr:nth-child(even) td { background: #fafafa !important; }
+/* Line-jump links: dashed underline, no visited-color drift */
+.sr-report-card a[href*="#srline-"] {
+    color: #2563eb !important;
+    text-decoration: none !important;
+    border-bottom: 1px dashed #93c5fd !important;
+    cursor: pointer !important;
+}
+.sr-report-card a[href*="#srline-"]:hover {
+    border-bottom-style: solid !important;
 }
 
 /* ══════════════════════════════════════════════
@@ -1387,11 +1520,11 @@ body:has(.st-history-page) .gradio-container > .main > .wrap {
     padding: 0 !important;
     flex-wrap: nowrap !important;
 }
-/* Left sidebar column */
+/* Left sidebar column (width adjustable via drag handle, see _SIDEBAR_RESIZE_JS) */
 .st-sidebar {
-    width: 260px !important;
-    min-width: 260px !important;
-    max-width: 260px !important;
+    width: var(--st-sidebar-w, 260px) !important;
+    min-width: var(--st-sidebar-w, 260px) !important;
+    max-width: var(--st-sidebar-w, 260px) !important;
     height: 100% !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
@@ -1473,6 +1606,26 @@ body:has(.st-history-page) .gradio-container > .main > .wrap {
 }
 /* Hide Gradio's native sidebar if accidentally present */
 .gradio-sidebar { display: none !important; }
+/* Drag handle on the sidebar's right edge (appended to .st-page-row by JS) */
+.st-sidebar-resize {
+    position: absolute !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: calc(var(--st-sidebar-w, 260px) - 3px) !important;
+    width: 7px !important;
+    cursor: col-resize !important;
+    z-index: 150 !important;
+    background: transparent;
+    transition: background 0.15s;
+}
+.st-sidebar-resize:hover,
+.st-sidebar-resize.st-resizing {
+    background: rgba(59, 130, 246, 0.35);
+}
+body.st-sidebar-dragging {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
 
 /* ══════════════════════════
    Hub landing page
@@ -2186,9 +2339,10 @@ def _kill_port(port: int) -> bool:
         ["netstat", "-ano"], capture_output=True, text=True,
     )
     for line in r.stdout.splitlines():
-        if f":{port}" in line and "LISTENING" in line:
-            pid = line.strip().split()[-1]
-            subprocess.run(["taskkill", "/F", "/PID", pid],
+        parts = line.split()
+        # netstat -ano: Proto  Local Address  Foreign Address  State  PID
+        if len(parts) >= 5 and parts[3] == "LISTENING" and parts[1].endswith(f":{port}"):
+            subprocess.run(["taskkill", "/F", "/PID", parts[4]],
                            capture_output=True)
             return True
     return False
@@ -2207,14 +2361,23 @@ def _port_has_listener(port: int) -> bool:
 
 def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
     if _port_has_listener(port):
-        print(f"[ui] Port {port} in use — killing old process...")
-        _kill_port(port)
-        import time; time.sleep(0.5)
+        import os
+        if os.getenv("SEATUNNEL_UI_KILL_PORT", "").lower() in ("1", "true", "yes"):
+            print(f"[ui] Port {port} in use — killing old process (SEATUNNEL_UI_KILL_PORT is set)...")
+            _kill_port(port)
+            import time; time.sleep(0.5)
+        else:
+            raise SystemExit(
+                f"[ui] Port {port} is already in use. Stop the process using it, "
+                f"choose another port, or set SEATUNNEL_UI_KILL_PORT=1 to kill it automatically."
+            )
 
     if api:
         from .text2sql.api import router as t2s_api_router
+        from .sql_review.api import router as sql_review_api_router
         fastapi_app = app.app
         fastapi_app.include_router(t2s_api_router)
+        fastapi_app.include_router(sql_review_api_router)
 
     app.launch(
         server_name=host,

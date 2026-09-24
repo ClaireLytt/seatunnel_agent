@@ -58,35 +58,28 @@ class ClickHouseExecutor(DatabaseExecutor):
         finally:
             client.close()
 
-    def describe_table(self, table_name: str) -> TableSchema:
+    def _describe_with(self, client, table_name: str) -> TableSchema:
         from ..schema import ColumnSchema, TableSchema
 
-        client = self._connect()
-        try:
-            result = client.query(
-                "SELECT name, type, comment "
-                "FROM system.columns "
-                "WHERE database = {db:String} AND table = {tbl:String} "
-                "ORDER BY position",
-                parameters={"db": self.config.database, "tbl": table_name},
-            )
-            columns = []
-            for row in result.result_rows:
-                columns.append(ColumnSchema(
-                    name=row[0], dtype=row[1], comment=row[2] or "",
-                ))
-
-            comment_result = client.query(
-                "SELECT comment FROM system.tables "
-                "WHERE database = {db:String} AND name = {tbl:String}",
-                parameters={"db": self.config.database, "tbl": table_name},
-            )
-            comment = ""
-            if comment_result.result_rows:
-                comment = comment_result.result_rows[0][0] or ""
-        finally:
-            client.close()
-
+        result = client.query(
+            "SELECT name, type, comment "
+            "FROM system.columns "
+            "WHERE database = {db:String} AND table = {tbl:String} "
+            "ORDER BY position",
+            parameters={"db": self.config.database, "tbl": table_name},
+        )
+        columns = [
+            ColumnSchema(name=r[0], dtype=r[1], comment=r[2] or "")
+            for r in result.result_rows
+        ]
+        comment_result = client.query(
+            "SELECT comment FROM system.tables "
+            "WHERE database = {db:String} AND name = {tbl:String}",
+            parameters={"db": self.config.database, "tbl": table_name},
+        )
+        comment = ""
+        if comment_result.result_rows:
+            comment = comment_result.result_rows[0][0] or ""
         return TableSchema(
             database=self.config.database,
             name=table_name,
@@ -95,40 +88,19 @@ class ClickHouseExecutor(DatabaseExecutor):
             partition_columns=[],
         )
 
-    def fetch_all_schemas(self) -> list[TableSchema]:
-        from ..schema import ColumnSchema, TableSchema
+    def describe_table(self, table_name: str) -> TableSchema:
+        client = self._connect()
+        try:
+            return self._describe_with(client, table_name)
+        finally:
+            client.close()
 
+    def fetch_all_schemas(self) -> list[TableSchema]:
         client = self._connect()
         try:
             result = client.query("SHOW TABLES")
             tables = [row[0] for row in result.result_rows]
-
-            schemas = []
-            for tbl in tables:
-                col_result = client.query(
-                    "SELECT name, type, comment "
-                    "FROM system.columns "
-                    "WHERE database = {db:String} AND table = {tbl:String} "
-                    "ORDER BY position",
-                    parameters={"db": self.config.database, "tbl": tbl},
-                )
-                columns = [
-                    ColumnSchema(name=r[0], dtype=r[1], comment=r[2] or "")
-                    for r in col_result.result_rows
-                ]
-                comment_result = client.query(
-                    "SELECT comment FROM system.tables "
-                    "WHERE database = {db:String} AND name = {tbl:String}",
-                    parameters={"db": self.config.database, "tbl": tbl},
-                )
-                comment = ""
-                if comment_result.result_rows:
-                    comment = comment_result.result_rows[0][0] or ""
-                schemas.append(TableSchema(
-                    database=self.config.database, name=tbl,
-                    comment=comment, columns=columns, partition_columns=[],
-                ))
-            return schemas
+            return [self._describe_with(client, tbl) for tbl in tables]
         finally:
             client.close()
 

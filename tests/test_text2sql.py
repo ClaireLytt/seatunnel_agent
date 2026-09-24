@@ -776,7 +776,9 @@ class TestChartDetection:
 
     def test_detect_pie(self):
         from seatunnel_agent.text2sql.chart import detect_chart_type
-        cols = ["category", "count"]
+        # "amount" is a parts-of-a-whole metric; rank-like columns
+        # (count/avg/score) intentionally fall back to bar.
+        cols = ["category", "amount"]
         rows = [("A", 10), ("B", 20), ("C", 30)]
         assert detect_chart_type(cols, rows) == "pie"
 
@@ -1025,7 +1027,7 @@ class TestPieChartNegativeValues:
 
     def test_positive_values_still_pie(self):
         from seatunnel_agent.text2sql.chart import detect_chart_type
-        cols = ["category", "count"]
+        cols = ["category", "sales_amount"]
         rows = [("A", 10), ("B", 20), ("C", 30)]
         ct = detect_chart_type(cols, rows)
         assert ct == "pie"
@@ -1890,8 +1892,8 @@ class TestFavoritesEdgeCases:
         assert store.list() == []
 
 
-class TestChatHistory:
-    """Tests for chat history persistence."""
+class TestChatHistoryPersistence:
+    """Tests for chat history persistence (session-id validation, caps)."""
 
     def test_save_and_load(self, tmp_path):
         from seatunnel_agent.text2sql.chat_history import (
@@ -2448,3 +2450,230 @@ class TestParameterizedFavorites:
         store = FavoritesStore(tmp_path / "fav.json")
         entry = store.save("q2", "SELECT * FROM t")
         assert entry["params"] == []
+
+
+# ------------------------------------------------------------------
+# Security & hardening fixes
+# ------------------------------------------------------------------
+
+class TestXssEscaping:
+    """Dynamic HTML in _format_tool_result must be escaped."""
+
+    def test_error_result_escapes_html(self):
+        from seatunnel_agent.text2sql_ui import _format_tool_result
+        raw = json.dumps({"error": "<script>alert(1)</script>"})
+        out = _format_tool_result("execute_sql", raw, "en")
+        assert "<script>" not in out
+        assert "&lt;script&gt;" in out
+
+    def test_match_tables_fields_escaped(self):
+        from seatunnel_agent.text2sql_ui import _format_tool_result
+        raw = json.dumps({
+            "count": 1,
+            "candidates": [{
+                "table": "t1",
+                "comment": "<img src=x onerror=alert(1)>",
+                "score": 1,
+                "table_type": "<b>fact</b>",
+                "matched_columns": ["<svg>"],
+            }],
+        })
+        out = _format_tool_result("match_tables", raw, "en")
+        assert "<img" not in out
+        assert "<b>" not in out
+        assert "<svg>" not in out
+
+    def test_schema_comment_escaped(self):
+        from seatunnel_agent.text2sql_ui import _format_tool_result
+        raw = json.dumps({
+            "table": "t",
+            "comment": "<svg onload=alert(1)>",
+            "table_type": "fact",
+            "columns": [],
+        })
+        out = _format_tool_result("get_table_schema", raw, "en")
+        assert "<svg" not in out
+
+
+class TestExplainErrorSanitized:
+    def test_explain_error_redacts_connection_info(self, store):
+        from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_explain_sql
+        rt = Text2SQLRuntime(store=store, ds_type="mysql")
+        mock_executor = MagicMock()
+        mock_executor.run.side_effect = Exception(
+            "connect failed host=10.0.0.5 password=supersecret"
+        )
+        rt._executor = mock_executor
+        result = _tool_explain_sql(
+            {"sql": "SELECT inbound_id FROM zz.dwm_scm_detail_di WHERE pt='20240101'"},
+            rt,
+        )
+        assert "error" in result
+        assert "supersecret" not in result["error"]
+        assert "[REDACTED]" in result["error"]
+
+
+class TestSQLitePragmaSafety:
+    def _make_executor(self, tmp_path):
+        import sqlite3
+        from seatunnel_agent.text2sql.executor.sqlite import SQLiteExecutor
+        db = tmp_path / "t.db"
+        conn = sqlite3.connect(db)
+        conn.execute("CREATE TABLE users (id INTEGER, name TEXT)")
+        conn.commit()
+        conn.close()
+        cfg = DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db))
+        return SQLiteExecutor(cfg)
+
+    def test_describe_strips_quote_chars(self, tmp_path):
+        ex = self._make_executor(tmp_path)
+        schema = ex.describe_table('users"')
+        assert [c.name for c in schema.columns] == ["id", "name"]
+
+    def test_injection_attempt_is_harmless(self, tmp_path):
+        ex = self._make_executor(tmp_path)
+        ex.describe_table('users"); DROP TABLE users;--')
+        assert ex.show_tables() == ["users"]
+
+    def test_fetch_all_schemas(self, tmp_path):
+        ex = self._make_executor(tmp_path)
+        schemas = ex.fetch_all_schemas()
+        assert len(schemas) == 1
+        assert schemas[0].name == "users"
+        assert [c.name for c in schemas[0].columns] == ["id", "name"]
+
+
+class TestSchemaDdlPathEnv:
+    def test_default(self, monkeypatch):
+        from seatunnel_agent.text2sql.executor.base import schema_ddl_path_from_env
+        monkeypatch.delenv("SCHEMA_DDL_PATH", raising=False)
+        assert schema_ddl_path_from_env().endswith("schema_ddl.sql")
+
+    def test_traversal_rejected(self, monkeypatch):
+        from seatunnel_agent.text2sql.executor.base import (
+            DEFAULT_SCHEMA_DDL_PATH,
+            schema_ddl_path_from_env,
+        )
+        monkeypatch.setenv("SCHEMA_DDL_PATH", "../../outside.sql")
+        assert schema_ddl_path_from_env() == DEFAULT_SCHEMA_DDL_PATH
+
+    def test_relative_inside_workspace_ok(self, monkeypatch):
+        from seatunnel_agent.text2sql.executor.base import schema_ddl_path_from_env
+        monkeypatch.setenv("SCHEMA_DDL_PATH", "config/custom_ddl.sql")
+        assert schema_ddl_path_from_env().endswith("custom_ddl.sql")
+
+
+class TestQuoteIdentifier:
+    def test_backtick_dialects(self):
+        from seatunnel_agent.text2sql.profiler import quote_identifier
+        assert quote_identifier("col", "hive") == "`col`"
+        assert quote_identifier("col", "mysql") == "`col`"
+        assert quote_identifier("col", "doris") == "`col`"
+
+    def test_sqlserver_brackets(self):
+        from seatunnel_agent.text2sql.profiler import quote_identifier
+        assert quote_identifier("col", "sqlserver") == "[col]"
+
+    def test_postgres_double_quotes(self):
+        from seatunnel_agent.text2sql.profiler import quote_identifier
+        assert quote_identifier("col", "postgresql") == '"col"'
+
+    def test_strips_embedded_quote_chars(self):
+        from seatunnel_agent.text2sql.profiler import quote_identifier
+        assert quote_identifier('a`b"c[d]e', "mysql") == "`abcde`"
+
+    def test_build_profile_sql_postgres_dialect(self):
+        from seatunnel_agent.text2sql.profiler import build_profile_sql
+        sql = build_profile_sql(
+            "db.users", [{"name": "id", "type": "int"}], dialect="postgresql"
+        )
+        assert 'FROM "db.users"' in sql
+        assert "`" not in sql
+
+    def test_build_profile_sql_default_backticks(self):
+        from seatunnel_agent.text2sql.profiler import build_profile_sql
+        sql = build_profile_sql("db.users", [{"name": "id", "type": "int"}])
+        assert "FROM `db.users`" in sql
+
+
+class TestExportTargets:
+    def test_export_dir_env_override(self, monkeypatch, tmp_path):
+        from seatunnel_agent.text2sql.exporter import default_desktop_dir
+        target = tmp_path / "exports"
+        monkeypatch.setenv("EXPORT_DIR", str(target))
+        assert default_desktop_dir() == target
+        assert target.is_dir()
+
+    def test_resolve_explicit_file(self, tmp_path):
+        from seatunnel_agent.text2sql.exporter import _resolve_target
+        out = _resolve_target(str(tmp_path / "out.csv"), "x", "csv")
+        assert out == tmp_path / "out.csv"
+
+    def test_resolve_directory_gets_timestamped_name(self, tmp_path):
+        from seatunnel_agent.text2sql.exporter import _resolve_target
+        out = _resolve_target(str(tmp_path), "myquery", "xlsx")
+        assert out.parent == tmp_path
+        assert out.suffix == ".xlsx"
+        assert out.name.startswith("myquery")
+
+    def test_font_download_has_timeout(self):
+        import inspect
+        from seatunnel_agent.text2sql import exporter
+        sig = inspect.signature(exporter.download_noto_font)
+        assert sig.parameters["timeout"].default == 15
+
+
+class TestAgentTimeoutI18n:
+    def test_keys_exist_in_both_languages(self):
+        from seatunnel_agent.text2sql.i18n import T2S_I18N
+        for lang in ("en", "zh"):
+            msg = T2S_I18N[lang]["agent_timeout"]
+            assert "{s}" in msg
+            assert msg.format(s=120)
+
+
+class TestPortDefaults:
+    def test_ds_defaults_ports(self):
+        from seatunnel_agent.text2sql.executor import DS_DEFAULTS
+        assert DS_DEFAULTS["mysql"]["port"] == 3306
+        assert DS_DEFAULTS["postgresql"]["port"] == 5432
+        assert DS_DEFAULTS["sqlserver"]["port"] == 1433
+        assert DS_DEFAULTS["clickhouse"]["port"] == 8123
+        assert DS_DEFAULTS["hive"]["port"] == 10000
+
+
+class TestEnvConfigurableDefaults:
+    def test_pg_schema_default_public(self):
+        from seatunnel_agent.text2sql.executor import postgres
+        assert postgres._PG_SCHEMA == "public"
+
+    def test_pg_schema_env_override(self, monkeypatch):
+        import importlib
+        from seatunnel_agent.text2sql.executor import postgres
+        monkeypatch.setenv("PG_SCHEMA", "analytics")
+        importlib.reload(postgres)
+        try:
+            assert postgres._PG_SCHEMA == "analytics"
+        finally:
+            monkeypatch.delenv("PG_SCHEMA")
+            importlib.reload(postgres)
+
+    def test_sqlite_db_path_default(self):
+        from seatunnel_agent.text2sql.executor import sqlite as sqlite_mod
+        assert sqlite_mod._DEFAULT_DB_PATH == "config/demo.db"
+
+    def test_favorites_path_env_override(self, monkeypatch):
+        import importlib
+        from seatunnel_agent.text2sql import favorites
+        monkeypatch.setenv("SQL_FAVORITES_PATH", "custom/favs.json")
+        importlib.reload(favorites)
+        try:
+            assert favorites.FavoritesStore().path == Path("custom/favs.json")
+        finally:
+            monkeypatch.delenv("SQL_FAVORITES_PATH")
+            importlib.reload(favorites)
+
+    def test_favorites_explicit_path_wins(self, tmp_path):
+        from seatunnel_agent.text2sql.favorites import FavoritesStore
+        store = FavoritesStore(tmp_path / "f.json")
+        assert store.path == tmp_path / "f.json"
