@@ -53,3 +53,4 @@ logs/
 # UI testing agent artifacts
 runs/
 config/uitest_demo.db
+.claude/worktrees/
