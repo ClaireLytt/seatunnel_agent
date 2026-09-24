@@ -631,7 +631,7 @@ class TestI18n:
             "dc_profile", "dc_profile_result", "dc_distinct", "dc_null_rate", "dc_min", "dc_max",
             "dc_where_clause", "dc_where_hint", "dc_where_invalid",
             "dc_save_report", "dc_load_report", "dc_saved", "dc_loaded", "dc_no_reports",
-            "dc_search_tables", "dc_comparing_table",
+            "dc_comparing_table",
             "dc_view_report", "dc_report_title", "dc_no_report", "dc_print",
         ]
         for key in round3_keys:

@@ -17,7 +17,7 @@ from typing import Any
 
 import gradio as gr
 
-from .config import Settings, load_settings
+from .config import load_settings
 from .text2sql.executor import (
     DS_DEFAULTS,
     DS_TYPES,
@@ -29,7 +29,6 @@ from .text2sql.executor import (
 )
 from .text2sql.chat_history import (
     Text2SQLSession,
-    delete_t2s_session,
     extract_title,
     list_t2s_sessions,
     load_t2s_session,
@@ -168,7 +167,6 @@ def build_schema_card(table, lang: str = "en", store=None) -> str:
 
 def build_lineage_card(lineage, lang: str = "en") -> str:
     """Build an inline-styled HTML card for an SqlLineage."""
-    from .text2sql.lineage import SqlLineage
     t = lambda k: _t2s(lang, k)
     esc = _esc_html
 
@@ -1462,7 +1460,6 @@ def render_text2sql_page(app=None) -> None:
             agent.runtime.store = new_store
             ds_type = holder.get("ds_type", "hive")
             agent._system_prompt = build_text2sql_prompt(new_store, dialect=ds_type)
-    logger = QueryLogger()
     fav_store = FavoritesStore()
 
     _DS_CHOICES = [DIALECT_NAMES[d] for d in DS_TYPES]
@@ -1705,11 +1702,12 @@ def render_text2sql_page(app=None) -> None:
 
         # ── Build DatabaseConfig ──
         db_config = None
-        h = host.strip()
-        p = port.strip()
-        d = db.strip()
-        u = username.strip() or None
-        pw = password.strip() or None
+        # Hidden Gradio textboxes submit None from the browser, not "".
+        h = (host or "").strip()
+        p = (port or "").strip()
+        d = (db or "").strip()
+        u = (username or "").strip() or None
+        pw = (password or "").strip() or None
 
         defaults = DS_DEFAULTS.get(ds_type, DS_DEFAULTS["hive"])
         default_port = str(defaults.get("port", 0))
@@ -2252,8 +2250,6 @@ def render_text2sql_page(app=None) -> None:
         page_vis, page_info_val, page_num = _show_pagination(lang)
         llm_st = holder.get("llm_status")
         status_upd = gr.update(value=llm_st) if llm_st else gr.update()
-        with holder_lock:
-            agent = holder.get("agent")
         return (
             gr.update(value="", placeholder=t("conversation_active")),
             gr.update(visible=True),

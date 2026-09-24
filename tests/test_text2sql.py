@@ -1057,11 +1057,11 @@ class TestScatterChart:
 
 
 class TestEnvPrefixFlink:
-    """Bug fix: flinksql was missing from _ENV_PREFIX."""
+    """Bug fix: flinksql was missing from ENV_PREFIX."""
 
     def test_flinksql_prefix_exists(self):
-        from seatunnel_agent.text2sql.executor.base import _ENV_PREFIX
-        assert "flinksql" in _ENV_PREFIX
+        from seatunnel_agent.text2sql.executor.base import ENV_PREFIX
+        assert "flinksql" in ENV_PREFIX
 
     def test_config_from_env_flinksql(self, monkeypatch):
         from seatunnel_agent.text2sql.executor.base import config_from_env

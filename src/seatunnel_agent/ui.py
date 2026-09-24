@@ -971,9 +971,9 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 """Pre-import LLM SDK so the first chat doesn't pay the cost."""
                 try:
                     if s.llm_provider == "anthropic":
-                        import anthropic
+                        import anthropic  # noqa: F401
                     else:
-                        import openai
+                        import openai  # noqa: F401
                 except Exception:
                     pass
 
@@ -1520,11 +1520,14 @@ body:has(.st-review-page) .sr-input-col {
     padding: 0 !important;
     flex-wrap: nowrap !important;
 }
-/* Left sidebar column (width adjustable via drag handle, see _SIDEBAR_RESIZE_JS) */
-.st-sidebar {
+/* Left sidebar column (width adjustable via drag handle, see _SIDEBAR_RESIZE_JS).
+   The Data Comparison sidebar is excluded: it has its own width + CSS resize. */
+.st-sidebar:not(.st-dc-sidebar) {
     width: var(--st-sidebar-w, 260px) !important;
     min-width: var(--st-sidebar-w, 260px) !important;
     max-width: var(--st-sidebar-w, 260px) !important;
+}
+.st-sidebar {
     height: 100% !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
@@ -1593,6 +1596,25 @@ body:has(.st-review-page) .sr-input-col {
     flex-shrink: 0 !important;
 }
 .st-sidebar-open-btn:hover { background: #f3f4f6 !important; }
+/* Data Comparison sidebar: wider, user-resizable via right-edge drag,
+   horizontal scrollbar when content overflows */
+.st-sidebar.st-dc-sidebar {
+    /* flex-basis auto lets `width` control the size (Gradio columns default
+       to flex-basis 0%, which ignores width and collapses to min-width);
+       width stays non-!important so the browser's drag-resize inline style
+       can override it */
+    flex: 0 0 auto !important;
+    width: 720px;
+    min-width: 360px !important;
+    max-width: 85vw !important;
+    resize: horizontal !important;
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+}
+.st-sidebar.st-dc-sidebar > * {
+    min-width: 640px !important;
+}
+
 /* Right main content: fill remaining width, flex column to pin input at bottom */
 .st-main {
     flex: 1 1 0 !important;
