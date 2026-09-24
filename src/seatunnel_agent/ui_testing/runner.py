@@ -23,6 +23,23 @@ from .page import DCPage
 _log = logging.getLogger(__name__)
 
 RUNS_DIR = Path("runs")
+KEEP_RUNS = 20          # prune older run dirs beyond this many
+
+
+def _prune_runs(keep: int = KEEP_RUNS) -> None:
+    """Delete the oldest runs/<ts>/ dirs beyond *keep*.  Best-effort."""
+    if keep <= 0:
+        return
+    try:
+        run_dirs = sorted(
+            (d for d in RUNS_DIR.iterdir()
+             if d.is_dir() and d.name[:2] == "20"),
+            key=lambda d: d.name)
+        for d in run_dirs[:-keep]:
+            import shutil
+            shutil.rmtree(d, ignore_errors=True)
+    except OSError:
+        pass
 
 
 def _snap(dc: DCPage, shots_dir: Path, case_id: str, tag: str) -> str | None:
@@ -121,6 +138,7 @@ def run_suite(
     cases = filter_cases(all_cases, suite, case_ids)
     manual = [c for c in all_cases if "manual" in c.tags] if not case_ids else []
 
+    _prune_runs()
     ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     run_dir = RUNS_DIR / ts
     shots_dir = run_dir / "shots"

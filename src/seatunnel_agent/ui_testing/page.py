@@ -467,8 +467,42 @@ _DIGEST_JS = r"""
 (maxResult) => {
   const lines = [];
   const seen = new Set();
-  const sidebar = document.querySelector('.st-dc-sidebar');
-  if (!sidebar) return '[PAGE] .st-dc-sidebar not found';
+  let sidebar = document.querySelector('.st-dc-sidebar');
+  if (!sidebar) {
+    // Non-DC pages (e.g. /sqlreview): generic digest — visible labeled
+    // inputs, dropdowns, buttons, and the report/result area.
+    const parts = [];
+    document.querySelectorAll('label').forEach(lb => {
+      const span = lb.querySelector("span[data-testid='block-info'], span");
+      const name = span ? span.textContent.trim() : '';
+      const ta = lb.querySelector('textarea, input');
+      if (!name || !ta || ta.type === 'checkbox') return;
+      if (ta.offsetParent === null) return;
+      const val = ta.type === 'password' ? '<masked>'
+                  : (ta.value.length > 200 ? ta.value.slice(0, 200) + '…' : ta.value);
+      parts.push(`${name}="${val}"`);
+    });
+    document.querySelectorAll("input[role='combobox']").forEach(inp => {
+      if (inp.offsetParent === null) return;
+      parts.push(`${inp.getAttribute('aria-label') || 'dropdown'}(dropdown)="${inp.value}"`);
+    });
+    if (parts.length) lines.push('[INPUTS] ' + parts.join(' | '));
+    const btns = [];
+    document.querySelectorAll('button').forEach(b => {
+      if (b.offsetParent === null || b.classList.contains('label-wrap')) return;
+      const t = b.textContent.trim().replace(/\s+/g, ' ');
+      if (t && t.length < 40) btns.push(t);
+    });
+    lines.push('[BUTTONS] ' + btns.join(' | '));
+    const reps = document.querySelectorAll('.sr-report-card, .prose');
+    const rep = reps.length ? reps[reps.length - 1] : null;
+    if (rep) {
+      let txt = (rep.innerText || '').replace(/\n{2,}/g, '\n').trim();
+      if (txt.length > maxResult) txt = txt.slice(0, maxResult) + ' …';
+      lines.push('[RESULT] ' + txt);
+    }
+    return lines.join('\n');
+  }
 
   // A/B panels = ancestor columns of the two status boxes
   const statuses = sidebar.querySelectorAll('.st-sidebar-status');
