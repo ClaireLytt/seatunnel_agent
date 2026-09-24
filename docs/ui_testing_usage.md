@@ -82,6 +82,13 @@ ai_judge`。`in:` 可取 `状态` / `结果区` / `页面` / 任意输入框标�
   用例 YAML 内联密码会被 loader 直接拒载。
 - 复用项目 `LLMClient`(Anthropic/OpenAI 双通道,配置走 `.env` 的 LLM_*)。
 
+## 自检工具
+
+```bash
+python scripts/uitest_inject_bugs.py     # 注入三类 bug(前端接线/后端崩溃/i18n 漂移),验证套件能全部抓到
+python scripts/uitest_flaky_check.py 10  # 连续 N 轮冒烟,验证零 flaky(逐轮 verdict 必须完全一致)
+```
+
 ## pytest 桥接
 
 ```bash
