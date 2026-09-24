@@ -38,7 +38,7 @@ def _snap(dc: DCPage, shots_dir: Path, case_id: str, tag: str) -> str | None:
 
 
 def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
-             app_log_tail_fn=lambda: "") -> CaseResult:
+             app_log_tail_fn=lambda: "", llm_factory=None) -> CaseResult:
     # imported lazily so --no-llm never touches LLM config
     from .agent import run_ai_step
     from .asserts import run_assert
@@ -88,13 +88,16 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
         res.reason = f"{type(e).__name__}: {str(e)[:300]}"
         _snap(dc, shots_dir, case.id, "error")
     finally:
-        if res.verdict in ("FAIL", "ERROR") and llm is not None:
+        diag_llm = llm
+        if res.verdict in ("FAIL", "ERROR") and diag_llm is None and llm_factory:
+            diag_llm = llm_factory()   # lazy: script-only runs still get attribution
+        if res.verdict in ("FAIL", "ERROR") and diag_llm is not None:
             from .diagnose import diagnose
             try:
                 digest = dc.digest()
             except Exception:  # noqa: BLE001
                 digest = ""
-            attribution = diagnose(res, digest, app_log_tail_fn(), llm)
+            attribution = diagnose(res, digest, app_log_tail_fn(), diag_llm)
             if attribution:
                 res.reason = f"{res.reason}  {attribution}"
         res.elapsed_ms = int((time.time() - t0) * 1000)
@@ -128,6 +131,21 @@ def run_suite(
         from .agent import UITestLLM
         llm = UITestLLM()
 
+    _lazy: dict = {}
+
+    def _llm_factory():
+        """Diagnosis-only LLM for script-only runs; never breaks the run
+        (missing API key etc. just means no attribution)."""
+        if no_llm:
+            return None
+        if "llm" not in _lazy:
+            try:
+                from .agent import UITestLLM
+                _lazy["llm"] = UITestLLM()
+            except Exception:  # noqa: BLE001
+                _lazy["llm"] = None
+        return _lazy["llm"]
+
     rr = RunResult(started_at=ts, suite=suite if not case_ids else
                    ",".join(case_ids))
     t0 = time.time()
@@ -146,7 +164,8 @@ def run_suite(
                                     reason=_skip_reason(case, no_llm))
                 else:
                     cr = run_case(case, dc, llm, shots_dir,
-                                  app_log_tail_fn=app.log_tail)
+                                  app_log_tail_fn=app.log_tail,
+                                  llm_factory=_llm_factory)
                 rr.cases.append(cr)
                 if on_progress:
                     on_progress(i, len(cases), cr)
@@ -159,7 +178,8 @@ def run_suite(
                                    reason="标注为人工用例"))
 
     rr.elapsed_ms = int((time.time() - t0) * 1000)
-    rr.tokens = llm.tokens_used if llm else 0
+    diag = _lazy.get("llm")
+    rr.tokens = (llm.tokens_used if llm else 0) + (diag.tokens_used if diag else 0)
     return rr, run_dir
 
 
