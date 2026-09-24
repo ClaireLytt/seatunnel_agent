@@ -76,6 +76,9 @@ def _run_stream(suite: str, case_ids_text: str, no_llm: bool):
 
 
 def render_uitest_page(app: gr.Blocks | None = None) -> None:
+    # marker: body:has(.st-uitest-page) re-enables page scrolling
+    # (the global CSS locks .gradio-container to 100vh / overflow hidden)
+    gr.HTML('<div class="st-uitest-page" style="display:none"></div>')
     gr.Markdown("### UI 测试 Agent")
     gr.Markdown("驱动真实浏览器回归数据对比页。被测应用运行在独立端口 7912+,"
                 "不影响当前会话。用例文档见 `docs/ui_testing_usage.md`。")

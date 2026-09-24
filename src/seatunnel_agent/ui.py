@@ -1442,11 +1442,13 @@ footer { display: none !important; }
 /* Standalone pages (history, favorites, schema, sql review) need scrolling.
    Only the outermost .gradio-container scrolls; everything inside is visible. */
 body:has(.st-history-page),
-body:has(.st-review-page) {
+body:has(.st-review-page),
+body:has(.st-uitest-page) {
     overflow: hidden !important;
 }
 body:has(.st-history-page) .gradio-container,
-body:has(.st-review-page) .gradio-container {
+body:has(.st-review-page) .gradio-container,
+body:has(.st-uitest-page) .gradio-container {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     height: 100vh !important;
@@ -1454,10 +1456,18 @@ body:has(.st-review-page) .gradio-container {
 body:has(.st-history-page) .gradio-container > .main,
 body:has(.st-history-page) .gradio-container > .main > .wrap,
 body:has(.st-review-page) .gradio-container > .main,
-body:has(.st-review-page) .gradio-container > .main > .wrap {
+body:has(.st-review-page) .gradio-container > .main > .wrap,
+body:has(.st-uitest-page) .gradio-container > .main,
+body:has(.st-uitest-page) .gradio-container > .main > .wrap {
     overflow: visible !important;
     height: auto !important;
     min-height: auto !important;
+}
+body:has(.st-uitest-page) .gradio-container > .main > .wrap {
+    max-width: 1500px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 14px 28px 48px !important;
 }
 
 /* ══════════════════════════════════════════
