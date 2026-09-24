@@ -834,6 +834,10 @@ _SIDEBAR_RESIZE_JS = """
             if (tries++ < 50) setTimeout(init, 200);
             return;
         }
+        // The Data Comparison sidebar has its own CSS resize (720px wide);
+        // the fixed-position handle would float mid-sidebar and swallow
+        // clicks on anything underneath it.
+        if (sb.classList.contains('st-dc-sidebar')) return;
         if (row.querySelector('.st-sidebar-resize')) return;
         const handle = document.createElement('span');
         handle.className = 'st-sidebar-resize';
