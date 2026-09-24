@@ -1,0 +1,102 @@
+# O/P/Q 组 · 批量对比、自定义 SQL、导出与报告
+
+- id: O1
+  title: 批量行数按同名表配对
+  tags: [full, sqlite]
+  timeout_s: 150
+  setup:
+    - use: connect_both_sqlite
+  steps:
+    - click: 批量行数
+    - wait_result: {timeout_ms: 60000}
+  expect:
+    - text_contains: {in: 结果区, text: dc_test_orders_a}
+    - text_contains: {in: 结果区, text: dc_test_same_b}
+
+- id: O2
+  title: 批量全量对比输出通过/未通过摘要
+  tags: [full, sqlite, slow]
+  timeout_s: 300
+  setup:
+    - use: connect_both_sqlite
+  steps:
+    - click: 批量全量对比
+    - wait_result: {timeout_ms: 240000}
+  expect:
+    - text_contains: {in: 结果区, text: 通过}
+    - text_not_contains: {in: 结果区, text: Traceback}
+
+- id: P1
+  title: 自定义 SQL 结果对比 (GROUP BY 差异)
+  tags: [full, sqlite]
+  setup:
+    - use: connect_both_sqlite
+    - open_accordion: 自定义 SQL
+    - fill: {SQL (A): "SELECT category, COUNT(*) AS cnt FROM dc_test_orders_a GROUP BY category"}
+    - fill: {SQL (B): "SELECT category, COUNT(*) AS cnt FROM dc_test_orders_b GROUP BY category"}
+  steps:
+    - click: SQL 对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: electronics}
+    - ai_judge: >-
+        SQL 结果对比中 books(2 与 1)、electronics(3 与 4)、
+        food(3 与 2)存在差异,clothing 两侧一致。
+
+- id: P2
+  title: 自定义 SQL 只读限制拦截 DELETE
+  tags: [smoke, sqlite]
+  setup:
+    - use: connect_both_sqlite
+    - open_accordion: 自定义 SQL
+    - fill: {SQL (A): "DELETE FROM dc_test_orders_a"}
+    - fill: {SQL (B): "SELECT 1"}
+  steps:
+    - click: SQL 对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 仅允许 SELECT}
+
+- id: P3
+  title: SQL 语法错误提示不崩溃
+  tags: [full, sqlite]
+  setup:
+    - use: connect_both_sqlite
+    - open_accordion: 自定义 SQL
+    - fill: {SQL (A): "SELECT FROM WHERE"}
+    - fill: {SQL (B): "SELECT 1"}
+  steps:
+    - click: SQL 对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 错误}
+    - visible: {target: SQL 对比}
+
+- id: Q3
+  title: 保存报告后提示已保存
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - click: 行数对比
+    - wait_result: {}
+  steps:
+    - click: 保存报告
+    - wait: 1500
+      note: 保存为本地文件无 loading 信号,固定短等待
+  expect:
+    - text_contains: {in: 页面, text: 报告已保存}
+
+- id: Q1
+  title: 导出 CSV 文件内容与页面一致
+  tags: [manual]
+  note: 本地文件落盘验证,自动化环境无法核对文件内容
+
+- id: Q2
+  title: 导出 Excel 可正常打开
+  tags: [manual]
+  note: 本地文件落盘验证
+
+- id: Q4
+  title: 查看报告新窗口可打印排版
+  tags: [manual]
+  note: window.open 新窗口内容,自动化不稳定

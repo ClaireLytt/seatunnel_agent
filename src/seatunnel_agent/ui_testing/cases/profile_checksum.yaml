@@ -1,0 +1,260 @@
+# F/G/H/I/J/K/L/M/N 组 · 画像、校验和、分区、倾斜、自定义聚合、质量、增量、脱敏、采样
+
+- id: F1
+  title: 字段画像呈现空值率差异
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - click: 字段画像
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: email}
+    - ai_judge: >-
+        字段画像结果中 email 列的空值率 A 侧为 0%,B 侧约 22%,
+        两侧数值不同且被标记差异。
+
+- id: F2
+  title: 画像一致 (same 对)
+  tags: [full, sqlite]
+  setup:
+    - use: select_same
+  steps:
+    - click: 字段画像
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: score}
+    - text_not_contains: {in: 结果区, text: Traceback}
+
+- id: G1
+  title: 校验和不匹配分段标红
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - open_accordion: 校验和
+    - fill: {校验和: "amount,status"}
+  steps:
+    - click: 校验和对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 不匹配}
+
+- id: G2
+  title: 校验和全匹配 (same 对)
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_same
+    - open_accordion: 校验和
+    - fill: {校验和: "name,score"}
+  steps:
+    - click: 校验和对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 匹配}
+    - text_not_contains: {in: 结果区, text: 不匹配}
+
+- id: H1
+  title: 分区差异 0 / -2 / -5
+  tags: [full, sqlite]
+  setup:
+    - use: select_part
+    - open_accordion: 分区比对
+    - fill: {分区列: dt}
+  steps:
+    - click: 对比分区
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: "2024-06-02"}
+    - text_contains: {in: 结果区, text: "2024-06-03"}
+    - ai_judge: >-
+        分区比对结果中,2024-06-01 两侧一致,2024-06-02 相差 2 行,
+        2024-06-03 只有 A 侧有数据(相差 5 行)。
+
+- id: H2
+  title: 分区列不存在给出错误不崩溃
+  tags: [full, sqlite]
+  setup:
+    - use: select_part
+    - open_accordion: 分区比对
+    - fill: {分区列: not_exist}
+  steps:
+    - click: 对比分区
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 错误}
+    - visible: {target: 对比分区}
+
+- id: I1
+  title: 倾斜分析 A 侧 north 占 80%
+  tags: [full, sqlite]
+  setup:
+    - use: select_metrics
+    - open_accordion: 数据倾斜
+    - fill: {倾斜分析列: region}
+  steps:
+    - click: 分析倾斜
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: north}
+    - ai_judge: >-
+        倾斜分析结果中 A 侧 region 列 north 占比约 80%、被标记为
+        倾斜(高基尼系数),B 侧四个取值均匀分布不倾斜。
+
+- id: I2
+  title: 倾斜列留空提示必填
+  tags: [full, sqlite]
+  setup:
+    - use: select_metrics
+    - open_accordion: 数据倾斜
+    - clear: {target: 倾斜分析列}
+  steps:
+    - click: 分析倾斜
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 请指定要分析的列}
+
+- id: J1
+  title: 表达式聚合 total 差异 / cats 一致
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - open_accordion: 自定义聚合
+    - fill: {自定义聚合: "total=SUM(amount)\ncats=COUNT(DISTINCT category)"}
+  steps:
+    - click: 比对自定义聚合
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: "2122.49"}
+    - text_contains: {in: 结果区, text: "3493.69"}
+    - text_contains: {in: 结果区, text: cats}
+
+- id: J2
+  title: 非法表达式错误提示不崩溃
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - open_accordion: 自定义聚合
+    - fill: {自定义聚合: "bad=SUM("}
+  steps:
+    - click: 比对自定义聚合
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 错误}
+    - visible: {target: 比对自定义聚合}
+
+- id: K1
+  title: 质量规则未通过 (email 非空率 / amount 范围)
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - open_accordion: 质量规则
+    - fill: {规则: "email:not_null>80, amount:range:0-1000"}
+  steps:
+    - click: 质量检查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 未通过}
+    - ai_judge: >-
+        质量检查结果中,B 侧 email 非空率约 77.8% 未通过 80% 阈值,
+        且 B 侧 amount 存在超出 0-1000 范围的值(id=11 为 1500)。
+
+- id: K2
+  title: 质量规则通过 (same 对)
+  tags: [full, sqlite]
+  setup:
+    - use: select_same
+    - open_accordion: 质量规则
+    - fill: {规则: "name:not_null>95"}
+  steps:
+    - click: 质量检查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 通过}
+    - text_not_contains: {in: 结果区, text: 未通过}
+
+- id: L1
+  title: 水位线增量只对比新行
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - open_accordion: 增量对比
+    - fill: {水位线列: update_time}
+    - fill: {上次值: "2024-06-05 00:00:00"}
+  steps:
+    - click: 增量对比
+    - wait_result: {}
+  expect:
+    - text_not_contains: {in: 结果区, text: Traceback}
+    - ai_judge: >-
+        增量对比只包含水位线 2024-06-05 00:00:00 之后的行:
+        A 侧 2 行(id=9,10),B 侧 3 行(id=3,5,11)。
+
+- id: M1
+  title: 敏感列打码 (phone/email/id_card)
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - check: {target: 启用脱敏, on: true}
+  steps:
+    - click: 样本数据
+    - wait_result: {}
+  expect:
+    - text_not_contains: {in: 结果区, text: "13800000011"}
+    - ai_judge: >-
+        样本数据中 phone / email / id_card 等敏感列的值以掩码形式
+        展示(如 138****0001),没有出现完整明文手机号或身份证号。
+
+- id: M2
+  title: 取消脱敏恢复明文
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - check: {target: 启用脱敏, on: false}
+  steps:
+    - click: 样本数据
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: "13800000011"}
+
+- id: N1
+  title: 随机采样正常返回
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - select: {of: 采样方式, value: RANDOM}
+  steps:
+    - click: 样本数据
+    - wait_result: {}
+  expect:
+    - text_not_contains: {in: 结果区, text: Traceback}
+    - text_contains: {in: 结果区, text: 样本}
+
+- id: N2
+  title: 分层采样覆盖 category 分组
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - select: {of: 采样方式, value: STRATIFIED}
+    - fill: {分组列: category}
+  steps:
+    - click: 样本数据
+    - wait_result: {}
+  expect:
+    - text_not_contains: {in: 结果区, text: Traceback}
+    - ai_judge: >-
+        分层采样的样本数据覆盖了 electronics / clothing / food /
+        books 多个 category 分组。
+
+- id: N3
+  title: 分层列留空给出提示不崩溃
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - select: {of: 采样方式, value: STRATIFIED}
+    - clear: {target: 分组列}
+  steps:
+    - click: 样本数据
+    - wait_result: {}
+  expect:
+    - visible: {target: 样本数据}
+    - text_not_contains: {in: 结果区, text: Traceback}

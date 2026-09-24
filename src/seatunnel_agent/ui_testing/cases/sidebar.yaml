@@ -1,0 +1,44 @@
+# B 组 · 侧边栏与表选择 (B1/B2 为布局/拖拽,标注 manual)
+
+- id: B3
+  title: 下拉框内模糊搜索 (子串过滤)
+  tags: [smoke, sqlite]
+  setup:
+    - use: connect_a_sqlite
+  steps:
+    - dropdown_type: {of: 选择表, text: orders, side: A}
+  expect:
+    - options_are: {of: 选择表, side: A, keep_filter: true,
+                    values: [dc_test_orders_a, dc_test_orders_b]}
+
+- id: B4
+  title: 完整表名精确匹配并选中
+  tags: [smoke, sqlite]
+  setup:
+    - use: connect_a_sqlite
+  steps:
+    - select: {of: 选择表, value: dc_test_orders_a, side: A}
+  expect:
+    - value_is: {of: 选择表, side: A, value: dc_test_orders_a}
+
+- id: B5
+  title: 清空搜索恢复全部选项且选中值保留
+  tags: [smoke, sqlite]
+  setup:
+    - use: connect_a_sqlite
+    - select: {of: 选择表, value: dc_test_orders_a, side: A}
+  steps:
+    - dropdown_type: {of: 选择表, text: "", side: A}
+  expect:
+    - options_count: {of: 选择表, side: A, n: 10}
+    - value_is: {of: 选择表, side: A, value: dc_test_orders_a}
+
+- id: B1
+  title: 侧边栏默认宽度约 720px 无挤压
+  tags: [manual]
+  note: 布局观感人工确认
+
+- id: B2
+  title: 拖拽调宽 (360px ~ 85vw)
+  tags: [manual]
+  note: 浏览器原生 resize 手柄拖拽,自动化不可靠

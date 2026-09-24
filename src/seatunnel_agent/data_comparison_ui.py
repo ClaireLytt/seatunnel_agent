@@ -3427,9 +3427,19 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     home_btn.click(fn=None, js="() => { window.location.href = '/'; }")
 
     # Language switch — update all component labels/text
-    def _switch_lang(choice):
+    def _switch_lang(choice, status_a_val, status_b_val):
         lg = "zh" if choice == "中文" else "en"
         t_fn = lambda k: dc(lg, k)
+
+        def _status_update(current: str):
+            # Translate the pristine "Not connected" placeholder; leave any
+            # real connection status (it contains runtime info) untouched.
+            pristine = {dc("en", "dc_not_connected"), dc("zh", "dc_not_connected")}
+            if (current or "").strip() in pristine:
+                return gr.update(label=t_fn("dc_status"),
+                                 value=t_fn("dc_not_connected"))
+            return gr.update(label=t_fn("dc_status"))
+
         return (
             lg,                                                         # lang_state
             t_fn("dc_title"),                                           # title_md
@@ -3449,8 +3459,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(label=t_fn("dc_password")),                       # pwd_b
             gr.update(value=t_fn("dc_connect")),                        # conn_a
             gr.update(value=t_fn("dc_connect")),                        # conn_b
-            gr.update(label=t_fn("dc_status")),                         # status_a
-            gr.update(label=t_fn("dc_status")),                         # status_b
+            _status_update(status_a_val),                               # status_a
+            _status_update(status_b_val),                               # status_b
             gr.update(label=t_fn("dc_select_table")),                   # table_a
             gr.update(label=t_fn("dc_select_table")),                   # table_b
             gr.update(label=t_fn("dc_where_clause"),
@@ -3559,7 +3569,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     lang_dd.change(
         fn=_switch_lang,
-        inputs=[lang_dd],
+        inputs=[lang_dd, status_a, status_b],
         outputs=[
             lang_state, title_md, src_a_md, src_b_md,
             ds_a, ds_b, host_a, host_b, port_a, port_b, db_a, db_b,

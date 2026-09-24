@@ -1,0 +1,13 @@
+# 全局前置守卫用例。文件名以 aa_ 开头保证排序最先执行:
+# X1 依赖"从未有人连接过"的服务端初始状态(connection holder 是应用级状态,
+# 页面刷新不重置),因此必须是整轮运行的第一个用例。
+
+- id: X1
+  title: 未连接直接对比被拦截
+  tags: [smoke, sqlite]
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 请先连接两个数据源}
+
