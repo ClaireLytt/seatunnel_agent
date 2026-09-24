@@ -1,0 +1,764 @@
+<title>数据对比测试清单</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root {
+  --bg: #f4f6f7;
+  --surface: #ffffff;
+  --surface2: #eef1f3;
+  --ink: #17242c;
+  --muted: #5c6c76;
+  --accent: #0e7d86;
+  --accent-soft: #e0eff0;
+  --pass: #178a52;
+  --pass-soft: #e3f2ea;
+  --fail: #c2453e;
+  --fail-soft: #f9e9e8;
+  --line: #dde3e7;
+  --code-bg: #f0f3f4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10161a;
+    --surface: #182126;
+    --surface2: #1f2a31;
+    --ink: #e6edf0;
+    --muted: #8fa1aa;
+    --accent: #46b8c0;
+    --accent-soft: #14343a;
+    --pass: #45c184;
+    --pass-soft: #123527;
+    --fail: #e0736c;
+    --fail-soft: #3c1f1d;
+    --line: #28343b;
+    --code-bg: #131c21;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10161a;
+  --surface: #182126;
+  --surface2: #1f2a31;
+  --ink: #e6edf0;
+  --muted: #8fa1aa;
+  --accent: #46b8c0;
+  --accent-soft: #14343a;
+  --pass: #45c184;
+  --pass-soft: #123527;
+  --fail: #e0736c;
+  --fail-soft: #3c1f1d;
+  --line: #28343b;
+  --code-bg: #131c21;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 14px;
+  line-height: 1.65;
+  margin: 0;
+}
+code, pre, .mono {
+  font-family: "JetBrains Mono", Consolas, monospace;
+}
+code {
+  background: var(--code-bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.wrap { max-width: 920px; margin: 0 auto; padding-inline: 16px; }
+
+/* ── sticky header ── */
+.top {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.head-row {
+  display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  padding-block: 14px 8px;
+}
+.head-row h1 { font-size: 19px; font-weight: 700; margin: 0; letter-spacing: .01em; }
+.stats { display: flex; gap: 10px; margin-left: auto; font-size: 12.5px; color: var(--muted); }
+.stats b { font-weight: 600; }
+.stats .sp { color: var(--pass); }
+.stats .sf { color: var(--fail); }
+.bar {
+  height: 5px; border-radius: 3px; overflow: hidden;
+  background: var(--surface2); display: flex; margin-bottom: 10px;
+}
+.bar i { display: block; height: 100%; transition: width .25s; }
+.bar .p { background: var(--pass); }
+.bar .f { background: var(--fail); }
+.tabs { display: flex; gap: 4px; padding-bottom: 0; }
+.tabs button {
+  appearance: none; border: 0; background: none; color: var(--muted);
+  font: inherit; font-weight: 500; padding: 7px 14px; cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.tabs button.on { color: var(--accent); border-bottom-color: var(--accent); }
+.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+main { padding-block: 18px 60px; }
+
+/* ── intro / cards ── */
+.card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; padding: 14px 18px; margin-bottom: 16px;
+}
+.card h2 { font-size: 15px; margin: 0 0 8px; }
+.card ol { margin: 6px 0 2px; padding-left: 22px; }
+.card li { margin-bottom: 3px; }
+.note { color: var(--muted); font-size: 13px; }
+
+/* ── filter chips ── */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.chips button {
+  appearance: none; font: inherit; font-size: 12.5px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface);
+  color: var(--muted); border-radius: 999px; padding: 4px 13px;
+}
+.chips button.on {
+  background: var(--accent-soft); border-color: var(--accent);
+  color: var(--accent); font-weight: 600;
+}
+.chips .reset { margin-left: auto; border-style: dashed; }
+.chips .reset.arm { color: var(--fail); border-color: var(--fail); }
+
+/* ── sections & items ── */
+.sec { margin-bottom: 22px; }
+.sec-h {
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 0 0 8px; padding-left: 2px;
+}
+.sec-h h2 { font-size: 15.5px; font-weight: 700; margin: 0; }
+.sec-h .cnt { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.items {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; overflow: hidden;
+}
+.item {
+  display: flex; gap: 12px; padding: 12px 16px 12px 13px;
+  border-left: 3px solid var(--line);
+}
+.item + .item { border-top: 1px solid var(--line); }
+.item.pass { border-left-color: var(--pass); background: color-mix(in srgb, var(--pass-soft) 45%, var(--surface)); }
+.item.fail { border-left-color: var(--fail); background: color-mix(in srgb, var(--fail-soft) 45%, var(--surface)); }
+.item .body { flex: 1; min-width: 0; }
+.item .ttl { font-weight: 600; margin-bottom: 2px; }
+.item .ttl .no { color: var(--accent); font-family: "JetBrains Mono", monospace; font-size: 12px; margin-right: 7px; }
+.item .kv { font-size: 13px; margin-top: 2px; }
+.item .kv b {
+  font-weight: 600; color: var(--muted); font-size: 12px;
+  margin-right: 5px;
+}
+.item .acts { display: flex; flex-direction: column; gap: 6px; align-self: center; flex-shrink: 0; }
+.item .acts button {
+  appearance: none; font: inherit; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface);
+  color: var(--muted); border-radius: 6px; padding: 3px 12px; min-width: 58px;
+}
+.item.pass .b-ok { background: var(--pass); border-color: var(--pass); color: #fff; font-weight: 600; }
+.item.fail .b-ng { background: var(--fail); border-color: var(--fail); color: #fff; font-weight: 600; }
+.item .acts button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (max-width: 560px) {
+  .item { flex-direction: column; gap: 8px; }
+  .item .acts { flex-direction: row; align-self: flex-start; }
+}
+
+/* ── SQL tab ── */
+.sqlbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.sqlbar .note { flex: 1; min-width: 200px; }
+.btn {
+  appearance: none; font: inherit; font-size: 13px; cursor: pointer;
+  border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  border-radius: 7px; padding: 6px 16px; font-weight: 600;
+}
+.btn.ghost { background: var(--surface); color: var(--accent); }
+.sqlblock { margin-bottom: 14px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.sqlblock .h {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface); padding: 8px 14px; border-bottom: 1px solid var(--line);
+}
+.sqlblock .h b { font-size: 13.5px; }
+.sqlblock .h .note { flex: 1; }
+.sqlblock .h button {
+  appearance: none; font: inherit; font-size: 12px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface2); color: var(--ink);
+  border-radius: 6px; padding: 3px 12px;
+}
+.sqlblock pre {
+  margin: 0; padding: 12px 14px; background: var(--code-bg);
+  overflow-x: auto; font-size: 12px; line-height: 1.55;
+}
+.toast {
+  position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  background: var(--ink); color: var(--bg); font-size: 13px;
+  padding: 7px 18px; border-radius: 999px; opacity: 0; pointer-events: none;
+  transition: opacity .2s;
+}
+.toast.show { opacity: .92; }
+@media (prefers-reduced-motion: reduce) {
+  .bar i, .toast { transition: none; }
+}
+</style>
+
+<header class="top"><div class="wrap">
+  <div class="head-row">
+    <h1>数据对比测试清单</h1>
+    <div class="stats">
+      <span class="sp"><b id="n-pass">0</b> 通过</span>
+      <span class="sf"><b id="n-fail">0</b> 失败</span>
+      <span><b id="n-todo">0</b> 未测 / <span id="n-all">0</span> 项</span>
+    </div>
+  </div>
+  <div class="bar"><i class="p" id="bar-p"></i><i class="f" id="bar-f"></i></div>
+  <nav class="tabs">
+    <button id="tab-list" class="on">测试清单</button>
+    <button id="tab-sql">Hive 测试数据</button>
+  </nav>
+</div></header>
+
+<main class="wrap">
+  <section id="view-list">
+    <div class="card">
+      <h2>前置条件</h2>
+      <ol>
+        <li>在「Hive 测试数据」页签复制 SQL，粘贴到 beeline / Hive CLI 执行（连到应用所配置的库，如 <code>cladata</code>）。</li>
+        <li>重启 seatunnel_agent 应用，浏览器打开 <code>/datacompare</code> 并强制刷新（Ctrl+F5）。</li>
+        <li>建议右上角语言切「中文」，清单中的按钮名与界面文案一致。</li>
+      </ol>
+      <p class="note">未特殊说明时，A 侧选 <code>dc_test_orders_a</code>、B 侧选 <code>dc_test_orders_b</code>。预期数值全部与测试数据的预置差异对应，勿改动脚本数据。勾选进度保存在本浏览器（localStorage），换设备不同步。</p>
+    </div>
+    <div class="chips" id="chips">
+      <button data-f="all" class="on">全部</button>
+      <button data-f="todo">未测</button>
+      <button data-f="pass">通过</button>
+      <button data-f="fail">失败</button>
+      <button class="reset" id="reset">重置进度</button>
+    </div>
+    <div id="sections"></div>
+  </section>
+
+  <section id="view-sql" hidden>
+    <div class="sqlbar">
+      <p class="note">按模块分块，可整段复制；表全部以 <code>dc_test_</code> 前缀命名，末尾附清理语句。需 Hive 2.x+（支持 <code>INSERT&nbsp;VALUES</code>）。</p>
+      <button class="btn" id="copy-all">复制全部 SQL</button>
+    </div>
+    <div id="sqlblocks"></div>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ───────────────────────── checklist data ───────────────────────── */
+const SECTIONS = [
+{id:"P0", title:"准备", items:[
+ {id:"P0-1", t:"导入测试数据", s:"复制「Hive 测试数据」全部 SQL 到 beeline / Hive CLI 执行（需要指定库时先 <code>USE cladata;</code>）。",
+  e:"<code>SHOW TABLES LIKE 'dc_test*'</code> 返回 10 张表；末尾校验查询行数为 orders 10/9、schema 3/3、metrics 20/20、part 15/8、same 5/5。"},
+ {id:"P0-2", t:"启动应用", s:"重启 seatunnel_agent，浏览器打开首页 → Data Comparison（<code>/datacompare</code>），Ctrl+F5 强制刷新。",
+  e:"页面正常渲染；左侧边栏约 720px，Source A / Source B 两面板并排。"},
+ {id:"P0-3", t:"切换中文界面", s:"右上角语言下拉选「中文」。", e:"标题变「数据对比」，后续清单按钮名与界面一致。"},
+]},
+{id:"A", title:"连接", items:[
+ {id:"A1", t:"环境回退连接 + 参数回填", s:"A 侧数据源类型选 Hive SQL，主机/端口/数据库全部留空，点「连接」。",
+  e:"状态 ✅（含主机、库名和表数量）；主机/端口/数据库输入框自动回填 <code>.env</code> 中 HIVE_* 的值。"},
+ {id:"A2", t:"手动填写连接", s:"手动输入主机/端口/数据库后点「连接」。", e:"✅ 连接成功，「选择表」下拉可选。"},
+ {id:"A3", t:"错误主机", s:"主机填 <code>1.2.3.4</code> 点「连接」（可能需等待超时）。", e:"❌ 错误信息，页面不崩溃、可继续操作。"},
+ {id:"A4", t:"端口非法", s:"端口填 <code>abc</code> 点「连接」。", e:"提示「端口号必须是数字」。"},
+ {id:"A5", t:"Tab 灰字补全", s:"清空主机按 Tab；清空端口按 Tab；清空数据库按 Tab；再在已有内容的输入框按 Tab。",
+  e:"空框分别填入 <code>10.0.0.1</code> / <code>10000</code> / <code>default</code>；非空框按 Tab 只切换焦点、不覆盖内容。"},
+ {id:"A6", t:"双侧连接", s:"B 侧同样连接（可留空走回退）。", e:"两侧状态均 ✅，B 侧表下拉可选。"},
+]},
+{id:"B", title:"侧边栏与表选择", items:[
+ {id:"B1", t:"侧边栏默认宽度", s:"打开页面观察左侧边栏。", e:"约 720px 宽，内容无挤压错位。"},
+ {id:"B2", t:"拖拽调宽", s:"拖动侧边栏右下角手柄放大/缩小。", e:"宽度可在 360px～85% 视宽间调节；拖小后出现横向滚动条而非内容变形。"},
+ {id:"B3", t:"下拉模糊搜索", s:"点开「选择表」输入 <code>dc_test</code>；再改输入 <code>orders</code>。",
+  e:"分别列出全部 10 张测试表 / 只剩 2 张 orders 表（子串匹配、大小写不敏感）。"},
+ {id:"B4", t:"完整表名精确匹配", s:"下拉中输入完整表名 <code>dc_test_orders_a</code> 并点击选中。", e:"仅剩 1 项且可选中。"},
+ {id:"B5", t:"清空恢复", s:"清空下拉输入再点开。", e:"恢复全部表；之前选中的值保留。"},
+]},
+{id:"C", title:"基础对比", items:[
+ {id:"C1", t:"结构对比（一致）", s:"orders 对点「结构对比」。", e:"两侧 9 列完全一致，无差异标记。"},
+ {id:"C2", t:"结构对比（差异）", s:"A 选 <code>dc_test_schema_a</code>、B 选 <code>dc_test_schema_b</code>，点「结构对比」。",
+  e:"B 缺 <code>name</code>、多 <code>user_name</code>/<code>remark</code>；<code>amount</code> 类型 double vs decimal(10,2)。"},
+ {id:"C3", t:"行数对比（不一致）", s:"orders 对点「行数对比」。", e:"A=10，B=9，差异 1，标红/未通过。"},
+ {id:"C4", t:"行数对比（一致）", s:"A/B 分别选 <code>dc_test_same_a</code>/<code>dc_test_same_b</code> 点「行数对比」。", e:"5 = 5，Match（绿色）。"},
+ {id:"C5", t:"样本数据", s:"orders 对点「样本数据」。", e:"两侧样本并排，差异单元格高亮（id=3 的 amount、id=5 的 status）。"},
+ {id:"C6", t:"全部对比", s:"orders 对点「全部对比」。", e:"结构/行数/样本/聚合等卡片全部渲染，无报错。"},
+]},
+{id:"D", title:"聚合与阈值", items:[
+ {id:"D1", t:"聚合对比", s:"orders 对点「聚合对比」。",
+  e:"amount 的 SUM：A=2122.49，B=3493.69，标记不一致；id 的 MAX A=10 vs B=11。"},
+ {id:"D2", t:"百分比阈值（未通过）", s:"阈值填 <code>5%</code> 后点「行数对比」。", e:"差异 1/10=10% &gt; 5%，显示「未通过」。"},
+ {id:"D3", t:"百分比阈值（通过）", s:"阈值改 <code>20%</code> 再跑。", e:"10% ≤ 20%，显示「通过」。"},
+ {id:"D4", t:"绝对阈值", s:"阈值填 <code>100</code> 跑一次；再填 <code>0</code> 跑一次。", e:"差异 1 ≤ 100「通过」；&gt; 0「未通过」。"},
+]},
+{id:"E", title:"主键对比", items:[
+ {id:"E1", t:"基于主键的差异", s:"主键列填 <code>id</code>，orders 对点「全部对比」或「样本数据」。",
+  e:"B 缺失 id=9,10；B 多出 id=11；修改 id=3（amount 300→350）、id=5（status paid→refund）。"},
+ {id:"E2", t:"行级展开", s:"在修改行上点「行级展开」。", e:"展开显示该主键两侧完整行值。"},
+ {id:"E3", t:"WHERE 过滤", s:"WHERE 填 <code>id &lt;= 8</code> 再对比。", e:"两侧各 8 行；只剩 id=3/5 两条修改差异。"},
+ {id:"E4", t:"WHERE 防注入", s:"WHERE 填 <code>1=1; drop table x</code>。", e:"提示「WHERE 条件包含禁止关键字」，不执行。"},
+ {id:"E5", t:"列映射", s:"A 选 <code>dc_test_schema_a</code>、B 选 <code>dc_test_schema_b</code>，列映射填 <code>name:user_name</code>，主键 <code>id</code>，对比。",
+  e:"映射后可正常对比；id=2 的 amount 20 vs 21 识别为修改。"},
+ {id:"E6", t:"无主键回退", s:"清空主键列后对 orders 做样本对比。", e:"回退为按行位置对比，不报错。"},
+]},
+{id:"F", title:"字段画像", items:[
+ {id:"F1", t:"画像差异", s:"orders 对点「字段画像」。",
+  e:"email 空值率 A=0%、B≈22.2%；id 去重数 A=10、B=9；min/max 正常展示。"},
+ {id:"F2", t:"画像一致", s:"same 对点「字段画像」。", e:"各列两侧画像一致。"},
+]},
+{id:"G", title:"校验和", items:[
+ {id:"G1", t:"校验和不匹配", s:"orders 对，校验列填 <code>amount,status</code> 点「校验和对比」。", e:"出现「不匹配」分段（差异行所在段标红）。"},
+ {id:"G2", t:"校验和全匹配", s:"same 对，校验列填 <code>name,score</code>。", e:"「所有分段均匹配」。"},
+]},
+{id:"H", title:"分区比对", items:[
+ {id:"H1", t:"分区差异", s:"A 选 <code>dc_test_part_a</code>、B 选 <code>dc_test_part_b</code>，分区列填 <code>dt</code>，点「对比分区」。",
+  e:"2024-06-01 差异 0；06-02 差异 -2；06-03 仅 A 有（-5）；总绝对差异 7。"},
+ {id:"H2", t:"分区列不存在", s:"分区列填 <code>not_exist</code>。", e:"错误提示，不崩溃。"},
+]},
+{id:"I", title:"数据倾斜", items:[
+ {id:"I1", t:"倾斜分析", s:"A 选 <code>dc_test_metrics_a</code>、B 选 <code>dc_test_metrics_b</code>，倾斜分析列填 <code>region</code>，点「分析倾斜」。",
+  e:"A 侧 north 占 80%、基尼系数高（标记倾斜）；B 侧四组均匀、基尼低；去重值数均为 4。"},
+ {id:"I2", t:"列留空", s:"清空倾斜列点「分析倾斜」。", e:"提示「请指定要分析的列」。"},
+]},
+{id:"J", title:"自定义聚合", items:[
+ {id:"J1", t:"表达式聚合", s:"orders 对，按每行 <code>别名=表达式</code> 填：<code>total=SUM(amount)</code> 换行 <code>cats=COUNT(DISTINCT category)</code>。",
+  e:"total A=2122.49 / B=3493.69 标差异；cats A=4 / B=4 一致。"},
+ {id:"J2", t:"非法表达式", s:"填 <code>bad=SUM(</code> 运行。", e:"错误提示，不崩溃。"},
+]},
+{id:"K", title:"质量规则", items:[
+ {id:"K1", t:"规则未通过", s:"orders 对，规则填 <code>email:not_null&gt;80, amount:range:0-1000</code> 点「质量检查」。",
+  e:"A 两条均通过；B：email 非空率 77.8% 未通过，amount 范围未通过（id=11 为 1500）。"},
+ {id:"K2", t:"规则通过", s:"same 对，规则填 <code>name:not_null&gt;95</code>。", e:"两侧均通过。"},
+]},
+{id:"L", title:"增量对比", items:[
+ {id:"L1", t:"水位线增量", s:"orders 对，水位线列 <code>update_time</code>、上次值 <code>2024-06-05 00:00:00</code>，点「增量对比」。",
+  e:"只对比水位线之后的行：A 侧 id=9,10；B 侧 id=3,5,11。"},
+]},
+{id:"M", title:"数据脱敏", items:[
+ {id:"M1", t:"敏感列打码", s:"勾选「启用脱敏」后跑 orders「样本数据」；再取消勾选重跑。",
+  e:"勾选时 phone/email/id_card 显示掩码（如 138****0001）；取消后恢复明文。"},
+]},
+{id:"N", title:"采样方式", items:[
+ {id:"N1", t:"头部/随机采样", s:"「采样方式」在头部与随机间切换，各跑一次「样本数据」。", e:"均正常返回（随机两次结果可不同）。"},
+ {id:"N2", t:"分层采样", s:"采样方式选 STRATIFIED，「分组列」填 <code>category</code>，跑样本。", e:"样本覆盖 4 个 category 分组。"},
+ {id:"N3", t:"分层列异常", s:"分组列留空或填不存在的列再跑。", e:"给出错误/必填提示，不崩溃。"},
+]},
+{id:"O", title:"批量对比", items:[
+ {id:"O1", t:"批量行数", s:"两侧连同一库，点「批量行数」。", e:"按同名表配对逐表比对（同库自比应全部一致），列表含全部 dc_test_* 表。"},
+ {id:"O2", t:"批量全量对比", s:"点「批量全量对比」。", e:"输出「N 张表中 X 通过，Y 未通过」摘要与逐表明细。"},
+ {id:"O3", t:"批量模板", s:"先保存 2 个模板（见 V3），在「批量模板」勾选后点「运行选中」。", e:"每个模板输出通过/未通过结果。"},
+]},
+{id:"P", title:"自定义 SQL 对比", items:[
+ {id:"P1", t:"SQL 结果对比", s:"A 侧 SQL：<code>SELECT category, COUNT(*) AS cnt FROM dc_test_orders_a GROUP BY category</code>；B 侧同句表名改 <code>_b</code>，点「SQL 对比」。",
+  e:"差异：books 2→1、electronics 3→4、food 3→2；clothing 一致。"},
+ {id:"P2", t:"只读限制", s:"SQL 填 <code>DELETE FROM dc_test_orders_a</code>。", e:"提示仅允许 SELECT，不执行。"},
+ {id:"P3", t:"语法错误", s:"SQL 填 <code>SELECT FROM WHERE</code>。", e:"错误提示，不崩溃。"},
+]},
+{id:"Q", title:"导出与报告", items:[
+ {id:"Q1", t:"导出 CSV", s:"任一对比出结果后点「导出 CSV」。", e:"生成文件（默认桌面目录），内容与页面一致。"},
+ {id:"Q2", t:"导出 Excel", s:"点「导出 Excel」。", e:"生成 .xlsx，可正常打开。"},
+ {id:"Q3", t:"保存 / 加载报告", s:"点「保存报告」；再从「加载报告」下拉选中刚保存的。", e:"提示「报告已保存」；加载后回显该报告内容。"},
+ {id:"Q4", t:"查看报告", s:"点「查看报告」。", e:"新窗口打开独立报告页（可打印排版）。"},
+ {id:"Q5", t:"报告对比", s:"改 WHERE 再跑并保存第二份报告；报告对比中选旧/新两份。", e:"显示行数 delta 等差异项。"},
+]},
+{id:"R", title:"同步配置与差异 SQL", items:[
+ {id:"R1", t:"生成同步配置", s:"orders 对（可带列映射）点「生成同步配置」。",
+  e:"输出 SeaTunnel HOCON；source/sink 与两侧连接一致；SQL transform 中列映射使用反引号。"},
+ {id:"R2", t:"生成差异 SQL", s:"主键 <code>id</code>，点「生成差异 SQL」。", e:"输出可复制的差异定位 SQL，语法与 Hive 兼容。"},
+]},
+{id:"S", title:"趋势 · 告警 · 定时 · Webhook", items:[
+ {id:"S1", t:"趋势图", s:"对 orders 连续跑 ≥2 次「行数对比」后点「趋势」。", e:"趋势图渲染（首次运行前提示无历史数据属正常）。"},
+ {id:"S2", t:"告警规则", s:"规则填 <code>delta&gt;0:1</code> 跑行数对比；再改 <code>delta&gt;100:3</code>。", e:"前者「已触发」；后者「正常」。"},
+ {id:"S3", t:"定时任务", s:"间隔填 <code>1</code> 点「启动定时」，等 1 分钟；再点「停止定时」。",
+  e:"显示「定时运行中」并自动执行一次；停止后显示「定时已停止」。"},
+ {id:"S4", t:"Webhook 通知（可选）", s:"填自己可查看的测试接收地址（勿发敏感数据），勾「仅失败时通知」，跑一次未通过的对比。",
+  e:"接收端收到 POST 通知；通过的对比不触发。"},
+]},
+{id:"T", title:"多环境对比", items:[
+ {id:"T1", t:"基于预设的环境对比", s:"先保存两个预设，「环境」分别填 <code>dev</code>/<code>prod</code>（可同指本 Hive）；多环境对比中环境 A=<code>dev</code>、环境 B=<code>prod</code>、表名 <code>dc_test_orders_a</code>。",
+  e:"输出结构 / 行数 / 聚合三张卡片。"},
+]},
+{id:"U", title:"血缘分析", items:[
+ {id:"U1", t:"上游表解析", s:"血缘输入框粘贴：<code>INSERT INTO dm_sales SELECT o.id, u.name FROM dwd_orders o JOIN dim_user u ON o.uid = u.id</code>。",
+  e:"上游表列出 dwd_orders、dim_user。"},
+]},
+{id:"V", title:"预设与模板", items:[
+ {id:"V1", t:"保存 / 加载预设", s:"连接参数填好点「保存预设」（名称 <code>hive_test</code>）；清空参数后加载该预设。",
+  e:"「预设已保存」；加载后参数回填并可直接连接。"},
+ {id:"V2", t:"删除预设", s:"删除 <code>hive_test</code>。", e:"「预设已删除」，下拉不再出现。"},
+ {id:"V3", t:"保存 / 加载模板", s:"设置 WHERE/阈值/主键后「保存模板」（存 <code>t1</code>、<code>t2</code> 两个）；清空后「加载模板」。",
+  e:"「模板已保存」；加载后配置回填。"},
+]},
+{id:"W", title:"语言切换", items:[
+ {id:"W1", t:"切中文", s:"语言切「中文」逐区检查。", e:"侧边栏、按钮、手风琴标题全部中文，无漏翻。"},
+ {id:"W2", t:"切回英文", s:"切回 English 后再跑任一对比。", e:"文案全部恢复英文，功能正常。"},
+]},
+{id:"X", title:"回归与健壮性", items:[
+ {id:"X1", t:"未连接拦截", s:"刷新后不连接，直接点「行数对比」。", e:"提示「请先连接两个数据源」。"},
+ {id:"X2", t:"未选表拦截", s:"连接后不选表点对比。", e:"提示「请选择两侧的表」。"},
+ {id:"X3", t:"刷新后全流程", s:"F5 后重新连接、选表、对比。", e:"全流程正常，无残留状态报错。"},
+ {id:"X4", t:"SQLite 分支（隐藏字段回归）", s:"数据源类型切 SQLite。", e:"主机/端口隐藏；数据库填 <code>config/demo.db</code> 或留空，连接 ✅（验证隐藏字段 None 修复）。"},
+]},
+];
+
+/* ───────────────────────── SQL blocks ───────────────────────── */
+const SQL_BLOCKS = [
+{name:"1 · 订单对 dc_test_orders_a/b（主键 id，预置缺失/多出/修改/NULL/敏感列/水位线）", sql:
+`DROP TABLE IF EXISTS dc_test_orders_a;
+CREATE TABLE dc_test_orders_a (
+  id          INT,
+  order_no    STRING,
+  category    STRING,
+  amount      DOUBLE,
+  status      STRING,
+  phone       STRING,
+  email       STRING,
+  id_card     STRING,
+  update_time STRING
+) STORED AS TEXTFILE;
+
+INSERT INTO dc_test_orders_a VALUES
+(1,  'ORD001', 'electronics', 100.00, 'paid',      '13800000001', 'u1@test.com',  '110101199001011234', '2024-06-01 10:00:00'),
+(2,  'ORD002', 'clothing',    220.50, 'paid',      '13800000002', 'u2@test.com',  '110101199002021234', '2024-06-01 11:00:00'),
+(3,  'ORD003', 'electronics', 300.00, 'paid',      '13800000003', 'u3@test.com',  '110101199003031234', '2024-06-02 09:30:00'),
+(4,  'ORD004', 'food',         45.90, 'shipped',   '13800000004', 'u4@test.com',  '110101199004041234', '2024-06-02 14:00:00'),
+(5,  'ORD005', 'clothing',    180.00, 'paid',      '13800000005', 'u5@test.com',  '110101199005051234', '2024-06-03 08:15:00'),
+(6,  'ORD006', 'food',         62.30, 'cancelled', '13800000006', 'u6@test.com',  '110101199006061234', '2024-06-03 16:45:00'),
+(7,  'ORD007', 'electronics', 999.99, 'paid',      '13800000007', 'u7@test.com',  '110101199007071234', '2024-06-04 10:20:00'),
+(8,  'ORD008', 'books',        35.00, 'shipped',   '13800000008', 'u8@test.com',  '110101199008081234', '2024-06-04 18:00:00'),
+(9,  'ORD009', 'books',        58.80, 'paid',      '13800000009', 'u9@test.com',  '110101199009091234', '2024-06-05 09:00:00'),
+(10, 'ORD010', 'food',        120.00, 'paid',      '13800000010', 'u10@test.com', '110101199010101234', '2024-06-05 12:00:00');
+
+DROP TABLE IF EXISTS dc_test_orders_b;
+CREATE TABLE dc_test_orders_b (
+  id          INT,
+  order_no    STRING,
+  category    STRING,
+  amount      DOUBLE,
+  status      STRING,
+  phone       STRING,
+  email       STRING,
+  id_card     STRING,
+  update_time STRING
+) STORED AS TEXTFILE;
+
+-- 差异设计：缺 id=9,10；多 id=11；改 id=3 amount、id=5 status；id=7,8 email 为 NULL
+INSERT INTO dc_test_orders_b VALUES
+(1,  'ORD001', 'electronics',  100.00, 'paid',      '13800000001', 'u1@test.com', '110101199001011234', '2024-06-01 10:00:00'),
+(2,  'ORD002', 'clothing',     220.50, 'paid',      '13800000002', 'u2@test.com', '110101199002021234', '2024-06-01 11:00:00'),
+(3,  'ORD003', 'electronics',  350.00, 'paid',      '13800000003', 'u3@test.com', '110101199003031234', '2024-06-06 10:00:00'),
+(4,  'ORD004', 'food',          45.90, 'shipped',   '13800000004', 'u4@test.com', '110101199004041234', '2024-06-02 14:00:00'),
+(5,  'ORD005', 'clothing',     180.00, 'refund',    '13800000005', 'u5@test.com', '110101199005051234', '2024-06-06 11:00:00'),
+(6,  'ORD006', 'food',          62.30, 'cancelled', '13800000006', 'u6@test.com', '110101199006061234', '2024-06-03 16:45:00'),
+(7,  'ORD007', 'electronics',  999.99, 'paid',      '13800000007', NULL,          '110101199007071234', '2024-06-04 10:20:00'),
+(8,  'ORD008', 'books',         35.00, 'shipped',   '13800000008', NULL,          '110101199008081234', '2024-06-04 18:00:00'),
+(11, 'ORD011', 'electronics', 1500.00, 'paid',      '13800000011', 'u11@test.com','110101199011111234', '2024-06-06 12:00:00');`},
+{name:"2 · 结构差异对 dc_test_schema_a/b（改名列 + 类型差异 + 多列）", sql:
+`DROP TABLE IF EXISTS dc_test_schema_a;
+CREATE TABLE dc_test_schema_a (
+  id      INT,
+  name    STRING,
+  amount  DOUBLE,
+  created STRING
+) STORED AS TEXTFILE;
+
+INSERT INTO dc_test_schema_a VALUES
+(1, 'alice', 10.50, '2024-06-01'),
+(2, 'bob',   20.00, '2024-06-01'),
+(3, 'carol', 30.25, '2024-06-02');
+
+DROP TABLE IF EXISTS dc_test_schema_b;
+CREATE TABLE dc_test_schema_b (
+  id        INT,
+  user_name STRING,
+  amount    DECIMAL(10,2),
+  remark    STRING,
+  created   STRING
+) STORED AS TEXTFILE;
+
+INSERT INTO dc_test_schema_b VALUES
+(1, 'alice', 10.50, 'ok',    '2024-06-01'),
+(2, 'bob',   21.00, 'check', '2024-06-01'),
+(3, 'carol', 30.25, '',      '2024-06-02');`},
+{name:"3 · 指标对 dc_test_metrics_a/b（A 侧 region 严重倾斜，B 侧均匀）", sql:
+`DROP TABLE IF EXISTS dc_test_metrics_a;
+CREATE TABLE dc_test_metrics_a (
+  id     INT,
+  region STRING,
+  sales  DOUBLE,
+  qty    INT
+) STORED AS TEXTFILE;
+
+INSERT INTO dc_test_metrics_a VALUES
+(1,  'north', 10.0,  2), (2,  'north', 20.0,  3), (3,  'north', 30.0,  4),
+(4,  'north', 40.0,  5), (5,  'north', 50.0,  1), (6,  'north', 60.0,  2),
+(7,  'north', 70.0,  3), (8,  'north', 80.0,  4), (9,  'north', 90.0,  5),
+(10, 'north', 100.0, 1), (11, 'north', 110.0, 2), (12, 'north', 120.0, 3),
+(13, 'north', 130.0, 4), (14, 'north', 140.0, 5), (15, 'north', 150.0, 1),
+(16, 'north', 160.0, 2), (17, 'south', 170.0, 3), (18, 'south', 180.0, 4),
+(19, 'east',  190.0, 5), (20, 'west',  200.0, 1);
+
+DROP TABLE IF EXISTS dc_test_metrics_b;
+CREATE TABLE dc_test_metrics_b (
+  id     INT,
+  region STRING,
+  sales  DOUBLE,
+  qty    INT
+) STORED AS TEXTFILE;
+
+INSERT INTO dc_test_metrics_b VALUES
+(1,  'north', 10.0,  2), (2,  'north', 20.0,  3), (3,  'north', 30.0,  4),
+(4,  'north', 44.0,  5), (5,  'north', 50.0,  1), (6,  'south', 60.0,  2),
+(7,  'south', 70.0,  3), (8,  'south', 80.0,  4), (9,  'south', 90.0,  5),
+(10, 'south', 100.0, 1), (11, 'east',  110.0, 2), (12, 'east',  120.0, 3),
+(13, 'east',  130.0, 4), (14, 'east',  140.0, 5), (15, 'east',  155.0, 1),
+(16, 'west',  160.0, 2), (17, 'west',  170.0, 3), (18, 'west',  180.0, 4),
+(19, 'west',  190.0, 5), (20, 'west',  200.0, 1);`},
+{name:"4 · 分区对 dc_test_part_a/b（分区列 dt；差异 0 / -2 / -5）", sql:
+`DROP TABLE IF EXISTS dc_test_part_a;
+CREATE TABLE dc_test_part_a (
+  id  INT,
+  val DOUBLE
+) PARTITIONED BY (dt STRING) STORED AS TEXTFILE;
+
+INSERT INTO dc_test_part_a PARTITION (dt='2024-06-01') VALUES
+(1, 1.1), (2, 2.2), (3, 3.3), (4, 4.4), (5, 5.5);
+INSERT INTO dc_test_part_a PARTITION (dt='2024-06-02') VALUES
+(6, 6.6), (7, 7.7), (8, 8.8), (9, 9.9), (10, 10.1);
+INSERT INTO dc_test_part_a PARTITION (dt='2024-06-03') VALUES
+(11, 11.1), (12, 12.2), (13, 13.3), (14, 14.4), (15, 15.5);
+
+DROP TABLE IF EXISTS dc_test_part_b;
+CREATE TABLE dc_test_part_b (
+  id  INT,
+  val DOUBLE
+) PARTITIONED BY (dt STRING) STORED AS TEXTFILE;
+
+INSERT INTO dc_test_part_b PARTITION (dt='2024-06-01') VALUES
+(1, 1.1), (2, 2.2), (3, 3.3), (4, 4.4), (5, 5.5);
+INSERT INTO dc_test_part_b PARTITION (dt='2024-06-02') VALUES
+(6, 6.6), (7, 7.7), (8, 8.8);`},
+{name:"5 · 完全一致对 dc_test_same_a/b（验证绿色 Match 路径）", sql:
+`DROP TABLE IF EXISTS dc_test_same_a;
+CREATE TABLE dc_test_same_a (
+  id    INT,
+  name  STRING,
+  score DOUBLE
+) STORED AS TEXTFILE;
+
+INSERT INTO dc_test_same_a VALUES
+(1, 'aa', 90.5), (2, 'bb', 80.0), (3, 'cc', 70.5), (4, 'dd', 60.0), (5, 'ee', 95.0);
+
+DROP TABLE IF EXISTS dc_test_same_b;
+CREATE TABLE dc_test_same_b (
+  id    INT,
+  name  STRING,
+  score DOUBLE
+) STORED AS TEXTFILE;
+
+INSERT INTO dc_test_same_b VALUES
+(1, 'aa', 90.5), (2, 'bb', 80.0), (3, 'cc', 70.5), (4, 'dd', 60.0), (5, 'ee', 95.0);`},
+{name:"6 · 建表结果校验", sql:
+`SHOW TABLES LIKE 'dc_test*';
+SELECT 'orders_a' AS t, COUNT(*) AS n FROM dc_test_orders_a
+UNION ALL SELECT 'orders_b', COUNT(*) FROM dc_test_orders_b
+UNION ALL SELECT 'schema_a', COUNT(*) FROM dc_test_schema_a
+UNION ALL SELECT 'schema_b', COUNT(*) FROM dc_test_schema_b
+UNION ALL SELECT 'metrics_a', COUNT(*) FROM dc_test_metrics_a
+UNION ALL SELECT 'metrics_b', COUNT(*) FROM dc_test_metrics_b
+UNION ALL SELECT 'part_a', COUNT(*) FROM dc_test_part_a
+UNION ALL SELECT 'part_b', COUNT(*) FROM dc_test_part_b
+UNION ALL SELECT 'same_a', COUNT(*) FROM dc_test_same_a
+UNION ALL SELECT 'same_b', COUNT(*) FROM dc_test_same_b;
+-- 预期：orders 10/9, schema 3/3, metrics 20/20, part 15/8, same 5/5`},
+{name:"7 · 清理（测试完成后按需执行）", sql:
+`DROP TABLE IF EXISTS dc_test_orders_a;
+DROP TABLE IF EXISTS dc_test_orders_b;
+DROP TABLE IF EXISTS dc_test_schema_a;
+DROP TABLE IF EXISTS dc_test_schema_b;
+DROP TABLE IF EXISTS dc_test_metrics_a;
+DROP TABLE IF EXISTS dc_test_metrics_b;
+DROP TABLE IF EXISTS dc_test_part_a;
+DROP TABLE IF EXISTS dc_test_part_b;
+DROP TABLE IF EXISTS dc_test_same_a;
+DROP TABLE IF EXISTS dc_test_same_b;`},
+];
+
+/* ───────────────────────── state ───────────────────────── */
+const LS_KEY = "dcChecklist.v1";
+let state = {};
+try { state = JSON.parse(localStorage.getItem(LS_KEY) || "{}") || {}; } catch (e) { state = {}; }
+function save() { try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) {} }
+
+/* ───────────────────────── render checklist ───────────────────────── */
+const secRoot = document.getElementById("sections");
+for (const sec of SECTIONS) {
+  const el = document.createElement("div");
+  el.className = "sec";
+  el.dataset.sec = sec.id;
+  el.innerHTML = `<div class="sec-h"><h2>${sec.id} · ${sec.title}</h2><span class="cnt"></span></div><div class="items"></div>`;
+  const box = el.querySelector(".items");
+  for (const it of sec.items) {
+    const d = document.createElement("div");
+    d.className = "item";
+    d.dataset.id = it.id;
+    d.innerHTML =
+      `<div class="body">
+         <div class="ttl"><span class="no">${it.id}</span>${it.t}</div>
+         <div class="kv"><b>操作</b>${it.s}</div>
+         <div class="kv"><b>预期</b>${it.e}</div>
+       </div>
+       <div class="acts">
+         <button class="b-ok">通过</button>
+         <button class="b-ng">失败</button>
+       </div>`;
+    d.querySelector(".b-ok").addEventListener("click", () => setState(it.id, "pass"));
+    d.querySelector(".b-ng").addEventListener("click", () => setState(it.id, "fail"));
+    box.appendChild(d);
+  }
+  secRoot.appendChild(el);
+}
+
+function setState(id, v) {
+  if (state[id] === v) delete state[id]; else state[id] = v;
+  save();
+  refresh();
+}
+
+let filter = "all";
+function refresh() {
+  let np = 0, nf = 0, total = 0;
+  document.querySelectorAll(".item").forEach(d => {
+    total++;
+    const st = state[d.dataset.id] || "todo";
+    d.classList.toggle("pass", st === "pass");
+    d.classList.toggle("fail", st === "fail");
+    d.hidden = (filter !== "all" && st !== filter);
+    if (st === "pass") np++;
+    if (st === "fail") nf++;
+  });
+  document.querySelectorAll(".sec").forEach(s => {
+    const items = [...s.querySelectorAll(".item")];
+    const visible = items.some(d => !d.hidden);
+    s.hidden = !visible;
+    const done = items.filter(d => state[d.dataset.id]).length;
+    s.querySelector(".cnt").textContent = `${done}/${items.length}`;
+  });
+  document.getElementById("n-pass").textContent = np;
+  document.getElementById("n-fail").textContent = nf;
+  document.getElementById("n-todo").textContent = total - np - nf;
+  document.getElementById("n-all").textContent = total;
+  document.getElementById("bar-p").style.width = (np / total * 100) + "%";
+  document.getElementById("bar-f").style.width = (nf / total * 100) + "%";
+}
+
+/* filters */
+document.getElementById("chips").addEventListener("click", e => {
+  const b = e.target.closest("button[data-f]");
+  if (!b) return;
+  filter = b.dataset.f;
+  document.querySelectorAll("#chips button[data-f]").forEach(x => x.classList.toggle("on", x === b));
+  refresh();
+});
+
+/* two-step reset */
+const resetBtn = document.getElementById("reset");
+let armed = false, armTimer = 0;
+resetBtn.addEventListener("click", () => {
+  if (!armed) {
+    armed = true;
+    resetBtn.textContent = "确认清空全部进度？";
+    resetBtn.classList.add("arm");
+    armTimer = setTimeout(() => { armed = false; resetBtn.textContent = "重置进度"; resetBtn.classList.remove("arm"); }, 4000);
+    return;
+  }
+  clearTimeout(armTimer);
+  armed = false;
+  state = {};
+  save();
+  resetBtn.textContent = "重置进度";
+  resetBtn.classList.remove("arm");
+  refresh();
+  toast("进度已重置");
+});
+
+/* ───────────────────────── tabs ───────────────────────── */
+const tabL = document.getElementById("tab-list"), tabS = document.getElementById("tab-sql");
+const viewL = document.getElementById("view-list"), viewS = document.getElementById("view-sql");
+function showTab(sql) {
+  viewL.hidden = sql; viewS.hidden = !sql;
+  tabL.classList.toggle("on", !sql); tabS.classList.toggle("on", sql);
+}
+tabL.addEventListener("click", () => showTab(false));
+tabS.addEventListener("click", () => showTab(true));
+if (location.hash === "#sql") showTab(true);
+
+/* ───────────────────────── render SQL ───────────────────────── */
+const sqlRoot = document.getElementById("sqlblocks");
+for (const b of SQL_BLOCKS) {
+  const d = document.createElement("div");
+  d.className = "sqlblock";
+  const h = document.createElement("div");
+  h.className = "h";
+  const title = document.createElement("b");
+  title.textContent = b.name;
+  const spacer = document.createElement("span");
+  spacer.className = "note";
+  const btn = document.createElement("button");
+  btn.textContent = "复制";
+  h.append(title, spacer, btn);
+  const pre = document.createElement("pre");
+  pre.textContent = b.sql;
+  d.append(h, pre);
+  btn.addEventListener("click", () => copyText(b.sql, btn));
+  sqlRoot.appendChild(d);
+}
+document.getElementById("copy-all").addEventListener("click", (e) => {
+  const all = "-- Data Comparison 测试数据（Hive）\n-- 如需指定库先执行：USE cladata;\n\n"
+    + SQL_BLOCKS.slice(0, 6).map(b => "-- ── " + b.name + " ──\n" + b.sql).join("\n\n")
+    + "\n\n-- ── " + SQL_BLOCKS[6].name + " ──\n" + SQL_BLOCKS[6].sql.split("\n").map(l => "-- " + l).join("\n") + "\n";
+  copyText(all, e.target);
+});
+
+function copyText(text, btn) {
+  const done = () => {
+    toast("已复制到剪贴板");
+    if (btn) { const t = btn.textContent; btn.textContent = "已复制"; setTimeout(() => btn.textContent = t, 1500); }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.style.cssText = "position:fixed;left:-9999px;top:0";
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand("copy"); done(); } catch (e) { toast("复制失败，请手动选择文本"); }
+  document.body.removeChild(ta);
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+refresh();
+</script>
