@@ -954,6 +954,10 @@ def create_ui() -> gr.Blocks:
     with app.route("SQL Review", "/sqlreview"):
         render_sql_review_page(app)
 
+    with app.route("UI Testing", "/uitest"):
+        from .ui_testing.gradio_page import render_uitest_page
+        render_uitest_page(app)
+
     return app
 
 

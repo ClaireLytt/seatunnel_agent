@@ -37,7 +37,8 @@ def _snap(dc: DCPage, shots_dir: Path, case_id: str, tag: str) -> str | None:
         return None
 
 
-def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path) -> CaseResult:
+def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
+             app_log_tail_fn=lambda: "") -> CaseResult:
     # imported lazily so --no-llm never touches LLM config
     from .agent import run_ai_step
     from .asserts import run_assert
@@ -87,6 +88,15 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path) -> CaseResult:
         res.reason = f"{type(e).__name__}: {str(e)[:300]}"
         _snap(dc, shots_dir, case.id, "error")
     finally:
+        if res.verdict in ("FAIL", "ERROR") and llm is not None:
+            from .diagnose import diagnose
+            try:
+                digest = dc.digest()
+            except Exception:  # noqa: BLE001
+                digest = ""
+            attribution = diagnose(res, digest, app_log_tail_fn(), llm)
+            if attribution:
+                res.reason = f"{res.reason}  {attribution}"
         res.elapsed_ms = int((time.time() - t0) * 1000)
         res.tokens = (llm.tokens_used - tokens_before) if llm else 0
     return res
@@ -135,7 +145,8 @@ def run_suite(
                     cr = CaseResult(case.id, case.title, "SKIP",
                                     reason=_skip_reason(case, no_llm))
                 else:
-                    cr = run_case(case, dc, llm, shots_dir)
+                    cr = run_case(case, dc, llm, shots_dir,
+                                  app_log_tail_fn=app.log_tail)
                 rr.cases.append(cr)
                 if on_progress:
                     on_progress(i, len(cases), cr)

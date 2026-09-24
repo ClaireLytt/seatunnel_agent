@@ -87,6 +87,10 @@ def _expand_step(raw: Any, fixtures: dict[str, list[dict]],
         else:
             args = {"target": val}
 
+    # YAML 1.1 parses a bare `on:` key as boolean True — map it back
+    if True in args:
+        args["on"] = args.pop(True)
+
     if action not in KNOWN_ACTIONS:
         raise CaseLoadError(f"{ctx}: unknown action {action!r} "
                             f"(known: {sorted(KNOWN_ACTIONS)})")

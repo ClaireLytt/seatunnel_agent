@@ -153,7 +153,7 @@
     - click: 质量检查
     - wait_result: {}
   expect:
-    - text_contains: {in: 结果区, text: 未通过}
+    - text_contains: {in: 结果区, text: "77.78"}
     - ai_judge: >-
         质量检查结果中,B 侧 email 非空率约 77.8% 未通过 80% 阈值,
         且 B 侧 amount 存在超出 0-1000 范围的值(id=11 为 1500)。
@@ -169,8 +169,7 @@
     - click: 质量检查
     - wait_result: {}
   expect:
-    - text_contains: {in: 结果区, text: 通过}
-    - text_not_contains: {in: 结果区, text: 未通过}
+    - text_contains: {in: 结果区, text: "0 未通过"}
 
 - id: L1
   title: 水位线增量只对比新行

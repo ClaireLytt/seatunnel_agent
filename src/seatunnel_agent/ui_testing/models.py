@@ -48,6 +48,8 @@ class Assertion:
 
 @dataclass
 class TestCase:
+    __test__ = False        # not a pytest class despite the name
+
     id: str                            # matches the manual checklist: A1 / B3 / C3 ...
     title: str
     tags: list[str] = field(default_factory=list)   # smoke/full/hive/sqlite/slow/manual

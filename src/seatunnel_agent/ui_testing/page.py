@@ -166,14 +166,17 @@ class DCPage:
         raise LookupError(f"textbox not found: {name} (side={side})")
 
     def button(self, name: str, side: str | None = None) -> Locator:
+        """Action button by visible text.  Accordion headers are <button>
+        too and may carry the same text (e.g. 生成同步配置) — skip them."""
         scope = self._scope(side)
         for text in _texts(name):
-            loc = scope.locator(f"button:text-is('{text}')")
+            loc = scope.locator(
+                f"button:text-is('{text}'):not(.label-wrap)")
             if loc.count():
                 return loc.first
-        # accordion headers are <button> too but contain extra arrow spans
         for text in _texts(name):
-            loc = scope.locator(f"button:has-text('{text}')")
+            loc = scope.locator(
+                f"button:has-text('{text}'):not(.label-wrap)")
             if loc.count():
                 return loc.first
         raise LookupError(f"button not found: {name} (side={side})")
@@ -362,7 +365,10 @@ class DCPage:
         return self.page.locator(".st-main .st-schema-card").first
 
     def result_text(self) -> str:
-        return self.result_container().inner_text()
+        # text_content, not inner_text: result cards hold row previews in
+        # collapsed <details> which a user can expand — assertions must see
+        # that content too.
+        return self.result_container().text_content() or ""
 
     def result_html(self) -> str:
         return self.result_container().inner_html()

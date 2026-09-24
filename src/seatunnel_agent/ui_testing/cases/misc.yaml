@@ -37,7 +37,8 @@
     - click: 行数对比
     - wait_result: {}
     - click: 行数对比
-    - wait_result: {}
+    - wait: 3000
+      note: 第二次对比与第一次渲染完全相同的 HTML,变更等待不适用
     - open_accordion: 趋势
   steps:
     - click: 对比趋势
@@ -121,6 +122,7 @@
   tags: [full, sqlite]
   setup:
     - use: connect_a_sqlite
+    - select: {of: 选择表, value: dc_test_orders_a, side: A}
     - open_accordion: 上游依赖
     - fill: {血缘SQL: "INSERT INTO dm_sales SELECT o.id, u.name FROM dwd_orders o JOIN dim_user u ON o.uid = u.id"}
   steps:
@@ -179,7 +181,7 @@
     - click: 行数对比
     - wait_result: {}
   expect:
-    - text_contains: {in: 状态, side: A, text: Not connected}
+    - text_contains: {in: 结果区, text: Row Count}
     - text_contains: {in: 结果区, text: "10"}
   note: lang=en 时 runner 不切中文,页面保持默认英文
 
