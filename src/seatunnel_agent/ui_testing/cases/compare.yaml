@@ -54,6 +54,8 @@
   tags: [smoke, sqlite]
   setup:
     - use: select_orders
+    - fill: {主键列: id}
+      note: 无主键时按行位置对比只有增/删行,不产生"修改单元格"语义(见 E6)
   steps:
     - click: 样本数据
     - wait_result: {}
@@ -139,7 +141,8 @@
   expect:
     - ai_judge: >
         基于主键的对比结果应包含:B 侧缺失 id=9 和 id=10、B 侧多出 id=11、
-        id=3 与 id=5 被标记为修改行。
+        修改行包含 id=3(amount)与 id=5(status),另外 id=7 和 id=8 的
+        email 在 B 侧为 NULL 也会计为修改。
 
 - id: E3
   title: WHERE 过滤后只剩修改差异

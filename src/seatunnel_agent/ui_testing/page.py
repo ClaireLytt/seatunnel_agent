@@ -523,12 +523,17 @@ _DIGEST_JS = r"""
   });
   if (accs.length) lines.push('[ACCORDIONS] ' + accs.join(' | '));
 
-  // result area
+  // result area: visible text, plus the content of collapsed <details>
+  // previews (row data hides in there — the judge must see it)
   const res = document.querySelector('.st-main .st-schema-card');
   if (res) {
     let txt = res.innerText.replace(/\n{2,}/g, '\n').trim();
+    res.querySelectorAll('details:not([open])').forEach(d => {
+      const inner = (d.textContent || '').replace(/\s+/g, ' ').trim();
+      if (inner) txt += '\n[折叠预览] ' + inner;
+    });
     if (txt.length > maxResult) txt = txt.slice(0, maxResult) + ' …';
-    lines.push(`[RESULT ${res.innerText.length}chars] ` + txt);
+    lines.push(`[RESULT] ` + txt);
   }
   return lines.join('\n');
 }

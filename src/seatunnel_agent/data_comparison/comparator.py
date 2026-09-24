@@ -1124,50 +1124,45 @@ def parse_quality_rules(raw: str) -> list[QualityRule]:
 
 
 def check_quality_rules(
-    rules: list[QualityRule], profile: ProfileResult,
+    rules: list[QualityRule], profile: ProfileResult, side: str = "a",
 ) -> list[QualityResult]:
-    """Evaluate quality rules against profile data from Source A."""
+    """Evaluate quality rules against profile data from one side (a|b)."""
+    b = side.lower() == "b"
     results: list[QualityResult] = []
     item_map = {it.column.lower(): it for it in profile.items}
+
+    def _num(v) -> float:
+        try:
+            return float(v) if v is not None else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
     for rule in rules:
         item = item_map.get(rule.column.lower())
         if item is None:
             results.append(QualityResult(rule=rule, actual_value=0.0, passed=False))
             continue
         if rule.rule_type == "not_null_rate":
-            actual = 100.0 - item.null_rate_a
+            actual = 100.0 - (item.null_rate_b if b else item.null_rate_a)
             results.append(QualityResult(rule=rule, actual_value=actual,
                                          passed=actual >= rule.threshold))
         elif rule.rule_type == "unique_rate":
-            total = profile.total_a or 1
-            actual = item.distinct_a / total * 100.0
+            total = (profile.total_b if b else profile.total_a) or 1
+            actual = (item.distinct_b if b else item.distinct_a) / total * 100.0
             results.append(QualityResult(rule=rule, actual_value=actual,
                                          passed=actual >= rule.threshold))
         elif rule.rule_type == "min_value":
-            try:
-                actual = float(item.min_a) if item.min_a is not None else 0.0
-            except (TypeError, ValueError):
-                actual = 0.0
+            actual = _num(item.min_b if b else item.min_a)
             results.append(QualityResult(rule=rule, actual_value=actual,
                                          passed=actual >= rule.threshold))
         elif rule.rule_type == "max_value":
-            try:
-                actual = float(item.max_a) if item.max_a is not None else 0.0
-            except (TypeError, ValueError):
-                actual = 0.0
+            actual = _num(item.max_b if b else item.max_a)
             results.append(QualityResult(rule=rule, actual_value=actual,
                                          passed=actual <= rule.threshold))
         elif rule.rule_type == "value_range":
-            try:
-                lo = float(item.min_a) if item.min_a is not None else 0.0
-            except (TypeError, ValueError):
-                lo = 0.0
-            try:
-                hi = float(item.max_a) if item.max_a is not None else 0.0
-            except (TypeError, ValueError):
-                hi = 0.0
-            passed = (rule.min_val is None or lo >= rule.min_val) and \
-                     (rule.max_val is None or hi <= rule.max_val)
+            lo = _num(item.min_b if b else item.min_a)
+            hi = _num(item.max_b if b else item.max_a)
+            passed = (rule.min_val is None or lo >= rule.min_val) and                      (rule.max_val is None or hi <= rule.max_val)
             results.append(QualityResult(rule=rule, actual_value=lo,
                                          passed=passed))
         elif rule.rule_type == "expression":

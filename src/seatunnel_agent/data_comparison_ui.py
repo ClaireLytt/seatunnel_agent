@@ -640,8 +640,9 @@ def build_keyed_diff_card(result: KeyedDiffResult, lang: str = "en") -> str:
     return html
 
 
-def build_quality_card(results: list[QualityResult], lang: str = "en") -> str:
-    """Build HTML card for quality rule check results."""
+def build_quality_card(results: list[QualityResult], lang: str = "en",
+                       side_label: str = "") -> str:
+    """Build HTML card for quality rule check results (one card per side)."""
     t = lambda k: dc(lang, k)
     esc = _esc_html
 
@@ -674,7 +675,8 @@ def build_quality_card(results: list[QualityResult], lang: str = "en") -> str:
         '<details open style="border:1px solid #e0e7ff;border-radius:8px;padding:10px;'
         'background:#f8fafc;margin-bottom:8px;">'
         f'<summary style="font-weight:600;font-size:13px;color:#0891b2;cursor:pointer;">'
-        f'{t("dc_quality_result")} — {summary}</summary>'
+        f'{t("dc_quality_result")}'
+        f'{f" ({side_label})" if side_label else ""} — {summary}</summary>'
         f'<table style="width:100%;border-collapse:collapse;margin-top:8px;">'
         f'<tr><th {th}>{t("dc_column")}</th><th {th}>Rule</th>'
         f'<th {th}>Actual</th><th {th}>{t("dc_status")}</th></tr>'
@@ -2579,8 +2581,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             if not rules:
                 return dc(lang_val, "dc_quality_rules_hint")
             profile_result, _ = _profile_inner(table_a, table_b, lang_val, where_val)
-            results = check_quality_rules(rules, profile_result)
-            return build_quality_card(results, lang_val)
+            results_a = check_quality_rules(rules, profile_result, side="a")
+            results_b = check_quality_rules(rules, profile_result, side="b")
+            return (build_quality_card(results_a, lang_val, side_label="A")
+                    + build_quality_card(results_b, lang_val, side_label="B"))
         except Exception as e:
             return _error_html(lang_val, e)
 
