@@ -125,7 +125,7 @@ def test_file_changed_during_parse_never_caches_stale(sql_dir, cache_base, monke
     original = loaders._load_sql_script
     state = {"mutated": False}
 
-    def mutating(graph, sql_text, origin, store=None):
+    def mutating(graph, sql_text, origin, store=None, **kwargs):
         if not state["mutated"] and origin.endswith("a.sql"):
             state["mutated"] = True
             # 模拟解析期间文件被外部修改（读后写）
@@ -133,7 +133,7 @@ def test_file_changed_during_parse_never_caches_stale(sql_dir, cache_base, monke
                 "INSERT INTO dws.changed SELECT c FROM dwd.new_src;",
                 encoding="utf-8",
             )
-        return original(graph, sql_text, origin, store=store)
+        return original(graph, sql_text, origin, store=store, **kwargs)
 
     monkeypatch.setattr(loaders, "_load_sql_script", mutating)
     from_sql_dir(sql_dir, cache_base=cache_base)
