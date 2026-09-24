@@ -1,7 +1,8 @@
 # UI 测试 Agent 使用指南
 
 > 设计与 PRD 见 [ui_test_agent_design.md](ui_test_agent_design.md)。
-> 用例库与 `examples/dc_test_checklist.html` 的 75 项人工清单同源同编号。
+> 用例库与 `examples/dc_test_checklist.html` 的 75 项人工清单同源同编号;
+> SR 组用例额外覆盖 SQL Review 页(`/sqlreview`,纯静态审查路径)。
 
 ## 快速开始
 

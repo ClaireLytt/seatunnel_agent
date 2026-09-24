@@ -110,6 +110,20 @@ LABELS: dict[str, tuple[str, ...]] = {
     "加载报告":   ("加载报告", "Load Report"),
     "血缘SQL":    ("用于溯源的SQL语句（每行一条）",
                    "SQL statements to trace lineage from (one per line)"),
+    # ── SQL Review page (/sqlreview) ──
+    "SQL":        ("SQL",),
+    "开始审查":   ("开始审查", "Start Review"),
+    "生成修复 SQL": ("生成修复 SQL（LLM）", "Generate Fixed SQL (LLM)"),
+    "清空":       ("清空", "Clear"),
+    "下载报告":   ("下载报告（.md）", "Download Report (.md)"),
+    "SQL 方言":   ("SQL 方言", "SQL Dialect"),
+    "审查模式":   ("审查模式", "Review Mode"),
+    "表结构 DDL": ("表结构 DDL（可选，用于 schema 校验）",
+                   "Table DDL (optional, for schema checks)"),
+    "DDL 输入":   ("CREATE TABLE 语句", "CREATE TABLE statements"),
+    "审查规则":   ("规则配置（可选，.sqlreview.yaml 格式）",
+                   "Rule config (optional, .sqlreview.yaml format)"),
+    "规则输入":   ("YAML 规则", "YAML rules"),
 }
 
 
@@ -126,9 +140,16 @@ class DCPage:
 
     # ── navigation & regions ──
 
+    # per-route "page is ready" selector (default: body)
+    READY = {
+        "/datacompare": ".st-dc-sidebar",
+        "/sqlreview": "#sr-sql-box textarea",
+    }
+
     def goto(self, path: str = "/datacompare") -> None:
         self.page.goto(self.base + path, wait_until="domcontentloaded")
-        self.page.wait_for_selector(".st-dc-sidebar", timeout=20_000)
+        self.page.wait_for_selector(self.READY.get(path, "body"),
+                                    timeout=20_000)
 
     def _panel(self, side: str | None) -> Locator:
         """A/B connection panel; None = whole page.
@@ -318,7 +339,7 @@ class DCPage:
         """Expand an accordion if it's collapsed (idempotent)."""
         for text in _texts(name):
             hdr = self.page.locator(
-                f".st-dc-sidebar button:has-text('{text}')")
+                f"button.label-wrap:has-text('{text}'), button:has-text('{text}'):has(.icon)")
             for i in range(hdr.count()):
                 h = hdr.nth(i)
                 cls = h.get_attribute("class") or ""
@@ -330,7 +351,7 @@ class DCPage:
         # fallback: first matching header-ish button
         for text in _texts(name):
             hdr = self.page.locator(
-                f".st-dc-sidebar .label-wrap:has-text('{text}')")
+                f".label-wrap:has-text('{text}')")
             if hdr.count():
                 cls = hdr.first.get_attribute("class") or ""
                 if "open" not in cls:
@@ -362,7 +383,11 @@ class DCPage:
         return self.status_text(side)
 
     def result_container(self) -> Locator:
-        return self.page.locator(".st-main .st-schema-card").first
+        # data comparison result card; falls back to the SQL review report
+        loc = self.page.locator(".st-main .st-schema-card")
+        if loc.count():
+            return loc.first
+        return self.page.locator(".sr-report-card").last
 
     def result_text(self) -> str:
         # text_content, not inner_text: result cards hold row previews in
@@ -407,12 +432,15 @@ class DCPage:
             arg={"el": handle}, timeout=timeout_ms)
 
     def set_language(self, lang: str = "中文") -> None:
-        """Switch UI language via the top-right dropdown."""
+        """Switch UI language via the top-right dropdown.
+
+        The data comparison page marks it .st-lang-dd; the SQL review page
+        renders it as the first bare combobox on the page."""
         dd = self.page.locator(".st-lang-dd input")
+        if not dd.count():
+            dd = self.page.locator("input[role='combobox']")
         dd.first.click()
-        item = self.page.locator(f"ul[role='listbox'] li:text-is('{lang}')")
-        item.first.wait_for(state="visible", timeout=5_000)
-        item.first.click()
+        self._pick_listbox_item(lang)
         self.page.wait_for_timeout(600)          # i18n re-render
 
     # ── element state (for visible/hidden asserts) ──
