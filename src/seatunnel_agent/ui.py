@@ -904,9 +904,9 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 """Pre-import LLM SDK so the first chat doesn't pay the cost."""
                 try:
                     if s.llm_provider == "anthropic":
-                        import anthropic
+                        import anthropic  # noqa: F401
                     else:
-                        import openai
+                        import openai  # noqa: F401
                 except Exception:
                     pass
 

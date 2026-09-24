@@ -5,7 +5,6 @@ from typing import Any, Callable
 
 from rich.console import Console
 from rich.panel import Panel
-from rich.text import Text
 
 from .config import Settings
 from .context import truncate_messages

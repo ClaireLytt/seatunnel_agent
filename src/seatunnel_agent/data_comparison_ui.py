@@ -39,7 +39,6 @@ from .data_comparison.comparator import (
     CustomAggResult,
     KeyedDiffResult,
     PartitionResult,
-    ProfileItem,
     ProfileResult,
     QualityResult,
     RowCountResult,
@@ -64,7 +63,6 @@ from .data_comparison.comparator import (
     build_row_count_result,
     build_sample_sql,
     build_trend_data,
-    check_aggregate_threshold,
     check_quality_rules,
     check_row_count_threshold,
     compare_aggregates,
@@ -87,9 +85,7 @@ from .data_comparison.comparator import (
     parse_threshold,
     run_parallel,
     ReportDiff,
-    ReportDiffItem,
     diff_reports,
-    build_expression_check_sql,
     get_upstream_tables,
 )
 from .data_comparison.i18n import dc
@@ -602,9 +598,7 @@ def build_keyed_diff_card(result: KeyedDiffResult, lang: str = "en") -> str:
         for mr in result.modified[:50]:
             if mr.row_a is not None or mr.row_b is not None:
                 key_str = _esc_html(str(mr.key))
-                detail_th = 'style="padding:2px 6px;text-align:left;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:600;"'
                 detail_td = 'style="padding:2px 6px;font-size:10px;border-bottom:1px solid #f3f4f6;"'
-                cols = result.key_columns if result.key_columns else []
                 row_a_vals = mr.row_a if mr.row_a else ()
                 row_b_vals = mr.row_b if mr.row_b else ()
                 html += (
@@ -1820,7 +1814,6 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 lambda: ex_a.describe_table(table_a),
                 lambda: ex_b.describe_table(table_b),
             )
-            names_a = {c.name.lower() for c in desc_a.columns}
             names_b = {c.name.lower() for c in desc_b.columns}
             cols = [c.name for c in desc_a.columns if c.name.lower() in names_b][:_MAX_AGG_COLUMNS]
         if not cols:
@@ -2291,7 +2284,6 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 return dc(lang_val, "dc_connect_both")
             tables_a = list(holder["tables_a"])
             tables_b = list(holder["tables_b"])
-            ex_a, ex_b = holder["executor_a"], holder["executor_b"]
 
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
@@ -2879,8 +2871,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                        elem_classes=["st-connect-btn"])
                     status_a = gr.Textbox(label=t("dc_status"), value=t("dc_not_connected"),
                                           interactive=False, elem_classes=["st-sidebar-status"])
-                    search_a = gr.Textbox(show_label=False, placeholder=t("dc_search_tables"),
-                                          elem_classes=["st-sidebar-control"])
+                    search_a = gr.Textbox(show_label=False, lines=1,
+                                          placeholder=t("dc_search_tables"),
+                                          elem_classes=["st-table-search"])
                     table_a = gr.Dropdown(choices=[], label=t("dc_select_table"),
                                           elem_classes=["st-sidebar-control"])
 
@@ -2904,8 +2897,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                        elem_classes=["st-connect-btn"])
                     status_b = gr.Textbox(label=t("dc_status"), value=t("dc_not_connected"),
                                           interactive=False, elem_classes=["st-sidebar-status"])
-                    search_b = gr.Textbox(show_label=False, placeholder=t("dc_search_tables"),
-                                          elem_classes=["st-sidebar-control"])
+                    search_b = gr.Textbox(show_label=False, lines=1,
+                                          placeholder=t("dc_search_tables"),
+                                          elem_classes=["st-table-search"])
                     table_b = gr.Dropdown(choices=[], label=t("dc_select_table"),
                                           elem_classes=["st-sidebar-control"])
 
@@ -3602,3 +3596,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             lineage_accordion, lineage_sql_input, lineage_btn,
         ],
     )
+
+    if app is not None:
+        # Tab on an empty input fills in the gray placeholder (shared with text2sql)
+        tab_fill_js = (Path(__file__).resolve().parent / "text2sql" / "resources"
+                       / "tab_fill.js").read_text(encoding="utf-8")
+        app.load(fn=None, js=tab_fill_js)

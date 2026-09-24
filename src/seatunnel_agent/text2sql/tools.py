@@ -21,7 +21,6 @@ from .executor import (
     QueryResult,
     create_executor,
 )
-from .exporter import export_csv
 from .matcher import match_tables
 from .partition import classify_table, has_partition_filter
 from .qlog import QueryLogger
