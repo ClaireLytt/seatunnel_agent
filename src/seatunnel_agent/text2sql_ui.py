@@ -2148,9 +2148,18 @@ def render_text2sql_page(app=None) -> None:
             return f"✅ {t('select_tables').format(n=total)}"
         return f"✅ {t('filtered_tables').format(n=n)}"
 
-    def _switch_lang(choice, cur_selected):
+    def _switch_lang(choice, cur_selected, status_cur):
         lang = "zh" if choice == "中文" else "en"
         t = lambda k: _t2s(lang, k)
+
+        def _status_update():
+            # Translate the pristine "Not connected" placeholder; leave any
+            # real connection status (runtime info) untouched.
+            pristine = {_t2s("en", "status_default"), _t2s("zh", "status_default")}
+            if (status_cur or "").strip() in pristine:
+                return gr.update(label=t("status_label"),
+                                 value=t("status_default"))
+            return gr.update(label=t("status_label"))
         full = holder.get("full_store")
         n = len(full) if full else 0
         sel_names = set()
@@ -2168,7 +2177,7 @@ def render_text2sql_page(app=None) -> None:
             gr.update(label=t("username")),
             gr.update(label=t("password")),
             gr.update(value=t("connect")),
-            gr.update(label=t("status_label")),
+            _status_update(),
             gr.update(value=t("new_chat")),
             gr.update(value=t("history")),
             gr.update(placeholder=t("input_placeholder")),
@@ -2195,7 +2204,7 @@ def render_text2sql_page(app=None) -> None:
 
     lang_dd.change(
         fn=_switch_lang,
-        inputs=[lang_dd, table_filter],
+        inputs=[lang_dd, table_filter, status_box],
         outputs=[
             lang_state,
             sidebar_title,

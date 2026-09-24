@@ -623,6 +623,60 @@ def test_join_key_unknown_table_not_flagged():
     assert not _cats(lint_sql(sql, "hive", store=_type_check_store()), "join_condition")
 
 
+def _part_store():
+    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+    ddl = """
+    create table ods.user_log (
+      user_id bigint comment 'id',
+      amount double comment ''
+    ) partitioned by (dt string comment '');
+    """
+    return SchemaStore(parse_ddl(ddl))
+
+
+def test_partition_func_filter_flagged_on_batch():
+    sql = "select user_id from ods.user_log where substr(dt,1,7) = '2024-06'"
+    found = [f for f in lint_sql(sql, "hive") if f.key == "partition_func_on_col"]
+    assert found and "SUBSTR" in found[0].description
+
+
+def test_partition_func_filter_quiet_on_oltp_and_select_list():
+    sql = "select user_id from t where substr(dt,1,7) = '2024-06'"
+    assert not [f for f in lint_sql(sql, "mysql") if f.key == "partition_func_on_col"]
+    sql2 = "select substr(dt,1,7) from ods.user_log where dt = '2024-06-01'"
+    assert not [f for f in lint_sql(sql2, "hive") if f.key == "partition_func_on_col"]
+
+
+def test_partition_func_filter_in_predicate_not_function():
+    sql = "select 1 from ods.user_log where dt in ('2024-06-01','2024-06-02')"
+    assert not [f for f in lint_sql(sql, "hive") if f.key == "partition_func_on_col"]
+
+
+def test_ddl_partitioned_table_missing_filter_flagged():
+    sql = "select user_id from ods.user_log where amount > 10"
+    found = [f for f in lint_sql(sql, "hive", store=_part_store())
+             if f.key == "partition_missing"]
+    assert found and "user_log" in found[0].description
+
+
+def test_ddl_partitioned_table_with_filter_clean():
+    sql = "select user_id from ods.user_log where dt = '2024-06-01'"
+    assert not [f for f in lint_sql(sql, "hive", store=_part_store())
+                if f.key == "partition_missing"]
+
+
+def test_ddl_partition_check_skips_suffix_tables():
+    # *_di tables stay with the name-suffix rule — exactly one finding
+    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+    store = SchemaStore(parse_ddl(
+        "create table zz.orders_di (id bigint comment '') "
+        "partitioned by (pt string comment '');"))
+    sql = "select id from zz.orders_di"
+    found = [f for f in lint_sql(sql, "hive", store=store)
+             if f.key == "partition_missing"]
+    assert len(found) == 1
+
+
 def test_is_known_dialect():
     assert is_known_dialect("hive")
     assert is_known_dialect("ODPS")
