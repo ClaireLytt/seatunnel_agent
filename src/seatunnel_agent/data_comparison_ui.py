@@ -1496,28 +1496,6 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         return (status, gr.update(choices=tables, value=None),
                 host_upd, port_upd, gr.update(value=cfg.database))
 
-    # ── Table search filter (G) ──
-
-    def _filter_tables(search_text, current, lang_val, side):
-        with holder_lock:
-            all_tables = list(holder[f"tables_{side}"])
-        q = (search_text or "").strip().lower()
-        base_label = dc(lang_val, "dc_select_table")
-        if not q:
-            value = current if current in all_tables else None
-            return gr.update(choices=all_tables, value=value, label=base_label)
-        filtered = [t for t in all_tables if q in t.lower()]
-        # Visible feedback while typing: match count in the label, and
-        # auto-select when exactly one table matches.
-        if len(filtered) == 1:
-            value = filtered[0]
-        else:
-            # Keep the current selection when it survives the filter;
-            # Gradio silently wipes the value otherwise.
-            value = current if current in filtered else None
-        label = f"{base_label} ({len(filtered)}/{len(all_tables)})"
-        return gr.update(choices=filtered, value=value, label=label)
-
     # ── Inner comparison logic (no validation — used by both single + all) ──
 
     def _snap_executors():
@@ -2871,10 +2849,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                        elem_classes=["st-connect-btn"])
                     status_a = gr.Textbox(label=t("dc_status"), value=t("dc_not_connected"),
                                           interactive=False, elem_classes=["st-sidebar-status"])
-                    search_a = gr.Textbox(show_label=False, lines=1,
-                                          placeholder=t("dc_search_tables"),
-                                          elem_classes=["st-table-search"])
                     table_a = gr.Dropdown(choices=[], label=t("dc_select_table"),
+                                          filterable=True,
                                           elem_classes=["st-sidebar-control"])
 
                 # Source B panel
@@ -2897,10 +2873,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                        elem_classes=["st-connect-btn"])
                     status_b = gr.Textbox(label=t("dc_status"), value=t("dc_not_connected"),
                                           interactive=False, elem_classes=["st-sidebar-status"])
-                    search_b = gr.Textbox(show_label=False, lines=1,
-                                          placeholder=t("dc_search_tables"),
-                                          elem_classes=["st-table-search"])
                     table_b = gr.Dropdown(choices=[], label=t("dc_select_table"),
+                                          filterable=True,
                                           elem_classes=["st-sidebar-control"])
 
             # Connection presets (A)
@@ -3202,16 +3176,6 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         outputs=[status_b, table_b, host_b, port_b, db_b],
     )
 
-    # G — Table search filters
-    # Bind both events: .input fires on typed insertions, .change on
-    # deletions/programmatic clears — neither alone covers everything in
-    # this Gradio version. The handler is idempotent, double-fires are fine.
-    for _ev in ("input", "change"):
-        getattr(search_a, _ev)(fn=lambda s, cur, lg: _filter_tables(s, cur, lg, "a"),
-                               inputs=[search_a, table_a, lang_state], outputs=[table_a])
-        getattr(search_b, _ev)(fn=lambda s, cur, lg: _filter_tables(s, cur, lg, "b"),
-                               inputs=[search_b, table_b, lang_state], outputs=[table_b])
-
     # Strategy change — show/hide stratified column input
     sample_strategy.change(
         fn=lambda s: gr.update(visible=(s == "STRATIFIED")),
@@ -3440,8 +3404,6 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(value=t_fn("dc_connect")),                        # conn_b
             gr.update(label=t_fn("dc_status")),                         # status_a
             gr.update(label=t_fn("dc_status")),                         # status_b
-            gr.update(placeholder=t_fn("dc_search_tables")),            # search_a
-            gr.update(placeholder=t_fn("dc_search_tables")),            # search_b
             gr.update(label=t_fn("dc_select_table")),                   # table_a
             gr.update(label=t_fn("dc_select_table")),                   # table_b
             gr.update(label=t_fn("dc_where_clause"),
@@ -3556,7 +3518,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             ds_a, ds_b, host_a, host_b, port_a, port_b, db_a, db_b,
             user_a, user_b, pwd_a, pwd_b,
             conn_a, conn_b, status_a, status_b,
-            search_a, search_b, table_a, table_b,
+            table_a, table_b,
             where_input, key_input,
             schema_btn, count_btn, sample_btn, agg_btn,
             all_btn, batch_btn, profile_btn,

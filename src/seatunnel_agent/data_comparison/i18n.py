@@ -104,7 +104,6 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_loaded": "Report loaded",
         "dc_no_reports": "No saved reports",
         # I — table search
-        "dc_search_tables": "Search tables...",
         # J — progress
         "dc_comparing_table": "Comparing {name}...",
         # K — report viewer
@@ -366,7 +365,6 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_loaded": "报告已加载",
         "dc_no_reports": "无已保存报告",
         # I — table search
-        "dc_search_tables": "搜索表名...",
         # J — progress
         "dc_comparing_table": "正在对比 {name}...",
         # K — report viewer
