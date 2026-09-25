@@ -8,6 +8,7 @@ from rich.console import Console
 
 from . import __version__
 from .sql_review.linter import DIALECTS as REVIEW_DIALECTS
+from .sql_transpile import DIALECTS as TRANSPILE_DIALECTS
 
 console = Console()
 
@@ -159,7 +160,7 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
 @click.option("--port", "-p", type=int, default=7860, help="Port for the web UI")
 @click.option("--host", "-h", type=str, default="127.0.0.1", help="Host to bind (0.0.0.0 for LAN access)")
 @click.option("--share", is_flag=True, help="Create a public Gradio link")
-@click.option("--api", is_flag=True, help="Enable REST API endpoints at /api/text2sql/ and /api/sql_review/")
+@click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/)")
 def ui(port: int, host: str, share: bool, api: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     try:
@@ -1058,6 +1059,129 @@ def _write_output(path: str, content: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(content, encoding="utf-8")
     console.print(f"[dim]Result saved to {path}[/dim]")
+
+
+@cli.command()
+@click.argument("paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--sql", "-s", type=str, default=None, help="Inline SQL text to translate")
+@click.option("--from", "-f", "src_dialect", type=click.Choice(list(TRANSPILE_DIALECTS)),
+              default=None, help="Source dialect (inferred when omitted)")
+@click.option("--to", "-t", "dst_dialect", type=click.Choice(list(TRANSPILE_DIALECTS)),
+              required=True, help="Target dialect")
+@click.option("--dir", "-D", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="Translate every *.sql under this directory")
+@click.option("--out", "-o", "out_dir", type=click.Path(), default=None,
+              help="Output file (single input) or mirrored output directory (--dir)")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              help="Report language")
+@click.option("--no-llm", is_flag=True, help="Skip LLM advice (deterministic only)")
+@click.option("--fail-on", type=click.Choice(["error", "warn"]), default=None,
+              help="Exit non-zero when findings at/above this level exist (CI gate)")
+@click.pass_context
+def transpile(
+    ctx: click.Context,
+    paths: tuple[str, ...],
+    sql: str | None,
+    src_dialect: str | None,
+    dst_dialect: str,
+    directory: str | None,
+    out_dir: str | None,
+    fmt: str,
+    lang: str,
+    no_llm: bool,
+    fail_on: str | None,
+) -> None:
+    """SQL 方言翻译 — hive/spark/doris/starrocks 互转，输出不兼容点清单。
+
+    PATHS: optional *.sql files to translate."""
+    import json as _json
+    from pathlib import Path
+
+    from .sql_transpile import (
+        batch_to_dict, render_batch_markdown, render_markdown,
+        result_to_dict, translate, transpile_dir,
+    )
+    from .sql_transpile.transpiler import LEVELS
+
+    verbose = ctx.obj.get("verbose", False)
+    machine = fmt == "json"
+
+    def _gate(worst: str | None) -> None:
+        if fail_on and worst and LEVELS.index(worst) <= LEVELS.index(fail_on):
+            sys.exit(1)
+
+    try:
+        # ── batch: --dir ──
+        if directory:
+            batch = transpile_dir(directory, dst=dst_dialect, src=src_dialect,
+                                  out_dir=out_dir)
+            if machine:
+                print(_json.dumps(batch_to_dict(batch, lang),
+                                  ensure_ascii=False, indent=2))
+            else:
+                console.print(render_batch_markdown(batch, lang))
+            _gate(batch.worst_level())
+            return
+
+        # ── single/multi source: --sql / positional files ──
+        sources: list[tuple[str, str]] = []
+        if sql:
+            sources.append(("<inline>", sql))
+        for raw in paths:
+            p = Path(raw)
+            if p.is_dir():
+                raise click.UsageError(
+                    f"'{raw}' is a directory — use --dir for batch mode")
+            sources.append((str(p), p.read_text(encoding="utf-8")))
+        if not sources:
+            raise click.UsageError(
+                "Provide SQL via --sql, positional *.sql files, or --dir")
+
+        worst: str | None = None
+        json_out: list[dict] = []
+        for label, text in sources:
+            result = translate(text, dst=dst_dialect, src=src_dialect)
+            w = result.worst_level()
+            if w and (worst is None or LEVELS.index(w) < LEVELS.index(worst)):
+                worst = w
+            if machine:
+                json_out.append({"path": label, **result_to_dict(result, lang)})
+                continue
+            if len(sources) > 1:
+                console.print(f"[bold]== {label} ==[/bold]")
+            console.print(render_markdown(result, lang))
+            if out_dir and len(sources) == 1:
+                Path(out_dir).write_text(result.output_script(),
+                                         encoding="utf-8")
+                console.print(f"[dim]Translated SQL saved to {out_dir}[/dim]")
+            # LLM advice (single source only; strictly additive)
+            if not no_llm and len(sources) == 1:
+                try:
+                    from .config import load_settings
+                    from .sql_transpile.advisor import (
+                        advisable_issues, generate_advice)
+                    if advisable_issues(result):
+                        if ctx.obj.get("model"):
+                            os.environ["MODEL_NAME"] = ctx.obj["model"]
+                        if ctx.obj.get("provider"):
+                            os.environ["LLM_PROVIDER"] = ctx.obj["provider"]
+                        settings = load_settings()
+                        advice = generate_advice(settings, result, lang)
+                        if advice:
+                            console.print("\n[bold]LLM 建议 (llm-generated)"
+                                          "[/bold]\n" + advice)
+                except RuntimeError:
+                    pass  # no API key configured — deterministic result stands
+        if machine:
+            payload = json_out[0] if len(json_out) == 1 else json_out
+            print(_json.dumps(payload, ensure_ascii=False, indent=2))
+        _gate(worst)
+    except ValueError as e:
+        raise click.UsageError(str(e))
+    except Exception as e:  # noqa: BLE001 — uniform CLI error handling
+        _handle_error(e, verbose)
 
 
 def _handle_error(e: Exception, verbose: bool) -> None:

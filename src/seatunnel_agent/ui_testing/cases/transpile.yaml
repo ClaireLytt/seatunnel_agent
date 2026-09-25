@@ -1,0 +1,99 @@
+# TRP 组 · SQL 方言翻译页 (/transpile)。纯确定性 (sqlglot)，不连接数据库；
+# 演示数据 examples/transpile_demo: 6 文件 = 全自动 3 / 需人工 2 / 失败 1。
+
+- id: TRP1
+  title: 单条 hive→doris 翻译
+  tags: [smoke, sqlite]
+  page: /transpile
+  steps:
+    - select: {of: 源方言, value: hive}
+    - select: {of: 目标方言, value: doris}
+    - fill: {SQL 输入: "SELECT get_json_object(p,'$.a') AS a FROM t"}
+    - click: 翻译
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: JSON_EXTRACT}
+    - text_contains: {in: 结果区, text: 全自动 1}
+
+- id: TRP2
+  title: 未知 UDF 进入不兼容清单
+  tags: [smoke, sqlite]
+  page: /transpile
+  steps:
+    - select: {of: 源方言, value: hive}
+    - select: {of: 目标方言, value: doris}
+    - fill: {SQL 输入: "SELECT my_udf(a) FROM t"}
+    - click: 翻译
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 未知函数 my_udf}
+    - text_contains: {in: 结果区, text: 需人工 1}
+
+- id: TRP3
+  title: 非法 SQL 报错不崩溃
+  tags: [full, sqlite]
+  page: /transpile
+  steps:
+    - select: {of: 源方言, value: hive}
+    - select: {of: 目标方言, value: doris}
+    - fill: {SQL 输入: "SELECT FROM WHERE"}
+    - click: 翻译
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 无法解析}
+    - text_not_contains: {in: 页面, text: Traceback}
+    - visible: {target: 翻译}
+
+- id: TRP4
+  title: 切换目标方言重新翻译
+  tags: [full, sqlite]
+  page: /transpile
+  setup:
+    - select: {of: 源方言, value: hive}
+    - select: {of: 目标方言, value: doris}
+    - fill: {SQL 输入: "SELECT get_json_object(p,'$.a') AS a FROM t"}
+    - click: 翻译
+    - wait_result: {}
+  steps:
+    - select: {of: 目标方言, value: starrocks}
+    - click: 翻译
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: hive → starrocks}
+    - text_not_contains: {in: 结果区, text: hive → doris}
+
+- id: TRP5
+  title: 批量翻译演示目录统计正确
+  tags: [full, sqlite]
+  page: /transpile
+  steps:
+    - select: {of: 源方言, value: hive}
+    - select: {of: 目标方言, value: doris}
+    - open_accordion: {target: 批量翻译目录}
+    - fill: {SQL 目录: examples/transpile_demo}
+    - click: 批量翻译
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 文件 6}
+    - text_contains: {in: 结果区, text: 06_broken.sql}
+
+- id: TRP6
+  title: LLM 建议内容合理
+  tags: [full, sqlite]
+  page: /transpile
+  setup:
+    - select: {of: 源方言, value: hive}
+    - select: {of: 目标方言, value: doris}
+    - fill: {SQL 输入: "SELECT decrypt_phone(p) FROM t"}
+    - click: 翻译
+    - wait_result: {}
+  steps:
+    - open_accordion: {target: "LLM 建议（可选，llm-generated）"}
+    - click: 生成 LLM 建议
+    - wait: 20000
+      note: LLM 调用无结果区变化信号，固定等待
+  expect:
+    - ai_judge: >-
+        LLM 建议区应针对未知函数 decrypt_phone 给出 Doris 侧的处理建议
+        （说明无内置等价函数、建议注册 UDF 或用近似函数替代），
+        且不得声称翻译已自动完成。
