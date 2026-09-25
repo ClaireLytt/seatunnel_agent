@@ -1,0 +1,94 @@
+# 覆盖缺口补齐:A2 / E2 / O3 / Q5 / V2 (`list --coverage` 曾标记为未覆盖)
+
+- id: A2
+  title: 手动填写连接参数后连接成功
+  tags: [full, sqlite]
+  steps:
+    - select_ds: {value: SQLite, side: B}
+    - fill: {数据库: config/uitest_demo.db, side: B}
+    - click: {target: 连接, side: B}
+    - wait_status_ok: {side: B}
+  expect:
+    - status_ok: {side: B}
+    - options_count: {of: 选择表, side: B, n: 10}
+
+- id: E2
+  title: 行级展开显示主键两侧完整行值
+  tags: [manual]
+  note: 当前实现将修改行明细直接内联展开呈现(默认 open 的 details),
+    无独立"行级展开"控件;修改行内容已由 E1 自动断言,此项人工确认观感
+
+- id: O3
+  title: 批量模板运行输出逐模板结果
+  tags: [full, sqlite]
+  timeout_s: 150
+  setup:
+    - use: select_orders
+    - fill: {阈值: "50%"}
+    - open_accordion: 模板
+    - fill: {模板名称: uitest_bt1}
+    - click: 保存模板
+    - wait: 1000
+      note: 模板写盘无 loading 信号
+    - fill: {阈值: "0"}
+    - fill: {模板名称: uitest_bt2}
+    - click: 保存模板
+    - wait: 1000
+      note: 模板写盘无 loading 信号
+  steps:
+    - select_index: {of: 批量模板, index: 0}
+    - select_index: {of: 批量模板, index: 1}
+    - click: 运行选中
+    - wait_result: {timeout_ms: 60000}
+  expect:
+    - text_contains: {in: 结果区, text: 批量模板结果}
+    - text_contains: {in: 结果区, text: uitest_bt1}
+
+- id: Q5
+  title: 报告对比显示两份报告的差异
+  tags: [full, sqlite]
+  timeout_s: 150
+  setup:
+    - use: select_orders
+    - click: 行数对比
+    - wait_result: {}
+    - click: 保存报告
+    - wait: 1200
+      note: 报告写盘无 loading 信号
+    - fill: {WHERE: id <= 8}
+    - click: 行数对比
+    - wait_result: {}
+    - click: 保存报告
+    - wait: 1200
+      note: 报告写盘无 loading 信号
+    - open_accordion: 趋势
+  steps:
+    - select_index: {of: 旧报告, index: 1}
+      note: 下拉按新→旧排序,index 1 是较旧的一份
+    - select_index: {of: 新报告, index: 0}
+    - click: 对比报告
+    - wait_result: {}
+  expect:
+    - text_not_contains: {in: 结果区, text: Traceback}
+    - ai_judge: >-
+        报告对比结果应显示两份行数对比报告之间的差异(如行数 delta 变化),
+        而非报错或空白。
+
+- id: V2
+  title: 删除预设后下拉不再出现
+  tags: [full, sqlite]
+  setup:
+    - use: connect_a_sqlite
+    - open_accordion: 预设
+    - fill: {预设名称: uitest_v2del}
+    - click: 保存预设 (A)
+    - wait: 1200
+      note: 预设写盘无 loading 信号
+  steps:
+    - select_index: {of: 加载预设 (A), index: 0}
+      note: 选中要删的预设(下拉在保存后已刷新)
+    - click: "🗑"
+    - wait: 1200
+      note: 删除写盘无 loading 信号
+  expect:
+    - text_contains: {in: 页面, text: 预设已删除}

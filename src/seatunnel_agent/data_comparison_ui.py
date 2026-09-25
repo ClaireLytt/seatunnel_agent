@@ -2940,6 +2940,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                                elem_classes=["st-sidebar-control"])
                     preset_dd_b = gr.Dropdown(choices=[], label=f"{t('dc_preset_load')} (B)",
                                                elem_classes=["st-sidebar-control"])
+                    preset_delete_btn = gr.Button("🗑", size="sm",
+                                                   elem_classes=["st-connect-btn"])
                 preset_status = gr.HTML("")
 
             # D — WHERE filter
@@ -3381,15 +3383,37 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                       outputs=[result_html])
 
     # A — Presets
+    def _save_and_refresh(name, ds_label, host, port, db, user, pwd, env_val,
+                          lang_val):
+        status = _save_preset(name, ds_label, host, port, db, user, pwd,
+                              env_val, lang_val)
+        dd_a, dd_b = _refresh_presets()
+        return status, dd_a, dd_b
+
     preset_save_btn.click(
-        fn=_save_preset,
+        fn=_save_and_refresh,
         inputs=[preset_name_input, ds_a, host_a, port_a, db_a, user_a, pwd_a, preset_env_input, lang_state],
-        outputs=[preset_status],
+        outputs=[preset_status, preset_dd_a, preset_dd_b],
     )
     preset_save_b_btn.click(
-        fn=_save_preset,
+        fn=_save_and_refresh,
         inputs=[preset_name_input, ds_b, host_b, port_b, db_b, user_b, pwd_b, preset_env_input, lang_state],
-        outputs=[preset_status],
+        outputs=[preset_status, preset_dd_a, preset_dd_b],
+    )
+    # populate the load dropdowns when the accordion opens (presets saved in
+    # earlier sessions were otherwise never listed — _refresh_presets had no
+    # caller at all)
+    presets_accordion.expand(
+        fn=_refresh_presets, outputs=[preset_dd_a, preset_dd_b])
+    def _delete_and_refresh(name, lang_val):
+        status = _delete_preset(name, lang_val)
+        dd_a, dd_b = _refresh_presets()
+        return status, dd_a, dd_b
+
+    preset_delete_btn.click(
+        fn=_delete_and_refresh,
+        inputs=[preset_dd_a, lang_state],
+        outputs=[preset_status, preset_dd_a, preset_dd_b],
     )
     preset_dd_a.change(fn=_load_preset, inputs=[preset_dd_a, lang_state],
                        outputs=[ds_a, host_a, port_a, db_a, user_a, pwd_a, preset_env_input])

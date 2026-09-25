@@ -133,7 +133,7 @@
     - text_contains: {in: 结果区, text: dim_user}
 
 - id: V1
-  title: 保存预设后可从下拉加载
+  title: 保存预设后加载回填连接参数
   tags: [full, sqlite]
   setup:
     - use: connect_a_sqlite
@@ -143,8 +143,13 @@
     - click: 保存预设 (A)
     - wait: 1200
       note: 预设写盘无 loading 信号
+    - clear: {target: 数据库, side: A}
+    - select_index: {of: 加载预设 (A), index: 0}
+    - wait: 1200
+      note: 预设回填走 change 回调
   expect:
     - text_contains: {in: 页面, text: 预设已保存}
+    - value_is: {of: 数据库, side: A, value: config/uitest_demo.db}
 
 - id: V3
   title: 保存模板后提示已保存

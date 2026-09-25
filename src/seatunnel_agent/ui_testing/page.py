@@ -326,6 +326,23 @@ class DCPage:
         self._pick_listbox_item(str(value))
         self.page.wait_for_timeout(200)
 
+    def dropdown_select_index(self, name: str, index: int,
+                              side: str | None = None) -> str:
+        """Pick the nth (0-based) option — for dropdowns whose option texts
+        are dynamic (e.g. timestamped report files).  Returns the text."""
+        inp = self.dropdown_input(name, side)
+        inp.click()
+        items = self.page.locator("ul[role='listbox'] li")
+        items.first.wait_for(state="visible", timeout=5_000)
+        n = items.count()
+        if index >= n:
+            raise LookupError(f"dropdown '{name}' has {n} options, "
+                              f"index {index} out of range")
+        text = items.nth(index).inner_text().strip().lstrip("✓").strip()
+        items.nth(index).click()
+        self.page.wait_for_timeout(200)
+        return text
+
     def select_table(self, value: str, side: str = "A") -> None:
         self.dropdown_select("选择表", value, side)
 

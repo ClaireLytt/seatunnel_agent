@@ -68,6 +68,11 @@ def _dispatch(step: Step, dc: DCPage) -> str:
         dc.dropdown_select(name, str(value), side)
         return f"selected {value!r} in '{name}'"
 
+    if a == "select_index":
+        text = dc.dropdown_select_index(
+            args.get("of", "选择表"), int(args.get("index", 0)), side)
+        return f"selected option[{args.get('index', 0)}] = {text!r}"
+
     if a == "dropdown_type":
         dc.dropdown_type(args.get("of", "选择表"), str(args.get("text", "")),
                          side)
