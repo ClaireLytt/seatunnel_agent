@@ -46,6 +46,9 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_select_tables": "Please select tables on both sides",
         "dc_running": "Comparing...",
         "dc_port_not_number": "Port must be a number",
+        "dc_host_required": "Host is required — enter it above or set {var} in .env",
+        "dc_keyed_diff_fallback": "Key-based diff failed ({err}); showing positional diff instead",
+        "dc_placeholder": "Connect two data sources and click Compare",
         "dc_column": "Column",
         "dc_type_a": "Type (A)",
         "dc_type_b": "Type (B)",
@@ -101,7 +104,6 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_loaded": "Report loaded",
         "dc_no_reports": "No saved reports",
         # I — table search
-        "dc_search_tables": "Search tables...",
         # J — progress
         "dc_comparing_table": "Comparing {name}...",
         # K — report viewer
@@ -305,6 +307,9 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_select_tables": "请选择两侧的表",
         "dc_running": "比对中...",
         "dc_port_not_number": "端口号必须是数字",
+        "dc_host_required": "请填写主机地址，或在 .env 中配置 {var}",
+        "dc_keyed_diff_fallback": "按主键对比失败（{err}），已回退为按行位置对比",
+        "dc_placeholder": "请连接两个数据源并点击对比",
         "dc_column": "字段",
         "dc_type_a": "类型 (A)",
         "dc_type_b": "类型 (B)",
@@ -360,7 +365,6 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_loaded": "报告已加载",
         "dc_no_reports": "无已保存报告",
         # I — table search
-        "dc_search_tables": "搜索表名...",
         # J — progress
         "dc_comparing_table": "正在对比 {name}...",
         # K — report viewer

@@ -1,0 +1,75 @@
+# A 组 · 连接 (对应人工清单 A1-A6;A1/A2 依赖真实 Hive,打 hive 标签)
+
+- id: A1
+  title: 环境回退连接 + 参数回填 (Hive)
+  tags: [full, hive]
+  steps:
+    - clear: {target: 主机, side: A}
+    - clear: {target: 端口, side: A}
+    - clear: {target: 数据库, side: A}
+    - click: {target: 连接, side: A}
+    - wait_status_ok: {side: A, timeout_ms: 30000}
+  expect:
+    - status_ok: {side: A}
+    - text_contains: {in: 状态, side: A, text: 已加载}
+
+- id: A3
+  title: 错误主机给出错误信息且页面可继续
+  tags: [full, sqlite]
+  timeout_s: 120
+  steps:
+    - fill: {主机: 1.2.3.4, side: A}
+    - fill: {端口: "10000", side: A}
+    - fill: {数据库: default, side: A}
+    - click: {target: 连接, side: A}
+    - wait_status_error: {side: A, timeout_ms: 90000}
+  expect:
+    - status_error: {side: A}
+    - visible: {target: 连接, side: A}
+
+- id: A4
+  title: 端口非法给出明确错误
+  tags: [smoke, sqlite]
+  steps:
+    - fill: {主机: 127.0.0.1, side: A}
+    - fill: {端口: abc, side: A}
+    - click: {target: 连接, side: A}
+    - wait_status_error: {side: A}
+  expect:
+    - status_error: {side: A}
+    - text_contains: {in: 状态, side: A, text: 端口号必须是数字}
+
+- id: A5
+  title: Tab 在空输入框填入灰色占位默认值
+  tags: [smoke, sqlite]
+  steps:
+    - clear: {target: 主机, side: A}
+    - press: {keys: Tab, in: 主机, side: A}
+    - clear: {target: 端口, side: A}
+    - press: {keys: Tab, in: 端口, side: A}
+    - clear: {target: 数据库, side: A}
+    - press: {keys: Tab, in: 数据库, side: A}
+  expect:
+    - value_is: {of: 主机, side: A, value: 10.0.0.1}
+    - value_is: {of: 端口, side: A, value: "10000"}
+    - value_is: {of: 数据库, side: A, value: default}
+
+- id: A5b
+  title: Tab 在非空输入框只切焦点不覆盖内容
+  tags: [smoke, sqlite]
+  steps:
+    - fill: {主机: 192.168.1.99, side: A}
+    - press: {keys: Tab, in: 主机, side: A}
+  expect:
+    - value_is: {of: 主机, side: A, value: 192.168.1.99}
+
+- id: A6
+  title: 双侧连接后两侧表下拉均可选
+  tags: [smoke, sqlite]
+  setup:
+    - use: connect_both_sqlite
+  expect:
+    - status_ok: {side: A}
+    - status_ok: {side: B}
+    - options_count: {of: 选择表, side: A, n: 10}
+    - options_count: {of: 选择表, side: B, n: 10}

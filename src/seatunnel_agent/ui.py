@@ -803,6 +803,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards" data-zh="Hive / Spark / Flink / MaxCompute SQL 静态 + LLM 审查 — 性能、质量与规范">Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards</div>
       <div class="st-hub-enter" style="color:#10b981;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/uitest">
+      <div class="st-hub-logo" style="background:#f59e0b;">UT</div>
+      <div class="st-hub-card-title" data-en="UI Testing Agent" data-zh="UI 测试 Agent">UI Testing Agent</div>
+      <div class="st-hub-card-desc" data-en="Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports" data-zh="真实浏览器驱动的页面自动回归 — YAML 用例、LLM 模糊断言、HTML 报告">Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports</div>
+      <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <div class="st-hub-card st-hub-card-soon">
       <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
       <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
@@ -834,6 +840,10 @@ _SIDEBAR_RESIZE_JS = """
             if (tries++ < 50) setTimeout(init, 200);
             return;
         }
+        // The Data Comparison sidebar has its own CSS resize (720px wide);
+        // the fixed-position handle would float mid-sidebar and swallow
+        // clicks on anything underneath it.
+        if (sb.classList.contains('st-dc-sidebar')) return;
         if (row.querySelector('.st-sidebar-resize')) return;
         const handle = document.createElement('span');
         handle.className = 'st-sidebar-resize';
@@ -950,6 +960,10 @@ def create_ui() -> gr.Blocks:
     with app.route("SQL Review", "/sqlreview"):
         render_sql_review_page(app)
 
+    with app.route("UI Testing", "/uitest"):
+        from .ui_testing.gradio_page import render_uitest_page
+        render_uitest_page(app)
+
     return app
 
 
@@ -971,9 +985,9 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 """Pre-import LLM SDK so the first chat doesn't pay the cost."""
                 try:
                     if s.llm_provider == "anthropic":
-                        import anthropic
+                        import anthropic  # noqa: F401
                     else:
-                        import openai
+                        import openai  # noqa: F401
                 except Exception:
                     pass
 
@@ -1428,11 +1442,13 @@ footer { display: none !important; }
 /* Standalone pages (history, favorites, schema, sql review) need scrolling.
    Only the outermost .gradio-container scrolls; everything inside is visible. */
 body:has(.st-history-page),
-body:has(.st-review-page) {
+body:has(.st-review-page),
+body:has(.st-uitest-page) {
     overflow: hidden !important;
 }
 body:has(.st-history-page) .gradio-container,
-body:has(.st-review-page) .gradio-container {
+body:has(.st-review-page) .gradio-container,
+body:has(.st-uitest-page) .gradio-container {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     height: 100vh !important;
@@ -1440,10 +1456,18 @@ body:has(.st-review-page) .gradio-container {
 body:has(.st-history-page) .gradio-container > .main,
 body:has(.st-history-page) .gradio-container > .main > .wrap,
 body:has(.st-review-page) .gradio-container > .main,
-body:has(.st-review-page) .gradio-container > .main > .wrap {
+body:has(.st-review-page) .gradio-container > .main > .wrap,
+body:has(.st-uitest-page) .gradio-container > .main,
+body:has(.st-uitest-page) .gradio-container > .main > .wrap {
     overflow: visible !important;
     height: auto !important;
     min-height: auto !important;
+}
+body:has(.st-uitest-page) .gradio-container > .main > .wrap {
+    max-width: 1500px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 14px 28px 48px !important;
 }
 
 /* ══════════════════════════════════════════
@@ -1520,11 +1544,14 @@ body:has(.st-review-page) .sr-input-col {
     padding: 0 !important;
     flex-wrap: nowrap !important;
 }
-/* Left sidebar column (width adjustable via drag handle, see _SIDEBAR_RESIZE_JS) */
-.st-sidebar {
+/* Left sidebar column (width adjustable via drag handle, see _SIDEBAR_RESIZE_JS).
+   The Data Comparison sidebar is excluded: it has its own width + CSS resize. */
+.st-sidebar:not(.st-dc-sidebar) {
     width: var(--st-sidebar-w, 260px) !important;
     min-width: var(--st-sidebar-w, 260px) !important;
     max-width: var(--st-sidebar-w, 260px) !important;
+}
+.st-sidebar {
     height: 100% !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
@@ -1593,6 +1620,25 @@ body:has(.st-review-page) .sr-input-col {
     flex-shrink: 0 !important;
 }
 .st-sidebar-open-btn:hover { background: #f3f4f6 !important; }
+/* Data Comparison sidebar: wider, user-resizable via right-edge drag,
+   horizontal scrollbar when content overflows */
+.st-sidebar.st-dc-sidebar {
+    /* flex-basis auto lets `width` control the size (Gradio columns default
+       to flex-basis 0%, which ignores width and collapses to min-width);
+       width stays non-!important so the browser's drag-resize inline style
+       can override it */
+    flex: 0 0 auto !important;
+    width: 720px;
+    min-width: 360px !important;
+    max-width: 85vw !important;
+    resize: horizontal !important;
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+}
+.st-sidebar.st-dc-sidebar > * {
+    min-width: 640px !important;
+}
+
 /* Right main content: fill remaining width, flex column to pin input at bottom */
 .st-main {
     flex: 1 1 0 !important;

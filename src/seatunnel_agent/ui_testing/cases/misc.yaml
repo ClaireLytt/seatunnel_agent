@@ -1,0 +1,229 @@
+# R/S/T/U/V/W/X 组 · 同步配置、趋势告警、血缘、预设模板、语言、健壮性
+
+- id: R1
+  title: 生成同步配置输出 SeaTunnel HOCON
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - open_accordion: 生成同步配置
+  steps:
+    - click: 生成同步配置
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: source}
+    - text_contains: {in: 结果区, text: sink}
+
+- id: R2
+  title: 生成差异 SQL 可复制
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - fill: {主键列: id}
+    - click: 样本数据
+    - wait_result: {}
+    - open_accordion: 生成同步配置
+  steps:
+    - click: 生成差异 SQL
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: INSERT INTO}
+    - text_contains: {in: 结果区, text: UPDATE}
+
+- id: S1
+  title: 连续两次行数对比后趋势图可渲染
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - click: 行数对比
+    - wait_result: {}
+    - click: 行数对比
+    - wait: 3000
+      note: 第二次对比与第一次渲染完全相同的 HTML,变更等待不适用
+    - open_accordion: 趋势
+  steps:
+    - click: 对比趋势
+    - wait: 2500
+      note: 趋势图渲染到 gr.Plot,结果区无变化信号
+  expect:
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: S2
+  title: 告警规则 delta>0:1 触发
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - open_accordion: 趋势
+    - fill: {告警规则: "delta>0:1"}
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+    - click: 对比趋势
+    - wait: 2500
+      note: 告警状态随趋势卡片渲染
+  expect:
+    - text_contains: {in: 页面, text: 已触发}
+
+- id: S3
+  title: 定时任务启动/自动执行/停止
+  tags: [full, sqlite, slow]
+  timeout_s: 180
+  setup:
+    - use: select_orders
+    - open_accordion: 定时任务
+    - select: {of: 间隔, value: "1"}
+  steps:
+    - click: 启动定时
+    - wait: 3000
+      note: 等定时状态渲染
+    - screenshot: {name: S3_running}
+    - wait: 70000
+      note: 等待 1 分钟定时窗口触发一次自动对比
+    - click: 停止定时
+    - wait: 2000
+      note: 等停止状态渲染
+  expect:
+    - text_contains: {in: 页面, text: 定时已停止}
+
+- id: S4
+  title: Webhook 通知 (外部接收端)
+  tags: [manual]
+  note: 需要外部可访问的 webhook 接收地址
+
+- id: T1
+  title: 基于预设的跨环境对比
+  tags: [full, sqlite]
+  timeout_s: 150
+  setup:
+    - use: connect_both_sqlite
+    - open_accordion: 预设
+    - fill: {预设名称: uitest_dev}
+    - fill: {环境: dev, side: ~}
+    - click: 保存预设 (A)
+    - wait: 1000
+      note: 预设写盘无 loading 信号
+    - fill: {预设名称: uitest_prod}
+    - fill: {环境: prod, side: ~}
+    - click: 保存预设 (B)
+    - wait: 1000
+      note: 预设写盘无 loading 信号
+    - open_accordion: 环境
+  steps:
+    - fill: {环境 A: dev}
+    - fill: {环境 B: prod}
+    - fill: {选择表: dc_test_orders_a}
+    - click: 跨环境对比
+    - wait_result: {timeout_ms: 60000}
+  expect:
+    - text_not_contains: {in: 结果区, text: Traceback}
+    - text_contains: {in: 结果区, text: 行数}
+
+- id: U1
+  title: 血缘解析列出上游表
+  tags: [full, sqlite]
+  setup:
+    - use: connect_a_sqlite
+    - select: {of: 选择表, value: dc_test_orders_a, side: A}
+    - open_accordion: 上游依赖
+    - fill: {血缘SQL: "INSERT INTO dm_sales SELECT o.id, u.name FROM dwd_orders o JOIN dim_user u ON o.uid = u.id"}
+  steps:
+    - click: 上游依赖
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: dwd_orders}
+    - text_contains: {in: 结果区, text: dim_user}
+
+- id: V1
+  title: 保存预设后加载回填连接参数
+  tags: [full, sqlite]
+  setup:
+    - use: connect_a_sqlite
+    - open_accordion: 预设
+  steps:
+    - fill: {预设名称: uitest_v1}
+    - click: 保存预设 (A)
+    - wait: 1200
+      note: 预设写盘无 loading 信号
+    - clear: {target: 数据库, side: A}
+    - select_index: {of: 加载预设 (A), index: 0}
+    - wait: 1200
+      note: 预设回填走 change 回调
+  expect:
+    - text_contains: {in: 页面, text: 预设已保存}
+    - value_is: {of: 数据库, side: A, value: config/uitest_demo.db}
+
+- id: V3
+  title: 保存模板后提示已保存
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - fill: {WHERE: id <= 8}
+    - open_accordion: 模板
+  steps:
+    - fill: {模板名称: uitest_t1}
+    - click: 保存模板
+    - wait: 1200
+      note: 模板写盘无 loading 信号
+  expect:
+    - text_contains: {in: 页面, text: 模板已保存}
+
+- id: W1
+  title: 中文界面文案齐全
+  tags: [smoke, sqlite]
+  steps:
+    - wait: 300
+      note: runner 已切中文,等 i18n 重渲染完成
+  expect:
+    - visible: {target: 行数对比}
+    - text_contains: {in: 状态, side: A, text: 未连接}
+
+- id: W2
+  title: 切回英文后功能正常
+  tags: [full, sqlite]
+  lang: en
+  setup:
+    - use: select_orders
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: Row Count}
+    - text_contains: {in: 结果区, text: "10"}
+  note: lang=en 时 runner 不切中文,页面保持默认英文
+
+- id: X2
+  title: 连接后未选表被拦截
+  tags: [smoke, sqlite]
+  setup:
+    - use: connect_both_sqlite
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 请选择两侧的表}
+
+- id: X3
+  title: 刷新后全流程正常 (无残留状态)
+  tags: [smoke, sqlite]
+  setup:
+    - goto: /datacompare
+    - use: select_orders
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: "10"}
+    - text_contains: {in: 结果区, text: "9"}
+
+- id: X4
+  title: SQLite 分支隐藏字段回归 (浏览器提交 None)
+  tags: [smoke, sqlite]
+  steps:
+    - select_ds: {value: SQLite, side: A}
+    - fill: {数据库: config/uitest_demo.db, side: A}
+    - click: {target: 连接, side: A}
+    - wait_status_ok: {side: A}
+  expect:
+    - hidden: {target: 主机, side: A}
+    - hidden: {target: 端口, side: A}
+    - status_ok: {side: A}
+    - text_contains: {in: 状态, side: A, text: "10"}

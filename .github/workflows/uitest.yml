@@ -1,0 +1,48 @@
+# Browser-driven UI smoke regression (zero LLM tokens, ~4 min).
+# Runs the 25-case smoke suite in a real headless Chromium against the app
+# booted on a dedicated port. Fails the PR on any FAIL/ERROR; the full HTML
+# report (with failure screenshots) is uploaded as an artifact.
+name: ui-smoke
+
+on:
+  pull_request:
+    paths:
+      - "src/seatunnel_agent/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - ".github/workflows/uitest.yml"
+  workflow_dispatch:
+
+jobs:
+  ui-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # load_settings() is only called from LLM handlers, which --no-llm
+      # never reaches — the dummy key just guards accidental lookups.
+      API_KEY: ci-dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,uitest,sqlreview]"
+          python -m playwright install --with-deps chromium
+
+      - name: Run UI smoke suite (no LLM)
+        run: python -m seatunnel_agent.ui_testing run --suite smoke --no-llm
+
+      - name: Upload report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-smoke-report
+          path: runs/
+          retention-days: 14
+          if-no-files-found: ignore

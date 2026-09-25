@@ -1,0 +1,12 @@
+# 自然语言驱动用例 (验收标准 3: ai 步骤在不给选择器提示的情况下完成下拉搜索)
+
+- id: B3a
+  title: 自然语言完成下拉搜索并选中 (B3 的 ai 版本)
+  tags: [full, sqlite]
+  timeout_s: 150
+  setup:
+    - use: connect_a_sqlite
+  steps:
+    - ai: 在 A 侧打开“选择表”下拉框,输入 orders 进行过滤,然后从过滤结果中选中 dc_test_orders_a
+  expect:
+    - value_is: {of: 选择表, side: A, value: dc_test_orders_a}

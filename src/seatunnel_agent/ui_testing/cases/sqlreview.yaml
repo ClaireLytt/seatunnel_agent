@@ -1,0 +1,116 @@
+# SR 组 · SQL Review 页 (/sqlreview)。纯前端+静态审查,无外部依赖。
+# SR3/SR4 同时守护 linter 新增的分区裁剪规则(partition_func_on_col / DDL 分区表缺过滤)。
+
+- id: SR1
+  title: 空 SQL 点审查给出提示
+  tags: [smoke, sqlite]
+  page: /sqlreview
+  steps:
+    - click: 开始审查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 请先输入 SQL}
+
+- id: SR2
+  title: SELECT * 静态审查出报告
+  tags: [smoke, sqlite]
+  page: /sqlreview
+  steps:
+    - fill: {SQL: "SELECT * FROM ods.user_log WHERE dt = '2024-06-01'"}
+    - click: 开始审查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: SELECT *}
+    - visible: {target: 下载报告}
+
+- id: SR3
+  title: 分区列套函数被标记 (partition_func_on_col)
+  tags: [smoke, sqlite]
+  page: /sqlreview
+  steps:
+    - fill: {SQL: "SELECT id FROM ods.user_log WHERE substr(dt,1,7) = '2024-06'"}
+    - click: 开始审查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: SUBSTR}
+    - text_contains: {in: 结果区, text: 分区}
+
+- id: SR4
+  title: DDL 分区表缺分区过滤被标记
+  tags: [full, sqlite]
+  page: /sqlreview
+  setup:
+    - open_accordion: 表结构 DDL
+    - fill: {DDL 输入: "CREATE TABLE ods.user_log (user_id BIGINT, amount DOUBLE) PARTITIONED BY (dt STRING);"}
+  steps:
+    - fill: {SQL: "SELECT user_id FROM ods.user_log WHERE amount > 10"}
+    - click: 开始审查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 缺少分区过滤}
+
+- id: SR5
+  title: 非法规则配置给出明确错误
+  tags: [full, sqlite]
+  page: /sqlreview
+  setup:
+    - open_accordion: 审查规则
+    - fill: {规则输入: "not_a_valid_key: 1"}
+  steps:
+    - fill: {SQL: "SELECT 1"}
+    - click: 开始审查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 规则配置无效}
+
+- id: SR6
+  title: 清空按钮恢复初始状态
+  tags: [full, sqlite]
+  page: /sqlreview
+  setup:
+    - fill: {SQL: "SELECT * FROM t"}
+    - click: 开始审查
+    - wait_result: {}
+  steps:
+    - click: 清空
+    - wait: 800
+      note: 清空是纯前端重置,结果区回到占位文本无 loading 信号
+  expect:
+    - text_contains: {in: 结果区, text: 审查报告将显示在这里}
+    - value_is: {of: SQL, value: ""}
+
+- id: SR7
+  title: 英文界面审查报告为英文
+  tags: [full, sqlite]
+  page: /sqlreview
+  lang: en
+  steps:
+    - fill: {SQL: "SELECT id FROM ods.user_log WHERE substr(dt,1,7) = '2024-06'"}
+    - click: 开始审查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: partition column}
+
+- id: SR9
+  title: 未审查先点修复给出提示
+  tags: [full, sqlite]
+  page: /sqlreview
+  steps:
+    - fill: {SQL: "SELECT * FROM t"}
+    - click: 生成修复 SQL
+    - wait: 1500
+      note: 提示写入初始隐藏的修复 SQL 代码框,无结果区变化信号
+  expect:
+    - text_contains: {in: 页面, text: 请先完成一次审查}
+
+- id: SR10
+  title: 语法错误 SQL 报 critical 不崩溃
+  tags: [full, sqlite]
+  page: /sqlreview
+  steps:
+    - fill: {SQL: "SELEC id FROM t"}
+    - click: 开始审查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 解析失败}
+    - visible: {target: 开始审查}

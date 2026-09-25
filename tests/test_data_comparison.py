@@ -631,7 +631,7 @@ class TestI18n:
             "dc_profile", "dc_profile_result", "dc_distinct", "dc_null_rate", "dc_min", "dc_max",
             "dc_where_clause", "dc_where_hint", "dc_where_invalid",
             "dc_save_report", "dc_load_report", "dc_saved", "dc_loaded", "dc_no_reports",
-            "dc_search_tables", "dc_comparing_table",
+            "dc_comparing_table",
             "dc_view_report", "dc_report_title", "dc_no_report", "dc_print",
         ]
         for key in round3_keys:
@@ -1440,6 +1440,19 @@ class TestParseQualityRules:
 
 class TestCheckQualityRules:
     """Tests for check_quality_rules()."""
+
+    def test_side_b_uses_b_profile(self):
+        from seatunnel_agent.data_comparison.comparator import (
+            ProfileItem, ProfileResult, parse_quality_rules)
+        item = ProfileItem(column="email", distinct_a=10, distinct_b=7,
+                           null_rate_a=0.0, null_rate_b=22.22)
+        profile = ProfileResult(table_a="a", table_b="b",
+                                total_a=10, total_b=9, items=[item])
+        rules = parse_quality_rules("email:not_null>80")
+        res_a = check_quality_rules(rules, profile, side="a")
+        res_b = check_quality_rules(rules, profile, side="b")
+        assert res_a[0].passed and abs(res_a[0].actual_value - 100.0) < 0.01
+        assert not res_b[0].passed and abs(res_b[0].actual_value - 77.78) < 0.01
 
     def test_not_null_pass(self):
         rule = QualityRule(column="name", rule_type="not_null_rate", threshold=90.0)

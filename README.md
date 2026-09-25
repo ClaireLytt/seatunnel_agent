@@ -533,6 +533,18 @@ Test coverage by module:
 
 Full Text2SQL test documentation: [`docs/text2sql_test_doc.md`](docs/text2sql_test_doc.md)
 
+### UI Testing Agent
+
+Browser-driven regression for the Gradio pages (real Chromium via Playwright,
+YAML cases mirroring the 75-item manual checklist, optional LLM steps and
+fuzzy assertions):
+
+```bash
+python -m seatunnel_agent.ui_testing run --suite smoke --no-llm   # ~3 min, 0 tokens
+```
+
+Docs: [`docs/ui_testing_usage.md`](docs/ui_testing_usage.md)
+
 ### Troubleshooting
 
 | Problem | Solution |
@@ -1074,6 +1086,17 @@ pytest tests/ --cov=seatunnel_agent --cov-report=term-missing
 | `text2sql/` | 62 | Schema 解析、SQL 验证（SELECT 白名单、表白名单、堆叠查询）、表/列匹配、分区规则、CSV 导出、查询日志、列校验、分区强制、工具层、边缘用例 |
 
 完整的 Text2SQL 测试文档：[`docs/text2sql_test_doc.md`](docs/text2sql_test_doc.md)
+
+### UI 测试 Agent
+
+驱动真实浏览器的 Gradio 页面自动回归（Playwright + YAML 用例，与 75 项人工
+验收清单同编号，支持 LLM 自然语言步骤与模糊断言）：
+
+```bash
+python -m seatunnel_agent.ui_testing run --suite smoke --no-llm   # 约 3 分钟,零 token
+```
+
+使用文档：[`docs/ui_testing_usage.md`](docs/ui_testing_usage.md)
 
 ### 常见问题
 

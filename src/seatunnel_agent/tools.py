@@ -614,7 +614,7 @@ def _validate_config(settings: Settings, config_path: str) -> str:
         })
 
     try:
-        from pyhocon import ConfigFactory, ConfigException
+        from pyhocon import ConfigFactory
     except ImportError:
         return safe_json({
             "valid": False,

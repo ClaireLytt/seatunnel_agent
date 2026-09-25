@@ -25,6 +25,7 @@ from .text2sql.executor import (
     DS_DEFAULTS,
     DS_TYPES,
     DIALECT_NAMES,
+    ENV_PREFIX,
     DatabaseConfig,
     config_from_env,
     create_executor,
@@ -32,6 +33,7 @@ from .text2sql.executor import (
 from .text2sql.differ import diff_results, ResultDiff
 from .text2sql.exporter import default_desktop_dir, safe_stem
 from .data_comparison.comparator import (
+    GINI_SKEW_THRESHOLD,
     AggregateResult,
     BatchFullItem,
     ChecksumResult,
@@ -39,7 +41,6 @@ from .data_comparison.comparator import (
     CustomAggResult,
     KeyedDiffResult,
     PartitionResult,
-    ProfileItem,
     ProfileResult,
     QualityResult,
     RowCountResult,
@@ -64,7 +65,6 @@ from .data_comparison.comparator import (
     build_row_count_result,
     build_sample_sql,
     build_trend_data,
-    check_aggregate_threshold,
     check_quality_rules,
     check_row_count_threshold,
     compare_aggregates,
@@ -87,9 +87,7 @@ from .data_comparison.comparator import (
     parse_threshold,
     run_parallel,
     ReportDiff,
-    ReportDiffItem,
     diff_reports,
-    build_expression_check_sql,
     get_upstream_tables,
 )
 from .data_comparison.i18n import dc
@@ -122,6 +120,17 @@ def _error_html(lang: str, exc: Exception) -> str:
 
 
 _log = logging.getLogger(__name__)
+
+# Tunable limits (previously scattered magic numbers)
+_SAMPLE_LIMIT = 100          # rows sampled per side
+_STRATIFIED_PER_GROUP = 10   # rows per stratum in stratified sampling
+_SKEW_MAX_COLUMNS = 10       # columns analysed for skew
+_SKEW_MAX_ROWS = 50          # top-N frequency rows fetched per column
+_MAX_AGG_COLUMNS = 20        # numeric columns per aggregate comparison
+_MAX_REPORT_FILES = 50       # saved reports listed in dropdowns
+_SUMMARY_MAX_ITEMS = 10      # items shown in report summary sections
+_DELTA_WARN_PCT = 10         # row-count delta % below which it's a warning
+_DEFAULT_SCHEDULE_MIN = 15   # default scheduled-comparison interval (minutes)
 
 _DS_CHOICES = [DIALECT_NAMES[d] for d in DS_TYPES]
 _DS_LABEL_TO_KEY = {v: k for k, v in DIALECT_NAMES.items()}
@@ -169,15 +178,15 @@ def _build_webhook_summary(report: CompareReport) -> dict:
         summary["schema_diffs"] = [
             {"column": it.column, "status": it.status,
              "type_a": it.type_a, "type_b": it.type_b}
-            for it in report.schema.items[:10]
+            for it in report.schema.items[:_SUMMARY_MAX_ITEMS]
         ]
     if report.aggregate and report.aggregate.mismatches > 0:
         summary["agg_mismatches"] = [
             {"column": it.column, "metric": it.metric,
              "value_a": it.value_a, "value_b": it.value_b}
-            for it in report.aggregate.items[:10]
+            for it in report.aggregate.items[:_SUMMARY_MAX_ITEMS]
             if not it.match
-        ][:10]
+        ][:_SUMMARY_MAX_ITEMS]
     return summary
 
 
@@ -303,7 +312,7 @@ def build_count_card(
         border = "#bbf7d0"
         bg = "#f0fdf4"
         badge = f'<span style="color:#16a34a;font-weight:600;">{t("dc_match")}</span>'
-    elif abs(result.delta_pct) < 10:
+    elif abs(result.delta_pct) < _DELTA_WARN_PCT:
         border = "#fde68a"
         bg = "#fffbeb"
         badge = f'<span style="color:#d97706;font-weight:600;">{t("dc_delta")}: {result.delta:+d} ({result.delta_pct:+.1f}%)</span>'
@@ -590,8 +599,8 @@ def build_keyed_diff_card(result: KeyedDiffResult, lang: str = "en") -> str:
                 html += (
                     f'<tr style="background:#fffbeb;">'
                     f'<td {td}>{key_str}</td><td {td}>{esc(col)}</td>'
-                    f'<td {td} style="padding:3px 8px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#dc2626;">{esc(str(old_v))}</td>'
-                    f'<td {td} style="padding:3px 8px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#16a34a;">{esc(str(new_v))}</td></tr>'
+                    f'<td style="padding:3px 8px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#dc2626;">{esc(str(old_v))}</td>'
+                    f'<td style="padding:3px 8px;font-size:11px;border-bottom:1px solid #f3f4f6;color:#16a34a;">{esc(str(new_v))}</td></tr>'
                 )
         html += "</table></details>"
 
@@ -600,9 +609,7 @@ def build_keyed_diff_card(result: KeyedDiffResult, lang: str = "en") -> str:
         for mr in result.modified[:_LIST_LIMIT]:
             if mr.row_a is not None or mr.row_b is not None:
                 key_str = _esc_html(str(mr.key))
-                detail_th = 'style="padding:2px 6px;text-align:left;border-bottom:1px solid #e5e7eb;font-size:10px;font-weight:600;"'
                 detail_td = 'style="padding:2px 6px;font-size:10px;border-bottom:1px solid #f3f4f6;"'
-                cols = result.key_columns if result.key_columns else []
                 row_a_vals = mr.row_a if mr.row_a else ()
                 row_b_vals = mr.row_b if mr.row_b else ()
                 html += (
@@ -633,8 +640,9 @@ def build_keyed_diff_card(result: KeyedDiffResult, lang: str = "en") -> str:
     return html
 
 
-def build_quality_card(results: list[QualityResult], lang: str = "en") -> str:
-    """Build HTML card for quality rule check results."""
+def build_quality_card(results: list[QualityResult], lang: str = "en",
+                       side_label: str = "") -> str:
+    """Build HTML card for quality rule check results (one card per side)."""
     t = lambda k: dc(lang, k)
     esc = _esc_html
 
@@ -667,7 +675,8 @@ def build_quality_card(results: list[QualityResult], lang: str = "en") -> str:
         '<details open style="border:1px solid #e0e7ff;border-radius:8px;padding:10px;'
         'background:#f8fafc;margin-bottom:8px;">'
         f'<summary style="font-weight:600;font-size:13px;color:#0891b2;cursor:pointer;">'
-        f'{t("dc_quality_result")} — {summary}</summary>'
+        f'{t("dc_quality_result")}'
+        f'{f" ({side_label})" if side_label else ""} — {summary}</summary>'
         f'<table style="width:100%;border-collapse:collapse;margin-top:8px;">'
         f'<tr><th {th}>{t("dc_column")}</th><th {th}>Rule</th>'
         f'<th {th}>Actual</th><th {th}>{t("dc_status")}</th></tr>'
@@ -755,8 +764,8 @@ def build_skew_card(result: SkewResult, lang: str = "en") -> str:
 
     items_html = ""
     for item in result.items:
-        warn_a = ' style="color:#dc2626;font-weight:600;"' if item.gini_a > 0.6 else ""
-        warn_b = ' style="color:#dc2626;font-weight:600;"' if item.gini_b > 0.6 else ""
+        warn_a = ' style="color:#dc2626;font-weight:600;"' if item.gini_a > GINI_SKEW_THRESHOLD else ""
+        warn_b = ' style="color:#dc2626;font-weight:600;"' if item.gini_b > GINI_SKEW_THRESHOLD else ""
         items_html += (
             f'<tr style="background:#f0fdfa;">'
             f'<td {td}><b>{esc(item.column)}</b></td>'
@@ -1405,6 +1414,8 @@ def _export_report_excel(report: CompareReport) -> str:
 
 def render_data_comparison_page(app=None) -> None:  # noqa: C901
     """Render the Data Comparison page components."""
+    from dotenv import load_dotenv
+    load_dotenv()
 
     lang = _DEFAULT_LANG
     t = lambda k: dc(lang, k)
@@ -1424,15 +1435,23 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     # ── Connection helper (shared by A / B) ──
     def _do_connect(ds_label, host, port, db, username, password, lang_val, side):
         t_fn = lambda k: dc(lang_val, k)
-        ds_type = _DS_LABEL_TO_KEY.get(ds_label, "hive")
-        h = host.strip()
-        p = port.strip()
-        d = db.strip()
-        u = username.strip() or None
-        pw = password.strip() or None
-        defaults = DS_DEFAULTS.get(ds_type, {})
-        default_port = str(defaults.get("port", 10000))
-        default_db = defaults.get("database", "default")
+
+        def _err(msg):
+            return msg, gr.update(), gr.update(), gr.update(), gr.update()
+
+        ds_type = _DS_LABEL_TO_KEY.get(ds_label)
+        if ds_type is None:
+            return _err(f"❌ {t_fn('dc_error')}: unknown datasource {_esc_html(str(ds_label))}")
+        # Hidden Gradio textboxes (auth/host fields for engines that don't
+        # need them) submit None from the browser, not "".
+        h = (host or "").strip()
+        p = (port or "").strip()
+        d = (db or "").strip()
+        u = (username or "").strip() or None
+        pw = (password or "").strip() or None
+        defaults = DS_DEFAULTS[ds_type]
+        default_port = str(defaults["port"])
+        default_db = defaults["database"]
 
         if ds_type == "sqlite":
             cfg = DatabaseConfig(
@@ -1447,12 +1466,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                     u, pw = fallback.username, fallback.password
 
             if not h:
-                return t_fn("dc_not_connected"), gr.update()
+                var = f"{ENV_PREFIX.get(ds_type, ds_type.upper())}_HOST"
+                return _err(f"❌ {t_fn('dc_host_required').format(var=var)}")
 
             try:
                 port_int = int(p or default_port)
             except ValueError:
-                return f"❌ {t_fn('dc_port_not_number')}", gr.update()
+                return _err(f"❌ {t_fn('dc_port_not_number')}")
 
             cfg = DatabaseConfig(
                 ds_type=ds_type,
@@ -1462,15 +1482,18 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 username=u,
                 password=pw,
             )
-        executor = create_executor(cfg)
+        try:
+            executor = create_executor(cfg)
+        except Exception as e:
+            return _err(f"❌ {_esc_html(str(e))}")
         ok, msg = executor.test_connection()
         if not ok:
-            return f"❌ {_esc_html(msg)}", gr.update()
+            return _err(f"❌ {_esc_html(msg)}")
 
         try:
             tables = executor.show_tables()
         except Exception as e:
-            return f"❌ {_esc_html(str(e))}", gr.update()
+            return _err(f"❌ {_esc_html(str(e))}")
 
         with holder_lock:
             holder[f"executor_{side}"] = executor
@@ -1478,18 +1501,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
         dialect = DIALECT_NAMES.get(ds_type, ds_type)
         status = f"✅ {dialect} {msg} · {t_fn('dc_tables_loaded').format(n=len(tables))}"
-        return status, gr.update(choices=tables, value=None)
-
-    # ── Table search filter (G) ──
-
-    def _filter_tables(search_text, side):
-        with holder_lock:
-            all_tables = list(holder[f"tables_{side}"])
-        if not search_text.strip():
-            return gr.update(choices=all_tables)
-        q = search_text.strip().lower()
-        filtered = [t for t in all_tables if q in t.lower()]
-        return gr.update(choices=filtered)
+        # Backfill connection fields so env/default fallbacks are visible
+        if ds_type == "sqlite":
+            host_upd, port_upd = gr.update(), gr.update()
+        else:
+            host_upd, port_upd = gr.update(value=cfg.host), gr.update(value=str(cfg.port))
+        return (status, gr.update(choices=tables, value=None),
+                host_upd, port_upd, gr.update(value=cfg.database))
 
     # ── Inner comparison logic (no validation — used by both single + all) ──
 
@@ -1531,12 +1549,15 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                       strategy="TOP N", col_mapping_str="", masking_on=True,
                       stratified_col=""):
         ex_a, ex_b = _snap_executors()
-        limit = 100
+        limit = _SAMPLE_LIMIT
+        stratified_col = stratified_col or ""  # hidden textbox submits None
         if strategy == "STRATIFIED" and stratified_col.strip():
             sql_a = build_stratified_sample_sql(table_a, stratified_col.strip(),
-                                                10, ex_a.config.ds_type, where_val)
+                                                _STRATIFIED_PER_GROUP,
+                                                ex_a.config.ds_type, where_val)
             sql_b = build_stratified_sample_sql(table_b, stratified_col.strip(),
-                                                10, ex_b.config.ds_type, where_val)
+                                                _STRATIFIED_PER_GROUP,
+                                                ex_b.config.ds_type, where_val)
         elif strategy == "RANDOM":
             sql_a = build_random_sample_sql(table_a, limit, ex_a.config.ds_type, where_val)
             sql_b = build_random_sample_sql(table_b, limit, ex_b.config.ds_type, where_val)
@@ -1567,16 +1588,25 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
         key_cols = [k.strip() for k in key_cols_str.split(",") if k.strip()] if key_cols_str else []
 
+        fallback_notice = ""
         if key_cols:
             try:
                 kd_result = diff_by_key(ra.columns, rows_a, rb_cols, rows_b, key_cols)
                 return kd_result, build_keyed_diff_card(kd_result, lang_val)
-            except (ValueError, IndexError):
-                pass
+            except (ValueError, IndexError) as exc:
+                _log.warning("Keyed diff failed for %s / %s, falling back to "
+                             "positional diff", table_a, table_b, exc_info=True)
+                fallback_notice = (
+                    '<div style="border:1px solid #fde68a;border-radius:8px;'
+                    'padding:8px 12px;background:#fffbeb;margin-bottom:8px;'
+                    'color:#d97706;font-size:12px;">⚠️ '
+                    f'{dc(lang_val, "dc_keyed_diff_fallback").format(err=_esc_html(str(exc)))}'
+                    '</div>'
+                )
 
         diff = diff_results(ra.columns, rows_a, rb_cols, rows_b)
         cols = ra.columns or rb_cols
-        return diff, build_sample_diff_card(diff, lang_val, columns=cols)
+        return diff, fallback_notice + build_sample_diff_card(diff, lang_val, columns=cols)
 
     def _agg_inner(table_a, table_b, lang_val, where_val="", desc_a=None, desc_b=None):
         ex_a, ex_b = _snap_executors()
@@ -1603,8 +1633,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 f'<b style="color:#6b7280;">{dc(lang_val, "dc_agg_result")}</b> — '
                 f'{dc(lang_val, "dc_no_numeric")}</div>'
             )
-        sql_a = build_aggregate_sql(table_a, shared_numeric, where_val)
-        sql_b = build_aggregate_sql(table_b, shared_numeric, where_val)
+        sql_a = build_aggregate_sql(table_a, shared_numeric, where_val,
+                                    ds_type=ex_a.config.ds_type)
+        sql_b = build_aggregate_sql(table_b, shared_numeric, where_val,
+                                    ds_type=ex_b.config.ds_type)
         ra, rb = run_parallel(
             lambda: ex_a.run(sql_a, max_rows=1),
             lambda: ex_b.run(sql_b, max_rows=1),
@@ -1628,8 +1660,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             return ProfileResult(table_a, table_b), build_profile_card(
                 ProfileResult(table_a, table_b), lang_val)
 
-        sql_a = build_profile_sql(table_a, shared_cols, where_val)
-        sql_b = build_profile_sql(table_b, shared_cols, where_val)
+        sql_a = build_profile_sql(table_a, shared_cols, where_val,
+                                  ds_type=ex_a.config.ds_type)
+        sql_b = build_profile_sql(table_b, shared_cols, where_val,
+                                  ds_type=ex_b.config.ds_type)
         ra, rb = run_parallel(
             lambda: ex_a.run(sql_a, max_rows=1),
             lambda: ex_b.run(sql_b, max_rows=1),
@@ -1708,7 +1742,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             return SkewResult(table_a, table_b), build_skew_card(
                 SkewResult(table_a, table_b), lang_val)
 
-        cols = cols[:10]
+        cols = cols[:_SKEW_MAX_COLUMNS]
         count_sql_a = build_count_sql(table_a, where_val)
         count_sql_b = build_count_sql(table_b, where_val)
         ra_cnt, rb_cnt = run_parallel(
@@ -1724,8 +1758,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             sql_a = build_skew_sql(table_a, col, where_val, ds_type=ex_a.config.ds_type)
             sql_b = build_skew_sql(table_b, col, where_val, ds_type=ex_b.config.ds_type)
             ra, rb = run_parallel(
-                lambda s=sql_a: ex_a.run(s, max_rows=50),
-                lambda s=sql_b: ex_b.run(s, max_rows=50),
+                lambda s=sql_a: ex_a.run(s, max_rows=_SKEW_MAX_ROWS),
+                lambda s=sql_b: ex_b.run(s, max_rows=_SKEW_MAX_ROWS),
             )
             return compare_skew(
                 table_a, table_b, col,
@@ -1771,9 +1805,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 lambda: ex_a.describe_table(table_a),
                 lambda: ex_b.describe_table(table_b),
             )
-            names_a = {c.name.lower() for c in desc_a.columns}
             names_b = {c.name.lower() for c in desc_b.columns}
-            cols = [c.name for c in desc_a.columns if c.name.lower() in names_b][:20]
+            cols = [c.name for c in desc_a.columns if c.name.lower() in names_b][:_MAX_AGG_COLUMNS]
         if not cols:
             return ChecksumResult(table_a, table_b), build_checksum_card(
                 ChecksumResult(table_a, table_b), lang_val)
@@ -1869,7 +1902,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
         for sql_text in (sql_a_text, sql_b_text):
             stripped = sql_text.strip().upper()
-            if not stripped.startswith("SELECT"):
+            if not (stripped.startswith("SELECT") or stripped.startswith("WITH")):
                 return dc(lang_val, "dc_sql_readonly_only")
             if _DDL_KEYWORDS.search(sql_text):
                 return dc(lang_val, "dc_sql_readonly_only")
@@ -2106,7 +2139,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         if not _REPORTS_DIR.is_dir():
             return gr.update(choices=[], value=None)
         files = sorted(_REPORTS_DIR.glob("compare_*.json"), reverse=True)
-        names = [f.name for f in files[:_LIST_LIMIT]]
+        names = [f.name for f in files[:_MAX_REPORT_FILES]]
         return gr.update(choices=names, value=None)
 
     def _load_report(filename, lang_val):
@@ -2180,18 +2213,23 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         return gr.update(choices=names, value=None), gr.update(choices=names, value=None)
 
     def _save_preset(name, ds_label, host, port, db, user, pwd, env_val, lang_val):
-        if not name.strip():
+        # Hidden auth/host textboxes submit None from the browser, not "".
+        name = (name or "").strip()
+        if not name:
             return dc(lang_val, "dc_error")
-        ds_type = _DS_LABEL_TO_KEY.get(ds_label, "hive")
+        ds_type = _DS_LABEL_TO_KEY.get(ds_label)
+        if ds_type is None:
+            return f"❌ {dc(lang_val, 'dc_error')}: unknown datasource {_esc_html(str(ds_label))}"
         try:
             port_int = int(port) if port else 0
         except ValueError:
             port_int = 0
         try:
-            _PRESETS_STORE.save(name.strip(), ds_type, host.strip(), port_int,
-                                db.strip(), user.strip(), pwd.strip(),
+            _PRESETS_STORE.save(name, ds_type, (host or "").strip(), port_int,
+                                (db or "").strip(), (user or "").strip(),
+                                (pwd or "").strip(),
                                 environment=env_val.strip() if env_val else "")
-            return f"✅ {dc(lang_val, 'dc_preset_saved')}: {_esc_html(name.strip())}"
+            return f"✅ {dc(lang_val, 'dc_preset_saved')}: {_esc_html(name)}"
         except Exception as e:
             return _error_html(lang_val, e)
 
@@ -2237,7 +2275,6 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 return dc(lang_val, "dc_connect_both")
             tables_a = list(holder["tables_a"])
             tables_b = list(holder["tables_b"])
-            ex_a, ex_b = holder["executor_a"], holder["executor_b"]
 
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
@@ -2371,7 +2408,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         try:
             interval_min = int(interval_str)
         except (ValueError, TypeError):
-            interval_min = 15
+            interval_min = _DEFAULT_SCHEDULE_MIN
+        interval_min = max(1, interval_min)
         with holder_lock:
             if holder["schedule_active"]:
                 return dc(lang_val, "dc_schedule_running").format(m=interval_min)
@@ -2543,8 +2581,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             if not rules:
                 return dc(lang_val, "dc_quality_rules_hint")
             profile_result, _ = _profile_inner(table_a, table_b, lang_val, where_val)
-            results = check_quality_rules(rules, profile_result)
-            return build_quality_card(results, lang_val)
+            results_a = check_quality_rules(rules, profile_result, side="a")
+            results_b = check_quality_rules(rules, profile_result, side="b")
+            return (build_quality_card(results_a, lang_val, side_label="A")
+                    + build_quality_card(results_b, lang_val, side_label="B"))
         except Exception as e:
             return _error_html(lang_val, e)
 
@@ -2670,6 +2710,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                     schema_result = compare_schemas(ca_list, cb_list, ta, tb)
                     schema_changes = len(schema_result.items) if schema_result.has_changes else 0
                 except Exception:
+                    _log.warning("Batch template %r: schema comparison failed",
+                                 name, exc_info=True)
                     desc_a = desc_b = None
 
                 # Aggregate comparison on shared numeric columns
@@ -2682,10 +2724,12 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                             if is_numeric_type(c.dtype) and c.name.lower() in names_b
                         ]
                         if shared_num:
-                            agg_sql_a = build_aggregate_sql(ta, shared_num[:20], wh,
-                                                             ds_type=ex_a.config.ds_type)
-                            agg_sql_b = build_aggregate_sql(tb, shared_num[:20], wh,
-                                                             ds_type=ex_b.config.ds_type)
+                            agg_sql_a = build_aggregate_sql(
+                                ta, shared_num[:_MAX_AGG_COLUMNS], wh,
+                                ds_type=ex_a.config.ds_type)
+                            agg_sql_b = build_aggregate_sql(
+                                tb, shared_num[:_MAX_AGG_COLUMNS], wh,
+                                ds_type=ex_b.config.ds_type)
                             agg_ra, agg_rb = run_parallel(
                                 lambda s=agg_sql_a: ex_a.run(s, max_rows=200),
                                 lambda s=agg_sql_b: ex_b.run(s, max_rows=200),
@@ -2693,11 +2737,12 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                             agg_result = compare_aggregates(
                                 ta, agg_ra.rows[0] if agg_ra.rows else (),
                                 tb, agg_rb.rows[0] if agg_rb.rows else (),
-                                shared_num[:20],
+                                shared_num[:_MAX_AGG_COLUMNS],
                             )
                             agg_mismatches = agg_result.mismatches
                 except Exception:
-                    pass
+                    _log.warning("Batch template %r: aggregate comparison failed",
+                                 name, exc_info=True)
 
                 passed = cnt_a == cnt_b and schema_changes == 0 and agg_mismatches == 0
                 results.append({
@@ -2773,10 +2818,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 if is_numeric_type(c.dtype) and c.name.lower() in names_b
             ]
             if shared_num:
-                agg_sql_a = build_aggregate_sql(tbl, shared_num[:20], where_val,
-                                                 ds_type=ex_a.config.ds_type)
-                agg_sql_b = build_aggregate_sql(tbl, shared_num[:20], where_val,
-                                                 ds_type=ex_b.config.ds_type)
+                agg_sql_a = build_aggregate_sql(tbl, shared_num[:_MAX_AGG_COLUMNS],
+                                                where_val, ds_type=ex_a.config.ds_type)
+                agg_sql_b = build_aggregate_sql(tbl, shared_num[:_MAX_AGG_COLUMNS],
+                                                where_val, ds_type=ex_b.config.ds_type)
                 agg_ra, agg_rb = run_parallel(
                     lambda: ex_a.run(agg_sql_a, max_rows=200),
                     lambda: ex_b.run(agg_sql_b, max_rows=200),
@@ -2784,9 +2829,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 agg_result = compare_aggregates(
                     label_a, agg_ra.rows[0] if agg_ra.rows else (),
                     label_b, agg_rb.rows[0] if agg_rb.rows else (),
-                    shared_num[:20],
+                    shared_num[:_MAX_AGG_COLUMNS],
                 )
-                cards.append(build_agg_card(agg_result, lang_val))
+                cards.append(build_aggregate_card(agg_result, lang_val))
 
             header = f'<h4 style="color:#6366f1;">{dc(lang_val, "dc_env_compare_result")}</h4>'
             return header + "\n".join(cards)
@@ -2795,10 +2840,12 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── DS type change handler ──
     def _on_ds_change(ds_label: str):
-        ds = _DS_LABEL_TO_KEY.get(ds_label, "hive")
-        defaults = DS_DEFAULTS.get(ds, {})
-        default_port = str(defaults.get("port", 10000))
-        default_db = defaults.get("database", "default")
+        ds = _DS_LABEL_TO_KEY.get(ds_label)
+        if ds is None:
+            return tuple(gr.update() for _ in range(5))
+        defaults = DS_DEFAULTS[ds]
+        default_port = str(defaults["port"])
+        default_db = defaults["database"]
         show_auth = ds in _NEEDS_AUTH
         show_host = ds in _NEEDS_HOST
         env_cfg = config_from_env(ds)
@@ -2824,7 +2871,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         lang_state = gr.State("en")
 
         # ── Left sidebar ──
-        with gr.Column(scale=0, min_width=560, elem_classes=["st-sidebar"]):
+        with gr.Column(scale=0, min_width=720,
+                       elem_classes=["st-sidebar", "st-dc-sidebar"]):
             title_md = gr.Markdown(t("dc_title"))
 
             with gr.Row():
@@ -2848,9 +2896,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                        elem_classes=["st-connect-btn"])
                     status_a = gr.Textbox(label=t("dc_status"), value=t("dc_not_connected"),
                                           interactive=False, elem_classes=["st-sidebar-status"])
-                    search_a = gr.Textbox(label="", placeholder=t("dc_search_tables"),
-                                          elem_classes=["st-sidebar-control"])
                     table_a = gr.Dropdown(choices=[], label=t("dc_select_table"),
+                                          filterable=True,
                                           elem_classes=["st-sidebar-control"])
 
                 # Source B panel
@@ -2873,9 +2920,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                        elem_classes=["st-connect-btn"])
                     status_b = gr.Textbox(label=t("dc_status"), value=t("dc_not_connected"),
                                           interactive=False, elem_classes=["st-sidebar-status"])
-                    search_b = gr.Textbox(label="", placeholder=t("dc_search_tables"),
-                                          elem_classes=["st-sidebar-control"])
                     table_b = gr.Dropdown(choices=[], label=t("dc_select_table"),
+                                          filterable=True,
                                           elem_classes=["st-sidebar-control"])
 
             # Connection presets (A)
@@ -2894,6 +2940,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                                                elem_classes=["st-sidebar-control"])
                     preset_dd_b = gr.Dropdown(choices=[], label=f"{t('dc_preset_load')} (B)",
                                                elem_classes=["st-sidebar-control"])
+                    preset_delete_btn = gr.Button("🗑", size="sm",
+                                                   elem_classes=["st-connect-btn"])
                 preset_status = gr.HTML("")
 
             # D — WHERE filter
@@ -3152,8 +3200,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             result_html = gr.HTML(
                 value=(
                     '<div style="display:flex;align-items:center;justify-content:center;'
-                    'height:60vh;color:#9ca3af;font-size:15px;">'
-                    'Connect two data sources and click Compare</div>'
+                    f'height:60vh;color:#9ca3af;font-size:15px;">'
+                    f'{t("dc_placeholder")}</div>'
                 ),
                 elem_classes=["st-schema-card"],
             )
@@ -3172,17 +3220,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     conn_a.click(
         fn=lambda *args: _do_connect(*args, side="a"),
         inputs=[ds_a, host_a, port_a, db_a, user_a, pwd_a, lang_state],
-        outputs=[status_a, table_a],
+        outputs=[status_a, table_a, host_a, port_a, db_a],
     )
     conn_b.click(
         fn=lambda *args: _do_connect(*args, side="b"),
         inputs=[ds_b, host_b, port_b, db_b, user_b, pwd_b, lang_state],
-        outputs=[status_b, table_b],
+        outputs=[status_b, table_b, host_b, port_b, db_b],
     )
-
-    # G — Table search filters
-    search_a.change(fn=lambda s: _filter_tables(s, "a"), inputs=[search_a], outputs=[table_a])
-    search_b.change(fn=lambda s: _filter_tables(s, "b"), inputs=[search_b], outputs=[table_b])
 
     # Strategy change — show/hide stratified column input
     sample_strategy.change(
@@ -3324,7 +3368,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         if not _REPORTS_DIR.is_dir():
             return gr.update(choices=[]), gr.update(choices=[])
         files = sorted(_REPORTS_DIR.glob("compare_*.json"), reverse=True)
-        names = [f.name for f in files[:_LIST_LIMIT]]
+        names = [f.name for f in files[:_MAX_REPORT_FILES]]
         return gr.update(choices=names), gr.update(choices=names)
 
     report_diff_btn.click(fn=_compare_reports_fn,
@@ -3339,15 +3383,37 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                       outputs=[result_html])
 
     # A — Presets
+    def _save_and_refresh(name, ds_label, host, port, db, user, pwd, env_val,
+                          lang_val):
+        status = _save_preset(name, ds_label, host, port, db, user, pwd,
+                              env_val, lang_val)
+        dd_a, dd_b = _refresh_presets()
+        return status, dd_a, dd_b
+
     preset_save_btn.click(
-        fn=_save_preset,
+        fn=_save_and_refresh,
         inputs=[preset_name_input, ds_a, host_a, port_a, db_a, user_a, pwd_a, preset_env_input, lang_state],
-        outputs=[preset_status],
+        outputs=[preset_status, preset_dd_a, preset_dd_b],
     )
     preset_save_b_btn.click(
-        fn=_save_preset,
+        fn=_save_and_refresh,
         inputs=[preset_name_input, ds_b, host_b, port_b, db_b, user_b, pwd_b, preset_env_input, lang_state],
-        outputs=[preset_status],
+        outputs=[preset_status, preset_dd_a, preset_dd_b],
+    )
+    # populate the load dropdowns when the accordion opens (presets saved in
+    # earlier sessions were otherwise never listed — _refresh_presets had no
+    # caller at all)
+    presets_accordion.expand(
+        fn=_refresh_presets, outputs=[preset_dd_a, preset_dd_b])
+    def _delete_and_refresh(name, lang_val):
+        status = _delete_preset(name, lang_val)
+        dd_a, dd_b = _refresh_presets()
+        return status, dd_a, dd_b
+
+    preset_delete_btn.click(
+        fn=_delete_and_refresh,
+        inputs=[preset_dd_a, lang_state],
+        outputs=[preset_status, preset_dd_a, preset_dd_b],
     )
     preset_dd_a.change(fn=_load_preset, inputs=[preset_dd_a, lang_state],
                        outputs=[ds_a, host_a, port_a, db_a, user_a, pwd_a, preset_env_input])
@@ -3360,7 +3426,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # View Report — open in new tab
     def _build_report_page(lang_val):
-        report = holder.get("last_report")
+        with holder_lock:
+            report = holder.get("last_report")
         if not report:
             return dc(lang_val, "dc_no_report")
         return build_standalone_report(report, lang_val)
@@ -3388,9 +3455,19 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     home_btn.click(fn=None, js="() => { window.location.href = '/'; }")
 
     # Language switch — update all component labels/text
-    def _switch_lang(choice):
+    def _switch_lang(choice, status_a_val, status_b_val):
         lg = "zh" if choice == "中文" else "en"
         t_fn = lambda k: dc(lg, k)
+
+        def _status_update(current: str):
+            # Translate the pristine "Not connected" placeholder; leave any
+            # real connection status (it contains runtime info) untouched.
+            pristine = {dc("en", "dc_not_connected"), dc("zh", "dc_not_connected")}
+            if (current or "").strip() in pristine:
+                return gr.update(label=t_fn("dc_status"),
+                                 value=t_fn("dc_not_connected"))
+            return gr.update(label=t_fn("dc_status"))
+
         return (
             lg,                                                         # lang_state
             t_fn("dc_title"),                                           # title_md
@@ -3410,10 +3487,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(label=t_fn("dc_password")),                       # pwd_b
             gr.update(value=t_fn("dc_connect")),                        # conn_a
             gr.update(value=t_fn("dc_connect")),                        # conn_b
-            gr.update(label=t_fn("dc_status")),                         # status_a
-            gr.update(label=t_fn("dc_status")),                         # status_b
-            gr.update(placeholder=t_fn("dc_search_tables")),            # search_a
-            gr.update(placeholder=t_fn("dc_search_tables")),            # search_b
+            _status_update(status_a_val),                               # status_a
+            _status_update(status_b_val),                               # status_b
             gr.update(label=t_fn("dc_select_table")),                   # table_a
             gr.update(label=t_fn("dc_select_table")),                   # table_b
             gr.update(label=t_fn("dc_where_clause"),
@@ -3522,13 +3597,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     lang_dd.change(
         fn=_switch_lang,
-        inputs=[lang_dd],
+        inputs=[lang_dd, status_a, status_b],
         outputs=[
             lang_state, title_md, src_a_md, src_b_md,
             ds_a, ds_b, host_a, host_b, port_a, port_b, db_a, db_b,
             user_a, user_b, pwd_a, pwd_b,
             conn_a, conn_b, status_a, status_b,
-            search_a, search_b, table_a, table_b,
+            table_a, table_b,
             where_input, key_input,
             schema_btn, count_btn, sample_btn, agg_btn,
             all_btn, batch_btn, profile_btn,
@@ -3568,3 +3643,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             lineage_accordion, lineage_sql_input, lineage_btn,
         ],
     )
+
+    if app is not None:
+        # Tab on an empty input fills in the gray placeholder (shared with text2sql)
+        tab_fill_js = (Path(__file__).resolve().parent / "text2sql" / "resources"
+                       / "tab_fill.js").read_text(encoding="utf-8")
+        app.load(fn=None, js=tab_fill_js)

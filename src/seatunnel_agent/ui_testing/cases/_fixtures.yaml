@@ -1,0 +1,48 @@
+# 共享前置步骤组。用例中以 `- use: <名字>` 引用,可嵌套。
+# 所有连接均走内置 SQLite 演示库 config/uitest_demo.db(runner 每轮重建种子)。
+
+connect_a_sqlite:
+  - select_ds: {value: SQLite, side: A}
+  - fill: {数据库: config/uitest_demo.db, side: A}
+  - click: {target: 连接, side: A}
+  - wait_status_ok: {side: A}
+
+connect_b_sqlite:
+  - select_ds: {value: SQLite, side: B}
+  - fill: {数据库: config/uitest_demo.db, side: B}
+  - click: {target: 连接, side: B}
+  - wait_status_ok: {side: B}
+
+connect_both_sqlite:
+  - use: connect_a_sqlite
+  - use: connect_b_sqlite
+
+# 订单对: A 10 行 / B 9 行,预置差异见 examples/dc_hive_test_data.sql 注释
+select_orders:
+  - use: connect_both_sqlite
+  - select: {of: 选择表, value: dc_test_orders_a, side: A}
+  - select: {of: 选择表, value: dc_test_orders_b, side: B}
+
+# 完全一致对: 5 行 = 5 行
+select_same:
+  - use: connect_both_sqlite
+  - select: {of: 选择表, value: dc_test_same_a, side: A}
+  - select: {of: 选择表, value: dc_test_same_b, side: B}
+
+# 结构差异对: B 侧 name→user_name,多 remark,amount 类型不同
+select_schema:
+  - use: connect_both_sqlite
+  - select: {of: 选择表, value: dc_test_schema_a, side: A}
+  - select: {of: 选择表, value: dc_test_schema_b, side: B}
+
+# 指标对: A region 严重倾斜,B 均匀
+select_metrics:
+  - use: connect_both_sqlite
+  - select: {of: 选择表, value: dc_test_metrics_a, side: A}
+  - select: {of: 选择表, value: dc_test_metrics_b, side: B}
+
+# 分区对: dt 列 06-01/02/03 差异 0/-2/-5
+select_part:
+  - use: connect_both_sqlite
+  - select: {of: 选择表, value: dc_test_part_a, side: A}
+  - select: {of: 选择表, value: dc_test_part_b, side: B}

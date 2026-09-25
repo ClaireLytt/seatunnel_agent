@@ -49,3 +49,8 @@ chat_history/
 # Query logs (user data)
 logs/
 
+
+# UI testing agent artifacts
+runs/
+config/uitest_demo.db
+.claude/worktrees/

@@ -1,0 +1,200 @@
+# C/D/E 组 · 基础对比、阈值、主键对比
+
+- id: C1
+  title: 结构对比一致 (orders 对 9 列相同)
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - click: 结构对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 表结构完全一致}
+
+- id: C2
+  title: 结构对比差异 (schema 对列名/类型不同)
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_schema
+  steps:
+    - click: 结构对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: user_name}
+    - text_contains: {in: 结果区, text: remark}
+    - text_contains: {in: 结果区, text: name}
+
+- id: C3
+  title: 行数对比呈现 10 vs 9 差异
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: "10"}
+    - text_contains: {in: 结果区, text: "9"}
+    - text_contains: {in: 结果区, text: "+1"}
+
+- id: C4
+  title: 行数对比一致 (same 对 5 = 5)
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_same
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: "5"}
+    - text_contains: {in: 结果区, text: 一致}
+
+- id: C5
+  title: 样本数据差异高亮 (id=3 amount / id=5 status)
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_orders
+    - fill: {主键列: id}
+      note: 无主键时按行位置对比只有增/删行,不产生"修改单元格"语义(见 E6)
+  steps:
+    - click: 样本数据
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: "350"}
+    - text_contains: {in: 结果区, text: refund}
+    - ai_judge: >-
+        样本数据差异结果中,应能看出 id=3 的 amount(300 与 350)
+        和 id=5 的 status(paid 与 refund)两处修改差异被标记出来。
+
+- id: C6
+  title: 全部对比渲染全部卡片无报错
+  tags: [full, sqlite]
+  timeout_s: 150
+  setup:
+    - use: select_orders
+  steps:
+    - click: 全部对比
+    - wait_result: {timeout_ms: 90000}
+  expect:
+    - text_contains: {in: 结果区, text: 对比摘要}
+    - text_contains: {in: 结果区, text: 行数对比}
+    - text_not_contains: {in: 结果区, text: Traceback}
+
+- id: D1
+  title: 聚合对比标记 SUM/MAX 不一致
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - click: 聚合对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: "2122.49"}
+    - text_contains: {in: 结果区, text: "3493.69"}
+
+- id: D2
+  title: 百分比阈值 5% 未通过 (差异 10%)
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - fill: {阈值: "5%"}
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 未通过}
+
+- id: D3
+  title: 百分比阈值 20% 通过 (差异 10%)
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - fill: {阈值: "20%"}
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 通过}
+    - text_not_contains: {in: 结果区, text: 未通过}
+
+- id: D4
+  title: 绝对阈值 0 未通过 (差异 1)
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - fill: {阈值: "0"}
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 未通过}
+
+- id: E1
+  title: 基于主键的差异 (缺失/多出/修改)
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - fill: {主键列: id}
+  steps:
+    - click: 样本数据
+    - wait_result: {}
+  expect:
+    - ai_judge: >
+        基于主键的对比结果应包含:B 侧缺失 id=9 和 id=10、B 侧多出 id=11、
+        修改行包含 id=3(amount)与 id=5(status),另外 id=7 和 id=8 的
+        email 在 B 侧为 NULL 也会计为修改。
+
+- id: E3
+  title: WHERE 过滤后只剩修改差异
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - fill: {主键列: id}
+    - fill: {WHERE: id <= 8}
+  steps:
+    - click: 样本数据
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: "350"}
+    - text_not_contains: {in: 结果区, text: ORD011}
+
+- id: E4
+  title: WHERE 防注入拦截禁止关键字
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_orders
+    - fill: {WHERE: "1=1; drop table x"}
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 禁止关键字}
+
+- id: E5
+  title: 列映射 name:user_name 后正常对比
+  tags: [full, sqlite]
+  setup:
+    - use: select_schema
+    - fill: {字段映射: "name:user_name"}
+    - fill: {主键列: id}
+  steps:
+    - click: 样本数据
+    - wait_result: {}
+  expect:
+    - text_not_contains: {in: 结果区, text: Traceback}
+    - ai_judge: >-
+        应用 name→user_name 列映射后对比成功,并且 id=2 的
+        amount(20 与 21)被识别为修改差异。
+
+- id: E6
+  title: 无主键回退按行位置对比不报错
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - clear: {target: 主键列}
+  steps:
+    - click: 样本数据
+    - wait_result: {}
+  expect:
+    - text_not_contains: {in: 结果区, text: Traceback}
+    - text_contains: {in: 结果区, text: 样本}

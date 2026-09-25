@@ -664,6 +664,42 @@ def _check_schema_refs(
                 args={"col": col, "table": table.full_name,
                       "parts": parts_str},
             ))
+
+    # ── DDL-known partitioned table without a partition filter ──
+    # The name-suffix heuristic in _check_partition_filter only covers
+    # incremental tables; when the DDL says a table is partitioned we can
+    # require the filter regardless of naming (and skip suffix-matched
+    # tables there to avoid duplicate findings).
+    reported_part: set[str] = set()
+    for off, name, alias in refs:
+        if name in ctes or name in reported_part:
+            continue
+        table = store.get(name)
+        if table is None or not table.is_partitioned:
+            continue
+        base = name.split(".")[-1]
+        if any(base.endswith(sfx) for sfx in config.incremental_suffixes):
+            continue                      # covered by _check_partition_filter
+        parts = tuple(c.name for c in table.partition_columns)
+        covered = False
+        for m in _partition_filter_re(parts).finditer(cleaned):
+            qual = (m.group(1) or "").lower()
+            if not qual or qual in {q for q in (alias, base, name.lower()) if q}:
+                covered = True
+                break
+        if covered:
+            continue
+        reported_part.add(name)
+        parts_str = ", ".join(parts)
+        findings.append(Finding(
+            severity=Severity.RISK,
+            category="partition_pruning",
+            description=f"表 {name} 缺少分区过滤条件",
+            location=f"行 {line_of(sql, off)}",
+            impact="全表扫描",
+            suggestion=f"添加分区条件，分区列：{parts_str}",
+            key="partition_missing", args={"table": name},
+        ))
     return findings
 
 
@@ -844,6 +880,46 @@ def _check_partition_filter(
             suggestion="添加分区条件如 pt = '${bizdate}'",
             key="partition_missing", args={"table": name},
         ))
+    return findings
+
+
+def _check_partition_func_filter(
+    sql: str, cleaned: str, depth_at: list[int], dialect: str, config: ReviewConfig
+) -> list[Finding]:
+    """Function wrapped around a partition column — pruning is defeated.
+
+    The classic batch-warehouse anti-pattern: ``substr(dt, 1, 7) = '2024-06'``
+    scans every partition.  (OLTP engines get the analogous index-oriented
+    rule from ``_check_where_func_on_column``.)"""
+    if dialect not in BATCH_WAREHOUSES:
+        return []
+    findings: list[Finding] = []
+    cols_alt = "|".join(re.escape(c) for c in config.partition_cols)
+    pat = re.compile(
+        rf"\b(\w+)\s*\(\s*(?:`?\w+`?\s*\.\s*)?`?({cols_alt})`?\s*[,)]",
+        re.IGNORECASE,
+    )
+    # `dt IN (...)` and similar are predicates, not function calls
+    not_funcs = {"in", "and", "or", "not", "on", "where", "exists",
+                 "between", "values", "by"}
+    seen: set[tuple[str, str]] = set()
+    for w in re.finditer(r"\bwhere\b", cleaned, re.IGNORECASE):
+        end_m = _CLAUSE_END_RE.search(cleaned, w.end())
+        end = end_m.start() if end_m else len(cleaned)
+        for m in pat.finditer(cleaned, w.end(), end):
+            func, col = m.group(1).upper(), m.group(2).lower()
+            if func.lower() in not_funcs or (func, col) in seen:
+                continue
+            seen.add((func, col))
+            findings.append(Finding(
+                severity=Severity.RISK,
+                category="partition_pruning",
+                description=f"对分区列 {col} 使用函数 {func}(...) 过滤",
+                location=f"行 {line_of(sql, m.start())}",
+                impact="分区裁剪失效，全表扫描",
+                suggestion=f"改为对常量侧计算的范围条件，如 {col} >= '...' AND {col} < '...'",
+                key="partition_func_on_col", args={"func": func, "col": col},
+            ))
     return findings
 
 
@@ -1244,6 +1320,7 @@ _CONFIG_RULES = (
 
 _DIALECT_RULES = (
     _check_partition_filter,
+    _check_partition_func_filter,
     _check_partition_value_quoting,
     _check_order_by_no_limit,
     _check_insert_overwrite,

@@ -24,6 +24,8 @@ chart = ["matplotlib>=3.7"]
 excel = ["openpyxl>=3.1"]
 pdf = ["fpdf2>=2.7"]
 hive = ["pyhive[hive]>=0.7"]
+uitest = ["playwright>=1.40", "pyyaml>=6.0"]
+sqlreview = ["sqlglot>=20.0"]
 mysql = ["pymysql>=1.1"]
 postgres = ["psycopg2-binary>=2.9"]
 sqlserver = ["pymssql>=2.2"]
@@ -43,6 +45,7 @@ all = [
     "matplotlib>=3.7",
     "openpyxl>=3.1",
     "fpdf2>=2.7",
+    "sqlglot>=20.0",
 ]
 dev = [
     "pytest>=7.0",
@@ -66,7 +69,10 @@ seatunnel-agent = "seatunnel_agent.cli:cli"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v"
+addopts = "-v -m 'not uitest'"
+markers = [
+    "uitest: browser-driven UI regression (run explicitly: pytest -m uitest)",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

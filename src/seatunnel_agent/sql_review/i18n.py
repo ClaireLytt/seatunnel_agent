@@ -257,6 +257,11 @@ RULE_TEXTS_EN: dict[str, dict[str, str]] = {
         "impact": "A zero or NULL denominator yields errors or unexpected results",
         "suggestion": "Use / NULLIF({denom}, 0)",
     },
+    "partition_func_on_col": {
+        "description": "Function {func}(...) applied to partition column {col}",
+        "impact": "Partition pruning is defeated; full table scan",
+        "suggestion": "Rewrite as a range predicate computed on the constant side, e.g. {col} >= '...' AND {col} < '...'",
+    },
     "partition_missing": {
         "description": "Table {table} has no partition filter",
         "impact": "Full table scan",
