@@ -16,6 +16,36 @@ import gradio as gr
 
 _SUITES = ["smoke", "full", "sqlite", "hive", "slow"]
 
+# Agent picker: route prefixes -> every automated case on those pages.
+_AGENT_ROUTES: dict[str, tuple[str, ...]] = {
+    "all": (),
+    "datacompare": ("/datacompare",),
+    "sqlreview": ("/sqlreview",),
+    "lineage": ("/lineage",),
+    "text2sql": ("/text2sql", "/history", "/favorites", "/schema-browser"),
+}
+_AGENT_LABELS = {
+    "en": {"all": "All agents", "datacompare": "Data Comparison",
+           "sqlreview": "SQL Review", "lineage": "Data Lineage",
+           "text2sql": "Text2SQL & aux pages"},
+    "zh": {"all": "全部 Agent", "datacompare": "数据对比",
+           "sqlreview": "SQL Review", "lineage": "数据血缘",
+           "text2sql": "Text2SQL 与辅助页"},
+}
+
+
+def _agent_choices(lang: str) -> list[tuple[str, str]]:
+    return [(_AGENT_LABELS[lang][k], k) for k in _AGENT_ROUTES]
+
+
+def _agent_case_ids(agent: str) -> list[str]:
+    routes = _AGENT_ROUTES.get(agent) or ()
+    if not routes:
+        return []
+    from .loader import load_cases
+    return [c.id for c in load_cases()
+            if "manual" not in c.tags and c.page.startswith(routes)]
+
 _I18N: dict[str, dict[str, str]] = {
     "en": {
         "title": "### UI Testing Agent",
@@ -24,6 +54,7 @@ _I18N: dict[str, dict[str, str]] = {
                      "touches this session. Case docs: "
                      "`docs/ui_testing_usage.md`."),
         "suite": "Suite",
+        "agent": "Agent (overrides suite)",
         "cases": "Specific cases (optional, space-separated, e.g. A5 B3; "
                  "overrides the suite)",
         "no_llm": "Skip LLM cases (0 tokens)",
@@ -50,6 +81,7 @@ _I18N: dict[str, dict[str, str]] = {
                      "7912+,不影响当前会话。用例文档见 "
                      "`docs/ui_testing_usage.md`。"),
         "suite": "套件",
+        "agent": "按 Agent 测 (优先于套件)",
         "cases": "指定用例 (可选,空格分隔,如 A5 B3;优先于套件)",
         "no_llm": "跳过 LLM 用例 (零 token)",
         "run": "运行",
@@ -76,13 +108,17 @@ def _ut(lang: str, key: str) -> str:
     return _I18N.get(lang, _I18N["en"]).get(key, key)
 
 
-def _run_stream(suite: str, case_ids_text: str, no_llm: bool, lang: str):
+def _run_stream(suite: str, agent: str, case_ids_text: str, no_llm: bool,
+                lang: str):
     """Generator: streams progress lines, ends with the report."""
     from .report import print_summary, write_html, write_json  # noqa: F401
     from .runner import run_suite
 
     case_ids = [c for c in (case_ids_text or "").replace(",", " ").split()
                 if c]
+    if not case_ids and agent and agent != "all":
+        # agent picker: run every automated case on that agent's pages
+        case_ids = _agent_case_ids(agent)
     q: queue.Queue = queue.Queue()
     done: dict = {}
 
@@ -152,6 +188,8 @@ def render_uitest_page(app: gr.Blocks | None = None) -> None:
     with gr.Row():
         suite_dd = gr.Dropdown(choices=_SUITES, value="smoke",
                                label=t0("suite"))
+        agent_dd = gr.Dropdown(choices=_agent_choices("en"), value="all",
+                               label=t0("agent"))
         case_tb = gr.Textbox(label=t0("cases"))
         no_llm_cb = gr.Checkbox(label=t0("no_llm"), value=True)
         run_btn = gr.Button(t0("run"), variant="primary")
@@ -190,6 +228,7 @@ def render_uitest_page(app: gr.Blocks | None = None) -> None:
             lang,
             f"{t('title')}\n{t('subtitle')}",
             gr.update(label=t("suite")),
+            gr.update(label=t("agent"), choices=_agent_choices(lang)),
             gr.update(label=t("cases")),
             gr.update(label=t("no_llm")),
             gr.update(value=t("run")),
@@ -203,10 +242,10 @@ def render_uitest_page(app: gr.Blocks | None = None) -> None:
     lang_dd.change(
         _switch_lang,
         inputs=[lang_dd],
-        outputs=[lang_state, title_md, suite_dd, case_tb, no_llm_cb,
-                 run_btn, progress_tb, report_file,
+        outputs=[lang_state, title_md, suite_dd, agent_dd, case_tb,
+                 no_llm_cb, run_btn, progress_tb, report_file,
                  editor_acc, editor_tb, editor_btn],
     )
     run_btn.click(fn=_run_stream,
-                  inputs=[suite_dd, case_tb, no_llm_cb, lang_state],
+                  inputs=[suite_dd, agent_dd, case_tb, no_llm_cb, lang_state],
                   outputs=[progress_tb, report_html, report_file])
