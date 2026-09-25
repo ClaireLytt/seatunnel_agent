@@ -138,6 +138,9 @@ LABELS: dict[str, tuple[str, ...]] = {
     "SLA 影响分析": ("SLA 影响分析", "SLA impact analysis"),
     "保存快照":   ("保存快照", "Save snapshot"),
     "快照对比":   ("快照对比", "Compare snapshots"),
+    "路径终点表": ("路径终点表", "Path destination table"),
+    "快照名":     ("快照名（可选）", "Snapshot name (optional)"),
+    "对比快照":   ("对比快照", "Compare against snapshot"),
 }
 
 

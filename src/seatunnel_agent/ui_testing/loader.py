@@ -33,7 +33,7 @@ KNOWN_ACTIONS = frozenset({
 })
 
 KNOWN_ASSERTS = frozenset({
-    "text_contains", "text_not_contains", "value_is", "options_are",
+    "text_contains", "text_not_contains", "value_is", "value_contains", "options_are",
     "options_count", "status_ok", "status_error", "visible", "hidden",
     "checked", "ai_judge",
 })

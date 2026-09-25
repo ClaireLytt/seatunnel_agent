@@ -53,15 +53,16 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
         return ok, (f"'{where}' does{'' if found else ' not'} contain "
                     f"{needle!r} (expected to {want}); actual={snippet!r}")
 
-    if k == "value_is":
+    if k in ("value_is", "value_contains"):
         name = args.get("of", args.get("target"))
         want = str(args.get("value", ""))
         try:
             actual = dc.textbox(name, side).input_value()
         except LookupError:
             actual = dc.dropdown_input(name, side).input_value()
-        ok = actual == want
-        return ok, f"'{name}' value: expected {want!r}, actual {actual!r}"
+        ok = (want in actual) if k == "value_contains" else (actual == want)
+        rel = "to contain" if k == "value_contains" else "to equal"
+        return ok, f"'{name}' value: expected {rel} {want!r}, actual {actual!r}"
 
     if k in ("options_are", "options_count"):
         name = args.get("of", "选择表")
