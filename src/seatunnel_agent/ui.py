@@ -809,6 +809,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Table &amp; column lineage from SQL files, SeaTunnel configs and Hive metadata — impact, SLA, health" data-zh="从 SQL / SeaTunnel 配置 / Hive 元数据构建表级与字段级血缘 — 影响分析、SLA、治理体检">Table &amp; column lineage from SQL files, SeaTunnel configs and Hive metadata — impact, SLA, health</div>
       <div class="st-hub-enter" style="color:#0891b2;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/transpile">
+      <div class="st-hub-logo" style="background:#16a34a;">🔁</div>
+      <div class="st-hub-card-title" data-en="SQL Dialect Translation" data-zh="SQL 方言翻译">SQL Dialect Translation</div>
+      <div class="st-hub-card-desc" data-en="hive / spark / doris / starrocks translation with an incompatibility report — deterministic, no DB connection" data-zh="hive / spark / doris / starrocks 互转 + 不兼容点清单 — 确定性翻译，不连接数据库">hive / spark / doris / starrocks translation with an incompatibility report — deterministic, no DB connection</div>
+      <div class="st-hub-enter" style="color:#16a34a;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <a class="st-hub-card" href="/uitest">
       <div class="st-hub-logo" style="background:#f59e0b;">UT</div>
       <div class="st-hub-card-title" data-en="UI Testing Agent" data-zh="UI 测试 Agent">UI Testing Agent</div>
@@ -969,6 +975,10 @@ def create_ui() -> gr.Blocks:
     with app.route("Lineage", "/lineage"):
         from .lineage_ui import render_lineage_page
         render_lineage_page(app)
+
+    with app.route("SQL Transpile", "/transpile"):
+        from .sql_transpile_ui import render_sql_transpile_page
+        render_sql_transpile_page(app)
 
     with app.route("UI Testing", "/uitest"):
         from .ui_testing.gradio_page import render_uitest_page
@@ -2468,10 +2478,12 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .text2sql.api import router as t2s_api_router
         from .sql_review.api import router as sql_review_api_router
         from .data_lineage.api import router as lineage_api_router
+        from .sql_transpile.api import router as transpile_api_router
         fastapi_app = app.app
         fastapi_app.include_router(t2s_api_router)
         fastapi_app.include_router(sql_review_api_router)
         fastapi_app.include_router(lineage_api_router)
+        fastapi_app.include_router(transpile_api_router)
 
     app.launch(
         server_name=host,
