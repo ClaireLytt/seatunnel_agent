@@ -16,6 +16,8 @@ behaviors verified against this repo:
 
 from __future__ import annotations
 
+import re
+
 from playwright.sync_api import Locator, Page
 
 # ── zh/en label table ──
@@ -225,6 +227,12 @@ class DCPage:
         raise LookupError(f"button not found: {name} (side={side})")
 
     def dropdown_input(self, name: str, side: str | None = None) -> Locator:
+        # escape hatch for unlabeled dropdowns: "combobox[N]" = the Nth
+        # visible combobox on the page (0-based)
+        m = re.fullmatch(r"combobox\[(\d+)\]", name)
+        if m:
+            return (self.page.locator("input[role='combobox']:visible")
+                    .nth(int(m.group(1))))
         scope = self._scope(side)
         for text in _texts(name):
             # Gradio 6 dropdowns carry the label as aria-label on the input
