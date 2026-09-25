@@ -533,6 +533,21 @@ Test coverage by module:
 
 Full Text2SQL test documentation: [`docs/text2sql_test_doc.md`](docs/text2sql_test_doc.md)
 
+### Data Lineage Agent
+
+Full-chain table & column lineage built from SQL files, SeaTunnel configs
+and/or the Hive metadata lineage table — upstream/downstream chains,
+column-level impact, SLA analysis, governance health check, snapshots and
+OpenLineage export. Web UI at `/lineage`, plus:
+
+```bash
+seatunnel-agent lineage --sql-dir examples/lineage_demo -t dws.gmv_daily            # chain report
+seatunnel-agent lineage --sql-dir sql/ -t dwd.orders_di -c amount                   # column impact
+seatunnel-agent lineage --sql-dir sql/ --check                                      # health check
+seatunnel-agent lineage --sql-dir sql/ --ask "改 orders 的 amount 影响哪些下游?"     # agent mode
+seatunnel-agent lineage-mcp --sql-dir sql/                                          # MCP server (stdio)
+```
+
 ### UI Testing Agent
 
 Browser-driven regression for the Gradio pages (real Chromium via Playwright,
@@ -1086,6 +1101,20 @@ pytest tests/ --cov=seatunnel_agent --cov-report=term-missing
 | `text2sql/` | 62 | Schema 解析、SQL 验证（SELECT 白名单、表白名单、堆叠查询）、表/列匹配、分区规则、CSV 导出、查询日志、列校验、分区强制、工具层、边缘用例 |
 
 完整的 Text2SQL 测试文档：[`docs/text2sql_test_doc.md`](docs/text2sql_test_doc.md)
+
+### 数据血缘 Agent
+
+从 SQL 文件 / SeaTunnel 配置 / Hive 元数据血缘表构建表级与字段级全链路血缘——
+上下游链路、字段影响分析、SLA 影响、治理体检、快照对比与 OpenLineage 导出。
+Web 页面 `/lineage`,CLI:
+
+```bash
+seatunnel-agent lineage --sql-dir examples/lineage_demo -t dws.gmv_daily            # 链路报告
+seatunnel-agent lineage --sql-dir sql/ -t dwd.orders_di -c amount                   # 字段影响
+seatunnel-agent lineage --sql-dir sql/ --check                                      # 治理体检
+seatunnel-agent lineage --sql-dir sql/ --ask "改 orders 的 amount 影响哪些下游?"     # Agent 模式
+seatunnel-agent lineage-mcp --sql-dir sql/                                          # MCP server (stdio)
+```
 
 ### UI 测试 Agent
 

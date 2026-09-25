@@ -1,0 +1,80 @@
+# T2S/HIS/FAV/SCH 组 · Text2SQL 侧栏与辅助页(历史/收藏/Schema 浏览器)。
+# 这些页面此前零 UI 覆盖;用例保持英文界面(lang: en),T2S3 专测中文切换。
+
+- id: T2S1
+  title: Text2SQL 侧栏 SQLite 连接 (隐藏字段回归)
+  tags: [smoke, sqlite]
+  page: /text2sql
+  lang: en
+  steps:
+    - select_ds: {value: SQLite}
+    - fill: {数据库: config/uitest_demo.db}
+    - click: 连接
+    - wait_status_ok: {side: A}
+  expect:
+    - status_ok: {side: A}
+    - text_contains: {in: 状态, text: "10 tables"}
+    - text_contains: {in: 页面, text: dc_test_orders_a}
+
+- id: T2S2
+  title: Text2SQL 端口非法给出明确错误
+  tags: [full, sqlite]
+  page: /text2sql
+  lang: en
+  steps:
+    - fill: {主机: 127.0.0.1}
+    - fill: {端口: abc}
+    - click: 连接
+    - wait_status_error: {side: A}
+  expect:
+    - status_error: {side: A}
+    - text_contains: {in: 状态, text: Port must be a number}
+
+- id: T2S3
+  title: Text2SQL 语言切换翻译未连接状态 (回归)
+  tags: [full, sqlite]
+  page: /text2sql
+  lang: en
+  steps:
+    - set_language: 中文
+    - wait: 800
+      note: i18n 重渲染
+  expect:
+    - text_contains: {in: 状态, text: 未连接}
+
+- id: HIS1
+  title: 历史页加载并可刷新
+  tags: [full, sqlite]
+  page: /history
+  lang: en
+  steps:
+    - click: ↻ Refresh
+    - wait: 1500
+      note: 刷新表格无 loading 信号
+  expect:
+    - text_not_contains: {in: 页面, text: Traceback}
+    - visible: {target: ↻ Refresh}
+
+- id: FAV1
+  title: 收藏页搜索框可输入不崩溃
+  tags: [full, sqlite]
+  page: /favorites
+  lang: en
+  steps:
+    - wait: 800
+      note: 页面组件挂载
+  expect:
+    - text_not_contains: {in: 页面, text: Traceback}
+    - text_contains: {in: 页面, text: ENGINE}
+
+- id: SCH1
+  title: Schema 浏览器加载出基础控件
+  tags: [full, sqlite]
+  page: /schema-browser
+  lang: en
+  steps:
+    - wait: 1200
+      note: 页面组件挂载
+  expect:
+    - visible: {target: Refresh}
+    - text_not_contains: {in: 页面, text: Traceback}

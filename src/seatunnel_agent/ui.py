@@ -803,6 +803,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards" data-zh="Hive / Spark / Flink / MaxCompute SQL 静态 + LLM 审查 — 性能、质量与规范">Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards</div>
       <div class="st-hub-enter" style="color:#10b981;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/lineage">
+      <div class="st-hub-logo" style="background:#0891b2;">⇆</div>
+      <div class="st-hub-card-title" data-en="Data Lineage" data-zh="数据血缘">Data Lineage</div>
+      <div class="st-hub-card-desc" data-en="Table &amp; column lineage from SQL files, SeaTunnel configs and Hive metadata — impact, SLA, health" data-zh="从 SQL / SeaTunnel 配置 / Hive 元数据构建表级与字段级血缘 — 影响分析、SLA、治理体检">Table &amp; column lineage from SQL files, SeaTunnel configs and Hive metadata — impact, SLA, health</div>
+      <div class="st-hub-enter" style="color:#0891b2;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <a class="st-hub-card" href="/uitest">
       <div class="st-hub-logo" style="background:#f59e0b;">UT</div>
       <div class="st-hub-card-title" data-en="UI Testing Agent" data-zh="UI 测试 Agent">UI Testing Agent</div>
@@ -959,6 +965,10 @@ def create_ui() -> gr.Blocks:
 
     with app.route("SQL Review", "/sqlreview"):
         render_sql_review_page(app)
+
+    with app.route("Lineage", "/lineage"):
+        from .lineage_ui import render_lineage_page
+        render_lineage_page(app)
 
     with app.route("UI Testing", "/uitest"):
         from .ui_testing.gradio_page import render_uitest_page
@@ -1671,6 +1681,42 @@ body:has(.st-review-page) .sr-input-col {
 body.st-sidebar-dragging {
     cursor: col-resize !important;
     user-select: none !important;
+}
+
+/* ══════════════════════════
+   Lineage page — the global container is 100vh/overflow-hidden,
+   so the page provides its own vertical scroll
+   ══════════════════════════ */
+.st-lin-page {
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 12px 16px 24px !important;
+    box-sizing: border-box !important;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+}
+.st-lin-page::-webkit-scrollbar { width: 8px; }
+.st-lin-page::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+.st-lin-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+/* Panels grow with their content (e.g. the expanded Hive advanced
+   accordion); the page scrollbar above is the only vertical scroll. */
+.st-lin-side, .st-lin-main {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    align-self: flex-start !important;
+}
+.st-lin-side {
+    padding-right: 6px !important;
+    border-right: 1px solid #e5e7eb;
+}
+.st-lin-hidden {
+    display: none !important;
 }
 
 /* ══════════════════════════
@@ -2421,9 +2467,11 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     if api:
         from .text2sql.api import router as t2s_api_router
         from .sql_review.api import router as sql_review_api_router
+        from .data_lineage.api import router as lineage_api_router
         fastapi_app = app.app
         fastapi_app.include_router(t2s_api_router)
         fastapi_app.include_router(sql_review_api_router)
+        fastapi_app.include_router(lineage_api_router)
 
     app.launch(
         server_name=host,

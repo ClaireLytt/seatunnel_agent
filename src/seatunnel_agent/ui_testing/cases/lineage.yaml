@@ -1,0 +1,109 @@
+# LIN 组 · 数据血缘页 (/lineage)。演示数据 examples/lineage_demo:
+# 4 条 SQL (ods→dwd→dws→ads 链) + 2 个 SeaTunnel 配置,构图 7 表 6 边 20 字段边。
+
+- id: LIN1
+  title: 从 SQL 目录构建血缘图
+  tags: [smoke, sqlite]
+  page: /lineage
+  steps:
+    - fill: {SQL 目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏 markdown,结果区无变化信号
+  expect:
+    - text_contains: {in: 页面, text: 血缘图已构建}
+    - text_contains: {in: 页面, text: 7 表}
+
+- id: LIN2
+  title: 查询目标表的上下游链路
+  tags: [smoke, sqlite]
+  page: /lineage
+  setup:
+    - fill: {SQL 目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏,结果区无变化信号
+  steps:
+    - select: {of: 目标表, value: dws.gmv_daily}
+    - click: 查询血缘
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: dwd.orders_di}
+    - text_contains: {in: 结果区, text: ads.}
+
+- id: LIN3
+  title: 表名模糊搜索命中
+  tags: [full, sqlite]
+  page: /lineage
+  setup:
+    - fill: {SQL 目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏,结果区无变化信号
+  steps:
+    - fill: {表名搜索: gmv}
+    - click: 搜索
+    - wait: 1500
+      note: 搜索结果写在侧栏 markdown
+  expect:
+    - text_contains: {in: 页面, text: dws.gmv_daily}
+
+- id: LIN4
+  title: 治理体检输出报告不崩溃
+  tags: [full, sqlite]
+  page: /lineage
+  setup:
+    - fill: {SQL 目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏,结果区无变化信号
+  steps:
+    - click: 治理体检
+    - wait_result: {}
+  expect:
+    - text_not_contains: {in: 页面, text: Traceback}
+    - visible: {target: 治理体检}
+
+- id: LIN5
+  title: 不存在的目录给出警告不崩溃
+  tags: [full, sqlite]
+  page: /lineage
+  steps:
+    - fill: {SQL 目录: no_such_dir_xyz}
+    - click: 构建血缘图
+    - wait: 2000
+      note: 警告写在侧栏
+  expect:
+    - text_contains: {in: 页面, text: 没有找到}
+    - visible: {target: 构建血缘图}
+
+- id: LIN6
+  title: 字段级影响分析 (amount 的下游)
+  tags: [full, sqlite]
+  page: /lineage
+  setup:
+    - fill: {SQL 目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏,结果区无变化信号
+  steps:
+    - select: {of: 目标表, value: dwd.orders_di}
+    - fill: {血缘字段: amount}
+    - click: 查询血缘
+    - wait_result: {}
+  expect:
+    - ai_judge: >-
+        字段级影响分析结果应指出 dwd.orders_di 的 amount 字段影响下游
+        dws.gmv_daily(gmv 汇总)或 dws.user_stats(total_amount)。
+
+- id: LIN7
+  title: 从 SeaTunnel 配置构建 source→sink 血缘
+  tags: [full, sqlite]
+  page: /lineage
+  steps:
+    - fill: {SeaTunnel 配置目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏
+  expect:
+    - text_contains: {in: 页面, text: 血缘图已构建}

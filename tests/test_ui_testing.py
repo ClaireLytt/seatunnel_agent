@@ -347,7 +347,7 @@ class TestCoverage:
         assert counts["auto"] >= 55             # PRD acceptance threshold
         assert counts["missing"] <= 8
         # every SR case is beyond the checklist
-        assert all(x.startswith(("SR", "A5b", "B3a", "M2"))
+        assert all(x.startswith(("SR", "LIN", "A5b", "B3a", "M2"))
                    for x in cov.extra_case_ids)
 
     def test_absent_checklist_returns_none(self, tmp_path):

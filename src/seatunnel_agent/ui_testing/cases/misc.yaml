@@ -36,9 +36,9 @@
     - use: select_orders
     - click: 行数对比
     - wait_result: {}
-    - click: 行数对比
-    - wait: 3000
-      note: 第二次对比与第一次渲染完全相同的 HTML,变更等待不适用
+    - click: 保存报告
+      note: 趋势数据来自已保存报告;干净环境(CI)需至少一条记录
+    - wait_text: {text: 报告已保存, timeout_ms: 10000}
     - open_accordion: 趋势
   steps:
     - click: 对比趋势
@@ -57,9 +57,11 @@
   steps:
     - click: 行数对比
     - wait_result: {}
+    - click: 保存报告
+      note: 趋势/告警数据来自已保存报告;保存本次 delta=1 的结果作为最新记录
+    - wait_text: {text: 报告已保存, timeout_ms: 10000}
     - click: 对比趋势
-    - wait: 2500
-      note: 告警状态随趋势卡片渲染
+    - wait_text: {text: 已触发, timeout_ms: 20000}
   expect:
     - text_contains: {in: 页面, text: 已触发}
 

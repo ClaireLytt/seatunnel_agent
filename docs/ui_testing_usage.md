@@ -2,7 +2,9 @@
 
 > 设计与 PRD 见 [ui_test_agent_design.md](ui_test_agent_design.md)。
 > 用例库与 `examples/dc_test_checklist.html` 的 75 项人工清单同源同编号;
-> SR 组用例额外覆盖 SQL Review 页(`/sqlreview`,纯静态审查路径)。
+> SR 组用例额外覆盖 SQL Review 页(`/sqlreview`,纯静态审查路径);
+> LIN 组覆盖数据血缘页(`/lineage`,演示数据 `examples/lineage_demo`);
+> T2S/HIS/FAV/SCH 组覆盖 Text2SQL 侧栏与历史/收藏/Schema 浏览器辅助页。
 
 ## 快速开始
 

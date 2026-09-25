@@ -690,6 +690,318 @@ def review_stats(recent: int | None) -> None:
             console.print(f"    {item['count']:>4}  {item['label']} ({item['category']})")
 
 
+@cli.command()
+@click.option("--table", "-t", type=str, default=None,
+              help="目标表（如 zz.dwm_orders_df）")
+@click.option("--direction", type=click.Choice(["up", "down", "both"]),
+              default="both", help="血缘方向：up=上游 down=下游 both=全链路")
+@click.option("--depth", type=int, default=3, help="遍历深度（默认 3）")
+@click.option("--column", "-c", type=str, default=None,
+              help="字段级影响分析：改这个字段影响哪些下游")
+@click.option("--path-to", type=str, default=None,
+              help="路径查询：--table 到该表的最短血缘路径")
+@click.option("--sla-delay", type=float, default=None,
+              help="SLA 影响分析：假设 --table 延迟 N 小时，列出受影响 SLA/基线任务")
+@click.option("--check", "health", is_flag=True,
+              help="治理体检：环依赖 / 孤立表 / 无下游可下线表")
+@click.option("--sql-dir", type=click.Path(exists=True, file_okay=False), default=None,
+              help="从目录下的 *.sql 文件构建血缘图（递归）")
+@click.option("--sql-dialect", type=click.Choice(
+                  ["hive", "spark", "flink", "maxcompute", "mysql",
+                   "postgresql", "clickhouse", "doris", "starrocks", "sqlite"]),
+              default="hive", show_default=True,
+              help="解析 --sql-dir 脚本用的 SQL 方言（影响字段级血缘的 AST 解析）")
+@click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False), default=None,
+              help="从目录下的 SeaTunnel 配置（*.conf/*.config/*.json）构建 source→sink 血缘")
+@click.option("--hive", "use_hive", is_flag=True,
+              help="从 Hive 元数据血缘表构建（需 .env 配置 HIVE_HOST 等）")
+@click.option("--meta-table", type=str, default=None,
+              help="血缘元数据表名（默认 zz.dwm_meta_table_lineage_df）")
+@click.option("--partition", type=str, default=None,
+              help="指定 pt 分区（默认自动取最新分区）")
+@click.option("--no-cache", "no_cache", is_flag=True,
+              help="跳过 Hive 血缘图的本地 TTL 缓存，强制重新查询")
+@click.option("--agent", "use_agent", is_flag=True,
+              help="Agent 模式：用自然语言提问（需 API key，配合 --ask）")
+@click.option("--ask", type=str, default=None,
+              help="自然语言血缘问题（隐含 --agent）")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "mermaid", "json"]),
+              default="markdown", help="输出格式")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+@click.option("--export-openlineage", "export_ol", type=click.Path(), default=None,
+              help="把整张血缘图导出为 OpenLineage RunEvent JSON 文件")
+@click.pass_context
+def lineage(
+    ctx: click.Context,
+    table: str | None,
+    direction: str,
+    depth: int,
+    column: str | None,
+    path_to: str | None,
+    sla_delay: float | None,
+    health: bool,
+    sql_dir: str | None,
+    sql_dialect: str,
+    seatunnel_dir: str | None,
+    use_hive: bool,
+    meta_table: str | None,
+    partition: str | None,
+    no_cache: bool,
+    use_agent: bool,
+    ask: str | None,
+    fmt: str,
+    output: str | None,
+    export_ol: str | None,
+) -> None:
+    """数据表全链路血缘分析 — 上下游链路 / 字段影响 / SLA 与基线。"""
+    import time
+
+    verbose = ctx.obj.get("verbose", False)
+    if not sql_dir and not seatunnel_dir and not use_hive:
+        raise click.UsageError("至少指定一个血缘来源：--sql-dir / --seatunnel-dir / --hive")
+    if ask:
+        use_agent = True
+    if use_agent and not ask:
+        raise click.UsageError("--agent 模式需要 --ask 提供问题")
+    if not use_agent and not table and not health and not export_ol:
+        raise click.UsageError("请用 --table 指定目标表（或 --ask 用自然语言提问 / --check 治理体检）")
+
+    from .data_lineage import LineageLogger, build_graph, load_lineage_config
+
+    config = load_lineage_config()
+    if meta_table:
+        import dataclasses
+        config = dataclasses.replace(config, meta_table=meta_table)
+
+    start = time.time()
+    try:
+        graph, warnings = build_graph(
+            sql_dir=sql_dir, use_hive=use_hive,
+            meta_table=config.meta_table, partition=partition,
+            seatunnel_dir=seatunnel_dir, use_cache=not no_cache,
+            sql_dialect=sql_dialect,
+        )
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Interrupted by user.[/yellow]")
+        sys.exit(130)
+    except Exception as e:
+        _handle_error(e, verbose)
+        return
+    for w in warnings:
+        console.print(f"[yellow]警告:[/yellow] {w}")
+    stats = graph.stats()
+    console.print(
+        f"[dim]血缘图: {stats.get('tables', 0)} 表 / {stats.get('edges', 0)} 边 / "
+        f"{stats.get('column_edges', 0)} 字段边[/dim]"
+    )
+
+    logger = LineageLogger()
+
+    if export_ol:
+        from .data_lineage.openlineage import export_openlineage_file
+
+        try:
+            out_path = export_openlineage_file(graph, export_ol)
+        except OSError as e:
+            _handle_error(e, verbose)
+            return
+        console.print(f"[green]OpenLineage 事件已导出:[/green] {out_path}")
+        if not use_agent and not table and not health:
+            return
+
+    # ── agent mode ──
+    if use_agent:
+        from .config import load_settings
+        from .data_lineage import LineageAgent
+
+        if ctx.obj.get("model"):
+            os.environ["MODEL_NAME"] = ctx.obj["model"]
+        if ctx.obj.get("provider"):
+            os.environ["LLM_PROVIDER"] = ctx.obj["provider"]
+        settings = load_settings()
+        agent = LineageAgent(
+            settings, graph=graph, config=config, sql_dir=sql_dir,
+            sql_dialect=sql_dialect,
+            seatunnel_dir=seatunnel_dir,
+            hive_available=use_hive, meta_table=config.meta_table,
+            partition=partition,
+        )
+        try:
+            answer = agent.analyze(ask)
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Interrupted by user.[/yellow]")
+            sys.exit(130)
+        except Exception as e:
+            _handle_error(e, verbose)
+            return
+        logger.log(
+            query=ask, direction=direction, mode="agent",
+            graph_stats=stats, elapsed_ms=int((time.time() - start) * 1000),
+        )
+        console.print(f"\n[bold]血缘分析:[/bold]\n{answer}")
+        if output:
+            _write_output(output, answer)
+        return
+
+    # ── deterministic mode ──
+    from .data_lineage import render_report, static_lineage
+    from .data_lineage.render import (
+        render_health,
+        render_path,
+        render_path_mermaid,
+        render_sla_impact,
+    )
+
+    def _finish(content: str, mode: str) -> None:
+        logger.log(
+            query=table or mode, direction=direction, mode=mode,
+            graph_stats=stats, elapsed_ms=int((time.time() - start) * 1000),
+        )
+        if output:
+            _write_output(output, content)
+        else:
+            console.print(content)
+
+    if health:
+        report_hc = graph.health_check()
+        if fmt == "json":
+            import json as _json
+            content = _json.dumps(report_hc.to_dict(), ensure_ascii=False,
+                                  indent=2, default=str)
+        else:
+            content = render_health(report_hc)
+        _finish(content, "health")
+        return
+
+    if path_to:
+        path = graph.path_between(table, path_to)
+        if fmt == "mermaid":
+            content = render_path_mermaid(path, graph)
+        elif fmt == "json":
+            import json as _json
+            content = _json.dumps(
+                {"src": table, "dst": path_to, "found": path is not None,
+                 "path": path or []},
+                ensure_ascii=False, indent=2,
+            )
+        else:
+            content = render_path(path, table, path_to, graph)
+        _finish(content, "path")
+        return
+
+    if sla_delay is not None:
+        impact = graph.sla_impact(table, sla_delay, depth=config.max_depth,
+                                  max_nodes=config.max_nodes)
+        if impact.missing_root:
+            console.print(f"[red]未在血缘图中找到表 `{table}`。[/red]")
+            sys.exit(1)
+        if fmt == "json":
+            import json as _json
+            content = _json.dumps(impact.to_dict(), ensure_ascii=False,
+                                  indent=2, default=str)
+        else:
+            content = render_sla_impact(impact)
+        _finish(content, "sla")
+        return
+
+    dir_map = {"up": "upstream", "down": "downstream", "both": "both"}
+    report = static_lineage(
+        graph, table, dir_map[direction], depth, column=column, config=config
+    )
+    chain = report.chain
+    logger.log(
+        query=table, direction=direction, mode="static",
+        graph_stats=stats,
+        chain_stats={
+            "upstream": chain.upstream_count if chain else 0,
+            "downstream": chain.downstream_count if chain else 0,
+        },
+        elapsed_ms=int((time.time() - start) * 1000),
+    )
+
+    if chain and chain.missing_root:
+        console.print(f"[red]未在血缘图中找到表 `{table}`。[/red]")
+        suggestions = graph.search(table.rsplit(".", 1)[-1])
+        if suggestions:
+            console.print("[yellow]相近的表:[/yellow]")
+            for node in suggestions[:10]:
+                console.print(f"  - {node.name}")
+        sys.exit(1)
+
+    if fmt == "mermaid":
+        content = report.mermaid
+    elif fmt == "json":
+        import json as _json
+        content = _json.dumps(report.to_dict(), ensure_ascii=False, indent=2, default=str)
+    else:
+        content = render_report(report)
+
+    if output:
+        _write_output(output, content)
+    else:
+        console.print(content)
+
+
+@cli.command(name="lineage-stats")
+@click.option("--recent", "-n", type=int, default=20,
+              help="Show the most recent N lineage queries")
+def lineage_stats(recent: int) -> None:
+    """Show lineage query history (from logs/lineage.jsonl)."""
+    from .data_lineage import LineageLogger
+
+    records = LineageLogger().recent(recent)
+    if not records:
+        console.print("[yellow]还没有血缘查询历史记录。[/yellow]")
+        return
+    console.print("[bold]血缘查询历史[/bold]")
+    for r in records:
+        chain = r.get("chain_stats") or {}
+        console.print(
+            f"  {r.get('timestamp', '')}  [{r.get('mode', '')}/{r.get('source', '')}] "
+            f"{r.get('query', '')}  方向={r.get('direction', '-') or '-'}  "
+            f"上游={chain.get('upstream', '-')} 下游={chain.get('downstream', '-')}"
+        )
+
+
+@cli.command(name="lineage-mcp")
+@click.option("--sql-dir", type=click.Path(exists=True, file_okay=False), default=None,
+              help="从目录下的 *.sql 文件构建血缘图（递归）")
+@click.option("--sql-dialect", type=click.Choice(
+                  ["hive", "spark", "flink", "maxcompute", "mysql",
+                   "postgresql", "clickhouse", "doris", "starrocks", "sqlite"]),
+              default="hive", show_default=True,
+              help="解析 --sql-dir 脚本用的 SQL 方言（影响字段级血缘的 AST 解析）")
+@click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False), default=None,
+              help="从目录下的 SeaTunnel 配置（*.conf/*.config/*.json）构建 source→sink 血缘")
+@click.option("--hive", "use_hive", is_flag=True,
+              help="从 Hive 元数据血缘表构建（需 .env 配置 HIVE_HOST 等）")
+@click.option("--meta-table", type=str, default=None,
+              help="血缘元数据表名（默认 zz.dwm_meta_table_lineage_df）")
+@click.option("--partition", type=str, default=None,
+              help="指定 pt 分区（默认自动取最新分区）")
+def lineage_mcp(
+    sql_dir: str | None,
+    sql_dialect: str,
+    seatunnel_dir: str | None,
+    use_hive: bool,
+    meta_table: str | None,
+    partition: str | None,
+) -> None:
+    """以 MCP server（stdio）暴露血缘分析工具，供 Claude Desktop 等 MCP 客户端调用。"""
+    if not sql_dir and not seatunnel_dir and not use_hive:
+        raise click.UsageError("至少指定一个血缘来源：--sql-dir / --seatunnel-dir / --hive")
+    from .data_lineage.mcp_server import create_mcp_server
+
+    try:
+        server = create_mcp_server(
+            sql_dir=sql_dir, seatunnel_dir=seatunnel_dir, use_hive=use_hive,
+            meta_table=meta_table, partition=partition, sql_dialect=sql_dialect,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+    server.run()
+
+
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------

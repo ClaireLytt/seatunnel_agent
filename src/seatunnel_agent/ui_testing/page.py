@@ -124,6 +124,20 @@ LABELS: dict[str, tuple[str, ...]] = {
     "审查规则":   ("规则配置（可选，.sqlreview.yaml 格式）",
                    "Rule config (optional, .sqlreview.yaml format)"),
     "规则输入":   ("YAML 规则", "YAML rules"),
+    # ── Lineage page (/lineage) ──
+    "SQL 目录":   ("SQL 目录", "SQL directory"),
+    "SeaTunnel 配置目录": ("SeaTunnel 配置目录", "SeaTunnel config directory"),
+    "构建血缘图": ("构建血缘图", "Build lineage graph"),
+    "目标表":     ("目标表", "Target table"),
+    "查询血缘":   ("查询血缘", "Query lineage"),
+    "表名搜索":   ("表名搜索", "Table search"),
+    "搜索":       ("搜索", "Search"),
+    "治理体检":   ("治理体检", "Governance health check"),
+    "血缘字段":   ("字段（可选）", "Column (optional)"),
+    "查询路径":   ("查询路径", "Find path"),
+    "SLA 影响分析": ("SLA 影响分析", "SLA impact analysis"),
+    "保存快照":   ("保存快照", "Save snapshot"),
+    "快照对比":   ("快照对比", "Compare snapshots"),
 }
 
 
@@ -144,6 +158,8 @@ class DCPage:
     READY = {
         "/datacompare": ".st-dc-sidebar",
         "/sqlreview": "#sr-sql-box textarea",
+        "/lineage": ".st-lin-side",
+        "/text2sql": ".st-sidebar-status",
     }
 
     def goto(self, path: str = "/datacompare") -> None:
@@ -158,6 +174,9 @@ class DCPage:
         identified robustly as the ancestor columns of the two status boxes.
         """
         if side is None:
+            return self.page.locator("body")
+        if not self.page.locator(".st-dc-sidebar").count():
+            # pages without the A/B layout (e.g. /text2sql): whole page
             return self.page.locator("body")
         idx = 0 if str(side).upper() == "A" else 1
         return (self.page
@@ -382,18 +401,22 @@ class DCPage:
 
     # ── waits ──
 
-    def status_text(self, side: str = "A") -> str:
+    def _status_box(self, side: str = "A"):
         idx = 0 if str(side).upper() == "A" else 1
-        box = (self.page.locator(".st-dc-sidebar .st-sidebar-status")
-               .nth(idx).locator("textarea, input"))
-        return box.input_value()
+        loc = self.page.locator(".st-dc-sidebar .st-sidebar-status")
+        if not loc.count():
+            # other pages (e.g. /text2sql) have a single unscoped status box
+            loc = self.page.locator(".st-sidebar-status")
+            idx = min(idx, max(loc.count() - 1, 0))
+        return loc.nth(idx).locator("textarea, input")
+
+    def status_text(self, side: str = "A") -> str:
+        return self._status_box(side).input_value()
 
     def wait_status(self, side: str = "A", ok: bool = True,
                     timeout_ms: int = 20_000) -> str:
         mark = "✅" if ok else "❌"
-        idx = 0 if str(side).upper() == "A" else 1
-        handle = (self.page.locator(".st-dc-sidebar .st-sidebar-status")
-                  .nth(idx).locator("textarea, input").element_handle())
+        handle = self._status_box(side).element_handle()
         self.page.wait_for_function(
             "arg => arg.el.value.includes(arg.mark)",
             arg={"el": handle, "mark": mark}, timeout=timeout_ms)
@@ -402,6 +425,9 @@ class DCPage:
     def result_container(self) -> Locator:
         # data comparison result card; falls back to the SQL review report
         loc = self.page.locator(".st-main .st-schema-card")
+        if loc.count():
+            return loc.first
+        loc = self.page.locator(".st-lin-main")
         if loc.count():
             return loc.first
         return self.page.locator(".sr-report-card").last
@@ -453,6 +479,16 @@ class DCPage:
                 return (Date.now() - window.__uitest_t2) > 1000;
             }""",
             arg={"el": handle}, timeout=timeout_ms)
+
+    def wait_for_text(self, text: str, where: str = "body",
+                      timeout_ms: int = 15_000) -> None:
+        """Poll until *text* appears in the page body (or result area) —
+        replaces fragile fixed waits for slow-rendering side effects."""
+        target = ("document.body" if where == "body"
+                  else "document.querySelector('.st-main .st-schema-card, .st-lin-main, .sr-report-card')")
+        self.page.wait_for_function(
+            f"t => (({target})?.textContent || '').includes(t)",
+            arg=text, timeout=timeout_ms)
 
     def set_language(self, lang: str = "中文") -> None:
         """Switch UI language via the top-right dropdown.
