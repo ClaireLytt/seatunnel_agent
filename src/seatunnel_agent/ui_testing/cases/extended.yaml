@@ -1,0 +1,164 @@
+# 扩展用例 · 覆盖薄弱点:方言切换 / DDL schema 校验 / 方向过滤 / 阈值边界 /
+# 空列容错 / 下载控件出现。均为确定性用例,零 token。
+
+# ── SQL Review 扩展 ──
+
+- id: SR11
+  title: 方言切换生效 (MySQL 报 WHERE 列函数,Hive 不报)
+  tags: [full, sqlite]
+  page: /sqlreview
+  steps:
+    - fill: {SQL: "SELECT id FROM t WHERE lower(name) = 'x'"}
+    - select: {of: SQL 方言, value: MySQL}
+    - click: 开始审查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: LOWER}
+      note: OLTP 方言下 WHERE 列函数使索引失效,应报
+
+- id: SR12
+  title: DDL schema 校验抓出不存在的列
+  tags: [full, sqlite]
+  page: /sqlreview
+  setup:
+    - open_accordion: 表结构 DDL
+    - fill: {DDL 输入: "CREATE TABLE t1 (id BIGINT, name STRING);"}
+  steps:
+    - fill: {SQL: "SELECT t1.nope FROM t1"}
+    - click: 开始审查
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: nope}
+    - text_contains: {in: 结果区, text: 不存在}
+
+- id: SR13
+  title: 审查后下载报告按钮出现
+  tags: [full, sqlite]
+  page: /sqlreview
+  steps:
+    - fill: {SQL: "SELECT * FROM t"}
+    - click: 开始审查
+    - wait_result: {}
+  expect:
+    - visible: {target: 下载报告}
+
+# ── 血缘扩展 ──
+
+- id: LIN13
+  title: 方向过滤为仅上游时不出现下游表
+  tags: [full, sqlite]
+  page: /lineage
+  setup:
+    - fill: {SQL 目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏
+  steps:
+    - select: {of: 目标表, value: dws.gmv_daily}
+    - select: {of: 方向, value: 仅上游}
+    - click: 查询血缘
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: dwd.orders_di}
+    - text_not_contains: {in: 结果区, text: ads.top_users}
+      note: 仅上游模式不应把下游 ads 表画进链路
+
+# ── 数据对比扩展 ──
+
+- id: D5
+  title: 阈值填非法内容给出错误不崩溃
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - fill: {阈值: "abc%"}
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - visible: {target: 行数对比}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: G3
+  title: 校验和列留空时兜底为全部共同列
+  tags: [full, sqlite]
+  setup:
+    - use: select_same
+    - open_accordion: 校验和
+    - clear: {target: 校验和}
+  steps:
+    - click: 校验和对比
+    - wait_result: {}
+  expect:
+    - text_not_contains: {in: 页面, text: Traceback}
+    - text_contains: {in: 结果区, text: 匹配}
+
+- id: L2
+  title: 水位线列留空时增量对比给出提示
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - open_accordion: 增量对比
+    - clear: {target: 水位线列}
+  steps:
+    - click: 增量对比
+    - wait_result: {}
+  expect:
+    - visible: {target: 增量对比}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: J3
+  title: 自定义聚合留空时给出提示不崩溃
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - open_accordion: 自定义聚合
+    - clear: {target: 自定义聚合}
+  steps:
+    - click: 比对自定义聚合
+    - wait_result: {}
+  expect:
+    - visible: {target: 比对自定义聚合}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+# ── Text2SQL 扩展 ──
+
+- id: T2S4
+  title: 切中文后再切回英文界面复原
+  tags: [full, sqlite]
+  page: /text2sql
+  lang: en
+  steps:
+    - set_language: 中文
+    - wait: 800
+      note: i18n 重渲染
+    - set_language: English
+    - wait: 800
+      note: i18n 重渲染
+  expect:
+    - text_contains: {in: 状态, text: Not connected}
+    - visible: {target: 连接}
+
+- id: SCH2
+  title: Schema 浏览器选表后渲染字段卡片
+  tags: [full, sqlite]
+  page: /schema-browser
+  lang: en
+  setup:
+    - goto: /text2sql
+    - select_ds: {value: SQLite}
+    - fill: {数据库: config/uitest_demo.db}
+    - click: 连接
+    - wait_status_ok: {side: A}
+    - goto: /schema-browser
+    - wait: 1200
+      note: 页面挂载
+    - click: Refresh
+    - wait: 1500
+      note: 下拉 choices 刷新无信号
+  steps:
+    - select_index: {of: "combobox[1]", index: 2}
+      note: 表下拉无标签(label=\"\"),按页面第 2 个 combobox 定位;index 2 = dc_test_orders_a
+    - wait_text: {text: order_no, timeout_ms: 10000}
+  expect:
+    - text_contains: {in: 页面, text: order_no}
+    - text_contains: {in: 页面, text: amount}

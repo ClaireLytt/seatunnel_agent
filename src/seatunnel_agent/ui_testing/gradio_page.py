@@ -23,14 +23,17 @@ _AGENT_ROUTES: dict[str, tuple[str, ...]] = {
     "sqlreview": ("/sqlreview",),
     "lineage": ("/lineage",),
     "text2sql": ("/text2sql", "/history", "/favorites", "/schema-browser"),
+    "transpile": ("/transpile",),
 }
 _AGENT_LABELS = {
     "en": {"all": "All agents", "datacompare": "Data Comparison",
            "sqlreview": "SQL Review", "lineage": "Data Lineage",
-           "text2sql": "Text2SQL & aux pages"},
+           "text2sql": "Text2SQL & aux pages",
+           "transpile": "SQL Dialect Translation"},
     "zh": {"all": "全部 Agent", "datacompare": "数据对比",
            "sqlreview": "SQL Review", "lineage": "数据血缘",
-           "text2sql": "Text2SQL 与辅助页"},
+           "text2sql": "Text2SQL 与辅助页",
+           "transpile": "SQL 方言翻译"},
 }
 
 

@@ -4,7 +4,8 @@
 > 用例库与 `examples/dc_test_checklist.html` 的 75 项人工清单同源同编号;
 > SR 组用例额外覆盖 SQL Review 页(`/sqlreview`,纯静态审查路径);
 > LIN 组覆盖数据血缘页(`/lineage`,演示数据 `examples/lineage_demo`);
-> T2S/HIS/FAV/SCH 组覆盖 Text2SQL 侧栏与历史/收藏/Schema 浏览器辅助页。
+> T2S/HIS/FAV/SCH 组覆盖 Text2SQL 侧栏与历史/收藏/Schema 浏览器辅助页;
+> TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`)。
 
 ## 快速开始
 
@@ -47,7 +48,7 @@ python -m seatunnel_agent.ui_testing list [--suite smoke]
 ## 界面上按 Agent 定向测试
 
 `/uitest` 页新增「按 Agent 测」下拉:选 数据对比 / SQL Review / 数据血缘 /
-Text2SQL 与辅助页,点运行即测该 Agent 的全部自动化用例(优先于套件选择;
+Text2SQL 与辅助页 / SQL 方言翻译,点运行即测该 Agent 的全部自动化用例(优先于套件选择;
 「指定用例」填了 id 时又优先于它)。
 
 ## 界面上零代码添加用例
