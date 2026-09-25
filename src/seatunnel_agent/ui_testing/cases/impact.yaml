@@ -1,10 +1,10 @@
-# IMP 组 · 血缘页「变更影响」面板 (/lineage)。演示数据 examples/impact_demo:
+# IMP 组 · 变更影响分析页 (/impact)。演示数据 examples/impact_demo:
 # old/new 各 5-6 条 SQL,差异 = 口径变更(warn) + 上游移除(error) + 新增表(info)。
 
 - id: IMP1
   title: old/new 目录变更影响分析
   tags: [smoke, sqlite]
-  page: /lineage
+  page: /impact
   steps:
     - fill: {旧 SQL 目录: examples/impact_demo/old}
     - fill: {新 SQL 目录: examples/impact_demo/new}
@@ -18,7 +18,7 @@
 - id: IMP2
   title: 新增表以 info 呈现且带下游波及
   tags: [full, sqlite]
-  page: /lineage
+  page: /impact
   steps:
     - fill: {旧 SQL 目录: examples/impact_demo/old}
     - fill: {新 SQL 目录: examples/impact_demo/new}
@@ -32,7 +32,7 @@
 - id: IMP3
   title: 不存在的目录给出警告不崩溃
   tags: [full, sqlite]
-  page: /lineage
+  page: /impact
   steps:
     - fill: {旧 SQL 目录: no_such_dir_xyz}
     - fill: {新 SQL 目录: examples/impact_demo/new}

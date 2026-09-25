@@ -809,6 +809,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Table &amp; column lineage from SQL files, SeaTunnel configs and Hive metadata — impact, SLA, health" data-zh="从 SQL / SeaTunnel 配置 / Hive 元数据构建表级与字段级血缘 — 影响分析、SLA、治理体检">Table &amp; column lineage from SQL files, SeaTunnel configs and Hive metadata — impact, SLA, health</div>
       <div class="st-hub-enter" style="color:#0891b2;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/impact">
+      <div class="st-hub-logo" style="background:#e11d48;">Δ</div>
+      <div class="st-hub-card-title" data-en="Change Impact Analysis" data-zh="变更影响分析">Change Impact Analysis</div>
+      <div class="st-hub-card-desc" data-en="SQL diff × lineage — compare two SQL trees and report the release blast radius with severity levels" data-zh="SQL 变更 × 血缘 — 对比两份 SQL 目录，输出上线影响面与严重度分级">SQL diff × lineage — compare two SQL trees and report the release blast radius with severity levels</div>
+      <div class="st-hub-enter" style="color:#e11d48;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <a class="st-hub-card" href="/transpile">
       <div class="st-hub-logo" style="background:#16a34a;">🔁</div>
       <div class="st-hub-card-title" data-en="SQL Dialect Translation" data-zh="SQL 方言翻译">SQL Dialect Translation</div>
@@ -979,6 +985,10 @@ def create_ui() -> gr.Blocks:
     with app.route("SQL Transpile", "/transpile"):
         from .sql_transpile_ui import render_sql_transpile_page
         render_sql_transpile_page(app)
+
+    with app.route("Change Impact", "/impact"):
+        from .impact_ui import render_impact_page
+        render_impact_page(app)
 
     with app.route("UI Testing", "/uitest"):
         from .ui_testing.gradio_page import render_uitest_page

@@ -76,11 +76,10 @@ POST /api/lineage/impact  {old_dir, new_dir, depth?, lang?}
 目录参数复用 lineage 的 `_check_dir_allowed` 白名单（`LINEAGE_API_ALLOWED_DIRS`）。
 git 模式不开放给 API（网络入口不执行 git 命令）。
 
-### 4.4 UI（/lineage 页新增侧栏面板，不新开页面）
-侧栏 accordion「变更影响分析」：旧 SQL 目录、新 SQL 目录、深度滑条、
-「变更影响分析」按钮；报告渲染到主结果区（`.st-lin-main`，wait_result 可用）。
-uitest 页 Agent picker 无需改动——`数据血缘` 项按路由 `/lineage` 自动收编
-IMP 用例。
+### 4.4 UI（独立页面 `/impact` + 首页卡片）
+v1 曾内嵌在血缘页侧栏，后应用户要求升级为独立板块：旧/新 SQL 目录、
+方言、深度滑条、「变更影响分析」按钮；报告渲染到结果区（`.st-imp-main`，
+wait_result 可用）。uitest 页 Agent picker 增加「变更影响分析」独立条目。
 
 ## 5. 演示数据 `examples/impact_demo/`
 

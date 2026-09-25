@@ -444,6 +444,9 @@ class DCPage:
         loc = self.page.locator(".st-trp-main")
         if loc.count():
             return loc.first
+        loc = self.page.locator(".st-imp-main")
+        if loc.count():
+            return loc.first
         return self.page.locator(".sr-report-card").last
 
     def result_text(self) -> str:
