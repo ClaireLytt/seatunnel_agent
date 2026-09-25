@@ -124,6 +124,20 @@ LABELS: dict[str, tuple[str, ...]] = {
     "审查规则":   ("规则配置（可选，.sqlreview.yaml 格式）",
                    "Rule config (optional, .sqlreview.yaml format)"),
     "规则输入":   ("YAML 规则", "YAML rules"),
+    # ── Lineage page (/lineage) ──
+    "SQL 目录":   ("SQL 目录", "SQL directory"),
+    "SeaTunnel 配置目录": ("SeaTunnel 配置目录", "SeaTunnel config directory"),
+    "构建血缘图": ("构建血缘图", "Build lineage graph"),
+    "目标表":     ("目标表", "Target table"),
+    "查询血缘":   ("查询血缘", "Query lineage"),
+    "表名搜索":   ("表名搜索", "Table search"),
+    "搜索":       ("搜索", "Search"),
+    "治理体检":   ("治理体检", "Governance health check"),
+    "血缘字段":   ("字段（可选）", "Column (optional)"),
+    "查询路径":   ("查询路径", "Find path"),
+    "SLA 影响分析": ("SLA 影响分析", "SLA impact analysis"),
+    "保存快照":   ("保存快照", "Save snapshot"),
+    "快照对比":   ("快照对比", "Compare snapshots"),
 }
 
 
@@ -144,6 +158,7 @@ class DCPage:
     READY = {
         "/datacompare": ".st-dc-sidebar",
         "/sqlreview": "#sr-sql-box textarea",
+        "/lineage": ".st-lin-side",
     }
 
     def goto(self, path: str = "/datacompare") -> None:
@@ -402,6 +417,9 @@ class DCPage:
     def result_container(self) -> Locator:
         # data comparison result card; falls back to the SQL review report
         loc = self.page.locator(".st-main .st-schema-card")
+        if loc.count():
+            return loc.first
+        loc = self.page.locator(".st-lin-main")
         if loc.count():
             return loc.first
         return self.page.locator(".sr-report-card").last
