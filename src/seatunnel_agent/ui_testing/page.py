@@ -480,6 +480,16 @@ class DCPage:
             }""",
             arg={"el": handle}, timeout=timeout_ms)
 
+    def wait_for_text(self, text: str, where: str = "body",
+                      timeout_ms: int = 15_000) -> None:
+        """Poll until *text* appears in the page body (or result area) —
+        replaces fragile fixed waits for slow-rendering side effects."""
+        target = ("document.body" if where == "body"
+                  else "document.querySelector('.st-main .st-schema-card, .st-lin-main, .sr-report-card')")
+        self.page.wait_for_function(
+            f"t => (({target})?.textContent || '').includes(t)",
+            arg=text, timeout=timeout_ms)
+
     def set_language(self, lang: str = "中文") -> None:
         """Switch UI language via the top-right dropdown.
 

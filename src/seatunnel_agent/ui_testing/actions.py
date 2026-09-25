@@ -105,6 +105,12 @@ def _dispatch(step: Step, dc: DCPage) -> str:
             dc.wait_result_stable(timeout_ms=timeout)
         return "result settled"
 
+    if a == "wait_text":
+        txt = str(args.get("text", args.get("target", "")))
+        dc.wait_for_text(txt, where=args.get("in", "body"),
+                         timeout_ms=int(args.get("timeout_ms", 15_000)))
+        return f"text appeared: {txt!r}"
+
     if a == "wait":
         dc.page.wait_for_timeout(int(args.get("ms", 500)))
         return f"waited {args.get('ms')}ms"

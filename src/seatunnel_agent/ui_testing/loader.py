@@ -26,7 +26,7 @@ CASES_DIR = Path(__file__).parent / "cases"
 KNOWN_ACTIONS = frozenset({
     "goto", "click", "fill", "clear", "press", "select_ds", "select",
     "select_index", "dropdown_type", "check", "open_accordion", "wait_status_ok",
-    "wait_status_error", "wait_result", "wait", "screenshot", "set_language",
+    "wait_status_error", "wait_result", "wait_text", "wait", "screenshot", "set_language",
 })
 
 KNOWN_ASSERTS = frozenset({
