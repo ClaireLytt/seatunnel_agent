@@ -1684,6 +1684,42 @@ body.st-sidebar-dragging {
 }
 
 /* ══════════════════════════
+   Lineage page — the global container is 100vh/overflow-hidden,
+   so the page provides its own vertical scroll
+   ══════════════════════════ */
+.st-lin-page {
+    height: 100vh !important;
+    max-height: 100vh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 12px 16px 24px !important;
+    box-sizing: border-box !important;
+    scrollbar-width: thin;
+    scrollbar-gutter: stable;
+}
+.st-lin-page::-webkit-scrollbar { width: 8px; }
+.st-lin-page::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+}
+.st-lin-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+/* Panels grow with their content (e.g. the expanded Hive advanced
+   accordion); the page scrollbar above is the only vertical scroll. */
+.st-lin-side, .st-lin-main {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    align-self: flex-start !important;
+}
+.st-lin-side {
+    padding-right: 6px !important;
+    border-right: 1px solid #e5e7eb;
+}
+.st-lin-hidden {
+    display: none !important;
+}
+
+/* ══════════════════════════
    Hub landing page
    ══════════════════════════ */
 .st-hub {
