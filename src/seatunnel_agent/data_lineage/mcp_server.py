@@ -20,7 +20,8 @@ from .render import render_health, render_path, render_report, render_sla_impact
 
 _INSTRUCTIONS = (
     "数据表全链路血缘分析：上下游链路、字段级影响、最短路径、SLA 延迟影响、"
-    "治理体检。表名用 库名.表名（如 zz.dwd_orders_df）。"
+    "治理体检、变更影响分析（对比两份 SQL 的上线影响面）。"
+    "表名用 库名.表名（如 zz.dwd_orders_df）。"
 )
 
 
@@ -97,6 +98,47 @@ def build_tool_functions(
             ensure_ascii=False, indent=2,
         )
 
+    def lineage_change_impact(
+        old_dir: str = "", base: str = "", depth: int = 3,
+    ) -> str:
+        """变更影响分析：对比基线与当前 sql_dir 的血缘，输出上线影响面
+        （变更了哪些表、下游波及、error/warn/info 严重度），中文 Markdown。
+        基线二选一：old_dir（旧 SQL 目录）或 base（git 基线，如 HEAD~1、
+        origin/main）。纯静态分析，不连接数据库、不执行 SQL。"""
+        import shutil
+
+        from .impact import (
+            analyze_dirs, materialize_git_ref, render_impact_markdown,
+        )
+
+        if bool(old_dir) == bool(base):
+            return "请二选一提供 old_dir（旧 SQL 目录）或 base（git 基线，如 HEAD~1）"
+        if not sql_dir:
+            return "MCP server 未配置 --sql-dir，无法确定当前（新）SQL 目录"
+        tmp = None
+        try:
+            if base:
+                try:
+                    tmp = materialize_git_ref(base, sql_dir)
+                except RuntimeError as exc:
+                    return f"git 基线模式失败: {exc}（非 git 仓库请改用 old_dir）"
+                baseline = tmp
+            else:
+                baseline = old_dir
+            try:
+                result = analyze_dirs(baseline, sql_dir, depth=depth,
+                                      sql_dialect=sql_dialect)
+            except ValueError as exc:
+                return str(exc)
+            report = render_impact_markdown(result)
+            if tmp is not None and (tmp / ".impact_empty_baseline").exists():
+                report = (f"> ⚠️ 基线 {base} 下没有 *.sql —— "
+                          f"所有文件都报告为新增\n\n{report}")
+            return report
+        finally:
+            if tmp is not None:
+                shutil.rmtree(tmp, ignore_errors=True)
+
     def lineage_reload() -> str:
         """重新加载血缘图（重读 SQL/SeaTunnel 目录、重查 Hive），返回图统计。"""
         state["graph"] = None
@@ -108,7 +150,8 @@ def build_tool_functions(
 
     tools = (
         lineage_query, lineage_path, lineage_sla_impact,
-        lineage_health_check, lineage_search, lineage_reload,
+        lineage_health_check, lineage_search, lineage_change_impact,
+        lineage_reload,
     )
     return {fn.__name__: fn for fn in tools}
 

@@ -559,7 +559,8 @@ which downstream tables are affected and how deep, with a severity model
 (`error` = breaking removal, `warn` = metric drift with consumers, `info` =
 additions) that gates CI via `--fail-on`. Fully deterministic — no database,
 no LLM. Web UI at `/impact`, REST
-`POST /api/lineage/impact`, demo data in `examples/impact_demo/`:
+`POST /api/lineage/impact`, an MCP tool (`lineage_change_impact` on the
+`lineage-mcp` server), demo data in `examples/impact_demo/`:
 
 ```bash
 seatunnel-agent impact --old-dir examples/impact_demo/old --sql-dir examples/impact_demo/new
@@ -1164,7 +1165,8 @@ SQL 变更 × 血缘下游遍历：对比两份 SQL（两个目录，或工作�
 哪些表、波及多深，并按严重度分级（`error` 破坏性移除 / `warn` 有消费方的
 口径变更 / `info` 纯新增），可用 `--fail-on` 做 CI 门禁。纯确定性——不连接
 数据库、不调用 LLM。Web 页面 `/impact`，REST
-`POST /api/lineage/impact`，演示数据 `examples/impact_demo/`：
+`POST /api/lineage/impact`，MCP 工具（`lineage-mcp` server 上的
+`lineage_change_impact`），演示数据 `examples/impact_demo/`：
 
 ```bash
 seatunnel-agent impact --old-dir examples/impact_demo/old --sql-dir examples/impact_demo/new

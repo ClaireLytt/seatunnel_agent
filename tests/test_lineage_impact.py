@@ -412,3 +412,36 @@ def test_api_impact_unreadable_dir_is_400(api_client, monkeypatch):
     })
     assert r.status_code == 400
     assert "变更影响分析失败" in r.json()["detail"]
+
+
+# ─────────────────────────── MCP tool ───────────────────────────
+
+def _mcp_tools(**kw):
+    from seatunnel_agent.data_lineage.mcp_server import build_tool_functions
+    return build_tool_functions(**kw)
+
+
+def test_mcp_change_impact_with_old_dir():
+    tools = _mcp_tools(sql_dir=str(NEW))
+    out = tools["lineage_change_impact"](old_dir=str(OLD))
+    assert "变更影响分析" in out
+    assert "dws.gmv_daily" in out
+    assert "error 1 / warn 1 / info 1" in out
+
+
+def test_mcp_change_impact_requires_exactly_one_baseline():
+    tools = _mcp_tools(sql_dir=str(NEW))
+    assert "二选一" in tools["lineage_change_impact"]()
+    assert "二选一" in tools["lineage_change_impact"](
+        old_dir=str(OLD), base="HEAD")
+
+
+def test_mcp_change_impact_needs_sql_dir():
+    tools = _mcp_tools()
+    assert "--sql-dir" in tools["lineage_change_impact"](old_dir=str(OLD))
+
+
+def test_mcp_change_impact_bad_git_ref_is_message_not_crash(tmp_path):
+    tools = _mcp_tools(sql_dir=str(tmp_path))
+    out = tools["lineage_change_impact"](base="HEAD")
+    assert "git 基线模式失败" in out

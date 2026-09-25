@@ -1241,7 +1241,8 @@ def test_mcp_tool_names():
     tools = build_tool_functions(graph=linear_graph("a", "b"))
     assert set(tools) == {
         "lineage_query", "lineage_path", "lineage_sla_impact",
-        "lineage_health_check", "lineage_search", "lineage_reload",
+        "lineage_health_check", "lineage_search", "lineage_change_impact",
+        "lineage_reload",
     }
 
 
