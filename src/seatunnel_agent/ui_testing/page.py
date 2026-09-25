@@ -418,12 +418,17 @@ class DCPage:
     def wait_result_change(self, before_html: str,
                            timeout_ms: int = 30_000) -> None:
         """Wait until the result area differs from *before_html* AND then
-        stays unchanged for 1s (Gradio has no global loading signal)."""
+        stays unchanged for 1s (Gradio has no global loading signal).
+
+        Blank content never settles: on slow machines Gradio transiently
+        clears the area mid-update, and the stability window must not land
+        on that intermediate state (seen as a CI-only flake on X1)."""
         handle = self.result_container().element_handle()
         self.page.wait_for_function(
             """arg => {
                 const now = arg.el.innerHTML;
                 if (now === arg.before) { window.__uitest_t = 0; return false; }
+                if (!arg.el.textContent.trim()) { return false; }
                 if (window.__uitest_last !== now) {
                     window.__uitest_last = now;
                     window.__uitest_t = Date.now();
@@ -434,11 +439,12 @@ class DCPage:
             arg={"el": handle, "before": before_html}, timeout=timeout_ms)
 
     def wait_result_stable(self, timeout_ms: int = 30_000) -> None:
-        """Wait until the result HTML stops changing for 1s."""
+        """Wait until the result HTML is non-blank and unchanged for 1s."""
         handle = self.result_container().element_handle()
         self.page.wait_for_function(
             """arg => {
                 const now = arg.el.innerHTML;
+                if (!arg.el.textContent.trim()) { return false; }
                 if (window.__uitest_last2 !== now) {
                     window.__uitest_last2 = now;
                     window.__uitest_t2 = Date.now();
