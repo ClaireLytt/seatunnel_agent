@@ -44,6 +44,19 @@ python -m seatunnel_agent.ui_testing list [--suite smoke]
 - `--base-url http://127.0.0.1:7912` 可复用已启动的应用(配合 `--keep-app`
   连续调试,免每轮冷启动)。
 
+## 界面上按 Agent 定向测试
+
+`/uitest` 页新增「按 Agent 测」下拉:选 数据对比 / SQL Review / 数据血缘 /
+Text2SQL 与辅助页,点运行即测该 Agent 的全部自动化用例(优先于套件选择;
+「指定用例」填了 id 时又优先于它)。
+
+## 界面上零代码添加用例
+
+打开 `/uitest` 页底部「添加用例」手风琴,粘贴一段用例 YAML → 点「校验并保存」。
+校验通过后写入 `config/uitest_cases/`(包外,升级不丢;id 与内置用例查重),
+随后在「指定用例」里填它的 id 即可运行。配合 `ai:` 步骤 + `ai_judge`,
+一条用例可以完全用中文写,无需任何选择器。
+
 ## 写用例
 
 用例在 `src/seatunnel_agent/ui_testing/cases/*.yaml`,中文即可,不写 Python:

@@ -54,3 +54,4 @@ logs/
 runs/
 config/uitest_demo.db
 .claude/worktrees/
+config/uitest_cases/

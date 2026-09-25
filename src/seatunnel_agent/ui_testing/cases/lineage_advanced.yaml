@@ -1,0 +1,82 @@
+# LIN 组扩展 · 血缘页剩余按钮:查询路径 / SLA 影响 / 快照保存与对比。
+# 补齐后 /lineage 页 9 个按钮中 8 个有自动化覆盖(提问按钮走应用自身 LLM,标注人工)。
+
+- id: LIN8
+  title: 查询两表间最短血缘路径
+  tags: [full, sqlite]
+  page: /lineage
+  setup:
+    - fill: {SQL 目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏,结果区无变化信号
+  steps:
+    - select: {of: 目标表, value: ods.orders_raw}
+    - select: {of: 路径终点表, value: ads.top_users}
+    - click: 查询路径
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 3 跳}
+    - text_contains: {in: 结果区, text: dwd.orders_di}
+    - text_contains: {in: 结果区, text: dws.user_stats}
+
+- id: LIN9
+  title: SLA 影响分析列出受影响下游
+  tags: [full, sqlite]
+  page: /lineage
+  setup:
+    - fill: {SQL 目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏
+  steps:
+    - select: {of: 目标表, value: dwd.orders_di}
+    - click: SLA 影响分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: SLA 延迟影响分析}
+    - text_contains: {in: 结果区, text: dwd.orders_di}
+    - text_contains: {in: 结果区, text: 假设延迟 1 小时}
+      note: 演示表未标 SLA,正确行为是报告"无 SLA 或基线任务"
+
+- id: LIN10
+  title: 保存血缘快照并出现在对比下拉
+  tags: [full, sqlite]
+  page: /lineage
+  setup:
+    - fill: {SQL 目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏
+  steps:
+    - fill: {快照名: uitest_snap}
+    - click: 保存快照
+    - wait_text: {text: 快照已保存, timeout_ms: 10000}
+  expect:
+    - text_contains: {in: 页面, text: 快照已保存}
+    - value_contains: {of: 对比快照, value: uitest_snap}
+
+- id: LIN11
+  title: 快照对比 (同图对比应显示无变化)
+  tags: [full, sqlite]
+  page: /lineage
+  setup:
+    - fill: {SQL 目录: examples/lineage_demo}
+    - click: 构建血缘图
+    - wait: 2500
+      note: 构图结果写在侧栏
+    - fill: {快照名: uitest_snap2}
+    - click: 保存快照
+    - wait_text: {text: 快照已保存, timeout_ms: 10000}
+  steps:
+    - click: 快照对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 血缘快照对比}
+    - text_contains: {in: 结果区, text: 无变化}
+
+- id: LIN12
+  title: 提问 (自然语言血缘问答)
+  tags: [manual]
+  note: 走应用自身的 LLM(非测试框架的 judge),消耗 token 且答案不确定;
+    人工验证提问"dws.gmv_daily 的上游是什么"应答出 dwd.orders_di
