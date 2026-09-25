@@ -83,6 +83,21 @@ ai_judge`。`in:` 可取 `状态` / `结果区` / `页面` / 任意输入框标�
   用例 YAML 内联密码会被 loader 直接拒载。
 - 复用项目 `LLMClient`(Anthropic/OpenAI 双通道,配置走 `.env` 的 LLM_*)。
 
+## 稳定性与诊断
+
+```bash
+python -m seatunnel_agent.ui_testing run --case B3 --repeat 10   # 压 flaky:逐轮比对 verdict,不一致标 FLAKY
+python -m seatunnel_agent.ui_testing compare                     # 对比最近两轮:回归/恢复/变慢
+python -m seatunnel_agent.ui_testing compare 20260924_1 20260925_2
+```
+
+- 报告顶部自动显示「较上轮变化」(同套件的上一轮,verdict 变化 + 明显变慢);
+- `ai_judge` 默认附带**页面截图**(多模态,视觉类预期可判);模型不支持视觉时
+  自动降级纯文本并在本轮内记住,`UITEST_JUDGE_VISION=0` 可关;
+- 定位失败(元素 not found)时自动给出**LABELS 修正建议**
+  (LLM 对照页面摘要猜实际标签,写进步骤明细);
+- 任何 FAIL/ERROR 自动附 LLM 归因(前端/后端/用例过期/环境),`--no-llm` 时跳过。
+
 ## CI 集成
 
 `.github/workflows/uitest.yml`:PR 触发 headless 冒烟(`--no-llm`,零 token,

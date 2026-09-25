@@ -160,6 +160,7 @@ def write_html(rr: RunResult, run_dir: Path) -> Path:
 
     cases_html = "".join(_case_html(c, run_dir) for c in rr.cases)
     coverage_html = _coverage_html()
+    rundiff_html = _rundiff_html(rr, run_dir)
     applog = ""
     if rr.app_log_tail and (counts["FAIL"] or counts["ERROR"]):
         applog = ("<h2 style='font-size:16px'>被测应用日志(尾部)</h2>"
@@ -172,6 +173,7 @@ def write_html(rr: RunResult, run_dir: Path) -> Path:
 <div class="meta">套件: {_esc(rr.suite)} · 开始: {rr.started_at} ·
 耗时: {rr.elapsed_ms / 1000:.0f}s · LLM: {rr.tokens} tokens</div>
 <div class="stats">{"".join(stats)}</div>
+{rundiff_html}
 {cases_html}
 {coverage_html}
 {applog}
@@ -186,6 +188,32 @@ _COV_COLOR = {"auto": "#16a34a", "runner": "#0ea5e9",
               "manual": "#6366f1", "missing": "#dc2626"}
 _COV_LABEL = {"auto": "已自动化", "runner": "框架内置",
               "manual": "人工用例", "missing": "未覆盖"}
+
+
+def _rundiff_html(rr: RunResult, run_dir) -> str:
+    """较上一轮同套件运行的 verdict 变化;首轮或无历史时为空。"""
+    try:
+        from .rundiff import diff_runs, previous_run_with_suite
+        prev = previous_run_with_suite(rr.suite, before=run_dir.name)
+        if prev is None:
+            return ""
+        d = diff_runs(prev, run_dir)
+    except Exception:  # noqa: BLE001 — informational only
+        return ""
+    if not d.changed and not d.slower:
+        return (f'<div class="meta">较上轮 ({_esc(d.old_run)}): '
+                "verdict 无变化</div>")
+    rows = []
+    for c in d.changed:
+        color = "#dc2626" if c.regressed else ("#16a34a" if c.recovered else "#d97706")
+        rows.append(f'<div style="color:{color}">'
+                    f'{_esc(c.case_id)}: {c.old} → {c.new} — {_esc(c.title)}</div>')
+    for c in d.slower:
+        rows.append(f'<div style="color:#d97706">{_esc(c.case_id)}: '
+                    f'{c.old_ms / 1000:.1f}s → {c.new_ms / 1000:.1f}s (变慢)</div>')
+    return ('<details class="case" open><summary style="padding:10px 16px;'
+            f'cursor:pointer"><b>较上轮变化</b> ({_esc(d.old_run)})</summary>'
+            f'<div class="body">{"".join(rows)}</div></details>')
 
 
 def _coverage_html() -> str:

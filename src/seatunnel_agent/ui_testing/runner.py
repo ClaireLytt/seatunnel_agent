@@ -87,6 +87,19 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
                    else run_script_step(step, dc))
             res.steps.append(log)
             if not log.ok:
+                if "not found" in log.detail:
+                    heal_llm = llm or (llm_factory() if llm_factory else None)
+                    if heal_llm is not None:
+                        from .diagnose import suggest_locator
+                        try:
+                            digest = dc.digest()
+                        except Exception:  # noqa: BLE001
+                            digest = ""
+                        missing = (log.detail.split("not found:")[-1]
+                                   .split("(side")[0].strip()[:60])
+                        hint = suggest_locator(missing, digest, heal_llm)
+                        if hint:
+                            log.detail = f"{log.detail}  {hint}"
                 res.verdict = "ERROR"
                 res.reason = f"步骤失败: {log.desc} — {log.detail}"
                 log.screenshot = _snap(dc, shots_dir, case.id, "step_fail")

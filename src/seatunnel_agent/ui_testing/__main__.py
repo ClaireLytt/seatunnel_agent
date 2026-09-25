@@ -29,22 +29,62 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(f"[{i}/{n}] {mark} {cr.verdict:<5} {cr.case_id:<5} "
               f"{cr.title} ({cr.elapsed_ms / 1000:.1f}s)", flush=True)
 
-    rr, run_dir = run_suite(
-        suite=args.suite,
-        case_ids=args.case or None,
-        headed=args.headed,
-        port=args.port,
-        no_llm=args.no_llm,
-        keep_app=args.keep_app,
-        base_url=args.base_url,
-        on_progress=progress,
-    )
-    write_json(rr, run_dir)
-    html_path = write_html(rr, run_dir)
-    print_summary(rr)
-    print(f"\n报告: {html_path.resolve()}")
-    counts = rr.counts()
-    return 1 if (counts["FAIL"] or counts["ERROR"]) else 0
+    repeat = max(1, getattr(args, "repeat", 1))
+    signatures: list[dict[str, str]] = []
+    rc = 0
+    for round_no in range(1, repeat + 1):
+        if repeat > 1:
+            print(f"—— 第 {round_no}/{repeat} 轮 ——", flush=True)
+        rr, run_dir = run_suite(
+            suite=args.suite,
+            case_ids=args.case or None,
+            headed=args.headed,
+            port=args.port,
+            no_llm=args.no_llm,
+            keep_app=args.keep_app,
+            base_url=args.base_url,
+            on_progress=progress,
+        )
+        write_json(rr, run_dir)
+        html_path = write_html(rr, run_dir)
+        print_summary(rr)
+        print(f"\n报告: {html_path.resolve()}")
+        counts = rr.counts()
+        if counts["FAIL"] or counts["ERROR"]:
+            rc = 1
+        signatures.append({c.case_id: c.verdict for c in rr.cases})
+
+    if repeat > 1:
+        flaky = sorted({cid for sig in signatures for cid in sig
+                        if len({s.get(cid) for s in signatures}) > 1})
+        if flaky:
+            print(f"\n⚠️ FLAKY ({len(flaky)}):")
+            for cid in flaky:
+                seq = " → ".join(s.get(cid, "-") for s in signatures)
+                print(f"  {cid}: {seq}")
+            rc = 1
+        else:
+            print(f"\n{repeat} 轮 verdict 完全一致,零 flaky。")
+    return rc
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    from .rundiff import RUNS_DIR, diff_runs, format_diff, list_runs
+
+    if args.runs:
+        if len(args.runs) != 2:
+            print("用法: compare <旧运行> <新运行>")
+            return 2
+        old_dir, new_dir = (RUNS_DIR / r for r in args.runs)
+    else:
+        runs = list_runs()
+        if len(runs) < 2:
+            print("runs/ 下不足两轮运行")
+            return 1
+        old_dir, new_dir = runs[-2], runs[-1]
+    d = diff_runs(old_dir, new_dir)
+    print(format_diff(d))
+    return 1 if d.regressions else 0
 
 
 def cmd_list(args: argparse.Namespace) -> int:
@@ -112,7 +152,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="结束后不杀被测应用 (连续调试)")
     pr.add_argument("--base-url", default="",
                     help="复用已启动的应用而非自起子进程")
+    pr.add_argument("--repeat", type=int, default=1,
+                    help="连续跑 N 轮并比对 verdict, 不一致标 FLAKY 并退出非零")
     pr.set_defaults(fn=cmd_run)
+
+    pc = sub.add_parser("compare", help="对比两轮运行的 verdict 变化")
+    pc.add_argument("runs", nargs="*", default=[],
+                    help="两个 runs/<ts> 目录名; 缺省取最近两轮")
+    pc.set_defaults(fn=cmd_compare)
 
     pl = sub.add_parser("list", help="列出用例")
     pl.add_argument("--suite", default="", help="只列出该套件")

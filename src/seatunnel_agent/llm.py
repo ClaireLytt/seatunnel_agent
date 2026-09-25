@@ -513,5 +513,8 @@ class LLMClient:
         if role == "tool":
             return [msg]
 
-        # User messages
-        return [{"role": role, "content": content if isinstance(content, str) else str(content)}]
+        # User messages; a list is multimodal content blocks (image+text)
+        # and must pass through untouched
+        return [{"role": role,
+                 "content": content if isinstance(content, (str, list))
+                 else str(content)}]
