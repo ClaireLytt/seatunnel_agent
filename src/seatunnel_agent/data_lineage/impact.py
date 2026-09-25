@@ -63,7 +63,6 @@ class ChangedTable:
     """One affected target table with its reasons and blast radius."""
     table: str
     level: str                                   # error | warn | info
-    reasons: list[str] = field(default_factory=list)   # i18n keys + params baked by caller
     column_changes: list[ColumnChange] = field(default_factory=list)
     removed_upstreams: list[str] = field(default_factory=list)
     added_upstreams: list[str] = field(default_factory=list)
@@ -257,9 +256,9 @@ def materialize_git_ref(ref: str, sql_dir: str | Path,
     sql_dir = Path(sql_dir)
     cwd = str(repo_root or Path.cwd())
 
-    def _git(*args: str) -> str:
+    def _git(git_cwd: str, *args: str) -> str:
         proc = subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True,
+            ["git", *args], cwd=git_cwd, capture_output=True, text=True,
             encoding="utf-8", errors="replace",
         )
         if proc.returncode != 0:
@@ -269,17 +268,43 @@ def materialize_git_ref(ref: str, sql_dir: str | Path,
             )
         return proc.stdout
 
-    rel = sql_dir.as_posix().rstrip("/")
-    listing = _git("ls-tree", "-r", "--name-only", ref, "--", rel)
+    # ls-tree names and ``ref:path`` specs are repo-toplevel-relative, and
+    # pathspecs are cwd-relative — so anchor BOTH the sql_dir and every git
+    # command at the toplevel, or a CLI run from a repo subdirectory would
+    # silently materialize an empty baseline.
+    toplevel = Path(_git(cwd, "rev-parse", "--show-toplevel").strip())
+    top = str(toplevel)
+    sql_abs = (sql_dir if sql_dir.is_absolute()
+               else Path(cwd) / sql_dir).resolve()
+    try:
+        rel = sql_abs.relative_to(toplevel.resolve()).as_posix()
+    except ValueError:
+        raise RuntimeError(
+            f"sql dir {sql_dir} is outside the git repository {toplevel}")
+
+    listing = _git(top, "ls-tree", "-r", "--name-only", ref, "--", rel or ".")
     tmp = Path(tempfile.mkdtemp(prefix="impact_old_"))
-    for line in listing.splitlines():
-        name = line.strip()
-        if not name.lower().endswith(".sql"):
-            continue
-        content = _git("show", f"{ref}:{name}")
-        target = tmp / Path(name).relative_to(rel)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(content, encoding="utf-8")
+    try:
+        written = 0
+        for line in listing.splitlines():
+            name = line.strip()
+            if not name.lower().endswith(".sql"):
+                continue
+            content = _git(top, "show", f"{ref}:{name}")
+            target = tmp / (Path(name).relative_to(rel) if rel else Path(name))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            written += 1
+        if not written:
+            # not fatal (the tree may genuinely be new at this ref), but the
+            # caller should be able to tell the user "everything counts as
+            # added"
+            (tmp / ".impact_empty_baseline").write_text(ref, encoding="utf-8")
+    except BaseException:
+        # never leak a half-materialized baseline on failure
+        import shutil
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
     return tmp
 
 

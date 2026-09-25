@@ -13,6 +13,25 @@ from .sql_transpile import DIALECTS as TRANSPILE_DIALECTS
 console = Console()
 
 
+def _ensure_utf8_stdio() -> None:
+    """Windows consoles/pipes default to GBK; reports carry Chinese text and
+    emoji level markers, so a non-UTF-8 stream would raise UnicodeEncodeError
+    mid-report (before --output writes and --fail-on gates)."""
+    import io
+    for name in ("stdout", "stderr"):
+        stream = getattr(sys, name, None)
+        enc = getattr(stream, "encoding", None)
+        if not enc or enc.lower().replace("-", "") == "utf8":
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, io.UnsupportedOperation):
+            buffer = getattr(stream, "buffer", None)
+            if buffer is not None:
+                setattr(sys, name, io.TextIOWrapper(
+                    buffer, encoding="utf-8", errors="replace"))
+
+
 @click.group()
 @click.version_option(version=__version__)
 @click.option("--verbose", "-v", is_flag=True, help="Show full tracebacks on error")
@@ -21,6 +40,7 @@ console = Console()
 @click.pass_context
 def cli(ctx: click.Context, verbose: bool, model: str | None, provider: str | None) -> None:
     """SeaTunnel Pipeline Builder Agent — AI-powered SeaTunnel job management."""
+    _ensure_utf8_stdio()
     ctx.ensure_object(dict)
     ctx.obj["verbose"] = verbose
     ctx.obj["model"] = model
@@ -1116,6 +1136,10 @@ def impact(
                 console.print(f"[red]git 基线模式失败:[/red] {e}")
                 console.print("[dim]提示: 非 git 仓库请改用 --old-dir[/dim]")
                 sys.exit(1)
+            if (tmp_old / ".impact_empty_baseline").exists():
+                console.print(
+                    f"[yellow]基线 {git_base} 下没有 *.sql —— "
+                    "所有文件都将报告为新增[/yellow]")
             old_dir = str(tmp_old)
         try:
             result = analyze_dirs(old_dir, new_dir, depth=depth,

@@ -282,3 +282,133 @@ def test_api_impact_whitelist(api_client, tmp_path):
         "old_dir": str(tmp_path), "new_dir": str(NEW),
     })
     assert r.status_code == 403
+
+
+def test_materialize_git_ref_absolute_sql_dir(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "sql").mkdir(parents=True)
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "sql" / "a.sql").write_text(
+        "INSERT OVERWRITE TABLE dws.a SELECT x FROM ods.s;", encoding="utf-8")
+    _git(repo, "add", "."); _git(repo, "commit", "-qm", "v1")
+    # absolute path must work the same as a relative one
+    out = materialize_git_ref("HEAD", repo / "sql", repo_root=repo)
+    try:
+        assert (out / "a.sql").is_file()
+    finally:
+        import shutil
+        shutil.rmtree(out, ignore_errors=True)
+
+
+def test_materialize_git_ref_outside_toplevel_raises(tmp_path):
+    repo = tmp_path / "repo"; other = tmp_path / "other"
+    repo.mkdir(); other.mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "a.sql").write_text("SELECT 1;", encoding="utf-8")
+    _git(repo, "add", "."); _git(repo, "commit", "-qm", "v1")
+    with pytest.raises(RuntimeError, match="outside the git repository"):
+        materialize_git_ref("HEAD", other, repo_root=repo)
+
+
+def test_materialize_git_ref_empty_baseline_marker(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / "docs").mkdir(parents=True)
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "docs" / "readme.md").write_text("x", encoding="utf-8")
+    _git(repo, "add", "."); _git(repo, "commit", "-qm", "v1")
+    (repo / "sql").mkdir()
+    out = materialize_git_ref("HEAD", "sql", repo_root=repo)
+    try:
+        assert (out / ".impact_empty_baseline").is_file()
+    finally:
+        import shutil
+        shutil.rmtree(out, ignore_errors=True)
+
+
+def test_materialize_git_ref_from_repo_subdirectory(tmp_path):
+    # regression: pathspecs are cwd-relative but ls-tree names are
+    # toplevel-relative — running from a subdir used to yield an empty
+    # baseline, silently turning breaking changes into "added/info".
+    repo = tmp_path / "repo"
+    (repo / "sql").mkdir(parents=True)
+    (repo / "sub").mkdir()
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "sql" / "a.sql").write_text(
+        "INSERT OVERWRITE TABLE dws.a SELECT x FROM ods.s;", encoding="utf-8")
+    _git(repo, "add", "."); _git(repo, "commit", "-qm", "v1")
+    out = materialize_git_ref("HEAD", repo / "sql", repo_root=repo / "sub")
+    try:
+        assert (out / "a.sql").is_file()
+        assert not (out / ".impact_empty_baseline").exists()
+    finally:
+        import shutil
+        shutil.rmtree(out, ignore_errors=True)
+
+
+def test_materialize_git_ref_cleans_tmp_on_failure(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    (repo / "sql").mkdir(parents=True)
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "sql" / "a.sql").write_text("SELECT 1;", encoding="utf-8")
+    _git(repo, "add", "."); _git(repo, "commit", "-qm", "v1")
+
+    import seatunnel_agent.data_lineage.impact as impact_mod
+    made: list[str] = []
+    real_mkdtemp = impact_mod.tempfile.mkdtemp
+    monkeypatch.setattr(impact_mod.tempfile, "mkdtemp",
+                        lambda **kw: made.append(real_mkdtemp(**kw)) or made[-1])
+    real_run = impact_mod.subprocess.run
+
+    def failing_run(cmd, **kw):
+        if "show" in cmd:
+            class P:  # minimal failed-process stub
+                returncode = 128
+                stderr = "boom"
+                stdout = ""
+            return P()
+        return real_run(cmd, **kw)
+
+    monkeypatch.setattr(impact_mod.subprocess, "run", failing_run)
+    with pytest.raises(RuntimeError, match="boom"):
+        materialize_git_ref("HEAD", "sql", repo_root=repo)
+    assert made and not Path(made[0]).exists()
+
+
+def test_cli_utf8_stdio_helper(monkeypatch):
+    # regression: emoji level markers crashed GBK consoles mid-report
+    import io
+    import sys as _sys
+    from seatunnel_agent.cli import _ensure_utf8_stdio
+    gbk_out = io.TextIOWrapper(io.BytesIO(), encoding="gbk")
+    monkeypatch.setattr(_sys, "stdout", gbk_out)
+    _ensure_utf8_stdio()
+    assert _sys.stdout.encoding.lower().replace("-", "") == "utf8"
+    _sys.stdout.write("❌ ⚠️ 变更影响")  # must not raise
+    _sys.stdout.flush()
+
+
+def test_api_impact_unreadable_dir_is_400(api_client, monkeypatch):
+    # regression: non-ValueError build failures used to leak as HTTP 500
+    import seatunnel_agent.data_lineage.impact as impact_mod
+
+    def boom(*a, **kw):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr(impact_mod, "analyze_dirs", boom)
+    monkeypatch.setattr(
+        "seatunnel_agent.data_lineage.api.analyze_dirs", boom, raising=False)
+    r = api_client.post("/api/lineage/impact", json={
+        "old_dir": str(OLD), "new_dir": str(NEW),
+    })
+    assert r.status_code == 400
+    assert "变更影响分析失败" in r.json()["detail"]
