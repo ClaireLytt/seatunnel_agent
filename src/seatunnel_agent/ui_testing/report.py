@@ -159,6 +159,7 @@ def write_html(rr: RunResult, run_dir: Path) -> Path:
             f'<span>{k}</span></div>')
 
     cases_html = "".join(_case_html(c, run_dir) for c in rr.cases)
+    coverage_html = _coverage_html()
     applog = ""
     if rr.app_log_tail and (counts["FAIL"] or counts["ERROR"]):
         applog = ("<h2 style='font-size:16px'>被测应用日志(尾部)</h2>"
@@ -172,12 +173,54 @@ def write_html(rr: RunResult, run_dir: Path) -> Path:
 耗时: {rr.elapsed_ms / 1000:.0f}s · LLM: {rr.tokens} tokens</div>
 <div class="stats">{"".join(stats)}</div>
 {cases_html}
+{coverage_html}
 {applog}
 </div><script>{_FILTER_JS}</script></body></html>"""
 
     path = run_dir / "report.html"
     path.write_text(doc, encoding="utf-8")
     return path
+
+
+_COV_COLOR = {"auto": "#16a34a", "runner": "#0ea5e9",
+              "manual": "#6366f1", "missing": "#dc2626"}
+_COV_LABEL = {"auto": "已自动化", "runner": "框架内置",
+              "manual": "人工用例", "missing": "未覆盖"}
+
+
+def _coverage_html() -> str:
+    """人工清单覆盖对照;清单文件不存在时返回空。"""
+    try:
+        from .coverage import compute_coverage
+        from .loader import load_cases
+        cov = compute_coverage(load_cases())
+    except Exception:  # noqa: BLE001 — coverage is informational only
+        return ""
+    if cov is None:
+        return ""
+    counts = cov.counts()
+    chips = " · ".join(
+        f'<span style="color:{_COV_COLOR[k]};font-weight:600">'
+        f'{counts[k]} {_COV_LABEL[k]}</span>'
+        for k in ("auto", "runner", "manual", "missing"))
+    cells = []
+    for r in cov.rows:
+        c = _COV_COLOR[r.status]
+        cells.append(
+            f'<span title="{_esc(r.title)} — {_COV_LABEL[r.status]}" '
+            f'style="display:inline-block;min-width:44px;text-align:center;'
+            f'margin:2px;padding:2px 6px;border-radius:6px;font-size:12px;'
+            f'background:{c}18;color:{c};border:1px solid {c}55">'
+            f'{_esc(r.item_id)}</span>')
+    extra = ""
+    if cov.extra_case_ids:
+        extra = ('<div style="color:var(--mut);font-size:12px;margin-top:6px">'
+                 "清单之外的自动化用例: " + ", ".join(map(_esc, cov.extra_case_ids))
+                 + "</div>")
+    return (
+        '<details class="case"><summary style="padding:10px 16px;cursor:pointer">'
+        f'<b>人工清单覆盖</b> — {chips}</summary>'
+        f'<div class="body">{"".join(cells)}{extra}</div></details>')
 
 
 def print_summary(rr: RunResult) -> None:

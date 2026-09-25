@@ -333,6 +333,28 @@ class TestAgentLoop:
         assert out.startswith("ERROR:") and "button not found" in out
 
 
+# ── checklist coverage ──
+
+class TestCoverage:
+    def test_counts_and_statuses(self):
+        from seatunnel_agent.ui_testing.coverage import compute_coverage
+        cov = compute_coverage(load_cases())
+        if cov is None:
+            pytest.skip("checklist html not present")
+        counts = cov.counts()
+        assert len(cov.rows) == 75
+        assert counts["runner"] == 3            # P0-1/2/3
+        assert counts["auto"] >= 55             # PRD acceptance threshold
+        assert counts["missing"] <= 8
+        # every SR case is beyond the checklist
+        assert all(x.startswith(("SR", "A5b", "B3a", "M2"))
+                   for x in cov.extra_case_ids)
+
+    def test_absent_checklist_returns_none(self, tmp_path):
+        from seatunnel_agent.ui_testing.coverage import compute_coverage
+        assert compute_coverage(load_cases(), path=tmp_path / "nope.html") is None
+
+
 # ── judge parsing ──
 
 class TestJudge:

@@ -83,6 +83,20 @@ ai_judge`。`in:` 可取 `状态` / `结果区` / `页面` / 任意输入框标�
   用例 YAML 内联密码会被 loader 直接拒载。
 - 复用项目 `LLMClient`(Anthropic/OpenAI 双通道,配置走 `.env` 的 LLM_*)。
 
+## CI 集成
+
+`.github/workflows/uitest.yml`:PR 触发 headless 冒烟(`--no-llm`,零 token,
+约 4 分钟),FAIL/ERROR 挡合并,失败时 `runs/` 报告自动上传为 artifact。
+
+## 人工清单覆盖对照
+
+```bash
+python -m seatunnel_agent.ui_testing list --coverage
+```
+
+输出 75 项人工清单的逐项状态(已自动化/框架内置/人工用例/未覆盖),报告
+`report.html` 底部同款可视化(按编号色块,悬停看标题)。
+
 ## 自检工具
 
 ```bash

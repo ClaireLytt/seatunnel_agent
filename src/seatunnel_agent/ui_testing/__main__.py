@@ -51,6 +51,27 @@ def cmd_list(args: argparse.Namespace) -> int:
     from .loader import filter_cases, load_cases
 
     cases = load_cases()
+    if getattr(args, "coverage", False):
+        from .coverage import compute_coverage
+        cov = compute_coverage(cases)
+        if cov is None:
+            print("未找到 examples/dc_test_checklist.html")
+            return 1
+        counts = cov.counts()
+        label = {"auto": "已自动化", "runner": "框架内置",
+                 "manual": "人工用例", "missing": "未覆盖"}
+        for status in ("auto", "runner", "manual", "missing"):
+            ids = [r.item_id for r in cov.rows if r.status == status]
+            print(f"{label[status]} ({len(ids)}): {' '.join(ids)}")
+        if cov.extra_case_ids:
+            print(f"清单之外 ({len(cov.extra_case_ids)}): "
+                  f"{' '.join(cov.extra_case_ids)}")
+        total = len(cov.rows)
+        done = counts["auto"] + counts["runner"] + counts["manual"]
+        print(f"\n{total} 项清单中 {done} 项已闭环 "
+              f"(自动化 {counts['auto']} + 框架 {counts['runner']} + "
+              f"人工标注 {counts['manual']}), 未覆盖 {counts['missing']}")
+        return 0
     if args.suite:
         shown = filter_cases(cases, args.suite)
     else:
@@ -95,6 +116,8 @@ def main(argv: list[str] | None = None) -> int:
 
     pl = sub.add_parser("list", help="列出用例")
     pl.add_argument("--suite", default="", help="只列出该套件")
+    pl.add_argument("--coverage", action="store_true",
+                    help="显示人工清单覆盖对照")
     pl.set_defaults(fn=cmd_list)
 
     args = p.parse_args(argv)
