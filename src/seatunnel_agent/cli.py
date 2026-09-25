@@ -1062,6 +1062,85 @@ def _write_output(path: str, content: str) -> None:
 
 
 @cli.command()
+@click.option("--sql-dir", "-d", "new_dir", type=click.Path(exists=True, file_okay=False),
+              required=True, help="The NEW (current) SQL directory")
+@click.option("--old-dir", type=click.Path(exists=True, file_okay=False), default=None,
+              help="The OLD SQL directory to compare against")
+@click.option("--base", "git_base", type=str, default=None,
+              help="Git ref for the old state (e.g. HEAD~1, origin/main); "
+                   "alternative to --old-dir")
+@click.option("--depth", type=int, default=3, help="Downstream walk depth")
+@click.option("--sql-dialect", type=str, default="hive",
+              help="sqlglot dialect used to parse the SQL files")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              help="Report language")
+@click.option("--fail-on", type=click.Choice(["error", "warn"]), default=None,
+              help="Exit non-zero when findings at/above this level exist (CI gate)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save the report to a file")
+@click.pass_context
+def impact(
+    ctx: click.Context,
+    new_dir: str,
+    old_dir: str | None,
+    git_base: str | None,
+    depth: int,
+    sql_dialect: str,
+    fmt: str,
+    lang: str,
+    fail_on: str | None,
+    output: str | None,
+) -> None:
+    """变更影响分析 — SQL 变更 × 血缘下游遍历，输出上线影响面报告。"""
+    import json as _json
+    import shutil
+    from pathlib import Path
+
+    from .data_lineage.impact import (
+        LEVELS, analyze_dirs, impact_to_dict, materialize_git_ref,
+        render_impact_markdown,
+    )
+
+    verbose = ctx.obj.get("verbose", False)
+    if bool(old_dir) == bool(git_base):
+        raise click.UsageError("Provide exactly one of --old-dir / --base")
+
+    tmp_old: Path | None = None
+    try:
+        if git_base:
+            try:
+                tmp_old = materialize_git_ref(git_base, new_dir)
+            except RuntimeError as e:
+                console.print(f"[red]git 基线模式失败:[/red] {e}")
+                console.print("[dim]提示: 非 git 仓库请改用 --old-dir[/dim]")
+                sys.exit(1)
+            old_dir = str(tmp_old)
+        try:
+            result = analyze_dirs(old_dir, new_dir, depth=depth,
+                                  sql_dialect=sql_dialect)
+        except ValueError as e:
+            raise click.UsageError(str(e))
+        if fmt == "json":
+            text = _json.dumps(impact_to_dict(result, lang),
+                               ensure_ascii=False, indent=2)
+            print(text)
+        else:
+            text = render_impact_markdown(result, lang)
+            console.print(text, markup=False)
+        if output:
+            Path(output).write_text(text, encoding="utf-8")
+            console.print(f"[dim]Report saved to {output}[/dim]")
+        worst = result.worst_level()
+        if fail_on and worst and LEVELS.index(worst) <= LEVELS.index(fail_on):
+            sys.exit(1)
+    finally:
+        if tmp_old is not None:
+            shutil.rmtree(tmp_old, ignore_errors=True)
+
+
+@cli.command()
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
 @click.option("--sql", "-s", type=str, default=None, help="Inline SQL text to translate")
 @click.option("--from", "-f", "src_dialect", type=click.Choice(list(TRANSPILE_DIALECTS)),
@@ -1121,7 +1200,8 @@ def transpile(
                 print(_json.dumps(batch_to_dict(batch, lang),
                                   ensure_ascii=False, indent=2))
             else:
-                console.print(render_batch_markdown(batch, lang))
+                console.print(render_batch_markdown(batch, lang),
+                              markup=False)
             _gate(batch.worst_level())
             return
 
@@ -1151,7 +1231,7 @@ def transpile(
                 continue
             if len(sources) > 1:
                 console.print(f"[bold]== {label} ==[/bold]")
-            console.print(render_markdown(result, lang))
+            console.print(render_markdown(result, lang), markup=False)
             if out_dir and len(sources) == 1:
                 Path(out_dir).write_text(result.output_script(),
                                          encoding="utf-8")

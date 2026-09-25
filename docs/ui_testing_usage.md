@@ -5,7 +5,9 @@
 > SR 组用例额外覆盖 SQL Review 页(`/sqlreview`,纯静态审查路径);
 > LIN 组覆盖数据血缘页(`/lineage`,演示数据 `examples/lineage_demo`);
 > T2S/HIS/FAV/SCH 组覆盖 Text2SQL 侧栏与历史/收藏/Schema 浏览器辅助页;
-> TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`)。
+> TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`);
+> IMP 组覆盖血缘页「变更影响」面板(演示数据 `examples/impact_demo`,
+> 属 `/lineage` 路由,uitest 页「按 Agent 测」选数据血缘即包含)。
 
 ## 快速开始
 

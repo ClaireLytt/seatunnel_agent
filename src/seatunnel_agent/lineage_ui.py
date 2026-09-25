@@ -113,6 +113,14 @@ _I18N = {
         "snap_saved": "✅ Snapshot saved: `{file}`",
         "need_snap": "Pick a snapshot to compare against.",
         "snap_not_found": "Snapshot `{snap}` not found.",
+        "imp_heading": "### Change Impact",
+        "imp_old_label": "Old SQL directory",
+        "imp_old_ph": "SQL tree before the change, e.g. examples/impact_demo/old",
+        "imp_new_label": "New SQL directory",
+        "imp_new_ph": "SQL tree after the change, e.g. examples/impact_demo/new",
+        "imp_btn": "Analyze change impact",
+        "imp_need_dirs": "Provide both the old and the new SQL directory.",
+        "imp_bad_dir": "❌ Not a directory: `{d}`",
     },
     "zh": {
         "title": "## 🩸 数据表全链路血缘\n"
@@ -182,6 +190,14 @@ _I18N = {
         "snap_saved": "✅ 快照已保存：`{file}`",
         "need_snap": "请选择要对比的快照。",
         "snap_not_found": "找不到快照 `{snap}`。",
+        "imp_heading": "### 变更影响",
+        "imp_old_label": "旧 SQL 目录",
+        "imp_old_ph": "变更前的 SQL 目录，如 examples/impact_demo/old",
+        "imp_new_label": "新 SQL 目录",
+        "imp_new_ph": "变更后的 SQL 目录，如 examples/impact_demo/new",
+        "imp_btn": "变更影响分析",
+        "imp_need_dirs": "请同时填写旧、新两个 SQL 目录。",
+        "imp_bad_dir": "❌ 不是有效目录: `{d}`",
     },
 }
 
@@ -362,6 +378,14 @@ def render_lineage_page(app: gr.Blocks) -> None:
                 )
                 diff_snap_btn = gr.Button(t("diff_snap_btn"), size="sm")
                 snap_md = gr.Markdown("")
+
+                imp_heading_md = gr.Markdown(t("imp_heading"))
+                imp_old_box = gr.Textbox(
+                    label=t("imp_old_label"), placeholder=t("imp_old_ph"))
+                imp_new_box = gr.Textbox(
+                    label=t("imp_new_label"), placeholder=t("imp_new_ph"))
+                imp_btn = gr.Button(t("imp_btn"), size="sm",
+                                    variant="primary")
 
             # ── result panel ──
             with gr.Column(scale=4, elem_classes=["st-lin-main"]):
@@ -652,6 +676,10 @@ def render_lineage_page(app: gr.Blocks) -> None:
             gr.update(value=s("save_snap_btn")),
             gr.update(label=s("snap_dd_label")),
             gr.update(value=s("diff_snap_btn")),
+            gr.update(value=s("imp_heading")),
+            gr.update(label=s("imp_old_label"), placeholder=s("imp_old_ph")),
+            gr.update(label=s("imp_new_label"), placeholder=s("imp_new_ph")),
+            gr.update(value=s("imp_btn")),
             gr.update(label=s("mermaid_acc")),
             gr.update(label=s("agent_acc")),
             gr.update(label=s("ask_label"), placeholder=s("ask_ph")),
@@ -669,7 +697,8 @@ def render_lineage_page(app: gr.Blocks) -> None:
             query_btn, search_box, search_btn, adv_heading_md, path_dst_dd,
             path_btn, sla_delay_num, sla_btn, health_btn,
             snap_heading_md, snap_name_box, save_snap_btn, snap_dd,
-            diff_snap_btn, mermaid_acc,
+            diff_snap_btn, imp_heading_md, imp_old_box, imp_new_box,
+            imp_btn, mermaid_acc,
             agent_acc, ask_box, ask_btn,
         ],
     )
@@ -713,6 +742,31 @@ def render_lineage_page(app: gr.Blocks) -> None:
     )
     diff_snap_btn.click(
         do_diff_snap, inputs=[graph_state, snap_dd, lang_state],
+        outputs=[report_md],
+    )
+
+    def do_impact(old_dir: str, new_dir: str, sql_dialect: str, lang: str):
+        from pathlib import Path
+
+        from .data_lineage.impact import analyze_dirs, render_impact_markdown
+
+        old_dir = (old_dir or "").strip()
+        new_dir = (new_dir or "").strip()
+        if not old_dir or not new_dir:
+            return _lt(lang, "imp_need_dirs")
+        for d in (old_dir, new_dir):
+            if not Path(d).is_dir():
+                return _lt(lang, "imp_bad_dir").format(d=d)
+        try:
+            result = analyze_dirs(old_dir, new_dir,
+                                  sql_dialect=sql_dialect or "hive")
+        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+            return _err_md(exc, lang)
+        return render_impact_markdown(result, lang)
+
+    imp_btn.click(
+        do_impact,
+        inputs=[imp_old_box, imp_new_box, sql_dialect_dd, lang_state],
         outputs=[report_md],
     )
     ask_btn.click(

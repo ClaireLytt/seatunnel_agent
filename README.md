@@ -48,6 +48,7 @@
 - **CSV Export with CJK Support**: UTF-8 BOM encoding for Excel compatibility, timestamped filenames, custom output paths
 - **Structured Query Logging**: JSONL-formatted logs of every query (user question, generated SQL, status, timing) for observability
 - **SQL Code Review**: Static review of Hive/Spark/Flink/MaxCompute SQL — no execution needed. A deterministic linter (GROUP BY completeness, cartesian joins, `= NULL`, partition filters, division-by-zero, complexity scoring, …) plus an LLM semantic pass over a 15-item checklist, producing a fixed-format CR report (严重问题/潜在风险/优化建议/检查统计/总体评价) with table- and column-level lineage. Available as `seatunnel-agent review`, REST `POST /api/sql_review/review`, a Gradio UI page (`/sqlreview`, with history trend chart), or offline via `--static-only`. Multi-statement scripts are split and reviewed per statement with correct line numbers. Batch review a directory (`--dir`), changed files vs a git base (`--diff`), or positional paths (pre-commit style); gate CI with `--fail-on critical|risk|suggestion`; customize rules via `.sqlreview.yaml` (partition columns, disabled checks, severity overrides, custom regex rules); suppress findings inline (`-- sqlreview-disable[-next-line|-file][: category]`) or via a baseline file (`--baseline` / `--update-baseline` — only new findings fail CI); emit machine-readable output with `--format json|sarif` (SARIF uploads to GitHub Code Scanning — see `examples/ci/` and the bundled pre-commit hook in `.pre-commit-hooks.yaml`); pull live schemas with `--db host:port/database`; auto-generate fixed SQL with `--fix`; inspect review history with `review-stats`
+- **Change Impact Analysis**: SQL diff × lineage — compare two SQL trees (or a git baseline) and report the release blast radius with severity levels (breaking removals / metric drift / additions); CLI `seatunnel-agent impact` with a `--fail-on` CI gate, REST `POST /api/lineage/impact`, and a panel on the `/lineage` page; fully deterministic, no DB and no LLM
 - **SQL Dialect Translation**: Deterministic hive/spark/doris/starrocks translation (sqlglot) with a structured incompatibility report (parse errors, unsupported syntax, unknown UDFs, storage clauses, write-side hints) — CLI `seatunnel-agent transpile`, REST `/api/transpile/`, Web UI `/transpile`; batch a directory with a mirrored output tree, gate CI with `--fail-on error|warn`, optional clearly-marked LLM advice; no DB connection, the SQL is never executed
 
 ### Quick Start
@@ -549,6 +550,23 @@ seatunnel-agent lineage --sql-dir sql/ --ask "改 orders 的 amount 影响哪些
 seatunnel-agent lineage-mcp --sql-dir sql/                                          # MCP server (stdio)
 ```
 
+### Change Impact Analysis Agent
+
+SQL diff × lineage downstream walk: compare two SQL trees (two directories,
+or the working tree vs a git ref) and report the release blast radius —
+which target tables changed (added / removed / column-expression drift),
+which downstream tables are affected and how deep, with a severity model
+(`error` = breaking removal, `warn` = metric drift with consumers, `info` =
+additions) that gates CI via `--fail-on`. Fully deterministic — no database,
+no LLM. Panel on the `/lineage` page ("Change Impact"), REST
+`POST /api/lineage/impact`, demo data in `examples/impact_demo/`:
+
+```bash
+seatunnel-agent impact --old-dir examples/impact_demo/old --sql-dir examples/impact_demo/new
+seatunnel-agent impact --base origin/main --sql-dir sql/                # git baseline mode
+seatunnel-agent impact --old-dir old/ --sql-dir new/ -F json --fail-on error   # CI gate
+```
+
 ### SQL Dialect Translation Agent
 
 Deterministic SQL translation between hive / spark / doris / starrocks
@@ -638,6 +656,7 @@ MIT
 - **CSV 导出（CJK 支持）**：UTF-8 BOM 编码确保 Excel 正确显示中文，带时间戳的文件名，支持自定义路径
 - **结构化查询日志**：JSONL 格式记录每次查询（用户问题、生成 SQL、状态、耗时），便于监控与审计
 - **SQL Code Review**：对 Hive/Spark/Flink/MaxCompute SQL 做纯静态审查，无需运行即可发现问题 —— 确定性 Linter（GROUP BY 完整性、笛卡尔积、`= NULL`、分区过滤、除零保护、复杂度评分等）+ LLM 按 15 项检查清单做语义审查，输出固定格式 CR 报告（严重问题/潜在风险/优化建议/检查统计/总体评价）并附表级与列级血缘。支持 `seatunnel-agent review` 命令、REST `POST /api/sql_review/review`、Gradio UI 页面（`/sqlreview`，含历史趋势图），以及无需 API Key 的 `--static-only` 模式。多语句脚本自动按语句拆分审查并映射正确行号。支持目录批量审查（`--dir`）、git 变更文件审查（`--diff`）、位置参数传文件（pre-commit 风格）、CI 门禁（`--fail-on critical|risk|suggestion`）、`.sqlreview.yaml` 规则配置（自定义分区列/关闭检查/调整严重度/自定义正则规则）、行内忽略注释（`-- sqlreview-disable[-next-line|-file][: 类别]`）、基线文件（`--baseline` / `--update-baseline`，只对新问题报错）、机器可读输出（`--format json|sarif`，SARIF 可上传 GitHub Code Scanning，模板见 `examples/ci/` 与 `.pre-commit-hooks.yaml`）、数据库直连拉取表结构（`--db host:port/database`）、LLM 自动生成修复 SQL（`--fix`）与审查历史统计（`review-stats`）
+- **变更影响分析**：SQL 变更 × 血缘——对比两份 SQL 目录（或 git 基线）输出上线影响面：破坏性移除 / 口径漂移 / 纯新增三级严重度 + 下游波及深度；CLI `seatunnel-agent impact`（`--fail-on` CI 门禁）、REST `POST /api/lineage/impact`、血缘页内嵌面板；纯确定性,不连数据库、不调用 LLM
 - **SQL 方言翻译**：hive/spark/doris/starrocks 确定性互转（sqlglot）+ 结构化不兼容点清单（解析失败、不支持语法、未知 UDF、存储子句、写侧提示）—— CLI `seatunnel-agent transpile`、REST `/api/transpile/`、Web 页面 `/transpile`；支持目录批量镜像输出、CI 门禁 `--fail-on error|warn`、可选且明确标注的 LLM 建议；不连接数据库、不执行 SQL
 
 ### 快速开始
@@ -1136,6 +1155,21 @@ seatunnel-agent lineage --sql-dir sql/ -t dwd.orders_di -c amount               
 seatunnel-agent lineage --sql-dir sql/ --check                                      # 治理体检
 seatunnel-agent lineage --sql-dir sql/ --ask "改 orders 的 amount 影响哪些下游?"     # Agent 模式
 seatunnel-agent lineage-mcp --sql-dir sql/                                          # MCP server (stdio)
+```
+
+### 变更影响分析 Agent
+
+SQL 变更 × 血缘下游遍历：对比两份 SQL（两个目录，或工作区 vs git 基线），
+输出上线影响面报告——哪些目标表变了（新增 / 移除 / 字段口径漂移）、下游波及
+哪些表、波及多深，并按严重度分级（`error` 破坏性移除 / `warn` 有消费方的
+口径变更 / `info` 纯新增），可用 `--fail-on` 做 CI 门禁。纯确定性——不连接
+数据库、不调用 LLM。血缘页内嵌「变更影响」面板（`/lineage`），REST
+`POST /api/lineage/impact`，演示数据 `examples/impact_demo/`：
+
+```bash
+seatunnel-agent impact --old-dir examples/impact_demo/old --sql-dir examples/impact_demo/new
+seatunnel-agent impact --base origin/main --sql-dir sql/                # git 基线模式
+seatunnel-agent impact --old-dir old/ --sql-dir new/ -F json --fail-on error   # CI 门禁
 ```
 
 ### SQL 方言翻译 Agent
