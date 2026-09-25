@@ -48,7 +48,7 @@ python -m seatunnel_agent.ui_testing list [--suite smoke]
 ## 界面上按 Agent 定向测试
 
 `/uitest` 页新增「按 Agent 测」下拉:选 数据对比 / SQL Review / 数据血缘 /
-Text2SQL 与辅助页,点运行即测该 Agent 的全部自动化用例(优先于套件选择;
+Text2SQL 与辅助页 / SQL 方言翻译,点运行即测该 Agent 的全部自动化用例(优先于套件选择;
 「指定用例」填了 id 时又优先于它)。
 
 ## 界面上零代码添加用例
