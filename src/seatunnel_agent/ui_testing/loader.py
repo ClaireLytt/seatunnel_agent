@@ -22,6 +22,9 @@ import yaml
 from .models import Assertion, Step, TestCase
 
 CASES_DIR = Path(__file__).parent / "cases"
+# User-authored cases (added from the /uitest page or by hand) live outside
+# the package so they survive upgrades; loaded alongside the built-ins.
+USER_CASES_DIR = Path("config") / "uitest_cases"
 
 KNOWN_ACTIONS = frozenset({
     "goto", "click", "fill", "clear", "press", "select_ds", "select",
@@ -156,59 +159,96 @@ def _load_fixtures(cases_dir: Path) -> dict[str, list[dict]]:
     return data
 
 
-def load_cases(cases_dir: Path | str = CASES_DIR) -> list[TestCase]:
-    """Load and validate every case file.  Order: file name, then position."""
+def parse_case_list(raw_list, fixtures: dict, source: str,
+                    seen_ids: set[str]) -> list[TestCase]:
+    """Validate one file's raw YAML list into TestCases (shared by the
+    directory loader and the /uitest page's case editor)."""
+    if not isinstance(raw_list, list):
+        raise CaseLoadError(f"{source}: top level must be a list of cases")
+    cases: list[TestCase] = []
+    for raw in raw_list:
+        ctx = f"{source}"
+        if not isinstance(raw, dict) or "id" not in raw:
+            raise CaseLoadError(f"{ctx}: case missing 'id': {raw!r}")
+        cid = str(raw["id"])
+        ctx = f"{source}:{cid}"
+        if cid in seen_ids:
+            raise CaseLoadError(f"{ctx}: duplicate case id")
+        seen_ids.add(cid)
+
+        tags = [str(t) for t in (raw.get("tags") or [])]
+        unknown = set(tags) - KNOWN_TAGS
+        if unknown:
+            raise CaseLoadError(f"{ctx}: unknown tags {sorted(unknown)}")
+        if "manual" not in tags and not ({"sqlite", "hive"} & set(tags)):
+            raise CaseLoadError(f"{ctx}: needs tag 'sqlite' or 'hive'")
+
+        setup: list[Step] = []
+        for s in raw.get("setup") or []:
+            setup.extend(_expand_step(s, fixtures, ctx + "/setup"))
+        steps: list[Step] = []
+        for s in raw.get("steps") or []:
+            steps.extend(_expand_step(s, fixtures, ctx + "/steps"))
+        expect = [_expand_assert(a, ctx + "/expect")
+                  for a in raw.get("expect") or []]
+
+        if "manual" not in tags and not steps and not setup:
+            raise CaseLoadError(f"{ctx}: automated case has no steps")
+
+        cases.append(TestCase(
+            id=cid,
+            title=str(raw.get("title", "")),
+            tags=tags,
+            page=str(raw.get("page", "/datacompare")),
+            lang=str(raw.get("lang", "zh")),
+            setup=setup,
+            steps=steps,
+            expect=expect,
+            timeout_s=int(raw.get("timeout_s", 90)),
+        ))
+    return cases
+
+
+def load_cases(cases_dir: Path | str = CASES_DIR,
+               user_dir: Path | str | None = USER_CASES_DIR) -> list[TestCase]:
+    """Load built-in cases plus user-authored ones (config/uitest_cases/).
+
+    User cases may reference the built-in fixtures; duplicate ids across the
+    two sources are rejected."""
     cases_dir = Path(cases_dir)
     fixtures = _load_fixtures(cases_dir)
     cases: list[TestCase] = []
     seen_ids: set[str] = set()
 
-    for path in sorted(cases_dir.glob("*.yaml")):
-        if path.name.startswith("_fixtures"):
-            continue
-        raw_list = yaml.safe_load(path.read_text(encoding="utf-8")) or []
-        if not isinstance(raw_list, list):
-            raise CaseLoadError(f"{path.name}: top level must be a list of cases")
-        for raw in raw_list:
-            ctx = f"{path.name}"
-            if not isinstance(raw, dict) or "id" not in raw:
-                raise CaseLoadError(f"{ctx}: case missing 'id': {raw!r}")
-            cid = str(raw["id"])
-            ctx = f"{path.name}:{cid}"
-            if cid in seen_ids:
-                raise CaseLoadError(f"{ctx}: duplicate case id")
-            seen_ids.add(cid)
+    dirs = [cases_dir]
+    if user_dir is not None and Path(user_dir).is_dir():
+        dirs.append(Path(user_dir))
+    for d in dirs:
+        for path in sorted(d.glob("*.yaml")):
+            if path.name.startswith("_fixtures"):
+                continue
+            raw_list = yaml.safe_load(path.read_text(encoding="utf-8")) or []
+            cases.extend(parse_case_list(raw_list, fixtures, path.name,
+                                         seen_ids))
+    return cases
 
-            tags = [str(t) for t in (raw.get("tags") or [])]
-            unknown = set(tags) - KNOWN_TAGS
-            if unknown:
-                raise CaseLoadError(f"{ctx}: unknown tags {sorted(unknown)}")
-            if "manual" not in tags and not ({"sqlite", "hive"} & set(tags)):
-                raise CaseLoadError(f"{ctx}: needs tag 'sqlite' or 'hive'")
 
-            setup: list[Step] = []
-            for s in raw.get("setup") or []:
-                setup.extend(_expand_step(s, fixtures, ctx + "/setup"))
-            steps: list[Step] = []
-            for s in raw.get("steps") or []:
-                steps.extend(_expand_step(s, fixtures, ctx + "/steps"))
-            expect = [_expand_assert(a, ctx + "/expect")
-                      for a in raw.get("expect") or []]
-
-            if "manual" not in tags and not steps and not setup:
-                raise CaseLoadError(f"{ctx}: automated case has no steps")
-
-            cases.append(TestCase(
-                id=cid,
-                title=str(raw.get("title", "")),
-                tags=tags,
-                page=str(raw.get("page", "/datacompare")),
-                lang=str(raw.get("lang", "zh")),
-                setup=setup,
-                steps=steps,
-                expect=expect,
-                timeout_s=int(raw.get("timeout_s", 90)),
-            ))
+def validate_case_yaml(text: str) -> list[TestCase]:
+    """Parse a YAML snippet from the case editor; raises CaseLoadError with
+    a readable message on any problem.  Existing ids are rejected."""
+    try:
+        raw_list = yaml.safe_load(text) or []
+    except yaml.YAMLError as e:
+        raise CaseLoadError(f"YAML 语法错误: {e}")
+    if isinstance(raw_list, dict):
+        raw_list = [raw_list]          # allow a single bare case mapping
+    existing = {c.id.upper() for c in load_cases()}
+    fixtures = _load_fixtures(CASES_DIR)
+    seen = set()
+    cases = parse_case_list(raw_list, fixtures, "<editor>", seen)
+    dup = [c.id for c in cases if c.id.upper() in existing]
+    if dup:
+        raise CaseLoadError(f"用例 id 已存在: {', '.join(dup)}")
     return cases
 
 

@@ -31,6 +31,18 @@ _I18N: dict[str, dict[str, str]] = {
         "progress": "Progress",
         "download": "Download report",
         "starting": "Starting the app under test and seeding data…",
+        "editor_acc": "Add a case (no code — saved to config/uitest_cases/)",
+        "editor_label": "Case YAML",
+        "editor_save": "Validate & Save",
+        "editor_saved": "✅ Saved: {ids} → {path} — run it via \"Specific cases\" above",
+        "editor_ph": ("- id: MY1\n"
+                      "  title: my first case\n"
+                      "  tags: [full, sqlite]\n"
+                      "  page: /datacompare\n"
+                      "  steps:\n"
+                      "    - ai: describe the action in plain language — no selectors needed\n"
+                      "  expect:\n"
+                      "    - ai_judge: describe what you expect to see"),
     },
     "zh": {
         "title": "### UI 测试 Agent",
@@ -44,6 +56,18 @@ _I18N: dict[str, dict[str, str]] = {
         "progress": "进度",
         "download": "下载报告",
         "starting": "启动被测应用并种子数据…",
+        "editor_acc": "添加用例 (零代码 — 保存到 config/uitest_cases/)",
+        "editor_label": "用例 YAML",
+        "editor_save": "校验并保存",
+        "editor_saved": "✅ 已保存: {ids} → {path} — 在上方\"指定用例\"里填 id 即可运行",
+        "editor_ph": ("- id: MY1\n"
+                      "  title: 我的第一条用例\n"
+                      "  tags: [full, sqlite]\n"
+                      "  page: /datacompare\n"
+                      "  steps:\n"
+                      "    - ai: 用中文描述要做的操作即可,无需任何选择器\n"
+                      "  expect:\n"
+                      "    - ai_judge: 用中文描述预期看到什么"),
     },
 }
 
@@ -136,6 +160,29 @@ def render_uitest_page(app: gr.Blocks | None = None) -> None:
     report_html = gr.HTML()
     report_file = gr.DownloadButton(t0("download"), visible=False)
 
+    with gr.Accordion(t0("editor_acc"), open=False) as editor_acc:
+        editor_tb = gr.Textbox(label=t0("editor_label"), lines=10,
+                               placeholder=t0("editor_ph"))
+        editor_btn = gr.Button(t0("editor_save"), size="sm")
+        editor_status = gr.Markdown("")
+
+    def _save_case(text: str, lang: str):
+        from .loader import USER_CASES_DIR, CaseLoadError, validate_case_yaml
+        if not (text or "").strip():
+            return _ut(lang, "editor_label")
+        try:
+            cases = validate_case_yaml(text)
+        except CaseLoadError as e:
+            return f"❌ {e}"
+        USER_CASES_DIR.mkdir(parents=True, exist_ok=True)
+        path = USER_CASES_DIR / f"{cases[0].id.lower()}.yaml"
+        path.write_text(text, encoding="utf-8")
+        return _ut(lang, "editor_saved").format(
+            ids=", ".join(c.id for c in cases), path=str(path))
+
+    editor_btn.click(_save_case, inputs=[editor_tb, lang_state],
+                     outputs=[editor_status])
+
     def _switch_lang(choice: str):
         lang = "zh" if choice == "中文" else "en"
         t = lambda k: _ut(lang, k)  # noqa: E731
@@ -148,13 +195,17 @@ def render_uitest_page(app: gr.Blocks | None = None) -> None:
             gr.update(value=t("run")),
             gr.update(label=t("progress")),
             gr.update(label=t("download")),
+            gr.update(label=t("editor_acc")),
+            gr.update(label=t("editor_label"), placeholder=t("editor_ph")),
+            gr.update(value=t("editor_save")),
         )
 
     lang_dd.change(
         _switch_lang,
         inputs=[lang_dd],
         outputs=[lang_state, title_md, suite_dd, case_tb, no_llm_cb,
-                 run_btn, progress_tb, report_file],
+                 run_btn, progress_tb, report_file,
+                 editor_acc, editor_tb, editor_btn],
     )
     run_btn.click(fn=_run_stream,
                   inputs=[suite_dd, case_tb, no_llm_cb, lang_state],
