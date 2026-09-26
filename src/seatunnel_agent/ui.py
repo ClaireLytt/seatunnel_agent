@@ -2374,25 +2374,6 @@ body.st-sidebar-dragging {
 .st-topbar-spacer {
     flex: 1 !important;
 }
-.st-lang-dd {
-    max-width: 140px !important;
-    min-width: 120px !important;
-}
-.st-lang-dd select,
-.st-lang-dd input {
-    font-size: 10px !important;
-    padding: 3px 24px 3px 8px !important;
-    border-radius: 6px !important;
-    border: 1px solid #e5e7eb !important;
-    background: #f9fafb !important;
-    height: 26px !important;
-    cursor: pointer !important;
-}
-.st-lang-dd select:hover,
-.st-lang-dd input:hover {
-    border-color: #f76707 !important;
-}
-
 /* ── Home button in topbar ── */
 .st-home-btn {
     min-width: 32px !important;

@@ -104,6 +104,7 @@ class TestStore:
     def test_mask_secret(self, store):
         assert settings_store.mask_secret("") == ""
         assert settings_store.mask_secret("short") == "***"
+        assert settings_store.mask_secret("sk-9chars") == "***"   # <12: all hidden
         assert settings_store.mask_secret("sk-abcdefgh1234") == "sk-***1234"
 
 

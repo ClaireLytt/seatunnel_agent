@@ -138,9 +138,12 @@ def get_version() -> int:
 
 
 def mask_secret(value: str) -> str:
-    """Display mask: ``sk-abcdefg1234`` -> ``sk-***1234``; short keys -> ***."""
+    """Display mask: ``sk-abcdefgh1234`` -> ``sk-***1234``.
+
+    Keys shorter than 12 chars mask entirely — revealing 7 of, say, 9
+    characters would be most of the secret."""
     if not value:
         return ""
-    if len(value) <= 8:
+    if len(value) < 12:
         return "***"
     return f"{value[:3]}***{value[-4:]}"
