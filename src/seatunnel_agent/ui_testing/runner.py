@@ -59,6 +59,41 @@ def _snap(dc: DCPage, shots_dir: Path, case_id: str, tag: str) -> str | None:
 _heal_failed: set[str] = set()
 
 
+def _parse_missing(detail: str) -> str:
+    """Extract the element name from a '... not found: X (side=..)' detail."""
+    return detail.split("not found:")[-1].split("(side")[0].strip()[:60]
+
+
+def _safe_digest(dc: DCPage) -> str:
+    try:
+        return dc.digest()
+    except Exception:  # noqa: BLE001 — healing must never crash a run
+        return ""
+
+
+def _attempt_heal(missing: str, dc: DCPage, heal_llm, rerun):
+    """One verified retry under an LLM-suggested alias.
+
+    Returns ``(retry_log, "missing -> label")`` when the re-run succeeded, or
+    ``(None, detail_suffix)`` when it did not — the alias is then rolled back
+    and the element negative-cached for the rest of the run."""
+    from .diagnose import suggest_locator_struct
+    from .page import register_alias, unregister_alias
+    sug = suggest_locator_struct(missing, _safe_digest(dc), heal_llm)
+    if sug is None:
+        _heal_failed.add(missing)
+        return None, ""
+    label, hint = sug
+    register_alias(missing, label)
+    retry = rerun()
+    if retry.ok:
+        retry.detail = f"🩹 HEALED: {missing!r} -> {label!r} · {retry.detail}"
+        return retry, f"{missing} -> {label}"
+    unregister_alias(missing, label)
+    _heal_failed.add(missing)
+    return None, f"  [自愈失败] 按建议 {label!r} 重试仍失败 — {hint}"
+
+
 def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
              app_log_tail_fn=lambda: "", llm_factory=None) -> CaseResult:
     # imported lazily so --no-llm never touches LLM config
@@ -104,34 +139,26 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
                 # page.RUNTIME_ALIASES so every later case resolves directly.
                 if "not found" in log.detail:
                     heal_llm = llm or (llm_factory() if llm_factory else None)
-                    if heal_llm is not None:
-                        from .diagnose import suggest_locator_struct
-                        from .page import register_alias, unregister_alias
-                        try:
-                            digest = dc.digest()
-                        except Exception:  # noqa: BLE001
-                            digest = ""
-                        missing = (log.detail.split("not found:")[-1]
-                                   .split("(side")[0].strip()[:60])
-                        sug = None
-                        if missing and not step.ai and missing not in _heal_failed:
-                            sug = suggest_locator_struct(missing, digest, heal_llm)
-                            if sug is None:
-                                _heal_failed.add(missing)
-                        if sug:
-                            label, hint = sug
-                            register_alias(missing, label)
-                            retry = run_script_step(step, dc)
-                            if retry.ok:
-                                retry.detail = (f"🩹 HEALED: {missing!r} -> "
-                                                f"{label!r} · {retry.detail}")
+                    missing = _parse_missing(log.detail)
+                    if heal_llm is not None and missing:
+                        if step.ai:
+                            # the agent loop self-corrects by observation;
+                            # a lookup it gave up on only gets a report hint
+                            from .diagnose import suggest_locator
+                            hint = suggest_locator(
+                                missing, _safe_digest(dc), heal_llm)
+                            if hint:
+                                log.detail += f"  {hint}"
+                        elif missing not in _heal_failed:
+                            retry, extra = _attempt_heal(
+                                missing, dc, heal_llm,
+                                lambda: run_script_step(step, dc))
+                            if retry is not None:
                                 res.steps.append(retry)
-                                res.healed.append(f"{missing} -> {label}")
+                                if extra not in res.healed:
+                                    res.healed.append(extra)
                                 continue          # case goes on, no ERROR
-                            unregister_alias(missing, label)
-                            _heal_failed.add(missing)
-                            log.detail += (f"  [自愈失败] 按建议 {label!r} "
-                                           f"重试仍失败 — {hint}")
+                            log.detail += extra
                 res.verdict = "ERROR"
                 res.reason = f"步骤失败: {log.desc} — {log.detail}"
                 log.screenshot = _snap(dc, shots_dir, case.id, "step_fail")
@@ -140,6 +167,24 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
         for a in case.expect:
             log = (run_judge(a, dc, llm) if a.kind == "ai_judge"
                    else run_assert(a, dc))
+            # assert-side healing: a control referenced only in `expect`
+            # (visible / value_is / text_contains-in-label) heals the same
+            # way — nominate, alias, re-run the assertion to verify.
+            if not log.ok and a.kind != "ai_judge" and "not found" in log.detail:
+                heal_llm = llm or (llm_factory() if llm_factory else None)
+                missing = _parse_missing(log.detail)
+                if (heal_llm is not None and missing
+                        and missing not in _heal_failed):
+                    retry, extra = _attempt_heal(
+                        missing, dc, heal_llm,
+                        lambda a=a: run_assert(a, dc))
+                    if retry is not None:
+                        res.asserts.append(log)
+                        res.asserts.append(retry)
+                        if extra not in res.healed:
+                            res.healed.append(extra)
+                        continue
+                    log.detail += extra
             res.asserts.append(log)
             if not log.ok:
                 res.verdict = "FAIL"

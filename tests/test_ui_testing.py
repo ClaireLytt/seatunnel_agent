@@ -519,6 +519,59 @@ class TestSelfHeal:
         assert '"连接": ("连接", "Connect", "Connect Now")' in line
         assert "healed: H1" in line
 
+    def test_labels_patch_escapes_quotes(self):
+        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.ui_testing.report import _labels_patch_lines
+        rr = RunResult(started_at="t", suite="smoke", cases=[
+            CaseResult("H1", "t", "HEALED", healed=['连接 -> Say "Hi"']),
+        ])
+        (line,) = _labels_patch_lines(rr)
+        assert '"Say \\"Hi\\""' in line          # valid python when pasted
+
+    def test_assert_side_healing(self, tmp_path):
+        from seatunnel_agent.ui_testing import page as page_mod
+        from seatunnel_agent.ui_testing.models import Assertion, TestCase
+        from seatunnel_agent.ui_testing.runner import run_case
+        self._reset()
+        llm = self._llm()
+
+        class DC:
+            page = MagicMock()
+
+            def goto(self, p):
+                pass
+
+            def set_language(self, lang):
+                pass
+
+            def digest(self, **k):
+                return "[INPUTS] New Label"
+
+            def screenshot(self, p):
+                pass
+
+            def textbox(self, name, side=None):
+                for text in page_mod._texts(name):
+                    if text == "New Label":
+                        box = MagicMock()
+                        box.input_value.return_value = "v"
+                        return box
+                raise LookupError(f"textbox not found: {name} (side={side})")
+
+            def dropdown_input(self, name, side=None):
+                # value_is falls back here after the textbox LookupError,
+                # exactly like the real DCPage
+                raise LookupError(f"dropdown not found: {name} (side={side})")
+
+        case = TestCase(id="H2", title="assert heal", tags=["sqlite"],
+                        page="/x", steps=[],
+                        expect=[Assertion(kind="value_is",
+                                          args={"of": "旧框", "value": "v"})])
+        cr = run_case(case, DC(), llm, tmp_path)
+        assert cr.verdict == "HEALED"
+        assert cr.healed == ["旧框 -> New Label"]
+        self._reset()
+
     def test_healed_counts_and_flaky_normalization(self):
         from seatunnel_agent.ui_testing.models import CaseResult, RunResult
         from seatunnel_agent.ui_testing.rundiff import CaseDelta, flaky_trend

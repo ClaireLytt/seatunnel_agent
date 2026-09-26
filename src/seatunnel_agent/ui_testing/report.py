@@ -186,12 +186,16 @@ def _labels_patch_lines(rr: RunResult) -> list[str]:
                 labels.append(label)
             if c.case_id not in cids:
                 cids.append(c.case_id)
+    def _q(s: str) -> str:
+        """Double-quoted python literal (labels may contain quotes)."""
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
     lines = []
     for name, (labels, cids) in sorted(healed.items()):
         base = LABELS.get(name, (name,))
         merged = (*base, *[lb for lb in labels if lb not in base])
-        vals = ", ".join(f'"{v}"' for v in merged)
-        lines.append(f'    "{name}": ({vals}),   # healed: {", ".join(cids)}')
+        vals = ", ".join(_q(v) for v in merged)
+        lines.append(f'    {_q(name)}: ({vals}),   # healed: {", ".join(cids)}')
     return lines
 
 
