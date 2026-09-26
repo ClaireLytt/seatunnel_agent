@@ -1,0 +1,34 @@
+# SCR 组 · 页面滚动容器回归。全局 CSS 把应用锁在 100vh/overflow-hidden,
+# 每个页面必须自带滚动容器 —— 漏写 CSS 时大屏下毫无症状,小窗口里折叠线
+# 以下的控件永远够不着(e7ec1a1 修过 /transpile 与 /impact 正是此病)。
+# scrollable 断言会把视口压到 500px 高,确认容器真的能滚到底。
+
+- id: SCR1
+  title: 血缘页有滚动条
+  tags: [smoke, sqlite]
+  page: /lineage
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-lin-page}
+
+- id: SCR2
+  title: 方言翻译页有滚动条
+  tags: [smoke, sqlite]
+  page: /transpile
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-trp-page}
+
+- id: SCR3
+  title: 变更影响页有滚动条
+  tags: [smoke, sqlite]
+  page: /impact
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-imp-page}
