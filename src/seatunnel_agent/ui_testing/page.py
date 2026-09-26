@@ -560,13 +560,31 @@ class DCPage:
         """Switch UI language via the top-right dropdown.
 
         The data comparison page marks it .st-lang-dd; the SQL review page
-        renders it as the first bare combobox on the page."""
+        renders it as the first bare combobox on the page.
+
+        Verified with retries: on the very first case of a run the click
+        can land while gradio is still hydrating and get swallowed — the
+        page then stays English and every Chinese assertion downstream
+        fails (this bit X1 in the wild). The dropdown input echoes the
+        selected label, so re-pick until it does."""
         dd = self.page.locator(".st-lang-dd input")
         if not dd.count():
             dd = self.page.locator("input[role='combobox']")
-        dd.first.click()
-        self._pick_listbox_item(lang)
-        self.page.wait_for_timeout(600)          # i18n re-render
+        for attempt in range(3):
+            try:
+                dd.first.click()
+                self._pick_listbox_item(lang)
+            except Exception:  # noqa: BLE001 — retried below
+                if attempt == 2:
+                    raise
+            self.page.wait_for_timeout(600)      # i18n re-render round-trip
+            try:
+                if dd.first.input_value().strip() == lang:
+                    return
+            except Exception:  # noqa: BLE001 — input detached mid-render
+                pass
+        # three picks that never echoed back — let the case's own
+        # assertions surface it with a readable diff
 
     # ── element state (for visible/hidden asserts) ──
 
