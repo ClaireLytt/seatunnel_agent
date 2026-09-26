@@ -1,0 +1,68 @@
+# SET 组 · 设置页 (/settings)。在界面上配置 LLM API,免改本地 .env。
+# 被测应用的设置文件被 env.py 隔离到本轮 runs/<ts>/llm_settings.json,
+# 用例不会触碰开发者真实的 ~/.seatunnel-agent/llm_settings.json;
+# SET3 保存的覆盖值由紧随其后的 SET4 恢复。
+
+- id: SET1
+  title: 设置页加载并展示当前生效配置
+  tags: [smoke, sqlite]
+  page: /settings
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - visible: {target: 保存设置}
+    - visible: {target: 测试连接}
+    - visible: {target: 恢复 env}
+    - text_contains: {in: 页面, text: 当前生效配置}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: SET2
+  title: 非法 Base URL 保存被拦截并给出明确错误
+  tags: [smoke, sqlite]
+  page: /settings
+  steps:
+    - fill: {Base URL: notaurl}
+    - click: 保存设置
+    - wait: 500
+      note: 保存回调为本地校验,无网络请求,短等待即可
+  expect:
+    - text_contains: {in: 页面, text: Base URL 必须以}
+
+- id: SET3
+  title: 保存模型名覆盖并即时反映在当前配置
+  tags: [smoke, sqlite]
+  page: /settings
+  steps:
+    - fill: {模型名称: uitest-model-x}
+    - click: 保存设置
+    - wait: 500
+      note: 保存为本地文件写入,短等待即可
+  expect:
+    - text_contains: {in: 页面, text: 已保存}
+    - text_contains: {in: 页面, text: uitest-model-x}
+    - text_contains: {in: 页面, text: 界面设置}
+
+- id: SET4
+  title: 恢复 .env 清除界面覆盖值
+  tags: [smoke, sqlite]
+  page: /settings
+  steps:
+    - click: 恢复 env
+    - wait: 500
+      note: 恢复为本地文件删除,短等待即可
+  expect:
+    - text_contains: {in: 页面, text: 已恢复}
+    - text_not_contains: {in: 页面, text: uitest-model-x}
+
+- id: SET5
+  title: 设置页有滚动条
+  tags: [smoke, sqlite]
+  page: /settings
+  steps:
+    - open_accordion: {target: 高级设置}
+      note: 表单较短,展开高级设置撑高内容后再压缩视口断言
+    - wait: 500
+      note: 等手风琴展开动画结束
+  expect:
+    - scrollable: {selector: .st-set-page}
