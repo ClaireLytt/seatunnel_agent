@@ -366,6 +366,83 @@ class TestJudge:
         assert _parse("not json") is None
         assert _parse('{"verdict": "maybe"}') is None
 
+    def test_adversarial_verdict_fail(self, monkeypatch):
+        """verdict: fail — a false expectation must be judged fail."""
+        import json as _json
+
+        from seatunnel_agent.ui_testing import judge as judge_mod
+        from seatunnel_agent.ui_testing.models import Assertion
+
+        monkeypatch.setattr(judge_mod, "_judge_cache", {})
+        monkeypatch.setenv("UITEST_JUDGE_VISION", "0")
+
+        def _llm(judge_verdict):
+            resp = MagicMock()
+            resp.reply_text = _json.dumps(
+                {"verdict": judge_verdict, "reason": "r"})
+            resp.usage = {"input": 1, "output": 1}
+            llm = MagicMock()
+            llm.client.provider = "anthropic"
+            llm.client.chat.return_value = resp
+            return llm
+
+        class _DC:
+            def digest(self, max_result_chars=2500):
+                return "same summary"
+
+        a = Assertion(kind="ai_judge",
+                      args={"expect": "行数完全一致", "verdict": "fail"})
+        # judge correctly rejects the false claim -> assertion passes
+        ok_log = judge_mod.run_judge(a, _DC(), _llm("fail"))
+        assert ok_log.ok and "期望判 fail" in ok_log.desc
+        # judge rubber-stamps -> assertion fails loudly
+        monkeypatch.setattr(judge_mod, "_judge_cache", {})
+        bad_log = judge_mod.run_judge(a, _DC(), _llm("pass"))
+        assert not bad_log.ok
+        assert "幻觉盖章" in bad_log.detail
+
+    def test_cache_key_includes_wanted_verdict(self, monkeypatch):
+        """Same expect+digest with opposite wanted verdicts must not share
+        a cache entry."""
+        import json as _json
+
+        from seatunnel_agent.ui_testing import judge as judge_mod
+        from seatunnel_agent.ui_testing.models import Assertion
+
+        monkeypatch.setattr(judge_mod, "_judge_cache", {})
+        monkeypatch.setenv("UITEST_JUDGE_VISION", "0")
+        resp = MagicMock()
+        resp.reply_text = _json.dumps({"verdict": "pass", "reason": "r"})
+        resp.usage = {"input": 1, "output": 1}
+        llm = MagicMock()
+        llm.client.provider = "anthropic"
+        llm.client.chat.return_value = resp
+
+        class _DC:
+            def digest(self, max_result_chars=2500):
+                return "same summary"
+
+        pos = Assertion(kind="ai_judge", args={"expect": "X"})
+        neg = Assertion(kind="ai_judge", args={"expect": "X",
+                                               "verdict": "fail"})
+        assert judge_mod.run_judge(pos, _DC(), llm).ok          # pass wanted
+        neg_log = judge_mod.run_judge(neg, _DC(), llm)
+        assert not neg_log.ok                                   # fresh judge
+        assert "(cached)" not in neg_log.detail
+
+    def test_loader_rejects_bad_verdict(self):
+        from seatunnel_agent.ui_testing.loader import validate_case_yaml
+        bad = """
+- id: NEGX
+  title: bad verdict
+  tags: [full, sqlite]
+  steps: [{wait: 100, note: n}]
+  expect:
+    - ai_judge: {expect: x, verdict: maybe}
+"""
+        with pytest.raises(CaseLoadError):
+            validate_case_yaml(bad)
+
     def test_cache_skips_second_llm_call(self, monkeypatch):
         from seatunnel_agent.ui_testing import judge as judge_mod
         from seatunnel_agent.ui_testing.models import Assertion

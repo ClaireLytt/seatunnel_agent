@@ -149,6 +149,12 @@ def _expand_assert(raw: Any, ctx: str) -> Assertion:
     if kind not in KNOWN_ASSERTS:
         raise CaseLoadError(f"{ctx}: unknown assertion {kind!r} "
                             f"(known: {sorted(KNOWN_ASSERTS)})")
+    if kind == "ai_judge":
+        want = str(args.get("verdict", "pass")).lower()
+        if want not in ("pass", "fail"):
+            raise CaseLoadError(
+                f"{ctx}: ai_judge verdict must be 'pass' or 'fail', "
+                f"got {want!r}")
     return Assertion(kind=kind, args=args, note=note)
 
 
