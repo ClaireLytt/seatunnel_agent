@@ -31,7 +31,7 @@ from .text2sql.executor import (
     create_executor,
 )
 from .text2sql.differ import diff_results, ResultDiff
-from .text2sql.exporter import default_desktop_dir, safe_stem
+from .text2sql.exporter import safe_stem
 from .data_comparison.comparator import (
     GINI_SKEW_THRESHOLD,
     AggregateResult,
@@ -1184,11 +1184,24 @@ def build_batch_full_card(
 # Export helpers — read from CompareReport
 # ---------------------------------------------------------------------------
 
+def _download_dir() -> Path:
+    """Staging dir for gr.DownloadButton files.
+
+    Must live under the system temp dir (or the cwd): Gradio 6 refuses to
+    serve anything else (InvalidPathError), which silently broke the old
+    Desktop-based export — the click looked fine and no file ever arrived
+    (caught when automating checklist items Q1/Q2). The browser download
+    then puts the file wherever the user chose, so Desktop is not needed."""
+    p = Path(tempfile.gettempdir()) / "seatunnel_agent_exports"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def _export_report_csv(report: CompareReport) -> str:
     """Export a CompareReport to a multi-section CSV file."""
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     fname = f"{safe_stem('data_comparison')}_{ts}.csv"
-    target = default_desktop_dir() / fname
+    target = _download_dir() / fname
 
     with open(target, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
@@ -1287,7 +1300,7 @@ def _export_report_excel(report: CompareReport) -> str:
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     fname = f"{safe_stem('data_comparison')}_{ts}.xlsx"
-    target = default_desktop_dir() / fname
+    target = _download_dir() / fname
 
     wb = Workbook()
     bold = Font(bold=True)

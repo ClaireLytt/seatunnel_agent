@@ -134,4 +134,16 @@ def _dispatch(step: Step, dc: DCPage) -> str:
         dc.set_language(args.get("target", args.get("value", "中文")))
         return f"language -> {args.get('target', args.get('value'))}"
 
+    if a == "download":
+        path, fname = dc.download(args["target"], args.get("side"))
+        return f"downloaded {fname} -> {path}"
+
+    if a == "popup_click":
+        text = dc.popup_click(args["target"], args.get("side"))
+        return f"popup captured, {len(text)} chars"
+
+    if a == "drag_sidebar":
+        width = dc.drag_sidebar_grip(int(args.get("dx", 0)))
+        return f"sidebar dragged dx={args.get('dx')} -> width {width}px"
+
     raise ValueError(f"unhandled action: {a}")

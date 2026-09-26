@@ -17,6 +17,8 @@ behaviors verified against this repo:
 from __future__ import annotations
 
 import re
+import tempfile
+from pathlib import Path
 
 from playwright.sync_api import Locator, Page
 
@@ -174,6 +176,9 @@ class DCPage:
     def __init__(self, page: Page, base_url: str):
         self.page = page
         self.base = base_url.rstrip("/")
+        # captured by the download / popup_click actions for later asserts
+        self.last_download: tuple[str, str] | None = None   # (path, filename)
+        self.last_popup_text: str | None = None
 
     # ── navigation & regions ──
 
@@ -599,6 +604,57 @@ class DCPage:
             f"() => document.body.dataset.stLang === '{want}'",
             timeout=15_000)
         self.page.wait_for_timeout(600)          # i18n re-render round-trip
+
+    # ── downloads / popups / native resize (formerly manual-only) ──
+
+    def download(self, name: str, side: str | None = None) -> tuple[str, str]:
+        """Click a download button and capture the file (Q1/Q2 automation)."""
+        btn = self.button(name, side)
+        with self.page.expect_download(timeout=20_000) as dl_info:
+            btn.click()
+        dl = dl_info.value
+        dest = Path(tempfile.mkdtemp(prefix="uitest_dl_")) / dl.suggested_filename
+        dl.save_as(str(dest))
+        self.last_download = (str(dest), dl.suggested_filename)
+        return self.last_download
+
+    def popup_click(self, name: str, side: str | None = None) -> str:
+        """Click a button that window.open()s a page; capture its text (Q4)."""
+        btn = self.button(name, side)
+        with self.page.context.expect_page(timeout=15_000) as pop_info:
+            btn.click()
+        pop = pop_info.value
+        try:
+            pop.wait_for_load_state("domcontentloaded")
+            pop.wait_for_timeout(600)      # document.write + render settle
+            text = pop.evaluate(
+                "() => document.body ? document.body.innerText : ''")
+        finally:
+            pop.close()
+        self.last_popup_text = text
+        return text
+
+    def drag_sidebar_grip(self, dx: int) -> int:
+        """Drag the datacompare sidebar's native CSS resize grip by dx px (B2).
+
+        The grip is the bottom-right corner of .st-dc-sidebar
+        (resize: horizontal). Returns the resulting offsetWidth."""
+        sb = self.page.locator(".st-dc-sidebar").first
+        box = sb.bounding_box()
+        if not box:
+            raise LookupError("sidebar not found: .st-dc-sidebar")
+        gx = box["x"] + box["width"] - 4
+        gy = box["y"] + box["height"] - 4
+        self.page.mouse.move(gx, gy)
+        self.page.mouse.down()
+        self.page.mouse.move(gx + dx, gy, steps=10)
+        self.page.mouse.up()
+        self.page.wait_for_timeout(200)
+        return int(sb.evaluate("el => el.offsetWidth"))
+
+    def sidebar_width(self) -> int:
+        return int(self.page.locator(".st-dc-sidebar").first.evaluate(
+            "el => el.offsetWidth"))
 
     # ── element state (for visible/hidden asserts) ──
 
