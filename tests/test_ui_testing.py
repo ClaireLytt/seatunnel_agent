@@ -374,3 +374,53 @@ class TestReportMask:
         from seatunnel_agent.ui_testing import report
         monkeypatch.setenv("HIVE_PASSWORD", "supersecret99")
         assert "supersecret99" not in report.mask("pw is supersecret99!")
+
+
+class TestFlakyTrend:
+    def _hist(self, tmp_path, rows):
+        import json
+        (tmp_path / "history.jsonl").write_text(
+            "\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+
+    def test_history_roundtrip_and_trend(self, tmp_path):
+        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.ui_testing.report import append_history
+        from seatunnel_agent.ui_testing.rundiff import (
+            flaky_trend, load_history)
+        rr = RunResult(started_at="20260101_000000", suite="smoke")
+        rr.cases = [CaseResult("A1", "t", "PASS"),
+                    CaseResult("B1", "t", "FAIL"),
+                    CaseResult("L6", "t", "SKIP")]
+        append_history(rr, tmp_path)
+        rr2 = RunResult(started_at="20260101_010000", suite="smoke")
+        rr2.cases = [CaseResult("A1", "t", "PASS"),
+                     CaseResult("B1", "t", "PASS")]
+        append_history(rr2, tmp_path)
+        records = load_history(tmp_path)
+        assert len(records) == 2
+        rows = {r["case_id"]: r for r in flaky_trend(records)}
+        assert rows["B1"]["flaky"] and rows["B1"]["fails"] == 1
+        assert not rows["A1"]["flaky"] and rows["A1"]["fail_rate"] == 0
+        assert "L6" not in rows            # SKIP is not signal
+
+    def test_trend_ignores_corrupt_lines_and_last_window(self, tmp_path):
+        from seatunnel_agent.ui_testing.rundiff import load_history
+        self._hist(tmp_path, [
+            {"ts": "1", "suite": "s", "verdicts": {"A1": "PASS"}},
+            {"ts": "2", "suite": "s", "verdicts": {"A1": "FAIL"}},
+        ])
+        with (tmp_path / "history.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write("\nnot json\n")
+        assert len(load_history(tmp_path)) == 2
+        assert len(load_history(tmp_path, last=1)) == 1
+
+    def test_format_trend_marks_flaky(self, tmp_path):
+        from seatunnel_agent.ui_testing.rundiff import (
+            flaky_trend, format_trend, load_history)
+        self._hist(tmp_path, [
+            {"ts": "1", "suite": "s", "verdicts": {"A1": "PASS", "B1": "PASS"}},
+            {"ts": "2", "suite": "s", "verdicts": {"A1": "ERROR", "B1": "PASS"}},
+        ])
+        out = format_trend(flaky_trend(load_history(tmp_path)), 2)
+        assert "FLAKY" in out and "A1" in out
+        assert "稳定 1 / 覆盖 2" in out

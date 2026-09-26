@@ -50,6 +50,25 @@ def write_json(rr: RunResult, run_dir: Path) -> Path:
                                       ensure_ascii=False)))
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2),
                     encoding="utf-8")
+    append_history(rr, run_dir.parent)
+    return path
+
+
+def append_history(rr: RunResult, runs_dir: Path) -> Path:
+    """One JSONL line per run — the durable cross-run record that the
+    ``trend`` command mines for flaky cases (individual run dirs are
+    pruned, history.jsonl survives)."""
+    path = runs_dir / "history.jsonl"
+    record = {
+        "ts": rr.started_at,
+        "suite": rr.suite,
+        "elapsed_ms": rr.elapsed_ms,
+        "tokens": rr.tokens,
+        "verdicts": {c.case_id: c.verdict for c in rr.cases},
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record, ensure_ascii=False) + "\n")
     return path
 
 

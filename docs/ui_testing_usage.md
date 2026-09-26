@@ -142,7 +142,19 @@ python scripts/uitest_flaky_check.py 10  # 连续 N 轮冒烟,验证零 flaky(�
 ## pytest 桥接
 
 ```bash
-pytest -m uitest tests/test_ui_smoke.py    # 默认 deselect,显式开启
+pytest -m uitest tests/test_ui_smoke.py                    # 整包 smoke,单节点
+pytest -m uitest tests/test_ui_cases.py                    # 逐用例节点(推荐)
+UITEST_SUITE=full pytest -m uitest tests/test_ui_cases.py  # 全量
+pytest -m uitest tests/test_ui_cases.py -k SCR --lf        # pytest 过滤/重跑失败
+```
+
+## flaky 趋势
+
+每轮运行自动追加 `runs/history.jsonl`(run 目录会被裁剪,history 长存);
+nightly workflow 用 actions/cache 跨夜累积:
+
+```bash
+python -m seatunnel_agent.ui_testing trend --last 30   # 近 30 轮 verdict 稳定性
 ```
 
 ## 定位不稳时改哪里

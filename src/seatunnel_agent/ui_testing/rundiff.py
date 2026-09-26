@@ -103,3 +103,71 @@ def format_diff(d: RunDiff) -> str:
         lines.append(f"🐢 变慢  {c.case_id:<5} "
                      f"{c.old_ms / 1000:.1f}s → {c.new_ms / 1000:.1f}s  {c.title}")
     return "\n".join(lines)
+
+
+# ── cross-run flaky trend (mined from runs/history.jsonl) ──
+
+def load_history(runs_dir: Path = RUNS_DIR,
+                 last: int = 0) -> list[dict]:
+    """Parsed history.jsonl records, oldest first; corrupt lines skipped."""
+    path = Path(runs_dir) / "history.jsonl"
+    if not path.is_file():
+        return []
+    records: list[dict] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(rec.get("verdicts"), dict):
+            records.append(rec)
+    return records[-last:] if last else records
+
+
+def flaky_trend(records: list[dict]) -> list[dict]:
+    """Per-case verdict stability across runs, most unstable first.
+
+    SKIP/MANUAL don't count as signal (a --no-llm run skipping ai cases is
+    expected, not flaky); a case is flaky when it produced more than one
+    distinct executed verdict (PASS/FAIL/ERROR) across the window."""
+    per_case: dict[str, list[tuple[str, str]]] = {}
+    for rec in records:
+        for cid, verdict in rec["verdicts"].items():
+            if verdict in ("PASS", "FAIL", "ERROR"):
+                per_case.setdefault(cid, []).append((rec["ts"], verdict))
+    rows: list[dict] = []
+    for cid, hits in per_case.items():
+        verdicts = [v for _, v in hits]
+        distinct = set(verdicts)
+        fails = sum(1 for v in verdicts if v != "PASS")
+        rows.append({
+            "case_id": cid,
+            "runs": len(verdicts),
+            "fails": fails,
+            "fail_rate": fails / len(verdicts),
+            "flaky": len(distinct) > 1,
+            "last": verdicts[-1],
+        })
+    rows.sort(key=lambda r: (not r["flaky"], -r["fail_rate"], r["case_id"]))
+    return rows
+
+
+def format_trend(rows: list[dict], runs_seen: int) -> str:
+    if not rows:
+        return "runs/history.jsonl 为空 — 先跑几轮再看趋势。"
+    lines = [f"—— 近 {runs_seen} 轮 verdict 趋势 ——",
+             f"{'用例':<8}{'执行':<6}{'非PASS':<8}{'失败率':<9}{'最近':<7}标记"]
+    for r in rows:
+        if not r["flaky"] and r["fails"] == 0:
+            continue
+        mark = "🌪 FLAKY" if r["flaky"] else ""
+        lines.append(f"{r['case_id']:<8}{r['runs']:<6}{r['fails']:<8}"
+                     f"{r['fail_rate']:<9.0%}{r['last']:<7}{mark}")
+    if len(lines) == 2:
+        lines.append("(全部用例在窗口内稳定 PASS ✅)")
+    stable = sum(1 for r in rows if not r["flaky"] and r["fails"] == 0)
+    lines.append(f"稳定 {stable} / 覆盖 {len(rows)} 用例")
+    return "\n".join(lines)

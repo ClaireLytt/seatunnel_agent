@@ -29,8 +29,21 @@ jobs:
           pip install -e ".[all,uitest,sqlreview]"
           python -m playwright install --with-deps chromium
 
+      # history.jsonl accumulates one line per run; caching it across
+      # nights is what turns single runs into a flaky trend
+      - name: Restore verdict history
+        uses: actions/cache@v4
+        with:
+          path: runs/history.jsonl
+          key: uitest-history-${{ github.run_id }}
+          restore-keys: uitest-history-
+
       - name: Run full UI suite twice (flaky detection)
         run: python -m seatunnel_agent.ui_testing run --suite full --no-llm --repeat 2
+
+      - name: Cross-night flaky trend
+        if: always()
+        run: python -m seatunnel_agent.ui_testing trend --last 30
 
       - name: Upload reports
         if: always()

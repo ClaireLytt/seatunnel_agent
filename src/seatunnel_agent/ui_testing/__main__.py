@@ -68,6 +68,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     return rc
 
 
+def cmd_trend(args: argparse.Namespace) -> int:
+    from .rundiff import flaky_trend, format_trend, load_history
+
+    records = load_history(last=max(args.last, 0))
+    print(format_trend(flaky_trend(records), runs_seen=len(records)))
+    return 0
+
+
 def cmd_compare(args: argparse.Namespace) -> int:
     from .rundiff import RUNS_DIR, diff_runs, format_diff, list_runs
 
@@ -160,6 +168,11 @@ def main(argv: list[str] | None = None) -> int:
     pc.add_argument("runs", nargs="*", default=[],
                     help="两个 runs/<ts> 目录名; 缺省取最近两轮")
     pc.set_defaults(fn=cmd_compare)
+
+    pt = sub.add_parser("trend", help="跨轮 flaky 趋势 (runs/history.jsonl)")
+    pt.add_argument("--last", type=int, default=30,
+                    help="只统计最近 N 轮 (默认 30, 0=全部)")
+    pt.set_defaults(fn=cmd_trend)
 
     pl = sub.add_parser("list", help="列出用例")
     pl.add_argument("--suite", default="", help="只列出该套件")
