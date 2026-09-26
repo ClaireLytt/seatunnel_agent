@@ -32,3 +32,36 @@
       note: 纯断言用例,等页面水合完成即可
   expect:
     - scrollable: {selector: .st-imp-page}
+
+# 其余页面各有自己的滚动方案(比对页滚侧栏、review 页滚整容器、
+# Text2SQL 滚侧栏)——用例把"哪个容器负责滚动"固化为回归契约。
+
+- id: SCR4
+  title: 数据比对页侧栏可滚动
+  tags: [smoke, sqlite]
+  page: /datacompare
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-dc-sidebar}
+
+- id: SCR5
+  title: SQL Review 页整体可滚动
+  tags: [smoke, sqlite]
+  page: /sqlreview
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .gradio-container}
+
+- id: SCR6
+  title: Text2SQL 页侧栏可滚动
+  tags: [smoke, sqlite]
+  page: /text2sql
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-sidebar}

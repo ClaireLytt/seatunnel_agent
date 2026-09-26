@@ -7,7 +7,8 @@
 > T2S/HIS/FAV/SCH 组覆盖 Text2SQL 侧栏与历史/收藏/Schema 浏览器辅助页;
 > TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`);
 > IMP 组覆盖变更影响分析页(`/impact`,目录/粘贴/上下文三种模式,演示数据 `examples/impact_demo`);
-> SCR 组回归各页面滚动容器(500px 小窗验证内容可滚到底)。
+> SCR 组回归全部六个页面的滚动容器(500px 小窗验证内容可滚到底,
+> 并固化"哪个容器负责滚动"的契约)。
 
 ## 快速开始
 
@@ -81,7 +82,7 @@ Text2SQL 与辅助页 / SQL 方言翻译,点运行即测该 Agent 的全部自�
 ```
 
 动作全集:`goto / click / fill / clear / press / select_ds / select /
-dropdown_type / check / open_accordion / wait_status_ok / wait_status_error /
+dropdown_type / check / slide（滑条取值）/ open_accordion / wait_status_ok / wait_status_error /
 wait_result / wait(须写 note) / screenshot / set_language`。
 
 断言全集:`text_contains / text_not_contains / value_is / options_are /

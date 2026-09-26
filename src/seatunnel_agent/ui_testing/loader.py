@@ -28,7 +28,7 @@ USER_CASES_DIR = Path("config") / "uitest_cases"
 
 KNOWN_ACTIONS = frozenset({
     "goto", "click", "fill", "clear", "press", "select_ds", "select",
-    "select_index", "dropdown_type", "check", "open_accordion", "wait_status_ok",
+    "select_index", "dropdown_type", "check", "slide", "open_accordion", "wait_status_ok",
     "wait_status_error", "wait_result", "wait_text", "wait", "screenshot", "set_language",
 })
 

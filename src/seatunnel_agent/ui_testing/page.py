@@ -282,6 +282,24 @@ class DCPage:
                 return loc.first
         raise LookupError(f"checkbox not found: {name} (side={side})")
 
+    def slider(self, name: str, side: str | None = None) -> Locator:
+        """A gr.Slider's numeric input (filling it updates the value and
+        fires gradio's input event, unlike dragging the range thumb)."""
+        scope = self._scope(side)
+        for text in _texts(name):
+            blocks = scope.locator(
+                f"div.block:has(span:text-is('{text}'))")
+            if not blocks.count():
+                continue
+            # .block nests, so ancestors match too — the innermost (last)
+            # one is the slider's own block
+            block = blocks.last
+            for kind in ("number", "range"):
+                loc = block.locator(f"input[type='{kind}']")
+                if loc.count():
+                    return loc.first
+        raise LookupError(f"slider not found: {name} (side={side})")
+
     # ── actions ──
 
     def click_button(self, name: str, side: str | None = None) -> None:

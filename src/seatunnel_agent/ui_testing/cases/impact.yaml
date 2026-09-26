@@ -85,3 +85,32 @@
     - text_contains: {in: 结果区, text: ads.gmv_report}
     - text_contains: {in: 结果区, text: rpt.gmv_dashboard}
     - text_contains: {in: 结果区, text: warn}
+
+- id: IMP7
+  title: 下游深度滑条截断波及层级
+  tags: [full, sqlite]
+  page: /impact
+  setup:
+    - fill: {旧 SQL 目录: examples/impact_demo/old}
+    - fill: {新 SQL 目录: examples/impact_demo/new}
+  steps:
+    - slide: {of: 下游深度, value: 1}
+    - click: 变更影响分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: ads.gmv_report}
+    - text_not_contains: {in: 结果区, text: rpt.gmv_dashboard (L2)}
+
+- id: IMP8
+  title: 英文界面完整分析链路
+  tags: [full, sqlite]
+  lang: en
+  page: /impact
+  steps:
+    - fill: {Old SQL directory: examples/impact_demo/old}
+    - fill: {New SQL directory: examples/impact_demo/new}
+    - click: Analyze change impact
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: Change Impact Analysis}
+    - text_contains: {in: 结果区, text: column expression changed}
