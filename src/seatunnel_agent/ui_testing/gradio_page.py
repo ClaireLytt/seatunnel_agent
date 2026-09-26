@@ -26,6 +26,7 @@ _AGENT_ROUTES: dict[str, tuple[str, ...]] = {
     "transpile": ("/transpile",),
     "impact": ("/impact",),
     "migrate": ("/migrate",),
+    "settings": ("/settings",),
 }
 _AGENT_LABELS = {
     "en": {"all": "All agents", "datacompare": "Data Comparison",
@@ -33,13 +34,15 @@ _AGENT_LABELS = {
            "text2sql": "Text2SQL & aux pages",
            "transpile": "SQL Dialect Translation",
            "impact": "Change Impact Analysis",
-           "migrate": "DataX/Sqoop Migration"},
+           "migrate": "DataX/Sqoop Migration",
+           "settings": "Settings"},
     "zh": {"all": "全部 Agent", "datacompare": "数据对比",
            "sqlreview": "SQL Review", "lineage": "数据血缘",
            "text2sql": "Text2SQL 与辅助页",
            "transpile": "SQL 方言翻译",
            "impact": "变更影响分析",
-           "migrate": "配置迁移"},
+           "migrate": "配置迁移",
+           "settings": "设置"},
 }
 
 

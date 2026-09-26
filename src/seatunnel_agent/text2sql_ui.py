@@ -1785,8 +1785,10 @@ def render_text2sql_page(app=None) -> None:
 
         llm_status = f"⏳ LLM {settings.model_name} (checking...)"
 
+        from . import settings_store
         with holder_lock:
             holder["settings"] = settings
+            holder["settings_version"] = settings_store.get_version()
             holder["store"] = store
             holder["full_store"] = store
             holder["ds_type"] = ds_type
@@ -1877,6 +1879,18 @@ def render_text2sql_page(app=None) -> None:
         with holder_lock:
             holder["collector"] = collector
             store_ref = holder.get("store")
+            # The /settings page changed the LLM config since Connect: reload
+            # and drop the cached agent so it takes effect without re-Connect.
+            from . import settings_store
+            if (holder.get("settings") is not None
+                    and holder.get("settings_version") != settings_store.get_version()):
+                try:
+                    from .config import load_settings as _load_settings
+                    holder["settings"] = _load_settings()
+                    holder["settings_version"] = settings_store.get_version()
+                    holder["agent"] = None
+                except Exception:
+                    pass  # keep old settings; the run itself surfaces errors
             if holder.get("agent") is None:
                 from .text2sql.agent import Text2SQLAgent
                 agent = Text2SQLAgent(

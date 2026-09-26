@@ -143,6 +143,18 @@ LABELS: dict[str, tuple[str, ...]] = {
     "路径终点表": ("路径终点表", "Path destination table"),
     "快照名":     ("快照名（可选）", "Snapshot name (optional)"),
     "对比快照":   ("对比快照", "Compare against snapshot"),
+    # settings page (/settings) — labels from settings_ui.py::_I18N
+    "提供商":     ("提供商", "Provider"),
+    "API Key":    ("API Key", "API Key"),
+    "模型名称":   ("模型名称", "Model Name"),
+    "Base URL":   ("Base URL", "Base URL"),
+    "高级设置":   ("高级设置", "Advanced"),
+    "温度":       ("温度 (0-2)", "Temperature (0-2)"),
+    "最大 Token 数": ("最大 Token 数", "Max Tokens"),
+    "超时秒数":   ("超时(秒)", "Timeout (s)"),
+    "保存设置":   ("保存", "Save"),
+    "测试连接":   ("测试连接", "Test Connection"),
+    "恢复 env":   ("恢复 .env", "Restore .env"),
 }
 
 
@@ -168,6 +180,7 @@ class DCPage:
         "/transpile": ".st-trp-side",
         "/impact": ".st-imp-side",
         "/migrate": ".st-mig-side",
+        "/settings": ".st-set-page",
     }
 
     def goto(self, path: str = "/datacompare") -> None:

@@ -833,6 +833,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports" data-zh="真实浏览器驱动的页面自动回归 — YAML 用例、LLM 模糊断言、HTML 报告">Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports</div>
       <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/settings">
+      <div class="st-hub-logo" style="background:#64748b;">⚙</div>
+      <div class="st-hub-card-title" data-en="Settings" data-zh="设置">Settings</div>
+      <div class="st-hub-card-desc" data-en="Configure the LLM API (provider, key, model, base URL) from the browser — no .env editing" data-zh="在界面上配置 LLM API（提供商 / Key / 模型 / Base URL），无需修改本地 .env">Configure the LLM API (provider, key, model, base URL) from the browser — no .env editing</div>
+      <div class="st-hub-enter" style="color:#64748b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <div class="st-hub-card st-hub-card-soon">
       <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
       <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
@@ -914,6 +920,12 @@ _SIDEBAR_RESIZE_JS = """
 
 def create_ui() -> gr.Blocks:
     """Multipage app: hub landing page + one dedicated page per agent."""
+    # UI-saved LLM settings override .env for this process (see /settings).
+    from dotenv import load_dotenv
+    load_dotenv()
+    from . import settings_store
+    settings_store.apply_to_env()
+
     from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
     from .data_comparison_ui import render_data_comparison_page
     from .sql_review_ui import render_sql_review_page
@@ -1004,6 +1016,10 @@ def create_ui() -> gr.Blocks:
         from .ui_testing.gradio_page import render_uitest_page
         render_uitest_page(app)
 
+    with app.route("Settings", "/settings"):
+        from .settings_ui import render_settings_page
+        render_settings_page(app)
+
     return app
 
 
@@ -1018,7 +1034,9 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
 
     def _load_settings_safe(lang):
         try:
+            from . import settings_store
             settings_holder["current"] = load_settings()
+            settings_holder["version"] = settings_store.get_version()
             s = settings_holder["current"]
 
             def _warmup_llm():
@@ -1057,6 +1075,17 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 {"role": "assistant", "content": _t(lang, "no_settings")},
             ], sid, no_save
             return
+        # The /settings page changed the LLM config since Connect: reload and
+        # drop the cached agent so the new key/model takes effect immediately.
+        from . import settings_store
+        if settings_holder.get("version") != settings_store.get_version():
+            try:
+                settings_holder["current"] = load_settings()
+                settings_holder["version"] = settings_store.get_version()
+                agent_holder["agent"] = None
+                settings = settings_holder["current"]
+            except Exception:
+                pass  # keep the old settings; the run itself will surface errors
         mode_key = _MODE_MAP.get(mode_text, "run")
         final_chat = history
         for update in _run_agent_streaming(msg, history, mode_key, cfg, settings, agent_holder, collector_holder):
@@ -1717,7 +1746,7 @@ body.st-sidebar-dragging {
    Lineage page — the global container is 100vh/overflow-hidden,
    so the page provides its own vertical scroll
    ══════════════════════════ */
-.st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page {
+.st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page, .st-set-page {
     /* the page sits BELOW the multipage navbar (~44px): a plain 100vh
        container overflows the clipped app root and its bottom strip —
        e.g. the depth slider on short windows — becomes unreachable */
@@ -1731,20 +1760,23 @@ body.st-sidebar-dragging {
     scrollbar-gutter: stable;
 }
 .st-lin-page::-webkit-scrollbar, .st-trp-page::-webkit-scrollbar,
-.st-imp-page::-webkit-scrollbar, .st-mig-page::-webkit-scrollbar { width: 8px; }
+.st-imp-page::-webkit-scrollbar, .st-mig-page::-webkit-scrollbar,
+.st-set-page::-webkit-scrollbar { width: 8px; }
 .st-lin-page::-webkit-scrollbar-thumb, .st-trp-page::-webkit-scrollbar-thumb,
-.st-imp-page::-webkit-scrollbar-thumb, .st-mig-page::-webkit-scrollbar-thumb {
+.st-imp-page::-webkit-scrollbar-thumb, .st-mig-page::-webkit-scrollbar-thumb,
+.st-set-page::-webkit-scrollbar-thumb {
     background: #d1d5db;
     border-radius: 4px;
 }
 .st-lin-page::-webkit-scrollbar-thumb:hover,
 .st-trp-page::-webkit-scrollbar-thumb:hover,
 .st-imp-page::-webkit-scrollbar-thumb:hover,
-.st-mig-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+.st-mig-page::-webkit-scrollbar-thumb:hover,
+.st-set-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 /* Panels grow with their content (e.g. the expanded Hive advanced
    accordion); the page scrollbar above is the only vertical scroll. */
 .st-lin-side, .st-lin-main, .st-trp-side, .st-trp-main,
-.st-imp-side, .st-imp-main, .st-mig-side, .st-mig-main {
+.st-imp-side, .st-imp-main, .st-mig-side, .st-mig-main, .st-set-main {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
@@ -1753,6 +1785,15 @@ body.st-sidebar-dragging {
 .st-lin-side, .st-trp-side, .st-imp-side, .st-mig-side {
     padding-right: 6px !important;
     border-right: 1px solid #e5e7eb;
+}
+/* Settings page stacks blocks directly in the page column; stop flex from
+   shrinking them below content height so the page scrollbar can take over. */
+.st-set-page > * {
+    flex-shrink: 0 !important;
+}
+.st-set-page {
+    max-width: 900px;
+    margin: 0 auto !important;
 }
 .st-lin-hidden {
     display: none !important;

@@ -8,6 +8,8 @@
 > TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`);
 > IMP 组覆盖变更影响分析页(`/impact`,目录/粘贴/上下文三种模式,演示数据 `examples/impact_demo`);
 > MIG 组覆盖配置迁移页(`/migrate`,演示数据 `examples/migrate_demo`);
+> SET 组覆盖设置页(`/settings`,LLM API 界面配置;被测应用的设置文件被
+> 隔离到本轮 `runs/<ts>/`,不会触碰开发者真实配置);
 > SCR 组回归全部七个页面的滚动容器(500px 小窗验证内容可滚到底,
 > 并固化"哪个容器负责滚动"的契约)。
 
@@ -52,7 +54,8 @@ python -m seatunnel_agent.ui_testing list [--suite smoke]
 ## 界面上按 Agent 定向测试
 
 `/uitest` 页新增「按 Agent 测」下拉:选 数据对比 / SQL Review / 数据血缘 /
-Text2SQL 与辅助页 / SQL 方言翻译,点运行即测该 Agent 的全部自动化用例(优先于套件选择;
+Text2SQL 与辅助页 / SQL 方言翻译 / 变更影响分析 / 配置迁移 / 设置,
+点运行即测该 Agent 的全部自动化用例(优先于套件选择;
 「指定用例」填了 id 时又优先于它)。
 
 ## 界面上零代码添加用例
