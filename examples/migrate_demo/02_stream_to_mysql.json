@@ -1,0 +1,31 @@
+{
+  "job": {
+    "setting": {"speed": {"channel": 1}},
+    "content": [
+      {
+        "reader": {
+          "name": "streamreader",
+          "parameter": {
+            "sliceRecordCount": 10,
+            "column": [{"value": "hello", "type": "string"}]
+          }
+        },
+        "writer": {
+          "name": "mysqlwriter",
+          "parameter": {
+            "username": "root",
+            "password": "secret",
+            "writeMode": "replace",
+            "preSql": ["truncate table demo"],
+            "connection": [
+              {
+                "table": ["demo"],
+                "jdbcUrl": "jdbc:mysql://localhost:3306/test"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

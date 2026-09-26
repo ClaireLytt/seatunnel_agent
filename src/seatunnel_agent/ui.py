@@ -815,6 +815,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="SQL diff × lineage — compare two SQL trees and report the release blast radius with severity levels" data-zh="SQL 变更 × 血缘 — 对比两份 SQL 目录，输出上线影响面与严重度分级">SQL diff × lineage — compare two SQL trees and report the release blast radius with severity levels</div>
       <div class="st-hub-enter" style="color:#e11d48;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/migrate">
+      <div class="st-hub-logo" style="background:#0d9488;">🚚</div>
+      <div class="st-hub-card-title" data-en="DataX/Sqoop Migration" data-zh="配置迁移 DataX/Sqoop">DataX/Sqoop Migration</div>
+      <div class="st-hub-card-desc" data-en="Convert DataX job JSON / sqoop commands into SeaTunnel configs with a migration-notes list" data-zh="DataX job JSON / sqoop 命令一键转 SeaTunnel 配置，附迁移说明清单">Convert DataX job JSON / sqoop commands into SeaTunnel configs with a migration-notes list</div>
+      <div class="st-hub-enter" style="color:#0d9488;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <a class="st-hub-card" href="/transpile">
       <div class="st-hub-logo" style="background:#16a34a;">🔁</div>
       <div class="st-hub-card-title" data-en="SQL Dialect Translation" data-zh="SQL 方言翻译">SQL Dialect Translation</div>
@@ -989,6 +995,10 @@ def create_ui() -> gr.Blocks:
     with app.route("Change Impact", "/impact"):
         from .impact_ui import render_impact_page
         render_impact_page(app)
+
+    with app.route("Config Migrate", "/migrate"):
+        from .config_migrate_ui import render_config_migrate_page
+        render_config_migrate_page(app)
 
     with app.route("UI Testing", "/uitest"):
         from .ui_testing.gradio_page import render_uitest_page
@@ -1707,7 +1717,7 @@ body.st-sidebar-dragging {
    Lineage page — the global container is 100vh/overflow-hidden,
    so the page provides its own vertical scroll
    ══════════════════════════ */
-.st-lin-page, .st-trp-page, .st-imp-page {
+.st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page {
     height: 100vh !important;
     max-height: 100vh !important;
     overflow-y: auto !important;
@@ -1718,25 +1728,26 @@ body.st-sidebar-dragging {
     scrollbar-gutter: stable;
 }
 .st-lin-page::-webkit-scrollbar, .st-trp-page::-webkit-scrollbar,
-.st-imp-page::-webkit-scrollbar { width: 8px; }
+.st-imp-page::-webkit-scrollbar, .st-mig-page::-webkit-scrollbar { width: 8px; }
 .st-lin-page::-webkit-scrollbar-thumb, .st-trp-page::-webkit-scrollbar-thumb,
-.st-imp-page::-webkit-scrollbar-thumb {
+.st-imp-page::-webkit-scrollbar-thumb, .st-mig-page::-webkit-scrollbar-thumb {
     background: #d1d5db;
     border-radius: 4px;
 }
 .st-lin-page::-webkit-scrollbar-thumb:hover,
 .st-trp-page::-webkit-scrollbar-thumb:hover,
-.st-imp-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+.st-imp-page::-webkit-scrollbar-thumb:hover,
+.st-mig-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 /* Panels grow with their content (e.g. the expanded Hive advanced
    accordion); the page scrollbar above is the only vertical scroll. */
 .st-lin-side, .st-lin-main, .st-trp-side, .st-trp-main,
-.st-imp-side, .st-imp-main {
+.st-imp-side, .st-imp-main, .st-mig-side, .st-mig-main {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
     align-self: flex-start !important;
 }
-.st-lin-side, .st-trp-side, .st-imp-side {
+.st-lin-side, .st-trp-side, .st-imp-side, .st-mig-side {
     padding-right: 6px !important;
     border-right: 1px solid #e5e7eb;
 }

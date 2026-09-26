@@ -7,7 +7,8 @@
 > T2S/HIS/FAV/SCH 组覆盖 Text2SQL 侧栏与历史/收藏/Schema 浏览器辅助页;
 > TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`);
 > IMP 组覆盖变更影响分析页(`/impact`,目录/粘贴/上下文三种模式,演示数据 `examples/impact_demo`);
-> SCR 组回归全部六个页面的滚动容器(500px 小窗验证内容可滚到底,
+> MIG 组覆盖配置迁移页(`/migrate`,演示数据 `examples/migrate_demo`);
+> SCR 组回归全部七个页面的滚动容器(500px 小窗验证内容可滚到底,
 > 并固化"哪个容器负责滚动"的契约)。
 
 ## 快速开始

@@ -583,6 +583,22 @@ seatunnel-agent impact --base origin/main --sql-dir sql/ -F md-comment          
 seatunnel-agent impact-stats                                                    # analysis history & hot tables
 ```
 
+### DataX/Sqoop Migration Agent
+
+Rule-based, deterministic conversion of DataX job JSON and sqoop
+import/export command lines into SeaTunnel configs — jdbc readers/writers
+(query building from column/where, splitPk → partition_column,
+speed.channel → parallelism), doris/starrocks/hdfs/local-file/stream
+plugins, with every unmappable knob surfaced as a migration note (never
+silently dropped; unknown plugins produce an error + TODO block). Web UI
+at `/migrate`, demo data in `examples/migrate_demo/`:
+
+```bash
+seatunnel-agent migrate examples/migrate_demo/01_mysql_to_doris.json -o job.conf
+seatunnel-agent migrate -D datax_jobs/ -o seatunnel_confs/           # batch, mirrored tree
+seatunnel-agent migrate -D datax_jobs/ -F json --fail-on error       # CI gate
+```
+
 ### SQL Dialect Translation Agent
 
 Deterministic SQL translation between hive / spark / doris / starrocks / mysql / presto(trino) / clickhouse
@@ -1201,6 +1217,20 @@ seatunnel-agent impact --base origin/main --sql-dir sql/                # git �
 seatunnel-agent impact --old-dir old/ --sql-dir new/ -F json --fail-on error   # CI 门禁
 seatunnel-agent impact --base origin/main --sql-dir sql/ -F md-comment          # PR 评论用精简 markdown
 seatunnel-agent impact-stats                                                    # 分析历史与高频变更表
+```
+
+### DataX/Sqoop 迁移 Agent
+
+规则驱动的确定性转换:DataX job JSON 与 sqoop import/export 命令行一键转
+SeaTunnel 配置——jdbc 读写(column/where 组 query、splitPk → partition_column、
+speed.channel → parallelism)、doris/starrocks/hdfs/本地文件/stream 插件;
+所有映射不了的参数都进迁移说明清单(绝不静默丢弃,未知插件产出 error +
+TODO 块)。Web 页面 `/migrate`,演示数据 `examples/migrate_demo/`:
+
+```bash
+seatunnel-agent migrate examples/migrate_demo/01_mysql_to_doris.json -o job.conf
+seatunnel-agent migrate -D datax_jobs/ -o seatunnel_confs/           # 批量,镜像目录
+seatunnel-agent migrate -D datax_jobs/ -F json --fail-on error       # CI 门禁
 ```
 
 ### SQL 方言翻译 Agent

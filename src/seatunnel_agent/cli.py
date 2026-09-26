@@ -989,6 +989,67 @@ def lineage_stats(recent: int) -> None:
         )
 
 
+@cli.command()
+@click.argument("paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--dir", "-D", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="Migrate every DataX json / sqoop script under this directory")
+@click.option("--out", "-o", "out_dir", type=click.Path(), default=None,
+              help="Output .conf file (single input) or mirrored directory (--dir)")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh")
+@click.option("--fail-on", type=click.Choice(["error", "warn"]), default=None,
+              help="Exit non-zero when findings at/above this level exist (CI gate)")
+def migrate(
+    paths: tuple[str, ...],
+    directory: str | None,
+    out_dir: str | None,
+    fmt: str,
+    lang: str,
+    fail_on: str | None,
+) -> None:
+    """DataX/Sqoop → SeaTunnel 配置迁移 — 确定性转换 + 迁移说明清单。
+
+    PATHS: DataX job json / sqoop 命令脚本文件。"""
+    import json as _json
+    from pathlib import Path
+
+    from .config_migrate import (
+        migrate_dir, migrate_file, render_batch_markdown,
+        render_migrate_markdown,
+    )
+    from .config_migrate.migrator import LEVELS as MIG_LEVELS
+
+    def _gate(worst: str | None) -> None:
+        if fail_on and worst and MIG_LEVELS.index(worst) <= MIG_LEVELS.index(fail_on):
+            sys.exit(1)
+
+    if directory:
+        batch = migrate_dir(directory, out_dir=out_dir)
+        if fmt == "json":
+            print(_json.dumps(batch.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            console.print(render_batch_markdown(batch, lang), markup=False)
+        _gate(batch.worst_level())
+        return
+    if not paths:
+        raise click.UsageError("Provide job files or --dir")
+    worst: str | None = None
+    for raw in paths:
+        res = migrate_file(raw)
+        w = res.worst_level()
+        if w and (worst is None or MIG_LEVELS.index(w) < MIG_LEVELS.index(worst)):
+            worst = w
+        if fmt == "json":
+            print(_json.dumps(res.to_dict(), ensure_ascii=False, indent=2))
+        else:
+            console.print(render_migrate_markdown(res, lang), markup=False)
+        if out_dir and len(paths) == 1 and res.output_conf:
+            Path(out_dir).write_text(res.output_conf, encoding="utf-8")
+            console.print(f"[dim]SeaTunnel config saved to {out_dir}[/dim]")
+    _gate(worst)
+
+
 @cli.command(name="datadict")
 @click.option("--sql-dir", "-d", type=click.Path(exists=True, file_okay=False),
               required=True, help="从该目录的 *.sql 构建血缘并生成字典")

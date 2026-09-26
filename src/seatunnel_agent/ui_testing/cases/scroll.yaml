@@ -65,3 +65,13 @@
       note: 纯断言用例,等页面水合完成即可
   expect:
     - scrollable: {selector: .st-sidebar}
+
+- id: SCR7
+  title: 配置迁移页有滚动条
+  tags: [smoke, sqlite]
+  page: /migrate
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-mig-page}

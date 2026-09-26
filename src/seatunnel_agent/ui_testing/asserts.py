@@ -135,4 +135,4 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
 
 
 # every page-level scroll container class, newest last (see ui.py CSS)
-_PAGE_SCROLL_SELECTOR = ".st-lin-page, .st-trp-page, .st-imp-page"
+_PAGE_SCROLL_SELECTOR = ".st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page"

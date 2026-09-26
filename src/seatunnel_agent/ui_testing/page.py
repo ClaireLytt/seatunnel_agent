@@ -167,6 +167,7 @@ class DCPage:
         "/text2sql": ".st-sidebar-status",
         "/transpile": ".st-trp-side",
         "/impact": ".st-imp-side",
+        "/migrate": ".st-mig-side",
     }
 
     def goto(self, path: str = "/datacompare") -> None:
@@ -198,6 +199,22 @@ class DCPage:
     # ── locator chain: label → placeholder → button text ──
 
     def textbox(self, name: str, side: str | None = None) -> Locator:
+        """Find a textbox by label/placeholder, retrying briefly.
+
+        The retry absorbs the i18n re-render race: right after
+        set_language the first case on a freshly-hydrated page can look
+        up the Chinese label while gradio is still swapping the DOM."""
+        last_err: LookupError | None = None
+        for attempt in range(6):
+            if attempt:
+                self.page.wait_for_timeout(250)
+            try:
+                return self._textbox_once(name, side)
+            except LookupError as e:
+                last_err = e
+        raise last_err
+
+    def _textbox_once(self, name: str, side: str | None = None) -> Locator:
         scope = self._scope(side)
         for text in _texts(name):
             # Gradio 6: <label><span data-testid="block-info">Label</span>
@@ -474,6 +491,9 @@ class DCPage:
         if loc.count():
             return loc.first
         loc = self.page.locator(".st-imp-main")
+        if loc.count():
+            return loc.first
+        loc = self.page.locator(".st-mig-main")
         if loc.count():
             return loc.first
         return self.page.locator(".sr-report-card").last
