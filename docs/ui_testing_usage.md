@@ -6,7 +6,7 @@
 > LIN 组覆盖数据血缘页(`/lineage`,演示数据 `examples/lineage_demo`);
 > T2S/HIS/FAV/SCH 组覆盖 Text2SQL 侧栏与历史/收藏/Schema 浏览器辅助页;
 > TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`);
-> IMP 组覆盖变更影响分析页(`/impact`,目录模式与粘贴 SQL 模式,演示数据 `examples/impact_demo`)。
+> IMP 组覆盖变更影响分析页(`/impact`,目录/粘贴/上下文三种模式,演示数据 `examples/impact_demo`)。
 
 ## 快速开始
 

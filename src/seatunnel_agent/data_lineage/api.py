@@ -337,6 +337,8 @@ class ImpactRequest(BaseModel):
     new_dir: str | None = Field(None, description="新 SQL 目录（目录模式）")
     old_sql: str | None = Field(None, description="旧 SQL 文本（粘贴模式）")
     new_sql: str | None = Field(None, description="新 SQL 文本（粘贴模式）")
+    context_dir: str | None = Field(
+        None, description="粘贴模式可选：仓库 SQL 目录，下游波及按全仓血缘计算")
     depth: int = Field(3, ge=1, le=MAX_DEPTH, description="下游遍历深度")
     sql_dialect: str = Field("hive", description="解析 SQL 用的方言")
     lang: str = Field("zh", description="报告语言 zh|en")
@@ -363,9 +365,12 @@ def change_impact(req: ImpactRequest) -> dict[str, Any]:
             result = analyze_dirs(req.old_dir, req.new_dir, depth=req.depth,
                                   sql_dialect=req.sql_dialect)
         else:
+            if req.context_dir:
+                _check_dir_allowed(req.context_dir)
             result = analyze_sql_texts(req.old_sql, req.new_sql,
                                        depth=req.depth,
-                                       sql_dialect=req.sql_dialect)
+                                       sql_dialect=req.sql_dialect,
+                                       context_dir=req.context_dir)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 — mirror _build: fail as a clean 400

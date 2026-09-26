@@ -1092,8 +1092,10 @@ def _write_output(path: str, content: str) -> None:
 @click.option("--depth", type=int, default=3, help="Downstream walk depth")
 @click.option("--sql-dialect", type=str, default="hive",
               help="sqlglot dialect used to parse the SQL files")
-@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
-              default="markdown", help="Report format")
+@click.option("--format", "-F", "fmt",
+              type=click.Choice(["markdown", "json", "md-comment"]),
+              default="markdown",
+              help="Report format (md-comment = compact PR/MR comment)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               help="Report language")
 @click.option("--fail-on", type=click.Choice(["error", "warn"]), default=None,
@@ -1120,7 +1122,7 @@ def impact(
 
     from .data_lineage.impact import (
         LEVELS, analyze_dirs, impact_to_dict, materialize_git_ref,
-        render_impact_markdown,
+        render_impact_comment, render_impact_markdown,
     )
 
     verbose = ctx.obj.get("verbose", False)
@@ -1149,6 +1151,9 @@ def impact(
         if fmt == "json":
             text = _json.dumps(impact_to_dict(result, lang),
                                ensure_ascii=False, indent=2)
+            print(text)
+        elif fmt == "md-comment":
+            text = render_impact_comment(result, lang)
             print(text)
         else:
             text = render_impact_markdown(result, lang)

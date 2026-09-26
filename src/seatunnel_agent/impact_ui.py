@@ -34,6 +34,8 @@ _I18N = {
         "old_sql_ph": "Paste the SQL before the change…",
         "new_sql_label": "New SQL",
         "new_sql_ph": "Paste the SQL after the change…",
+        "ctx_label": "Context SQL directory (optional)",
+        "ctx_ph": "Repo SQL tree; widens the blast radius to real consumers",
         "dialect_label": "SQL dialect",
         "depth_label": "Downstream depth",
         "analyze_btn": "Analyze change impact",
@@ -58,6 +60,8 @@ _I18N = {
         "old_sql_ph": "粘贴变更前的 SQL…",
         "new_sql_label": "新 SQL",
         "new_sql_ph": "粘贴变更后的 SQL…",
+        "ctx_label": "上下文 SQL 目录（可选）",
+        "ctx_ph": "仓库 SQL 目录；填写后下游波及按全仓血缘计算",
         "dialect_label": "SQL 方言",
         "depth_label": "下游深度",
         "analyze_btn": "变更影响分析",
@@ -108,6 +112,8 @@ def render_impact_page(app: gr.Blocks) -> None:
                         new_sql_box = gr.Textbox(
                             label=t("new_sql_label"),
                             placeholder=t("new_sql_ph"), lines=8)
+                        ctx_box = gr.Textbox(
+                            label=t("ctx_label"), placeholder=t("ctx_ph"))
                         analyze_sql_btn = gr.Button(
                             t("analyze_sql_btn"), variant="primary")
                 dialect_dd = gr.Dropdown(
@@ -117,9 +123,21 @@ def render_impact_page(app: gr.Blocks) -> None:
                                      label=t("depth_label"))
 
             with gr.Column(scale=5, elem_classes=["st-imp-main"]):
+                graph_html = gr.HTML("")
                 report_md = gr.Markdown(t("result_ph"))
 
     # ── callbacks ──
+
+    def _graph_iframe(result) -> str:
+        from .data_lineage.impact import render_impact_mermaid
+        from .data_lineage.render import mermaid_html
+
+        src = render_impact_mermaid(result)
+        if not src:
+            return ""
+        return ('<iframe style="width:100%;height:340px;border:1px solid '
+                '#e5e7eb;border-radius:8px" srcdoc="'
+                + mermaid_html(src).replace('"', "&quot;") + '"></iframe>')
 
     def do_analyze(old_dir: str, new_dir: str, dialect: str, depth: float,
                    lang: str):
@@ -130,33 +148,41 @@ def render_impact_page(app: gr.Blocks) -> None:
         old_dir = (old_dir or "").strip()
         new_dir = (new_dir or "").strip()
         if not old_dir or not new_dir:
-            return _t(lang, "need_dirs")
+            return "", _t(lang, "need_dirs")
         for d in (old_dir, new_dir):
             if not Path(d).is_dir():
-                return _t(lang, "bad_dir").format(d=d)
+                return "", _t(lang, "bad_dir").format(d=d)
         try:
             result = analyze_dirs(old_dir, new_dir, depth=int(depth),
                                   sql_dialect=dialect or "hive")
         except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
-            return _t(lang, "fail").format(exc=exc)
-        return render_impact_markdown(result, lang)
+            return "", _t(lang, "fail").format(exc=exc)
+        return _graph_iframe(result), render_impact_markdown(result, lang)
 
-    def do_analyze_sql(old_sql: str, new_sql: str, dialect: str,
-                       depth: float, lang: str):
+    def do_analyze_sql(old_sql: str, new_sql: str, ctx_dir: str,
+                       dialect: str, depth: float, lang: str):
+        from pathlib import Path
+
         from .data_lineage.impact import (
             analyze_sql_texts, render_impact_markdown, render_text_diff,
         )
 
         if not (old_sql or "").strip() or not (new_sql or "").strip():
-            return _t(lang, "need_sql")
+            return "", _t(lang, "need_sql")
+        ctx_dir = (ctx_dir or "").strip() or None
+        if ctx_dir and not Path(ctx_dir).is_dir():
+            return "", _t(lang, "bad_dir").format(d=ctx_dir)
         try:
             result = analyze_sql_texts(old_sql, new_sql, depth=int(depth),
-                                       sql_dialect=dialect or "hive")
+                                       sql_dialect=dialect or "hive",
+                                       context_dir=ctx_dir)
         except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
-            return _t(lang, "fail").format(exc=exc)
+            return "", _t(lang, "fail").format(exc=exc)
         report = render_impact_markdown(result, lang)
         text_diff = render_text_diff(old_sql, new_sql)
-        return f"{report}\n\n{text_diff}" if text_diff else report
+        if text_diff:
+            report = f"{report}\n\n{text_diff}"
+        return _graph_iframe(result), report
 
     def switch_lang(choice: str):
         lang = "zh" if choice == "中文" else "en"
@@ -171,6 +197,8 @@ def render_impact_page(app: gr.Blocks) -> None:
                       placeholder=_t(lang, "old_sql_ph")),
             gr.update(label=_t(lang, "new_sql_label"),
                       placeholder=_t(lang, "new_sql_ph")),
+            gr.update(label=_t(lang, "ctx_label"),
+                      placeholder=_t(lang, "ctx_ph")),
             gr.update(label=_t(lang, "dialect_label")),
             gr.update(label=_t(lang, "depth_label")),
             gr.update(value=_t(lang, "analyze_btn")),
@@ -180,17 +208,18 @@ def render_impact_page(app: gr.Blocks) -> None:
     analyze_btn.click(
         do_analyze,
         inputs=[old_box, new_box, dialect_dd, depth_sl, lang_state],
-        outputs=[report_md],
+        outputs=[graph_html, report_md],
     )
     analyze_sql_btn.click(
         do_analyze_sql,
-        inputs=[old_sql_box, new_sql_box, dialect_dd, depth_sl, lang_state],
-        outputs=[report_md],
+        inputs=[old_sql_box, new_sql_box, ctx_box, dialect_dd, depth_sl,
+                lang_state],
+        outputs=[graph_html, report_md],
     )
     lang_dd.change(
         switch_lang,
         inputs=[lang_dd],
         outputs=[lang_state, title_md, old_box, new_box, old_sql_box,
-                 new_sql_box, dialect_dd, depth_sl, analyze_btn,
+                 new_sql_box, ctx_box, dialect_dd, depth_sl, analyze_btn,
                  analyze_sql_btn],
     )

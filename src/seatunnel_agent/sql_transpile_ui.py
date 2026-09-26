@@ -108,7 +108,8 @@ def render_sql_transpile_page(app: gr.Blocks) -> None:
                     choices=list(DIALECTS), value="doris",
                     label=t("dst_label"))
                 sql_box = gr.Textbox(
-                    label=t("sql_label"), placeholder=t("sql_ph"), lines=10)
+                    label=t("sql_label"), placeholder=t("sql_ph"), lines=10,
+                    elem_id="trp-sql-box")
                 translate_btn = gr.Button(t("translate_btn"), variant="primary")
                 with gr.Accordion(t("batch_acc"), open=False) as batch_acc:
                     dir_box = gr.Textbox(
@@ -219,3 +220,16 @@ def render_sql_transpile_page(app: gr.Blocks) -> None:
                  translate_btn, batch_acc, dir_box, out_box, batch_btn,
                  out_code, advice_acc, advice_btn],
     )
+    # SQL handed over from the review page (localStorage bridge): fill the
+    # box and fire an input event so gradio picks the value up.
+    app.load(fn=None, js="""
+        () => setTimeout(() => {
+            const v = localStorage.getItem('st_transpile_sql');
+            if (!v) return;
+            localStorage.removeItem('st_transpile_sql');
+            const t = document.querySelector('#trp-sql-box textarea');
+            if (t) {
+                t.value = v;
+                t.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+        }, 600)""")

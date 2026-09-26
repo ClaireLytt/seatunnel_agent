@@ -149,9 +149,18 @@ def analyze_impact(
     depth: int = 3,
     old_warnings: int = 0,
     new_warnings: int = 0,
+    walk_old: LineageGraph | None = None,
+    walk_new: LineageGraph | None = None,
 ) -> ImpactResult:
-    """Diff two graphs and compute the per-target blast radius."""
+    """Diff two graphs and compute the per-target blast radius.
+
+    ``walk_old``/``walk_new`` optionally widen the downstream walk beyond
+    the diffed graphs — paste mode merges a repository context graph in, so
+    a snippet's change reports its real consumers, not just what the two
+    snippets mention."""
     t0 = time.time()
+    walk_old = walk_old or old_graph
+    walk_new = walk_new or new_graph
     table_diff = diff_graphs(old_graph, new_graph)
 
     old_cols = _col_edge_map(old_graph)
@@ -200,7 +209,7 @@ def analyze_impact(
 
     # ── blast radius + severity ──
     for c in per_table.values():
-        walk_graph = old_graph if c.is_removed else new_graph
+        walk_graph = walk_old if c.is_removed else walk_new
         c.downstream, c.downstream_truncated = _downstream_pairs(
             walk_graph, c.table, depth)
         has_downstream = bool(c.downstream)
@@ -255,16 +264,25 @@ def analyze_sql_texts(
     new_sql: str,
     depth: int = 3,
     sql_dialect: str = "hive",
+    context_dir: str | Path | None = None,
 ) -> ImpactResult:
     """Paste-two-snippets mode: build both graphs from raw SQL text.
 
     Same deterministic pipeline as :func:`analyze_dirs`; the texts are
     materialized into a throwaway temp dir because the loaders are
-    file-based, and it is removed before returning."""
+    file-based, and it is removed before returning.
+
+    With *context_dir*, the repository's lineage graph is merged into the
+    downstream walk (NOT into the diff): the diff stays snippet-vs-snippet,
+    but the blast radius shows the repo's real consumers of the changed
+    tables — a metric drift that looked like harmless ``info`` in
+    isolation becomes ``warn`` once its downstream is visible."""
     from .loaders import build_graph
 
     if not (old_sql or "").strip() or not (new_sql or "").strip():
         raise ValueError("both the old and the new SQL text are required")
+    if context_dir is not None and not Path(context_dir).is_dir():
+        raise ValueError(f"context SQL directory not found: {context_dir}")
     tmp = Path(tempfile.mkdtemp(prefix="impact_txt_"))
     try:
         old_f = tmp / "old.sql"
@@ -275,12 +293,75 @@ def analyze_sql_texts(
             sql_files=[old_f], use_cache=False, sql_dialect=sql_dialect)
         new_graph, new_warn = build_graph(
             sql_files=[new_f], use_cache=False, sql_dialect=sql_dialect)
+
+        walk_old = walk_new = None
+        if context_dir is not None:
+            def _with_context(snippet: LineageGraph) -> LineageGraph:
+                merged, _ = build_graph(
+                    sql_dir=context_dir, use_cache=False,
+                    sql_dialect=sql_dialect)
+                merged.merge(snippet)
+                return merged
+            walk_old = _with_context(old_graph)
+            walk_new = _with_context(new_graph)
+
         return analyze_impact(
             old_graph, new_graph, depth=depth,
             old_warnings=len(old_warn), new_warnings=len(new_warn),
+            walk_old=walk_old, walk_new=walk_new,
         )
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+_MERMAID_CLASS = {
+    "error": "classDef error fill:#fee2e2,stroke:#dc2626,stroke-width:2px",
+    "warn": "classDef warn fill:#fef3c7,stroke:#d97706,stroke-width:2px",
+    "info": "classDef info fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px",
+    "blast": "classDef blast fill:#f1f5f9,stroke:#94a3b8,stroke-dasharray: 4",
+}
+
+
+def _mmid(table: str) -> str:
+    return "n_" + re.sub(r"[^0-9A-Za-z_]", "_", table)
+
+
+def render_impact_mermaid(result: ImpactResult, max_nodes: int = 60) -> str:
+    """Mermaid flowchart of the blast radius: changed tables colored by
+    severity, downstream-only tables in muted grey. Empty string when
+    nothing changed."""
+    if not result.changed:
+        return ""
+    lines = ["flowchart LR"]
+    seen: set[str] = set()
+    changed_names = {c.table for c in result.changed}
+
+    def _node(table: str, klass: str) -> None:
+        if table in seen or len(seen) >= max_nodes:
+            return
+        seen.add(table)
+        lines.append(f'    {_mmid(table)}["{table}"]:::{klass}')
+
+    for c in result.changed:
+        _node(c.table, c.level)
+    edges: set[tuple[str, str]] = set()
+    for c in result.changed:
+        for tbl, _d in c.downstream:
+            if tbl not in changed_names:
+                _node(tbl, "blast")
+        # draw the walk one depth level at a time (L0 = the changed table)
+        by_depth: dict[int, list[str]] = {0: [c.table]}
+        for tbl, dpt in c.downstream:
+            by_depth.setdefault(dpt, []).append(tbl)
+        for dpt in sorted(d for d in by_depth if d > 0):
+            parent = (by_depth.get(dpt - 1) or [c.table])[0]
+            for tbl in by_depth[dpt]:
+                if tbl in seen and (parent, tbl) not in edges:
+                    edges.add((parent, tbl))
+                    lines.append(f"    {_mmid(parent)} --> {_mmid(tbl)}")
+    for css in _MERMAID_CLASS.values():
+        lines.append("    " + css)
+    return "\n".join(lines)
 
 
 def render_text_diff(old_sql: str, new_sql: str) -> str:
@@ -453,6 +534,30 @@ def render_impact_markdown(result: ImpactResult, lang: str = "zh") -> str:
             lines.append(f"- {t['downstream']}: {chain}{trunc}")
         lines.append("")
     lines.append(t["disclaimer"])
+    return "\n".join(lines)
+
+
+def render_impact_comment(result: ImpactResult, lang: str = "zh") -> str:
+    """Compact markdown for a PR/MR comment: one status line, one row per
+    changed table, details collapsed. Safe for GBK-free CI pipes (the CLI
+    reconfigures stdio, but keep this format emoji-light anyway)."""
+    t = _IMPACT_I18N[_impact_lang(lang)]
+    c = result.counts()
+    zh = _impact_lang(lang) == "zh"
+    head = "**变更影响**" if zh else "**Change Impact**"
+    if not result.changed:
+        return f"{head} ✅ " + t["no_change"]
+    lines = [f"{head} {t['stats'].format(**c)}", ""]
+    lines.append("| " + ("表 | 级别 | 变更 | 下游" if zh
+                         else "table | level | change | downstream") + " |")
+    lines.append("|---|---|---|---|")
+    for ct in result.changed:
+        down = ", ".join(tbl for tbl, _ in ct.downstream[:5])
+        if len(ct.downstream) > 5:
+            down += f" +{len(ct.downstream) - 5}"
+        lines.append(f"| `{ct.table}` | {ct.level} | {_headline(ct, t)} "
+                     f"| {down or '-'} |")
+    lines += ["", t["disclaimer"]]
     return "\n".join(lines)
 
 

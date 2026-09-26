@@ -87,6 +87,18 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                 review_btn = gr.Button(t0("sr_review_btn"), variant="primary")
                 fix_btn = gr.Button(t0("sr_fix_btn"))
                 clear_btn = gr.Button(t0("sr_clear_btn"), scale=0, min_width=80)
+                # hand the current SQL to the dialect-translation page via
+                # localStorage (survives the new tab; query params would hit
+                # the server header-size cap on long scripts)
+                transpile_btn = gr.Button("→ 方言翻译 Transpile", size="sm",
+                                          scale=0, min_width=150)
+                transpile_btn.click(fn=None, js="""
+                    () => {
+                        const t = document.querySelector('#sr-sql-box textarea');
+                        if (!t || !t.value.trim()) return;
+                        localStorage.setItem('st_transpile_sql', t.value);
+                        window.open('/transpile', '_blank');
+                    }""")
         with gr.Column(scale=4, elem_classes=["sr-report-col"]):
             report_md = gr.Markdown(t0("sr_report_placeholder"),
                                     buttons=["copy"],

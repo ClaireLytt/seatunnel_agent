@@ -553,19 +553,21 @@ seatunnel-agent lineage-mcp --sql-dir sql/                                      
 ### Change Impact Analysis Agent
 
 SQL diff × lineage downstream walk: compare two SQL trees (two directories,
-the working tree vs a git ref, or just two pasted SQL snippets) and report the release blast radius —
+the working tree vs a git ref, or just two pasted SQL snippets — optionally with a context SQL tree so a snippet's blast radius covers the repo's real consumers) and report the release blast radius —
 which target tables changed (added / removed / column-expression drift),
 which downstream tables are affected and how deep, with a severity model
 (`error` = breaking removal, `warn` = metric drift with consumers, `info` =
 additions) that gates CI via `--fail-on`. Fully deterministic — no database,
 no LLM. Web UI at `/impact`, REST
 `POST /api/lineage/impact`, an MCP tool (`lineage_change_impact` on the
-`lineage-mcp` server), demo data in `examples/impact_demo/`:
+`lineage-mcp` server), CI gate templates in `examples/ci/*impact*`, demo
+data in `examples/impact_demo/`:
 
 ```bash
 seatunnel-agent impact --old-dir examples/impact_demo/old --sql-dir examples/impact_demo/new
 seatunnel-agent impact --base origin/main --sql-dir sql/                # git baseline mode
 seatunnel-agent impact --old-dir old/ --sql-dir new/ -F json --fail-on error   # CI gate
+seatunnel-agent impact --base origin/main --sql-dir sql/ -F md-comment          # compact PR-comment markdown
 ```
 
 ### SQL Dialect Translation Agent
@@ -1160,18 +1162,20 @@ seatunnel-agent lineage-mcp --sql-dir sql/                                      
 
 ### 变更影响分析 Agent
 
-SQL 变更 × 血缘下游遍历：对比两份 SQL（两个目录、工作区 vs git 基线，或直接粘贴两段 SQL），
-输出上线影响面报告——哪些目标表变了（新增 / 移除 / 字段口径漂移）、下游波及
+SQL 变更 × 血缘下游遍历：对比两份 SQL（两个目录、工作区 vs git 基线，或直接粘贴两段 SQL，粘贴模式可带上下文 SQL 目录，让片段的下游波及覆盖全仓真实消费方），
+输出上线影响面报告（含按严重度染色的 mermaid 影响图）——哪些目标表变了（新增 / 移除 / 字段口径漂移）、下游波及
 哪些表、波及多深，并按严重度分级（`error` 破坏性移除 / `warn` 有消费方的
 口径变更 / `info` 纯新增），可用 `--fail-on` 做 CI 门禁。纯确定性——不连接
 数据库、不调用 LLM。Web 页面 `/impact`，REST
 `POST /api/lineage/impact`，MCP 工具（`lineage-mcp` server 上的
-`lineage_change_impact`），演示数据 `examples/impact_demo/`：
+`lineage_change_impact`），CI 门禁模板 `examples/ci/*impact*`，演示数据
+`examples/impact_demo/`：
 
 ```bash
 seatunnel-agent impact --old-dir examples/impact_demo/old --sql-dir examples/impact_demo/new
 seatunnel-agent impact --base origin/main --sql-dir sql/                # git 基线模式
 seatunnel-agent impact --old-dir old/ --sql-dir new/ -F json --fail-on error   # CI 门禁
+seatunnel-agent impact --base origin/main --sql-dir sql/ -F md-comment          # PR 评论用精简 markdown
 ```
 
 ### SQL 方言翻译 Agent

@@ -69,3 +69,19 @@
   expect:
     - text_contains: {in: 结果区, text: 请同时粘贴}
     - text_not_contains: {in: 页面, text: Traceback}
+
+- id: IMP6
+  title: 粘贴模式带上下文目录看真实下游
+  tags: [full, sqlite]
+  page: /impact
+  steps:
+    - click: 粘贴 SQL Paste SQL
+    - fill: {旧 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
+    - fill: {新 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount - refund_amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
+    - fill: {上下文 SQL 目录（可选）: examples/impact_demo/old}
+    - click: 分析粘贴的 SQL
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: ads.gmv_report}
+    - text_contains: {in: 结果区, text: rpt.gmv_dashboard}
+    - text_contains: {in: 结果区, text: warn}

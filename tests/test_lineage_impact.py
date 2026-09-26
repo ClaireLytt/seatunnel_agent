@@ -512,3 +512,84 @@ def test_api_impact_rejects_mixed_or_missing_modes(api_client):
     })
     assert r.status_code == 400
     assert "二选一" in r.json()["detail"]
+
+
+# ─────────────────────────── context dir / mermaid / md-comment ───────────────────────────
+
+def test_paste_mode_context_dir_reveals_real_downstream():
+    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    # in isolation this drift is info (no visible consumers, see the
+    # earlier test); with the repo context it must become warn with the
+    # real downstream chain attached
+    r = analyze_sql_texts(OLD_SNIPPET, NEW_SNIPPET, context_dir=OLD)
+    gmv = next(c for c in r.changed if c.table == "dws.gmv_daily")
+    assert gmv.level == "warn"
+    down = dict(gmv.downstream)
+    assert down.get("ads.gmv_report") == 1
+    assert down.get("rpt.gmv_dashboard") == 2
+    # the diff itself stays snippet-vs-snippet: exactly one changed table
+    assert [c.table for c in r.changed] == ["dws.gmv_daily"]
+
+
+def test_paste_mode_context_dir_must_exist():
+    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    with pytest.raises(ValueError, match="context SQL directory"):
+        analyze_sql_texts(OLD_SNIPPET, NEW_SNIPPET, context_dir="no_such_ctx")
+
+
+def test_render_impact_mermaid():
+    from seatunnel_agent.data_lineage.impact import render_impact_mermaid
+    r = _demo_result()
+    src = render_impact_mermaid(r)
+    assert src.startswith("flowchart LR")
+    assert 'n_dws_gmv_daily["dws.gmv_daily"]:::warn' in src
+    assert 'n_ads_gmv_report["ads.gmv_report"]:::error' in src
+    assert ":::blast" in src            # rpt.gmv_dashboard, downstream-only
+    assert "n_dws_gmv_daily --> n_ads_gmv_report" in src
+    assert "classDef error" in src
+    # clean result renders nothing
+    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    clean = analyze_sql_texts(OLD_SNIPPET, OLD_SNIPPET)
+    assert render_impact_mermaid(clean) == ""
+
+
+def test_render_impact_comment():
+    from seatunnel_agent.data_lineage.impact import render_impact_comment
+    r = _demo_result()
+    md = render_impact_comment(r, "zh")
+    assert md.startswith("**变更影响**")
+    assert "| `dws.gmv_daily` | warn |" in md
+    assert "rpt.gmv_dashboard" in md
+    en = render_impact_comment(r, "en")
+    assert en.startswith("**Change Impact**")
+    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    clean = analyze_sql_texts(OLD_SNIPPET, OLD_SNIPPET)
+    assert "✅" in render_impact_comment(clean, "zh")
+
+
+def test_cli_md_comment_format():
+    res = runner.invoke(cli, [
+        "impact", "--old-dir", str(OLD), "--sql-dir", str(NEW),
+        "-F", "md-comment",
+    ])
+    assert res.exit_code == 0, res.output
+    assert res.output.startswith("**变更影响**")
+    assert "| `ads.gmv_report` | error |" in res.output
+
+
+def test_api_impact_context_dir(api_client):
+    r = api_client.post("/api/lineage/impact", json={
+        "old_sql": OLD_SNIPPET, "new_sql": NEW_SNIPPET,
+        "context_dir": str(OLD),
+    })
+    assert r.status_code == 200
+    changed = r.json()["changed"]
+    assert changed[0]["level"] == "warn"
+
+
+def test_api_impact_context_dir_whitelisted(api_client, tmp_path):
+    r = api_client.post("/api/lineage/impact", json={
+        "old_sql": OLD_SNIPPET, "new_sql": NEW_SNIPPET,
+        "context_dir": str(tmp_path),
+    })
+    assert r.status_code == 403

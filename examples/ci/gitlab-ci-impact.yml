@@ -1,0 +1,31 @@
+# Include from your .gitlab-ci.yml (or paste the job in directly).
+# On merge requests touching *.sql: analyze the change impact against the
+# MR target branch and fail the pipeline on breaking removals.
+#
+#   include:
+#     - local: ci/gitlab-ci-impact.yml
+
+change-impact:
+  stage: test
+  image: python:3.11
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "**/*.sql"
+  before_script:
+    - pip install git+https://github.com/ClaireLytt/seatunnel_agent.git
+    - git fetch origin "$CI_MERGE_REQUEST_TARGET_BRANCH_NAME"
+  script:
+    # Adjust --sql-dir to your warehouse SQL tree.
+    - >
+      seatunnel-agent impact
+      --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --sql-dir sql/
+      -F md-comment --lang zh | tee impact.md
+    - >
+      seatunnel-agent impact
+      --base "origin/$CI_MERGE_REQUEST_TARGET_BRANCH_NAME" --sql-dir sql/
+      --fail-on error > /dev/null
+  artifacts:
+    when: always
+    paths: [impact.md]
+    expire_in: 2 weeks
