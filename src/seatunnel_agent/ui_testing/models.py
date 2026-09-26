@@ -10,7 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-Verdict = Literal["PASS", "FAIL", "ERROR", "SKIP", "MANUAL"]
+# HEALED = every step and assertion passed, but only after the self-healing
+# loop re-resolved a missing element via an LLM-suggested (and retry-verified)
+# label alias — a passing case that needs a LABELS patch, not a failure.
+Verdict = Literal["PASS", "FAIL", "ERROR", "SKIP", "MANUAL", "HEALED"]
 
 
 @dataclass
@@ -80,6 +83,7 @@ class CaseResult:
     reason: str = ""                   # one-line FAIL/ERROR cause
     tokens: int = 0
     elapsed_ms: int = 0
+    healed: list[str] = field(default_factory=list)  # "案例名 -> 实际标签"
 
 
 @dataclass
@@ -92,7 +96,8 @@ class RunResult:
     tokens: int = 0
 
     def counts(self) -> dict[str, int]:
-        out = {"PASS": 0, "FAIL": 0, "ERROR": 0, "SKIP": 0, "MANUAL": 0}
+        out = {"PASS": 0, "FAIL": 0, "ERROR": 0, "SKIP": 0, "MANUAL": 0,
+               "HEALED": 0}
         for c in self.cases:
             out[c.verdict] += 1
         return out

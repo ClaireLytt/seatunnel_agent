@@ -24,11 +24,14 @@ class CaseDelta:
 
     @property
     def regressed(self) -> bool:
-        return self.new in ("FAIL", "ERROR") and self.old == "PASS"
+        # HEALED counts as green on both sides: a healed pass that later
+        # hard-fails is a regression, healing itself is not a recovery event
+        return self.new in ("FAIL", "ERROR") and self.old in ("PASS", "HEALED")
 
     @property
     def recovered(self) -> bool:
-        return self.new == "PASS" and self.old in ("FAIL", "ERROR")
+        return (self.new in ("PASS", "HEALED")
+                and self.old in ("FAIL", "ERROR"))
 
 
 @dataclass
@@ -136,6 +139,8 @@ def flaky_trend(records: list[dict]) -> list[dict]:
     per_case: dict[str, list[tuple[str, str]]] = {}
     for rec in records:
         for cid, verdict in rec["verdicts"].items():
+            if verdict == "HEALED":
+                verdict = "PASS"   # round 1 heals, round 2 passes: not flaky
             if verdict in ("PASS", "FAIL", "ERROR"):
                 per_case.setdefault(cid, []).append((rec["ts"], verdict))
     rows: list[dict] = []

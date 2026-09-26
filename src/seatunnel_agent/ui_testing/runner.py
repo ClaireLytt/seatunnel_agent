@@ -54,6 +54,11 @@ def _snap(dc: DCPage, shots_dir: Path, case_id: str, tag: str) -> str | None:
         return None
 
 
+# Elements a heal attempt already failed for in this run: later cases fail
+# fast instead of re-billing the LLM for the same truly-missing element.
+_heal_failed: set[str] = set()
+
+
 def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
              app_log_tail_fn=lambda: "", llm_factory=None) -> CaseResult:
     # imported lazily so --no-llm never touches LLM config
@@ -92,19 +97,41 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
                    else run_script_step(step, dc))
             res.steps.append(log)
             if not log.ok:
+                # ── self-healing loop: a missing element gets ONE verified
+                # retry under an LLM-suggested alias. A wrong suggestion just
+                # fails the retry and is rolled back — the LLM nominates, the
+                # deterministic re-run decides. Verified aliases live in
+                # page.RUNTIME_ALIASES so every later case resolves directly.
                 if "not found" in log.detail:
                     heal_llm = llm or (llm_factory() if llm_factory else None)
                     if heal_llm is not None:
-                        from .diagnose import suggest_locator
+                        from .diagnose import suggest_locator_struct
+                        from .page import register_alias, unregister_alias
                         try:
                             digest = dc.digest()
                         except Exception:  # noqa: BLE001
                             digest = ""
                         missing = (log.detail.split("not found:")[-1]
                                    .split("(side")[0].strip()[:60])
-                        hint = suggest_locator(missing, digest, heal_llm)
-                        if hint:
-                            log.detail = f"{log.detail}  {hint}"
+                        sug = None
+                        if missing and not step.ai and missing not in _heal_failed:
+                            sug = suggest_locator_struct(missing, digest, heal_llm)
+                            if sug is None:
+                                _heal_failed.add(missing)
+                        if sug:
+                            label, hint = sug
+                            register_alias(missing, label)
+                            retry = run_script_step(step, dc)
+                            if retry.ok:
+                                retry.detail = (f"🩹 HEALED: {missing!r} -> "
+                                                f"{label!r} · {retry.detail}")
+                                res.steps.append(retry)
+                                res.healed.append(f"{missing} -> {label}")
+                                continue          # case goes on, no ERROR
+                            unregister_alias(missing, label)
+                            _heal_failed.add(missing)
+                            log.detail += (f"  [自愈失败] 按建议 {label!r} "
+                                           f"重试仍失败 — {hint}")
                 res.verdict = "ERROR"
                 res.reason = f"步骤失败: {log.desc} — {log.detail}"
                 log.screenshot = _snap(dc, shots_dir, case.id, "step_fail")
@@ -137,6 +164,9 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
                 res.reason = f"{res.reason}  {attribution}"
         res.elapsed_ms = int((time.time() - t0) * 1000)
         res.tokens = (llm.tokens_used - tokens_before) if llm else 0
+        # only a fully green case counts as healed — a later FAIL stays FAIL
+        if res.verdict == "PASS" and res.healed:
+            res.verdict = "HEALED"
     return res
 
 
@@ -155,6 +185,11 @@ def run_suite(
     all_cases = load_cases(cases_dir) if cases_dir else load_cases()
     cases = filter_cases(all_cases, suite, case_ids)
     manual = [c for c in all_cases if "manual" in c.tags] if not case_ids else []
+
+    # fresh healing state per run
+    from .page import reset_aliases
+    reset_aliases()
+    _heal_failed.clear()
 
     _prune_runs()
     ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")

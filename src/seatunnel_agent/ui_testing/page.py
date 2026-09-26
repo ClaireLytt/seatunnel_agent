@@ -173,8 +173,37 @@ LABELS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Session-scoped aliases added by the self-healing loop: when a lookup fails
+# and the LLM's suggested label is VERIFIED by a successful retry, it lands
+# here so every later case in the run resolves instantly. Never persisted —
+# the run report prints a paste-ready LABELS patch instead.
+RUNTIME_ALIASES: dict[str, list[str]] = {}
+
+
+def register_alias(name: str, label: str) -> None:
+    aliases = RUNTIME_ALIASES.setdefault(name, [])
+    if label not in aliases:
+        aliases.append(label)
+
+
+def unregister_alias(name: str, label: str) -> None:
+    aliases = RUNTIME_ALIASES.get(name, [])
+    if label in aliases:
+        aliases.remove(label)
+    if not aliases:
+        RUNTIME_ALIASES.pop(name, None)
+
+
+def healed_aliases() -> dict[str, list[str]]:
+    return {k: list(v) for k, v in RUNTIME_ALIASES.items()}
+
+
+def reset_aliases() -> None:
+    RUNTIME_ALIASES.clear()
+
+
 def _texts(name: str) -> tuple[str, ...]:
-    return LABELS.get(name, (name,))
+    return (*LABELS.get(name, (name,)), *RUNTIME_ALIASES.get(name, ()))
 
 
 class DCPage:

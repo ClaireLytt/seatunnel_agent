@@ -144,6 +144,8 @@ def _run_stream(suite: str, agent: str, case_ids_text: str, no_llm: bool,
                                     no_llm=no_llm, on_progress=progress)
             write_json(rr, run_dir)
             done["html"] = write_html(rr, run_dir)
+            from .report import write_labels_patch
+            write_labels_patch(rr, run_dir)
             done["rr"] = rr
         except Exception as e:  # noqa: BLE001 — surfaced in the UI
             done["error"] = f"{type(e).__name__}: {e}"

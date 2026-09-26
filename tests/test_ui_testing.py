@@ -401,6 +401,141 @@ class TestJudge:
         assert "(cached)" in log2.detail
 
 
+# ── locator self-healing loop ──
+
+class TestSelfHeal:
+    """The page's button was renamed to 'New Label'; cases still say 旧按钮."""
+
+    def _reset(self):
+        from seatunnel_agent.ui_testing import page as page_mod
+        from seatunnel_agent.ui_testing import runner
+        page_mod.reset_aliases()
+        runner._heal_failed.clear()
+
+    def _dc(self):
+        from seatunnel_agent.ui_testing import page as page_mod
+
+        class DC:
+            page = MagicMock()
+
+            def goto(self, p):
+                pass
+
+            def set_language(self, lang):
+                pass
+
+            def digest(self, **k):
+                return "[BUTTONS] New Label 保存"
+
+            def result_html(self):
+                return ""
+
+            def screenshot(self, p):
+                pass
+
+            def click_button(self, name, side=None):
+                for text in page_mod._texts(name):
+                    if text == "New Label":
+                        return
+                raise LookupError(f"button not found: {name} (side={side})")
+
+        return DC()
+
+    def _llm(self, label="New Label"):
+        import json as _json
+
+        from seatunnel_agent.ui_testing.agent import UITestLLM
+        llm = UITestLLM.__new__(UITestLLM)
+        llm.tokens_used = 0
+        resp = MagicMock()
+        resp.reply_text = _json.dumps(
+            {"found": True, "label": label, "hint": "renamed"})
+        resp.usage = {"input": 1, "output": 1}
+        llm.client = MagicMock()
+        llm.client.chat.return_value = resp
+        return llm
+
+    def _case(self):
+        from seatunnel_agent.ui_testing.models import TestCase
+        return TestCase(id="H1", title="heal demo", tags=["sqlite"],
+                        page="/x",
+                        steps=[Step(action="click", args={"target": "旧按钮"})])
+
+    def test_heal_success_then_alias_reused(self, tmp_path):
+        from seatunnel_agent.ui_testing import page as page_mod
+        from seatunnel_agent.ui_testing.runner import run_case
+        self._reset()
+        dc, llm = self._dc(), self._llm()
+
+        cr = run_case(self._case(), dc, llm, tmp_path)
+        assert cr.verdict == "HEALED"
+        assert cr.healed == ["旧按钮 -> New Label"]
+        assert page_mod.healed_aliases() == {"旧按钮": ["New Label"]}
+        heal_calls = llm.client.chat.call_count
+
+        # second case resolves straight through the alias: no failure, no LLM
+        cr2 = run_case(self._case(), dc, llm, tmp_path)
+        assert cr2.verdict == "PASS"
+        assert llm.client.chat.call_count == heal_calls
+        self._reset()
+
+    def test_bad_suggestion_rolls_back(self, tmp_path, monkeypatch):
+        from seatunnel_agent.ui_testing import page as page_mod
+        from seatunnel_agent.ui_testing import runner
+        self._reset()
+        dc = self._dc()
+        # '保存' IS on the page (passes the digest gate) but is not the
+        # renamed control — the verified retry must fail and roll back
+        llm = self._llm(label="保存")
+
+        cr = runner.run_case(self._case(), dc, llm, tmp_path)
+        assert cr.verdict == "ERROR"
+        assert "自愈失败" in cr.reason
+        assert page_mod.healed_aliases() == {}          # rolled back
+        assert "旧按钮" in runner._heal_failed           # negative cache
+
+        # later case: fails fast, no second suggestion round
+        calls = {"n": 0}
+        monkeypatch.setattr(
+            "seatunnel_agent.ui_testing.diagnose.suggest_locator_struct",
+            lambda *a, **k: calls.__setitem__("n", calls["n"] + 1))
+        cr2 = runner.run_case(self._case(), dc, llm, tmp_path)
+        assert cr2.verdict == "ERROR"
+        assert calls["n"] == 0
+        self._reset()
+
+    def test_digest_gate_blocks_hallucination(self):
+        from seatunnel_agent.ui_testing.diagnose import suggest_locator_struct
+        llm = self._llm(label="Ghost Button")   # not in the digest below
+        assert suggest_locator_struct("旧按钮", "[BUTTONS] New Label", llm) is None
+
+    def test_labels_patch_lines(self):
+        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.ui_testing.report import _labels_patch_lines
+        rr = RunResult(started_at="t", suite="smoke", cases=[
+            CaseResult("H1", "t", "HEALED", healed=["连接 -> Connect Now"]),
+        ])
+        (line,) = _labels_patch_lines(rr)
+        assert '"连接": ("连接", "Connect", "Connect Now")' in line
+        assert "healed: H1" in line
+
+    def test_healed_counts_and_flaky_normalization(self):
+        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.ui_testing.rundiff import CaseDelta, flaky_trend
+        rr = RunResult(started_at="t", suite="smoke", cases=[
+            CaseResult("H1", "t", "HEALED")])
+        assert rr.counts()["HEALED"] == 1
+        # HEALED -> PASS across rounds is the healing working, not flaky
+        rows = flaky_trend([
+            {"ts": "1", "verdicts": {"H1": "HEALED"}},
+            {"ts": "2", "verdicts": {"H1": "PASS"}},
+        ])
+        assert rows[0]["flaky"] is False
+        # a healed case that later hard-fails is a regression
+        assert CaseDelta("H1", "t", old="HEALED", new="FAIL",
+                         old_ms=0, new_ms=0).regressed
+
+
 # ── report masking ──
 
 class TestReportMask:
