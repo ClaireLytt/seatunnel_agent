@@ -1718,8 +1718,11 @@ body.st-sidebar-dragging {
    so the page provides its own vertical scroll
    ══════════════════════════ */
 .st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page {
-    height: 100vh !important;
-    max-height: 100vh !important;
+    /* the page sits BELOW the multipage navbar (~44px): a plain 100vh
+       container overflows the clipped app root and its bottom strip —
+       e.g. the depth slider on short windows — becomes unreachable */
+    height: calc(100vh - 44px) !important;
+    max-height: calc(100vh - 44px) !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     padding: 12px 16px 24px !important;

@@ -113,21 +113,32 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
             dc.page.wait_for_timeout(400)
             info = loc.evaluate(
                 "el => { el.scrollTop = el.scrollHeight;"
+                " const r = el.getBoundingClientRect();"
                 " return { overflowY: getComputedStyle(el).overflowY,"
                 "          scroll: el.scrollHeight,"
                 "          client: el.clientHeight,"
-                "          moved: el.scrollTop }; }")
+                "          moved: el.scrollTop,"
+                "          bottomGap: window.innerHeight - r.bottom }; }")
         finally:
             dc.page.set_viewport_size(orig)
             dc.page.wait_for_timeout(200)
         overflows = info["scroll"] > info["client"]
+        # bottomGap < 0 means the container's bottom strip hangs below the
+        # viewport inside a clipped ancestor: that strip (and its widgets,
+        # e.g. a slider at the end of the sidebar) is unreachable even at
+        # full scroll — a 100vh container under the navbar does exactly
+        # this.
+        clipped = info["bottomGap"] < -2
         ok = (info["overflowY"] in ("auto", "scroll")
-              and overflows and info["moved"] > 0)
+              and overflows and info["moved"] > 0 and not clipped)
         return ok, (f"container {sel!r} at {height}px viewport: "
                     f"overflowY={info['overflowY']}, "
                     f"scrollHeight={info['scroll']}, "
                     f"clientHeight={info['client']}, "
-                    f"scrolledTo={info['moved']}"
+                    f"scrolledTo={info['moved']}, "
+                    f"bottomGap={info['bottomGap']:.1f}px"
+                    + (" — bottom strip clipped by an ancestor"
+                       if clipped else "")
                     + ("" if overflows else " — content does not overflow, "
                        "raise the case's content or lower height"))
 
