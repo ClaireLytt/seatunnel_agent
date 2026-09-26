@@ -6,7 +6,9 @@ Or:        seatunnel-agent ui
 
 from __future__ import annotations
 
+import html as _html
 import json
+import os
 import re
 import tempfile
 import threading
@@ -766,10 +768,51 @@ _MODE_MAP = {
 }
 
 
+def _hub_health_html() -> str:
+    """Health strip under the hub subtitle — recomputed on every page load.
+
+    Language-swapped by the same data-en/zh mechanism as the rest of the hub."""
+    from . import settings_store
+    key = os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+    if key:
+        model = _html.escape(os.getenv("MODEL_NAME", "claude-opus-5"))
+        src = ('<span data-en="UI settings" data-zh="界面设置">UI settings</span>'
+               if settings_store.has_saved() else ".env")
+        llm = (f'<span class="st-hub-ok">✓ LLM</span> <code>{model}</code> '
+               f'<span class="st-hub-dim">({src})</span>')
+    else:
+        llm = ('<a href="/settings" class="st-hub-bad">✗ LLM '
+               '<span data-en="not configured — open Settings" '
+               'data-zh="未配置,点此设置">not configured — open Settings</span></a>')
+    hive_host = os.getenv("HIVE_HOST", "")
+    hive = (f'<span class="st-hub-ok">✓ Hive</span> '
+            f'<span class="st-hub-dim">{_html.escape(hive_host)}</span>'
+            if hive_host else
+            '<span class="st-hub-dim">○ Hive <span data-en="not set" '
+            'data-zh="未配置">not set</span></span>')
+    ut = '<span class="st-hub-dim">○ UI tests —</span>'
+    try:
+        from .ui_testing.rundiff import load_history
+        recs = load_history(last=1)
+        if recs:
+            verdicts = recs[-1].get("verdicts", {})
+            bad = sum(1 for v in verdicts.values() if v in ("FAIL", "ERROR"))
+            good = sum(1 for v in verdicts.values() if v == "PASS")
+            cls = "st-hub-ok" if bad == 0 else "st-hub-bad"
+            mark = "✓" if bad == 0 else "✗"
+            day = str(recs[-1].get("ts", ""))[:8]
+            ut = (f'<span class="{cls}">{mark} UI tests</span> {good}✓ {bad}✗ '
+                  f'<span class="st-hub-dim">{day}</span>')
+    except Exception:  # noqa: BLE001 — the strip must never break the hub
+        pass
+    sep = '<span class="st-hub-dim"> · </span>'
+    return f'<div class="st-hub-health">{llm}{sep}{hive}{sep}{ut}</div>'
+
+
 def _build_hub_html() -> str:
-    return '''<div class="st-hub" id="st-hub">
+    tmpl = '''<div class="st-hub" id="st-hub">
   <div class="st-hub-lang-row">
-    <select id="st-hub-lang" onchange="var l=this.value;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.textContent=e.getAttribute('data-'+l)});">
+    <select id="st-hub-lang" onchange="var l=this.value;document.cookie='st-lang='+l+';path=/;max-age=31536000';document.body.dataset.stLang=l;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.textContent=e.getAttribute('data-'+l)});">
       <option value="en" selected>English</option>
       <option value="zh">中文</option>
     </select>
@@ -777,6 +820,7 @@ def _build_hub_html() -> str:
   <div class="st-hub-header">
     <div class="st-hub-title" data-en="SeaTunnel Agent Platform" data-zh="SeaTunnel Agent 工作台">SeaTunnel Agent Platform</div>
     <div class="st-hub-subtitle" data-en="AI Agent Workspace · Choose an agent to start" data-zh="AI Agent 工作台 · 选择一个能力开始">AI Agent Workspace · Choose an agent to start</div>
+    <!--STATUS-->
   </div>
   <div class="st-hub-grid">
     <a class="st-hub-card" href="/seatunnel">
@@ -833,6 +877,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports" data-zh="真实浏览器驱动的页面自动回归 — YAML 用例、LLM 模糊断言、HTML 报告">Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports</div>
       <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/settings">
+      <div class="st-hub-logo" style="background:#64748b;">⚙</div>
+      <div class="st-hub-card-title" data-en="Settings" data-zh="设置">Settings</div>
+      <div class="st-hub-card-desc" data-en="Configure the LLM API (provider, key, model, base URL) from the browser — no .env editing" data-zh="在界面上配置 LLM API（提供商 / Key / 模型 / Base URL），无需修改本地 .env">Configure the LLM API (provider, key, model, base URL) from the browser — no .env editing</div>
+      <div class="st-hub-enter" style="color:#64748b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <div class="st-hub-card st-hub-card-soon">
       <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
       <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
@@ -840,6 +890,7 @@ def _build_hub_html() -> str:
     </div>
   </div>
 </div>'''
+    return tmpl.replace("<!--STATUS-->", _hub_health_html())
 
 
 # Drag-to-resize for the left sidebar: restores the saved width, appends a
@@ -914,6 +965,12 @@ _SIDEBAR_RESIZE_JS = """
 
 def create_ui() -> gr.Blocks:
     """Multipage app: hub landing page + one dedicated page per agent."""
+    # UI-saved LLM settings override .env for this process (see /settings).
+    from dotenv import load_dotenv
+    load_dotenv()
+    from . import settings_store
+    settings_store.apply_to_env()
+
     from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
     from .data_comparison_ui import render_data_comparison_page
     from .sql_review_ui import render_sql_review_page
@@ -957,8 +1014,24 @@ def create_ui() -> gr.Blocks:
         fill_height=True,
         fill_width=True,
     ) as app:
-        gr.HTML(_build_hub_html())
+        hub_html = gr.HTML(_build_hub_html())
         app.load(fn=None, js=_hide_sub_nav_js)
+        # Recompute the health strip on every visit (LLM/Hive config and the
+        # last UI-test run change without a restart), THEN restore the
+        # language chosen in a previous visit — chained so the swap runs on
+        # the fresh HTML, not the stale one.
+        app.load(fn=_build_hub_html, outputs=[hub_html]).then(fn=None, js="""
+        () => {
+            const m = document.cookie.match(/(?:^|; )st-lang=(zh|en)/);
+            const l = m ? m[1] : 'en';
+            document.body.dataset.stLang = l;
+            const sel = document.getElementById('st-hub-lang');
+            if (sel && sel.value !== l) {
+                sel.value = l;
+                sel.dispatchEvent(new Event('change'));
+            }
+        }
+        """)
 
     with app.route("SeaTunnel", "/seatunnel"):
         _render_seatunnel_page(app)
@@ -1004,6 +1077,10 @@ def create_ui() -> gr.Blocks:
         from .ui_testing.gradio_page import render_uitest_page
         render_uitest_page(app)
 
+    with app.route("Settings", "/settings"):
+        from .settings_ui import render_settings_page
+        render_settings_page(app)
+
     return app
 
 
@@ -1018,7 +1095,9 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
 
     def _load_settings_safe(lang):
         try:
+            from . import settings_store
             settings_holder["current"] = load_settings()
+            settings_holder["version"] = settings_store.get_version()
             s = settings_holder["current"]
 
             def _warmup_llm():
@@ -1057,6 +1136,17 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 {"role": "assistant", "content": _t(lang, "no_settings")},
             ], sid, no_save
             return
+        # The /settings page changed the LLM config since Connect: reload and
+        # drop the cached agent so the new key/model takes effect immediately.
+        from . import settings_store
+        if settings_holder.get("version") != settings_store.get_version():
+            try:
+                settings_holder["current"] = load_settings()
+                settings_holder["version"] = settings_store.get_version()
+                agent_holder["agent"] = None
+                settings = settings_holder["current"]
+            except Exception:
+                pass  # keep the old settings; the run itself will surface errors
         mode_key = _MODE_MAP.get(mode_text, "run")
         final_chat = history
         for update in _run_agent_streaming(msg, history, mode_key, cfg, settings, agent_holder, collector_holder):
@@ -1207,14 +1297,6 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 sidebar_open_btn = gr.Button("☰", size="sm", visible=False, elem_classes=["st-sidebar-open-btn"])
                 gr.HTML('<div class="st-topbar-spacer"></div>')
                 home_btn = gr.Button("\U0001f3e0", size="sm", elem_classes=["st-home-btn"])
-                lang_dd = gr.Dropdown(
-                    choices=["English", "中文"],
-                    value="English",
-                    show_label=False,
-                    container=False,
-                    min_width=140,
-                    elem_classes=["st-lang-dd"],
-                )
 
             chatbot = gr.Chatbot(
                 show_label=False,
@@ -1274,9 +1356,16 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         lang = "zh" if choice == "中文" else "en"
         return (lang, *_switch_lang(lang))
 
-    lang_dd.change(
-        fn=_on_lang_change,
-        inputs=[lang_dd],
+    # Language follows the hub's choice (st-lang cookie), applied on load.
+    from .lang_pref import STAMP_JS, choice_from_request
+    app.load(fn=None, js=STAMP_JS)
+
+    def _lang_on_load(request: gr.Request):
+        return _on_lang_change(choice_from_request(request))
+
+    app.load(
+        fn=_lang_on_load,
+        inputs=None,
         outputs=[
             lang_state,
             mode,
@@ -1473,6 +1562,12 @@ _CUSTOM_CSS = """
     flex-direction: column !important;
 }
 footer { display: none !important; }
+/* Hide the multipage navbar entirely: navigation is hub cards + the 🏠
+   button each page keeps in its top-right corner. The .nav-holder wrapper
+   must go too — with only the inner nav hidden it still eats ~17px and
+   clips the bottom strip of every 100vh page. */
+.gradio-container nav,
+.gradio-container .nav-holder { display: none !important; }
 /* Suppress Gradio default block borders globally */
 .gradio-container .block {
     border: none !important;
@@ -1508,6 +1603,23 @@ body:has(.st-uitest-page) .gradio-container > .main > .wrap {
     width: 100% !important;
     margin: 0 auto !important;
     padding: 14px 28px 48px !important;
+}
+
+/* Hub landing page: ten cards now exceed one viewport on short windows —
+   unlock the outer container so the grid can scroll (same marker trick). */
+body:has(.st-hub) {
+    overflow: hidden !important;
+}
+body:has(.st-hub) .gradio-container {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    height: 100vh !important;
+}
+body:has(.st-hub) .gradio-container > .main,
+body:has(.st-hub) .gradio-container > .main > .wrap {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
 }
 
 /* ══════════════════════════════════════════
@@ -1717,12 +1829,11 @@ body.st-sidebar-dragging {
    Lineage page — the global container is 100vh/overflow-hidden,
    so the page provides its own vertical scroll
    ══════════════════════════ */
-.st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page {
-    /* the page sits BELOW the multipage navbar (~44px): a plain 100vh
-       container overflows the clipped app root and its bottom strip —
-       e.g. the depth slider on short windows — becomes unreachable */
-    height: calc(100vh - 44px) !important;
-    max-height: calc(100vh - 44px) !important;
+.st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page, .st-set-page {
+    /* the navbar is hidden, so the page owns the full viewport; keep the
+       explicit height so the page (not the clipped app root) scrolls */
+    height: 100vh !important;
+    max-height: 100vh !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     padding: 12px 16px 24px !important;
@@ -1731,20 +1842,23 @@ body.st-sidebar-dragging {
     scrollbar-gutter: stable;
 }
 .st-lin-page::-webkit-scrollbar, .st-trp-page::-webkit-scrollbar,
-.st-imp-page::-webkit-scrollbar, .st-mig-page::-webkit-scrollbar { width: 8px; }
+.st-imp-page::-webkit-scrollbar, .st-mig-page::-webkit-scrollbar,
+.st-set-page::-webkit-scrollbar { width: 8px; }
 .st-lin-page::-webkit-scrollbar-thumb, .st-trp-page::-webkit-scrollbar-thumb,
-.st-imp-page::-webkit-scrollbar-thumb, .st-mig-page::-webkit-scrollbar-thumb {
+.st-imp-page::-webkit-scrollbar-thumb, .st-mig-page::-webkit-scrollbar-thumb,
+.st-set-page::-webkit-scrollbar-thumb {
     background: #d1d5db;
     border-radius: 4px;
 }
 .st-lin-page::-webkit-scrollbar-thumb:hover,
 .st-trp-page::-webkit-scrollbar-thumb:hover,
 .st-imp-page::-webkit-scrollbar-thumb:hover,
-.st-mig-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+.st-mig-page::-webkit-scrollbar-thumb:hover,
+.st-set-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 /* Panels grow with their content (e.g. the expanded Hive advanced
    accordion); the page scrollbar above is the only vertical scroll. */
 .st-lin-side, .st-lin-main, .st-trp-side, .st-trp-main,
-.st-imp-side, .st-imp-main, .st-mig-side, .st-mig-main {
+.st-imp-side, .st-imp-main, .st-mig-side, .st-mig-main, .st-set-main {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
@@ -1753,6 +1867,15 @@ body.st-sidebar-dragging {
 .st-lin-side, .st-trp-side, .st-imp-side, .st-mig-side {
     padding-right: 6px !important;
     border-right: 1px solid #e5e7eb;
+}
+/* Settings page stacks blocks directly in the page column; stop flex from
+   shrinking them below content height so the page scrollbar can take over. */
+.st-set-page > * {
+    flex-shrink: 0 !important;
+}
+.st-set-page {
+    max-width: 900px;
+    margin: 0 auto !important;
 }
 .st-lin-hidden {
     display: none !important;
@@ -1787,6 +1910,21 @@ body.st-sidebar-dragging {
 }
 .st-hub-lang-row select:hover { border-color: #f76707; }
 .st-hub-header { text-align: center; margin-bottom: 36px; }
+.st-hub-health {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #6b7280;
+}
+.st-hub-health code {
+    font-size: 11px;
+    background: #f3f4f6;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+.st-hub-ok { color: #059669; font-weight: 600; }
+.st-hub-bad { color: #dc2626; font-weight: 600; text-decoration: none; }
+a.st-hub-bad:hover { text-decoration: underline; }
+.st-hub-dim { color: #9ca3af; }
 .st-hub-title {
     font-size: 26px;
     font-weight: 800;
@@ -2298,25 +2436,6 @@ body.st-sidebar-dragging {
 .st-topbar-spacer {
     flex: 1 !important;
 }
-.st-lang-dd {
-    max-width: 140px !important;
-    min-width: 120px !important;
-}
-.st-lang-dd select,
-.st-lang-dd input {
-    font-size: 10px !important;
-    padding: 3px 24px 3px 8px !important;
-    border-radius: 6px !important;
-    border: 1px solid #e5e7eb !important;
-    background: #f9fafb !important;
-    height: 26px !important;
-    cursor: pointer !important;
-}
-.st-lang-dd select:hover,
-.st-lang-dd input:hover {
-    border-color: #f76707 !important;
-}
-
 /* ── Home button in topbar ── */
 .st-home-btn {
     min-width: 32px !important;

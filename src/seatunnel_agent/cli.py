@@ -1479,5 +1479,48 @@ def _handle_error(e: Exception, verbose: bool) -> None:
     sys.exit(1)
 
 
+@cli.command(context_settings={"ignore_unknown_options": True})
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def uitest(args: tuple[str, ...]) -> None:
+    """UI 测试 Agent（run / list / compare / trend，参数原样转发）。
+
+    Examples: seatunnel-agent uitest run --suite smoke --no-llm
+    """
+    from .ui_testing.__main__ import main as uitest_main
+    sys.exit(uitest_main(list(args) or ["run", "--suite", "smoke"]))
+
+
+@cli.command()
+@click.option("--clear", "clear_", is_flag=True,
+              help="清除界面保存的 LLM 配置覆盖（恢复 .env）")
+@click.option("--usage", "usage_", is_flag=True,
+              help="显示近 30 天 LLM token 用量（按模型汇总）")
+def settings(clear_: bool, usage_: bool) -> None:
+    """查看当前生效的 LLM 配置（界面覆盖 or .env），或清除界面覆盖。"""
+    from dotenv import load_dotenv
+
+    from . import settings_store
+
+    load_dotenv()
+    settings_store.apply_to_env()
+    if clear_:
+        settings_store.clear()
+        console.print("[green]OK[/green] 已清除界面覆盖，恢复 .env 配置")
+        return
+    if usage_:
+        from .llm_usage import format_markdown
+        console.print(format_markdown("zh"))
+        return
+    src = ("界面设置（覆盖 .env） — " + str(settings_store.store_path())
+           if settings_store.has_saved() else ".env / 环境变量")
+    key = os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+    console.print(f"来源: {src}")
+    console.print(f"LLM_PROVIDER = {os.getenv('LLM_PROVIDER', 'anthropic')}")
+    console.print(f"MODEL_NAME   = {os.getenv('MODEL_NAME', 'claude-opus-5')}")
+    console.print(f"LLM_BASE_URL = {os.getenv('LLM_BASE_URL', '') or '(未设置)'}")
+    console.print(
+        f"API_KEY      = {settings_store.mask_secret(key) or '(未设置)'}")
+
+
 if __name__ == "__main__":
     cli()

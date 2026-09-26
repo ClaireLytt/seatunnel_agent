@@ -567,7 +567,7 @@ class TestExportCsv:
 
     def test_export_csv_creates_file(self, monkeypatch, tmp_path):
         monkeypatch.setattr(
-            "seatunnel_agent.data_comparison_ui.default_desktop_dir",
+            "seatunnel_agent.data_comparison_ui._download_dir",
             lambda: tmp_path,
         )
         report = CompareReport(
@@ -583,7 +583,7 @@ class TestExportCsv:
 
     def test_export_csv_empty_report(self, monkeypatch, tmp_path):
         monkeypatch.setattr(
-            "seatunnel_agent.data_comparison_ui.default_desktop_dir",
+            "seatunnel_agent.data_comparison_ui._download_dir",
             lambda: tmp_path,
         )
         report = CompareReport()
@@ -3503,42 +3503,42 @@ class TestExportCSVCompleteness:
         )
 
     def test_skew_section(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison_ui.default_desktop_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.data_comparison_ui._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
         assert "[Skew Analysis]" in content
 
     def test_keyed_diff_section(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison_ui.default_desktop_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.data_comparison_ui._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
         assert "[Keyed Diff]" in content
 
     def test_checksum_section(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison_ui.default_desktop_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.data_comparison_ui._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
         assert "[Checksum]" in content
 
     def test_partition_section(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison_ui.default_desktop_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.data_comparison_ui._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
         assert "[Partition]" in content
 
     def test_custom_agg_section(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison_ui.default_desktop_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.data_comparison_ui._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
         assert "[Custom Aggregates]" in content
 
     def test_empty_report_no_crash(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison_ui.default_desktop_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.data_comparison_ui._download_dir", lambda: tmp_path)
         report = CompareReport()
         path = _export_report_csv(report)
         assert Path(path).exists()
@@ -3973,7 +3973,7 @@ class TestFullReportExportExcelAllSheets:
 
     def test_sheet_names(self, tmp_path, monkeypatch):
         from seatunnel_agent.data_comparison_ui import _export_report_excel
-        monkeypatch.setattr("seatunnel_agent.data_comparison_ui.default_desktop_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.data_comparison_ui._download_dir", lambda: tmp_path)
         report = CompareReport(
             schema=SchemaDiffResult(
                 table_a="t1", table_b="t2",
@@ -4172,7 +4172,7 @@ class TestFullReportExportCSVAllSections:
         )
 
     def test_all_csv_sections_present(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison_ui.default_desktop_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.data_comparison_ui._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")

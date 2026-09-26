@@ -66,8 +66,9 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
     tokens_before = llm.tokens_used if llm else 0
     try:
         dc.goto(case.page)
-        if case.lang == "zh":
-            dc.set_language("中文")
+        # Enforce the case's language every time: the preference lives in
+        # localStorage now and would otherwise leak from the previous case.
+        dc.set_language("中文" if case.lang == "zh" else "English")
 
         last_result_html: str | None = None
         for step in [*case.setup, *case.steps]:
@@ -83,6 +84,10 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
                     last_result_html = None
             if step.action == "wait_result" and last_result_html is not None:
                 step.args["_before_html"] = last_result_html
+            if step.action == "screenshot":
+                # route manual screenshots into this run's shots/ (they used
+                # to land in the CWD because nothing injected _shots_dir)
+                step.args["_shots_dir"] = str(shots_dir)
             log = (run_ai_step(step, dc, llm) if step.ai
                    else run_script_step(step, dc))
             res.steps.append(log)

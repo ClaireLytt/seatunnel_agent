@@ -366,6 +366,40 @@ class TestJudge:
         assert _parse("not json") is None
         assert _parse('{"verdict": "maybe"}') is None
 
+    def test_cache_skips_second_llm_call(self, monkeypatch):
+        from seatunnel_agent.ui_testing import judge as judge_mod
+        from seatunnel_agent.ui_testing.models import Assertion
+
+        monkeypatch.setattr(judge_mod, "_judge_cache", {})
+        monkeypatch.setenv("UITEST_JUDGE_VISION", "0")
+        calls = {"n": 0}
+
+        class _Resp:
+            reply_text = '{"verdict": "pass", "reason": "ok"}'
+            usage = {"input": 1, "output": 1}
+
+        class _Client:
+            provider = "anthropic"
+            def chat(self, *a, **k):
+                calls["n"] += 1
+                return _Resp()
+
+        class _LLM:
+            client = _Client()
+            def spend(self, usage):
+                pass
+
+        class _DC:
+            def digest(self, max_result_chars=2500):
+                return "same summary"
+
+        a = Assertion(kind="ai_judge", args={"expect": "结果高亮"})
+        log1 = judge_mod.run_judge(a, _DC(), _LLM())
+        log2 = judge_mod.run_judge(a, _DC(), _LLM())
+        assert log1.ok and log2.ok
+        assert calls["n"] == 1                    # second verdict from cache
+        assert "(cached)" in log2.detail
+
 
 # ── report masking ──
 

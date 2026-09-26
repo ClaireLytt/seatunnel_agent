@@ -17,6 +17,8 @@ behaviors verified against this repo:
 from __future__ import annotations
 
 import re
+import tempfile
+from pathlib import Path
 
 from playwright.sync_api import Locator, Page
 
@@ -143,6 +145,31 @@ LABELS: dict[str, tuple[str, ...]] = {
     "路径终点表": ("路径终点表", "Path destination table"),
     "快照名":     ("快照名（可选）", "Snapshot name (optional)"),
     "对比快照":   ("对比快照", "Compare against snapshot"),
+    # settings page (/settings) — labels from settings_ui.py::_I18N
+    "提供商":     ("提供商", "Provider"),
+    "API Key":    ("API Key", "API Key"),
+    "模型名称":   ("模型名称", "Model Name"),
+    "Base URL":   ("Base URL", "Base URL"),
+    "高级设置":   ("高级设置", "Advanced"),
+    "温度":       ("温度 (0-2)", "Temperature (0-2)"),
+    "最大 Token 数": ("最大 Token 数", "Max Tokens"),
+    "超时秒数":   ("超时(秒)", "Timeout (s)"),
+    "保存设置":   ("保存", "Save"),
+    "测试连接":   ("测试连接", "Test Connection"),
+    "恢复 env":   ("恢复 .env", "Restore .env"),
+    "配置档案":   ("配置档案", "Profiles"),
+    "档案名":     ("档案名", "Profile Name"),
+    "选择档案":   ("选择档案", "Profile"),
+    "存为档案":   ("存为档案", "Save as Profile"),
+    "启用档案":   ("启用档案", "Activate Profile"),
+    "删除档案":   ("删除档案", "Delete Profile"),
+    "数据库连接": ("数据库连接", "Database Connections"),
+    "连接名称":   ("名称", "Name"),
+    "连接类型":   ("类型", "Type"),
+    "连接主机":   ("主机", "Host"),
+    "保存连接":   ("保存连接", "Save Connection"),
+    "选择连接":   ("选择连接", "Connection"),
+    "删除连接":   ("删除连接", "Delete Connection"),
 }
 
 
@@ -156,6 +183,9 @@ class DCPage:
     def __init__(self, page: Page, base_url: str):
         self.page = page
         self.base = base_url.rstrip("/")
+        # captured by the download / popup_click actions for later asserts
+        self.last_download: tuple[str, str] | None = None   # (path, filename)
+        self.last_popup_text: str | None = None
 
     # ── navigation & regions ──
 
@@ -168,6 +198,7 @@ class DCPage:
         "/transpile": ".st-trp-side",
         "/impact": ".st-imp-side",
         "/migrate": ".st-mig-side",
+        "/settings": ".st-set-page",
     }
 
     def goto(self, path: str = "/datacompare") -> None:
@@ -557,34 +588,80 @@ class DCPage:
             arg=text, timeout=timeout_ms)
 
     def set_language(self, lang: str = "中文") -> None:
-        """Switch UI language via the top-right dropdown.
+        """Switch UI language.
 
-        The data comparison page marks it .st-lang-dd; the SQL review page
-        renders it as the first bare combobox on the page.
+        The per-page dropdowns are gone: the language is chosen once on the
+        hub and lives in the ``st-lang`` cookie; every page applies it on
+        load (server-side, via the cookie) and stamps ``<body
+        data-st-lang>``.  So: write the cookie, reload if it differed, and
+        wait for the stamp — deterministic, no dropdown clicking, no
+        hydration races (the old click-and-verify dance existed because the
+        first click of a run could be swallowed mid-hydration)."""
+        want = "zh" if lang in ("中文", "zh") else "en"
+        stored = self.page.evaluate(
+            "() => (document.cookie.match(/(?:^|; )st-lang=(zh|en)/)"
+            " || [])[1] || 'en'")
+        if stored != want:
+            self.page.evaluate(
+                "l => { document.cookie ="
+                " 'st-lang=' + l + ';path=/;max-age=31536000'; }", want)
+            self.page.reload(wait_until="domcontentloaded")
+        # every page's load hook stamps the body once the language applied
+        self.page.wait_for_function(
+            f"() => document.body.dataset.stLang === '{want}'",
+            timeout=15_000)
+        self.page.wait_for_timeout(600)          # i18n re-render round-trip
 
-        Verified with retries: on the very first case of a run the click
-        can land while gradio is still hydrating and get swallowed — the
-        page then stays English and every Chinese assertion downstream
-        fails (this bit X1 in the wild). The dropdown input echoes the
-        selected label, so re-pick until it does."""
-        dd = self.page.locator(".st-lang-dd input")
-        if not dd.count():
-            dd = self.page.locator("input[role='combobox']")
-        for attempt in range(3):
-            try:
-                dd.first.click()
-                self._pick_listbox_item(lang)
-            except Exception:  # noqa: BLE001 — retried below
-                if attempt == 2:
-                    raise
-            self.page.wait_for_timeout(600)      # i18n re-render round-trip
-            try:
-                if dd.first.input_value().strip() == lang:
-                    return
-            except Exception:  # noqa: BLE001 — input detached mid-render
-                pass
-        # three picks that never echoed back — let the case's own
-        # assertions surface it with a readable diff
+    # ── downloads / popups / native resize (formerly manual-only) ──
+
+    def download(self, name: str, side: str | None = None) -> tuple[str, str]:
+        """Click a download button and capture the file (Q1/Q2 automation)."""
+        btn = self.button(name, side)
+        with self.page.expect_download(timeout=20_000) as dl_info:
+            btn.click()
+        dl = dl_info.value
+        dest = Path(tempfile.mkdtemp(prefix="uitest_dl_")) / dl.suggested_filename
+        dl.save_as(str(dest))
+        self.last_download = (str(dest), dl.suggested_filename)
+        return self.last_download
+
+    def popup_click(self, name: str, side: str | None = None) -> str:
+        """Click a button that window.open()s a page; capture its text (Q4)."""
+        btn = self.button(name, side)
+        with self.page.context.expect_page(timeout=15_000) as pop_info:
+            btn.click()
+        pop = pop_info.value
+        try:
+            pop.wait_for_load_state("domcontentloaded")
+            pop.wait_for_timeout(600)      # document.write + render settle
+            text = pop.evaluate(
+                "() => document.body ? document.body.innerText : ''")
+        finally:
+            pop.close()
+        self.last_popup_text = text
+        return text
+
+    def drag_sidebar_grip(self, dx: int) -> int:
+        """Drag the datacompare sidebar's native CSS resize grip by dx px (B2).
+
+        The grip is the bottom-right corner of .st-dc-sidebar
+        (resize: horizontal). Returns the resulting offsetWidth."""
+        sb = self.page.locator(".st-dc-sidebar").first
+        box = sb.bounding_box()
+        if not box:
+            raise LookupError("sidebar not found: .st-dc-sidebar")
+        gx = box["x"] + box["width"] - 4
+        gy = box["y"] + box["height"] - 4
+        self.page.mouse.move(gx, gy)
+        self.page.mouse.down()
+        self.page.mouse.move(gx + dx, gy, steps=10)
+        self.page.mouse.up()
+        self.page.wait_for_timeout(200)
+        return int(sb.evaluate("el => el.offsetWidth"))
+
+    def sidebar_width(self) -> int:
+        return int(self.page.locator(".st-dc-sidebar").first.evaluate(
+            "el => el.offsetWidth"))
 
     # ── element state (for visible/hidden asserts) ──
 

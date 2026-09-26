@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import atexit
 import logging
+import os
 import socket
 import subprocess
 import sys
@@ -93,10 +94,17 @@ class AppUnderTest:
         kwargs: dict = {}
         if sys.platform == "win32":
             kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        # Isolate the app-under-test from the developer's real UI-saved LLM
+        # settings: /settings cases write to this run's directory instead.
+        child_env = os.environ.copy()
+        child_env["SEATUNNEL_LLM_SETTINGS_PATH"] = str(
+            self.log_path.parent / "llm_settings.json")
+        child_env["SEATUNNEL_DC_PRESETS_PATH"] = str(
+            self.log_path.parent / "dc_connections.json")
         self.proc = subprocess.Popen(
             [sys.executable, "-c", _LAUNCH_SNIPPET % self.port],
             stdout=self._log_file, stderr=subprocess.STDOUT,
-            cwd=str(Path.cwd()), **kwargs,
+            cwd=str(Path.cwd()), env=child_env, **kwargs,
         )
         atexit.register(self._kill)
         try:

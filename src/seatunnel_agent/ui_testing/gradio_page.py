@@ -26,6 +26,7 @@ _AGENT_ROUTES: dict[str, tuple[str, ...]] = {
     "transpile": ("/transpile",),
     "impact": ("/impact",),
     "migrate": ("/migrate",),
+    "settings": ("/settings",),
 }
 _AGENT_LABELS = {
     "en": {"all": "All agents", "datacompare": "Data Comparison",
@@ -33,13 +34,15 @@ _AGENT_LABELS = {
            "text2sql": "Text2SQL & aux pages",
            "transpile": "SQL Dialect Translation",
            "impact": "Change Impact Analysis",
-           "migrate": "DataX/Sqoop Migration"},
+           "migrate": "DataX/Sqoop Migration",
+           "settings": "Settings"},
     "zh": {"all": "全部 Agent", "datacompare": "数据对比",
            "sqlreview": "SQL Review", "lineage": "数据血缘",
            "text2sql": "Text2SQL 与辅助页",
            "transpile": "SQL 方言翻译",
            "impact": "变更影响分析",
-           "migrate": "配置迁移"},
+           "migrate": "配置迁移",
+           "settings": "设置"},
 }
 
 
@@ -189,10 +192,8 @@ def render_uitest_page(app: gr.Blocks | None = None) -> None:
     gr.HTML('<div class="st-uitest-page" style="display:none"></div>')
     with gr.Row():
         title_md = gr.Markdown(f"{t0('title')}\n{t0('subtitle')}")
-        lang_dd = gr.Dropdown(
-            choices=["English", "中文"], value="English",
-            show_label=False, container=False, min_width=140, scale=0,
-        )
+        home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
+                             elem_classes=["st-home-btn"])
     lang_state = gr.State("en")
     with gr.Row():
         suite_dd = gr.Dropdown(choices=_SUITES, value="smoke",
@@ -248,13 +249,21 @@ def render_uitest_page(app: gr.Blocks | None = None) -> None:
             gr.update(value=t("editor_save")),
         )
 
-    lang_dd.change(
-        _switch_lang,
-        inputs=[lang_dd],
-        outputs=[lang_state, title_md, suite_dd, agent_dd, case_tb,
-                 no_llm_cb, run_btn, progress_tb, report_file,
-                 editor_acc, editor_tb, editor_btn],
-    )
+    from ..lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    home_btn.click(fn=None, js=HOME_JS)
+    # Language follows the hub's choice (st-lang cookie), applied on load.
+    if app is not None:
+        app.load(fn=None, js=STAMP_JS)
+
+        def _lang_on_load(request: gr.Request):
+            return _switch_lang(choice_from_request(request))
+
+        app.load(
+            _lang_on_load, inputs=None,
+            outputs=[lang_state, title_md, suite_dd, agent_dd, case_tb,
+                     no_llm_cb, run_btn, progress_tb, report_file,
+                     editor_acc, editor_tb, editor_btn],
+        )
     run_btn.click(fn=_run_stream,
                   inputs=[suite_dd, agent_dd, case_tb, no_llm_cb, lang_state],
                   outputs=[progress_tb, report_html, report_file])
