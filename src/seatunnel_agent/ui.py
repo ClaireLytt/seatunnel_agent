@@ -1539,6 +1539,23 @@ body:has(.st-uitest-page) .gradio-container > .main > .wrap {
     padding: 14px 28px 48px !important;
 }
 
+/* Hub landing page: ten cards now exceed one viewport on short windows —
+   unlock the outer container so the grid can scroll (same marker trick). */
+body:has(.st-hub) {
+    overflow: hidden !important;
+}
+body:has(.st-hub) .gradio-container {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    height: 100vh !important;
+}
+body:has(.st-hub) .gradio-container > .main,
+body:has(.st-hub) .gradio-container > .main > .wrap {
+    overflow: visible !important;
+    height: auto !important;
+    min-height: auto !important;
+}
+
 /* ══════════════════════════════════════════
    SQL Review page polish
    ══════════════════════════════════════════ */
