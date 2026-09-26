@@ -550,6 +550,18 @@ seatunnel-agent lineage --sql-dir sql/ --ask "改 orders 的 amount 影响哪些
 seatunnel-agent lineage-mcp --sql-dir sql/                                          # MCP server (stdio)
 ```
 
+### Data Dictionary Generator
+
+Markdown data dictionary straight from the lineage graph — per table:
+layer, upstream/downstream, every column with its sources and expression
+(aggregations flagged). Deterministic; `--describe` optionally adds
+one-line LLM table descriptions, clearly marked `llm-generated`:
+
+```bash
+seatunnel-agent datadict -d examples/lineage_demo -o dict.md
+seatunnel-agent datadict -d sql/ --lang en --describe
+```
+
 ### Change Impact Analysis Agent
 
 SQL diff × lineage downstream walk: compare two SQL trees (two directories,
@@ -1159,6 +1171,17 @@ seatunnel-agent lineage --sql-dir sql/ -t dwd.orders_di -c amount               
 seatunnel-agent lineage --sql-dir sql/ --check                                      # 治理体检
 seatunnel-agent lineage --sql-dir sql/ --ask "改 orders 的 amount 影响哪些下游?"     # Agent 模式
 seatunnel-agent lineage-mcp --sql-dir sql/                                          # MCP server (stdio)
+```
+
+### 数据字典生成
+
+从血缘图直接产出 Markdown 数据字典——每张表的分层、上下游、全部字段及其
+来源与表达式（聚合字段打标）。纯确定性；`--describe` 可选用 LLM 为每表补
+一句描述（明确标注 `llm-generated`）：
+
+```bash
+seatunnel-agent datadict -d examples/lineage_demo -o dict.md
+seatunnel-agent datadict -d sql/ --lang en --describe
 ```
 
 ### 变更影响分析 Agent

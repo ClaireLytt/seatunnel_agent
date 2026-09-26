@@ -989,6 +989,48 @@ def lineage_stats(recent: int) -> None:
         )
 
 
+@cli.command(name="datadict")
+@click.option("--sql-dir", "-d", type=click.Path(exists=True, file_okay=False),
+              required=True, help="从该目录的 *.sql 构建血缘并生成字典")
+@click.option("--sql-dialect", type=str, default="hive",
+              help="解析 SQL 用的 sqlglot 方言")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh")
+@click.option("--describe", is_flag=True,
+              help="用 LLM 为每张表补一句描述（明确标注 llm-generated）")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="写出 Markdown 文件（缺省打印到终端）")
+@click.pass_context
+def datadict(ctx: click.Context, sql_dir: str, sql_dialect: str, lang: str,
+             describe: bool, output: str | None) -> None:
+    """数据字典生成 — 从 SQL 血缘图输出表/字段/上下游 Markdown 文档。"""
+    from pathlib import Path
+
+    from .data_lineage.dictionary import (
+        add_llm_descriptions, build_dictionary, render_dictionary_markdown,
+    )
+    from .data_lineage.loaders import build_graph
+
+    graph, warnings = build_graph(sql_dir=sql_dir, use_cache=False,
+                                  sql_dialect=sql_dialect)
+    entries = build_dictionary(graph)
+    if describe:
+        try:
+            from .config import load_settings
+            filled = add_llm_descriptions(load_settings(), entries, lang)
+            console.print(f"[dim]LLM 描述已生成 {filled}/{len(entries)}[/dim]")
+        except RuntimeError as e:
+            console.print(f"[yellow]跳过 LLM 描述（{e}）[/yellow]")
+    text = render_dictionary_markdown(entries, lang)
+    for w in warnings:
+        console.print(f"[yellow]⚠ {w}[/yellow]")
+    if output:
+        Path(output).write_text(text, encoding="utf-8")
+        console.print(f"[green]数据字典已写入 {output}[/green]"
+                      f"（{len(entries)} 表）")
+    else:
+        console.print(text, markup=False)
+
+
 @cli.command(name="impact-stats")
 @click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
 def impact_stats(recent: int) -> None:
