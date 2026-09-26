@@ -71,6 +71,7 @@ class ChangedTable:
     is_new: bool = False
     is_removed: bool = False
     downstream: list[tuple[str, int]] = field(default_factory=list)  # (table, depth)
+    downstream_edges: list[tuple[str, str]] = field(default_factory=list)
     downstream_truncated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -81,6 +82,7 @@ class ChangedTable:
             "removed_upstreams": list(self.removed_upstreams),
             "added_upstreams": list(self.added_upstreams),
             "downstream": [{"table": t, "depth": d} for t, d in self.downstream],
+            "downstream_edges": [list(e) for e in self.downstream_edges],
             "downstream_truncated": self.downstream_truncated,
         }
 
@@ -133,14 +135,18 @@ def _col_edge_map(graph: LineageGraph) -> dict[tuple[str, str, str, str], Any]:
     return out
 
 
-def _downstream_pairs(graph: LineageGraph, table: str,
-                      depth: int) -> tuple[list[tuple[str, int]], bool]:
+def _downstream_pairs(
+    graph: LineageGraph, table: str, depth: int,
+) -> tuple[list[tuple[str, int]], bool, list[tuple[str, str]]]:
     chain = graph.downstream_of(table, depth=depth)
     pairs = sorted(
         ((t, d) for t, d in chain.depth_of.items() if t != table and d > 0),
         key=lambda x: (x[1], x[0]),
     )
-    return pairs, chain.truncated
+    nodes = set(chain.depth_of)
+    edges = sorted({(u, v) for u, v in chain.edges
+                    if u in nodes and v in nodes})
+    return pairs, chain.truncated, edges
 
 
 def analyze_impact(
@@ -210,8 +216,8 @@ def analyze_impact(
     # ── blast radius + severity ──
     for c in per_table.values():
         walk_graph = walk_old if c.is_removed else walk_new
-        c.downstream, c.downstream_truncated = _downstream_pairs(
-            walk_graph, c.table, depth)
+        c.downstream, c.downstream_truncated, c.downstream_edges = \
+            _downstream_pairs(walk_graph, c.table, depth)
         has_downstream = bool(c.downstream)
         modified = any(cc.kind == "modified" for cc in c.column_changes)
         removed_cols = any(cc.kind == "removed" for cc in c.column_changes)
@@ -349,16 +355,14 @@ def render_impact_mermaid(result: ImpactResult, max_nodes: int = 60) -> str:
         for tbl, _d in c.downstream:
             if tbl not in changed_names:
                 _node(tbl, "blast")
-        # draw the walk one depth level at a time (L0 = the changed table)
-        by_depth: dict[int, list[str]] = {0: [c.table]}
-        for tbl, dpt in c.downstream:
-            by_depth.setdefault(dpt, []).append(tbl)
-        for dpt in sorted(d for d in by_depth if d > 0):
-            parent = (by_depth.get(dpt - 1) or [c.table])[0]
-            for tbl in by_depth[dpt]:
-                if tbl in seen and (parent, tbl) not in edges:
-                    edges.add((parent, tbl))
-                    lines.append(f"    {_mmid(parent)} --> {_mmid(tbl)}")
+        # real lineage edges from the walk (never guessed from depth
+        # buckets — a table with two downstream branches would otherwise
+        # get fabricated cross-branch edges); drawn only when both ends
+        # survived the node cap.
+        for src, dst in c.downstream_edges:
+            if src in seen and dst in seen and (src, dst) not in edges:
+                edges.add((src, dst))
+                lines.append(f"    {_mmid(src)} --> {_mmid(dst)}")
     for css in _MERMAID_CLASS.values():
         lines.append("    " + css)
     return "\n".join(lines)
@@ -410,12 +414,17 @@ def materialize_git_ref(ref: str, sql_dir: str | Path,
         raise RuntimeError(
             f"sql dir {sql_dir} is outside the git repository {toplevel}")
 
-    listing = _git(top, "ls-tree", "-r", "--name-only", ref, "--", rel or ".")
+    # -z: NUL-separated verbatim paths. Without it git C-quotes non-ASCII
+    # names ("sql/\346\212\245\350\241\250.sql") and the .sql suffix check
+    # silently drops them — a Chinese-named file would vanish from the
+    # baseline and its breaking change pass the --fail-on gate.
+    listing = _git(top, "ls-tree", "-r", "--name-only", "-z", ref,
+                   "--", rel or ".")
     tmp = Path(tempfile.mkdtemp(prefix="impact_old_"))
     try:
         written = 0
-        for line in listing.splitlines():
-            name = line.strip()
+        for name in listing.split("\0"):
+            name = name.strip()
             if not name.lower().endswith(".sql"):
                 continue
             content = _git(top, "show", f"{ref}:{name}")

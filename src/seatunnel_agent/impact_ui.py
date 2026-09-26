@@ -129,15 +129,21 @@ def render_impact_page(app: gr.Blocks) -> None:
     # ── callbacks ──
 
     def _graph_iframe(result) -> str:
+        import html as _html
+
         from .data_lineage.impact import render_impact_mermaid
         from .data_lineage.render import mermaid_html
 
         src = render_impact_mermaid(result)
         if not src:
             return ""
+        # full html.escape (same as lineage_ui): the browser entity-decodes
+        # the srcdoc attribute once, so escaping only '"' would let &lt;/&amp;
+        # from table names decode back into live markup inside the
+        # same-origin iframe.
         return ('<iframe style="width:100%;height:340px;border:1px solid '
                 '#e5e7eb;border-radius:8px" srcdoc="'
-                + mermaid_html(src).replace('"', "&quot;") + '"></iframe>')
+                + _html.escape(mermaid_html(src)) + '"></iframe>')
 
     def do_analyze(old_dir: str, new_dir: str, dialect: str, depth: float,
                    lang: str):

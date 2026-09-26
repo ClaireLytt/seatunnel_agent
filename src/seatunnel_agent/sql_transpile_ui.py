@@ -226,9 +226,11 @@ def render_sql_transpile_page(app: gr.Blocks) -> None:
         () => setTimeout(() => {
             const v = localStorage.getItem('st_transpile_sql');
             if (!v) return;
-            localStorage.removeItem('st_transpile_sql');
             const t = document.querySelector('#trp-sql-box textarea');
             if (t) {
+                // remove only after successful delivery: if the textarea
+                // is not hydrated yet, the payload survives for a reload
+                localStorage.removeItem('st_transpile_sql');
                 t.value = v;
                 t.dispatchEvent(new Event('input', {bubbles: true}));
             }

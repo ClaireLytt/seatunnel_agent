@@ -593,3 +593,41 @@ def test_api_impact_context_dir_whitelisted(api_client, tmp_path):
         "context_dir": str(tmp_path),
     })
     assert r.status_code == 403
+
+
+def test_materialize_git_ref_non_ascii_filenames(tmp_path):
+    # regression: git C-quotes non-ASCII paths ("\346..."), the .sql suffix
+    # check dropped them and their breaking changes passed --fail-on error
+    repo = tmp_path / "repo"
+    (repo / "sql").mkdir(parents=True)
+    _git(repo, "init", "-q")
+    _git(repo, "config", "user.email", "t@t")
+    _git(repo, "config", "user.name", "t")
+    (repo / "sql" / "报表统计.sql").write_text(
+        "INSERT OVERWRITE TABLE dws.a SELECT x FROM ods.s;", encoding="utf-8")
+    (repo / "sql" / "plain.sql").write_text(
+        "INSERT OVERWRITE TABLE dws.b SELECT x FROM ods.s;", encoding="utf-8")
+    _git(repo, "add", "."); _git(repo, "commit", "-qm", "v1")
+    out = materialize_git_ref("HEAD", "sql", repo_root=repo)
+    try:
+        assert (out / "plain.sql").is_file()
+        assert (out / "报表统计.sql").is_file()
+        assert "INSERT OVERWRITE" in (out / "报表统计.sql").read_text(
+            encoding="utf-8")
+        assert not (out / ".impact_empty_baseline").exists()
+    finally:
+        import shutil
+        shutil.rmtree(out, ignore_errors=True)
+
+
+def test_mermaid_draws_only_real_edges():
+    # regression: depth-bucket guessing fabricated cross-branch edges —
+    # the demo rendered ads.channel_report --> rpt.gmv_dashboard although
+    # rpt.gmv_dashboard reads from ads.gmv_report
+    from seatunnel_agent.data_lineage.impact import render_impact_mermaid
+    src = render_impact_mermaid(_demo_result())
+    assert "n_ads_gmv_report --> n_rpt_gmv_dashboard" in src
+    assert "n_ads_channel_report --> n_rpt_gmv_dashboard" not in src
+    gmv = next(c for c in _demo_result().changed
+               if c.table == "dws.gmv_daily")
+    assert ("ads.gmv_report", "rpt.gmv_dashboard") in gmv.downstream_edges

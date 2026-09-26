@@ -157,7 +157,9 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
                 result = agent.chat(msg)
                 session.chat_messages.append({"role": "user", "content": msg})
                 session.chat_messages.append({"role": "assistant", "content": result})
-                console.print(f"\n[bold]Agent:[/bold] {result}\n")
+                console.print("\n[bold]Agent:[/bold]")
+                console.print(result, markup=False)
+                console.print("")
             except Exception as e:
                 _handle_error(e, ctx.obj.get("verbose", False))
     except KeyboardInterrupt:
@@ -487,7 +489,8 @@ def review(
                 console.print(f"\n[bold cyan]=== {label} ===[/bold cyan]")
             if suppressed:
                 console.print(f"[dim]基线抑制 {suppressed} 条已知问题[/dim]")
-            console.print(f"\n[bold]CR report:[/bold]\n{report_md}")
+            console.print("\n[bold]CR report:[/bold]")
+            console.print(report_md, markup=False)
 
         if fix and findings:
             fixed_sql = None
@@ -512,7 +515,8 @@ def review(
                     click.echo(f"生成修复 SQL 失败: {e}", err=True)
             if fixed_sql is not None:
                 if not machine:
-                    console.print(f"\n[bold green]修复后 SQL:[/bold green]\n{fixed_sql}")
+                    console.print("\n[bold green]修复后 SQL:[/bold green]")
+                    console.print(fixed_sql, markup=False)
                 if label != "<inline>":
                     fixed_path = Path(label).with_suffix(".fixed.sql")
                     fixed_path.write_text(fixed_sql + "\n", encoding="utf-8")
@@ -859,7 +863,8 @@ def lineage(
             query=ask, direction=direction, mode="agent",
             graph_stats=stats, elapsed_ms=int((time.time() - start) * 1000),
         )
-        console.print(f"\n[bold]血缘分析:[/bold]\n{answer}")
+        console.print("\n[bold]血缘分析:[/bold]")
+        console.print(answer, markup=False)
         if output:
             _write_output(output, answer)
         return
@@ -1063,7 +1068,8 @@ def _run_command(
 ) -> None:
     try:
         result = fn()
-        console.print(f"\n[bold]{label}:[/bold]\n{result}")
+        console.print(f"\n[bold]{label}:[/bold]")
+        console.print(result, markup=False)
         if output:
             _write_output(output, result)
     except KeyboardInterrupt:
