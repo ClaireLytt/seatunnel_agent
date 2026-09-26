@@ -553,7 +553,7 @@ seatunnel-agent lineage-mcp --sql-dir sql/                                      
 ### Change Impact Analysis Agent
 
 SQL diff × lineage downstream walk: compare two SQL trees (two directories,
-or the working tree vs a git ref) and report the release blast radius —
+the working tree vs a git ref, or just two pasted SQL snippets) and report the release blast radius —
 which target tables changed (added / removed / column-expression drift),
 which downstream tables are affected and how deep, with a severity model
 (`error` = breaking removal, `warn` = metric drift with consumers, `info` =
@@ -1160,7 +1160,7 @@ seatunnel-agent lineage-mcp --sql-dir sql/                                      
 
 ### 变更影响分析 Agent
 
-SQL 变更 × 血缘下游遍历：对比两份 SQL（两个目录，或工作区 vs git 基线），
+SQL 变更 × 血缘下游遍历：对比两份 SQL（两个目录、工作区 vs git 基线，或直接粘贴两段 SQL），
 输出上线影响面报告——哪些目标表变了（新增 / 移除 / 字段口径漂移）、下游波及
 哪些表、波及多深，并按严重度分级（`error` 破坏性移除 / `warn` 有消费方的
 口径变更 / `info` 纯新增），可用 `--fail-on` 做 CI 门禁。纯确定性——不连接

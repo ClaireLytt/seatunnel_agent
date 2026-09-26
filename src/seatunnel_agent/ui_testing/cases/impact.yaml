@@ -41,3 +41,31 @@
   expect:
     - text_contains: {in: 结果区, text: 不是有效目录}
     - visible: {target: 变更影响分析}
+
+- id: IMP4
+  title: 粘贴两段 SQL 直接看影响与 diff
+  tags: [smoke, sqlite]
+  page: /impact
+  steps:
+    - click: 粘贴 SQL Paste SQL
+    - fill: {旧 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
+    - fill: {新 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount - refund_amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
+    - click: 分析粘贴的 SQL
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 字段口径变更}
+    - text_contains: {in: 结果区, text: SQL diff}
+    - text_contains: {in: 结果区, text: refund_amount}
+
+- id: IMP5
+  title: 粘贴模式缺一段 SQL 给出提示
+  tags: [full, sqlite]
+  page: /impact
+  steps:
+    - click: 粘贴 SQL Paste SQL
+    - fill: {旧 SQL: "SELECT 1"}
+    - click: 分析粘贴的 SQL
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 请同时粘贴}
+    - text_not_contains: {in: 页面, text: Traceback}

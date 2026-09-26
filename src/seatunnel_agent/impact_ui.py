@@ -3,7 +3,8 @@
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
 ``app.route("Change Impact", "/impact")``.  Fully deterministic: two SQL
-trees in, blast-radius report out — no database, no LLM.
+trees (or two pasted snippets) in, blast-radius report out — no database,
+no LLM.
 """
 
 from __future__ import annotations
@@ -12,39 +13,58 @@ import gradio as gr
 
 from .data_lineage.sqlglot_lineage import SQL_DIALECTS
 
+# Tab headers stay bilingual and static: gradio tab labels are not reliably
+# updatable at runtime, and the UI-test cases click them by visible text.
+_TAB_DIRS = "目录模式 Directories"
+_TAB_PASTE = "粘贴 SQL Paste SQL"
+
 _I18N = {
     "en": {
         "title": "## 💥 Change Impact Analysis\n"
-                 "SQL diff × lineage: compare two SQL trees and report the "
-                 "release blast radius — changed tables, downstream impact "
-                 "and severity (error / warn / info). No database "
-                 "connection, the SQL is never executed.",
+                 "SQL diff × lineage: compare two SQL trees — or just paste "
+                 "the before/after SQL — and report the release blast "
+                 "radius: changed tables, downstream impact and severity "
+                 "(error / warn / info). No database connection, the SQL is "
+                 "never executed.",
         "old_label": "Old SQL directory",
         "old_ph": "SQL tree before the change, e.g. examples/impact_demo/old",
         "new_label": "New SQL directory",
         "new_ph": "SQL tree after the change, e.g. examples/impact_demo/new",
+        "old_sql_label": "Old SQL",
+        "old_sql_ph": "Paste the SQL before the change…",
+        "new_sql_label": "New SQL",
+        "new_sql_ph": "Paste the SQL after the change…",
         "dialect_label": "SQL dialect",
         "depth_label": "Downstream depth",
         "analyze_btn": "Analyze change impact",
-        "result_ph": "*Fill both directories and click Analyze.*",
+        "analyze_sql_btn": "Analyze pasted SQL",
+        "result_ph": "*Fill both sides and click Analyze.*",
         "need_dirs": "⚠️ Provide both the old and the new SQL directory.",
+        "need_sql": "⚠️ Paste both the old and the new SQL.",
         "bad_dir": "❌ Not a directory: `{d}`",
         "fail": "❌ **Analysis failed**: {exc}",
     },
     "zh": {
         "title": "## 💥 变更影响分析\n"
-                 "SQL 变更 × 血缘：对比两份 SQL 目录，输出上线影响面——"
-                 "变更了哪些表、下游波及多深、按严重度分级"
-                 "（error / warn / info）。不连接数据库，不执行 SQL。",
+                 "SQL 变更 × 血缘：对比两份 SQL 目录，或直接粘贴改动前后的"
+                 "两段 SQL，输出上线影响面——变更了哪些表、下游波及多深、"
+                 "按严重度分级（error / warn / info）。不连接数据库，"
+                 "不执行 SQL。",
         "old_label": "旧 SQL 目录",
         "old_ph": "变更前的 SQL 目录，如 examples/impact_demo/old",
         "new_label": "新 SQL 目录",
         "new_ph": "变更后的 SQL 目录，如 examples/impact_demo/new",
+        "old_sql_label": "旧 SQL",
+        "old_sql_ph": "粘贴变更前的 SQL…",
+        "new_sql_label": "新 SQL",
+        "new_sql_ph": "粘贴变更后的 SQL…",
         "dialect_label": "SQL 方言",
         "depth_label": "下游深度",
         "analyze_btn": "变更影响分析",
-        "result_ph": "*填写新旧两个目录后点击分析。*",
+        "analyze_sql_btn": "分析粘贴的 SQL",
+        "result_ph": "*填写两侧内容后点击分析。*",
         "need_dirs": "⚠️ 请同时填写旧、新两个 SQL 目录。",
+        "need_sql": "⚠️ 请同时粘贴旧、新两段 SQL。",
         "bad_dir": "❌ 不是有效目录: `{d}`",
         "fail": "❌ **分析失败**: {exc}",
     },
@@ -73,16 +93,28 @@ def render_impact_page(app: gr.Blocks) -> None:
 
         with gr.Row():
             with gr.Column(scale=2, elem_classes=["st-imp-side"]):
-                old_box = gr.Textbox(
-                    label=t("old_label"), placeholder=t("old_ph"))
-                new_box = gr.Textbox(
-                    label=t("new_label"), placeholder=t("new_ph"))
+                with gr.Tabs():
+                    with gr.Tab(_TAB_DIRS):
+                        old_box = gr.Textbox(
+                            label=t("old_label"), placeholder=t("old_ph"))
+                        new_box = gr.Textbox(
+                            label=t("new_label"), placeholder=t("new_ph"))
+                        analyze_btn = gr.Button(
+                            t("analyze_btn"), variant="primary")
+                    with gr.Tab(_TAB_PASTE):
+                        old_sql_box = gr.Textbox(
+                            label=t("old_sql_label"),
+                            placeholder=t("old_sql_ph"), lines=8)
+                        new_sql_box = gr.Textbox(
+                            label=t("new_sql_label"),
+                            placeholder=t("new_sql_ph"), lines=8)
+                        analyze_sql_btn = gr.Button(
+                            t("analyze_sql_btn"), variant="primary")
                 dialect_dd = gr.Dropdown(
                     choices=list(SQL_DIALECTS), value="hive",
                     label=t("dialect_label"))
                 depth_sl = gr.Slider(1, 10, value=3, step=1,
                                      label=t("depth_label"))
-                analyze_btn = gr.Button(t("analyze_btn"), variant="primary")
 
             with gr.Column(scale=5, elem_classes=["st-imp-main"]):
                 report_md = gr.Markdown(t("result_ph"))
@@ -109,6 +141,23 @@ def render_impact_page(app: gr.Blocks) -> None:
             return _t(lang, "fail").format(exc=exc)
         return render_impact_markdown(result, lang)
 
+    def do_analyze_sql(old_sql: str, new_sql: str, dialect: str,
+                       depth: float, lang: str):
+        from .data_lineage.impact import (
+            analyze_sql_texts, render_impact_markdown, render_text_diff,
+        )
+
+        if not (old_sql or "").strip() or not (new_sql or "").strip():
+            return _t(lang, "need_sql")
+        try:
+            result = analyze_sql_texts(old_sql, new_sql, depth=int(depth),
+                                       sql_dialect=dialect or "hive")
+        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+            return _t(lang, "fail").format(exc=exc)
+        report = render_impact_markdown(result, lang)
+        text_diff = render_text_diff(old_sql, new_sql)
+        return f"{report}\n\n{text_diff}" if text_diff else report
+
     def switch_lang(choice: str):
         lang = "zh" if choice == "中文" else "en"
         return (
@@ -118,9 +167,14 @@ def render_impact_page(app: gr.Blocks) -> None:
                       placeholder=_t(lang, "old_ph")),
             gr.update(label=_t(lang, "new_label"),
                       placeholder=_t(lang, "new_ph")),
+            gr.update(label=_t(lang, "old_sql_label"),
+                      placeholder=_t(lang, "old_sql_ph")),
+            gr.update(label=_t(lang, "new_sql_label"),
+                      placeholder=_t(lang, "new_sql_ph")),
             gr.update(label=_t(lang, "dialect_label")),
             gr.update(label=_t(lang, "depth_label")),
             gr.update(value=_t(lang, "analyze_btn")),
+            gr.update(value=_t(lang, "analyze_sql_btn")),
         )
 
     analyze_btn.click(
@@ -128,9 +182,15 @@ def render_impact_page(app: gr.Blocks) -> None:
         inputs=[old_box, new_box, dialect_dd, depth_sl, lang_state],
         outputs=[report_md],
     )
+    analyze_sql_btn.click(
+        do_analyze_sql,
+        inputs=[old_sql_box, new_sql_box, dialect_dd, depth_sl, lang_state],
+        outputs=[report_md],
+    )
     lang_dd.change(
         switch_lang,
         inputs=[lang_dd],
-        outputs=[lang_state, title_md, old_box, new_box, dialect_dd,
-                 depth_sl, analyze_btn],
+        outputs=[lang_state, title_md, old_box, new_box, old_sql_box,
+                 new_sql_box, dialect_dd, depth_sl, analyze_btn,
+                 analyze_sql_btn],
     )

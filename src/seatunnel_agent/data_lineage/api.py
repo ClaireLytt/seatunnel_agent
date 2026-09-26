@@ -333,8 +333,10 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
 
 
 class ImpactRequest(BaseModel):
-    old_dir: str = Field(..., min_length=1, description="旧 SQL 目录")
-    new_dir: str = Field(..., min_length=1, description="新 SQL 目录")
+    old_dir: str | None = Field(None, description="旧 SQL 目录（目录模式）")
+    new_dir: str | None = Field(None, description="新 SQL 目录（目录模式）")
+    old_sql: str | None = Field(None, description="旧 SQL 文本（粘贴模式）")
+    new_sql: str | None = Field(None, description="新 SQL 文本（粘贴模式）")
     depth: int = Field(3, ge=1, le=MAX_DEPTH, description="下游遍历深度")
     sql_dialect: str = Field("hive", description="解析 SQL 用的方言")
     lang: str = Field("zh", description="报告语言 zh|en")
@@ -342,15 +344,28 @@ class ImpactRequest(BaseModel):
 
 @router.post("/impact")
 def change_impact(req: ImpactRequest) -> dict[str, Any]:
-    """变更影响分析：两份 SQL 目录的血缘 diff + 下游波及。纯确定性。"""
-    from .impact import analyze_dirs, impact_to_dict
+    """变更影响分析：两份 SQL 目录（或两段粘贴 SQL）的血缘 diff + 下游波及。
+    纯确定性。目录模式与文本模式二选一。"""
+    from .impact import analyze_dirs, analyze_sql_texts, impact_to_dict
 
-    _check_dir_allowed(req.old_dir)
-    _check_dir_allowed(req.new_dir)
+    dir_mode = bool(req.old_dir and req.new_dir)
+    text_mode = bool(req.old_sql and req.new_sql)
+    if dir_mode == text_mode:
+        raise HTTPException(
+            status_code=400,
+            detail="请二选一：old_dir+new_dir（目录模式）或 old_sql+new_sql（文本模式）",
+        )
     start = time.time()
     try:
-        result = analyze_dirs(req.old_dir, req.new_dir, depth=req.depth,
-                              sql_dialect=req.sql_dialect)
+        if dir_mode:
+            _check_dir_allowed(req.old_dir)
+            _check_dir_allowed(req.new_dir)
+            result = analyze_dirs(req.old_dir, req.new_dir, depth=req.depth,
+                                  sql_dialect=req.sql_dialect)
+        else:
+            result = analyze_sql_texts(req.old_sql, req.new_sql,
+                                       depth=req.depth,
+                                       sql_dialect=req.sql_dialect)
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 — mirror _build: fail as a clean 400

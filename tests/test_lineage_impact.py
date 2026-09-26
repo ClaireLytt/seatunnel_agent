@@ -445,3 +445,70 @@ def test_mcp_change_impact_bad_git_ref_is_message_not_crash(tmp_path):
     tools = _mcp_tools(sql_dir=str(tmp_path))
     out = tools["lineage_change_impact"](base="HEAD")
     assert "git 基线模式失败" in out
+
+
+# ─────────────────────────── paste-two-snippets mode ───────────────────────────
+
+OLD_SNIPPET = ("INSERT OVERWRITE TABLE dws.gmv_daily "
+               "SELECT dt, SUM(amount) AS gmv FROM dwd.orders_di GROUP BY dt;")
+NEW_SNIPPET = ("INSERT OVERWRITE TABLE dws.gmv_daily "
+               "SELECT dt, SUM(amount - refund_amount) AS gmv "
+               "FROM dwd.orders_di GROUP BY dt;")
+
+
+def test_analyze_sql_texts_detects_expression_change():
+    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    r = analyze_sql_texts(OLD_SNIPPET, NEW_SNIPPET)
+    gmv = next(c for c in r.changed if c.table == "dws.gmv_daily")
+    mods = [cc for cc in gmv.column_changes if cc.kind == "modified"]
+    assert len(mods) == 1 and mods[0].dst_column == "gmv"
+    # a single snippet has no downstream — drift without consumers is info
+    assert gmv.level == "info"
+
+
+def test_analyze_sql_texts_identical_is_clean():
+    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    r = analyze_sql_texts(OLD_SNIPPET, OLD_SNIPPET)
+    assert r.changed == [] and r.worst_level() is None
+
+
+def test_analyze_sql_texts_requires_both_sides():
+    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    with pytest.raises(ValueError, match="required"):
+        analyze_sql_texts(OLD_SNIPPET, "   ")
+
+
+def test_analyze_sql_texts_multi_statement_scripts():
+    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    old = OLD_SNIPPET + "\nINSERT OVERWRITE TABLE ads.r SELECT gmv FROM dws.gmv_daily;"
+    new = NEW_SNIPPET + "\nINSERT OVERWRITE TABLE ads.r SELECT gmv FROM dws.gmv_daily;"
+    r = analyze_sql_texts(old, new)
+    gmv = next(c for c in r.changed if c.table == "dws.gmv_daily")
+    assert gmv.level == "warn"                 # now it has a consumer
+    assert ("ads.r", 1) in gmv.downstream
+
+
+def test_render_text_diff():
+    from seatunnel_agent.data_lineage.impact import render_text_diff
+    d = render_text_diff("SELECT 1", "SELECT 2")
+    assert d.startswith("### SQL diff")
+    assert "-SELECT 1" in d and "+SELECT 2" in d
+    assert render_text_diff("SELECT 1", "SELECT 1") == ""
+
+
+def test_api_impact_text_mode(api_client):
+    r = api_client.post("/api/lineage/impact", json={
+        "old_sql": OLD_SNIPPET, "new_sql": NEW_SNIPPET,
+    })
+    assert r.status_code == 200
+    assert r.json()["stats"]["changed"] == 1
+
+
+def test_api_impact_rejects_mixed_or_missing_modes(api_client):
+    assert api_client.post("/api/lineage/impact", json={}).status_code == 400
+    r = api_client.post("/api/lineage/impact", json={
+        "old_dir": str(OLD), "new_dir": str(NEW),
+        "old_sql": OLD_SNIPPET, "new_sql": NEW_SNIPPET,
+    })
+    assert r.status_code == 400
+    assert "二选一" in r.json()["detail"]

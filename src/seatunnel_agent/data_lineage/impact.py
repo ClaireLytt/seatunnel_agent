@@ -16,7 +16,9 @@ Severity model (drives the CLI --fail-on gate):
 
 from __future__ import annotations
 
+import difflib
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -248,6 +250,51 @@ def analyze_dirs(
     )
 
 
+def analyze_sql_texts(
+    old_sql: str,
+    new_sql: str,
+    depth: int = 3,
+    sql_dialect: str = "hive",
+) -> ImpactResult:
+    """Paste-two-snippets mode: build both graphs from raw SQL text.
+
+    Same deterministic pipeline as :func:`analyze_dirs`; the texts are
+    materialized into a throwaway temp dir because the loaders are
+    file-based, and it is removed before returning."""
+    from .loaders import build_graph
+
+    if not (old_sql or "").strip() or not (new_sql or "").strip():
+        raise ValueError("both the old and the new SQL text are required")
+    tmp = Path(tempfile.mkdtemp(prefix="impact_txt_"))
+    try:
+        old_f = tmp / "old.sql"
+        new_f = tmp / "new.sql"
+        old_f.write_text(old_sql, encoding="utf-8")
+        new_f.write_text(new_sql, encoding="utf-8")
+        old_graph, old_warn = build_graph(
+            sql_files=[old_f], use_cache=False, sql_dialect=sql_dialect)
+        new_graph, new_warn = build_graph(
+            sql_files=[new_f], use_cache=False, sql_dialect=sql_dialect)
+        return analyze_impact(
+            old_graph, new_graph, depth=depth,
+            old_warnings=len(old_warn), new_warnings=len(new_warn),
+        )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def render_text_diff(old_sql: str, new_sql: str) -> str:
+    """Unified diff of the two pasted snippets as a ```diff block; empty
+    string when the texts are identical."""
+    lines = list(difflib.unified_diff(
+        (old_sql or "").splitlines(), (new_sql or "").splitlines(),
+        fromfile="old.sql", tofile="new.sql", lineterm="",
+    ))
+    if not lines:
+        return ""
+    return "### SQL diff\n```diff\n" + "\n".join(lines) + "\n```"
+
+
 def materialize_git_ref(ref: str, sql_dir: str | Path,
                         repo_root: str | Path | None = None) -> Path:
     """Write every ``*.sql`` under *sql_dir* as of *ref* into a temp dir
@@ -302,7 +349,6 @@ def materialize_git_ref(ref: str, sql_dir: str | Path,
             (tmp / ".impact_empty_baseline").write_text(ref, encoding="utf-8")
     except BaseException:
         # never leak a half-materialized baseline on failure
-        import shutil
         shutil.rmtree(tmp, ignore_errors=True)
         raise
     return tmp

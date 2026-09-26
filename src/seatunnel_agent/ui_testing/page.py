@@ -165,6 +165,8 @@ class DCPage:
         "/sqlreview": "#sr-sql-box textarea",
         "/lineage": ".st-lin-side",
         "/text2sql": ".st-sidebar-status",
+        "/transpile": ".st-trp-side",
+        "/impact": ".st-imp-side",
     }
 
     def goto(self, path: str = "/datacompare") -> None:
@@ -212,7 +214,16 @@ class DCPage:
 
     def button(self, name: str, side: str | None = None) -> Locator:
         """Action button by visible text.  Accordion headers are <button>
-        too and may carry the same text (e.g. 生成同步配置) — skip them."""
+        too and may carry the same text (e.g. 生成同步配置) — skip them.
+
+        Tab headers come first: gradio renders each tab button twice (one
+        copy in an overflow-measuring container that never becomes stable,
+        so a raw button:text-is click times out); role=tab resolves the
+        real one."""
+        for text in _texts(name):
+            loc = self.page.get_by_role("tab", name=text, exact=True)
+            if loc.count():
+                return loc.first
         scope = self._scope(side)
         for text in _texts(name):
             loc = scope.locator(
