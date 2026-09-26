@@ -170,9 +170,17 @@ def _ds_choices() -> list[str]:
     return [DIALECT_NAMES[d] for d in DS_TYPES]
 
 
+_presets_singleton = None
+
+
 def _presets_store():
-    from .data_comparison.presets import ConnectionPresetsStore
-    return ConnectionPresetsStore()
+    """One shared instance: the store's thread-lock only guards writes made
+    through the SAME instance, so don't create one per callback."""
+    global _presets_singleton
+    if _presets_singleton is None:
+        from .data_comparison.presets import ConnectionPresetsStore
+        _presets_singleton = ConnectionPresetsStore()
+    return _presets_singleton
 
 
 def _conn_names() -> list[str]:
@@ -191,14 +199,16 @@ def _conn_summary(lang: str) -> str:
         presets = []
     if not presets:
         return "暂无已保存的连接" if zh else "No saved connections"
+    esc = lambda s: str(s).replace("|", "\\|")  # noqa: E731 — table safety
     rows = ["| " + ("名称 | 类型 | 地址 | 数据库 | 用户" if zh
                     else "Name | Type | Address | Database | User") + " |",
             "|---|---|---|---|---|"]
     for p in presets:
         rows.append(
-            f"| **{p.get('name', '')}** | {p.get('ds_type', '')} "
-            f"| `{p.get('host', '')}:{p.get('port', '')}` "
-            f"| {p.get('database', '')} | {p.get('username', '') or '—'} |")
+            f"| **{esc(p.get('name', ''))}** | {esc(p.get('ds_type', ''))} "
+            f"| `{esc(p.get('host', ''))}:{p.get('port', '')}` "
+            f"| {esc(p.get('database', ''))} "
+            f"| {esc(p.get('username', '')) or '—'} |")
     return "\n".join(rows)
 
 
