@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from seatunnel_agent.config import Settings
 from seatunnel_agent.tools import execute_tool, _parse_job_metrics

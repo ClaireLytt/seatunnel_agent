@@ -194,7 +194,7 @@ def export_pdf(
 
     pdf.set_font(_font_family, "", 7)
     for row in rows:
-        for ci, val in enumerate(row):
+        for val in row:
             text = str(val) if val is not None else ""
             pdf.cell(col_w, 5, text[:25], border=1)
         for _ in range(max(0, n_cols - len(row))):

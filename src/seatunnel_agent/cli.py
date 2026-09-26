@@ -1131,7 +1131,6 @@ def impact(
         render_impact_comment, render_impact_markdown,
     )
 
-    verbose = ctx.obj.get("verbose", False)
     if bool(old_dir) == bool(git_base):
         raise click.UsageError("Provide exactly one of --old-dir / --base")
 

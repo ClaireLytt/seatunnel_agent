@@ -1447,7 +1447,6 @@ class TestExportExcelPdf:
         assert Path(path).stat().st_size > 100
 
     def test_export_excel_tool(self, store, tmp_path):
-        from unittest.mock import MagicMock
         from seatunnel_agent.text2sql.tools import Text2SQLRuntime, _tool_export_excel
         from seatunnel_agent.text2sql.executor import QueryResult
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
@@ -1898,7 +1897,7 @@ class TestChatHistoryPersistence:
     def test_save_and_load(self, tmp_path):
         from seatunnel_agent.text2sql.chat_history import (
             Text2SQLSession, save_t2s_session, load_t2s_session,
-            new_session_id, now_iso, HISTORY_DIR,
+            new_session_id, now_iso,
         )
         with patch.object(
             __import__("seatunnel_agent.text2sql.chat_history", fromlist=["HISTORY_DIR"]),

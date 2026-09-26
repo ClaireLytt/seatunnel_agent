@@ -17,7 +17,7 @@ from seatunnel_agent.ui_testing.loader import (
     filter_cases,
     load_cases,
 )
-from seatunnel_agent.ui_testing.models import Assertion, Step, TestCase
+from seatunnel_agent.ui_testing.models import Assertion, Step
 from seatunnel_agent.ui_testing.seed_sqlite import SEED, seed_sqlite
 
 

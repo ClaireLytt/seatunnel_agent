@@ -623,7 +623,7 @@ def build_keyed_diff_card(result: KeyedDiffResult, lang: str = "en") -> str:
                         f'<div><b style="font-size:10px;">{dc(lang, "dc_row_values_a")}</b>'
                         f'<table style="border-collapse:collapse;">'
                     )
-                    for i, v in enumerate(row_a_vals):
+                    for v in row_a_vals:
                         html += f'<tr><td {detail_td}>{esc(str(v))}</td></tr>'
                     html += '</table></div>'
                 if row_b_vals:
@@ -631,7 +631,7 @@ def build_keyed_diff_card(result: KeyedDiffResult, lang: str = "en") -> str:
                         f'<div><b style="font-size:10px;">{dc(lang, "dc_row_values_b")}</b>'
                         f'<table style="border-collapse:collapse;">'
                     )
-                    for i, v in enumerate(row_b_vals):
+                    for v in row_b_vals:
                         html += f'<tr><td {detail_td}>{esc(str(v))}</td></tr>'
                     html += '</table></div>'
                 html += '</div></details>'
@@ -1151,8 +1151,8 @@ def build_batch_full_card(
         delta_str = f"{item.row_count.delta:+d}" if item.row_count else "—"
         agg_ok = "✅" if (item.aggregate and item.aggregate.mismatches == 0) else (
             f"❌ {item.aggregate.mismatches}" if item.aggregate else "—")
-        status = f'<span style="color:#16a34a;">✅</span>' if not item.has_diffs else (
-            f'<span style="color:#dc2626;">❌</span>')
+        status = '<span style="color:#16a34a;">✅</span>' if not item.has_diffs else (
+            '<span style="color:#dc2626;">❌</span>')
         th_badge = ""
         if threshold and item.row_count:
             th_badge = _threshold_badge(check_row_count_threshold(item.row_count, threshold), lang)

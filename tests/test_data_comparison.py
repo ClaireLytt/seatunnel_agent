@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import tempfile
 from pathlib import Path
@@ -17,7 +16,6 @@ from seatunnel_agent.data_comparison.comparator import (
     BatchFullItem,
     ChecksumItem,
     ChecksumResult,
-    ColumnMapping,
     CompareReport,
     CustomAggItem,
     CustomAggResult,
@@ -3807,7 +3805,7 @@ class TestDiffReports:
     """diff_reports should compare two CompareReport objects."""
 
     def test_no_changes(self):
-        from seatunnel_agent.data_comparison.comparator import diff_reports, ReportDiff
+        from seatunnel_agent.data_comparison.comparator import diff_reports
         r1 = CompareReport(
             row_count=RowCountResult(table_a="t", count_a=10, table_b="t", count_b=10,
                                      delta=0, delta_pct=0.0),
