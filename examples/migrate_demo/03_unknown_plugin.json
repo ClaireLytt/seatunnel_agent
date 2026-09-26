@@ -1,0 +1,16 @@
+{
+  "job": {
+    "content": [
+      {
+        "reader": {
+          "name": "mongodbreader",
+          "parameter": {"address": ["mongo:27017"], "collectionName": "logs"}
+        },
+        "writer": {
+          "name": "streamwriter",
+          "parameter": {}
+        }
+      }
+    ]
+  }
+}

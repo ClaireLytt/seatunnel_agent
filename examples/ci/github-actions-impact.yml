@@ -1,0 +1,51 @@
+# Copy to .github/workflows/impact.yml in your warehouse repo.
+# On every PR that touches *.sql: analyze the change impact against the PR
+# base (SQL diff x lineage), post the blast-radius summary as a PR comment,
+# and fail the check on breaking removals (--fail-on error).
+name: Change Impact
+
+on:
+  pull_request:
+    paths:
+      - "**/*.sql"
+
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install analyzer
+        run: pip install git+https://github.com/ClaireLytt/seatunnel_agent.git
+
+      # Adjust --sql-dir to your warehouse SQL tree.
+      - name: Analyze change impact
+        id: impact
+        run: |
+          seatunnel-agent impact \
+            --base origin/${{ github.base_ref }} --sql-dir sql/ \
+            -F md-comment --lang zh > impact.md
+          cat impact.md
+        continue-on-error: true
+
+      - name: Comment on the PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: change-impact
+          path: impact.md
+
+      # The gate: breaking removals (error level) fail the check.
+      - name: Gate on breaking changes
+        run: |
+          seatunnel-agent impact \
+            --base origin/${{ github.base_ref }} --sql-dir sql/ \
+            --fail-on error > /dev/null

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 
 from seatunnel_agent.agent import STOPPED_MESSAGE, SeaTunnelAgent
 from seatunnel_agent.config import Settings
@@ -83,7 +82,7 @@ class TestAgentLoop:
              patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
              patch.object(agent.llm, "build_tool_result_message", return_value={"role": "user", "content": []}), \
              patch("seatunnel_agent.agent.execute_tool", return_value=fail_result):
-            result = agent.run_with_config("/tmp/job.conf")
+            agent.run_with_config("/tmp/job.conf")
 
         assert agent.retry_count >= SETTINGS.max_retries
 
@@ -161,7 +160,6 @@ class TestAgentLoop:
         agent.context["last_config_path"] = "/tmp/my.conf"
 
         captured_prompts = []
-        original_chat = agent.llm.chat
 
         def capturing_chat(prompt, *args, **kwargs):
             captured_prompts.append(prompt)
@@ -330,7 +328,7 @@ class TestEntryPoints:
 class TestStopEvent:
     def test_stop_before_loop_returns_stopped_message(self):
         agent = SeaTunnelAgent(SETTINGS)
-        resp = _end_response("should not matter")
+        _end_response("should not matter")
 
         def chat_then_stop(*args, **kwargs):
             agent.stop_event.set()
@@ -418,7 +416,7 @@ class TestTruncatePairing:
             {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": self._big(400)}]},
         ]
         result = truncate_messages(msgs, max_chars=450)
-        roles_and_kinds = [
+        _roles_and_kinds = [
             ("tool_use" if any(isinstance(b, dict) and b.get("type") == "tool_use" for b in m["content"]) else m["role"])
             if isinstance(m.get("content"), list) else m["role"]
             for m in result

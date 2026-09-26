@@ -82,6 +82,12 @@ def _dispatch(step: Step, dc: DCPage) -> str:
         dc.set_checkbox(args["target"], bool(args.get("on", True)), side)
         return f"checkbox '{args['target']}' -> {args.get('on', True)}"
 
+    if a == "slide":
+        name = args.get("of", args.get("target"))
+        value = args["value"]
+        dc.slider(name, side).fill(str(value))
+        return f"slider '{name}' -> {value}"
+
     if a == "open_accordion":
         dc.open_accordion(args["target"])
         return f"opened '{args['target']}'"

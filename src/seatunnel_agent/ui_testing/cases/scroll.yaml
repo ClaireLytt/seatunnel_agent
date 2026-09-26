@@ -1,0 +1,77 @@
+# SCR 组 · 页面滚动容器回归。全局 CSS 把应用锁在 100vh/overflow-hidden,
+# 每个页面必须自带滚动容器 —— 漏写 CSS 时大屏下毫无症状,小窗口里折叠线
+# 以下的控件永远够不着(e7ec1a1 修过 /transpile 与 /impact 正是此病)。
+# scrollable 断言会把视口压到 500px 高,确认容器真的能滚到底。
+
+- id: SCR1
+  title: 血缘页有滚动条
+  tags: [smoke, sqlite]
+  page: /lineage
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-lin-page}
+
+- id: SCR2
+  title: 方言翻译页有滚动条
+  tags: [smoke, sqlite]
+  page: /transpile
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-trp-page}
+
+- id: SCR3
+  title: 变更影响页有滚动条
+  tags: [smoke, sqlite]
+  page: /impact
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-imp-page}
+
+# 其余页面各有自己的滚动方案(比对页滚侧栏、review 页滚整容器、
+# Text2SQL 滚侧栏)——用例把"哪个容器负责滚动"固化为回归契约。
+
+- id: SCR4
+  title: 数据比对页侧栏可滚动
+  tags: [smoke, sqlite]
+  page: /datacompare
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-dc-sidebar}
+
+- id: SCR5
+  title: SQL Review 页整体可滚动
+  tags: [smoke, sqlite]
+  page: /sqlreview
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .gradio-container}
+
+- id: SCR6
+  title: Text2SQL 页侧栏可滚动
+  tags: [smoke, sqlite]
+  page: /text2sql
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-sidebar}
+
+- id: SCR7
+  title: 配置迁移页有滚动条
+  tags: [smoke, sqlite]
+  page: /migrate
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .st-mig-page}

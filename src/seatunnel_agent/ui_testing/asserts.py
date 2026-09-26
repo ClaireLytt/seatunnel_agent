@@ -94,4 +94,56 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
         actual = dc.checkbox(name, side).is_checked()
         return actual == want, f"'{name}' checked={actual}, expected {want}"
 
+    if k == "scrollable":
+        # The global CSS pins the app to 100vh/overflow-hidden, so every
+        # page must provide its own scroll container — a page without one
+        # renders fine on a tall monitor while everything below the fold is
+        # unreachable on a small window. Shrink the viewport so content is
+        # GUARANTEED to overflow, then verify the container actually
+        # scrolls (not just that overflow-y is set).
+        sel = args.get("selector") or _PAGE_SCROLL_SELECTOR
+        height = int(args.get("height", 500))
+        loc = dc.page.locator(sel).first
+        if not loc.count():
+            return False, f"no scroll container matches {sel!r}"
+        orig = dc.page.viewport_size or {"width": 1600, "height": 900}
+        try:
+            dc.page.set_viewport_size(
+                {"width": orig["width"], "height": height})
+            dc.page.wait_for_timeout(400)
+            info = loc.evaluate(
+                "el => { el.scrollTop = el.scrollHeight;"
+                " const r = el.getBoundingClientRect();"
+                " return { overflowY: getComputedStyle(el).overflowY,"
+                "          scroll: el.scrollHeight,"
+                "          client: el.clientHeight,"
+                "          moved: el.scrollTop,"
+                "          bottomGap: window.innerHeight - r.bottom }; }")
+        finally:
+            dc.page.set_viewport_size(orig)
+            dc.page.wait_for_timeout(200)
+        overflows = info["scroll"] > info["client"]
+        # bottomGap < 0 means the container's bottom strip hangs below the
+        # viewport inside a clipped ancestor: that strip (and its widgets,
+        # e.g. a slider at the end of the sidebar) is unreachable even at
+        # full scroll — a 100vh container under the navbar does exactly
+        # this.
+        clipped = info["bottomGap"] < -2
+        ok = (info["overflowY"] in ("auto", "scroll")
+              and overflows and info["moved"] > 0 and not clipped)
+        return ok, (f"container {sel!r} at {height}px viewport: "
+                    f"overflowY={info['overflowY']}, "
+                    f"scrollHeight={info['scroll']}, "
+                    f"clientHeight={info['client']}, "
+                    f"scrolledTo={info['moved']}, "
+                    f"bottomGap={info['bottomGap']:.1f}px"
+                    + (" — bottom strip clipped by an ancestor"
+                       if clipped else "")
+                    + ("" if overflows else " — content does not overflow, "
+                       "raise the case's content or lower height"))
+
     raise ValueError(f"unhandled assertion kind: {k}")
+
+
+# every page-level scroll container class, newest last (see ui.py CSS)
+_PAGE_SCROLL_SELECTOR = ".st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page"

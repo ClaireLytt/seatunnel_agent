@@ -25,6 +25,7 @@ excel = ["openpyxl>=3.1"]
 pdf = ["fpdf2>=2.7"]
 hive = ["pyhive[hive]>=0.7"]
 uitest = ["playwright>=1.40", "pyyaml>=6.0"]
+test = ["pytest>=8.0", "pytest-mock>=3.12", "pytest-cov>=5.0", "httpx>=0.27"]
 sqlreview = ["sqlglot>=20.0"]
 mysql = ["pymysql>=1.1"]
 postgres = ["psycopg2-binary>=2.9"]
@@ -66,6 +67,19 @@ Repository = "https://github.com/ClaireLytt/seatunnel_agent"
 
 [project.scripts]
 seatunnel-agent = "seatunnel_agent.cli:cli"
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# E9/F: syntax + correctness; B: bugbear. Legacy style debt stays out of
+# scope: B904/B905/B008/B023 are documented false positives or style-only.
+select = ["E9", "F", "B"]
+ignore = ["B904", "B905", "B008", "B023"]
+
+[tool.ruff.lint.per-file-ignores]
+# tests may assert broad exception classes on degraded external systems
+"tests/*" = ["B017"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

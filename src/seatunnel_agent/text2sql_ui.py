@@ -1816,7 +1816,7 @@ def render_text2sql_page(app=None) -> None:
                     if "timeout" in e_msg.lower() or "timed out" in e_msg.lower():
                         holder["llm_status"] = f"⚠️ LLM timeout ({settings.llm_base_url or 'default'})"
                     elif "auth" in e_msg.lower() or "api key" in e_msg.lower() or "401" in e_msg:
-                        holder["llm_status"] = f"❌ LLM auth fail — check API_KEY"
+                        holder["llm_status"] = "❌ LLM auth fail — check API_KEY"
                     elif "connect" in e_msg.lower():
                         holder["llm_status"] = f"❌ LLM unreachable ({settings.llm_base_url or 'default'})"
                     else:

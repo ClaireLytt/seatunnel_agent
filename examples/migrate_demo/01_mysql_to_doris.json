@@ -1,0 +1,38 @@
+{
+  "job": {
+    "setting": {
+      "speed": {"channel": 4},
+      "errorLimit": {"record": 0, "percentage": 0.02}
+    },
+    "content": [
+      {
+        "reader": {
+          "name": "mysqlreader",
+          "parameter": {
+            "username": "root",
+            "password": "secret",
+            "column": ["order_id", "user_id", "amount", "dt"],
+            "where": "dt = '${bizdate}'",
+            "splitPk": "order_id",
+            "connection": [
+              {
+                "table": ["orders"],
+                "jdbcUrl": ["jdbc:mysql://10.0.0.1:3306/trade"]
+              }
+            ]
+          }
+        },
+        "writer": {
+          "name": "doriswriter",
+          "parameter": {
+            "feLoadUrl": ["10.0.0.9:8030"],
+            "database": "dwd",
+            "table": "orders_di",
+            "username": "doris",
+            "password": "secret"
+          }
+        }
+      }
+    ]
+  }
+}

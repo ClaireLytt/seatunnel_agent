@@ -1,0 +1,620 @@
+# -*- coding: utf-8 -*-
+"""Change impact analysis: SQL diff × lineage downstream walk.
+
+Given two lineage graphs (built from an "old" and a "new" SQL directory, or
+from a git ref), detect what changed — tables, edges, and column-level
+expression ("口径") changes — and walk the downstream chains to report the
+blast radius. Fully deterministic: no database, no SQL execution, no LLM.
+
+Severity model (drives the CLI --fail-on gate):
+  error — a removed table/edge that still had downstream consumers in the
+          old graph (breaking change)
+  warn  — a column expression change on a table that has downstream
+          consumers (metric drift)
+  info  — pure additions, or changes with no downstream
+"""
+
+from __future__ import annotations
+
+import difflib
+import re
+import shutil
+import subprocess
+import tempfile
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .graph import LineageGraph
+from .rlog import LineageLogger as _LineageLoggerBase
+from .snapshot import diff_graphs
+
+LEVELS = ("error", "warn", "info")
+
+_WS_RE = re.compile(r"\s+")
+
+
+def _norm_expr(expr: str) -> str:
+    """Normalize an expression for comparison: case/whitespace-insensitive."""
+    return _WS_RE.sub(" ", (expr or "").strip()).lower()
+
+
+@dataclass
+class ColumnChange:
+    """One column-level lineage change."""
+    kind: str            # added | removed | modified
+    src_table: str
+    src_column: str
+    dst_table: str
+    dst_column: str
+    old_expression: str = ""
+    new_expression: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "source": f"{self.src_table}.{self.src_column}",
+            "target": f"{self.dst_table}.{self.dst_column}",
+            "old_expression": self.old_expression,
+            "new_expression": self.new_expression,
+        }
+
+
+@dataclass
+class ChangedTable:
+    """One affected target table with its reasons and blast radius."""
+    table: str
+    level: str                                   # error | warn | info
+    column_changes: list[ColumnChange] = field(default_factory=list)
+    removed_upstreams: list[str] = field(default_factory=list)
+    added_upstreams: list[str] = field(default_factory=list)
+    is_new: bool = False
+    is_removed: bool = False
+    downstream: list[tuple[str, int]] = field(default_factory=list)  # (table, depth)
+    downstream_edges: list[tuple[str, str]] = field(default_factory=list)
+    downstream_truncated: bool = False
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "table": self.table, "level": self.level,
+            "is_new": self.is_new, "is_removed": self.is_removed,
+            "column_changes": [c.to_dict() for c in self.column_changes],
+            "removed_upstreams": list(self.removed_upstreams),
+            "added_upstreams": list(self.added_upstreams),
+            "downstream": [{"table": t, "depth": d} for t, d in self.downstream],
+            "downstream_edges": [list(e) for e in self.downstream_edges],
+            "downstream_truncated": self.downstream_truncated,
+        }
+
+
+@dataclass
+class ImpactResult:
+    table_diff: dict[str, Any]                   # snapshot.diff_graphs output
+    changed: list[ChangedTable]
+    depth: int
+    old_warnings: int = 0
+    new_warnings: int = 0
+    elapsed_ms: int = 0
+
+    def counts(self) -> dict[str, int]:
+        by_level = {lv: 0 for lv in LEVELS}
+        blast: set[str] = set()
+        for c in self.changed:
+            by_level[c.level] += 1
+            blast.update(t for t, _ in c.downstream)
+        return {
+            "changed": len(self.changed),
+            "blast": len(blast - {c.table for c in self.changed}),
+            **by_level,
+        }
+
+    def worst_level(self) -> str | None:
+        levels = {c.level for c in self.changed}
+        for lv in LEVELS:
+            if lv in levels:
+                return lv
+        return None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "stats": self.counts(),
+            "depth": self.depth,
+            "table_diff": self.table_diff,
+            "changed": [c.to_dict() for c in self.changed],
+            "old_warnings": self.old_warnings,
+            "new_warnings": self.new_warnings,
+            "elapsed_ms": self.elapsed_ms,
+        }
+
+
+def _col_edge_map(graph: LineageGraph) -> dict[tuple[str, str, str, str], Any]:
+    out: dict[tuple[str, str, str, str], Any] = {}
+    for edges in graph.column_down.values():
+        for e in edges:
+            out[(e.src_table, e.src_column, e.dst_table, e.dst_column)] = e
+    return out
+
+
+def _downstream_pairs(
+    graph: LineageGraph, table: str, depth: int,
+) -> tuple[list[tuple[str, int]], bool, list[tuple[str, str]]]:
+    chain = graph.downstream_of(table, depth=depth)
+    pairs = sorted(
+        ((t, d) for t, d in chain.depth_of.items() if t != table and d > 0),
+        key=lambda x: (x[1], x[0]),
+    )
+    nodes = set(chain.depth_of)
+    edges = sorted({(u, v) for u, v in chain.edges
+                    if u in nodes and v in nodes})
+    return pairs, chain.truncated, edges
+
+
+def analyze_impact(
+    old_graph: LineageGraph,
+    new_graph: LineageGraph,
+    depth: int = 3,
+    old_warnings: int = 0,
+    new_warnings: int = 0,
+    walk_old: LineageGraph | None = None,
+    walk_new: LineageGraph | None = None,
+) -> ImpactResult:
+    """Diff two graphs and compute the per-target blast radius.
+
+    ``walk_old``/``walk_new`` optionally widen the downstream walk beyond
+    the diffed graphs — paste mode merges a repository context graph in, so
+    a snippet's change reports its real consumers, not just what the two
+    snippets mention."""
+    t0 = time.time()
+    walk_old = walk_old or old_graph
+    walk_new = walk_new or new_graph
+    table_diff = diff_graphs(old_graph, new_graph)
+
+    old_cols = _col_edge_map(old_graph)
+    new_cols = _col_edge_map(new_graph)
+    col_changes: list[ColumnChange] = []
+    for quad in sorted(set(new_cols) - set(old_cols)):
+        e = new_cols[quad]
+        col_changes.append(ColumnChange(
+            "added", *quad, new_expression=e.expression))
+    for quad in sorted(set(old_cols) - set(new_cols)):
+        e = old_cols[quad]
+        col_changes.append(ColumnChange(
+            "removed", *quad, old_expression=e.expression))
+    for quad in sorted(set(old_cols) & set(new_cols)):
+        o, n = old_cols[quad], new_cols[quad]
+        if (_norm_expr(o.expression) != _norm_expr(n.expression)
+                or o.is_aggregation != n.is_aggregation):
+            col_changes.append(ColumnChange(
+                "modified", *quad,
+                old_expression=o.expression, new_expression=n.expression))
+
+    # ── collect affected target tables ──
+    per_table: dict[str, ChangedTable] = {}
+
+    def entry(table: str) -> ChangedTable:
+        if table not in per_table:
+            per_table[table] = ChangedTable(table=table, level="info")
+        return per_table[table]
+
+    for c in col_changes:
+        entry(c.dst_table).column_changes.append(c)
+    for edge in table_diff["removed_edges"]:
+        src, dst = edge.split("->", 1)
+        entry(dst).removed_upstreams.append(src)
+    for edge in table_diff["added_edges"]:
+        src, dst = edge.split("->", 1)
+        entry(dst).added_upstreams.append(src)
+    for tbl in table_diff["added_tables"]:
+        # only targets matter: a brand-new source table with no upstream of
+        # its own is still listed when it feeds an added edge (handled above)
+        if tbl in new_graph.upstream:
+            entry(tbl).is_new = True
+    for tbl in table_diff["removed_tables"]:
+        if tbl in old_graph.upstream:  # was a target in the old graph
+            entry(tbl).is_removed = True
+
+    # ── blast radius + severity ──
+    for c in per_table.values():
+        walk_graph = walk_old if c.is_removed else walk_new
+        c.downstream, c.downstream_truncated, c.downstream_edges = \
+            _downstream_pairs(walk_graph, c.table, depth)
+        has_downstream = bool(c.downstream)
+        modified = any(cc.kind == "modified" for cc in c.column_changes)
+        removed_cols = any(cc.kind == "removed" for cc in c.column_changes)
+
+        if c.is_removed:
+            # a target dropped entirely: breaking when anything consumed it
+            c.level = "error" if has_downstream else "info"
+        elif c.removed_upstreams or removed_cols:
+            # this target lost an input it used to read — it breaks itself
+            c.level = "error"
+        elif modified:
+            # metric/logic drift: only a risk when someone consumes it
+            c.level = "warn" if has_downstream else "info"
+        else:
+            c.level = "info"  # pure additions
+
+    changed = sorted(per_table.values(),
+                     key=lambda c: (LEVELS.index(c.level), c.table))
+    return ImpactResult(
+        table_diff=table_diff, changed=changed, depth=depth,
+        old_warnings=old_warnings, new_warnings=new_warnings,
+        elapsed_ms=int((time.time() - t0) * 1000),
+    )
+
+
+def analyze_dirs(
+    old_dir: str | Path,
+    new_dir: str | Path,
+    depth: int = 3,
+    sql_dialect: str = "hive",
+) -> ImpactResult:
+    """Convenience wrapper: build both graphs from directories and analyze."""
+    from .loaders import build_graph
+
+    for label, d in (("old", old_dir), ("new", new_dir)):
+        if not Path(d).is_dir():
+            raise ValueError(f"{label} SQL directory not found: {d}")
+    old_graph, old_warn = build_graph(
+        sql_dir=old_dir, use_cache=False, sql_dialect=sql_dialect)
+    new_graph, new_warn = build_graph(
+        sql_dir=new_dir, use_cache=False, sql_dialect=sql_dialect)
+    return analyze_impact(
+        old_graph, new_graph, depth=depth,
+        old_warnings=len(old_warn), new_warnings=len(new_warn),
+    )
+
+
+def analyze_sql_texts(
+    old_sql: str,
+    new_sql: str,
+    depth: int = 3,
+    sql_dialect: str = "hive",
+    context_dir: str | Path | None = None,
+) -> ImpactResult:
+    """Paste-two-snippets mode: build both graphs from raw SQL text.
+
+    Same deterministic pipeline as :func:`analyze_dirs`; the texts are
+    materialized into a throwaway temp dir because the loaders are
+    file-based, and it is removed before returning.
+
+    With *context_dir*, the repository's lineage graph is merged into the
+    downstream walk (NOT into the diff): the diff stays snippet-vs-snippet,
+    but the blast radius shows the repo's real consumers of the changed
+    tables — a metric drift that looked like harmless ``info`` in
+    isolation becomes ``warn`` once its downstream is visible."""
+    from .loaders import build_graph
+
+    if not (old_sql or "").strip() or not (new_sql or "").strip():
+        raise ValueError("both the old and the new SQL text are required")
+    if context_dir is not None and not Path(context_dir).is_dir():
+        raise ValueError(f"context SQL directory not found: {context_dir}")
+    tmp = Path(tempfile.mkdtemp(prefix="impact_txt_"))
+    try:
+        old_f = tmp / "old.sql"
+        new_f = tmp / "new.sql"
+        old_f.write_text(old_sql, encoding="utf-8")
+        new_f.write_text(new_sql, encoding="utf-8")
+        old_graph, old_warn = build_graph(
+            sql_files=[old_f], use_cache=False, sql_dialect=sql_dialect)
+        new_graph, new_warn = build_graph(
+            sql_files=[new_f], use_cache=False, sql_dialect=sql_dialect)
+
+        walk_old = walk_new = None
+        if context_dir is not None:
+            def _with_context(snippet: LineageGraph) -> LineageGraph:
+                merged, _ = build_graph(
+                    sql_dir=context_dir, use_cache=False,
+                    sql_dialect=sql_dialect)
+                merged.merge(snippet)
+                return merged
+            walk_old = _with_context(old_graph)
+            walk_new = _with_context(new_graph)
+
+        return analyze_impact(
+            old_graph, new_graph, depth=depth,
+            old_warnings=len(old_warn), new_warnings=len(new_warn),
+            walk_old=walk_old, walk_new=walk_new,
+        )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+_MERMAID_CLASS = {
+    "error": "classDef error fill:#fee2e2,stroke:#dc2626,stroke-width:2px",
+    "warn": "classDef warn fill:#fef3c7,stroke:#d97706,stroke-width:2px",
+    "info": "classDef info fill:#dcfce7,stroke:#16a34a,stroke-width:1.5px",
+    "blast": "classDef blast fill:#f1f5f9,stroke:#94a3b8,stroke-dasharray: 4",
+}
+
+
+def _mmid(table: str) -> str:
+    return "n_" + re.sub(r"[^0-9A-Za-z_]", "_", table)
+
+
+def render_impact_mermaid(result: ImpactResult, max_nodes: int = 60) -> str:
+    """Mermaid flowchart of the blast radius: changed tables colored by
+    severity, downstream-only tables in muted grey. Empty string when
+    nothing changed."""
+    if not result.changed:
+        return ""
+    lines = ["flowchart LR"]
+    seen: set[str] = set()
+    changed_names = {c.table for c in result.changed}
+
+    def _node(table: str, klass: str) -> None:
+        if table in seen or len(seen) >= max_nodes:
+            return
+        seen.add(table)
+        lines.append(f'    {_mmid(table)}["{table}"]:::{klass}')
+
+    for c in result.changed:
+        _node(c.table, c.level)
+    edges: set[tuple[str, str]] = set()
+    for c in result.changed:
+        for tbl, _d in c.downstream:
+            if tbl not in changed_names:
+                _node(tbl, "blast")
+        # real lineage edges from the walk (never guessed from depth
+        # buckets — a table with two downstream branches would otherwise
+        # get fabricated cross-branch edges); drawn only when both ends
+        # survived the node cap.
+        for src, dst in c.downstream_edges:
+            if src in seen and dst in seen and (src, dst) not in edges:
+                edges.add((src, dst))
+                lines.append(f"    {_mmid(src)} --> {_mmid(dst)}")
+    for css in _MERMAID_CLASS.values():
+        lines.append("    " + css)
+    return "\n".join(lines)
+
+
+def render_text_diff(old_sql: str, new_sql: str) -> str:
+    """Unified diff of the two pasted snippets as a ```diff block; empty
+    string when the texts are identical."""
+    lines = list(difflib.unified_diff(
+        (old_sql or "").splitlines(), (new_sql or "").splitlines(),
+        fromfile="old.sql", tofile="new.sql", lineterm="",
+    ))
+    if not lines:
+        return ""
+    return "### SQL diff\n```diff\n" + "\n".join(lines) + "\n```"
+
+
+def materialize_git_ref(ref: str, sql_dir: str | Path,
+                        repo_root: str | Path | None = None) -> Path:
+    """Write every ``*.sql`` under *sql_dir* as of *ref* into a temp dir
+    (mirrored layout) and return its path. Raises RuntimeError outside a
+    git repository or on an unknown ref."""
+    sql_dir = Path(sql_dir)
+    cwd = str(repo_root or Path.cwd())
+
+    def _git(git_cwd: str, *args: str) -> str:
+        proc = subprocess.run(
+            ["git", *args], cwd=git_cwd, capture_output=True, text=True,
+            encoding="utf-8", errors="replace",
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"git {' '.join(args[:2])} failed: "
+                f"{proc.stderr.strip() or proc.stdout.strip()}"
+            )
+        return proc.stdout
+
+    # ls-tree names and ``ref:path`` specs are repo-toplevel-relative, and
+    # pathspecs are cwd-relative — so anchor BOTH the sql_dir and every git
+    # command at the toplevel, or a CLI run from a repo subdirectory would
+    # silently materialize an empty baseline.
+    toplevel = Path(_git(cwd, "rev-parse", "--show-toplevel").strip())
+    top = str(toplevel)
+    sql_abs = (sql_dir if sql_dir.is_absolute()
+               else Path(cwd) / sql_dir).resolve()
+    try:
+        rel = sql_abs.relative_to(toplevel.resolve()).as_posix()
+    except ValueError:
+        raise RuntimeError(
+            f"sql dir {sql_dir} is outside the git repository {toplevel}")
+
+    # -z: NUL-separated verbatim paths. Without it git C-quotes non-ASCII
+    # names ("sql/\346\212\245\350\241\250.sql") and the .sql suffix check
+    # silently drops them — a Chinese-named file would vanish from the
+    # baseline and its breaking change pass the --fail-on gate.
+    listing = _git(top, "ls-tree", "-r", "--name-only", "-z", ref,
+                   "--", rel or ".")
+    tmp = Path(tempfile.mkdtemp(prefix="impact_old_"))
+    try:
+        written = 0
+        for name in listing.split("\0"):
+            name = name.strip()
+            if not name.lower().endswith(".sql"):
+                continue
+            content = _git(top, "show", f"{ref}:{name}")
+            target = tmp / (Path(name).relative_to(rel) if rel else Path(name))
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+            written += 1
+        if not written:
+            # not fatal (the tree may genuinely be new at this ref), but the
+            # caller should be able to tell the user "everything counts as
+            # added"
+            (tmp / ".impact_empty_baseline").write_text(ref, encoding="utf-8")
+    except BaseException:
+        # never leak a half-materialized baseline on failure
+        shutil.rmtree(tmp, ignore_errors=True)
+        raise
+    return tmp
+
+
+# ─────────────────────────── rendering ───────────────────────────
+
+_IMPACT_I18N = {
+    "zh": {
+        "title": "## 变更影响分析 (old → new)",
+        "stats": "**变更 {changed} 处 · 下游波及 {blast} 表 · "
+                 "error {error} / warn {warn} / info {info}**",
+        "no_change": "两份 SQL 的血缘完全一致 — 无影响。",
+        "removed_table": "表被移除",
+        "removed_upstream": "上游被移除",
+        "removed_col": "字段来源被移除",
+        "modified": "字段口径变更",
+        "added_table": "新增表",
+        "added_upstream": "新增上游",
+        "added_col": "新增字段血缘",
+        "downstream": "下游波及",
+        "truncated": "（深度截断）",
+        "warnings": "解析警告: old {old} / new {new}",
+        "disclaimer": "> 建议配合数据比对页对受影响表做上线前后校验。",
+    },
+    "en": {
+        "title": "## Change Impact Analysis (old → new)",
+        "stats": "**{changed} changes · blast radius {blast} tables · "
+                 "error {error} / warn {warn} / info {info}**",
+        "no_change": "Lineage is identical between the two SQL trees — no impact.",
+        "removed_table": "table removed",
+        "removed_upstream": "upstream removed",
+        "removed_col": "column source removed",
+        "modified": "column expression changed",
+        "added_table": "new table",
+        "added_upstream": "upstream added",
+        "added_col": "column lineage added",
+        "downstream": "Downstream blast radius",
+        "truncated": " (depth-truncated)",
+        "warnings": "parse warnings: old {old} / new {new}",
+        "disclaimer": ("> Verify the affected tables with the Data "
+                       "Comparison page before/after the release."),
+    },
+}
+
+_LEVEL_MARK = {"error": "❌", "warn": "⚠️", "info": "ℹ️"}
+
+
+def _impact_lang(lang: str) -> str:
+    return "en" if (lang or "").lower().startswith("en") else "zh"
+
+
+def _headline(c: ChangedTable, t: dict[str, str]) -> str:
+    if c.is_removed:
+        return t["removed_table"]
+    if c.removed_upstreams:
+        return t["removed_upstream"]
+    if any(cc.kind == "removed" for cc in c.column_changes):
+        return t["removed_col"]
+    if any(cc.kind == "modified" for cc in c.column_changes):
+        return t["modified"]
+    if c.is_new:
+        return t["added_table"]
+    if c.added_upstreams:
+        return t["added_upstream"]
+    return t["added_col"]
+
+
+def render_impact_markdown(result: ImpactResult, lang: str = "zh") -> str:
+    t = _IMPACT_I18N[_impact_lang(lang)]
+    lines = [t["title"], "", t["stats"].format(**result.counts()), ""]
+    if result.old_warnings or result.new_warnings:
+        lines += [t["warnings"].format(old=result.old_warnings,
+                                       new=result.new_warnings), ""]
+    if not result.changed:
+        lines += [t["no_change"], "", t["disclaimer"]]
+        return "\n".join(lines)
+
+    for c in result.changed:
+        mark = _LEVEL_MARK.get(c.level, "•")
+        lines.append(f"### {mark} [{c.level}] `{c.table}` — {_headline(c, t)}")
+        for src in c.removed_upstreams:
+            lines.append(f"- {t['removed_upstream']}: `{src} -> {c.table}`")
+        for src in c.added_upstreams:
+            lines.append(f"- {t['added_upstream']}: `{src} -> {c.table}`")
+        for cc in c.column_changes:
+            if cc.kind == "modified":
+                lines.append(
+                    f"- `{cc.dst_column}`: `{cc.old_expression or cc.src_column}`"
+                    f" → `{cc.new_expression or cc.src_column}`")
+            elif cc.kind == "removed":
+                lines.append(f"- {t['removed_col']}: "
+                             f"`{cc.src_table}.{cc.src_column}` → "
+                             f"`{cc.dst_column}`")
+            else:
+                lines.append(f"- {t['added_col']}: "
+                             f"`{cc.src_table}.{cc.src_column}` → "
+                             f"`{cc.dst_column}`")
+        if c.downstream:
+            chain = ", ".join(f"`{tbl}` (L{d})" for tbl, d in c.downstream)
+            trunc = t["truncated"] if c.downstream_truncated else ""
+            lines.append(f"- {t['downstream']}: {chain}{trunc}")
+        lines.append("")
+    lines.append(t["disclaimer"])
+    return "\n".join(lines)
+
+
+def render_impact_comment(result: ImpactResult, lang: str = "zh") -> str:
+    """Compact markdown for a PR/MR comment: one status line, one row per
+    changed table, details collapsed. Safe for GBK-free CI pipes (the CLI
+    reconfigures stdio, but keep this format emoji-light anyway)."""
+    t = _IMPACT_I18N[_impact_lang(lang)]
+    c = result.counts()
+    zh = _impact_lang(lang) == "zh"
+    head = "**变更影响**" if zh else "**Change Impact**"
+    if not result.changed:
+        return f"{head} ✅ " + t["no_change"]
+    lines = [f"{head} {t['stats'].format(**c)}", ""]
+    lines.append("| " + ("表 | 级别 | 变更 | 下游" if zh
+                         else "table | level | change | downstream") + " |")
+    lines.append("|---|---|---|---|")
+    for ct in result.changed:
+        down = ", ".join(tbl for tbl, _ in ct.downstream[:5])
+        if len(ct.downstream) > 5:
+            down += f" +{len(ct.downstream) - 5}"
+        lines.append(f"| `{ct.table}` | {ct.level} | {_headline(ct, t)} "
+                     f"| {down or '-'} |")
+    lines += ["", t["disclaimer"]]
+    return "\n".join(lines)
+
+
+def impact_to_dict(result: ImpactResult, lang: str = "zh") -> dict[str, Any]:
+    data = result.to_dict()
+    data["report"] = render_impact_markdown(result, lang)
+    return data
+
+
+# ─────────────────────────── analysis history ───────────────────────────
+
+class ImpactLogger(_LineageLoggerBase):
+    """JSONL history of impact analyses (logs/impact.jsonl) — same
+    best-effort semantics as the lineage query log: never breaks the
+    analysis, rotates at 10 MB, `recent(n)` for the stats CLI."""
+
+    def __init__(self, log_dir: str | Path = "logs") -> None:
+        super().__init__(log_dir)
+        self.log_file = self.log_dir / "impact.jsonl"
+
+    def log_impact(
+        self,
+        result: ImpactResult,
+        mode: str,               # dirs | git | text
+        source: str = "cli",     # cli | api | ui | mcp
+        baseline: str = "",
+    ) -> None:
+        import json as _json
+        from datetime import datetime, timezone
+
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(
+                timespec="seconds"),
+            "source": source,
+            "mode": mode,
+            "baseline": baseline[:120],
+            "stats": result.counts(),
+            "worst": result.worst_level() or "clean",
+            "tables": [c.table for c in result.changed][:10],
+            "elapsed_ms": result.elapsed_ms,
+        }
+        line = _json.dumps(record, ensure_ascii=False) + "\n"
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            with self._lock:
+                self._rotate_if_needed()
+                with open(self.log_file, "a", encoding="utf-8") as f:
+                    f.write(line)
+        except OSError:
+            pass  # history is best-effort; never break the analysis

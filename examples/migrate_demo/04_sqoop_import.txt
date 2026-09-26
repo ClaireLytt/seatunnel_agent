@@ -1,0 +1,11 @@
+sqoop import \
+  --connect jdbc:mysql://10.0.0.1:3306/trade \
+  --username root \
+  --password secret \
+  --table orders \
+  --columns "order_id,user_id,amount,dt" \
+  --where "dt='2024-01-01'" \
+  --split-by order_id \
+  --target-dir /warehouse/ods/orders \
+  --fields-terminated-by '\t' \
+  -m 4

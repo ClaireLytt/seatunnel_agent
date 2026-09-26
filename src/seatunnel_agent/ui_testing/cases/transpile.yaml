@@ -97,3 +97,47 @@
         LLM 建议区应针对未知函数 decrypt_phone 给出 Doris 侧的处理建议
         （说明无内置等价函数、建议注册 UDF 或用近似函数替代），
         且不得声称翻译已自动完成。
+
+- id: TRP7
+  title: 批量翻译写出镜像目录
+  tags: [full, sqlite]
+  page: /transpile
+  steps:
+    - select: {of: 源方言, value: hive}
+    - select: {of: 目标方言, value: doris}
+    - open_accordion: {target: 批量翻译目录}
+    - fill: {SQL 目录: examples/transpile_demo}
+    - fill: {输出目录（可选）: runs/uitest_trp_out}
+    - click: 批量翻译
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: uitest_trp_out}
+    - text_contains: {in: 结果区, text: 文件 6}
+
+- id: TRP8
+  title: 批量目录不存在给出警告不崩溃
+  tags: [full, sqlite]
+  page: /transpile
+  steps:
+    - open_accordion: {target: 批量翻译目录}
+    - fill: {SQL 目录: no_such_dir_xyz}
+    - click: 批量翻译
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 不是有效目录}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: TRP9
+  title: 英文界面单条翻译链路
+  tags: [full, sqlite]
+  lang: en
+  page: /transpile
+  steps:
+    - select: {of: Source dialect, value: hive}
+    - select: {of: Target dialect, value: doris}
+    - fill: {SQL input: "SELECT get_json_object(p,'$.a') AS a FROM t"}
+    - click: Translate
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: JSON_EXTRACT}
+    - text_contains: {in: 结果区, text: auto 1}

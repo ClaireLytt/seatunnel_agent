@@ -715,6 +715,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
         do_diff_snap, inputs=[graph_state, snap_dd, lang_state],
         outputs=[report_md],
     )
+
     ask_btn.click(
         do_ask,
         inputs=[graph_state, ask_box, sql_dir_box, sql_dialect_dd, st_dir_box,

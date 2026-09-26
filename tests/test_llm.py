@@ -72,8 +72,6 @@ class TestLLMClientInit:
 
     @patch("seatunnel_agent.llm.anthropic", create=True)
     def test_anthropic_init(self, mock_mod):
-        import importlib
-        import seatunnel_agent.llm as llm_mod
         mock_anthropic = MagicMock()
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             client = LLMClient(ANTHROPIC_SETTINGS)

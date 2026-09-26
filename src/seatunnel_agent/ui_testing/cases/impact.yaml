@@ -1,0 +1,116 @@
+# IMP 组 · 变更影响分析页 (/impact)。演示数据 examples/impact_demo:
+# old/new 各 5-6 条 SQL,差异 = 口径变更(warn) + 上游移除(error) + 新增表(info)。
+
+- id: IMP1
+  title: old/new 目录变更影响分析
+  tags: [smoke, sqlite]
+  page: /impact
+  steps:
+    - fill: {旧 SQL 目录: examples/impact_demo/old}
+    - fill: {新 SQL 目录: examples/impact_demo/new}
+    - click: 变更影响分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: dws.gmv_daily}
+    - text_contains: {in: 结果区, text: ads.gmv_report}
+    - text_contains: {in: 结果区, text: 字段口径变更}
+
+- id: IMP2
+  title: 新增表以 info 呈现且带下游波及
+  tags: [full, sqlite]
+  page: /impact
+  steps:
+    - fill: {旧 SQL 目录: examples/impact_demo/old}
+    - fill: {新 SQL 目录: examples/impact_demo/new}
+    - click: 变更影响分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: ads.channel_report}
+    - text_contains: {in: 结果区, text: rpt.gmv_dashboard}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: IMP3
+  title: 不存在的目录给出警告不崩溃
+  tags: [full, sqlite]
+  page: /impact
+  steps:
+    - fill: {旧 SQL 目录: no_such_dir_xyz}
+    - fill: {新 SQL 目录: examples/impact_demo/new}
+    - click: 变更影响分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 不是有效目录}
+    - visible: {target: 变更影响分析}
+
+- id: IMP4
+  title: 粘贴两段 SQL 直接看影响与 diff
+  tags: [smoke, sqlite]
+  page: /impact
+  steps:
+    - click: 粘贴 SQL
+    - fill: {旧 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
+    - fill: {新 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount - refund_amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
+    - click: 分析粘贴的 SQL
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 字段口径变更}
+    - text_contains: {in: 结果区, text: SQL diff}
+    - text_contains: {in: 结果区, text: refund_amount}
+
+- id: IMP5
+  title: 粘贴模式缺一段 SQL 给出提示
+  tags: [full, sqlite]
+  page: /impact
+  steps:
+    - click: 粘贴 SQL
+    - fill: {旧 SQL: "SELECT 1"}
+    - click: 分析粘贴的 SQL
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 请同时粘贴}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: IMP6
+  title: 粘贴模式带上下文目录看真实下游
+  tags: [full, sqlite]
+  page: /impact
+  steps:
+    - click: 粘贴 SQL
+    - fill: {旧 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
+    - fill: {新 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount - refund_amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
+    - fill: {上下文 SQL 目录（可选）: examples/impact_demo/old}
+    - click: 分析粘贴的 SQL
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: ads.gmv_report}
+    - text_contains: {in: 结果区, text: rpt.gmv_dashboard}
+    - text_contains: {in: 结果区, text: warn}
+
+- id: IMP7
+  title: 下游深度滑条截断波及层级
+  tags: [full, sqlite]
+  page: /impact
+  setup:
+    - fill: {旧 SQL 目录: examples/impact_demo/old}
+    - fill: {新 SQL 目录: examples/impact_demo/new}
+  steps:
+    - slide: {of: 下游深度, value: 1}
+    - click: 变更影响分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: ads.gmv_report}
+    - text_not_contains: {in: 结果区, text: rpt.gmv_dashboard (L2)}
+
+- id: IMP8
+  title: 英文界面完整分析链路
+  tags: [full, sqlite]
+  lang: en
+  page: /impact
+  steps:
+    - fill: {Old SQL directory: examples/impact_demo/old}
+    - fill: {New SQL directory: examples/impact_demo/new}
+    - click: Analyze change impact
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: Change Impact Analysis}
+    - text_contains: {in: 结果区, text: column expression changed}

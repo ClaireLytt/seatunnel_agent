@@ -332,6 +332,59 @@ def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     )
 
 
+class ImpactRequest(BaseModel):
+    old_dir: str | None = Field(None, description="旧 SQL 目录（目录模式）")
+    new_dir: str | None = Field(None, description="新 SQL 目录（目录模式）")
+    old_sql: str | None = Field(None, description="旧 SQL 文本（粘贴模式）")
+    new_sql: str | None = Field(None, description="新 SQL 文本（粘贴模式）")
+    context_dir: str | None = Field(
+        None, description="粘贴模式可选：仓库 SQL 目录，下游波及按全仓血缘计算")
+    depth: int = Field(3, ge=1, le=MAX_DEPTH, description="下游遍历深度")
+    sql_dialect: str = Field("hive", description="解析 SQL 用的方言")
+    lang: str = Field("zh", description="报告语言 zh|en")
+
+
+@router.post("/impact")
+def change_impact(req: ImpactRequest) -> dict[str, Any]:
+    """变更影响分析：两份 SQL 目录（或两段粘贴 SQL）的血缘 diff + 下游波及。
+    纯确定性。目录模式与文本模式二选一。"""
+    from .impact import analyze_dirs, analyze_sql_texts, impact_to_dict
+
+    dir_mode = bool(req.old_dir and req.new_dir)
+    text_mode = bool(req.old_sql and req.new_sql)
+    if dir_mode == text_mode:
+        raise HTTPException(
+            status_code=400,
+            detail="请二选一：old_dir+new_dir（目录模式）或 old_sql+new_sql（文本模式）",
+        )
+    start = time.time()
+    try:
+        if dir_mode:
+            _check_dir_allowed(req.old_dir)
+            _check_dir_allowed(req.new_dir)
+            result = analyze_dirs(req.old_dir, req.new_dir, depth=req.depth,
+                                  sql_dialect=req.sql_dialect)
+        else:
+            if req.context_dir:
+                _check_dir_allowed(req.context_dir)
+            result = analyze_sql_texts(req.old_sql, req.new_sql,
+                                       depth=req.depth,
+                                       sql_dialect=req.sql_dialect,
+                                       context_dir=req.context_dir)
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001 — mirror _build: fail as a clean 400
+        raise HTTPException(status_code=400,
+                            detail=f"变更影响分析失败: {exc}")
+    data = impact_to_dict(result, req.lang)
+    data["elapsed_ms"] = int((time.time() - start) * 1000)
+    from .impact import ImpactLogger
+    ImpactLogger().log_impact(
+        result, mode="dirs" if dir_mode else "text", source="api",
+        baseline=req.old_dir or "<inline>")
+    return data
+
+
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}

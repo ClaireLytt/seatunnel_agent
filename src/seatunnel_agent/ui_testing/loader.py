@@ -28,14 +28,14 @@ USER_CASES_DIR = Path("config") / "uitest_cases"
 
 KNOWN_ACTIONS = frozenset({
     "goto", "click", "fill", "clear", "press", "select_ds", "select",
-    "select_index", "dropdown_type", "check", "open_accordion", "wait_status_ok",
+    "select_index", "dropdown_type", "check", "slide", "open_accordion", "wait_status_ok",
     "wait_status_error", "wait_result", "wait_text", "wait", "screenshot", "set_language",
 })
 
 KNOWN_ASSERTS = frozenset({
     "text_contains", "text_not_contains", "value_is", "value_contains", "options_are",
     "options_count", "status_ok", "status_error", "visible", "hidden",
-    "checked", "ai_judge",
+    "checked", "scrollable", "ai_judge",
 })
 
 KNOWN_TAGS = frozenset({"smoke", "full", "hive", "sqlite", "slow", "manual"})

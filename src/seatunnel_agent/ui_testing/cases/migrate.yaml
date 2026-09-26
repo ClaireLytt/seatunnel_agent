@@ -1,0 +1,52 @@
+# MIG 组 · 配置迁移页 (/migrate)。演示数据 examples/migrate_demo:
+# 4 个任务 = DataX×3(含 1 个不支持插件) + sqoop×1,批量结果 成功 3 / 失败 1。
+
+- id: MIG1
+  title: DataX JSON 迁移出 SeaTunnel 配置
+  tags: [smoke, sqlite]
+  page: /migrate
+  steps:
+    - fill: {DataX job JSON / sqoop 命令: '{"job":{"setting":{"speed":{"channel":2}},"content":[{"reader":{"name":"mysqlreader","parameter":{"username":"u","password":"p","column":["a","b"],"connection":[{"table":["t1"],"jdbcUrl":["jdbc:mysql://h:3306/db"]}]}},"writer":{"name":"streamwriter","parameter":{}}}]}}'}
+    - click: 迁移
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: select a, b from t1}
+    - text_contains: {in: 结果区, text: Console}
+    - text_contains: {in: 结果区, text: parallelism = 2}
+
+- id: MIG2
+  title: sqoop import 迁移为 Jdbc→HdfsFile
+  tags: [smoke, sqlite]
+  page: /migrate
+  steps:
+    - fill: {DataX job JSON / sqoop 命令: "sqoop import --connect jdbc:mysql://h:3306/db --username u --password p --table orders --target-dir /tmp/out -m 3"}
+    - click: 迁移
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: HdfsFile}
+    - text_contains: {in: 结果区, text: select * from orders}
+
+- id: MIG3
+  title: 批量迁移演示目录统计正确
+  tags: [full, sqlite]
+  page: /migrate
+  steps:
+    - open_accordion: {target: 批量迁移目录}
+    - fill: {任务目录: examples/migrate_demo}
+    - click: 批量迁移
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 成功 3}
+    - text_contains: {in: 结果区, text: mongodbreader}
+
+- id: MIG4
+  title: 无法识别的内容给出提示不崩溃
+  tags: [full, sqlite]
+  page: /migrate
+  steps:
+    - fill: {DataX job JSON / sqoop 命令: "SELECT 1"}
+    - click: 迁移
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 无法识别}
+    - text_not_contains: {in: 页面, text: Traceback}

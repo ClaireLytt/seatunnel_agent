@@ -24,16 +24,22 @@ _AGENT_ROUTES: dict[str, tuple[str, ...]] = {
     "lineage": ("/lineage",),
     "text2sql": ("/text2sql", "/history", "/favorites", "/schema-browser"),
     "transpile": ("/transpile",),
+    "impact": ("/impact",),
+    "migrate": ("/migrate",),
 }
 _AGENT_LABELS = {
     "en": {"all": "All agents", "datacompare": "Data Comparison",
            "sqlreview": "SQL Review", "lineage": "Data Lineage",
            "text2sql": "Text2SQL & aux pages",
-           "transpile": "SQL Dialect Translation"},
+           "transpile": "SQL Dialect Translation",
+           "impact": "Change Impact Analysis",
+           "migrate": "DataX/Sqoop Migration"},
     "zh": {"all": "全部 Agent", "datacompare": "数据对比",
            "sqlreview": "SQL Review", "lineage": "数据血缘",
            "text2sql": "Text2SQL 与辅助页",
-           "transpile": "SQL 方言翻译"},
+           "transpile": "SQL 方言翻译",
+           "impact": "变更影响分析",
+           "migrate": "配置迁移"},
 }
 
 

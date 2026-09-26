@@ -5,7 +5,11 @@
 > SR 组用例额外覆盖 SQL Review 页(`/sqlreview`,纯静态审查路径);
 > LIN 组覆盖数据血缘页(`/lineage`,演示数据 `examples/lineage_demo`);
 > T2S/HIS/FAV/SCH 组覆盖 Text2SQL 侧栏与历史/收藏/Schema 浏览器辅助页;
-> TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`)。
+> TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`);
+> IMP 组覆盖变更影响分析页(`/impact`,目录/粘贴/上下文三种模式,演示数据 `examples/impact_demo`);
+> MIG 组覆盖配置迁移页(`/migrate`,演示数据 `examples/migrate_demo`);
+> SCR 组回归全部七个页面的滚动容器(500px 小窗验证内容可滚到底,
+> 并固化"哪个容器负责滚动"的契约)。
 
 ## 快速开始
 
@@ -79,10 +83,11 @@ Text2SQL 与辅助页 / SQL 方言翻译,点运行即测该 Agent 的全部自�
 ```
 
 动作全集:`goto / click / fill / clear / press / select_ds / select /
-dropdown_type / check / open_accordion / wait_status_ok / wait_status_error /
+dropdown_type / check / slide（滑条取值）/ open_accordion / wait_status_ok / wait_status_error /
 wait_result / wait(须写 note) / screenshot / set_language`。
 
 断言全集:`text_contains / text_not_contains / value_is / options_are /
+scrollable(压缩视口验证页面滚动容器)/
 options_count / status_ok / status_error / visible / hidden / checked /
 ai_judge`。`in:` 可取 `状态` / `结果区` / `页面` / 任意输入框标签。
 
@@ -138,7 +143,19 @@ python scripts/uitest_flaky_check.py 10  # 连续 N 轮冒烟,验证零 flaky(�
 ## pytest 桥接
 
 ```bash
-pytest -m uitest tests/test_ui_smoke.py    # 默认 deselect,显式开启
+pytest -m uitest tests/test_ui_smoke.py                    # 整包 smoke,单节点
+pytest -m uitest tests/test_ui_cases.py                    # 逐用例节点(推荐)
+UITEST_SUITE=full pytest -m uitest tests/test_ui_cases.py  # 全量
+pytest -m uitest tests/test_ui_cases.py -k SCR --lf        # pytest 过滤/重跑失败
+```
+
+## flaky 趋势
+
+每轮运行自动追加 `runs/history.jsonl`(run 目录会被裁剪,history 长存);
+nightly workflow 用 actions/cache 跨夜累积:
+
+```bash
+python -m seatunnel_agent.ui_testing trend --last 30   # 近 30 轮 verdict 稳定性
 ```
 
 ## 定位不稳时改哪里

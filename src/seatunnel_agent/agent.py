@@ -390,9 +390,9 @@ class SeaTunnelAgent:
             if data.get("error"):
                 self.console.print(f"  [red]Error:[/red] {data['error'][:200]}")
             elif data.get("success") is True:
-                self.console.print(f"  [green]Success[/green]")
+                self.console.print("  [green]Success[/green]")
             elif data.get("valid") is True:
-                self.console.print(f"  [green]Valid config[/green]")
+                self.console.print("  [green]Valid config[/green]")
             elif data.get("valid") is False:
                 errors = data.get("errors", [])
                 self.console.print(f"  [red]Invalid:[/red] {'; '.join(errors)[:200]}")

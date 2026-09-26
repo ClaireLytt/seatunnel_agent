@@ -165,6 +165,9 @@ class DCPage:
         "/sqlreview": "#sr-sql-box textarea",
         "/lineage": ".st-lin-side",
         "/text2sql": ".st-sidebar-status",
+        "/transpile": ".st-trp-side",
+        "/impact": ".st-imp-side",
+        "/migrate": ".st-mig-side",
     }
 
     def goto(self, path: str = "/datacompare") -> None:
@@ -196,6 +199,22 @@ class DCPage:
     # ── locator chain: label → placeholder → button text ──
 
     def textbox(self, name: str, side: str | None = None) -> Locator:
+        """Find a textbox by label/placeholder, retrying briefly.
+
+        The retry absorbs the i18n re-render race: right after
+        set_language the first case on a freshly-hydrated page can look
+        up the Chinese label while gradio is still swapping the DOM."""
+        last_err: LookupError | None = None
+        for attempt in range(6):
+            if attempt:
+                self.page.wait_for_timeout(250)
+            try:
+                return self._textbox_once(name, side)
+            except LookupError as e:
+                last_err = e
+        raise last_err
+
+    def _textbox_once(self, name: str, side: str | None = None) -> Locator:
         scope = self._scope(side)
         for text in _texts(name):
             # Gradio 6: <label><span data-testid="block-info">Label</span>
@@ -212,7 +231,16 @@ class DCPage:
 
     def button(self, name: str, side: str | None = None) -> Locator:
         """Action button by visible text.  Accordion headers are <button>
-        too and may carry the same text (e.g. 生成同步配置) — skip them."""
+        too and may carry the same text (e.g. 生成同步配置) — skip them.
+
+        Tab headers come first: gradio renders each tab button twice (one
+        copy in an overflow-measuring container that never becomes stable,
+        so a raw button:text-is click times out); role=tab resolves the
+        real one."""
+        for text in _texts(name):
+            loc = self.page.get_by_role("tab", name=text, exact=True)
+            if loc.count():
+                return loc.first
         scope = self._scope(side)
         for text in _texts(name):
             loc = scope.locator(
@@ -270,6 +298,24 @@ class DCPage:
             if loc.count():
                 return loc.first
         raise LookupError(f"checkbox not found: {name} (side={side})")
+
+    def slider(self, name: str, side: str | None = None) -> Locator:
+        """A gr.Slider's numeric input (filling it updates the value and
+        fires gradio's input event, unlike dragging the range thumb)."""
+        scope = self._scope(side)
+        for text in _texts(name):
+            blocks = scope.locator(
+                f"div.block:has(span:text-is('{text}'))")
+            if not blocks.count():
+                continue
+            # .block nests, so ancestors match too — the innermost (last)
+            # one is the slider's own block
+            block = blocks.last
+            for kind in ("number", "range"):
+                loc = block.locator(f"input[type='{kind}']")
+                if loc.count():
+                    return loc.first
+        raise LookupError(f"slider not found: {name} (side={side})")
 
     # ── actions ──
 
@@ -444,6 +490,12 @@ class DCPage:
         loc = self.page.locator(".st-trp-main")
         if loc.count():
             return loc.first
+        loc = self.page.locator(".st-imp-main")
+        if loc.count():
+            return loc.first
+        loc = self.page.locator(".st-mig-main")
+        if loc.count():
+            return loc.first
         return self.page.locator(".sr-report-card").last
 
     def result_text(self) -> str:
@@ -508,13 +560,31 @@ class DCPage:
         """Switch UI language via the top-right dropdown.
 
         The data comparison page marks it .st-lang-dd; the SQL review page
-        renders it as the first bare combobox on the page."""
+        renders it as the first bare combobox on the page.
+
+        Verified with retries: on the very first case of a run the click
+        can land while gradio is still hydrating and get swallowed — the
+        page then stays English and every Chinese assertion downstream
+        fails (this bit X1 in the wild). The dropdown input echoes the
+        selected label, so re-pick until it does."""
         dd = self.page.locator(".st-lang-dd input")
         if not dd.count():
             dd = self.page.locator("input[role='combobox']")
-        dd.first.click()
-        self._pick_listbox_item(lang)
-        self.page.wait_for_timeout(600)          # i18n re-render
+        for attempt in range(3):
+            try:
+                dd.first.click()
+                self._pick_listbox_item(lang)
+            except Exception:  # noqa: BLE001 — retried below
+                if attempt == 2:
+                    raise
+            self.page.wait_for_timeout(600)      # i18n re-render round-trip
+            try:
+                if dd.first.input_value().strip() == lang:
+                    return
+            except Exception:  # noqa: BLE001 — input detached mid-render
+                pass
+        # three picks that never echoed back — let the case's own
+        # assertions surface it with a readable diff
 
     # ── element state (for visible/hidden asserts) ──
 

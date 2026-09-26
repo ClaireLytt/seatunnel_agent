@@ -1,0 +1,33 @@
+# Unit/integration tests on every PR (no browser, no LLM, no DB) with a
+# coverage floor. The UI browser suite is uitest.yml; this one is the
+# 1700+ pytest cases that previously only ran on developer machines.
+name: tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      API_KEY: ci-dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,uitest,sqlreview,test]"
+
+      - name: Run pytest with coverage
+        run: >
+          python -m pytest tests/ -q
+          --cov=seatunnel_agent --cov-report=term-missing:skip-covered
+          --cov-fail-under=60
