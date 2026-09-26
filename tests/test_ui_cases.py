@@ -10,9 +10,17 @@ usual pytest tooling works case-by-case:
     UITEST_CASES="IMP1 TRP7" pytest -m uitest tests/test_ui_cases.py
     pytest -m uitest tests/test_ui_cases.py -k "SCR"        # pytest filters
     pytest -m uitest tests/test_ui_cases.py --lf            # rerun failures
+    pytest -m uitest tests/test_ui_cases.py -n 4            # xdist parallel
 
 The app and browser boot once per session (same cost as the runner); each
 node then drives one case. Always LLM-free — ai cases report SKIP.
+
+Under pytest-xdist every worker boots its own app+browser on its own port
+(base UITEST_PORT + worker index), so cases run truly in parallel. Cases
+are independent by design (fresh page load each), with one exception the
+scheduler must respect: SET6-SET8 share a profile-lifecycle chain — use
+``-n 4 --dist loadgroup`` (they carry the same xdist_group) to keep them
+on one worker, in order.
 """
 
 from __future__ import annotations
@@ -24,7 +32,10 @@ import pytest
 
 pytestmark = pytest.mark.uitest
 
-_PORT = int(os.getenv("UITEST_PORT", "7916"))
+# gw0/gw1/... under xdist; each worker gets its own app on its own port
+_WORKER = os.getenv("PYTEST_XDIST_WORKER", "")
+_OFFSET = int(_WORKER[2:]) if _WORKER.startswith("gw") and _WORKER[2:].isdigit() else 0
+_PORT = int(os.getenv("UITEST_PORT", "7916")) + _OFFSET * 3
 
 
 def _collect():
@@ -56,7 +67,16 @@ def ui_env(tmp_path_factory):
             browser.close()
 
 
-@pytest.mark.parametrize("case", CASES, ids=[c.id for c in CASES])
+# SET6→SET7→SET8 mutate/clean one shared profile: pin them to one xdist
+# worker (in file order) via --dist loadgroup; everything else is free.
+_CHAINED = {"SET6", "SET7", "SET8"}
+
+
+@pytest.mark.parametrize(
+    "case",
+    [pytest.param(c, marks=pytest.mark.xdist_group("settings-profile"))
+     if c.id in _CHAINED else c for c in CASES],
+    ids=[c.id for c in CASES])
 def test_ui_case(case, ui_env):
     from seatunnel_agent.ui_testing.runner import _skip_reason, run_case
 
