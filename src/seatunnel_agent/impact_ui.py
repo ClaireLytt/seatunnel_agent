@@ -13,13 +13,10 @@ import gradio as gr
 
 from .data_lineage.sqlglot_lineage import SQL_DIALECTS
 
-# Tab headers stay bilingual and static: gradio tab labels are not reliably
-# updatable at runtime, and the UI-test cases click them by visible text.
-_TAB_DIRS = "目录模式 Directories"
-_TAB_PASTE = "粘贴 SQL Paste SQL"
-
 _I18N = {
     "en": {
+        "tab_dirs": "Directories",
+        "tab_paste": "Paste SQL",
         "title": "## 💥 Change Impact Analysis\n"
                  "SQL diff × lineage: compare two SQL trees — or just paste "
                  "the before/after SQL — and report the release blast "
@@ -47,6 +44,8 @@ _I18N = {
         "fail": "❌ **Analysis failed**: {exc}",
     },
     "zh": {
+        "tab_dirs": "目录模式",
+        "tab_paste": "粘贴 SQL",
         "title": "## 💥 变更影响分析\n"
                  "SQL 变更 × 血缘：对比两份 SQL 目录，或直接粘贴改动前后的"
                  "两段 SQL，输出上线影响面——变更了哪些表、下游波及多深、"
@@ -98,14 +97,14 @@ def render_impact_page(app: gr.Blocks) -> None:
         with gr.Row():
             with gr.Column(scale=2, elem_classes=["st-imp-side"]):
                 with gr.Tabs():
-                    with gr.Tab(_TAB_DIRS):
+                    with gr.Tab(t("tab_dirs"), id="dirs") as tab_dirs:
                         old_box = gr.Textbox(
                             label=t("old_label"), placeholder=t("old_ph"))
                         new_box = gr.Textbox(
                             label=t("new_label"), placeholder=t("new_ph"))
                         analyze_btn = gr.Button(
                             t("analyze_btn"), variant="primary")
-                    with gr.Tab(_TAB_PASTE):
+                    with gr.Tab(t("tab_paste"), id="paste") as tab_paste:
                         old_sql_box = gr.Textbox(
                             label=t("old_sql_label"),
                             placeholder=t("old_sql_ph"), lines=8)
@@ -195,6 +194,8 @@ def render_impact_page(app: gr.Blocks) -> None:
         return (
             lang,
             gr.update(value=_t(lang, "title")),
+            gr.update(label=_t(lang, "tab_dirs")),
+            gr.update(label=_t(lang, "tab_paste")),
             gr.update(label=_t(lang, "old_label"),
                       placeholder=_t(lang, "old_ph")),
             gr.update(label=_t(lang, "new_label"),
@@ -225,7 +226,7 @@ def render_impact_page(app: gr.Blocks) -> None:
     lang_dd.change(
         switch_lang,
         inputs=[lang_dd],
-        outputs=[lang_state, title_md, old_box, new_box, old_sql_box,
-                 new_sql_box, ctx_box, dialect_dd, depth_sl, analyze_btn,
-                 analyze_sql_btn],
+        outputs=[lang_state, title_md, tab_dirs, tab_paste, old_box,
+                 new_box, old_sql_box, new_sql_box, ctx_box, dialect_dd,
+                 depth_sl, analyze_btn, analyze_sql_btn],
     )

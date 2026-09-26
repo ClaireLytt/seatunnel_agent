@@ -90,8 +90,8 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                 # hand the current SQL to the dialect-translation page via
                 # localStorage (survives the new tab; query params would hit
                 # the server header-size cap on long scripts)
-                transpile_btn = gr.Button("→ 方言翻译 Transpile", size="sm",
-                                          scale=0, min_width=150)
+                transpile_btn = gr.Button(t0("sr_transpile_btn"), size="sm",
+                                          scale=0, min_width=120)
                 transpile_btn.click(fn=None, js="""
                     () => {
                         const t = document.querySelector('#sr-sql-box textarea');
@@ -341,6 +341,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             gr.update(value=t("sr_review_btn")),                    # review_btn
             gr.update(value=t("sr_fix_btn")),                       # fix_btn
             gr.update(value=t("sr_clear_btn")),                     # clear_btn
+            gr.update(value=t("sr_transpile_btn")),                 # transpile_btn
             _placeholder_update(report_cur, "sr_report_placeholder", lg),  # report_md
             gr.update(label=t("sr_download_report")),               # download_btn
             gr.update(label=t("sr_fixed_sql")),                     # fixed_sql_box
@@ -365,6 +366,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             review_btn,
             fix_btn,
             clear_btn,
+            transpile_btn,
             report_md,
             download_btn,
             fixed_sql_box,

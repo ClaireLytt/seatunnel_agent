@@ -47,7 +47,7 @@
   tags: [smoke, sqlite]
   page: /impact
   steps:
-    - click: 粘贴 SQL Paste SQL
+    - click: 粘贴 SQL
     - fill: {旧 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
     - fill: {新 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount - refund_amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
     - click: 分析粘贴的 SQL
@@ -62,7 +62,7 @@
   tags: [full, sqlite]
   page: /impact
   steps:
-    - click: 粘贴 SQL Paste SQL
+    - click: 粘贴 SQL
     - fill: {旧 SQL: "SELECT 1"}
     - click: 分析粘贴的 SQL
     - wait_result: {}
@@ -75,7 +75,7 @@
   tags: [full, sqlite]
   page: /impact
   steps:
-    - click: 粘贴 SQL Paste SQL
+    - click: 粘贴 SQL
     - fill: {旧 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
     - fill: {新 SQL: "INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount - refund_amount) AS gmv FROM dwd.orders_di GROUP BY dt;"}
     - fill: {上下文 SQL 目录（可选）: examples/impact_demo/old}
