@@ -61,6 +61,7 @@ _I18N = {
         "prof_deleted": "✅ Profile deleted",
         "prof_name_req": "❌ Profile name is required",
         "prof_pick_req": "❌ Pick a profile first",
+        "usage": "LLM Usage (30 days)",
     },
     "zh": {
         "title": "## ⚙️ 设置",
@@ -112,6 +113,7 @@ _I18N = {
         "prof_deleted": "✅ 已删除档案",
         "prof_name_req": "❌ 请填写档案名",
         "prof_pick_req": "❌ 请先选择档案",
+        "usage": "LLM 用量(近 30 天)",
     },
 }
 
@@ -122,6 +124,14 @@ def _t(lang: str, key: str) -> str:
 
 def _effective_key() -> str:
     return os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+
+
+def _usage_markdown(lang: str) -> str:
+    from .llm_usage import format_markdown
+    try:
+        return format_markdown(lang)
+    except Exception:  # noqa: BLE001 — stats must never break the page
+        return ""
 
 
 def _current_summary(lang: str) -> str:
@@ -237,6 +247,8 @@ def render_settings_page(app: gr.Blocks) -> None:
                     use_prof_btn = gr.Button(t("prof_use"), size="sm",
                                              variant="primary")
                     del_prof_btn = gr.Button(t("prof_del"), size="sm")
+            with gr.Accordion(t("usage"), open=False) as usage_acc:
+                usage_md = gr.Markdown("")
             status_md = gr.Markdown("")
 
     # ── Callbacks ──
@@ -380,6 +392,8 @@ def render_settings_page(app: gr.Blocks) -> None:
             gr.update(value=t("prof_save")),
             gr.update(value=t("prof_use")),
             gr.update(value=t("prof_del")),
+            gr.update(label=t("usage")),
+            gr.update(value=_usage_markdown(lang)),
         )
 
     form_inputs = [provider_dd, api_key_tb, model_tb, base_url_tb,
@@ -410,5 +424,5 @@ def render_settings_page(app: gr.Blocks) -> None:
                  api_key_tb, model_tb, base_url_tb, adv_acc, temp_tb,
                  max_tokens_tb, timeout_tb, save_btn, test_btn, reset_btn,
                  prof_acc, prof_name_tb, prof_dd, save_prof_btn,
-                 use_prof_btn, del_prof_btn],
+                 use_prof_btn, del_prof_btn, usage_acc, usage_md],
     )

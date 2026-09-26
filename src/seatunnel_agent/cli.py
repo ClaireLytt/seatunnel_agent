@@ -1493,7 +1493,9 @@ def uitest(args: tuple[str, ...]) -> None:
 @cli.command()
 @click.option("--clear", "clear_", is_flag=True,
               help="清除界面保存的 LLM 配置覆盖（恢复 .env）")
-def settings(clear_: bool) -> None:
+@click.option("--usage", "usage_", is_flag=True,
+              help="显示近 30 天 LLM token 用量（按模型汇总）")
+def settings(clear_: bool, usage_: bool) -> None:
     """查看当前生效的 LLM 配置（界面覆盖 or .env），或清除界面覆盖。"""
     from dotenv import load_dotenv
 
@@ -1504,6 +1506,10 @@ def settings(clear_: bool) -> None:
     if clear_:
         settings_store.clear()
         console.print("[green]OK[/green] 已清除界面覆盖，恢复 .env 配置")
+        return
+    if usage_:
+        from .llm_usage import format_markdown
+        console.print(format_markdown("zh"))
         return
     src = ("界面设置（覆盖 .env） — " + str(settings_store.store_path())
            if settings_store.has_saved() else ".env / 环境变量")
