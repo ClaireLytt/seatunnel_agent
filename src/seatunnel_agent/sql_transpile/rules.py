@@ -17,8 +17,9 @@ if TYPE_CHECKING:  # pragma: no cover — import cycle guard
     from .transpiler import Issue
 
 # Targets whose table/storage DDL differs enough from Hive/Spark that the
-# storage & distribution clauses always need a human pass.
-_MPP_TARGETS = {"doris", "starrocks"}
+# storage & distribution clauses always need a human pass (clickhouse's
+# ENGINE/ORDER BY model included).
+_MPP_TARGETS = {"doris", "starrocks", "clickhouse"}
 
 
 def _snippet(node: exp.Expression, max_len: int = 60) -> str:

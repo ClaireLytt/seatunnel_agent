@@ -23,8 +23,13 @@ from sqlglot.errors import ErrorLevel, ParseError
 from ..sql_review.linter import split_statements
 from .rules import manual_checks
 
-# First-phase dialect matrix: sources == targets.
-DIALECTS: tuple[str, ...] = ("hive", "spark", "doris", "starrocks")
+# Dialect matrix: sources == targets. v1 shipped the first four; the
+# second row came later per the PRD's expansion clause (golden cases per
+# new pair, no architecture change).
+DIALECTS: tuple[str, ...] = (
+    "hive", "spark", "doris", "starrocks",
+    "mysql", "presto", "clickhouse",
+)
 
 _ALIASES = {
     "hiveql": "hive",
@@ -32,6 +37,8 @@ _ALIASES = {
     "spark2": "spark",
     "spark3": "spark",
     "sr": "starrocks",
+    "trino": "presto",
+    "ck": "clickhouse",
 }
 
 # Issue levels, most severe first (used for sorting and --fail-on).

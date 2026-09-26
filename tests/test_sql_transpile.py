@@ -32,12 +32,14 @@ DEMO_DIR = Path(__file__).resolve().parents[1] / "examples" / "transpile_demo"
 # ─────────────────────────── dialect handling ───────────────────────────
 
 def test_dialect_matrix():
-    assert DIALECTS == ("hive", "spark", "doris", "starrocks")
+    assert DIALECTS == ("hive", "spark", "doris", "starrocks",
+                        "mysql", "presto", "clickhouse")
 
 
 @pytest.mark.parametrize("alias,canon", [
     ("hive", "hive"), ("HiveQL", "hive"), ("sparksql", "spark"),
     ("Spark", "spark"), ("sr", "starrocks"), ("DORIS", "doris"),
+    ("trino", "presto"), ("ck", "clickhouse"), ("MySQL", "mysql"),
 ])
 def test_normalize_dialect_aliases(alias, canon):
     assert normalize_dialect(alias) == canon
@@ -77,6 +79,16 @@ GOLDEN = [
     ("hive", "starrocks", "SELECT collect_list(a) FROM t GROUP BY b",
      "ARRAY_AGG("),
     ("hive", "starrocks", "SELECT a FROM t LIMIT 10", "LIMIT 10"),
+    # second-wave dialects (mysql / presto / clickhouse)
+    ("presto", "hive", "SELECT approx_distinct(a) FROM t",
+     "APPROX_COUNT_DISTINCT("),
+    ("hive", "clickhouse", "SELECT get_json_object(p, '$.a') FROM t",
+     "JSONExtractString("),
+    ("mysql", "hive", "SELECT IFNULL(a, 0) FROM t", "COALESCE"),
+    ("hive", "mysql", "SELECT a FROM t LIMIT 5", "LIMIT 5"),
+    ("clickhouse", "presto", "SELECT a FROM t", "SELECT"),
+    ("hive", "presto", "SELECT collect_list(a) FROM t GROUP BY b",
+     "ARRAY_AGG("),
     # spark → hive / doris
     ("spark", "hive", "SELECT a FROM t WHERE b ILIKE '%x%'", "LOWER(b) LIKE"),
     ("spark", "doris", "SELECT try_cast(a AS INT) FROM t", "CAST("),
@@ -399,4 +411,5 @@ def test_api_batch_never_writes(api_client, monkeypatch):
 def test_api_dialects_and_health(api_client):
     assert api_client.get("/api/transpile/health").json() == {"status": "ok"}
     d = api_client.get("/api/transpile/dialects").json()
-    assert d["dialects"] == ["hive", "spark", "doris", "starrocks"]
+    assert d["dialects"] == ["hive", "spark", "doris", "starrocks",
+                             "mysql", "presto", "clickhouse"]

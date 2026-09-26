@@ -37,8 +37,8 @@ sqlglot 不支持的语法)和差异解释。
 | 源 | ✅ | ✅ | ✅ | ✅ |
 | 目标 | ✅ | ✅ | ✅ | ✅ |
 
-mysql / postgres / presto / clickhouse 等 sqlglot 已支持的方言留待后续按需开放
-(只需扩充 `DIALECTS` 常量与 golden 用例)。
+第二批已开放:mysql / presto(trino) / clickhouse(v1.1,按本条款扩充);
+postgres 等其余方言继续按需开放。
 
 - `--from` 可省略:sqlglot 先按 `--to` 以外的常见方言尝试解析,失败再报错
   (报告里注明"源方言为推断值")

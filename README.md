@@ -572,7 +572,7 @@ seatunnel-agent impact --base origin/main --sql-dir sql/ -F md-comment          
 
 ### SQL Dialect Translation Agent
 
-Deterministic SQL translation between hive / spark / doris / starrocks
+Deterministic SQL translation between hive / spark / doris / starrocks / mysql / presto(trino) / clickhouse
 (sqlglot-based — same output for the same input, works with `--no-llm` and
 no API key), plus a structured incompatibility report: parse errors,
 target-dialect unsupported syntax, unknown UDFs, storage clauses
@@ -1180,7 +1180,7 @@ seatunnel-agent impact --base origin/main --sql-dir sql/ -F md-comment          
 
 ### SQL 方言翻译 Agent
 
-hive / spark / doris / starrocks 四方言互转——基于 sqlglot 的确定性翻译
+hive / spark / doris / starrocks / mysql / presto(trino) / clickhouse 七方言互转——基于 sqlglot 的确定性翻译
 （同一输入产出恒定，`--no-llm`、无 API key 均可用），并输出结构化不兼容点
 清单：解析失败、目标方言不支持语法、未知 UDF、存储子句（`STORED AS` /
 `TBLPROPERTIES`）、写侧提示（`DISTRIBUTE BY`）与 `INSERT ... PARTITION`
