@@ -99,7 +99,9 @@ download_ok(扩展名/大小/魔数/内容)/ popup_contains / sidebar_width /
 ai_judge`。`in:` 可取 `状态` / `结果区` / `页面` / 任意输入框标签。
 
 标签:`smoke`(冒烟)、`full`(全量)、`hive`(需真实 Hive,连不上整组 SKIP)、
-`sqlite`(内置演示库)、`slow`(>1min,默认不进 smoke/full)、`manual`(不自动化)。
+`sqlite`(内置演示库)、`slow`(>1min,默认不进 smoke/full)、`manual`(不自动化)、
+`isolated`(会改写设置/连接存储,仅在 Runner 自启的隔离应用里跑;
+`--base-url` 外接应用时自动 SKIP,防止清掉开发者的真实配置)。
 
 ## LLM 用量与安全
 

@@ -40,7 +40,8 @@ KNOWN_ASSERTS = frozenset({
     "download_ok", "popup_contains", "sidebar_width",
 })
 
-KNOWN_TAGS = frozenset({"smoke", "full", "hive", "sqlite", "slow", "manual"})
+KNOWN_TAGS = frozenset({"smoke", "full", "hive", "sqlite", "slow", "manual",
+                        "isolated"})
 
 # fill targets whose values must never be inlined in YAML
 _FORBIDDEN_FILL_TARGETS = frozenset({"密码", "password", "Password"})

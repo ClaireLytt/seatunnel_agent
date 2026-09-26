@@ -33,12 +33,16 @@ def record(provider: str, model: str, usage: dict[str, Any] | None) -> None:
         return
     try:
         usage = usage or {}
+        # LLMClient populates input_tokens/output_tokens; accept the short
+        # forms too (this mismatch once logged every real call as 0 tokens)
+        inp = usage.get("input_tokens", usage.get("input", 0)) or 0
+        out = usage.get("output_tokens", usage.get("output", 0)) or 0
         line = json.dumps({
             "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "provider": provider,
             "model": model,
-            "input": int(usage.get("input", 0) or 0),
-            "output": int(usage.get("output", 0) or 0),
+            "input": int(inp),
+            "output": int(out),
         }, ensure_ascii=False)
         path = usage_path()
         with _lock:

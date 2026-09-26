@@ -60,8 +60,15 @@ _heal_failed: set[str] = set()
 
 
 def _parse_missing(detail: str) -> str:
-    """Extract the element name from a '... not found: X (side=..)' detail."""
-    return detail.split("not found:")[-1].split("(side")[0].strip()[:60]
+    """Extract the element name from a '... not found: X (side=..)' detail.
+
+    Returns "" for CSS-selector style names (e.g. drag_sidebar's
+    '.st-dc-sidebar'): those are layout lookups, not LABELS entries — an
+    alias could never fix them, so healing would just waste an LLM call."""
+    name = detail.split("not found:")[-1].split("(side")[0].strip()[:60]
+    if name.startswith((".", "#")):
+        return ""
+    return name
 
 
 def _safe_digest(dc: DCPage) -> str:
@@ -104,6 +111,11 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
     res = CaseResult(case.id, case.title, "PASS")
     t0 = time.time()
     tokens_before = llm.tokens_used if llm else 0
+    # captures are per-case: a download_ok/popup_contains assert without its
+    # own download/popup_click step must fail, not validate the previous
+    # case's stale capture
+    dc.last_download = None
+    dc.last_popup_text = None
     try:
         dc.goto(case.page)
         # Enforce the case's language every time: the preference lives in
@@ -231,10 +243,14 @@ def run_suite(
     cases = filter_cases(all_cases, suite, case_ids)
     manual = [c for c in all_cases if "manual" in c.tags] if not case_ids else []
 
-    # fresh healing state per run
+    # fresh healing + judge state per run: the /uitest page runs suites in
+    # one long-lived process, so a stale judge verdict from a previous run
+    # (keyed on the TEXT digest only) could hide a visual regression
+    from .judge import _judge_cache
     from .page import reset_aliases
     reset_aliases()
     _heal_failed.clear()
+    _judge_cache.clear()
 
     _prune_runs()
     ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -275,9 +291,11 @@ def run_suite(
             dc = DCPage(page, app.base_url)
 
             for i, case in enumerate(cases, 1):
-                if _skip_reason(case, no_llm):
-                    cr = CaseResult(case.id, case.title, "SKIP",
-                                    reason=_skip_reason(case, no_llm))
+                if _skip_reason(case, no_llm, external=bool(base_url)):
+                    cr = CaseResult(
+                        case.id, case.title, "SKIP",
+                        reason=_skip_reason(case, no_llm,
+                                            external=bool(base_url)))
                 else:
                     cr = run_case(case, dc, llm, shots_dir,
                                   app_log_tail_fn=app.log_tail,
@@ -308,7 +326,12 @@ def _needs_llm(cases: list[TestCase]) -> bool:
     return False
 
 
-def _skip_reason(case: TestCase, no_llm: bool) -> str:
+def _skip_reason(case: TestCase, no_llm: bool, external: bool = False) -> str:
+    if external and "isolated" in case.tags:
+        # --base-url reuses an app WITHOUT the SEATUNNEL_*_PATH isolation:
+        # these cases mutate the settings/preset stores and would wipe the
+        # developer's real ~/.seatunnel-agent files
+        return "外接应用 (--base-url) 无配置隔离,跳过会改写真实配置的用例"
     if "hive" in case.tags:
         import os
         if not os.getenv("HIVE_HOST"):
