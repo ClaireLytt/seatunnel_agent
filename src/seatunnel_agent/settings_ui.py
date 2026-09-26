@@ -62,6 +62,26 @@ _I18N = {
         "prof_name_req": "❌ Profile name is required",
         "prof_pick_req": "❌ Pick a profile first",
         "usage": "LLM Usage (30 days)",
+        "conns": "Database Connections",
+        "conns_hint": "Shared with the Data Comparison page's connection "
+                      "presets (passwords encrypted at rest under "
+                      "`~/.seatunnel-agent/`).",
+        "conn_name": "Name",
+        "conn_type": "Type",
+        "conn_env": "Environment",
+        "conn_host": "Host",
+        "conn_port": "Port",
+        "conn_db": "Database",
+        "conn_user": "Username",
+        "conn_pwd": "Password",
+        "conn_save": "Save Connection",
+        "conn_del_pick": "Connection",
+        "conn_del": "Delete Connection",
+        "conn_saved": "✅ Connection saved",
+        "conn_deleted": "✅ Connection deleted",
+        "conn_name_req": "❌ Connection name is required",
+        "conn_port_bad": "❌ Port must be an integer",
+        "conn_pick_req": "❌ Pick a connection first",
     },
     "zh": {
         "title": "## ⚙️ 设置",
@@ -114,6 +134,25 @@ _I18N = {
         "prof_name_req": "❌ 请填写档案名",
         "prof_pick_req": "❌ 请先选择档案",
         "usage": "LLM 用量(近 30 天)",
+        "conns": "数据库连接",
+        "conns_hint": "与数据对比页的连接预设共用一份存储(密码加密保存在 "
+                      "`~/.seatunnel-agent/` 下)。",
+        "conn_name": "名称",
+        "conn_type": "类型",
+        "conn_env": "环境",
+        "conn_host": "主机",
+        "conn_port": "端口",
+        "conn_db": "数据库",
+        "conn_user": "用户名",
+        "conn_pwd": "密码",
+        "conn_save": "保存连接",
+        "conn_del_pick": "选择连接",
+        "conn_del": "删除连接",
+        "conn_saved": "✅ 已保存连接",
+        "conn_deleted": "✅ 已删除连接",
+        "conn_name_req": "❌ 请填写连接名称",
+        "conn_port_bad": "❌ 端口必须是整数",
+        "conn_pick_req": "❌ 请先选择连接",
     },
 }
 
@@ -124,6 +163,43 @@ def _t(lang: str, key: str) -> str:
 
 def _effective_key() -> str:
     return os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+
+
+def _ds_choices() -> list[str]:
+    from .text2sql.executor import DIALECT_NAMES, DS_TYPES
+    return [DIALECT_NAMES[d] for d in DS_TYPES]
+
+
+def _presets_store():
+    from .data_comparison.presets import ConnectionPresetsStore
+    return ConnectionPresetsStore()
+
+
+def _conn_names() -> list[str]:
+    try:
+        return [p.get("name", "") for p in _presets_store().list()]
+    except Exception:  # noqa: BLE001 — never break the page over the store
+        return []
+
+
+def _conn_summary(lang: str) -> str:
+    """Markdown table of saved connections; passwords never shown."""
+    zh = lang == "zh"
+    try:
+        presets = _presets_store().list()
+    except Exception:  # noqa: BLE001
+        presets = []
+    if not presets:
+        return "暂无已保存的连接" if zh else "No saved connections"
+    rows = ["| " + ("名称 | 类型 | 地址 | 数据库 | 用户" if zh
+                    else "Name | Type | Address | Database | User") + " |",
+            "|---|---|---|---|---|"]
+    for p in presets:
+        rows.append(
+            f"| **{p.get('name', '')}** | {p.get('ds_type', '')} "
+            f"| `{p.get('host', '')}:{p.get('port', '')}` "
+            f"| {p.get('database', '')} | {p.get('username', '') or '—'} |")
+    return "\n".join(rows)
 
 
 def _usage_markdown(lang: str) -> str:
@@ -247,6 +323,28 @@ def render_settings_page(app: gr.Blocks) -> None:
                     use_prof_btn = gr.Button(t("prof_use"), size="sm",
                                              variant="primary")
                     del_prof_btn = gr.Button(t("prof_del"), size="sm")
+            with gr.Accordion(t("conns"), open=False) as conn_acc:
+                gr.Markdown(t("conns_hint"))
+                conn_list_md = gr.Markdown(_conn_summary("en"))
+                with gr.Row():
+                    conn_name_tb = gr.Textbox(label=t("conn_name"), scale=2)
+                    conn_type_dd = gr.Dropdown(
+                        label=t("conn_type"), choices=_ds_choices(), scale=2)
+                    conn_env_tb = gr.Textbox(label=t("conn_env"), scale=1)
+                with gr.Row():
+                    conn_host_tb = gr.Textbox(label=t("conn_host"), scale=2)
+                    conn_port_tb = gr.Textbox(label=t("conn_port"), scale=1)
+                    conn_db_tb = gr.Textbox(label=t("conn_db"), scale=2)
+                with gr.Row():
+                    conn_user_tb = gr.Textbox(label=t("conn_user"))
+                    conn_pwd_tb = gr.Textbox(label=t("conn_pwd"),
+                                             type="password")
+                with gr.Row():
+                    conn_save_btn = gr.Button(t("conn_save"), size="sm",
+                                              variant="primary")
+                    conn_del_dd = gr.Dropdown(label=t("conn_del_pick"),
+                                              choices=_conn_names(), scale=2)
+                    conn_del_btn = gr.Button(t("conn_del"), size="sm")
             with gr.Accordion(t("usage"), open=False) as usage_acc:
                 usage_md = gr.Markdown("")
             status_md = gr.Markdown("")
@@ -364,6 +462,33 @@ def render_settings_page(app: gr.Blocks) -> None:
         return (f"{_t(lang, 'prof_deleted')}: {name}",
                 gr.update(choices=settings_store.list_profiles(), value=None))
 
+    def _save_conn(name, ds_type, env, host, port, db, user, pwd, lang):
+        if not (name or "").strip():
+            return _t(lang, "conn_name_req"), gr.update(), gr.update()
+        port_s = (port or "").strip()
+        try:
+            port_i = int(port_s) if port_s else 0
+        except ValueError:
+            return _t(lang, "conn_port_bad"), gr.update(), gr.update()
+        _presets_store().save(
+            name=name, ds_type=ds_type or "", host=(host or "").strip(),
+            port=port_i, database=(db or "").strip(),
+            username=(user or "").strip(), password=pwd or "",
+            environment=(env or "").strip())
+        return (f"{_t(lang, 'conn_saved')}: {name.strip()}",
+                _conn_summary(lang),
+                gr.update(choices=_conn_names(), value=name.strip()))
+
+    def _del_conn(name, lang):
+        if not name:
+            return _t(lang, "conn_pick_req"), gr.update(), gr.update()
+        store = _presets_store()
+        preset = store.get_by_name(name)
+        if preset:
+            store.delete(preset["id"])
+        return (f"{_t(lang, 'conn_deleted')}: {name}", _conn_summary(lang),
+                gr.update(choices=_conn_names(), value=None))
+
     def _switch_lang(sel):
         lang = "zh" if sel == "中文" else "en"
         t = lambda k: _t(lang, k)
@@ -394,6 +519,19 @@ def render_settings_page(app: gr.Blocks) -> None:
             gr.update(value=t("prof_del")),
             gr.update(label=t("usage")),
             gr.update(value=_usage_markdown(lang)),
+            gr.update(label=t("conns")),
+            gr.update(value=_conn_summary(lang)),
+            gr.update(label=t("conn_name")),
+            gr.update(label=t("conn_type")),
+            gr.update(label=t("conn_env")),
+            gr.update(label=t("conn_host")),
+            gr.update(label=t("conn_port")),
+            gr.update(label=t("conn_db")),
+            gr.update(label=t("conn_user")),
+            gr.update(label=t("conn_pwd")),
+            gr.update(value=t("conn_save")),
+            gr.update(label=t("conn_del_pick"), choices=_conn_names()),
+            gr.update(value=t("conn_del")),
         )
 
     form_inputs = [provider_dd, api_key_tb, model_tb, base_url_tb,
@@ -410,6 +548,14 @@ def render_settings_page(app: gr.Blocks) -> None:
                        outputs=[status_md, current_md])
     del_prof_btn.click(_del_profile, inputs=[prof_dd, lang_state],
                        outputs=[status_md, prof_dd])
+    conn_save_btn.click(
+        _save_conn,
+        inputs=[conn_name_tb, conn_type_dd, conn_env_tb, conn_host_tb,
+                conn_port_tb, conn_db_tb, conn_user_tb, conn_pwd_tb,
+                lang_state],
+        outputs=[status_md, conn_list_md, conn_del_dd])
+    conn_del_btn.click(_del_conn, inputs=[conn_del_dd, lang_state],
+                       outputs=[status_md, conn_list_md, conn_del_dd])
     from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     # Language follows the hub's choice (st-lang cookie), applied on load.
@@ -424,5 +570,9 @@ def render_settings_page(app: gr.Blocks) -> None:
                  api_key_tb, model_tb, base_url_tb, adv_acc, temp_tb,
                  max_tokens_tb, timeout_tb, save_btn, test_btn, reset_btn,
                  prof_acc, prof_name_tb, prof_dd, save_prof_btn,
-                 use_prof_btn, del_prof_btn, usage_acc, usage_md],
+                 use_prof_btn, del_prof_btn, usage_acc, usage_md,
+                 conn_acc, conn_list_md, conn_name_tb, conn_type_dd,
+                 conn_env_tb, conn_host_tb, conn_port_tb, conn_db_tb,
+                 conn_user_tb, conn_pwd_tb, conn_save_btn, conn_del_dd,
+                 conn_del_btn],
     )

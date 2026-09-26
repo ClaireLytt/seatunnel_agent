@@ -92,7 +92,10 @@ pip install -e ".[dev]"
 > 💡 **No-file alternative:** launch the web UI and open the **Settings** page (`/settings`) —
 > provider, API key, model and base URL can all be entered in the browser (key encrypted at
 > rest under `~/.seatunnel-agent/`), take effect immediately, and override `.env` for the
-> web UI until you click *Restore .env*. The `.env` file is still required for CLI runs.
+> web UI until you click *Restore .env*. The page also offers named **profiles** (one per
+> provider, one-click switch), **database connection** management (shared with the Data
+> Comparison presets), a real **connection test**, and a 30-day **LLM token usage** summary
+> (also via `seatunnel-agent settings --usage`). The `.env` file is still required for CLI runs.
 
 ```bash
 cp .env.example .env
@@ -736,7 +739,10 @@ pip install -e ".[dev]"
 
 > 💡 **免改文件的方式：** 启动 Web 界面后打开「设置」页（`/settings`），提供商、API Key、
 > 模型、Base URL 都可以直接在浏览器里填写（Key 加密保存在 `~/.seatunnel-agent/` 下），
-> 保存即生效，并覆盖 `.env` 中的同名配置，点「恢复 .env」即可还原。CLI 运行仍读取 `.env`。
+> 保存即生效，并覆盖 `.env` 中的同名配置，点「恢复 .env」即可还原。页面还提供命名
+> **配置档案**（每个提供商一套，一键切换）、**数据库连接**管理（与数据对比页预设共用）、
+> 真实**连接测试**，以及近 30 天 **LLM token 用量**汇总（CLI：`seatunnel-agent settings --usage`）。
+> CLI 运行仍读取 `.env`。
 
 ```bash
 cp .env.example .env

@@ -163,6 +163,13 @@ LABELS: dict[str, tuple[str, ...]] = {
     "存为档案":   ("存为档案", "Save as Profile"),
     "启用档案":   ("启用档案", "Activate Profile"),
     "删除档案":   ("删除档案", "Delete Profile"),
+    "数据库连接": ("数据库连接", "Database Connections"),
+    "连接名称":   ("名称", "Name"),
+    "连接类型":   ("类型", "Type"),
+    "连接主机":   ("主机", "Host"),
+    "保存连接":   ("保存连接", "Save Connection"),
+    "选择连接":   ("选择连接", "Connection"),
+    "删除连接":   ("删除连接", "Delete Connection"),
 }
 
 

@@ -99,6 +99,36 @@
     - text_contains: {in: 页面, text: 已恢复}
     - text_not_contains: {in: 页面, text: uitest-prof-x}
 
+- id: SET9
+  title: 设置页保存数据库连接(与数据对比页共用预设)
+  tags: [smoke, sqlite]
+  page: /settings
+  steps:
+    - open_accordion: {target: 数据库连接}
+    - fill: {连接名称: t-conn, 连接主机: 127.0.0.1, 端口: "3306", 数据库: demo}
+    - select: {of: 连接类型, value: MySQL}
+    - click: 保存连接
+    - wait: 400
+      note: 本地文件写入,短等待即可
+  expect:
+    - text_contains: {in: 页面, text: 已保存连接}
+    - text_contains: {in: 页面, text: t-conn}
+    - text_contains: {in: 页面, text: "127.0.0.1:3306"}
+
+- id: SET10
+  title: 删除数据库连接(SET9 清理)
+  tags: [smoke, sqlite]
+  page: /settings
+  steps:
+    - open_accordion: {target: 数据库连接}
+    - select: {of: 选择连接, value: t-conn}
+    - click: 删除连接
+    - wait: 400
+      note: 本地文件写入,短等待即可
+  expect:
+    - text_contains: {in: 页面, text: 已删除连接}
+    - text_contains: {in: 页面, text: 暂无已保存的连接}
+
 - id: SET5
   title: 设置页有滚动条
   tags: [smoke, sqlite]

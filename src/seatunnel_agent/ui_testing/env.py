@@ -99,6 +99,8 @@ class AppUnderTest:
         child_env = os.environ.copy()
         child_env["SEATUNNEL_LLM_SETTINGS_PATH"] = str(
             self.log_path.parent / "llm_settings.json")
+        child_env["SEATUNNEL_DC_PRESETS_PATH"] = str(
+            self.log_path.parent / "dc_connections.json")
         self.proc = subprocess.Popen(
             [sys.executable, "-c", _LAUNCH_SNIPPET % self.port],
             stdout=self._log_file, stderr=subprocess.STDOUT,

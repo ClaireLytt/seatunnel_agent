@@ -67,15 +67,19 @@ def ui_env(tmp_path_factory):
             browser.close()
 
 
-# SET6→SET7→SET8 mutate/clean one shared profile: pin them to one xdist
+# Case chains that mutate/clean shared state: pin each chain to one xdist
 # worker (in file order) via --dist loadgroup; everything else is free.
-_CHAINED = {"SET6", "SET7", "SET8"}
+_CHAIN_GROUPS = {
+    "SET6": "settings-profile", "SET7": "settings-profile",
+    "SET8": "settings-profile",
+    "SET9": "settings-conns", "SET10": "settings-conns",
+}
 
 
 @pytest.mark.parametrize(
     "case",
-    [pytest.param(c, marks=pytest.mark.xdist_group("settings-profile"))
-     if c.id in _CHAINED else c for c in CASES],
+    [pytest.param(c, marks=pytest.mark.xdist_group(_CHAIN_GROUPS[c.id]))
+     if c.id in _CHAIN_GROUPS else c for c in CASES],
     ids=[c.id for c in CASES])
 def test_ui_case(case, ui_env):
     from seatunnel_agent.ui_testing.runner import _skip_reason, run_case
