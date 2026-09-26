@@ -568,6 +568,7 @@ seatunnel-agent impact --old-dir examples/impact_demo/old --sql-dir examples/imp
 seatunnel-agent impact --base origin/main --sql-dir sql/                # git baseline mode
 seatunnel-agent impact --old-dir old/ --sql-dir new/ -F json --fail-on error   # CI gate
 seatunnel-agent impact --base origin/main --sql-dir sql/ -F md-comment          # compact PR-comment markdown
+seatunnel-agent impact-stats                                                    # analysis history & hot tables
 ```
 
 ### SQL Dialect Translation Agent
@@ -1176,6 +1177,7 @@ seatunnel-agent impact --old-dir examples/impact_demo/old --sql-dir examples/imp
 seatunnel-agent impact --base origin/main --sql-dir sql/                # git 基线模式
 seatunnel-agent impact --old-dir old/ --sql-dir new/ -F json --fail-on error   # CI 门禁
 seatunnel-agent impact --base origin/main --sql-dir sql/ -F md-comment          # PR 评论用精简 markdown
+seatunnel-agent impact-stats                                                    # 分析历史与高频变更表
 ```
 
 ### SQL 方言翻译 Agent

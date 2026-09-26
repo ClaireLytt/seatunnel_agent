@@ -631,3 +631,62 @@ def test_mermaid_draws_only_real_edges():
     gmv = next(c for c in _demo_result().changed
                if c.table == "dws.gmv_daily")
     assert ("ads.gmv_report", "rpt.gmv_dashboard") in gmv.downstream_edges
+
+
+# ─────────────────────────── analysis history (impact-stats) ───────────────────────────
+
+def test_impact_logger_roundtrip(tmp_path):
+    from seatunnel_agent.data_lineage.impact import ImpactLogger
+    lg = ImpactLogger(tmp_path)
+    r = _demo_result()
+    lg.log_impact(r, mode="dirs", source="cli", baseline=str(OLD))
+    lg.log_impact(r, mode="text", source="ui", baseline="<pasted>")
+    recs = lg.recent(10)
+    assert len(recs) == 2
+    assert recs[0]["worst"] == "error"
+    assert recs[0]["stats"]["changed"] == 3
+    assert "dws.gmv_daily" in recs[0]["tables"]
+    assert recs[1]["mode"] == "text"
+
+
+def test_cli_impact_writes_history(tmp_path, monkeypatch):
+    import seatunnel_agent.data_lineage.impact as impact_mod
+    made = []
+    orig = impact_mod.ImpactLogger
+
+    class Spy(orig):
+        def __init__(self, log_dir="logs"):
+            super().__init__(tmp_path)
+        def log_impact(self, *a, **kw):
+            made.append(kw.get("mode") or a[1])
+            super().log_impact(*a, **kw)
+
+    monkeypatch.setattr(impact_mod, "ImpactLogger", Spy)
+    res = runner.invoke(cli, [
+        "impact", "--old-dir", str(OLD), "--sql-dir", str(NEW),
+    ])
+    assert res.exit_code == 0, res.output
+    assert made == ["dirs"]
+    assert (tmp_path / "impact.jsonl").is_file()
+
+
+def test_cli_impact_stats_summary(tmp_path, monkeypatch):
+    import threading
+
+    import seatunnel_agent.data_lineage.impact as impact_mod
+
+    lg = impact_mod.ImpactLogger(tmp_path)
+    lg.log_impact(_demo_result(), mode="git", source="cli", baseline="HEAD~1")
+
+    # point the default logger at tmp_path
+    def fake_init(self, log_dir="logs"):
+        self.log_dir = Path(tmp_path)
+        self.log_file = self.log_dir / "impact.jsonl"
+        self._lock = threading.Lock()
+
+    monkeypatch.setattr(impact_mod.ImpactLogger, "__init__", fake_init)
+    res = runner.invoke(cli, ["impact-stats"])
+    assert res.exit_code == 0, res.output
+    assert "共 1 次" in res.output
+    assert "含破坏性 1 次" in res.output
+    assert "高频变更表" in res.output

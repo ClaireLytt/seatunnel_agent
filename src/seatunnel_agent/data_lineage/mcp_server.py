@@ -130,6 +130,10 @@ def build_tool_functions(
                                       sql_dialect=sql_dialect)
             except ValueError as exc:
                 return str(exc)
+            from .impact import ImpactLogger
+            ImpactLogger().log_impact(
+                result, mode="git" if base else "dirs", source="mcp",
+                baseline=base or old_dir)
             report = render_impact_markdown(result)
             if tmp is not None and (tmp / ".impact_empty_baseline").exists():
                 report = (f"> ⚠️ 基线 {base} 下没有 *.sql —— "

@@ -162,6 +162,9 @@ def render_impact_page(app: gr.Blocks) -> None:
                                   sql_dialect=dialect or "hive")
         except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
             return "", _t(lang, "fail").format(exc=exc)
+        from .data_lineage.impact import ImpactLogger
+        ImpactLogger().log_impact(result, mode="dirs", source="ui",
+                                  baseline=old_dir)
         return _graph_iframe(result), render_impact_markdown(result, lang)
 
     def do_analyze_sql(old_sql: str, new_sql: str, ctx_dir: str,
@@ -183,6 +186,9 @@ def render_impact_page(app: gr.Blocks) -> None:
                                        context_dir=ctx_dir)
         except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
             return "", _t(lang, "fail").format(exc=exc)
+        from .data_lineage.impact import ImpactLogger
+        ImpactLogger().log_impact(result, mode="text", source="ui",
+                                  baseline="<pasted>")
         report = render_impact_markdown(result, lang)
         text_diff = render_text_diff(old_sql, new_sql)
         if text_diff:

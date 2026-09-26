@@ -378,6 +378,10 @@ def change_impact(req: ImpactRequest) -> dict[str, Any]:
                             detail=f"变更影响分析失败: {exc}")
     data = impact_to_dict(result, req.lang)
     data["elapsed_ms"] = int((time.time() - start) * 1000)
+    from .impact import ImpactLogger
+    ImpactLogger().log_impact(
+        result, mode="dirs" if dir_mode else "text", source="api",
+        baseline=req.old_dir or "<inline>")
     return data
 
 

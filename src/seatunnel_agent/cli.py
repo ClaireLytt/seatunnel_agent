@@ -989,6 +989,37 @@ def lineage_stats(recent: int) -> None:
         )
 
 
+@cli.command(name="impact-stats")
+@click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
+def impact_stats(recent: int) -> None:
+    """变更影响分析历史与治理统计 (logs/impact.jsonl)。"""
+    from collections import Counter
+
+    from .data_lineage.impact import ImpactLogger
+
+    records = ImpactLogger().recent(recent)
+    if not records:
+        console.print("[yellow]还没有变更影响分析记录。[/yellow]")
+        return
+    console.print("[bold]变更影响分析历史[/bold]")
+    for r in records:
+        st = r.get("stats") or {}
+        console.print(
+            f"  {r.get('timestamp', '')}  [{r.get('mode', '')}/{r.get('source', '')}] "
+            f"基线={r.get('baseline', '-') or '-'}  "
+            f"变更={st.get('changed', 0)} error={st.get('error', 0)} "
+            f"warn={st.get('warn', 0)}  最严重={r.get('worst', '-')}")
+    worst = Counter(r.get("worst", "clean") for r in records)
+    hot = Counter(t for r in records for t in r.get("tables", []))
+    console.print(
+        f"\n[bold]汇总[/bold] 共 {len(records)} 次 · "
+        f"含破坏性 {worst.get('error', 0)} 次 · "
+        f"口径漂移 {worst.get('warn', 0)} 次 · 干净 {worst.get('clean', 0)} 次")
+    if hot:
+        top = " · ".join(f"{t}×{c}" for t, c in hot.most_common(5))
+        console.print(f"[bold]高频变更表[/bold] {top}")
+
+
 @cli.command(name="lineage-mcp")
 @click.option("--sql-dir", type=click.Path(exists=True, file_okay=False), default=None,
               help="从目录下的 *.sql 文件构建血缘图（递归）")
@@ -1166,6 +1197,10 @@ def impact(
         if output:
             Path(output).write_text(text, encoding="utf-8")
             console.print(f"[dim]Report saved to {output}[/dim]")
+        from .data_lineage.impact import ImpactLogger
+        ImpactLogger().log_impact(
+            result, mode="git" if git_base else "dirs", source="cli",
+            baseline=git_base or str(old_dir))
         worst = result.worst_level()
         if fail_on and worst and LEVELS.index(worst) <= LEVELS.index(fail_on):
             sys.exit(1)

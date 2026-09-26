@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from .graph import LineageGraph
+from .rlog import LineageLogger as _LineageLoggerBase
 from .snapshot import diff_graphs
 
 LEVELS = ("error", "warn", "info")
@@ -574,3 +575,46 @@ def impact_to_dict(result: ImpactResult, lang: str = "zh") -> dict[str, Any]:
     data = result.to_dict()
     data["report"] = render_impact_markdown(result, lang)
     return data
+
+
+# ─────────────────────────── analysis history ───────────────────────────
+
+class ImpactLogger(_LineageLoggerBase):
+    """JSONL history of impact analyses (logs/impact.jsonl) — same
+    best-effort semantics as the lineage query log: never breaks the
+    analysis, rotates at 10 MB, `recent(n)` for the stats CLI."""
+
+    def __init__(self, log_dir: str | Path = "logs") -> None:
+        super().__init__(log_dir)
+        self.log_file = self.log_dir / "impact.jsonl"
+
+    def log_impact(
+        self,
+        result: ImpactResult,
+        mode: str,               # dirs | git | text
+        source: str = "cli",     # cli | api | ui | mcp
+        baseline: str = "",
+    ) -> None:
+        import json as _json
+        from datetime import datetime, timezone
+
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(
+                timespec="seconds"),
+            "source": source,
+            "mode": mode,
+            "baseline": baseline[:120],
+            "stats": result.counts(),
+            "worst": result.worst_level() or "clean",
+            "tables": [c.table for c in result.changed][:10],
+            "elapsed_ms": result.elapsed_ms,
+        }
+        line = _json.dumps(record, ensure_ascii=False) + "\n"
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            with self._lock:
+                self._rotate_if_needed()
+                with open(self.log_file, "a", encoding="utf-8") as f:
+                    f.write(line)
+        except OSError:
+            pass  # history is best-effort; never break the analysis
