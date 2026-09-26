@@ -3191,11 +3191,6 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             with gr.Row(elem_classes=["st-topbar-row"]):
                 gr.HTML('<div class="st-topbar-spacer"></div>')
                 home_btn = gr.Button("\U0001f3e0", size="sm", elem_classes=["st-home-btn"])
-                lang_dd = gr.Dropdown(
-                    choices=["English", "中文"], value="English",
-                    show_label=False, container=False, min_width=140,
-                    elem_classes=["st-lang-dd"],
-                )
             save_status = gr.HTML(value="", visible=True)
             result_html = gr.HTML(
                 value=(
@@ -3595,9 +3590,19 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(value=t_fn("dc_lineage_title")),                 # lineage_btn
         )
 
-    lang_dd.change(
-        fn=_switch_lang,
-        inputs=[lang_dd, status_a, status_b],
+    # Language follows the hub's choice (st-lang cookie), applied on load.
+    # _switch_lang takes two extra inputs (status_a/b) — pass them through.
+    if app is not None:
+        from .lang_pref import STAMP_JS as _STAMP_JS
+        from .lang_pref import choice_from_request as _choice
+        app.load(fn=None, js=_STAMP_JS)
+
+        def _lang_on_load(a, b, request: gr.Request):
+            return _switch_lang(_choice(request), a, b)
+
+        app.load(
+        fn=_lang_on_load,
+        inputs=[status_a, status_b],
         outputs=[
             lang_state, title_md, src_a_md, src_b_md,
             ds_a, ds_b, host_a, host_b, port_a, port_b, db_a, db_b,

@@ -291,10 +291,8 @@ def render_lineage_page(app: gr.Blocks) -> None:
     with gr.Column(elem_classes=["st-lin-page"]):
         with gr.Row():
             title_md = gr.Markdown(t("title"))
-            lang_dd = gr.Dropdown(
-                choices=["English", "中文"], value="English",
-                show_label=False, container=False, min_width=140, scale=0,
-            )
+            home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
+                                 elem_classes=["st-home-btn"])
 
         with gr.Row():
             # ── data source panel ──
@@ -658,9 +656,17 @@ def render_lineage_page(app: gr.Blocks) -> None:
             gr.update(value=s("ask_btn")),
         )
 
-    lang_dd.change(
-        switch_lang,
-        inputs=[lang_dd, direction_dd],
+    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    home_btn.click(fn=None, js=HOME_JS)
+    # Language follows the hub's choice (st-lang cookie), applied on load.
+    app.load(fn=None, js=STAMP_JS)
+
+    def _lang_on_load(d, request: gr.Request):
+        return switch_lang(choice_from_request(request), d)
+
+    app.load(
+        _lang_on_load,
+        inputs=[direction_dd],
         outputs=[
             lang_state, title_md, ds_heading_md, sql_dir_box, sql_dialect_dd,
             st_dir_box, use_hive_cb,

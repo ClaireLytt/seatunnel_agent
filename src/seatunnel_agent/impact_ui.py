@@ -88,11 +88,8 @@ def render_impact_page(app: gr.Blocks) -> None:
     with gr.Column(elem_classes=["st-imp-page"]):
         with gr.Row():
             title_md = gr.Markdown(t("title"))
-            lang_dd = gr.Dropdown(
-                choices=["English", "中文"], value="English",
-                show_label=False, container=False, min_width=140, scale=0,
-                elem_classes=["st-lang-dd"],
-            )
+            home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
+                                 elem_classes=["st-home-btn"])
 
         with gr.Row():
             with gr.Column(scale=2, elem_classes=["st-imp-side"]):
@@ -229,9 +226,16 @@ def render_impact_page(app: gr.Blocks) -> None:
                 lang_state],
         outputs=[graph_html, report_md],
     )
-    lang_dd.change(
-        switch_lang,
-        inputs=[lang_dd],
+    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    home_btn.click(fn=None, js=HOME_JS)
+    # Language follows the hub's choice (st-lang cookie), applied on load.
+    app.load(fn=None, js=STAMP_JS)
+
+    def _lang_on_load(request: gr.Request):
+        return switch_lang(choice_from_request(request))
+
+    app.load(
+        _lang_on_load, inputs=None,
         outputs=[lang_state, title_md, tab_dirs, tab_paste, old_box,
                  new_box, old_sql_box, new_sql_box, ctx_box, dialect_dd,
                  depth_sl, analyze_btn, analyze_sql_btn],

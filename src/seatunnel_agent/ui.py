@@ -769,7 +769,7 @@ _MODE_MAP = {
 def _build_hub_html() -> str:
     return '''<div class="st-hub" id="st-hub">
   <div class="st-hub-lang-row">
-    <select id="st-hub-lang" onchange="var l=this.value;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.textContent=e.getAttribute('data-'+l)});">
+    <select id="st-hub-lang" onchange="var l=this.value;document.cookie='st-lang='+l+';path=/;max-age=31536000';document.body.dataset.stLang=l;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.textContent=e.getAttribute('data-'+l)});">
       <option value="en" selected>English</option>
       <option value="zh">中文</option>
     </select>
@@ -971,6 +971,20 @@ def create_ui() -> gr.Blocks:
     ) as app:
         gr.HTML(_build_hub_html())
         app.load(fn=None, js=_hide_sub_nav_js)
+        # Restore the language chosen in a previous visit: sync the select
+        # and re-apply the data-en/zh swap (the hub is pure HTML+JS).
+        app.load(fn=None, js="""
+        () => {
+            const m = document.cookie.match(/(?:^|; )st-lang=(zh|en)/);
+            const l = m ? m[1] : 'en';
+            document.body.dataset.stLang = l;
+            const sel = document.getElementById('st-hub-lang');
+            if (sel && sel.value !== l) {
+                sel.value = l;
+                sel.dispatchEvent(new Event('change'));
+            }
+        }
+        """)
 
     with app.route("SeaTunnel", "/seatunnel"):
         _render_seatunnel_page(app)
@@ -1236,14 +1250,6 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
                 sidebar_open_btn = gr.Button("☰", size="sm", visible=False, elem_classes=["st-sidebar-open-btn"])
                 gr.HTML('<div class="st-topbar-spacer"></div>')
                 home_btn = gr.Button("\U0001f3e0", size="sm", elem_classes=["st-home-btn"])
-                lang_dd = gr.Dropdown(
-                    choices=["English", "中文"],
-                    value="English",
-                    show_label=False,
-                    container=False,
-                    min_width=140,
-                    elem_classes=["st-lang-dd"],
-                )
 
             chatbot = gr.Chatbot(
                 show_label=False,
@@ -1303,9 +1309,16 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         lang = "zh" if choice == "中文" else "en"
         return (lang, *_switch_lang(lang))
 
-    lang_dd.change(
-        fn=_on_lang_change,
-        inputs=[lang_dd],
+    # Language follows the hub's choice (st-lang cookie), applied on load.
+    from .lang_pref import STAMP_JS, choice_from_request
+    app.load(fn=None, js=STAMP_JS)
+
+    def _lang_on_load(request: gr.Request):
+        return _on_lang_change(choice_from_request(request))
+
+    app.load(
+        fn=_lang_on_load,
+        inputs=None,
         outputs=[
             lang_state,
             mode,
@@ -1502,6 +1515,12 @@ _CUSTOM_CSS = """
     flex-direction: column !important;
 }
 footer { display: none !important; }
+/* Hide the multipage navbar entirely: navigation is hub cards + the 🏠
+   button each page keeps in its top-right corner. The .nav-holder wrapper
+   must go too — with only the inner nav hidden it still eats ~17px and
+   clips the bottom strip of every 100vh page. */
+.gradio-container nav,
+.gradio-container .nav-holder { display: none !important; }
 /* Suppress Gradio default block borders globally */
 .gradio-container .block {
     border: none !important;
@@ -1764,11 +1783,10 @@ body.st-sidebar-dragging {
    so the page provides its own vertical scroll
    ══════════════════════════ */
 .st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page, .st-set-page {
-    /* the page sits BELOW the multipage navbar (~44px): a plain 100vh
-       container overflows the clipped app root and its bottom strip —
-       e.g. the depth slider on short windows — becomes unreachable */
-    height: calc(100vh - 44px) !important;
-    max-height: calc(100vh - 44px) !important;
+    /* the navbar is hidden, so the page owns the full viewport; keep the
+       explicit height so the page (not the clipped app root) scrolls */
+    height: 100vh !important;
+    max-height: 100vh !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     padding: 12px 16px 24px !important;

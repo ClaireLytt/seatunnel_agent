@@ -66,8 +66,9 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
     tokens_before = llm.tokens_used if llm else 0
     try:
         dc.goto(case.page)
-        if case.lang == "zh":
-            dc.set_language("中文")
+        # Enforce the case's language every time: the preference lives in
+        # localStorage now and would otherwise leak from the previous case.
+        dc.set_language("中文" if case.lang == "zh" else "English")
 
         last_result_html: str | None = None
         for step in [*case.setup, *case.steps]:
