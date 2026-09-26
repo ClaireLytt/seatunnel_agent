@@ -47,17 +47,66 @@ def store_path() -> Path:
     ))
 
 
-def load_saved() -> dict[str, str]:
-    """Decrypted saved overrides ({} when none); unknown/empty keys dropped."""
+_MAX_PROFILES = 20
+
+
+def _read_file() -> dict:
+    """Raw file content normalized to the v2 schema {active, profiles}.
+
+    v1 files were a flat {ENV_KEY: value} map — treated as the active set."""
     try:
         raw = json.loads(store_path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return {}
+        return {"active": {}, "profiles": {}}
     if not isinstance(raw, dict):
-        return {}
+        return {"active": {}, "profiles": {}}
+    if "active" in raw or "profiles" in raw:
+        active = raw.get("active") if isinstance(raw.get("active"), dict) else {}
+        profiles = raw.get("profiles") if isinstance(raw.get("profiles"), dict) else {}
+        return {"active": active, "profiles": profiles}
+    return {"active": raw, "profiles": {}}  # legacy v1
+
+
+def _write_file(data: dict) -> None:
+    """Atomic write; the file is removed when nothing is stored at all."""
+    path = store_path()
+    if not data.get("active") and not data.get("profiles"):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _encode(values: dict[str, str]) -> dict[str, str]:
+    """Managed keys only, blanks dropped, secrets encrypted."""
     out: dict[str, str] = {}
     for key in MANAGED_KEYS:
-        val = raw.get(key)
+        val = (values.get(key) or "").strip()
+        if not val:
+            continue
+        out[key] = _encrypt(val) if key in SECRET_KEYS else val
+    return out
+
+
+def _decode(stored: dict) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not isinstance(stored, dict):
+        return out
+    for key in MANAGED_KEYS:
+        val = stored.get(key)
         if not isinstance(val, str) or not val:
             continue
         plain = _decrypt(val) if key in SECRET_KEYS else val
@@ -66,45 +115,72 @@ def load_saved() -> dict[str, str]:
     return out
 
 
+def load_saved() -> dict[str, str]:
+    """Decrypted active overrides ({} when none); unknown/empty keys dropped."""
+    return _decode(_read_file()["active"])
+
+
 def has_saved() -> bool:
     return bool(load_saved())
 
 
 def save(values: dict[str, str]) -> None:
-    """Persist overrides (managed keys only, blanks dropped) and apply them."""
+    """Persist active overrides (managed keys only, blanks dropped) and apply."""
     with _lock:
-        data: dict[str, str] = {}
-        for key in MANAGED_KEYS:
-            val = (values.get(key) or "").strip()
-            if not val:
-                continue
-            data[key] = _encrypt(val) if key in SECRET_KEYS else val
-        path = store_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, ensure_ascii=False, indent=2)
-            os.replace(tmp, str(path))
-        except BaseException:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        data = _read_file()
+        data["active"] = _encode(values)
+        _write_file(data)
         _apply_locked()
 
 
 def clear() -> None:
-    """Delete saved overrides and restore the pre-apply environment."""
+    """Drop the active overrides (profiles are kept) and restore the env."""
     with _lock:
-        try:
-            store_path().unlink()
-        except FileNotFoundError:
-            pass
-        except OSError:
-            pass
+        data = _read_file()
+        data["active"] = {}
+        _write_file(data)
         _apply_locked()
+
+
+# ── named profiles (e.g. one per provider: kimi / deepseek / claude) ──
+
+def list_profiles() -> list[str]:
+    return sorted(_read_file()["profiles"])
+
+
+def load_profile(name: str) -> dict[str, str]:
+    return _decode(_read_file()["profiles"].get(name, {}))
+
+
+def save_profile(name: str, values: dict[str, str]) -> None:
+    """Store a named snapshot (does NOT change the active overrides)."""
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("profile name is required")
+    with _lock:
+        data = _read_file()
+        if name not in data["profiles"] and len(data["profiles"]) >= _MAX_PROFILES:
+            raise ValueError(f"at most {_MAX_PROFILES} profiles")
+        data["profiles"][name] = _encode(values)
+        _write_file(data)
+
+
+def activate_profile(name: str) -> None:
+    """Copy a profile into the active overrides and apply it."""
+    with _lock:
+        data = _read_file()
+        if name not in data["profiles"]:
+            raise KeyError(name)
+        data["active"] = dict(data["profiles"][name])
+        _write_file(data)
+        _apply_locked()
+
+
+def delete_profile(name: str) -> None:
+    with _lock:
+        data = _read_file()
+        data["profiles"].pop(name, None)
+        _write_file(data)
 
 
 def apply_to_env() -> None:

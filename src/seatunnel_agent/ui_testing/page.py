@@ -155,6 +155,12 @@ LABELS: dict[str, tuple[str, ...]] = {
     "保存设置":   ("保存", "Save"),
     "测试连接":   ("测试连接", "Test Connection"),
     "恢复 env":   ("恢复 .env", "Restore .env"),
+    "配置档案":   ("配置档案", "Profiles"),
+    "档案名":     ("档案名", "Profile Name"),
+    "选择档案":   ("选择档案", "Profile"),
+    "存为档案":   ("存为档案", "Save as Profile"),
+    "启用档案":   ("启用档案", "Activate Profile"),
+    "删除档案":   ("删除档案", "Delete Profile"),
 }
 
 

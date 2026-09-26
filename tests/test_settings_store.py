@@ -48,7 +48,8 @@ class TestStore:
         settings_store.save({"API_KEY": "sk-plaintext-secret-999"})
         raw = store.read_text(encoding="utf-8")
         assert "sk-plaintext-secret-999" not in raw
-        assert json.loads(raw)["API_KEY"].startswith(("enc1:", "obf1:"))
+        stored = json.loads(raw)["active"]["API_KEY"]
+        assert stored.startswith(("enc1:", "obf1:"))
 
     def test_blank_values_dropped(self, store):
         settings_store.save({"MODEL_NAME": "m1", "LLM_BASE_URL": "  ",
@@ -106,6 +107,55 @@ class TestStore:
         assert settings_store.mask_secret("short") == "***"
         assert settings_store.mask_secret("sk-9chars") == "***"   # <12: all hidden
         assert settings_store.mask_secret("sk-abcdefgh1234") == "sk-***1234"
+
+
+class TestProfiles:
+    def test_roundtrip_and_activate(self, store, monkeypatch):
+        settings_store.save_profile("kimi", {
+            "LLM_PROVIDER": "openai", "API_KEY": "sk-kimi-1234567890",
+            "MODEL_NAME": "kimi-k2"})
+        settings_store.save_profile("claude", {"MODEL_NAME": "claude-opus-5"})
+        assert settings_store.list_profiles() == ["claude", "kimi"]
+        # saving a profile does not touch the active overrides
+        assert not settings_store.has_saved()
+        settings_store.activate_profile("kimi")
+        assert os.environ["MODEL_NAME"] == "kimi-k2"
+        assert settings_store.load_saved()["API_KEY"] == "sk-kimi-1234567890"
+
+    def test_profile_secret_encrypted_at_rest(self, store):
+        settings_store.save_profile("p", {"API_KEY": "sk-profile-secret-77"})
+        assert "sk-profile-secret-77" not in store.read_text(encoding="utf-8")
+
+    def test_clear_keeps_profiles(self, store):
+        settings_store.save_profile("p", {"MODEL_NAME": "m"})
+        settings_store.activate_profile("p")
+        settings_store.clear()
+        assert not settings_store.has_saved()
+        assert settings_store.list_profiles() == ["p"]
+
+    def test_delete_profile(self, store):
+        settings_store.save_profile("p", {"MODEL_NAME": "m"})
+        settings_store.delete_profile("p")
+        assert settings_store.list_profiles() == []
+        assert not store.exists()          # empty store file removed
+
+    def test_activate_missing_raises(self, store):
+        with pytest.raises(KeyError):
+            settings_store.activate_profile("nope")
+
+    def test_name_required_and_cap(self, store):
+        with pytest.raises(ValueError):
+            settings_store.save_profile("  ", {"MODEL_NAME": "m"})
+        for i in range(settings_store._MAX_PROFILES):
+            settings_store.save_profile(f"p{i}", {"MODEL_NAME": "m"})
+        with pytest.raises(ValueError):
+            settings_store.save_profile("overflow", {"MODEL_NAME": "m"})
+
+    def test_legacy_v1_file_reads_as_active(self, store):
+        store.write_text(json.dumps({"MODEL_NAME": "legacy-m"}),
+                         encoding="utf-8")
+        assert settings_store.load_saved() == {"MODEL_NAME": "legacy-m"}
+        assert settings_store.list_profiles() == []
 
 
 class TestValidate:

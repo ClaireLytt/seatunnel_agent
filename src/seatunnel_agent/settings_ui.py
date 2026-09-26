@@ -47,6 +47,20 @@ _I18N = {
         "err_auth": "authentication failed — check the API Key",
         "err_notfound": "model or endpoint not found — check Model Name / Base URL",
         "err_conn": "cannot reach the endpoint — check Base URL / network",
+        "profiles": "Profiles",
+        "profiles_hint": "Save the current form as a named profile "
+                         "(e.g. one per provider) and switch with one click.",
+        "prof_name": "Profile Name",
+        "prof_name_ph": "e.g. kimi / deepseek / claude",
+        "prof_pick": "Profile",
+        "prof_save": "Save as Profile",
+        "prof_use": "Activate Profile",
+        "prof_del": "Delete Profile",
+        "prof_saved": "✅ Profile saved",
+        "prof_used": "✅ Profile activated — takes effect immediately",
+        "prof_deleted": "✅ Profile deleted",
+        "prof_name_req": "❌ Profile name is required",
+        "prof_pick_req": "❌ Pick a profile first",
     },
     "zh": {
         "title": "## ⚙️ 设置",
@@ -85,6 +99,19 @@ _I18N = {
         "err_auth": "鉴权失败,请检查 API Key",
         "err_notfound": "模型或端点不存在,请检查模型名称 / Base URL",
         "err_conn": "无法连接端点,请检查 Base URL / 网络",
+        "profiles": "配置档案",
+        "profiles_hint": "把当前表单存为命名档案(如每个提供商一套),一键切换。",
+        "prof_name": "档案名",
+        "prof_name_ph": "如 kimi / deepseek / claude",
+        "prof_pick": "选择档案",
+        "prof_save": "存为档案",
+        "prof_use": "启用档案",
+        "prof_del": "删除档案",
+        "prof_saved": "✅ 已存为档案",
+        "prof_used": "✅ 已启用档案,立即生效",
+        "prof_deleted": "✅ 已删除档案",
+        "prof_name_req": "❌ 请填写档案名",
+        "prof_pick_req": "❌ 请先选择档案",
     },
 }
 
@@ -197,6 +224,19 @@ def render_settings_page(app: gr.Blocks) -> None:
                 save_btn = gr.Button(t("save"), variant="primary")
                 test_btn = gr.Button(t("test"))
                 reset_btn = gr.Button(t("reset"))
+            with gr.Accordion(t("profiles"), open=False) as prof_acc:
+                gr.Markdown(t("profiles_hint"))
+                with gr.Row():
+                    prof_name_tb = gr.Textbox(
+                        label=t("prof_name"), placeholder=t("prof_name_ph"))
+                    prof_dd = gr.Dropdown(
+                        label=t("prof_pick"),
+                        choices=settings_store.list_profiles())
+                with gr.Row():
+                    save_prof_btn = gr.Button(t("prof_save"), size="sm")
+                    use_prof_btn = gr.Button(t("prof_use"), size="sm",
+                                             variant="primary")
+                    del_prof_btn = gr.Button(t("prof_del"), size="sm")
             status_md = gr.Markdown("")
 
     # ── Callbacks ──
@@ -265,6 +305,53 @@ def render_settings_page(app: gr.Blocks) -> None:
         settings_store.clear()
         return f"{_t(lang, 'reset_ok')}", _current_summary(lang)
 
+    def _merged_form(provider, api_key, model, base_url, temp, max_toks, timeout):
+        """Active overrides overlaid with the non-blank form fields."""
+        merged = settings_store.load_saved()
+        for key, val in (
+            ("LLM_PROVIDER", provider), ("API_KEY", api_key),
+            ("MODEL_NAME", model), ("LLM_BASE_URL", base_url),
+            ("TEMPERATURE", temp), ("MAX_TOKENS", max_toks),
+            ("LLM_TIMEOUT", timeout),
+        ):
+            val = (val or "").strip()
+            if val:
+                merged[key] = val
+        return merged
+
+    def _save_profile(name, provider, api_key, model, base_url, temp,
+                      max_toks, timeout, lang):
+        if not (name or "").strip():
+            return _t(lang, "prof_name_req"), gr.update()
+        err = _validate(base_url, temp, max_toks, timeout, lang)
+        if err:
+            return f"❌ {err}", gr.update()
+        try:
+            settings_store.save_profile(
+                name, _merged_form(provider, api_key, model, base_url,
+                                   temp, max_toks, timeout))
+        except ValueError as e:
+            return f"❌ {e}", gr.update()
+        return (f"{_t(lang, 'prof_saved')}: {name.strip()}",
+                gr.update(choices=settings_store.list_profiles(),
+                          value=name.strip()))
+
+    def _use_profile(name, lang):
+        if not name:
+            return _t(lang, "prof_pick_req"), gr.update()
+        try:
+            settings_store.activate_profile(name)
+        except KeyError:
+            return _t(lang, "prof_pick_req"), gr.update()
+        return (f"{_t(lang, 'prof_used')}: {name}", _current_summary(lang))
+
+    def _del_profile(name, lang):
+        if not name:
+            return _t(lang, "prof_pick_req"), gr.update()
+        settings_store.delete_profile(name)
+        return (f"{_t(lang, 'prof_deleted')}: {name}",
+                gr.update(choices=settings_store.list_profiles(), value=None))
+
     def _switch_lang(sel):
         lang = "zh" if sel == "中文" else "en"
         t = lambda k: _t(lang, k)
@@ -284,6 +371,15 @@ def render_settings_page(app: gr.Blocks) -> None:
             gr.update(value=t("save")),
             gr.update(value=t("test")),
             gr.update(value=t("reset")),
+            gr.update(label=t("profiles")),
+            gr.update(label=t("prof_name"), placeholder=t("prof_name_ph")),
+            # choices are baked at build time — refresh them here so a fresh
+            # page load sees profiles saved in other sessions/page loads
+            gr.update(label=t("prof_pick"),
+                      choices=settings_store.list_profiles()),
+            gr.update(value=t("prof_save")),
+            gr.update(value=t("prof_use")),
+            gr.update(value=t("prof_del")),
         )
 
     form_inputs = [provider_dd, api_key_tb, model_tb, base_url_tb,
@@ -293,6 +389,13 @@ def render_settings_page(app: gr.Blocks) -> None:
     test_btn.click(_do_test, inputs=form_inputs, outputs=[status_md])
     reset_btn.click(_do_reset, inputs=[lang_state],
                     outputs=[status_md, current_md])
+    save_prof_btn.click(_save_profile,
+                        inputs=[prof_name_tb, *form_inputs],
+                        outputs=[status_md, prof_dd])
+    use_prof_btn.click(_use_profile, inputs=[prof_dd, lang_state],
+                       outputs=[status_md, current_md])
+    del_prof_btn.click(_del_profile, inputs=[prof_dd, lang_state],
+                       outputs=[status_md, prof_dd])
     from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     # Language follows the hub's choice (st-lang cookie), applied on load.
@@ -305,5 +408,7 @@ def render_settings_page(app: gr.Blocks) -> None:
         _lang_on_load, inputs=None,
         outputs=[lang_state, title_md, subtitle_md, current_md, provider_dd,
                  api_key_tb, model_tb, base_url_tb, adv_acc, temp_tb,
-                 max_tokens_tb, timeout_tb, save_btn, test_btn, reset_btn],
+                 max_tokens_tb, timeout_tb, save_btn, test_btn, reset_btn,
+                 prof_acc, prof_name_tb, prof_dd, save_prof_btn,
+                 use_prof_btn, del_prof_btn],
     )

@@ -55,6 +55,50 @@
     - text_contains: {in: 页面, text: 已恢复}
     - text_not_contains: {in: 页面, text: uitest-model-x}
 
+- id: SET6
+  title: 配置档案存档并一键启用
+  tags: [smoke, sqlite]
+  page: /settings
+  steps:
+    - open_accordion: {target: 配置档案}
+    - fill: {档案名: t1, 模型名称: uitest-prof-x}
+    - click: 存为档案
+    - wait: 400
+      note: 本地文件写入,短等待即可
+    - select: {of: 选择档案, value: t1}
+    - click: 启用档案
+    - wait: 400
+      note: 本地文件写入,短等待即可
+  expect:
+    - text_contains: {in: 页面, text: 已启用档案}
+    - text_contains: {in: 页面, text: uitest-prof-x}
+    - text_contains: {in: 页面, text: 界面设置}
+
+- id: SET7
+  title: 删除档案(SET6 清理其一)
+  tags: [smoke, sqlite]
+  page: /settings
+  steps:
+    - open_accordion: {target: 配置档案}
+    - select: {of: 选择档案, value: t1}
+    - click: 删除档案
+    - wait: 400
+      note: 本地文件写入,短等待即可
+  expect:
+    - text_contains: {in: 页面, text: 已删除档案}
+
+- id: SET8
+  title: 恢复 .env 清除档案启用的覆盖(SET6 清理其二)
+  tags: [smoke, sqlite]
+  page: /settings
+  steps:
+    - click: 恢复 env
+    - wait: 400
+      note: 本地文件写入,短等待即可
+  expect:
+    - text_contains: {in: 页面, text: 已恢复}
+    - text_not_contains: {in: 页面, text: uitest-prof-x}
+
 - id: SET5
   title: 设置页有滚动条
   tags: [smoke, sqlite]
