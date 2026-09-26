@@ -6,7 +6,9 @@ Or:        seatunnel-agent ui
 
 from __future__ import annotations
 
+import html as _html
 import json
+import os
 import re
 import tempfile
 import threading
@@ -766,8 +768,49 @@ _MODE_MAP = {
 }
 
 
+def _hub_health_html() -> str:
+    """Health strip under the hub subtitle — recomputed on every page load.
+
+    Language-swapped by the same data-en/zh mechanism as the rest of the hub."""
+    from . import settings_store
+    key = os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+    if key:
+        model = _html.escape(os.getenv("MODEL_NAME", "claude-opus-5"))
+        src = ('<span data-en="UI settings" data-zh="界面设置">UI settings</span>'
+               if settings_store.has_saved() else ".env")
+        llm = (f'<span class="st-hub-ok">✓ LLM</span> <code>{model}</code> '
+               f'<span class="st-hub-dim">({src})</span>')
+    else:
+        llm = ('<a href="/settings" class="st-hub-bad">✗ LLM '
+               '<span data-en="not configured — open Settings" '
+               'data-zh="未配置,点此设置">not configured — open Settings</span></a>')
+    hive_host = os.getenv("HIVE_HOST", "")
+    hive = (f'<span class="st-hub-ok">✓ Hive</span> '
+            f'<span class="st-hub-dim">{_html.escape(hive_host)}</span>'
+            if hive_host else
+            '<span class="st-hub-dim">○ Hive <span data-en="not set" '
+            'data-zh="未配置">not set</span></span>')
+    ut = '<span class="st-hub-dim">○ UI tests —</span>'
+    try:
+        from .ui_testing.rundiff import load_history
+        recs = load_history(last=1)
+        if recs:
+            verdicts = recs[-1].get("verdicts", {})
+            bad = sum(1 for v in verdicts.values() if v in ("FAIL", "ERROR"))
+            good = sum(1 for v in verdicts.values() if v == "PASS")
+            cls = "st-hub-ok" if bad == 0 else "st-hub-bad"
+            mark = "✓" if bad == 0 else "✗"
+            day = str(recs[-1].get("ts", ""))[:8]
+            ut = (f'<span class="{cls}">{mark} UI tests</span> {good}✓ {bad}✗ '
+                  f'<span class="st-hub-dim">{day}</span>')
+    except Exception:  # noqa: BLE001 — the strip must never break the hub
+        pass
+    sep = '<span class="st-hub-dim"> · </span>'
+    return f'<div class="st-hub-health">{llm}{sep}{hive}{sep}{ut}</div>'
+
+
 def _build_hub_html() -> str:
-    return '''<div class="st-hub" id="st-hub">
+    tmpl = '''<div class="st-hub" id="st-hub">
   <div class="st-hub-lang-row">
     <select id="st-hub-lang" onchange="var l=this.value;document.cookie='st-lang='+l+';path=/;max-age=31536000';document.body.dataset.stLang=l;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.textContent=e.getAttribute('data-'+l)});">
       <option value="en" selected>English</option>
@@ -777,6 +820,7 @@ def _build_hub_html() -> str:
   <div class="st-hub-header">
     <div class="st-hub-title" data-en="SeaTunnel Agent Platform" data-zh="SeaTunnel Agent 工作台">SeaTunnel Agent Platform</div>
     <div class="st-hub-subtitle" data-en="AI Agent Workspace · Choose an agent to start" data-zh="AI Agent 工作台 · 选择一个能力开始">AI Agent Workspace · Choose an agent to start</div>
+    <!--STATUS-->
   </div>
   <div class="st-hub-grid">
     <a class="st-hub-card" href="/seatunnel">
@@ -846,6 +890,7 @@ def _build_hub_html() -> str:
     </div>
   </div>
 </div>'''
+    return tmpl.replace("<!--STATUS-->", _hub_health_html())
 
 
 # Drag-to-resize for the left sidebar: restores the saved width, appends a
@@ -969,11 +1014,13 @@ def create_ui() -> gr.Blocks:
         fill_height=True,
         fill_width=True,
     ) as app:
-        gr.HTML(_build_hub_html())
+        hub_html = gr.HTML(_build_hub_html())
         app.load(fn=None, js=_hide_sub_nav_js)
-        # Restore the language chosen in a previous visit: sync the select
-        # and re-apply the data-en/zh swap (the hub is pure HTML+JS).
-        app.load(fn=None, js="""
+        # Recompute the health strip on every visit (LLM/Hive config and the
+        # last UI-test run change without a restart), THEN restore the
+        # language chosen in a previous visit — chained so the swap runs on
+        # the fresh HTML, not the stale one.
+        app.load(fn=_build_hub_html, outputs=[hub_html]).then(fn=None, js="""
         () => {
             const m = document.cookie.match(/(?:^|; )st-lang=(zh|en)/);
             const l = m ? m[1] : 'en';
@@ -1863,6 +1910,21 @@ body.st-sidebar-dragging {
 }
 .st-hub-lang-row select:hover { border-color: #f76707; }
 .st-hub-header { text-align: center; margin-bottom: 36px; }
+.st-hub-health {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #6b7280;
+}
+.st-hub-health code {
+    font-size: 11px;
+    background: #f3f4f6;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+.st-hub-ok { color: #059669; font-weight: 600; }
+.st-hub-bad { color: #dc2626; font-weight: 600; text-decoration: none; }
+a.st-hub-bad:hover { text-decoration: underline; }
+.st-hub-dim { color: #9ca3af; }
 .st-hub-title {
     font-size: 26px;
     font-weight: 800;
