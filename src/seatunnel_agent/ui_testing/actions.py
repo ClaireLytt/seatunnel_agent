@@ -7,7 +7,6 @@ All DOM knowledge stays in page.py; this file only routes.
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 from .models import Step, StepLog
 from .page import DCPage
@@ -124,26 +123,12 @@ def _dispatch(step: Step, dc: DCPage) -> str:
 
     if a == "screenshot":
         name = args.get("name", "manual")
-        shots_dir = Path(args.get("_shots_dir", "."))
-        shots_dir.mkdir(parents=True, exist_ok=True)
-        path = str(shots_dir / f"{name}.png")
+        path = args.get("_shots_dir", ".") + f"/{name}.png"
         dc.screenshot(path)
-        return f"screenshot {name} -> {path}"
+        return f"screenshot {name}"
 
     if a == "set_language":
         dc.set_language(args.get("target", args.get("value", "中文")))
         return f"language -> {args.get('target', args.get('value'))}"
-
-    if a == "download":
-        path, fname = dc.download(args["target"], args.get("side"))
-        return f"downloaded {fname} -> {path}"
-
-    if a == "popup_click":
-        text = dc.popup_click(args["target"], args.get("side"))
-        return f"popup captured, {len(text)} chars"
-
-    if a == "drag_sidebar":
-        width = dc.drag_sidebar_grip(int(args.get("dx", 0)))
-        return f"sidebar dragged dx={args.get('dx')} -> width {width}px"
 
     raise ValueError(f"unhandled action: {a}")
