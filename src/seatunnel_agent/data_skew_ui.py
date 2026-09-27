@@ -105,7 +105,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
     lang_state = gr.State(_DEFAULT_LANG)
 
     with gr.Row():
-        with gr.Column(scale=3):
+        with gr.Column(scale=3, elem_classes=["dsk-input-col"]):
             sql_box = gr.Textbox(
                 label="SQL", lines=14, max_lines=14,
                 placeholder=t0("dsk_sql_placeholder"),
