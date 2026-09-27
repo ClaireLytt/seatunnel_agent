@@ -144,8 +144,10 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                                         variant="secondary")
                 conn_status = gr.Markdown(t0("dsk_conn_status_none"))
         with gr.Column(scale=4):
+            # dsk-report-card: the UI test agent reads/awaits this region
             report_md = gr.Markdown(t0("dsk_report_placeholder"),
-                                    buttons=["copy"])
+                                    buttons=["copy"],
+                                    elem_classes=["dsk-report-card"])
             with gr.Row():
                 dl_report_btn = gr.DownloadButton(t0("dsk_download_report"),
                                                   visible=False, size="sm")

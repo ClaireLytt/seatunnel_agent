@@ -28,8 +28,8 @@ from playwright.sync_api import Locator, Page
 # data_comparison/i18n.py.  Extend here (only here) when migrating cases.
 LABELS: dict[str, tuple[str, ...]] = {
     # connection panel
-    "数据源类型": ("数据源类型", "Data Source"),
-    "主机":       ("主机地址", "Host"),
+    "数据源类型": ("数据源类型", "Data Source", "Datasource type"),
+    "主机":       ("主机地址", "Host", "主机"),
     "端口":       ("端口", "Port"),
     "数据库":     ("数据库", "Database"),
     "用户名":     ("用户名", "Username"),
@@ -128,6 +128,16 @@ LABELS: dict[str, tuple[str, ...]] = {
     "审查规则":   ("规则配置（可选，.sqlreview.yaml 格式）",
                    "Rule config (optional, .sqlreview.yaml format)"),
     "规则输入":   ("YAML 规则", "YAML rules"),
+    # ── Data Skew page (/dataskew) — labels from data_skew/i18n.py ──
+    "开始分析":   ("开始分析", "Analyze Skew"),
+    "分析模式":   ("分析模式", "Analysis Mode"),
+    "连接数据源": ("连接数据源（可选——用真实数据验证倾斜）",
+                   "Connect data source (optional — verify skew with real data)"),
+    "探查采样":   ("探查采样", "Probe sampling"),
+    "验证倾斜（实测）": ("验证倾斜（实测数据）", "Verify Skew (live data)"),
+    "一致性实测": ("一致性实测（运行两版 SQL）",
+                   "Measure Consistency (runs both SQLs)"),
+    "下载优化 SQL": ("下载优化后 SQL（.sql）", "Download Optimized SQL (.sql)"),
     # ── Lineage page (/lineage) ──
     "SQL 目录":   ("SQL 目录", "SQL directory"),
     "SeaTunnel 配置目录": ("SeaTunnel 配置目录", "SeaTunnel config directory"),
@@ -228,6 +238,7 @@ class DCPage:
         "/impact": ".st-imp-side",
         "/migrate": ".st-mig-side",
         "/settings": ".st-set-page",
+        "/dataskew": "#dsk-sql-box textarea",
     }
 
     def goto(self, path: str = "/datacompare") -> None:
@@ -446,7 +457,11 @@ class DCPage:
 
         Escape also closes it, but leaves the input text empty; blur makes
         Gradio restore the selected value — which is what a user sees."""
-        self.page.locator(".st-main").first.click(position={"x": 8, "y": 8})
+        # .st-main only exists on the Data Comparison page; elsewhere blur
+        # against the page body (top-left corner is the title area — inert).
+        neutral = self.page.locator(".st-main")
+        target = neutral.first if neutral.count() else self.page.locator("body")
+        target.click(position={"x": 8, "y": 8})
         self.page.wait_for_timeout(200)
 
     def dropdown_select(self, name: str, value: str,
@@ -554,6 +569,9 @@ class DCPage:
         if loc.count():
             return loc.first
         loc = self.page.locator(".st-mig-main")
+        if loc.count():
+            return loc.first
+        loc = self.page.locator(".dsk-report-card")
         if loc.count():
             return loc.first
         return self.page.locator(".sr-report-card").last

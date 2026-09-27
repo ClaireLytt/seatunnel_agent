@@ -86,3 +86,13 @@
       note: pure-assertion case, wait for hydration only
   expect:
     - scrollable: {selector: .gradio-container}
+
+- id: SCR9
+  title: 数据倾斜页整体可滚动 (.st-scroll-page 标记)
+  tags: [smoke, sqlite]
+  page: /dataskew
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .gradio-container}

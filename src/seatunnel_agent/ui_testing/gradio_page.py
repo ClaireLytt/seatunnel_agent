@@ -26,6 +26,7 @@ _AGENT_ROUTES: dict[str, tuple[str, ...]] = {
     "transpile": ("/transpile",),
     "impact": ("/impact",),
     "migrate": ("/migrate",),
+    "dataskew": ("/dataskew",),
     "settings": ("/settings",),
 }
 _AGENT_LABELS = {
@@ -35,6 +36,7 @@ _AGENT_LABELS = {
            "transpile": "SQL Dialect Translation",
            "impact": "Change Impact Analysis",
            "migrate": "DataX/Sqoop Migration",
+           "dataskew": "Data Skew Analyzer",
            "settings": "Settings"},
     "zh": {"all": "全部 Agent", "datacompare": "数据对比",
            "sqlreview": "SQL Review", "lineage": "数据血缘",
@@ -42,6 +44,7 @@ _AGENT_LABELS = {
            "transpile": "SQL 方言翻译",
            "impact": "变更影响分析",
            "migrate": "配置迁移",
+           "dataskew": "数据倾斜分析",
            "settings": "设置"},
 }
 
