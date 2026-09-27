@@ -1219,7 +1219,7 @@ def skew(
         if directory:
             for p in collect_sql_files(directory):
                 sources.append((str(p), p.read_text(encoding="utf-8")))
-    except OSError as e:
+    except (OSError, UnicodeDecodeError) as e:
         console.print(f"[red]收集分析目标失败:[/red] {e}")
         sys.exit(1)
     seen: set[str] = set()
@@ -1281,8 +1281,12 @@ def skew(
         worst = max((rank[f.severity] for _, rep, _ in results
                      for f in rep.findings), default=0)
         if worst >= threshold:
-            console.print(
-                f"\n[red]存在 {fail_on} 及以上级别的倾斜风险，检查未通过。[/red]")
+            msg = f"存在 {fail_on} 及以上级别的倾斜风险，检查未通过。"
+            if fmt == "json":
+                # keep stdout valid JSON for `... -F json | jq` pipelines
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
             sys.exit(1)
 
 

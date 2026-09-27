@@ -1139,7 +1139,7 @@ def test_engine_params_include_measured_hot_values():
 def test_engine_params_maxcompute_skewjoin_hint_with_values():
     r = _fake_result()
     block = engine_params_for_results([r], "maxcompute", "zh")
-    assert "/*+ SKEWJOIN(orders(user_id)((hot)(b))) */" in block
+    assert '/*+ SKEWJOIN(orders(user_id)(("hot")("b"))) */' in block
 
 
 def test_engine_params_no_hint_without_hot_values():

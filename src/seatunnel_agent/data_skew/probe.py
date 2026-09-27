@@ -350,14 +350,30 @@ _ENGINE_PARAMS: dict[str, dict[str, list[str]]] = {
 
 
 def _measured_hot_values(r: ProbeResult) -> list[str]:
-    """Raw hot values (no NULL) above the suspect threshold, count-descending."""
+    """Raw hot values (no NULL) above the suspect threshold, count-descending.
+
+    Values are returned untouched: display escaping/truncation happens at
+    the rendering site, and SQL hints must carry the exact measured value
+    or they would target a key that does not exist."""
     vals: list[str] = []
     for v, c in r.top:
         if not r.total or c / r.total < HOT_KEY_SUSPECT:
             break
         if v != "NULL":
-            vals.append(_safe_value(v))
+            vals.append(v)
     return vals
+
+
+_NUM_LITERAL_RE = re.compile(r"^-?\d+(?:\.\d+)?$")
+
+
+def _hint_literal(v: str) -> str:
+    """A hot value as a SKEWJOIN-hint literal: numbers bare, strings quoted."""
+    if _NUM_LITERAL_RE.match(v):
+        return v
+    v = (v.replace("\\", "\\\\").replace('"', '\\"')
+          .replace("\n", "\\n").replace("\r", "\\r"))
+    return f'"{v}"'
 
 
 def engine_params_for_results(results: list[ProbeResult], dialect: str, lang: str) -> str:
@@ -381,9 +397,9 @@ def engine_params_for_results(results: list[ProbeResult], dialect: str, lang: st
             continue
         t = r.target
         lines.append(f"-- {t.table}.{t.column} {hot_label}: "
-                     + ", ".join(f"'{v}'" for v in hot[:5]))
+                     + ", ".join(f"'{_safe_value(v)}'" for v in hot[:5]))
         if dialect == "maxcompute" and r.target.reason == "join_key":
-            vals = "".join(f"({v})" for v in hot[:5])
+            vals = "".join(f"({_hint_literal(v)})" for v in hot[:5])
             lines.append(f"/*+ SKEWJOIN({t.table}({t.column})({vals})) */")
     head = dsk(lang, "prb_engine_params")
     return head + "\n\n```sql\n" + "\n".join(lines) + "\n```"

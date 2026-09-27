@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Callable
 
-from .detector import DIALECTS, normalize_dialect
+from .detector import DIALECTS, _DIALECT_ALIASES
 from .history import default_history
 
 _INSTRUCTIONS = (
@@ -42,7 +42,10 @@ def build_tool_functions(
         sql = (sql or "").strip()
         if not sql:
             return "SQL 不能为空 / SQL must not be empty"
-        d = normalize_dialect(dialect or default_dialect)
+        # normalize_dialect() silently falls back to "spark", which would
+        # hide a caller's typo — resolve aliases by hand and reject unknowns.
+        raw = (dialect or default_dialect).strip().lower().replace(" ", "")
+        d = _DIALECT_ALIASES.get(raw, raw)
         if d not in DIALECTS:
             return f"dialect 必须是 {', '.join(DIALECTS)} 之一"
         lg = (lang or default_lang).strip().lower()

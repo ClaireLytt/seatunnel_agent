@@ -398,6 +398,12 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         c = rec.get("counts") or {}
         return f"⛔{c.get('high', 0)} ⚠️{c.get('medium', 0)} 🔵{c.get('low', 0)}"
 
+    def _snippet(rec: dict, n: int) -> str:
+        """One-line SQL snippet, safe inside a markdown-table code span
+        ('|' would split the cell, a backtick would end the span)."""
+        s = " ".join((rec.get("sql") or "").split())[:n]
+        return s.replace("|", "\\|").replace("`", "'")
+
     def do_hist_refresh(lang: str):
         recs = history.recent(20)
         if not recs:
@@ -408,7 +414,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             snippet = " ".join((r.get("sql") or "").split())[:40]
             label = (f"{str(r.get('timestamp', ''))[5:16]} · "
                      f"{r.get('dialect', '')} · {_verdict_mark(r)} · {snippet}")
-            choices.append((label, i))
+            choices.append((label, i))  # dropdown labels are plain text
         t = lambda k: dsk(lang, k)  # noqa: E731
         lines = [
             f"| {t('dsk_h_time')} | {t('dsk_h_source')} | {t('dsk_h_dialect')} "
@@ -416,11 +422,10 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             "|---|---|---|---|---|---|",
         ]
         for r in recs:
-            snippet = " ".join((r.get("sql") or "").split())[:60]
             lines.append(
                 f"| {str(r.get('timestamp', ''))[:16]} | {r.get('source', '')} "
                 f"| {r.get('dialect', '')} | {r.get('mode', '')} "
-                f"| {_verdict_mark(r)} | `{snippet}` |")
+                f"| {_verdict_mark(r)} | `{_snippet(r, 60)}` |")
         return gr.update(choices=choices, value=0), "\n".join(lines), recs
 
     hist_refresh_btn.click(
