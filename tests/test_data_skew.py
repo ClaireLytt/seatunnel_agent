@@ -1280,3 +1280,174 @@ def test_cli_skew_output_file_and_history(tmp_path, monkeypatch):
     from seatunnel_agent.data_skew.history import default_history
     recs = default_history().recent()
     assert len(recs) == 1 and recs[0]["source"] == "cli"
+
+
+# ---------------------------------------------------------------------------
+# probe: window/distinct targets and rewrite templates
+# ---------------------------------------------------------------------------
+
+def test_window_partition_key_probed():
+    sql = ("SELECT uid, row_number() OVER (PARTITION BY city ORDER BY ts) rn "
+           "FROM dw.events")
+    targets = extract_probe_targets(sql)
+    assert ("dw.events", "city", "window_key") in [
+        (t.table, t.column, t.reason) for t in targets]
+
+
+def test_select_distinct_leading_column_probed():
+    sql = "SELECT DISTINCT city, uid FROM dw.events"
+    targets = extract_probe_targets(sql)
+    kinds = [(t.table, t.column, t.reason) for t in targets]
+    assert ("dw.events", "city", "distinct_key") in kinds
+    # only the leading column is probed
+    assert ("dw.events", "uid", "distinct_key") not in kinds
+
+
+def test_select_distinct_function_head_not_probed():
+    sql = "SELECT DISTINCT upper(city), uid FROM dw.events"
+    assert not [t for t in extract_probe_targets(sql)
+                if t.reason == "distinct_key"]
+
+
+def test_rewrite_templates_hot_join_and_two_stage():
+    from seatunnel_agent.data_skew.probe import render_rewrite_templates
+
+    join = _fake_result()  # confirmed join_key, hot values hot/b
+    grp = ProbeResult(target=ProbeTarget("dw.ev", "city", "group_key"))
+    grp.total, grp.top = 100, [("bj", 40), ("sh", 5)]
+    out = render_rewrite_templates([join, grp], "zh")
+    assert "改写模板" in out
+    assert "UNION ALL" in out and 'IN ("hot", "b")' in out
+    assert "CAST(rand() * " in out and "GROUP BY city" in out
+    out_en = render_rewrite_templates([join], "en")
+    assert "hot-key isolation" in out_en
+
+
+def test_rewrite_templates_count_distinct_and_null_join():
+    from seatunnel_agent.data_skew.probe import render_rewrite_templates
+
+    cd = ProbeResult(target=ProbeTarget("dw.log", "uid", "count_distinct"))
+    cd.total, cd.top = 100, [("u1", 30)]
+    nul = ProbeResult(target=ProbeTarget("dw.o", "k", "join_key"))
+    nul.total, nul.null_count, nul.top = 100, 30, []
+    out = render_rewrite_templates([cd, nul], "zh")
+    assert "GROUP BY uid" in out and "两阶段去重计数" in out
+    assert "IS NOT NULL" in out and "NULL 键拆分" in out
+
+
+def test_rewrite_templates_empty_when_nothing_confirmed():
+    from seatunnel_agent.data_skew.probe import render_rewrite_templates
+
+    assert render_rewrite_templates([_fake_result("ok")], "zh") == ""
+
+
+# ---------------------------------------------------------------------------
+# consistency: per-column aggregate compare for large results
+# ---------------------------------------------------------------------------
+
+def test_consistency_agg_match_on_large_result(tmp_path):
+    from seatunnel_agent.data_skew.consistency import (
+        check_consistency, render_consistency_section)
+
+    setup = ("CREATE TABLE big (k TEXT, v INTEGER); INSERT INTO big VALUES "
+             + ",".join(f"('k{i}', {i})" for i in range(10)) + ";")
+    ex = _sqlite_executor(tmp_path, setup)
+    res = check_consistency(ex, "SELECT k, v FROM big",
+                            "SELECT k, v FROM big ORDER BY v", max_rows=2)
+    assert res.orig_count == res.opt_count == 10
+    assert not res.rows_compared
+    assert res.agg_compared and res.agg_match and res.agg_cols == 2
+    sec = render_consistency_section(res, "zh")
+    assert "逐列一致" in sec
+    assert "COUNT / COUNT DISTINCT / MIN / MAX" in render_consistency_section(res, "en")
+
+
+def test_consistency_agg_differ_detected(tmp_path):
+    from seatunnel_agent.data_skew.consistency import check_consistency
+
+    setup = ("CREATE TABLE big (k TEXT, v INTEGER); INSERT INTO big VALUES "
+             + ",".join(f"('k{i}', {i})" for i in range(10)) + ";")
+    ex = _sqlite_executor(tmp_path, setup)
+    # same row count, different v values
+    res = check_consistency(ex, "SELECT k, v FROM big",
+                            "SELECT k, v + 1 AS v FROM big", max_rows=2)
+    assert res.agg_compared and not res.agg_match
+
+
+def test_consistency_agg_skipped_on_renamed_columns(tmp_path):
+    from seatunnel_agent.data_skew.consistency import check_consistency
+
+    setup = ("CREATE TABLE big (k TEXT, v INTEGER); INSERT INTO big VALUES "
+             + ",".join(f"('k{i}', {i})" for i in range(10)) + ";")
+    ex = _sqlite_executor(tmp_path, setup)
+    res = check_consistency(ex, "SELECT k, v FROM big",
+                            "SELECT k AS kk, v AS vv FROM big", max_rows=2)
+    # no shared simple columns -> falls back to the count-only verdict
+    assert res.orig_count == res.opt_count == 10
+    assert not res.error
+
+
+# ---------------------------------------------------------------------------
+# REST API (/api/skew)
+# ---------------------------------------------------------------------------
+
+def _api_client(tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.data_skew.api import router
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    app = FastAPI()
+    app.include_router(router)
+    return TestClient(app)
+
+
+def test_api_skew_check(tmp_path, monkeypatch):
+    client = _api_client(tmp_path, monkeypatch)
+    resp = client.post("/api/skew/check", json={
+        "sql": "SELECT count(distinct uid) FROM t", "lang": "en"})
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["counts"]["medium"] == 1
+    assert "Data Skew Analysis Report" in data["report"]
+    assert data["findings"][0]["severity"] == "medium"
+    # history logged with source=api
+    from seatunnel_agent.data_skew.history import default_history
+    assert default_history().recent()[0]["source"] == "api"
+
+
+def test_api_skew_check_rejects_unknown_dialect(tmp_path, monkeypatch):
+    client = _api_client(tmp_path, monkeypatch)
+    resp = client.post("/api/skew/check", json={
+        "sql": "SELECT 1", "dialect": "oracle"})
+    assert resp.status_code == 400
+    assert "oracle" in resp.json()["detail"]
+
+
+def test_api_skew_health(tmp_path, monkeypatch):
+    client = _api_client(tmp_path, monkeypatch)
+    assert client.get("/api/skew/health").json()["status"] == "ok"
+
+
+# ---------------------------------------------------------------------------
+# CLI: seatunnel-agent skew-stats
+# ---------------------------------------------------------------------------
+
+def test_cli_skew_stats(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    runner = CliRunner()
+    empty = runner.invoke(cli, ["skew-stats"])
+    assert empty.exit_code == 0 and "还没有" in empty.output
+    runner.invoke(cli, ["skew", "-s", "SELECT count(distinct uid) FROM t"])
+    runner.invoke(cli, ["skew", "-s", "SELECT 1"])
+    res = runner.invoke(cli, ["skew-stats"])
+    assert res.exit_code == 0, res.output
+    assert "共 2 次" in res.output
+    assert "cli×2" in res.output.replace(" ", "")

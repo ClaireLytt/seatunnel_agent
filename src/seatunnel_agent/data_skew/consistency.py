@@ -41,6 +41,10 @@ class ConsistencyResult:
     opt_count: int = -1
     rows_compared: bool = False
     rows_match: bool = False
+    # column-aggregate compare (results too large for a row-level diff)
+    agg_compared: bool = False
+    agg_match: bool = False
+    agg_cols: int = 0
     orig_ms: int = 0
     opt_ms: int = 0
     error: str = ""
@@ -55,6 +59,25 @@ def _count(executor, query: str, alias: str) -> tuple[int, int]:
 
 def _row_key(rows) -> list[tuple[str, ...]]:
     return sorted(tuple("" if v is None else str(v) for v in row) for row in rows)
+
+
+_SIMPLE_IDENT_RE = re.compile(r"[A-Za-z_]\w*\Z")
+
+
+def _agg_fingerprint(executor, query: str, columns: list[str],
+                     alias: str) -> tuple[tuple[str, ...] | None, int]:
+    """(per-column COUNT / COUNT DISTINCT / MIN / MAX tuple, elapsed_ms).
+
+    Only simple-identifier columns can be re-selected portably; expression
+    columns (``count(*)`` etc.) are skipped. None when nothing qualifies."""
+    cols = [c for c in columns if _SIMPLE_IDENT_RE.match(c or "")]
+    if not cols:
+        return None, 0
+    exprs = ", ".join(
+        f"COUNT({c}), COUNT(DISTINCT {c}), MIN({c}), MAX({c})" for c in cols)
+    res = executor.run(f"SELECT {exprs} FROM (\n{query}\n) {alias}", max_rows=1)
+    row = res.rows[0] if res.rows else ()
+    return tuple("" if v is None else str(v) for v in row), res.elapsed_ms
 
 
 def check_consistency(
@@ -79,6 +102,27 @@ def check_consistency(
             r.opt_ms += b.elapsed_ms
             r.rows_compared = True
             r.rows_match = _row_key(a.rows) == _row_key(b.rows)
+        elif r.orig_count == r.opt_count:
+            # too large for a row diff: compare per-column aggregates
+            # (COUNT / COUNT DISTINCT / MIN / MAX over the shared columns).
+            # Best-effort — a rewrite that renames columns simply skips this.
+            try:
+                head_a = executor.run(orig, max_rows=1)
+                head_b = executor.run(opt, max_rows=1)
+                r.orig_ms += head_a.elapsed_ms
+                r.opt_ms += head_b.elapsed_ms
+                shared = set(head_b.columns)
+                cols = [c for c in head_a.columns if c in shared]
+                fp_a, ms_a = _agg_fingerprint(executor, orig, cols, "chk_ao")
+                fp_b, ms_b = _agg_fingerprint(executor, opt, cols, "chk_ap")
+                r.orig_ms += ms_a
+                r.opt_ms += ms_b
+                if fp_a is not None and fp_b is not None:
+                    r.agg_compared = True
+                    r.agg_match = fp_a == fp_b
+                    r.agg_cols = len(cols)
+            except Exception:  # noqa: BLE001 — count verdict already stands
+                pass
     except Exception as exc:  # noqa: BLE001 — surface in the report section
         r.error = str(exc)
     return r
@@ -101,6 +145,10 @@ def render_consistency_section(res: ConsistencyResult, lang: str) -> str:
         parts.append(dsk(lang, "cst_match_full").format(n=res.orig_count))
     elif res.rows_compared:
         parts.append(dsk(lang, "cst_rows_differ"))
+    elif res.agg_compared and res.agg_match:
+        parts.append(dsk(lang, "cst_agg_match").format(n=res.agg_cols))
+    elif res.agg_compared:
+        parts.append(dsk(lang, "cst_agg_differ").format(n=res.agg_cols))
     else:
         parts.append(dsk(lang, "cst_match_count"))
     parts += [

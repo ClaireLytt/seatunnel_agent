@@ -2698,11 +2698,13 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .sql_review.api import router as sql_review_api_router
         from .data_lineage.api import router as lineage_api_router
         from .sql_transpile.api import router as transpile_api_router
+        from .data_skew.api import router as skew_api_router
         fastapi_app = app.app
         fastapi_app.include_router(t2s_api_router)
         fastapi_app.include_router(sql_review_api_router)
         fastapi_app.include_router(lineage_api_router)
         fastapi_app.include_router(transpile_api_router)
+        fastapi_app.include_router(skew_api_router)
 
     app.launch(
         server_name=host,

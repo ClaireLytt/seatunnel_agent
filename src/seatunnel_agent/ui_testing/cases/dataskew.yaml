@@ -256,3 +256,28 @@
     - wait_text: {text: Connect a data source first}
   expect:
     - text_contains: {in: 页面, text: Connect a data source first}
+
+- id: DSK20
+  title: 设置页保存的连接可在倾斜页一键填入
+  tags: [full, sqlite, isolated]
+  page: /settings
+  setup:
+    - open_accordion: {target: 数据库连接}
+    - fill: {连接名称: dsk-conn, 连接主机: 127.0.0.1, 端口: "3306", 数据库: skewdb}
+    - select: {of: 连接类型, value: MySQL}
+    - click: 保存连接
+    - wait: 400
+      note: 本地文件写入,短等待即可
+  steps:
+    - goto: /dataskew
+    - open_accordion: 连接数据源
+    - click: 读取已保存连接
+    - wait: 400
+      note: 读本地预设文件,短等待即可
+    - select: {of: 已保存连接, value: dsk-conn}
+    - wait: 600
+      note: 选中即回填表单,无 loading 信号
+  expect:
+    - value_is: {of: 主机, value: "127.0.0.1"}
+    - value_is: {of: 端口, value: "3306"}
+    - value_is: {of: 数据库, value: skewdb}

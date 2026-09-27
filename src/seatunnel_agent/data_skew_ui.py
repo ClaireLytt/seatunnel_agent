@@ -128,10 +128,18 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                 clear_btn = gr.Button(t0("dsk_clear_btn"), scale=0, min_width=80)
             with gr.Accordion(t0("dsk_conn_accordion"), open=False) as conn_acc:
                 with gr.Row():
+                    preset_dd = gr.Dropdown(choices=[], value=None,
+                                            label=t0("dsk_preset_dd"))
+                    preset_load_btn = gr.Button(t0("dsk_preset_load"),
+                                                size="sm", scale=0)
+                with gr.Row():
                     ds_dd = gr.Dropdown(choices=_CONN_DS_CHOICES, value="hive",
                                         label=t0("dsk_ds_type"))
+                    # default 10%: a casual verify on a production-size
+                    # table must not full-scan; engines without TABLESAMPLE
+                    # fall back to full via effective_sample_pct()
                     sample_dd = gr.Dropdown(choices=_sample_choices(_DEFAULT_LANG),
-                                            value=0, label=t0("dsk_sample"))
+                                            value=10, label=t0("dsk_sample"))
                 with gr.Row():
                     host_tb = gr.Textbox(label=t0("dsk_host"),
                                          placeholder="empty → .env")
@@ -450,6 +458,57 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         outputs=[sql_box, dialect_dd],
     )
 
+    # ── Saved connections (shared preset store with Settings / Data
+    # Comparison): load names on demand, picking one fills the form ──
+
+    def _presets_store():
+        from .data_comparison.presets import ConnectionPresetsStore
+        return ConnectionPresetsStore()
+
+    def do_preset_load(lang: str):
+        try:
+            names = [p.get("name", "") for p in _presets_store().list()]
+        except Exception:  # noqa: BLE001 — never break the page over the store
+            names = []
+        names = [n for n in names if n]
+        if not names:
+            return gr.update(choices=[], value=None), dsk(lang, "dsk_preset_none")
+        return gr.update(choices=names, value=None), gr.update()
+
+    preset_load_btn.click(
+        do_preset_load,
+        inputs=[lang_state],
+        outputs=[preset_dd, conn_status],
+    )
+
+    def do_preset_pick(name: str | None, lang: str, conn: dict | None):
+        no_change = tuple(gr.update() for _ in range(6)) + (gr.update(),)
+        if not name:
+            return no_change
+        try:
+            p = _presets_store().get_by_name(name)
+        except Exception:  # noqa: BLE001
+            p = None
+        if not p:
+            return no_change
+        ds = str(p.get("ds_type") or "").lower()
+        if ds not in _PROBE_DS:
+            return (*tuple(gr.update() for _ in range(6)),
+                    dsk(lang, "dsk_preset_unsupported").format(t=ds))
+        return (gr.update(value=ds),
+                gr.update(value=str(p.get("host") or "")),
+                gr.update(value=str(p.get("port") or "")),
+                gr.update(value=str(p.get("database") or "")),
+                gr.update(value=str(p.get("username") or "")),
+                gr.update(value=str(p.get("password") or "")),
+                _restored_status(lang, conn))
+
+    preset_dd.change(
+        do_preset_pick,
+        inputs=[preset_dd, lang_state, conn_state],
+        outputs=[ds_dd, host_tb, port_tb, db_tb, user_tb, pwd_tb, conn_status],
+    )
+
     ds_dd.change(_on_ds_change, inputs=[ds_dd], outputs=[port_tb, db_tb])
 
     connect_btn.click(
@@ -504,6 +563,8 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             gr.update(label=t("dsk_download_sql")),                # dl_sql_btn
             gr.update(label=t("dsk_optimized_sql")),               # optimized_box
             gr.update(label=t("dsk_conn_accordion")),              # conn_acc
+            gr.update(label=t("dsk_preset_dd")),                   # preset_dd
+            gr.update(value=t("dsk_preset_load")),                 # preset_load_btn
             gr.update(label=t("dsk_ds_type")),                     # ds_dd
             gr.update(label=t("dsk_sample"),
                       choices=_sample_choices(lg)),                # sample_dd
@@ -540,7 +601,8 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             lang_state, title_md, sql_box, dialect_dd, mode_radio,
             analyze_btn, clear_btn, report_md, dl_report_btn,
             dl_sql_btn, optimized_box,
-            conn_acc, ds_dd, sample_dd, host_tb, port_tb, db_tb, user_tb, pwd_tb,
+            conn_acc, preset_dd, preset_load_btn,
+            ds_dd, sample_dd, host_tb, port_tb, db_tb, user_tb, pwd_tb,
             connect_btn, verify_btn, cst_btn, conn_status,
             upload_btn, hist_acc, hist_dd, hist_refresh_btn, hist_load_btn,
             hist_md,

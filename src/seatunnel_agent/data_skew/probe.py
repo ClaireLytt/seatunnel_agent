@@ -70,6 +70,14 @@ _GROUP_END_RE = re.compile(
 # plain columns.
 _GROUP_SKIP = frozenset({"all", "grouping", "sets", "rollup", "cube"})
 _PLAIN_COL_RE = re.compile(r"(?:([A-Za-z_]\w*)\.)?([A-Za-z_]\w*)")
+# window PARTITION BY list (up to the frame's ORDER BY or closing paren)
+_OVER_PARTITION_RE = re.compile(
+    r"\bover\s*\(\s*partition\s+by\s+(.+?)(?:\border\s+by\b|\))",
+    re.IGNORECASE | re.DOTALL)
+# SELECT DISTINCT column list head (not COUNT(DISTINCT ...): SELECT-anchored)
+_SELECT_DISTINCT_RE = re.compile(
+    r"\bselect\s+distinct\s+(?!\s)((?:[^,()]|\([^()]*\))+)",
+    re.IGNORECASE)
 
 
 @dataclass
@@ -190,6 +198,32 @@ def extract_probe_targets(sql: str, max_targets: int = MAX_TARGETS) -> list[Prob
             table = amap.get(alias.lower()) if alias else single_table
             if table:
                 add(table, col, "group_key")
+
+        # window PARTITION BY keys: a hot partition value funnels the whole
+        # window into one task (DS009's measured counterpart)
+        for m in _OVER_PARTITION_RE.finditer(cleaned):
+            for col_m in _PLAIN_COL_RE.finditer(m.group(1)):
+                alias, col = col_m.group(1), col_m.group(2)
+                if col.lower() in _GROUP_SKIP:
+                    continue
+                table = amap.get(alias.lower()) if alias else single_table
+                if table:
+                    add(table, col, "window_key")
+
+        # SELECT DISTINCT: the leading column concentrates the dedup shuffle
+        for m in _SELECT_DISTINCT_RE.finditer(cleaned):
+            head = m.group(1)
+            col_m = _PLAIN_COL_RE.match(head.strip())
+            if not col_m:
+                continue
+            # a function call is not a plain column
+            rest = head.strip()[col_m.end():].lstrip()
+            if rest.startswith("("):
+                continue
+            alias, col = col_m.group(1), col_m.group(2)
+            table = amap.get(alias.lower()) if alias else single_table
+            if table:
+                add(table, col, "distinct_key")
 
     return targets
 
@@ -446,8 +480,89 @@ def render_probe_section(
         params = engine_params_for_results(results, dialect, lang)
         if params:
             parts += ["", params]
+        templates = render_rewrite_templates(results, lang)
+        if templates:
+            parts += ["", templates]
     parts.append("")
     return "\n".join(parts)
+
+
+def _salt_n(r: ProbeResult) -> int:
+    """Salting factor from the measured top1 share (~top1% / 2, clamped)."""
+    return min(64, max(8, int(r.top1_ratio * 50)))
+
+
+def render_rewrite_templates(results: list[ProbeResult], lang: str) -> str:
+    """Deterministic rewrite skeletons for the confirmed targets, with the
+    measured hot values filled in — usable without any LLM. At most three
+    templates; the column list stays a placeholder for the user."""
+    lang = normalize_lang(lang)
+    zh = lang == "zh"
+    blocks: list[str] = []
+    for r in results:
+        if r.verdict != "confirmed" or len(blocks) >= 3:
+            continue
+        t = r.target
+        hot = _measured_hot_values(r)
+        if t.reason == "join_key" and hot:
+            vals = ", ".join(_hint_literal(v) for v in hot[:5])
+            c = (f"-- 热点键隔离：{t.table}.{t.column} 实测热点 {vals}" if zh else
+                 f"-- hot-key isolation: measured hot {t.table}.{t.column} values {vals}")
+            sel = "SELECT /* 列清单 */ *" if zh else "SELECT /* column list */ *"
+            blocks.append(
+                f"```sql\n{c}\n"
+                f"{sel} FROM {t.table} a JOIN dim b ON a.{t.column} = b.{t.column}\n"
+                f"WHERE a.{t.column} IN ({vals})      "
+                + ("-- 热点分支：小表侧可 MAPJOIN/BROADCAST" if zh
+                   else "-- hot branch: MAPJOIN/BROADCAST the small side") + "\n"
+                f"UNION ALL\n"
+                f"{sel} FROM {t.table} a JOIN dim b ON a.{t.column} = b.{t.column}\n"
+                f"WHERE a.{t.column} NOT IN ({vals});\n```")
+        elif t.reason == "join_key" and r.null_ratio >= NULL_CONFIRMED:
+            c = (f"-- NULL 键拆分：{t.table}.{t.column} 实测 NULL 占比 {_pct(r.null_ratio)}"
+                 if zh else
+                 f"-- NULL-key split: measured {t.table}.{t.column} NULL ratio {_pct(r.null_ratio)}")
+            sel = "SELECT /* 列清单 */ *" if zh else "SELECT /* column list */ *"
+            blocks.append(
+                f"```sql\n{c}\n"
+                f"{sel} FROM {t.table} a JOIN dim b ON a.{t.column} = b.{t.column}\n"
+                f"WHERE a.{t.column} IS NOT NULL\n"
+                f"UNION ALL\n"
+                f"{sel} FROM {t.table} a WHERE a.{t.column} IS NULL;  "
+                + ("-- NULL 行不参与关联，维表列补 NULL" if zh
+                   else "-- NULL rows skip the join; pad dim columns with NULL") + "\n```")
+        elif t.reason == "count_distinct":
+            c = (f"-- 两阶段去重计数：{t.table}.{t.column}" if zh
+                 else f"-- two-stage distinct count: {t.table}.{t.column}")
+            blocks.append(
+                f"```sql\n{c}\n"
+                f"SELECT COUNT(1) AS distinct_cnt\n"
+                f"FROM (SELECT {t.column} FROM {t.table} GROUP BY {t.column}) dedup;\n```")
+        elif t.reason in ("group_key", "distinct_key") and hot:
+            n = _salt_n(r)
+            c = (f"-- 两阶段加盐聚合：{t.table}.{t.column} 实测 top1≈{_pct(r.top1_ratio)}，盐值 N={n}"
+                 if zh else
+                 f"-- two-stage salted aggregation: measured {t.table}.{t.column} "
+                 f"top1≈{_pct(r.top1_ratio)}, salt N={n}")
+            blocks.append(
+                f"```sql\n{c}\n"
+                f"SELECT {t.column}, SUM(pv) AS pv\n"
+                f"FROM (\n"
+                f"  SELECT {t.column}, CAST(rand() * {n} AS INT) AS salt, COUNT(*) AS pv\n"
+                f"  FROM {t.table}\n"
+                f"  GROUP BY {t.column}, CAST(rand() * {n} AS INT)\n"
+                f") pre\n"
+                f"GROUP BY {t.column};\n```")
+        elif t.reason == "window_key" and hot:
+            vals = ", ".join(_hint_literal(v) for v in hot[:3])
+            line = (f"`{t.table}.{t.column}` 热点分区值 {vals}：在 PARTITION BY 中追加细分列，"
+                    "或先按热点值拆分计算再合并" if zh else
+                    f"`{t.table}.{t.column}` hot partition values {vals}: add a finer "
+                    "column to PARTITION BY, or split the hot values out and union back")
+            blocks.append(f"- {line}")
+    if not blocks:
+        return ""
+    return dsk(lang, "prb_rewrite_head") + "\n\n" + "\n\n".join(blocks)
 
 
 def _hot_values(r: ProbeResult) -> list[str]:

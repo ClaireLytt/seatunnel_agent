@@ -182,7 +182,7 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
 @click.option("--port", "-p", type=int, default=7860, help="Port for the web UI")
 @click.option("--host", "-h", type=str, default="127.0.0.1", help="Host to bind (0.0.0.0 for LAN access)")
 @click.option("--share", is_flag=True, help="Create a public Gradio link")
-@click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/)")
+@click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/, /api/skew/)")
 def ui(port: int, host: str, share: bool, api: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     try:
@@ -1288,6 +1288,45 @@ def skew(
             else:
                 console.print(f"\n[red]{msg}[/red]")
             sys.exit(1)
+
+
+@cli.command(name="skew-stats")
+@click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
+def skew_stats(recent: int) -> None:
+    """数据倾斜分析历史与统计 (logs/data_skew.jsonl)。"""
+    from collections import Counter
+
+    from .data_skew.history import default_history
+
+    records = default_history().recent(recent)
+    if not records:
+        console.print("[yellow]还没有数据倾斜分析记录。[/yellow]")
+        return
+    console.print("[bold]数据倾斜分析历史[/bold]")
+    marks = {"high": "⛔", "medium": "⚠️", "clean": "✅"}
+    for r in records:
+        c = r.get("counts") or {}
+        snippet = " ".join((r.get("sql") or "").split())[:60]
+        console.print(
+            f"  {r.get('timestamp', '')}  [{r.get('mode', '')}/{r.get('source', '')}] "
+            f"{r.get('dialect', '')}  "
+            f"⛔{c.get('high', 0)} ⚠️{c.get('medium', 0)} 🔵{c.get('low', 0)}  "
+            f"{marks.get(r.get('verdict', ''), '')}  {snippet}")
+    verdicts = Counter(r.get("verdict", "clean") for r in records)
+    sources = Counter(r.get("source", "?") for r in records)
+    dialects = Counter(r.get("dialect", "?") for r in records)
+    console.print(
+        f"\n[bold]汇总[/bold] 共 {len(records)} 次 · "
+        f"高风险 {verdicts.get('high', 0)} 次 · "
+        f"潜在 {verdicts.get('medium', 0)} 次 · 干净 {verdicts.get('clean', 0)} 次")
+    console.print(
+        "[bold]来源[/bold] " + " · ".join(f"{k}×{v}" for k, v in sources.most_common())
+        + "   [bold]方言[/bold] "
+        + " · ".join(f"{k}×{v}" for k, v in dialects.most_common()))
+    llm_runs = sum(1 for r in records if r.get("mode") == "llm")
+    optimized = sum(1 for r in records if r.get("optimized"))
+    if llm_runs:
+        console.print(f"[bold]LLM 改写[/bold] {llm_runs} 次,产出优化 SQL {optimized} 次")
 
 
 @cli.command(name="skew-mcp")

@@ -43,6 +43,10 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_error": "Error",
         # --- datasource connection (optional) ---
         "dsk_conn_accordion": "Connect data source (optional — verify skew with real data)",
+        "dsk_preset_dd": "Saved connection",
+        "dsk_preset_load": "Load saved connections",
+        "dsk_preset_none": "No saved connections — add one on the Settings page.",
+        "dsk_preset_unsupported": "⚠️ Connection type '{t}' cannot run probes (LIMIT-incompatible).",
         "dsk_ds_type": "Datasource type",
         "dsk_host": "Host",
         "dsk_port": "Port",
@@ -89,6 +93,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_reason_join_key": "join key",
         "prb_reason_count_distinct": "COUNT(DISTINCT) column",
         "prb_reason_group_key": "GROUP BY key",
+        "prb_reason_window_key": "window PARTITION BY key",
+        "prb_reason_distinct_key": "leading DISTINCT column",
         "prb_verdict_confirmed": "⛔ skew confirmed",
         "prb_verdict_suspect": "⚠️ mild skew",
         "prb_verdict_ok": "✅ balanced",
@@ -96,6 +102,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_verdict_error": "probe failed",
         "prb_sampled_note": "(estimated from a {pct}% table sample)",
         "prb_engine_params": "**Suggested engine settings (based on measured skew)**",
+        "prb_rewrite_head": "**Rewrite templates (from measured values — fill in the column lists)**",
         # --- consistency measurement ---
         "cst_btn": "Measure Consistency (runs both SQLs)",
         "cst_running": "Running the original and the optimized SQL for comparison…",
@@ -115,6 +122,14 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         "cst_match_count": (
             "✅ Row counts match (result too large for a row-level diff)."
+        ),
+        "cst_agg_match": (
+            "✅ Row counts match, and per-column COUNT / COUNT DISTINCT / MIN / MAX "
+            "agree on all {n} shared column(s) (result too large for a row-level diff)."
+        ),
+        "cst_agg_differ": (
+            "⛔ Same row count but per-column aggregates differ across the {n} "
+            "shared column(s) — review the rewrite."
         ),
         "cst_col_metric": "Metric",
         "cst_col_orig": "Original SQL",
@@ -180,6 +195,10 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_error": "错误",
         # --- datasource connection (optional) ---
         "dsk_conn_accordion": "连接数据源（可选——用真实数据验证倾斜）",
+        "dsk_preset_dd": "已保存连接",
+        "dsk_preset_load": "读取已保存连接",
+        "dsk_preset_none": "暂无已保存连接——可在设置页添加。",
+        "dsk_preset_unsupported": "⚠️ 连接类型 '{t}' 不支持探查（不兼容 LIMIT）。",
         "dsk_ds_type": "数据源类型",
         "dsk_host": "主机",
         "dsk_port": "端口",
@@ -223,6 +242,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_reason_join_key": "JOIN 关联键",
         "prb_reason_count_distinct": "COUNT(DISTINCT) 列",
         "prb_reason_group_key": "GROUP BY 分组键",
+        "prb_reason_window_key": "窗口 PARTITION BY 键",
+        "prb_reason_distinct_key": "DISTINCT 首列",
         "prb_verdict_confirmed": "⛔ 确认倾斜",
         "prb_verdict_suspect": "⚠️ 轻度倾斜",
         "prb_verdict_ok": "✅ 分布均衡",
@@ -230,6 +251,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_verdict_error": "探查失败",
         "prb_sampled_note": "（按 {pct}% 表采样估算）",
         "prb_engine_params": "**建议引擎参数（基于实测倾斜）**",
+        "prb_rewrite_head": "**改写模板（按实测值生成——列清单需自行补全）**",
         # --- consistency measurement ---
         "cst_btn": "一致性实测（运行两版 SQL）",
         "cst_running": "正在运行原 SQL 与优化后 SQL 进行对比…",
@@ -244,6 +266,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "cst_match_full": "✅ 行数一致，且全部 {n} 行结果完全一致。",
         "cst_rows_differ": "⛔ 行数一致但结果内容存在差异——请人工复核改写。",
         "cst_match_count": "✅ 行数一致（结果集较大，未逐行比对）。",
+        "cst_agg_match": "✅ 行数一致，且 {n} 个同名列的 COUNT / COUNT DISTINCT / MIN / MAX 逐列一致（结果集较大，未逐行比对）。",
+        "cst_agg_differ": "⛔ 行数一致但 {n} 个同名列的逐列聚合值存在差异——请人工复核改写。",
         "cst_col_metric": "指标",
         "cst_col_orig": "原 SQL",
         "cst_col_opt": "优化后 SQL",

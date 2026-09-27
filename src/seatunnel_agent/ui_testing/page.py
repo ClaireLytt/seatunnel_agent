@@ -140,6 +140,8 @@ LABELS: dict[str, tuple[str, ...]] = {
     "下载优化 SQL": ("下载优化后 SQL（.sql）", "Download Optimized SQL (.sql)"),
     "上传 SQL 文件": ("上传 SQL 文件", "Upload SQL file"),
     "倾斜分析":   ("→ 倾斜分析", "→ Skew Analysis"),
+    "已保存连接": ("已保存连接", "Saved connection"),
+    "读取已保存连接": ("读取已保存连接", "Load saved connections"),
     "分析历史":   ("分析历史（最近 20 条）", "Analysis history (last 20)"),
     "选择记录":   ("选择记录", "Pick a record"),
     "历史刷新":   ("刷新", "Refresh"),
