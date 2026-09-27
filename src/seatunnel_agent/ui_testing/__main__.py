@@ -20,7 +20,8 @@ def _utf8_stdout() -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    from .report import print_summary, write_html, write_json
+    from .report import (print_summary, write_html, write_json,
+                         write_labels_patch)
     from .runner import run_suite
 
     def progress(i: int, n: int, cr) -> None:
@@ -47,12 +48,17 @@ def cmd_run(args: argparse.Namespace) -> int:
         )
         write_json(rr, run_dir)
         html_path = write_html(rr, run_dir)
+        write_labels_patch(rr, run_dir)
         print_summary(rr)
         print(f"\n报告: {html_path.resolve()}")
         counts = rr.counts()
         if counts["FAIL"] or counts["ERROR"]:
             rc = 1
-        signatures.append({c.case_id: c.verdict for c in rr.cases})
+        # HEALED normalizes to PASS: round 1 heals, the alias then makes
+        # round 2 a plain PASS — that's the healing working, not flakiness
+        signatures.append({
+            c.case_id: ("PASS" if c.verdict == "HEALED" else c.verdict)
+            for c in rr.cases})
 
     if repeat > 1:
         flaky = sorted({cid for sig in signatures for cid in sig

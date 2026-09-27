@@ -62,6 +62,38 @@ for title, path, old, new, case_ids in BUGS:
     finally:
         path.write_text(src, encoding="utf-8", newline="")
 
+# ④ self-healing: rename a button label; WITH an LLM the run must heal the
+# lookup (verdict HEALED, exit 0) and emit a paste-ready LABELS patch.
+print()
+print("④ 自愈闭环: 注入按钮文案漂移(结构对比→结构比对),期望 HEALED…")
+import os                                    # noqa: E402
+from dotenv import load_dotenv               # noqa: E402
+load_dotenv()
+if not (os.getenv("API_KEY") or os.getenv("ANTHROPIC_API_KEY")):
+    print("   ⏭️ 跳过: 未配置 API_KEY(自愈需要 LLM)")
+else:
+    heal_old = '"dc_compare_schema": "结构对比",'
+    heal_new = '"dc_compare_schema": "结构比对",'
+    src = I18N.read_text(encoding="utf-8")
+    assert heal_old in src, "heal patch anchor missing"
+    I18N.write_text(src.replace(heal_old, heal_new), encoding="utf-8",
+                    newline="")
+    try:
+        cmd = [sys.executable, "-m", "seatunnel_agent.ui_testing", "run",
+               "--case", "C1"]                       # WITH LLM on purpose
+        r = subprocess.run(cmd, capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=600)
+        out = (r.stdout or "") + (r.stderr or "")
+        healed = r.returncode == 0 and "HEALED" in out
+        print(f"{'✅ 自愈成功' if healed else '❌ 未自愈'}")
+        print("    " + "\n    ".join(out.splitlines()[-5:]))
+        if not healed:
+            failures.append("④ 自愈闭环未生效")
+        elif "labels_patch" not in out and "LABELS" not in out:
+            failures.append("④ 自愈成功但未输出 LABELS 补丁")
+    finally:
+        I18N.write_text(src, encoding="utf-8", newline="")
+
 print()
 print("回归确认: 注入全部还原后重跑覆盖用例…")
 code, out = run_cases(["X4", "A4"])

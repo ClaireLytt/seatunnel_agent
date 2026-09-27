@@ -54,6 +54,53 @@ def _snap(dc: DCPage, shots_dir: Path, case_id: str, tag: str) -> str | None:
         return None
 
 
+# Elements a heal attempt already failed for in this run: later cases fail
+# fast instead of re-billing the LLM for the same truly-missing element.
+_heal_failed: set[str] = set()
+
+
+def _parse_missing(detail: str) -> str:
+    """Extract the element name from a '... not found: X (side=..)' detail.
+
+    Returns "" for CSS-selector style names (e.g. drag_sidebar's
+    '.st-dc-sidebar'): those are layout lookups, not LABELS entries — an
+    alias could never fix them, so healing would just waste an LLM call."""
+    name = detail.split("not found:")[-1].split("(side")[0].strip()[:60]
+    if name.startswith((".", "#")):
+        return ""
+    return name
+
+
+def _safe_digest(dc: DCPage) -> str:
+    try:
+        return dc.digest()
+    except Exception:  # noqa: BLE001 — healing must never crash a run
+        return ""
+
+
+def _attempt_heal(missing: str, dc: DCPage, heal_llm, rerun):
+    """One verified retry under an LLM-suggested alias.
+
+    Returns ``(retry_log, "missing -> label")`` when the re-run succeeded, or
+    ``(None, detail_suffix)`` when it did not — the alias is then rolled back
+    and the element negative-cached for the rest of the run."""
+    from .diagnose import suggest_locator_struct
+    from .page import register_alias, unregister_alias
+    sug = suggest_locator_struct(missing, _safe_digest(dc), heal_llm)
+    if sug is None:
+        _heal_failed.add(missing)
+        return None, ""
+    label, hint = sug
+    register_alias(missing, label)
+    retry = rerun()
+    if retry.ok:
+        retry.detail = f"🩹 HEALED: {missing!r} -> {label!r} · {retry.detail}"
+        return retry, f"{missing} -> {label}"
+    unregister_alias(missing, label)
+    _heal_failed.add(missing)
+    return None, f"  [自愈失败] 按建议 {label!r} 重试仍失败 — {hint}"
+
+
 def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
              app_log_tail_fn=lambda: "", llm_factory=None) -> CaseResult:
     # imported lazily so --no-llm never touches LLM config
@@ -64,6 +111,11 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
     res = CaseResult(case.id, case.title, "PASS")
     t0 = time.time()
     tokens_before = llm.tokens_used if llm else 0
+    # captures are per-case: a download_ok/popup_contains assert without its
+    # own download/popup_click step must fail, not validate the previous
+    # case's stale capture
+    dc.last_download = None
+    dc.last_popup_text = None
     try:
         dc.goto(case.page)
         # Enforce the case's language every time: the preference lives in
@@ -92,19 +144,33 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
                    else run_script_step(step, dc))
             res.steps.append(log)
             if not log.ok:
+                # ── self-healing loop: a missing element gets ONE verified
+                # retry under an LLM-suggested alias. A wrong suggestion just
+                # fails the retry and is rolled back — the LLM nominates, the
+                # deterministic re-run decides. Verified aliases live in
+                # page.RUNTIME_ALIASES so every later case resolves directly.
                 if "not found" in log.detail:
                     heal_llm = llm or (llm_factory() if llm_factory else None)
-                    if heal_llm is not None:
-                        from .diagnose import suggest_locator
-                        try:
-                            digest = dc.digest()
-                        except Exception:  # noqa: BLE001
-                            digest = ""
-                        missing = (log.detail.split("not found:")[-1]
-                                   .split("(side")[0].strip()[:60])
-                        hint = suggest_locator(missing, digest, heal_llm)
-                        if hint:
-                            log.detail = f"{log.detail}  {hint}"
+                    missing = _parse_missing(log.detail)
+                    if heal_llm is not None and missing:
+                        if step.ai:
+                            # the agent loop self-corrects by observation;
+                            # a lookup it gave up on only gets a report hint
+                            from .diagnose import suggest_locator
+                            hint = suggest_locator(
+                                missing, _safe_digest(dc), heal_llm)
+                            if hint:
+                                log.detail += f"  {hint}"
+                        elif missing not in _heal_failed:
+                            retry, extra = _attempt_heal(
+                                missing, dc, heal_llm,
+                                lambda: run_script_step(step, dc))
+                            if retry is not None:
+                                res.steps.append(retry)
+                                if extra not in res.healed:
+                                    res.healed.append(extra)
+                                continue          # case goes on, no ERROR
+                            log.detail += extra
                 res.verdict = "ERROR"
                 res.reason = f"步骤失败: {log.desc} — {log.detail}"
                 log.screenshot = _snap(dc, shots_dir, case.id, "step_fail")
@@ -113,6 +179,24 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
         for a in case.expect:
             log = (run_judge(a, dc, llm) if a.kind == "ai_judge"
                    else run_assert(a, dc))
+            # assert-side healing: a control referenced only in `expect`
+            # (visible / value_is / text_contains-in-label) heals the same
+            # way — nominate, alias, re-run the assertion to verify.
+            if not log.ok and a.kind != "ai_judge" and "not found" in log.detail:
+                heal_llm = llm or (llm_factory() if llm_factory else None)
+                missing = _parse_missing(log.detail)
+                if (heal_llm is not None and missing
+                        and missing not in _heal_failed):
+                    retry, extra = _attempt_heal(
+                        missing, dc, heal_llm,
+                        lambda a=a: run_assert(a, dc))
+                    if retry is not None:
+                        res.asserts.append(log)
+                        res.asserts.append(retry)
+                        if extra not in res.healed:
+                            res.healed.append(extra)
+                        continue
+                    log.detail += extra
             res.asserts.append(log)
             if not log.ok:
                 res.verdict = "FAIL"
@@ -137,6 +221,9 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
                 res.reason = f"{res.reason}  {attribution}"
         res.elapsed_ms = int((time.time() - t0) * 1000)
         res.tokens = (llm.tokens_used - tokens_before) if llm else 0
+        # only a fully green case counts as healed — a later FAIL stays FAIL
+        if res.verdict == "PASS" and res.healed:
+            res.verdict = "HEALED"
     return res
 
 
@@ -155,6 +242,15 @@ def run_suite(
     all_cases = load_cases(cases_dir) if cases_dir else load_cases()
     cases = filter_cases(all_cases, suite, case_ids)
     manual = [c for c in all_cases if "manual" in c.tags] if not case_ids else []
+
+    # fresh healing + judge state per run: the /uitest page runs suites in
+    # one long-lived process, so a stale judge verdict from a previous run
+    # (keyed on the TEXT digest only) could hide a visual regression
+    from .judge import _judge_cache
+    from .page import reset_aliases
+    reset_aliases()
+    _heal_failed.clear()
+    _judge_cache.clear()
 
     _prune_runs()
     ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -195,9 +291,11 @@ def run_suite(
             dc = DCPage(page, app.base_url)
 
             for i, case in enumerate(cases, 1):
-                if _skip_reason(case, no_llm):
-                    cr = CaseResult(case.id, case.title, "SKIP",
-                                    reason=_skip_reason(case, no_llm))
+                if _skip_reason(case, no_llm, external=bool(base_url)):
+                    cr = CaseResult(
+                        case.id, case.title, "SKIP",
+                        reason=_skip_reason(case, no_llm,
+                                            external=bool(base_url)))
                 else:
                     cr = run_case(case, dc, llm, shots_dir,
                                   app_log_tail_fn=app.log_tail,
@@ -228,7 +326,12 @@ def _needs_llm(cases: list[TestCase]) -> bool:
     return False
 
 
-def _skip_reason(case: TestCase, no_llm: bool) -> str:
+def _skip_reason(case: TestCase, no_llm: bool, external: bool = False) -> str:
+    if external and "isolated" in case.tags:
+        # --base-url reuses an app WITHOUT the SEATUNNEL_*_PATH isolation:
+        # these cases mutate the settings/preset stores and would wipe the
+        # developer's real ~/.seatunnel-agent files
+        return "外接应用 (--base-url) 无配置隔离,跳过会改写真实配置的用例"
     if "hive" in case.tags:
         import os
         if not os.getenv("HIVE_HOST"):

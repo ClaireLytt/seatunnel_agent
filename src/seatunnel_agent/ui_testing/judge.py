@@ -76,16 +76,21 @@ def run_judge(a: Assertion, dc: DCPage, llm: UITestLLM | None) -> StepLog:
 
     t0 = time.time()
     expect = str(a.args.get("expect", a.args.get("target", "")))
+    # Adversarial mode (verdict: fail): the expectation is deliberately
+    # FALSE and the judge must say so — a 'pass' here means the judge
+    # rubber-stamps, which is exactly what these cases exist to catch.
+    wanted = str(a.args.get("verdict", "pass")).lower()
+    desc = f"ai_judge: {expect}" + (" (期望判 fail)" if wanted == "fail" else "")
     if llm is None:
-        return StepLog(f"ai_judge: {expect}", False, 0, "跳过: --no-llm 模式")
+        return StepLog(desc, False, 0, "跳过: --no-llm 模式")
 
     digest = dc.digest(max_result_chars=2500)
-    cache_key = (expect, hashlib.sha256(digest.encode("utf-8")).hexdigest())
+    cache_key = (expect, wanted,
+                 hashlib.sha256(digest.encode("utf-8")).hexdigest())
     hit = _judge_cache.get(cache_key)
     if hit is not None:
         ok, reason = hit
-        return StepLog(f"ai_judge: {expect}", ok, _ms(t0),
-                       f"{reason} (cached)")
+        return StepLog(desc, ok, _ms(t0), f"{reason} (cached)")
 
     prompt = f"预期:{expect}\n\n当前页面摘要:\n{digest}"
 
@@ -120,9 +125,10 @@ def run_judge(a: Assertion, dc: DCPage, llm: UITestLLM | None) -> StepLog:
             break
 
     if obj is None:
-        return StepLog(f"ai_judge: {expect}", False, _ms(t0),
-                       "judge 输出无法解析为 JSON")
-    ok = obj["verdict"] == "pass"
+        return StepLog(desc, False, _ms(t0), "judge 输出无法解析为 JSON")
+    ok = obj["verdict"] == wanted
     reason = str(obj.get("reason", ""))[:500]
+    if wanted == "fail" and not ok:
+        reason = f"⚠️ judge 对虚假预期误判为 pass(幻觉盖章)— {reason}"
     _judge_cache[cache_key] = (ok, reason)
-    return StepLog(f"ai_judge: {expect}", ok, _ms(t0), reason)
+    return StepLog(desc, ok, _ms(t0), reason)

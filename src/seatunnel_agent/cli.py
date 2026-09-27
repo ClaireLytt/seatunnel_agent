@@ -1494,7 +1494,8 @@ def uitest(args: tuple[str, ...]) -> None:
 @click.option("--clear", "clear_", is_flag=True,
               help="清除界面保存的 LLM 配置覆盖（恢复 .env）")
 @click.option("--usage", "usage_", is_flag=True,
-              help="显示近 30 天 LLM token 用量（按模型汇总）")
+              help="显示近 30 天 LLM token 用量（按模型汇总；读取当前目录的 "
+                   "logs/llm_usage.jsonl，请在项目根目录运行）")
 def settings(clear_: bool, usage_: bool) -> None:
     """查看当前生效的 LLM 配置（界面覆盖 or .env），或清除界面覆盖。"""
     from dotenv import load_dotenv

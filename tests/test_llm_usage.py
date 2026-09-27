@@ -19,8 +19,11 @@ def usage_file(tmp_path, monkeypatch):
 
 
 def test_record_and_summarize(usage_file):
-    llm_usage.record("openai", "kimi-k2", {"input": 100, "output": 20})
-    llm_usage.record("openai", "kimi-k2", {"input": 50, "output": 10})
+    # the real producer (LLMClient) uses the *_tokens key style
+    llm_usage.record("openai", "kimi-k2",
+                     {"input_tokens": 100, "output_tokens": 20})
+    llm_usage.record("openai", "kimi-k2",
+                     {"input_tokens": 50, "output_tokens": 10})
     llm_usage.record("anthropic", "claude-opus-5", {"input": 7, "output": 3})
     s = llm_usage.summarize()
     assert s["total"] == {"calls": 3, "input": 157, "output": 33}

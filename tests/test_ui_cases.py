@@ -95,4 +95,5 @@ def test_ui_case(case, ui_env):
     detail = "\n".join(
         f"  [FAIL] {s.desc}: {s.detail}"
         for s in [*cr.steps, *cr.asserts] if not s.ok) or cr.reason
-    assert cr.verdict == "PASS", f"{case.id} {cr.verdict}: {detail}"
+    # HEALED = green with a pending LABELS patch — visible, not a CI failure
+    assert cr.verdict in ("PASS", "HEALED"), f"{case.id} {cr.verdict}: {detail}"

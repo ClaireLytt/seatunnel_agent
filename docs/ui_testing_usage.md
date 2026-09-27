@@ -46,8 +46,9 @@ python -m seatunnel_agent.ui_testing list [--suite smoke]
   (数据与 `examples/dc_hive_test_data.sql` 逐行一致,单测
   `test_rows_match_hive_sql_file` 保证两处不漂移)。
 - 每条用例从新页面加载开始(隔离),默认切中文界面(`lang: en` 可保持英文)。
-- 结果四态 + 人工:`PASS` / `FAIL`(断言不过)/ `ERROR`(执行异常)/
-  `SKIP`(标签不满足)/ `MANUAL`(标注人工)。
+- 结果状态:`PASS` / `FAIL`(断言不过)/ `ERROR`(执行异常)/
+  `SKIP`(标签不满足)/ `MANUAL`(标注人工)/
+  `HEALED`(定位自愈后全绿,待粘贴 LABELS 补丁,见「稳定性与诊断」)。
 - `--base-url http://127.0.0.1:7912` 可复用已启动的应用(配合 `--keep-app`
   连续调试,免每轮冷启动)。
 
@@ -98,7 +99,9 @@ download_ok(扩展名/大小/魔数/内容)/ popup_contains / sidebar_width /
 ai_judge`。`in:` 可取 `状态` / `结果区` / `页面` / 任意输入框标签。
 
 标签:`smoke`(冒烟)、`full`(全量)、`hive`(需真实 Hive,连不上整组 SKIP)、
-`sqlite`(内置演示库)、`slow`(>1min,默认不进 smoke/full)、`manual`(不自动化)。
+`sqlite`(内置演示库)、`slow`(>1min,默认不进 smoke/full)、`manual`(不自动化)、
+`isolated`(会改写设置/连接存储,仅在 Runner 自启的隔离应用里跑;
+`--base-url` 外接应用时自动 SKIP,防止清掉开发者的真实配置)。
 
 ## LLM 用量与安全
 
@@ -121,8 +124,19 @@ python -m seatunnel_agent.ui_testing compare 20260924_1 20260925_2
 - 报告顶部自动显示「较上轮变化」(同套件的上一轮,verdict 变化 + 明显变慢);
 - `ai_judge` 默认附带**页面截图**(多模态,视觉类预期可判);模型不支持视觉时
   自动降级纯文本并在本轮内记住,`UITEST_JUDGE_VISION=0` 可关;
-- 定位失败(元素 not found)时自动给出**LABELS 修正建议**
-  (LLM 对照页面摘要猜实际标签,写进步骤明细);
+- **judge 幻觉对抗(NEG 组)**:`ai_judge: {expect: <故意为假的陈述>, verdict: fail}`
+  —— judge 必须判 fail 用例才通过,判 pass 即"幻觉盖章"并在明细中标红。
+  NEG1~NEG3 基于种子数据的确定性真值(10 vs 9 行、结构一致、不存在的提示条),
+  是换模型 / 改 judge 提示词时的可信度回归护栏,nightly 的 LLM 冒烟包含 NEG1;
+- **定位自愈闭环**:元素找不到时,LLM 对照页面摘要提名实际标签 →
+  注册运行时别名 → **原步骤重试一次验证**。通过则该用例判 `HEALED`
+  (绿色但待修,不挡 CI),后续用例直接命中别名不再失败;运行结束在
+  报告底部/终端/`runs/<ts>/labels_patch.txt` 输出可直接粘贴进
+  `page.py::LABELS` 的永久修复。错误提名只会让重试失败并回滚,
+  不可能产生假绿;同一元素自愈失败后本轮不再重试(负缓存)。
+  `--no-llm` 时降级为只在步骤明细里写一行定位建议;
+  `--repeat` 与 flaky 趋势中 HEALED 视同 PASS(第 1 轮愈合、
+  第 2 轮直通不算 flaky),但 HEALED→FAIL 计为回归;
 - 任何 FAIL/ERROR 自动附 LLM 归因(前端/后端/用例过期/环境),`--no-llm` 时跳过。
 
 ## CI 集成

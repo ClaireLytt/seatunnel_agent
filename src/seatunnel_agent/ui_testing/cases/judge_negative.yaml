@@ -1,0 +1,38 @@
+# NEG 组 · judge 幻觉对抗。预期文本全部是【故意为假】的陈述
+# (verdict: fail),judge 必须给 fail 用例才算通过 —— 判 pass 即
+# 说明 judge 在无脑盖章,ai_judge 的判定不可信。
+# 真值来自种子数据:dc_test_orders_a 10 行 vs dc_test_orders_b 9 行,
+# 两表结构完全一致(C1/C3 的正向断言与此同源)。
+
+- id: NEG1
+  title: 行数明明 10 vs 9,虚假预期「完全一致」必须被判 fail
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - ai_judge: {expect: 行数对比结果显示两侧行数完全一致,均为 10 行, verdict: fail}
+
+- id: NEG2
+  title: 结构明明一致,虚假预期「发现类型不一致」必须被判 fail
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - click: 结构对比
+    - wait_result: {}
+  expect:
+    - ai_judge: {expect: 结构对比发现了多处列类型不一致并标红, verdict: fail}
+
+- id: NEG3
+  title: 页面上不存在的元素,虚假预期「显示导出成功提示」必须被判 fail
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - click: 行数对比
+    - wait_result: {}
+  expect:
+    - ai_judge: {expect: 页面顶部显示绿色的「Excel 导出成功」提示条, verdict: fail}

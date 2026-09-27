@@ -31,7 +31,7 @@
 
 - id: SET3
   title: 保存模型名覆盖并即时反映在当前配置
-  tags: [smoke, sqlite]
+  tags: [smoke, sqlite, isolated]
   page: /settings
   steps:
     - fill: {模型名称: uitest-model-x}
@@ -45,7 +45,7 @@
 
 - id: SET4
   title: 恢复 .env 清除界面覆盖值
-  tags: [smoke, sqlite]
+  tags: [smoke, sqlite, isolated]
   page: /settings
   steps:
     - click: 恢复 env
@@ -57,7 +57,7 @@
 
 - id: SET6
   title: 配置档案存档并一键启用
-  tags: [smoke, sqlite]
+  tags: [smoke, sqlite, isolated]
   page: /settings
   steps:
     - open_accordion: {target: 配置档案}
@@ -76,7 +76,7 @@
 
 - id: SET7
   title: 删除档案(SET6 清理其一)
-  tags: [smoke, sqlite]
+  tags: [smoke, sqlite, isolated]
   page: /settings
   steps:
     - open_accordion: {target: 配置档案}
@@ -89,7 +89,7 @@
 
 - id: SET8
   title: 恢复 .env 清除档案启用的覆盖(SET6 清理其二)
-  tags: [smoke, sqlite]
+  tags: [smoke, sqlite, isolated]
   page: /settings
   steps:
     - click: 恢复 env
@@ -101,7 +101,7 @@
 
 - id: SET9
   title: 设置页保存数据库连接(与数据对比页共用预设)
-  tags: [smoke, sqlite]
+  tags: [smoke, sqlite, isolated]
   page: /settings
   steps:
     - open_accordion: {target: 数据库连接}
@@ -117,7 +117,7 @@
 
 - id: SET10
   title: 删除数据库连接(SET9 清理)
-  tags: [smoke, sqlite]
+  tags: [smoke, sqlite, isolated]
   page: /settings
   steps:
     - open_accordion: {target: 数据库连接}

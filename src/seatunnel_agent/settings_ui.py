@@ -170,9 +170,34 @@ def _ds_choices() -> list[str]:
     return [DIALECT_NAMES[d] for d in DS_TYPES]
 
 
+def _ds_label_to_key(label: str) -> str:
+    """Display label -> internal key ("MySQL" -> "mysql").
+
+    The preset store must hold the KEY: the Data Comparison page feeds
+    preset["ds_type"] straight into create_executor, which knows keys only."""
+    from .text2sql.executor import DIALECT_NAMES
+    for key, name in DIALECT_NAMES.items():
+        if name == label:
+            return key
+    return label
+
+
+def _ds_key_to_label(key: str) -> str:
+    from .text2sql.executor import DIALECT_NAMES
+    return DIALECT_NAMES.get(key, key)
+
+
+_presets_singleton = None
+
+
 def _presets_store():
-    from .data_comparison.presets import ConnectionPresetsStore
-    return ConnectionPresetsStore()
+    """One shared instance: the store's thread-lock only guards writes made
+    through the SAME instance, so don't create one per callback."""
+    global _presets_singleton
+    if _presets_singleton is None:
+        from .data_comparison.presets import ConnectionPresetsStore
+        _presets_singleton = ConnectionPresetsStore()
+    return _presets_singleton
 
 
 def _conn_names() -> list[str]:
@@ -191,14 +216,17 @@ def _conn_summary(lang: str) -> str:
         presets = []
     if not presets:
         return "暂无已保存的连接" if zh else "No saved connections"
+    esc = lambda s: str(s).replace("|", "\\|")  # noqa: E731 — table safety
     rows = ["| " + ("名称 | 类型 | 地址 | 数据库 | 用户" if zh
                     else "Name | Type | Address | Database | User") + " |",
             "|---|---|---|---|---|"]
     for p in presets:
         rows.append(
-            f"| **{p.get('name', '')}** | {p.get('ds_type', '')} "
-            f"| `{p.get('host', '')}:{p.get('port', '')}` "
-            f"| {p.get('database', '')} | {p.get('username', '') or '—'} |")
+            f"| **{esc(p.get('name', ''))}** "
+            f"| {esc(_ds_key_to_label(p.get('ds_type', '')))} "
+            f"| `{esc(p.get('host', ''))}:{p.get('port', '')}` "
+            f"| {esc(p.get('database', ''))} "
+            f"| {esc(p.get('username', '')) or '—'} |")
     return "\n".join(rows)
 
 
@@ -471,7 +499,8 @@ def render_settings_page(app: gr.Blocks) -> None:
         except ValueError:
             return _t(lang, "conn_port_bad"), gr.update(), gr.update()
         _presets_store().save(
-            name=name, ds_type=ds_type or "", host=(host or "").strip(),
+            name=name, ds_type=_ds_label_to_key(ds_type or ""),
+            host=(host or "").strip(),
             port=port_i, database=(db or "").strip(),
             username=(user or "").strip(), password=pwd or "",
             environment=(env or "").strip())
