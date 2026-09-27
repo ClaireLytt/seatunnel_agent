@@ -28,8 +28,8 @@ from playwright.sync_api import Locator, Page
 # data_comparison/i18n.py.  Extend here (only here) when migrating cases.
 LABELS: dict[str, tuple[str, ...]] = {
     # connection panel
-    "数据源类型": ("数据源类型", "Data Source"),
-    "主机":       ("主机地址", "Host"),
+    "数据源类型": ("数据源类型", "Data Source", "Datasource type"),
+    "主机":       ("主机地址", "Host", "主机"),
     "端口":       ("端口", "Port"),
     "数据库":     ("数据库", "Database"),
     "用户名":     ("用户名", "Username"),
@@ -128,6 +128,24 @@ LABELS: dict[str, tuple[str, ...]] = {
     "审查规则":   ("规则配置（可选，.sqlreview.yaml 格式）",
                    "Rule config (optional, .sqlreview.yaml format)"),
     "规则输入":   ("YAML 规则", "YAML rules"),
+    # ── Data Skew page (/dataskew) — labels from data_skew/i18n.py ──
+    "开始分析":   ("开始分析", "Analyze Skew"),
+    "分析模式":   ("分析模式", "Analysis Mode"),
+    "连接数据源": ("连接数据源（可选——用真实数据验证倾斜）",
+                   "Connect data source (optional — verify skew with real data)"),
+    "探查采样":   ("探查采样", "Probe sampling"),
+    "验证倾斜（实测）": ("验证倾斜（实测数据）", "Verify Skew (live data)"),
+    "一致性实测": ("一致性实测（运行两版 SQL）",
+                   "Measure Consistency (runs both SQLs)"),
+    "下载优化 SQL": ("下载优化后 SQL（.sql）", "Download Optimized SQL (.sql)"),
+    "上传 SQL 文件": ("上传 SQL 文件", "Upload SQL file"),
+    "倾斜分析":   ("→ 倾斜分析", "→ Skew Analysis"),
+    "已保存连接": ("已保存连接", "Saved connection"),
+    "读取已保存连接": ("读取已保存连接", "Load saved connections"),
+    "分析历史":   ("分析历史（最近 20 条）", "Analysis history (last 20)"),
+    "选择记录":   ("选择记录", "Pick a record"),
+    "历史刷新":   ("刷新", "Refresh"),
+    "载入所选":   ("载入所选", "Load selected"),
     # ── Lineage page (/lineage) ──
     "SQL 目录":   ("SQL 目录", "SQL directory"),
     "SeaTunnel 配置目录": ("SeaTunnel 配置目录", "SeaTunnel config directory"),
@@ -228,6 +246,7 @@ class DCPage:
         "/impact": ".st-imp-side",
         "/migrate": ".st-mig-side",
         "/settings": ".st-set-page",
+        "/dataskew": "#dsk-sql-box textarea",
     }
 
     def goto(self, path: str = "/datacompare") -> None:
@@ -446,7 +465,11 @@ class DCPage:
 
         Escape also closes it, but leaves the input text empty; blur makes
         Gradio restore the selected value — which is what a user sees."""
-        self.page.locator(".st-main").first.click(position={"x": 8, "y": 8})
+        # .st-main only exists on the Data Comparison page; elsewhere blur
+        # against the page body (top-left corner is the title area — inert).
+        neutral = self.page.locator(".st-main")
+        target = neutral.first if neutral.count() else self.page.locator("body")
+        target.click(position={"x": 8, "y": 8})
         self.page.wait_for_timeout(200)
 
     def dropdown_select(self, name: str, value: str,
@@ -556,6 +579,9 @@ class DCPage:
         loc = self.page.locator(".st-mig-main")
         if loc.count():
             return loc.first
+        loc = self.page.locator(".dsk-report-card")
+        if loc.count():
+            return loc.first
         return self.page.locator(".sr-report-card").last
 
     def result_text(self) -> str:
@@ -655,20 +681,55 @@ class DCPage:
         return self.last_download
 
     def popup_click(self, name: str, side: str | None = None) -> str:
-        """Click a button that window.open()s a page; capture its text (Q4)."""
+        """Click a button that window.open()s a page; capture its text (Q4).
+
+        The capture includes textarea/input VALUES too, so a popup that is a
+        gradio page with a prefilled editor (e.g. the review → dataskew
+        bridge) can be asserted on. Gradio pages hydrate client-side, so
+        wait for non-empty body text (up to 10s) plus a grace period for
+        late JS (the localStorage bridge fires ~600ms after load)."""
         btn = self.button(name, side)
         with self.page.context.expect_page(timeout=15_000) as pop_info:
             btn.click()
         pop = pop_info.value
         try:
             pop.wait_for_load_state("domcontentloaded")
-            pop.wait_for_timeout(600)      # document.write + render settle
+            try:
+                pop.wait_for_function(
+                    "() => document.body && "
+                    "document.body.innerText.trim().length > 0",
+                    timeout=10_000)
+            except Exception:  # noqa: BLE001 — capture whatever is there
+                pass
+            pop.wait_for_timeout(2_000)    # document.write / bridge settle
             text = pop.evaluate(
-                "() => document.body ? document.body.innerText : ''")
+                """() => {
+                    const body = document.body ? document.body.innerText : '';
+                    const vals = [...document.querySelectorAll('textarea, input')]
+                        .map(e => e.value).filter(Boolean).join('\\n');
+                    return body + '\\n' + vals;
+                }""")
         finally:
             pop.close()
         self.last_popup_text = text
         return text
+
+    def upload_file(self, name: str, path: str, side: str | None = None) -> None:
+        """Set a local file on an UploadButton's hidden <input type=file>."""
+        p = Path(path)
+        if not p.is_file():
+            raise LookupError(f"upload source not found: {path}")
+        btn = self.button(name, side)
+        inp = btn.locator("input[type='file']")
+        if not inp.count():
+            # gradio may render the input as a sibling in the button's block
+            inp = btn.locator("xpath=..").locator("input[type='file']")
+        if not inp.count():
+            inp = self._scope(side).locator("input[type='file']")
+        if not inp.count():
+            raise LookupError(f"no file input near button: {name}")
+        inp.first.set_input_files(str(p))
+        self.page.wait_for_timeout(400)
 
     def drag_sidebar_grip(self, dx: int) -> int:
         """Drag the datacompare sidebar's native CSS resize grip by dx px (B2).

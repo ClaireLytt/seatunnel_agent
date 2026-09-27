@@ -182,7 +182,7 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
 @click.option("--port", "-p", type=int, default=7860, help="Port for the web UI")
 @click.option("--host", "-h", type=str, default="127.0.0.1", help="Host to bind (0.0.0.0 for LAN access)")
 @click.option("--share", is_flag=True, help="Create a public Gradio link")
-@click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/)")
+@click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/, /api/skew/)")
 def ui(port: int, host: str, share: bool, api: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     try:
@@ -1157,6 +1157,189 @@ def lineage_mcp(
             sql_dir=sql_dir, seatunnel_dir=seatunnel_dir, use_hive=use_hive,
             meta_table=meta_table, partition=partition, sql_dialect=sql_dialect,
         )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+    server.run()
+
+
+@cli.command()
+@click.argument("paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--sql", "-s", type=str, default=None, help="SQL text to analyze")
+@click.option("--file", "-f", "sql_file", type=click.Path(exists=True), default=None,
+              help="SQL file to analyze")
+@click.option("--dir", "-D", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="Analyze every *.sql file under a directory (recursive)")
+@click.option("--dialect", "-d", type=click.Choice(["spark", "maxcompute", "hive"]),
+              default="spark", show_default=True, help="SQL dialect")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--llm", "use_llm", is_flag=True,
+              help="Also rewrite the SQL with the LLM (needs API key; default is static-only)")
+@click.option("--fail-on", type=click.Choice(["high", "medium", "low"]), default=None,
+              help="Exit 1 when findings at/above this severity exist (CI gate)")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def skew(
+    paths: tuple[str, ...],
+    sql: str | None,
+    sql_file: str | None,
+    directory: str | None,
+    dialect: str,
+    lang: str,
+    use_llm: bool,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """SQL 数据倾斜分析 — static skew-pattern scan, optional LLM rewrite.
+
+    PATHS: optional *.sql files or directories (as passed by pre-commit)."""
+    import json as _json
+    from pathlib import Path
+
+    from .data_skew.history import default_history
+    from .data_skew.report import Severity, render_report
+    from .sql_review.runner import collect_sql_files
+
+    # ── collect analysis targets ──
+    sources: list[tuple[str, str]] = []
+    try:
+        if sql:
+            sources.append(("<inline>", sql))
+        if sql_file:
+            sources.append((sql_file, Path(sql_file).read_text(encoding="utf-8")))
+        for raw in paths:
+            p = Path(raw)
+            if p.is_dir():
+                for f in collect_sql_files(p):
+                    sources.append((str(f), f.read_text(encoding="utf-8")))
+            else:
+                sources.append((str(p), p.read_text(encoding="utf-8")))
+        if directory:
+            for p in collect_sql_files(directory):
+                sources.append((str(p), p.read_text(encoding="utf-8")))
+    except (OSError, UnicodeDecodeError) as e:
+        console.print(f"[red]收集分析目标失败:[/red] {e}")
+        sys.exit(1)
+    seen: set[str] = set()
+    sources = [(label, text) for label, text in sources
+               if not (label in seen or seen.add(label))]
+    if not sources:
+        raise click.UsageError("Provide SQL via --sql / --file / --dir or positional paths")
+
+    # ── analyze ──
+    history = default_history()
+    results = []  # (label, SkewReport, markdown)
+    for label, text in sources:
+        if use_llm:
+            from .config import load_settings
+            from .data_skew.agent import DataSkewAgent
+            try:
+                settings = load_settings()
+            except RuntimeError as e:
+                raise click.ClickException(f"--llm 需要 LLM 配置: {e}")
+            agent = DataSkewAgent(settings, dialect=dialect, lang=lang)
+            res = agent.analyze(text, use_llm=True)
+            rep, md = res.report, res.markdown
+        else:
+            from .data_skew.agent import static_skew_report
+            rep = static_skew_report(text, dialect, lang)
+            md = render_report(rep, lang)
+        history.log(text, rep, mode="llm" if use_llm else "static", source="cli")
+        results.append((label, rep, md))
+
+    # ── render ──
+    if fmt == "json":
+        payload = [
+            {
+                "file": label,
+                "dialect": rep.dialect,
+                "counts": {"high": len(rep.high), "medium": len(rep.medium),
+                           "low": len(rep.low)},
+                "findings": [f.to_dict() for f in rep.findings],
+            }
+            for label, rep, _ in results
+        ]
+        text_out = _json.dumps(payload, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        parts = []
+        for label, _, md in results:
+            head = f"# 📄 {label}\n\n" if len(results) > 1 else ""
+            parts.append(head + md)
+        text_out = "\n\n---\n\n".join(parts)
+        console.print(text_out)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    # ── CI gate ──
+    if fail_on:
+        rank = {Severity.LOW: 1, Severity.MEDIUM: 2, Severity.HIGH: 3}
+        threshold = {"low": 1, "medium": 2, "high": 3}[fail_on]
+        worst = max((rank[f.severity] for _, rep, _ in results
+                     for f in rep.findings), default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的倾斜风险，检查未通过。"
+            if fmt == "json":
+                # keep stdout valid JSON for `... -F json | jq` pipelines
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command(name="skew-stats")
+@click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
+def skew_stats(recent: int) -> None:
+    """数据倾斜分析历史与统计 (logs/data_skew.jsonl)。"""
+    from collections import Counter
+
+    from .data_skew.history import default_history
+
+    records = default_history().recent(recent)
+    if not records:
+        console.print("[yellow]还没有数据倾斜分析记录。[/yellow]")
+        return
+    console.print("[bold]数据倾斜分析历史[/bold]")
+    marks = {"high": "⛔", "medium": "⚠️", "clean": "✅"}
+    for r in records:
+        c = r.get("counts") or {}
+        snippet = " ".join((r.get("sql") or "").split())[:60]
+        console.print(
+            f"  {r.get('timestamp', '')}  [{r.get('mode', '')}/{r.get('source', '')}] "
+            f"{r.get('dialect', '')}  "
+            f"⛔{c.get('high', 0)} ⚠️{c.get('medium', 0)} 🔵{c.get('low', 0)}  "
+            f"{marks.get(r.get('verdict', ''), '')}  {snippet}")
+    verdicts = Counter(r.get("verdict", "clean") for r in records)
+    sources = Counter(r.get("source", "?") for r in records)
+    dialects = Counter(r.get("dialect", "?") for r in records)
+    console.print(
+        f"\n[bold]汇总[/bold] 共 {len(records)} 次 · "
+        f"高风险 {verdicts.get('high', 0)} 次 · "
+        f"潜在 {verdicts.get('medium', 0)} 次 · 干净 {verdicts.get('clean', 0)} 次")
+    console.print(
+        "[bold]来源[/bold] " + " · ".join(f"{k}×{v}" for k, v in sources.most_common())
+        + "   [bold]方言[/bold] "
+        + " · ".join(f"{k}×{v}" for k, v in dialects.most_common()))
+    llm_runs = sum(1 for r in records if r.get("mode") == "llm")
+    optimized = sum(1 for r in records if r.get("optimized"))
+    if llm_runs:
+        console.print(f"[bold]LLM 改写[/bold] {llm_runs} 次,产出优化 SQL {optimized} 次")
+
+
+@cli.command(name="skew-mcp")
+@click.option("--dialect", "-d", type=click.Choice(["spark", "maxcompute", "hive"]),
+              default="spark", show_default=True, help="Default SQL dialect")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Default report language")
+def skew_mcp(dialect: str, lang: str) -> None:
+    """以 MCP server（stdio）暴露数据倾斜静态分析，供 Claude Desktop 等 MCP 客户端调用。"""
+    from .data_skew.mcp_server import create_mcp_server
+
+    try:
+        server = create_mcp_server(default_dialect=dialect, default_lang=lang)
     except RuntimeError as exc:
         raise click.ClickException(str(exc))
     server.run()

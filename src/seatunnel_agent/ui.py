@@ -841,6 +841,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Compare schemas, row counts, and data across two data sources" data-zh="跨数据源比对表结构、行数、数据差异">Compare schemas, row counts, and data across two data sources</div>
       <div class="st-hub-enter" style="color:#8b5cf6;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/dataskew">
+      <div class="st-hub-logo" style="background:#f59e0b;">⚖</div>
+      <div class="st-hub-card-title" data-en="Data Skew Analyzer" data-zh="数据倾斜分析">Data Skew Analyzer</div>
+      <div class="st-hub-card-desc" data-en="Detect SQL data-skew patterns statically and rewrite with LLM — Spark SQL / MaxCompute SQL" data-zh="静态识别 SQL 数据倾斜写法并用 LLM 改写优化 —— 支持 Spark SQL / MaxCompute SQL">Detect SQL data-skew patterns statically and rewrite with LLM — Spark SQL / MaxCompute SQL</div>
+      <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <a class="st-hub-card" href="/sqlreview">
       <div class="st-hub-logo" style="background:#10b981;">CR</div>
       <div class="st-hub-card-title" data-en="SQL Code Review" data-zh="SQL 代码审查">SQL Code Review</div>
@@ -974,6 +980,7 @@ def create_ui() -> gr.Blocks:
     from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
     from .data_comparison_ui import render_data_comparison_page
     from .sql_review_ui import render_sql_review_page
+    from .data_skew_ui import render_data_skew_page
 
     _hide_sub_nav_js = """
     () => {
@@ -1080,6 +1087,9 @@ def create_ui() -> gr.Blocks:
     with app.route("Settings", "/settings"):
         from .settings_ui import render_settings_page
         render_settings_page(app)
+
+    with app.route("Data Skew", "/dataskew"):
+        render_data_skew_page(app)
 
     return app
 
@@ -1574,16 +1584,20 @@ footer { display: none !important; }
     box-shadow: none !important;
 }
 
-/* Standalone pages (history, favorites, schema, sql review) need scrolling.
-   Only the outermost .gradio-container scrolls; everything inside is visible. */
+/* Standalone pages (history, favorites, schema, sql review, and any page
+   carrying the generic .st-scroll-page marker — e.g. data skew) need
+   scrolling. Only the outermost .gradio-container scrolls; everything
+   inside is visible. */
 body:has(.st-history-page),
 body:has(.st-review-page),
-body:has(.st-uitest-page) {
+body:has(.st-uitest-page),
+body:has(.st-scroll-page) {
     overflow: hidden !important;
 }
 body:has(.st-history-page) .gradio-container,
 body:has(.st-review-page) .gradio-container,
-body:has(.st-uitest-page) .gradio-container {
+body:has(.st-uitest-page) .gradio-container,
+body:has(.st-scroll-page) .gradio-container {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     height: 100vh !important;
@@ -1593,7 +1607,9 @@ body:has(.st-history-page) .gradio-container > .main > .wrap,
 body:has(.st-review-page) .gradio-container > .main,
 body:has(.st-review-page) .gradio-container > .main > .wrap,
 body:has(.st-uitest-page) .gradio-container > .main,
-body:has(.st-uitest-page) .gradio-container > .main > .wrap {
+body:has(.st-uitest-page) .gradio-container > .main > .wrap,
+body:has(.st-scroll-page) .gradio-container > .main,
+body:has(.st-scroll-page) .gradio-container > .main > .wrap {
     overflow: visible !important;
     height: auto !important;
     min-height: auto !important;
@@ -1679,6 +1695,61 @@ body:has(.st-review-page) .sr-input-col {
 }
 .sr-report-card a[href*="#srline-"]:hover {
     border-bottom-style: solid !important;
+}
+
+/* ══════════════════════════════════════════
+   Data Skew page polish (same scroll ergonomics as SQL Review)
+   ══════════════════════════════════════════ */
+body:has(.st-scroll-page) .gradio-container > .main > .wrap {
+    max-width: 1500px !important;
+    width: 100% !important;
+    margin: 0 auto !important;
+    padding: 14px 28px 48px !important;
+}
+/* SQL input box: fixed height with a visible vertical scrollbar
+   (max_lines pins the textarea; long SQL scrolls inside the box) */
+#dsk-sql-box textarea {
+    overflow-y: auto !important;
+    scrollbar-width: thin;
+}
+/* Keep the SQL input visible while scrolling a long report */
+body:has(.st-scroll-page) .dsk-input-col {
+    position: sticky !important;
+    top: 12px !important;
+    align-self: flex-start !important;
+}
+/* Report as a card (mirrors .sr-report-card) */
+.gradio-container .dsk-report-card {
+    border: 1px solid #e5e7eb !important;
+    border-radius: 10px !important;
+    background: #fff !important;
+    padding: 14px 18px !important;
+    min-height: 320px !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+.dsk-report-card h1 { margin-top: 0 !important; font-size: 1.35rem !important; }
+.dsk-report-card h2 { margin: 16px 0 6px !important; }
+.dsk-report-card h3 { margin: 14px 0 6px !important; }
+.dsk-report-card table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 6px 0 !important;
+}
+.dsk-report-card th, .dsk-report-card td {
+    border: 1px solid #e5e7eb !important;
+    padding: 6px 10px !important;
+    text-align: left !important;
+    vertical-align: top !important;
+    line-height: 1.5 !important;
+}
+.dsk-report-card th { background: #f3f4f6 !important; }
+.dsk-report-card tbody tr:nth-child(even) td { background: #fafafa !important; }
+
+/* Data Comparison keeps the fixed sidebar+main layout, so the page itself
+   cannot scroll — let the main result panel scroll internally instead. */
+body:has(.st-dc-page) .st-main {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
 }
 
 /* ══════════════════════════════════════════════
@@ -2627,11 +2698,13 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .sql_review.api import router as sql_review_api_router
         from .data_lineage.api import router as lineage_api_router
         from .sql_transpile.api import router as transpile_api_router
+        from .data_skew.api import router as skew_api_router
         fastapi_app = app.app
         fastapi_app.include_router(t2s_api_router)
         fastapi_app.include_router(sql_review_api_router)
         fastapi_app.include_router(lineage_api_router)
         fastapi_app.include_router(transpile_api_router)
+        fastapi_app.include_router(skew_api_router)
 
     app.launch(
         server_name=host,

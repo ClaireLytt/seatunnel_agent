@@ -1,0 +1,283 @@
+# DSK 组 · Data Skew 页 (/dataskew)。静态扫描是纯本地正则规则,无外部依赖;
+# 实测探查用例连内置 SQLite 演示库 —— dc_test_metrics_a.region 预置 north 占
+# 80%(阈值 20% 即判定倾斜,见 seed_sqlite.py / probe.py)。LLM 优化模式依赖
+# 真实 API,不进本组(与 SR 组同一约定,真实 LLM 用例归 ai_cases.yaml)。
+# DSK2-DSK6 逐条守护 detector 的核心规则:DS001/DS003/DS004/DS005/DS007/DS008。
+
+- id: DSK1
+  title: 空 SQL 点分析给出提示
+  tags: [smoke, sqlite]
+  page: /dataskew
+  steps:
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 请先粘贴 SQL}
+
+- id: DSK2
+  title: COUNT(DISTINCT) 被标记且报告带引擎参数 (DS001)
+  tags: [smoke, sqlite]
+  page: /dataskew
+  steps:
+    - fill: {SQL: "SELECT count(distinct user_id) FROM ods.user_log"}
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 数据倾斜分析报告}
+    - text_contains: {in: 结果区, text: COUNT(DISTINCT) 单点聚合}
+    - text_contains: {in: 结果区, text: 引擎参数建议}
+    - visible: {target: 下载报告}
+
+- id: DSK3
+  title: JOIN 键未过滤 NULL 被标记 (DS007)
+  tags: [smoke, sqlite]
+  page: /dataskew
+  steps:
+    - fill: {SQL: "SELECT a.id FROM ods.a a LEFT JOIN ods.b b ON a.uid = b.uid"}
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: JOIN 键 NULL 值倾斜}
+    - text_contains: {in: 结果区, text: NULL 过滤}
+
+- id: DSK4
+  title: JOIN 键套函数被标记 (DS008)
+  tags: [full, sqlite]
+  page: /dataskew
+  steps:
+    - fill: {SQL: "SELECT a.id FROM ods.a a JOIN ods.b b ON substr(a.uid,1,8) = b.uid"}
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: JOIN 键函数 / 类型转换}
+    - text_contains: {in: 结果区, text: substr(a.uid,1,8)}
+
+- id: DSK5
+  title: 全局 ORDER BY 无 LIMIT 报高风险 (DS005)
+  tags: [full, sqlite]
+  page: /dataskew
+  steps:
+    - fill: {SQL: "SELECT * FROM ods.t ORDER BY amount"}
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 高倾斜风险}
+    - text_contains: {in: 结果区, text: 全局 ORDER BY}
+    - text_contains: {in: 结果区, text: 单个 Task 排序}
+
+- id: DSK6
+  title: SELECT DISTINCT 与 UNION 去重同时标记 (DS003+DS004)
+  tags: [full, sqlite]
+  page: /dataskew
+  steps:
+    - fill: {SQL: "SELECT DISTINCT id FROM ods.a UNION SELECT id FROM ods.b"}
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: UNION 隐式去重}
+    - text_contains: {in: 结果区, text: 全局 DISTINCT 去重}
+
+- id: DSK7
+  title: 干净 SQL 报告无风险且无优化 SQL 下载
+  tags: [smoke, sqlite]
+  page: /dataskew
+  steps:
+    - fill: {SQL: "SELECT id, name FROM ods.user WHERE dt = '2024-06-01'"}
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 语法层面未发现明显倾斜写法}
+    - visible: {target: 下载报告}
+    - hidden: {target: 下载优化 SQL}
+
+- id: DSK8
+  title: 清空按钮恢复初始状态
+  tags: [full, sqlite]
+  page: /dataskew
+  setup:
+    - fill: {SQL: "SELECT count(distinct id) FROM ods.t"}
+    - click: 开始分析
+    - wait_result: {}
+  steps:
+    - click: 清空
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 倾斜分析报告将显示在这里}
+    - value_is: {of: SQL, value: ""}
+    - hidden: {target: 下载报告}
+
+- id: DSK9
+  title: MaxCompute 方言报告给 odps 引擎参数
+  tags: [full, sqlite]
+  page: /dataskew
+  steps:
+    - select: {of: SQL 方言, value: MaxCompute SQL}
+    - fill: {SQL: "SELECT count(distinct user_id) FROM ods.user_log"}
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: maxcompute}
+    - text_contains: {in: 结果区, text: odps.sql.groupby.skewindata}
+
+- id: DSK10
+  title: 英文界面静态报告为英文
+  tags: [full, sqlite]
+  page: /dataskew
+  lang: en
+  steps:
+    - fill: {SQL: "SELECT count(distinct user_id) FROM ods.user_log"}
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: Data Skew Analysis Report}
+    - text_contains: {in: 结果区, text: Engine-Level Hints}
+
+- id: DSK11
+  title: 未连接数据源点实测验证给出提示
+  tags: [full, sqlite]
+  page: /dataskew
+  steps:
+    - open_accordion: 连接数据源
+    - fill: {SQL: "SELECT region, count(*) FROM dc_test_metrics_a GROUP BY region"}
+    - click: 验证倾斜（实测）
+    - wait_text: {text: 请先连接数据源}
+  expect:
+    - text_contains: {in: 页面, text: 请先连接数据源}
+
+- id: DSK12
+  title: SQLite 数据源连接成功且采样选项齐全
+  tags: [smoke, sqlite]
+  page: /dataskew
+  steps:
+    - use: connect_skew_sqlite
+  expect:
+    - text_contains: {in: 页面, text: 已连接}
+    - options_are: {of: 探查采样, values: ["全量（不采样）", "10%", "1%"]}
+
+- id: DSK13
+  title: 实测探查确认 GROUP BY 键倾斜
+  tags: [full, sqlite]
+  page: /dataskew
+  setup:
+    - use: connect_skew_sqlite
+  steps:
+    - fill: {SQL: "SELECT region, count(*) FROM dc_test_metrics_a GROUP BY region"}
+    - click: 开始分析
+    - wait_result: {}
+    - click: 验证倾斜（实测）
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 倾斜验证（实测）}
+    - text_contains: {in: 结果区, text: GROUP BY 分组键}
+    - text_contains: {in: 结果区, text: 确认倾斜}
+    - text_contains: {in: 结果区, text: north}
+
+- id: DSK14
+  title: 未生成优化 SQL 点一致性实测给出提示
+  tags: [full, sqlite]
+  page: /dataskew
+  setup:
+    - use: connect_skew_sqlite
+  steps:
+    - fill: {SQL: "SELECT region, count(*) FROM dc_test_metrics_a GROUP BY region"}
+    - click: 一致性实测
+    - wait_text: {text: 生成优化后 SQL}
+  expect:
+    - text_contains: {in: 页面, text: 请先在 LLM 模式下生成优化后 SQL}
+
+- id: DSK15
+  title: 报告下载为 .md 且内容完整
+  tags: [full, sqlite]
+  page: /dataskew
+  steps:
+    - fill: {SQL: "SELECT count(distinct user_id) FROM ods.user_log"}
+    - click: 开始分析
+    - wait_result: {}
+    - download: {target: 下载报告}
+  expect:
+    - download_ok: {ext: .md, text: 数据倾斜分析报告}
+    - download_ok: {ext: .md, text: COUNT(DISTINCT) 单点聚合}
+
+- id: DSK16
+  title: 分析历史记录并一键载入
+  tags: [full, sqlite]
+  page: /dataskew
+  setup:
+    - fill: {SQL: "SELECT count(distinct user_id) FROM ods.user_log"}
+    - click: 开始分析
+    - wait_result: {}
+    - click: 清空
+    - wait_result: {}
+  steps:
+    - open_accordion: 分析历史
+    - click: 历史刷新
+    - wait_text: {text: "count(distinct user_id)"}
+    - click: 载入所选
+    - wait: 500
+      note: 载入是纯状态回填,SQL 框无 loading 信号
+  expect:
+    - value_contains: {of: SQL, value: "count(distinct user_id)"}
+
+- id: DSK17
+  title: 审查页一键跳转倾斜分析并带入 SQL (localStorage 桥)
+  tags: [full, sqlite]
+  page: /sqlreview
+  steps:
+    - fill: {SQL: "SELECT count(distinct uid) FROM ods.t"}
+    - popup_click: {target: 倾斜分析}
+  expect:
+    - popup_contains: {text: 数据倾斜分析}
+    - popup_contains: {text: "count(distinct uid)"}
+
+- id: DSK18
+  title: 上传 SQL 文件填入编辑框并可直接分析
+  tags: [full, sqlite]
+  page: /dataskew
+  steps:
+    - upload_file: {target: 上传 SQL 文件, path: examples/skew_demo.sql}
+    - wait: 1000
+      note: 上传经服务器回填 SQL 框,无 loading 信号
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - value_contains: {of: SQL, value: "count(distinct o.user_id)"}
+    - text_contains: {in: 结果区, text: COUNT(DISTINCT) 单点聚合}
+    - text_contains: {in: 结果区, text: 全局 ORDER BY}
+
+- id: DSK19
+  title: 英文界面未连接点实测验证提示为英文
+  tags: [full, sqlite]
+  page: /dataskew
+  lang: en
+  steps:
+    - open_accordion: 连接数据源
+    - fill: {SQL: "SELECT region, count(*) FROM dc_test_metrics_a GROUP BY region"}
+    - click: 验证倾斜（实测）
+    - wait_text: {text: Connect a data source first}
+  expect:
+    - text_contains: {in: 页面, text: Connect a data source first}
+
+- id: DSK20
+  title: 设置页保存的连接可在倾斜页一键填入
+  tags: [full, sqlite, isolated]
+  page: /settings
+  setup:
+    - open_accordion: {target: 数据库连接}
+    - fill: {连接名称: dsk-conn, 连接主机: 127.0.0.1, 端口: "3306", 数据库: skewdb}
+    - select: {of: 连接类型, value: MySQL}
+    - click: 保存连接
+    - wait: 400
+      note: 本地文件写入,短等待即可
+  steps:
+    - goto: /dataskew
+    - open_accordion: 连接数据源
+    - click: 读取已保存连接
+    - wait: 400
+      note: 读本地预设文件,短等待即可
+    - select: {of: 已保存连接, value: dsk-conn}
+    - wait: 600
+      note: 选中即回填表单,无 loading 信号
+  expect:
+    - value_is: {of: 主机, value: "127.0.0.1"}
+    - value_is: {of: 端口, value: "3306"}
+    - value_is: {of: 数据库, value: skewdb}

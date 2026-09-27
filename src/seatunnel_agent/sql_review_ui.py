@@ -97,6 +97,17 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                         localStorage.setItem('st_transpile_sql', t.value);
                         window.open('/transpile', '_blank');
                     }""")
+                # same bridge into the Data Skew analyzer (the linter's
+                # data_skew category only flags patterns; /dataskew digs in)
+                skew_btn = gr.Button(t0("sr_skew_btn"), size="sm",
+                                     scale=0, min_width=120)
+                skew_btn.click(fn=None, js="""
+                    () => {
+                        const t = document.querySelector('#sr-sql-box textarea');
+                        if (!t || !t.value.trim()) return;
+                        localStorage.setItem('st_dataskew_sql', t.value);
+                        window.open('/dataskew', '_blank');
+                    }""")
         with gr.Column(scale=4, elem_classes=["sr-report-col"]):
             report_md = gr.Markdown(t0("sr_report_placeholder"),
                                     buttons=["copy"],
@@ -340,6 +351,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             gr.update(value=t("sr_fix_btn")),                       # fix_btn
             gr.update(value=t("sr_clear_btn")),                     # clear_btn
             gr.update(value=t("sr_transpile_btn")),                 # transpile_btn
+            gr.update(value=t("sr_skew_btn")),                      # skew_btn
             _placeholder_update(report_cur, "sr_report_placeholder", lg),  # report_md
             gr.update(label=t("sr_download_report")),               # download_btn
             gr.update(label=t("sr_fixed_sql")),                     # fixed_sql_box
@@ -373,6 +385,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             fix_btn,
             clear_btn,
             transpile_btn,
+            skew_btn,
             report_md,
             download_btn,
             fixed_sql_box,

@@ -17,6 +17,14 @@ connect_both_sqlite:
   - use: connect_a_sqlite
   - use: connect_b_sqlite
 
+# Data Skew 页 (/dataskew) 连接内置 SQLite 演示库,供实测探查用例复用
+connect_skew_sqlite:
+  - open_accordion: 连接数据源
+  - select: {of: 数据源类型, value: SQLite}
+  - fill: {数据库: config/uitest_demo.db}
+  - click: 连接
+  - wait_text: {text: 已连接}
+
 # 订单对: A 10 行 / B 9 行,预置差异见 examples/dc_hive_test_data.sql 注释
 select_orders:
   - use: connect_both_sqlite
