@@ -31,7 +31,7 @@ from .text2sql.executor import (
     create_executor,
 )
 from .text2sql.differ import diff_results, ResultDiff
-from .text2sql.exporter import default_desktop_dir, safe_stem
+from .text2sql.exporter import safe_stem
 from .data_comparison.comparator import (
     GINI_SKEW_THRESHOLD,
     AggregateResult,
@@ -1184,11 +1184,24 @@ def build_batch_full_card(
 # Export helpers — read from CompareReport
 # ---------------------------------------------------------------------------
 
+def _download_dir() -> Path:
+    """Staging dir for gr.DownloadButton files.
+
+    Must live under the system temp dir (or the cwd): Gradio 6 refuses to
+    serve anything else (InvalidPathError), which silently broke the old
+    Desktop-based export — the click looked fine and no file ever arrived
+    (caught when automating checklist items Q1/Q2). The browser download
+    then puts the file wherever the user chose, so Desktop is not needed."""
+    p = Path(tempfile.gettempdir()) / "seatunnel_agent_exports"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
 def _export_report_csv(report: CompareReport) -> str:
     """Export a CompareReport to a multi-section CSV file."""
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     fname = f"{safe_stem('data_comparison')}_{ts}.csv"
-    target = default_desktop_dir() / fname
+    target = _download_dir() / fname
 
     with open(target, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
@@ -1287,7 +1300,7 @@ def _export_report_excel(report: CompareReport) -> str:
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     fname = f"{safe_stem('data_comparison')}_{ts}.xlsx"
-    target = default_desktop_dir() / fname
+    target = _download_dir() / fname
 
     wb = Workbook()
     bold = Font(bold=True)
@@ -3191,11 +3204,6 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             with gr.Row(elem_classes=["st-topbar-row"]):
                 gr.HTML('<div class="st-topbar-spacer"></div>')
                 home_btn = gr.Button("\U0001f3e0", size="sm", elem_classes=["st-home-btn"])
-                lang_dd = gr.Dropdown(
-                    choices=["English", "中文"], value="English",
-                    show_label=False, container=False, min_width=140,
-                    elem_classes=["st-lang-dd"],
-                )
             save_status = gr.HTML(value="", visible=True)
             result_html = gr.HTML(
                 value=(
@@ -3595,9 +3603,19 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(value=t_fn("dc_lineage_title")),                 # lineage_btn
         )
 
-    lang_dd.change(
-        fn=_switch_lang,
-        inputs=[lang_dd, status_a, status_b],
+    # Language follows the hub's choice (st-lang cookie), applied on load.
+    # _switch_lang takes two extra inputs (status_a/b) — pass them through.
+    if app is not None:
+        from .lang_pref import STAMP_JS as _STAMP_JS
+        from .lang_pref import choice_from_request as _choice
+        app.load(fn=None, js=_STAMP_JS)
+
+        def _lang_on_load(a, b, request: gr.Request):
+            return _switch_lang(_choice(request), a, b)
+
+        app.load(
+        fn=_lang_on_load,
+        inputs=[status_a, status_b],
         outputs=[
             lang_state, title_md, src_a_md, src_b_md,
             ds_a, ds_b, host_a, host_b, port_a, port_b, db_a, db_b,

@@ -8,6 +8,8 @@
 > TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`);
 > IMP 组覆盖变更影响分析页(`/impact`,目录/粘贴/上下文三种模式,演示数据 `examples/impact_demo`);
 > MIG 组覆盖配置迁移页(`/migrate`,演示数据 `examples/migrate_demo`);
+> SET 组覆盖设置页(`/settings`,LLM API 界面配置;被测应用的设置文件被
+> 隔离到本轮 `runs/<ts>/`,不会触碰开发者真实配置);
 > SCR 组回归全部七个页面的滚动容器(500px 小窗验证内容可滚到底,
 > 并固化"哪个容器负责滚动"的契约)。
 
@@ -52,7 +54,8 @@ python -m seatunnel_agent.ui_testing list [--suite smoke]
 ## 界面上按 Agent 定向测试
 
 `/uitest` 页新增「按 Agent 测」下拉:选 数据对比 / SQL Review / 数据血缘 /
-Text2SQL 与辅助页 / SQL 方言翻译,点运行即测该 Agent 的全部自动化用例(优先于套件选择;
+Text2SQL 与辅助页 / SQL 方言翻译 / 变更影响分析 / 配置迁移 / 设置,
+点运行即测该 Agent 的全部自动化用例(优先于套件选择;
 「指定用例」填了 id 时又优先于它)。
 
 ## 界面上零代码添加用例
@@ -84,11 +87,14 @@ Text2SQL 与辅助页 / SQL 方言翻译,点运行即测该 Agent 的全部自�
 
 动作全集:`goto / click / fill / clear / press / select_ds / select /
 dropdown_type / check / slide（滑条取值）/ open_accordion / wait_status_ok / wait_status_error /
-wait_result / wait(须写 note) / screenshot / set_language`。
+wait_result / wait(须写 note) / screenshot / set_language /
+download(捕获下载按钮产出的文件)/ popup_click(捕获 window.open 新窗口文本)/
+drag_sidebar(拖拽原生 resize 手柄)`。
 
 断言全集:`text_contains / text_not_contains / value_is / options_are /
 scrollable(压缩视口验证页面滚动容器)/
 options_count / status_ok / status_error / visible / hidden / checked /
+download_ok(扩展名/大小/魔数/内容)/ popup_contains / sidebar_width /
 ai_judge`。`in:` 可取 `状态` / `结果区` / `页面` / 任意输入框标签。
 
 标签:`smoke`(冒烟)、`full`(全量)、`hive`(需真实 Hive,连不上整组 SKIP)、
@@ -147,6 +153,9 @@ pytest -m uitest tests/test_ui_smoke.py                    # 整包 smoke,单节
 pytest -m uitest tests/test_ui_cases.py                    # 逐用例节点(推荐)
 UITEST_SUITE=full pytest -m uitest tests/test_ui_cases.py  # 全量
 pytest -m uitest tests/test_ui_cases.py -k SCR --lf        # pytest 过滤/重跑失败
+pytest -m uitest tests/test_ui_cases.py -n 4 --dist loadgroup  # xdist 并行:
+#   每个 worker 独立端口起独立 app;SET6~SET8 共享档案生命周期,
+#   已打 xdist_group,loadgroup 会把它们按序留在同一 worker
 ```
 
 ## flaky 趋势

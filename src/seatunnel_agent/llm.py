@@ -120,15 +120,16 @@ class LLMClient:
         on_text_delta: Callable[[str], None] | None = None,
     ) -> LLMResponse:
         if self.provider == "anthropic":
-            if on_text_delta:
-                fn = self._call_anthropic_stream
-                return self._call_with_retry(fn, system_prompt, messages, on_text_delta)
-            return self._call_with_retry(self._call_anthropic, system_prompt, messages)
+            fn = self._call_anthropic_stream if on_text_delta else self._call_anthropic
         else:
-            if on_text_delta:
-                fn = self._call_openai_stream
-                return self._call_with_retry(fn, system_prompt, messages, on_text_delta)
-            return self._call_with_retry(self._call_openai, system_prompt, messages)
+            fn = self._call_openai_stream if on_text_delta else self._call_openai
+        args = (system_prompt, messages, on_text_delta) if on_text_delta \
+            else (system_prompt, messages)
+        resp = self._call_with_retry(fn, *args)
+        # One central hook covers every agent's token accounting.
+        from .llm_usage import record
+        record(self.provider, self.settings.model_name, resp.usage)
+        return resp
 
     def build_tool_result_message(
         self, tool_results: list[dict[str, Any]]

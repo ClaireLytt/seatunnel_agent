@@ -64,14 +64,30 @@ def _parse(text: str) -> dict | None:
     return obj
 
 
+# (expectation, digest-hash) -> (ok, reason). In-process only: --repeat N
+# re-judges the same expectation against an identical page summary every
+# round — that's pure token burn. Screenshots are ignored in the key (they
+# differ per capture); an identical text digest is the stability signal.
+_judge_cache: dict[tuple[str, str], tuple[bool, str]] = {}
+
+
 def run_judge(a: Assertion, dc: DCPage, llm: UITestLLM | None) -> StepLog:
+    import hashlib
+
     t0 = time.time()
     expect = str(a.args.get("expect", a.args.get("target", "")))
     if llm is None:
         return StepLog(f"ai_judge: {expect}", False, 0, "跳过: --no-llm 模式")
 
-    prompt = (f"预期:{expect}\n\n当前页面摘要:\n"
-              f"{dc.digest(max_result_chars=2500)}")
+    digest = dc.digest(max_result_chars=2500)
+    cache_key = (expect, hashlib.sha256(digest.encode("utf-8")).hexdigest())
+    hit = _judge_cache.get(cache_key)
+    if hit is not None:
+        ok, reason = hit
+        return StepLog(f"ai_judge: {expect}", ok, _ms(t0),
+                       f"{reason} (cached)")
+
+    prompt = f"预期:{expect}\n\n当前页面摘要:\n{digest}"
 
     def _messages(with_image: bool) -> list:
         if with_image:
@@ -107,5 +123,6 @@ def run_judge(a: Assertion, dc: DCPage, llm: UITestLLM | None) -> StepLog:
         return StepLog(f"ai_judge: {expect}", False, _ms(t0),
                        "judge 输出无法解析为 JSON")
     ok = obj["verdict"] == "pass"
-    return StepLog(f"ai_judge: {expect}", ok, _ms(t0),
-                   str(obj.get("reason", ""))[:500])
+    reason = str(obj.get("reason", ""))[:500]
+    _judge_cache[cache_key] = (ok, reason)
+    return StepLog(f"ai_judge: {expect}", ok, _ms(t0), reason)

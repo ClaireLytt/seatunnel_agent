@@ -142,6 +142,50 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
                     + ("" if overflows else " — content does not overflow, "
                        "raise the case's content or lower height"))
 
+    if k == "download_ok":
+        if not dc.last_download:
+            return False, "no download captured — run a 'download' step first"
+        path, fname = dc.last_download
+        ext = str(args.get("ext", ""))
+        if ext and not fname.lower().endswith(ext.lower()):
+            return False, f"filename {fname!r} does not end with {ext!r}"
+        from pathlib import Path as _P
+        data = _P(path).read_bytes()
+        min_bytes = int(args.get("min_bytes", 1))
+        if len(data) < min_bytes:
+            return False, f"{fname}: {len(data)} bytes < min_bytes {min_bytes}"
+        magic = str(args.get("magic", ""))
+        if magic and not data.startswith(magic.encode("utf-8")):
+            return False, (f"{fname}: leading bytes {data[:8]!r} do not match "
+                           f"magic {magic!r}")
+        needle = str(args.get("text", ""))
+        if needle:
+            body = data.decode("utf-8", errors="ignore")
+            if needle.casefold() not in body.casefold():
+                return False, (f"{fname}: content does not contain {needle!r}; "
+                               f"head={body[:200]!r}")
+        return True, f"download ok: {fname} ({len(data)} bytes)"
+
+    if k == "popup_contains":
+        if dc.last_popup_text is None:
+            return False, "no popup captured — run a 'popup_click' step first"
+        needle = str(args.get("text", args.get("target", "")))
+        found = needle.casefold() in dc.last_popup_text.casefold()
+        snippet = dc.last_popup_text[:300]
+        return found, (f"popup does{'' if found else ' not'} contain "
+                       f"{needle!r}; text={snippet!r}")
+
+    if k == "sidebar_width":
+        width = dc.sidebar_width()
+        lo = int(args.get("min", 0))
+        hi = int(args.get("max", 10**9))
+        max_vw = args.get("max_vw")
+        if max_vw is not None:
+            inner = int(dc.page.evaluate("() => window.innerWidth"))
+            hi = min(hi, int(inner * float(max_vw) / 100) + 2)  # rounding slack
+        ok = lo <= width <= hi
+        return ok, f"sidebar width {width}px (expected {lo}..{hi}px)"
+
     raise ValueError(f"unhandled assertion kind: {k}")
 
 

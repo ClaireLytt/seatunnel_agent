@@ -86,17 +86,43 @@
   expect:
     - text_contains: {in: 页面, text: 报告已保存}
 
+# Q1/Q2/Q4 曾标 manual;Playwright 的 expect_download / expect_page
+# 能稳定捕获下载与 window.open,已转自动化。
+
 - id: Q1
-  title: 导出 CSV 文件内容与页面一致
-  tags: [manual]
-  note: 本地文件落盘验证,自动化环境无法核对文件内容
+  title: 导出 CSV 内容含行数对比结果
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - click: 行数对比
+    - wait_result: {}
+  steps:
+    - download: {target: 导出 CSV}
+  expect:
+    - download_ok: {ext: .csv, text: "[Row Count]"}
+    - download_ok: {ext: .csv, text: dc_test_orders_a}
 
 - id: Q2
-  title: 导出 Excel 可正常打开
-  tags: [manual]
-  note: 本地文件落盘验证
+  title: 导出 Excel 为合法 xlsx(zip 魔数)
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - click: 行数对比
+    - wait_result: {}
+  steps:
+    - download: {target: 导出 Excel}
+  expect:
+    - download_ok: {ext: .xlsx, magic: PK, min_bytes: 500}
 
 - id: Q4
-  title: 查看报告新窗口可打印排版
-  tags: [manual]
-  note: window.open 新窗口内容,自动化不稳定
+  title: 查看报告新窗口含完整报告内容
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - click: 行数对比
+    - wait_result: {}
+  steps:
+    - popup_click: {target: 查看报告}
+  expect:
+    - popup_contains: {text: 数据比对报告}
+    - popup_contains: {text: 行数}

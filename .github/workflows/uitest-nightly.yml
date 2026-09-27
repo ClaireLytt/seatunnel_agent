@@ -41,6 +41,19 @@ jobs:
       - name: Run full UI suite twice (flaky detection)
         run: python -m seatunnel_agent.ui_testing run --suite full --no-llm --repeat 2
 
+      # Tiny REAL-LLM smoke (only when the repo has an LLM secret): one ai:
+      # step case + one ai_judge case. Guards the prompt / tool-schema /
+      # multimodal-judge path that --no-llm never exercises. Hard-capped by
+      # design (8 rounds / 30k tokens per ai step), so cost is cents.
+      - name: LLM path smoke (B3a ai step + C3 ai_judge)
+        if: ${{ secrets.UITEST_LLM_API_KEY != '' }}
+        env:
+          API_KEY: ${{ secrets.UITEST_LLM_API_KEY }}
+          LLM_PROVIDER: ${{ vars.UITEST_LLM_PROVIDER || 'anthropic' }}
+          MODEL_NAME: ${{ vars.UITEST_LLM_MODEL || 'claude-haiku-4-5-20251001' }}
+          LLM_BASE_URL: ${{ vars.UITEST_LLM_BASE_URL || '' }}
+        run: python -m seatunnel_agent.ui_testing run --case B3a C3
+
       - name: Cross-night flaky trend
         if: always()
         run: python -m seatunnel_agent.ui_testing trend --last 30

@@ -52,6 +52,7 @@ dev = [
     "pytest>=7.0",
     "pytest-mock",
     "pytest-cov",
+    "pytest-xdist>=3.5",
     "anthropic>=0.40.0",
     "openai>=1.0",
     "gradio>=4.0",
