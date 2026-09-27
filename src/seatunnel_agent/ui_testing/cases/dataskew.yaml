@@ -197,3 +197,23 @@
   expect:
     - download_ok: {ext: .md, text: 数据倾斜分析报告}
     - download_ok: {ext: .md, text: COUNT(DISTINCT) 单点聚合}
+
+- id: DSK16
+  title: 分析历史记录并一键载入
+  tags: [full, sqlite]
+  page: /dataskew
+  setup:
+    - fill: {SQL: "SELECT count(distinct user_id) FROM ods.user_log"}
+    - click: 开始分析
+    - wait_result: {}
+    - click: 清空
+    - wait_result: {}
+  steps:
+    - open_accordion: 分析历史
+    - click: 历史刷新
+    - wait_text: {text: "count(distinct user_id)"}
+    - click: 载入所选
+    - wait: 500
+      note: 载入是纯状态回填,SQL 框无 loading 信号
+  expect:
+    - value_contains: {of: SQL, value: "count(distinct user_id)"}

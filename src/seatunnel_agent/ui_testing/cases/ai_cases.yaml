@@ -10,3 +10,21 @@
     - ai: 在 A 侧打开“选择表”下拉框,输入 orders 进行过滤,然后从过滤结果中选中 dc_test_orders_a
   expect:
     - value_is: {of: 选择表, side: A, value: dc_test_orders_a}
+
+
+# Data Skew · LLM 优化模式 (真实 LLM,夜跑/手动;--no-llm 自动跳过)
+
+- id: DSKA1
+  title: LLM 模式改写 COUNT(DISTINCT) 产出优化 SQL
+  tags: [full, sqlite]
+  page: /dataskew
+  timeout_s: 300
+  steps:
+    - fill: {SQL: "SELECT count(distinct user_id) FROM ods.user_log WHERE dt = '2024-06-01'"}
+    - ai: 在"分析模式"单选框里选中"LLM 优化（改写 SQL）"这一项
+    - click: 开始分析
+    - wait_result: {timeout_ms: 240000}
+  expect:
+    - visible: {target: 下载优化 SQL}
+    - text_contains: {in: 结果区, text: 优化点说明}
+    - ai_judge: 优化后 SQL 代码框可见,且改写用两阶段聚合(先 GROUP BY 再 COUNT)或近似去重函数替代了 COUNT(DISTINCT)

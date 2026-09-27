@@ -627,6 +627,29 @@ seatunnel-agent transpile --from hive --to doris -D sql/ -o doris_sql/          
 seatunnel-agent transpile --to doris -D sql/ -F json --no-llm --fail-on error       # CI gate
 ```
 
+### Data Skew Analyzer Agent
+
+Detects skew-prone SQL patterns with 13 static rules (COUNT(DISTINCT)
+single-point aggregation, NULL-heavy join keys, functions on join keys,
+global ORDER BY / DISTINCT / UNION dedup, dynamic-partition writes without
+DISTRIBUTE BY, missing broadcast hints, ...) and rewrites the SQL with the
+LLM (salting, two-stage aggregation, skew-join hints). Supports Spark SQL /
+MaxCompute SQL (Hive accepted as compatible input). Optionally connect a
+datasource to **verify** the skew with live key-distribution probes
+(parallel, sampled via TABLESAMPLE where supported, hot values fed back
+into the rewrite prompt and engine-parameter hints) and to **measure
+consistency** between the original and optimized SQL. Web UI at
+`/dataskew` (with analysis history and a one-click bridge from the SQL
+Review page); static scan is deterministic — no API key, nothing executed:
+
+```bash
+seatunnel-agent skew -s "SELECT count(distinct uid) FROM t"          # inline, static
+seatunnel-agent skew -f etl.sql --dialect maxcompute --lang en       # single file
+seatunnel-agent skew -D sql/ --fail-on high                          # CI gate over a directory
+seatunnel-agent skew -f etl.sql --llm -o report.md                   # + LLM rewrite
+seatunnel-agent skew-mcp                                             # MCP server (stdio)
+```
+
 ### UI Testing Agent
 
 Browser-driven regression for the Gradio pages (real Chromium via Playwright,
@@ -1263,6 +1286,25 @@ seatunnel-agent transpile --from hive --to doris query.sql                      
 seatunnel-agent transpile --to starrocks -s "SELECT get_json_object(p,'$.a') FROM t" # 内联（自动推断源方言）
 seatunnel-agent transpile --from hive --to doris -D sql/ -o doris_sql/              # 批量,镜像目录输出
 seatunnel-agent transpile --to doris -D sql/ -F json --no-llm --fail-on error       # CI 门禁
+```
+
+### 数据倾斜分析 Agent
+
+13 条静态规则识别易倾斜 SQL 写法（COUNT(DISTINCT) 单点聚合、NULL 关联键、
+JOIN 键套函数、全局 ORDER BY / DISTINCT / UNION 去重、动态分区写入未打散、
+缺广播提示等），并用 LLM 改写优化（加盐、两阶段聚合、skew-join 提示）。
+支持 Spark SQL / MaxCompute SQL（Hive 作为兼容输入）。可选连接数据源，
+用真实键值分布探查**验证**倾斜（并行探查、支持 TABLESAMPLE 采样，实测
+热点值回灌改写 prompt 与引擎参数建议），并对原 SQL 与优化 SQL 做**一致性
+实测**。Web 页面 `/dataskew`（带分析历史，SQL 审查页可一键跳转带入 SQL）；
+静态扫描是确定性的——无需 API key、不执行 SQL：
+
+```bash
+seatunnel-agent skew -s "SELECT count(distinct uid) FROM t"          # 内联,静态扫描
+seatunnel-agent skew -f etl.sql --dialect maxcompute --lang en       # 单文件
+seatunnel-agent skew -D sql/ --fail-on high                          # 目录级 CI 门禁
+seatunnel-agent skew -f etl.sql --llm -o report.md                   # + LLM 改写
+seatunnel-agent skew-mcp                                             # MCP server (stdio)
 ```
 
 ### UI 测试 Agent

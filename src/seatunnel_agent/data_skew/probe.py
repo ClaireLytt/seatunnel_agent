@@ -61,9 +61,11 @@ _CD_COL_RE = re.compile(
 )
 _GROUP_BY_RE = re.compile(r"\bgroup\s+by\s+", re.IGNORECASE)
 # A ')' also ends the clause so a subquery's GROUP BY never leaks columns
-# into the outer scope.
-_GROUP_END_RE = re.compile(r"\b(?:having|order|limit|union|window|qualify)\b|[;)]",
-                           re.IGNORECASE)
+# into the outer scope.  DISTRIBUTE/SORT/CLUSTER BY terminate it too, or
+# "GROUP BY dt DISTRIBUTE BY ..." would swallow the distribute columns.
+_GROUP_END_RE = re.compile(
+    r"\b(?:having|order|limit|union|window|qualify|distribute|sort|cluster)\b|[;)]",
+    re.IGNORECASE)
 # GROUPING SETS / ROLLUP / CUBE arguments and Spark's GROUP BY ALL are not
 # plain columns.
 _GROUP_SKIP = frozenset({"all", "grouping", "sets", "rollup", "cube"})
@@ -347,8 +349,20 @@ _ENGINE_PARAMS: dict[str, dict[str, list[str]]] = {
 }
 
 
+def _measured_hot_values(r: ProbeResult) -> list[str]:
+    """Raw hot values (no NULL) above the suspect threshold, count-descending."""
+    vals: list[str] = []
+    for v, c in r.top:
+        if not r.total or c / r.total < HOT_KEY_SUSPECT:
+            break
+        if v != "NULL":
+            vals.append(_safe_value(v))
+    return vals
+
+
 def engine_params_for_results(results: list[ProbeResult], dialect: str, lang: str) -> str:
     """A paste-ready SET block for the measured skew, or '' when nothing confirmed."""
+    lang = normalize_lang(lang)
     confirmed = [r for r in results if r.verdict == "confirmed"]
     cfg = _ENGINE_PARAMS.get(dialect)
     if not confirmed or not cfg:
@@ -358,7 +372,20 @@ def engine_params_for_results(results: list[ProbeResult], dialect: str, lang: st
         lines += cfg["join"]
     if any(r.target.reason in ("count_distinct", "group_key") for r in confirmed):
         lines += cfg["agg"]
-    head = dsk(normalize_lang(lang), "prb_engine_params")
+    # Fill the measured hot values into concrete, per-key hints instead of
+    # leaving only the generic switches.
+    hot_label = "实测热点值" if lang == "zh" else "measured hot values"
+    for r in confirmed:
+        hot = _measured_hot_values(r)
+        if not hot:
+            continue
+        t = r.target
+        lines.append(f"-- {t.table}.{t.column} {hot_label}: "
+                     + ", ".join(f"'{v}'" for v in hot[:5]))
+        if dialect == "maxcompute" and r.target.reason == "join_key":
+            vals = "".join(f"({v})" for v in hot[:5])
+            lines.append(f"/*+ SKEWJOIN({t.table}({t.column})({vals})) */")
+    head = dsk(lang, "prb_engine_params")
     return head + "\n\n```sql\n" + "\n".join(lines) + "\n```"
 
 

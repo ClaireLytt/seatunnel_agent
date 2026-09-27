@@ -1113,3 +1113,170 @@ def test_probe_cache_roundtrip():
     assert c.get(key) is None
     c.clear()
     assert c.get(("select 2", "sqlite", 0)) is None
+
+
+# ---------------------------------------------------------------------------
+# probe: GROUP BY clause termination and measured hot-value hints
+# ---------------------------------------------------------------------------
+
+def test_group_by_stops_at_distribute_by():
+    sql = "INSERT OVERWRITE TABLE d SELECT dt, count(*) FROM ods.t GROUP BY dt DISTRIBUTE BY rand()"
+    targets = extract_probe_targets(sql)
+    cols = {(t.table, t.column) for t in targets}
+    assert ("ods.t", "dt") in cols
+    # DISTRIBUTE BY arguments never become probe targets
+    assert all(t.column != "rand" for t in targets)
+
+
+def test_engine_params_include_measured_hot_values():
+    r = _fake_result()  # confirmed join_key with hot value "hot" at 40%
+    block = engine_params_for_results([r], "spark", "zh")
+    assert "实测热点值" in block and "'hot'" in block
+    block_en = engine_params_for_results([r], "spark", "en")
+    assert "measured hot values" in block_en
+
+
+def test_engine_params_maxcompute_skewjoin_hint_with_values():
+    r = _fake_result()
+    block = engine_params_for_results([r], "maxcompute", "zh")
+    assert "/*+ SKEWJOIN(orders(user_id)((hot)(b))) */" in block
+
+
+def test_engine_params_no_hint_without_hot_values():
+    r = _fake_result()
+    r.top = []            # confirmed via NULL ratio only
+    r.null_count = 30
+    block = engine_params_for_results([r], "maxcompute", "zh")
+    assert "SKEWJOIN(orders" not in block
+    assert "odps.sql.skewjoin" in block.replace("SET ", "").lower() or "skewjoin=true" in block
+
+
+# ---------------------------------------------------------------------------
+# analysis history (logs/data_skew.jsonl)
+# ---------------------------------------------------------------------------
+
+def test_history_log_and_recent(tmp_path):
+    from seatunnel_agent.data_skew.agent import static_skew_report
+    from seatunnel_agent.data_skew.history import SkewHistory
+
+    h = SkewHistory(log_dir=tmp_path)
+    rep = static_skew_report("SELECT count(distinct uid) FROM t", "spark", "zh")
+    h.log("SELECT count(distinct uid) FROM t", rep, mode="static", source="cli")
+    h.log("SELECT 1", static_skew_report("SELECT 1", "spark", "zh"),
+          mode="static", source="ui")
+    recs = h.recent(10)
+    assert len(recs) == 2
+    assert recs[0]["sql"] == "SELECT 1"          # newest first
+    assert recs[1]["counts"]["medium"] == 1      # DS001 is medium
+    assert recs[1]["verdict"] == "medium"
+    assert recs[0]["verdict"] == "clean"
+    assert recs[1]["source"] == "cli"
+
+
+def test_history_recent_missing_file(tmp_path):
+    from seatunnel_agent.data_skew.history import SkewHistory
+
+    assert SkewHistory(log_dir=tmp_path / "nope").recent() == []
+
+
+def test_default_history_env_override(tmp_path, monkeypatch):
+    from seatunnel_agent.data_skew.history import default_history
+
+    target = tmp_path / "isolated" / "hist.jsonl"
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH", str(target))
+    h = default_history()
+    assert h.log_file == target
+
+
+# ---------------------------------------------------------------------------
+# MCP tool functions (no mcp package needed)
+# ---------------------------------------------------------------------------
+
+def test_mcp_skew_check(tmp_path, monkeypatch):
+    from seatunnel_agent.data_skew.mcp_server import build_tool_functions
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    fns = build_tool_functions()
+    out = fns["skew_check"]("SELECT count(distinct uid) FROM t")
+    assert "数据倾斜分析报告" in out and "COUNT(DISTINCT)" in out
+    out_en = fns["skew_check"]("SELECT count(distinct uid) FROM t", lang="en")
+    assert "Data Skew Analysis Report" in out_en
+    assert "不能为空" in fns["skew_check"]("   ")
+    # history got both analyses
+    from seatunnel_agent.data_skew.history import default_history
+    assert len(default_history().recent()) == 2
+
+
+def test_mcp_skew_check_file(tmp_path, monkeypatch):
+    from seatunnel_agent.data_skew.mcp_server import build_tool_functions
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    fns = build_tool_functions()
+    f = tmp_path / "q.sql"
+    f.write_text("SELECT * FROM t ORDER BY a", encoding="utf-8")
+    assert "全局 ORDER BY" in fns["skew_check_file"](str(f))
+    assert "cannot read file" in fns["skew_check_file"](str(tmp_path / "missing.sql"))
+
+
+# ---------------------------------------------------------------------------
+# CLI: seatunnel-agent skew
+# ---------------------------------------------------------------------------
+
+def _skew_cli(tmp_path, monkeypatch, args):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    return CliRunner().invoke(cli, ["skew", *args])
+
+
+def test_cli_skew_inline_static(tmp_path, monkeypatch):
+    res = _skew_cli(tmp_path, monkeypatch,
+                    ["-s", "SELECT count(distinct uid) FROM t"])
+    assert res.exit_code == 0, res.output
+    assert "COUNT(DISTINCT)" in res.output
+
+
+def test_cli_skew_fail_on_gate(tmp_path, monkeypatch):
+    res = _skew_cli(tmp_path, monkeypatch,
+                    ["-s", "SELECT * FROM t ORDER BY a", "--fail-on", "high"])
+    assert res.exit_code == 1
+    assert "检查未通过" in res.output
+    res_ok = _skew_cli(tmp_path, monkeypatch,
+                       ["-s", "SELECT id FROM t WHERE dt='2024-06-01'",
+                        "--fail-on", "high"])
+    assert res_ok.exit_code == 0, res_ok.output
+
+
+def test_cli_skew_directory_json(tmp_path, monkeypatch):
+    import json
+
+    d = tmp_path / "sqls"
+    d.mkdir()
+    (d / "a.sql").write_text("SELECT count(distinct uid) FROM t",
+                             encoding="utf-8")
+    (d / "b.sql").write_text("SELECT id FROM t WHERE dt='2024-06-01'",
+                             encoding="utf-8")
+    res = _skew_cli(tmp_path, monkeypatch, ["-D", str(d), "-F", "json"])
+    assert res.exit_code == 0, res.output
+    payload = json.loads(res.output)
+    assert len(payload) == 2
+    by_file = {p["file"]: p for p in payload}
+    a = by_file[str(d / "a.sql")]
+    assert a["counts"]["medium"] == 1
+    assert a["findings"][0]["severity"] == "medium"
+
+
+def test_cli_skew_output_file_and_history(tmp_path, monkeypatch):
+    out = tmp_path / "report.md"
+    res = _skew_cli(tmp_path, monkeypatch,
+                    ["-s", "SELECT 1", "-o", str(out)])
+    assert res.exit_code == 0, res.output
+    assert "数据倾斜分析报告" in out.read_text(encoding="utf-8")
+    from seatunnel_agent.data_skew.history import default_history
+    recs = default_history().recent()
+    assert len(recs) == 1 and recs[0]["source"] == "cli"

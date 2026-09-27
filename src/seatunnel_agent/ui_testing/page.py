@@ -138,6 +138,11 @@ LABELS: dict[str, tuple[str, ...]] = {
     "一致性实测": ("一致性实测（运行两版 SQL）",
                    "Measure Consistency (runs both SQLs)"),
     "下载优化 SQL": ("下载优化后 SQL（.sql）", "Download Optimized SQL (.sql)"),
+    "上传 SQL 文件": ("上传 SQL 文件", "Upload SQL file"),
+    "分析历史":   ("分析历史（最近 20 条）", "Analysis history (last 20)"),
+    "选择记录":   ("选择记录", "Pick a record"),
+    "历史刷新":   ("刷新", "Refresh"),
+    "载入所选":   ("载入所选", "Load selected"),
     # ── Lineage page (/lineage) ──
     "SQL 目录":   ("SQL 目录", "SQL directory"),
     "SeaTunnel 配置目录": ("SeaTunnel 配置目录", "SeaTunnel config directory"),

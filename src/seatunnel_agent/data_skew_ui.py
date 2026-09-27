@@ -11,16 +11,17 @@ from __future__ import annotations
 
 import re
 import tempfile
-import threading
 from pathlib import Path
 
 import gradio as gr
 
 from .config import load_settings
-from .data_skew.agent import DataSkewAgent, static_skew_check
+from .data_skew.agent import DataSkewAgent, static_skew_report
 from .data_skew.consistency import check_consistency, render_consistency_section
 from .data_skew.detector import DIALECTS, normalize_dialect
+from .data_skew.history import default_history
 from .data_skew.i18n import dsk
+from .data_skew.report import render_report
 from .data_skew.probe import (
     ProbeCache,
     effective_sample_pct,
@@ -121,6 +122,9 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                 )
             with gr.Row():
                 analyze_btn = gr.Button(t0("dsk_analyze_btn"), variant="primary")
+                upload_btn = gr.UploadButton(t0("dsk_upload_btn"), size="sm",
+                                             scale=0, min_width=140,
+                                             file_types=[".sql", ".txt", ".hql"])
                 clear_btn = gr.Button(t0("dsk_clear_btn"), scale=0, min_width=80)
             with gr.Accordion(t0("dsk_conn_accordion"), open=False) as conn_acc:
                 with gr.Row():
@@ -143,6 +147,16 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                     cst_btn = gr.Button(t0("cst_btn"), size="sm",
                                         variant="secondary")
                 conn_status = gr.Markdown(t0("dsk_conn_status_none"))
+            with gr.Accordion(t0("dsk_history_accordion"),
+                              open=False) as hist_acc:
+                with gr.Row():
+                    hist_dd = gr.Dropdown(choices=[], value=None,
+                                          label=t0("dsk_history_pick"))
+                    hist_refresh_btn = gr.Button(t0("dsk_history_refresh"),
+                                                 size="sm", scale=0)
+                    hist_load_btn = gr.Button(t0("dsk_history_load"),
+                                              size="sm", scale=0)
+                hist_md = gr.Markdown(t0("dsk_history_empty"))
         with gr.Column(scale=4):
             # dsk-report-card: the UI test agent reads/awaits this region
             report_md = gr.Markdown(t0("dsk_report_placeholder"),
@@ -163,10 +177,13 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         return str(path)
 
     # ── Optional datasource connection (skew verification) ──
+    # Per-session gr.State: every browser session owns its connection and
+    # probe cache — two sessions never share or clobber each other's
+    # connection (the module-level holder the page started with did).
 
-    holder: dict[str, object] = {"executor": None}
-    holder_lock = threading.Lock()
-    probe_cache = ProbeCache()
+    conn_state = gr.State(None)   # {"executor", "ds_type", "status", "cache"}
+    hist_state = gr.State([])     # records behind the history dropdown
+    history = default_history()
 
     def _on_ds_change(ds: str):
         d = DS_DEFAULTS.get(ds, {})
@@ -174,7 +191,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                 gr.update(placeholder=str(d.get("database", ""))))
 
     def do_connect(ds: str, host: str, port: str, db: str,
-                   user: str, pwd: str, lang: str) -> str:
+                   user: str, pwd: str, lang: str):
         defaults = DS_DEFAULTS.get(ds, {})
         host = (host or "").strip()
         db = (db or "").strip() or str(defaults.get("database", ""))
@@ -203,18 +220,10 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             if not ok:
                 raise RuntimeError(info)
         except Exception as exc:  # noqa: BLE001 — surface in the UI
-            with holder_lock:
-                holder["executor"] = None
-                holder["status"] = ""
-                probe_cache.clear()
-            return dsk(lang, "dsk_conn_fail").format(err=exc)
+            return dsk(lang, "dsk_conn_fail").format(err=exc), None
         status = dsk(lang, "dsk_conn_ok").format(info=info)
-        with holder_lock:
-            holder["executor"] = executor
-            holder["ds_type"] = ds
-            holder["status"] = status
-            probe_cache.clear()
-        return status
+        return status, {"executor": executor, "ds_type": ds,
+                        "status": status, "cache": ProbeCache()}
 
     def _append_section(report_cur: str, section: str, head_re: re.Pattern[str]) -> str:
         """Replace/append one measured section on the current report."""
@@ -225,32 +234,41 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             return _remove_section(report_cur, head_re) + "\n\n" + section
         return section
 
-    def _restored_status(lang: str) -> str:
-        with holder_lock:
-            return str(holder.get("status") or "") or dsk(lang, "dsk_conn_status_none")
+    def _restored_status(lang: str, conn: dict | None) -> str:
+        return str((conn or {}).get("status") or "") or dsk(lang, "dsk_conn_status_none")
 
-    def do_verify(sql: str, report_cur: str, dialect: str, sample: int, lang: str):
-        with holder_lock:
-            executor = holder.get("executor")
-            ds_type = str(holder.get("ds_type") or "")
-        if executor is None:
+    def _cached_probes(conn: dict, sql: str, pct: int):
+        """Probe results for (sql, datasource, sampling), reusing the last run."""
+        cache: ProbeCache = conn["cache"]
+        key = (sql, conn["ds_type"], pct)
+        cached = cache.get(key)
+        if cached is not None:
+            return cached
+        results = run_probes(conn["executor"], extract_probe_targets(sql),
+                             ds_type=conn["ds_type"], sample_pct=pct)
+        cache.put(key, results)
+        return results
+
+    def do_verify(sql: str, report_cur: str, dialect: str, sample: int,
+                  lang: str, conn: dict | None):
+        if not conn or conn.get("executor") is None:
             return gr.update(), dsk(lang, "dsk_verify_need_conn")
         sql = (sql or "").strip()
         if not sql:
             return gr.update(), dsk(lang, "dsk_empty_sql")
-        pct = effective_sample_pct(ds_type, int(sample or 0))
+        pct = effective_sample_pct(conn["ds_type"], int(sample or 0))
         try:
-            results = _cached_probes(executor, ds_type, sql, pct)
+            results = _cached_probes(conn, sql, pct)
             section = render_probe_section(
                 results, lang, dialect=normalize_dialect(dialect), sample_pct=pct)
         except Exception as exc:  # noqa: BLE001 — surface in the UI
             return gr.update(), _err_md(exc, lang)
-        return _append_section(report_cur, section, _PROBE_HEAD_RE), _restored_status(lang)
+        return (_append_section(report_cur, section, _PROBE_HEAD_RE),
+                _restored_status(lang, conn))
 
-    def do_consistency(sql: str, optimized: str, report_cur: str, lang: str):
-        with holder_lock:
-            executor = holder.get("executor")
-        if executor is None:
+    def do_consistency(sql: str, optimized: str, report_cur: str,
+                       lang: str, conn: dict | None):
+        if not conn or conn.get("executor") is None:
             return gr.update(), dsk(lang, "dsk_verify_need_conn")
         sql = (sql or "").strip()
         if not sql:
@@ -258,43 +276,30 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         if not (optimized or "").strip():
             return gr.update(), dsk(lang, "cst_need_opt")
         try:
-            res = check_consistency(executor, sql, optimized)
+            res = check_consistency(conn["executor"], sql, optimized)
             section = render_consistency_section(res, lang)
         except Exception as exc:  # noqa: BLE001 — surface in the UI
             return gr.update(), _err_md(exc, lang)
-        return _append_section(report_cur, section, _CST_HEAD_RE), _restored_status(lang)
+        return (_append_section(report_cur, section, _CST_HEAD_RE),
+                _restored_status(lang, conn))
 
-    def _cached_probes(executor, ds_type: str, sql: str, pct: int):
-        """Probe results for (sql, datasource, sampling), reusing the last run."""
-        key = (sql, ds_type, pct)
-        with holder_lock:
-            cached = probe_cache.get(key)
-        if cached is not None:
-            return cached
-        results = run_probes(executor, extract_probe_targets(sql),
-                             ds_type=ds_type, sample_pct=pct)
-        with holder_lock:
-            probe_cache.put(key, results)
-        return results
-
-    def _probe_for_llm(sql: str, lang: str, dialect: str, sample: int) -> tuple[str, str]:
+    def _probe_for_llm(sql: str, lang: str, dialect: str, sample: int,
+                       conn: dict | None) -> tuple[str, str]:
         """(prompt_context, report_section) from a connected datasource, or empties."""
-        with holder_lock:
-            executor = holder.get("executor")
-            ds_type = str(holder.get("ds_type") or "")
-        if executor is None:
+        if not conn or conn.get("executor") is None:
             return "", ""
         if not extract_probe_targets(sql):
             return "", ""
-        pct = effective_sample_pct(ds_type, int(sample or 0))
+        pct = effective_sample_pct(conn["ds_type"], int(sample or 0))
         try:
-            results = _cached_probes(executor, ds_type, sql, pct)
+            results = _cached_probes(conn, sql, pct)
         except Exception:  # noqa: BLE001 — probing must never break the analysis
             return "", ""
         return (probe_lines_for_prompt(results, lang),
                 render_probe_section(results, lang, dialect=dialect, sample_pct=pct))
 
-    def do_analyze(sql: str, dialect: str, mode: str, sample: int, lang: str):
+    def do_analyze(sql: str, dialect: str, mode: str, sample: int,
+                   lang: str, conn: dict | None):
         sql = (sql or "").strip()
         hide = gr.update(visible=False)
         if not sql:
@@ -302,27 +307,33 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         dialect = normalize_dialect(dialect)
         try:
             if mode == "static":
-                report = static_skew_check(sql, dialect, lang)
+                rep = static_skew_report(sql, dialect, lang)
+                report = render_report(rep, lang)
                 optimized = ""
+                history.log(sql, rep, mode="static", source="ui")
             else:
                 try:
                     settings = load_settings()
                 except RuntimeError:
+                    rep = static_skew_report(sql, dialect, lang)
                     report = (dsk(lang, "dsk_llm_unavailable") + "\n\n"
-                              + static_skew_check(sql, dialect, lang))
+                              + render_report(rep, lang))
+                    history.log(sql, rep, mode="static", source="ui")
                     return (report,
                             gr.update(value=_tmp_file("data_skew_report.md", report),
                                       visible=True),
                             hide, hide)
                 agent = DataSkewAgent(settings, dialect=dialect, lang=lang)
                 out_path = Path(tempfile.mkdtemp(prefix="dataskew_")) / "my_task_optimized.sql"
-                probe_ctx, probe_section = _probe_for_llm(sql, lang, dialect, sample)
+                probe_ctx, probe_section = _probe_for_llm(sql, lang, dialect,
+                                                          sample, conn)
                 result = agent.analyze(sql, use_llm=True, output_path=out_path,
                                        probe_context=probe_ctx)
                 report = result.markdown
                 if probe_section:
                     report = report.rstrip() + "\n\n" + probe_section
                 optimized = result.optimized_sql
+                history.log(sql, result.report, mode="llm", source="ui")
         except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
             return _err_md(exc, lang), hide, hide, hide
 
@@ -348,7 +359,8 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         outputs=[report_md, analyze_btn],
     ).then(
         do_analyze,
-        inputs=[sql_box, dialect_dd, mode_radio, sample_dd, lang_state],
+        inputs=[sql_box, dialect_dd, mode_radio, sample_dd, lang_state,
+                conn_state],
         outputs=[report_md, dl_report_btn, dl_sql_btn, optimized_box],
     ).then(
         lambda: gr.update(interactive=True),
@@ -365,12 +377,80 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         outputs=[sql_box, report_md, dl_report_btn, dl_sql_btn, optimized_box],
     )
 
+    # ── SQL file upload: fill the editor with the file's content ──
+
+    def do_upload(path):
+        if isinstance(path, (list, tuple)):
+            path = path[0] if path else None
+        if not path:
+            return gr.update()
+        try:
+            text = Path(str(path)).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return gr.update()
+        return gr.update(value=text[:200_000])
+
+    upload_btn.upload(do_upload, inputs=[upload_btn], outputs=[sql_box])
+
+    # ── Analysis history: refresh the list, reload a past analysis ──
+
+    def _verdict_mark(rec: dict) -> str:
+        c = rec.get("counts") or {}
+        return f"⛔{c.get('high', 0)} ⚠️{c.get('medium', 0)} 🔵{c.get('low', 0)}"
+
+    def do_hist_refresh(lang: str):
+        recs = history.recent(20)
+        if not recs:
+            return (gr.update(choices=[], value=None),
+                    dsk(lang, "dsk_history_empty"), [])
+        choices = []
+        for i, r in enumerate(recs):
+            snippet = " ".join((r.get("sql") or "").split())[:40]
+            label = (f"{str(r.get('timestamp', ''))[5:16]} · "
+                     f"{r.get('dialect', '')} · {_verdict_mark(r)} · {snippet}")
+            choices.append((label, i))
+        t = lambda k: dsk(lang, k)  # noqa: E731
+        lines = [
+            f"| {t('dsk_h_time')} | {t('dsk_h_source')} | {t('dsk_h_dialect')} "
+            f"| {t('dsk_h_mode')} | {t('dsk_h_findings')} | {t('dsk_h_sql')} |",
+            "|---|---|---|---|---|---|",
+        ]
+        for r in recs:
+            snippet = " ".join((r.get("sql") or "").split())[:60]
+            lines.append(
+                f"| {str(r.get('timestamp', ''))[:16]} | {r.get('source', '')} "
+                f"| {r.get('dialect', '')} | {r.get('mode', '')} "
+                f"| {_verdict_mark(r)} | `{snippet}` |")
+        return gr.update(choices=choices, value=0), "\n".join(lines), recs
+
+    hist_refresh_btn.click(
+        do_hist_refresh,
+        inputs=[lang_state],
+        outputs=[hist_dd, hist_md, hist_state],
+    )
+
+    def do_hist_load(idx, recs: list):
+        if idx is None or not recs:
+            return gr.update(), gr.update()
+        try:
+            rec = recs[int(idx)]
+        except (ValueError, IndexError):
+            return gr.update(), gr.update()
+        return (gr.update(value=rec.get("sql") or ""),
+                gr.update(value=normalize_dialect(rec.get("dialect") or "spark")))
+
+    hist_load_btn.click(
+        do_hist_load,
+        inputs=[hist_dd, hist_state],
+        outputs=[sql_box, dialect_dd],
+    )
+
     ds_dd.change(_on_ds_change, inputs=[ds_dd], outputs=[port_tb, db_tb])
 
     connect_btn.click(
         do_connect,
         inputs=[ds_dd, host_tb, port_tb, db_tb, user_tb, pwd_tb, lang_state],
-        outputs=[conn_status],
+        outputs=[conn_status, conn_state],
     )
 
     verify_btn.click(
@@ -379,7 +459,8 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         outputs=[conn_status],
     ).then(
         do_verify,
-        inputs=[sql_box, report_md, dialect_dd, sample_dd, lang_state],
+        inputs=[sql_box, report_md, dialect_dd, sample_dd, lang_state,
+                conn_state],
         outputs=[report_md, conn_status],
     )
 
@@ -389,7 +470,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         outputs=[conn_status],
     ).then(
         do_consistency,
-        inputs=[sql_box, optimized_box, report_md, lang_state],
+        inputs=[sql_box, optimized_box, report_md, lang_state, conn_state],
         outputs=[report_md, conn_status],
     )
 
@@ -401,7 +482,8 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             return gr.update(value=dsk(lg, key))
         return gr.update()
 
-    def _switch_lang(choice: str, report_cur: str, conn_cur: str):
+    def _switch_lang(choice: str, report_cur: str, conn_cur: str,
+                     hist_cur: str = ""):
         lg = "zh" if choice == "中文" else "en"
         t = lambda k: dsk(lg, k)  # noqa: E731
         return (
@@ -429,6 +511,13 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             gr.update(value=t("dsk_verify_btn")),                  # verify_btn
             gr.update(value=t("cst_btn")),                         # cst_btn
             _placeholder_update(conn_cur, "dsk_conn_status_none", lg),  # conn_status
+            # UploadButton: value is the uploaded FILE — the text is `label`
+            gr.update(label=t("dsk_upload_btn")),                  # upload_btn
+            gr.update(label=t("dsk_history_accordion")),           # hist_acc
+            gr.update(label=t("dsk_history_pick")),                # hist_dd
+            gr.update(value=t("dsk_history_refresh")),             # hist_refresh_btn
+            gr.update(value=t("dsk_history_load")),                # hist_load_btn
+            _placeholder_update(hist_cur, "dsk_history_empty", lg),  # hist_md
         )
 
     from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
@@ -436,17 +525,35 @@ def render_data_skew_page(app: gr.Blocks) -> None:
     # Language follows the hub's choice (st-lang cookie), applied on load.
     app.load(fn=None, js=STAMP_JS)
 
-    def _lang_on_load(r, s, request: gr.Request):
-        return _switch_lang(choice_from_request(request), r, s)
+    def _lang_on_load(r, s, h, request: gr.Request):
+        return _switch_lang(choice_from_request(request), r, s, h)
 
     app.load(
         _lang_on_load,
-        inputs=[report_md, conn_status],
+        inputs=[report_md, conn_status, hist_md],
         outputs=[
             lang_state, title_md, sql_box, dialect_dd, mode_radio,
             analyze_btn, clear_btn, report_md, dl_report_btn,
             dl_sql_btn, optimized_box,
             conn_acc, ds_dd, sample_dd, host_tb, port_tb, db_tb, user_tb, pwd_tb,
             connect_btn, verify_btn, cst_btn, conn_status,
+            upload_btn, hist_acc, hist_dd, hist_refresh_btn, hist_load_btn,
+            hist_md,
         ],
     )
+    # SQL handed over from the review page (localStorage bridge, same
+    # mechanism as review → transpile): fill the box and fire an input
+    # event so gradio picks the value up.
+    app.load(fn=None, js="""
+        () => setTimeout(() => {
+            const v = localStorage.getItem('st_dataskew_sql');
+            if (!v) return;
+            const t = document.querySelector('#dsk-sql-box textarea');
+            if (t) {
+                // remove only after successful delivery: if the textarea
+                // is not hydrated yet, the payload survives for a reload
+                localStorage.removeItem('st_dataskew_sql');
+                t.value = v;
+                t.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+        }, 600)""")
