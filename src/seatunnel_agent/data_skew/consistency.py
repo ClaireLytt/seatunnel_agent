@@ -47,7 +47,9 @@ class ConsistencyResult:
 
 
 def _count(executor, query: str, alias: str) -> tuple[int, int]:
-    res = executor.run(f"SELECT COUNT(*) AS c FROM ({query}) {alias}", max_rows=1)
+    # The closing paren goes on its own line: a query ending in a trailing
+    # "-- comment" must not swallow it.
+    res = executor.run(f"SELECT COUNT(*) AS c FROM (\n{query}\n) {alias}", max_rows=1)
     return int(res.rows[0][0] or 0), res.elapsed_ms
 
 

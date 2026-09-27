@@ -682,8 +682,14 @@ def _rule_null_key(sql: str, cleaned: str, dialect: str, lang: str) -> list[Skew
     out: list[SkewFinding] = []
     for m in _OUTER_JOIN_RE.finditer(cleaned):
         jt = m.group(1).upper()
-        on_m = _ON_CLAUSE_RE.search(cleaned, _after_join_target(cleaned, m.end()))
+        scan_from = _after_join_target(cleaned, m.end())
+        on_m = _ON_CLAUSE_RE.search(cleaned, scan_from)
         if not on_m:
+            continue
+        # The ON must belong to THIS join: if another join or clause keyword
+        # sits in between, this outer join has no ON of its own (that is
+        # DS006's cartesian case, not a NULL-key case).
+        if _CLAUSE_AFTER_JOIN_RE.search(cleaned, scan_from, on_m.start()):
             continue
         clause = on_m.group(1)
         # extract first bare column reference used as key (either side of '=')

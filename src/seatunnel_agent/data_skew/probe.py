@@ -108,12 +108,22 @@ class ProbeResult:
         return "ok"
 
 
+# CTE definitions: "name AS (" (optionally with a column list). A CTE is not
+# a physical table, so FROM/JOIN references to it must never become probe
+# targets — probing would hit an unrelated real table of the same name (or
+# fail outright).
+_CTE_RE = re.compile(
+    r"\b([A-Za-z_]\w*)\s*(?:\([^()]*\)\s*)?\bas\s*\(", re.IGNORECASE
+)
+
+
 def _alias_map(cleaned_stmt: str) -> dict[str, str]:
     """alias (or bare table name) -> base table, from FROM/JOIN targets."""
+    ctes = {m.group(1).lower() for m in _CTE_RE.finditer(cleaned_stmt)}
     amap: dict[str, str] = {}
     for m in _FROM_JOIN_RE.finditer(cleaned_stmt):
         table, alias = m.group(1), m.group(2)
-        if table.lower() in _RESERVED:
+        if table.lower() in _RESERVED or table.lower() in ctes:
             continue
         if alias and alias.lower() not in _RESERVED:
             amap[alias.lower()] = table

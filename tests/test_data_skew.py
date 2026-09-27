@@ -258,6 +258,15 @@ def test_semi_join_recognized():
     assert "DS006" not in keys(findings)
 
 
+def test_null_key_not_borrowed_from_next_join():
+    # the outer join has no ON of its own — the next join's ON must not be
+    # misattributed to it as a NULL-key finding (it is DS006's cartesian case)
+    sql = "select * from a left join b join c on b.id = c.id"
+    findings, _ = detect_skew(sql, "spark", "zh")
+    assert "DS007" not in keys(findings)
+    assert "DS006" in keys(findings)
+
+
 # ---------------------------------------------------------------------------
 # dialect-specific texts & engine hints
 # ---------------------------------------------------------------------------
@@ -504,6 +513,28 @@ def test_extract_targets_dedupe_and_cap():
 def test_extract_targets_ignores_string_literals():
     sql = "SELECT * FROM t WHERE note = 'from x join y on x.a = y.b'"
     assert extract_probe_targets(sql) == []
+
+
+def test_extract_targets_cte_not_probed():
+    # a CTE is not a physical table: probing "orders" here would hit an
+    # unrelated real table of the same name (or fail outright)
+    sql = (
+        "WITH orders AS (SELECT * FROM raw_orders WHERE dt = 'x') "
+        "SELECT * FROM orders o JOIN users u ON o.uid = u.id"
+    )
+    got = tkeys(extract_probe_targets(sql))
+    assert not any(t == "orders" for t, _ in got)
+    assert ("users", "id") in got
+
+
+def test_extract_targets_cte_with_column_list_not_probed():
+    sql = (
+        "WITH tmp (k, n) AS (SELECT k, count(*) FROM raw GROUP BY k) "
+        "SELECT * FROM tmp t JOIN dim d ON t.k = d.k"
+    )
+    got = tkeys(extract_probe_targets(sql))
+    assert not any(t == "tmp" for t, _ in got)
+    assert ("dim", "k") in got
 
 
 # ---------------------------------------------------------------------------
@@ -940,6 +971,17 @@ def test_check_consistency_error_surfaced(tmp_path):
     res = check_consistency(ex, "SELECT id FROM missing", "SELECT id FROM t")
     assert res.comparable
     assert res.error
+
+
+def test_check_consistency_trailing_line_comment(tmp_path):
+    # a trailing "-- comment" must not swallow the COUNT wrapper's ')'
+    setup = "CREATE TABLE t (id INTEGER); INSERT INTO t VALUES (1),(2);"
+    ex = _sqlite_executor(tmp_path, setup)
+    res = check_consistency(ex, "SELECT id FROM t",
+                            "SELECT id FROM t -- optimized by LLM")
+    assert res.error == ""
+    assert res.orig_count == res.opt_count == 2
+    assert res.rows_compared and res.rows_match
 
 
 def test_render_consistency_section_strings():
