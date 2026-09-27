@@ -139,6 +139,7 @@ LABELS: dict[str, tuple[str, ...]] = {
                    "Measure Consistency (runs both SQLs)"),
     "下载优化 SQL": ("下载优化后 SQL（.sql）", "Download Optimized SQL (.sql)"),
     "上传 SQL 文件": ("上传 SQL 文件", "Upload SQL file"),
+    "倾斜分析":   ("→ 倾斜分析", "→ Skew Analysis"),
     "分析历史":   ("分析历史（最近 20 条）", "Analysis history (last 20)"),
     "选择记录":   ("选择记录", "Pick a record"),
     "历史刷新":   ("刷新", "Refresh"),
@@ -678,20 +679,55 @@ class DCPage:
         return self.last_download
 
     def popup_click(self, name: str, side: str | None = None) -> str:
-        """Click a button that window.open()s a page; capture its text (Q4)."""
+        """Click a button that window.open()s a page; capture its text (Q4).
+
+        The capture includes textarea/input VALUES too, so a popup that is a
+        gradio page with a prefilled editor (e.g. the review → dataskew
+        bridge) can be asserted on. Gradio pages hydrate client-side, so
+        wait for non-empty body text (up to 10s) plus a grace period for
+        late JS (the localStorage bridge fires ~600ms after load)."""
         btn = self.button(name, side)
         with self.page.context.expect_page(timeout=15_000) as pop_info:
             btn.click()
         pop = pop_info.value
         try:
             pop.wait_for_load_state("domcontentloaded")
-            pop.wait_for_timeout(600)      # document.write + render settle
+            try:
+                pop.wait_for_function(
+                    "() => document.body && "
+                    "document.body.innerText.trim().length > 0",
+                    timeout=10_000)
+            except Exception:  # noqa: BLE001 — capture whatever is there
+                pass
+            pop.wait_for_timeout(2_000)    # document.write / bridge settle
             text = pop.evaluate(
-                "() => document.body ? document.body.innerText : ''")
+                """() => {
+                    const body = document.body ? document.body.innerText : '';
+                    const vals = [...document.querySelectorAll('textarea, input')]
+                        .map(e => e.value).filter(Boolean).join('\\n');
+                    return body + '\\n' + vals;
+                }""")
         finally:
             pop.close()
         self.last_popup_text = text
         return text
+
+    def upload_file(self, name: str, path: str, side: str | None = None) -> None:
+        """Set a local file on an UploadButton's hidden <input type=file>."""
+        p = Path(path)
+        if not p.is_file():
+            raise LookupError(f"upload source not found: {path}")
+        btn = self.button(name, side)
+        inp = btn.locator("input[type='file']")
+        if not inp.count():
+            # gradio may render the input as a sibling in the button's block
+            inp = btn.locator("xpath=..").locator("input[type='file']")
+        if not inp.count():
+            inp = self._scope(side).locator("input[type='file']")
+        if not inp.count():
+            raise LookupError(f"no file input near button: {name}")
+        inp.first.set_input_files(str(p))
+        self.page.wait_for_timeout(400)
 
     def drag_sidebar_grip(self, dx: int) -> int:
         """Drag the datacompare sidebar's native CSS resize grip by dx px (B2).

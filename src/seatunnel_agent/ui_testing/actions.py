@@ -142,6 +142,11 @@ def _dispatch(step: Step, dc: DCPage) -> str:
         text = dc.popup_click(args["target"], args.get("side"))
         return f"popup captured, {len(text)} chars"
 
+    if a == "upload_file":
+        path = args.get("path", args.get("file", ""))
+        dc.upload_file(args["target"], path, args.get("side"))
+        return f"uploaded {path!r} via {args['target']!r}"
+
     if a == "drag_sidebar":
         width = dc.drag_sidebar_grip(int(args.get("dx", 0)))
         return f"sidebar dragged dx={args.get('dx')} -> width {width}px"

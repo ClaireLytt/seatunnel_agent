@@ -217,3 +217,42 @@
       note: 载入是纯状态回填,SQL 框无 loading 信号
   expect:
     - value_contains: {of: SQL, value: "count(distinct user_id)"}
+
+- id: DSK17
+  title: 审查页一键跳转倾斜分析并带入 SQL (localStorage 桥)
+  tags: [full, sqlite]
+  page: /sqlreview
+  steps:
+    - fill: {SQL: "SELECT count(distinct uid) FROM ods.t"}
+    - popup_click: {target: 倾斜分析}
+  expect:
+    - popup_contains: {text: 数据倾斜分析}
+    - popup_contains: {text: "count(distinct uid)"}
+
+- id: DSK18
+  title: 上传 SQL 文件填入编辑框并可直接分析
+  tags: [full, sqlite]
+  page: /dataskew
+  steps:
+    - upload_file: {target: 上传 SQL 文件, path: examples/skew_demo.sql}
+    - wait: 1000
+      note: 上传经服务器回填 SQL 框,无 loading 信号
+    - click: 开始分析
+    - wait_result: {}
+  expect:
+    - value_contains: {of: SQL, value: "count(distinct o.user_id)"}
+    - text_contains: {in: 结果区, text: COUNT(DISTINCT) 单点聚合}
+    - text_contains: {in: 结果区, text: 全局 ORDER BY}
+
+- id: DSK19
+  title: 英文界面未连接点实测验证提示为英文
+  tags: [full, sqlite]
+  page: /dataskew
+  lang: en
+  steps:
+    - open_accordion: 连接数据源
+    - fill: {SQL: "SELECT region, count(*) FROM dc_test_metrics_a GROUP BY region"}
+    - click: 验证倾斜（实测）
+    - wait_text: {text: Connect a data source first}
+  expect:
+    - text_contains: {in: 页面, text: Connect a data source first}
