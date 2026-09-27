@@ -38,7 +38,21 @@
   tags: [manual]
   note: 布局观感人工确认
 
+# B2 曾标 manual;原生 CSS resize 手柄(右下角)用 mouse down/move/up
+# 可以稳定拖动,两条用例分别压下限与上限 clamp。
+
 - id: B2
-  title: 拖拽调宽 (360px ~ 85vw)
-  tags: [manual]
-  note: 浏览器原生 resize 手柄拖拽,自动化不可靠
+  title: 拖拽调宽收窄到下限 360px
+  tags: [full, sqlite]
+  steps:
+    - drag_sidebar: {dx: -2000}
+  expect:
+    - sidebar_width: {min: 330, max: 420}
+
+- id: B2b
+  title: 拖拽调宽上限不超过 85vw
+  tags: [full, sqlite]
+  steps:
+    - drag_sidebar: {dx: 4000}
+  expect:
+    - sidebar_width: {min: 800, max_vw: 86}

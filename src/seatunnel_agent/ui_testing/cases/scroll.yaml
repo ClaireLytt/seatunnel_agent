@@ -75,3 +75,14 @@
       note: 纯断言用例,等页面水合完成即可
   expect:
     - scrollable: {selector: .st-mig-page}
+
+- id: SCR8
+  title: hub landing page scrolls to the last card
+  tags: [smoke, sqlite]
+  page: /
+  lang: en
+  steps:
+    - wait: 500
+      note: pure-assertion case, wait for hydration only
+  expect:
+    - scrollable: {selector: .gradio-container}

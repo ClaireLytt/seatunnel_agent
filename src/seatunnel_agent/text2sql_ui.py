@@ -843,11 +843,8 @@ def render_schema_browser_page(app=None) -> None:
         lang_state = gr.State("en")
         with gr.Row(elem_classes=["st-topbar-row"]):
             gr.HTML('<div class="st-topbar-spacer"></div>')
-            lang_dd = gr.Dropdown(
-                choices=["English", "中文"], value="English",
-                show_label=False, container=False, min_width=140,
-                elem_classes=["st-lang-dd"],
-            )
+            home_btn = gr.Button("\U0001f3e0", size="sm",
+                                 elem_classes=["st-home-btn"])
 
         title_md = gr.Markdown(f"## {t('schema_browser')}")
 
@@ -868,10 +865,19 @@ def render_schema_browser_page(app=None) -> None:
     schema_dd.change(fn=_browse, inputs=[schema_dd, lang_state], outputs=[schema_html])
     refresh_btn.click(fn=_refresh, inputs=[lang_state], outputs=[schema_dd, schema_html])
     back_btn.click(fn=None, js="() => { window.close(); }")
-    lang_dd.change(
-        fn=_switch_lang, inputs=[lang_dd],
-        outputs=[lang_state, title_md, back_btn, refresh_btn, schema_dd, schema_html],
-    )
+    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    home_btn.click(fn=None, js=HOME_JS)
+    if app is not None:
+        # Language follows the hub's choice (st-lang cookie), applied on load.
+        app.load(fn=None, js=STAMP_JS)
+
+        def _lang_on_load(request: gr.Request):
+            return _switch_lang(choice_from_request(request))
+
+        app.load(
+            fn=_lang_on_load, inputs=None,
+            outputs=[lang_state, title_md, back_btn, refresh_btn, schema_dd, schema_html],
+        )
 
     def _on_load():
         choices = _table_choices_from_shared("en")
@@ -923,14 +929,8 @@ def render_history_page(app=None) -> None:
         lang_state = gr.State("en")
         with gr.Row(elem_classes=["st-topbar-row"]):
             gr.HTML('<div class="st-topbar-spacer"></div>')
-            lang_dd = gr.Dropdown(
-                choices=["English", "中文"],
-                value="English",
-                show_label=False,
-                container=False,
-                min_width=140,
-                elem_classes=["st-lang-dd"],
-            )
+            home_btn = gr.Button("\U0001f3e0", size="sm",
+                                 elem_classes=["st-home-btn"])
 
         title_md = gr.Markdown("## Query History")
 
@@ -1139,11 +1139,19 @@ def render_history_page(app=None) -> None:
     _sel_outputs = [selected_state, selected_info, detail_html]
     _refresh_outputs = [history_table, selected_state, selected_info, detail_html]
 
-    lang_dd.change(
-        fn=_switch_lang,
-        inputs=[lang_dd],
-        outputs=[lang_state, title_md, resume_btn, back_btn, refresh_btn, save_fav_btn, export_sel_btn, export_all_btn, delete_btn, clear_btn],
-    )
+    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    home_btn.click(fn=None, js=HOME_JS)
+    if app is not None:
+        # Language follows the hub's choice (st-lang cookie), applied on load.
+        app.load(fn=None, js=STAMP_JS)
+
+        def _lang_on_load(request: gr.Request):
+            return _switch_lang(choice_from_request(request))
+
+        app.load(
+            fn=_lang_on_load, inputs=None,
+            outputs=[lang_state, title_md, resume_btn, back_btn, refresh_btn, save_fav_btn, export_sel_btn, export_all_btn, delete_btn, clear_btn],
+        )
     history_table.select(
         fn=_on_select,
         inputs=[selected_state],
@@ -1232,14 +1240,8 @@ def render_favorites_page(app=None) -> None:
         lang_state = gr.State("en")
         with gr.Row(elem_classes=["st-topbar-row"]):
             gr.HTML('<div class="st-topbar-spacer"></div>')
-            lang_dd = gr.Dropdown(
-                choices=["English", "中文"],
-                value="English",
-                show_label=False,
-                container=False,
-                min_width=140,
-                elem_classes=["st-lang-dd"],
-            )
+            home_btn = gr.Button("\U0001f3e0", size="sm",
+                                 elem_classes=["st-home-btn"])
 
         title_md = gr.Markdown("#### ⭐ SQL Favorites")
 
@@ -1367,12 +1369,20 @@ def render_favorites_page(app=None) -> None:
                 gr.update(placeholder=_t2s("en", "fav_rename_placeholder")),
                 gr.update(value="✓"))
 
-    lang_dd.change(
-        fn=_switch_lang,
-        inputs=[lang_dd],
-        outputs=[lang_state, title_md, fav_search, back_btn, refresh_btn,
-                 delete_btn, clear_btn, rename_input, rename_save_btn],
-    )
+    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    home_btn.click(fn=None, js=HOME_JS)
+    if app is not None:
+        # Language follows the hub's choice (st-lang cookie), applied on load.
+        app.load(fn=None, js=STAMP_JS)
+
+        def _lang_on_load(request: gr.Request):
+            return _switch_lang(choice_from_request(request))
+
+        app.load(
+            fn=_lang_on_load, inputs=None,
+            outputs=[lang_state, title_md, fav_search, back_btn, refresh_btn,
+                     delete_btn, clear_btn, rename_input, rename_save_btn],
+        )
     fav_table.select(
         fn=_on_select,
         inputs=[selected_state, search_state],
@@ -1594,14 +1604,6 @@ def render_text2sql_page(app=None) -> None:
                 sidebar_open_btn = gr.Button("☰", size="sm", visible=False, elem_classes=["st-sidebar-open-btn"])
                 gr.HTML('<div class="st-topbar-spacer"></div>')
                 home_btn = gr.Button("\U0001f3e0", size="sm", elem_classes=["st-home-btn"])
-                lang_dd = gr.Dropdown(
-                    choices=["English", "中文"],
-                    value="English",
-                    show_label=False,
-                    container=False,
-                    min_width=140,
-                    elem_classes=["st-lang-dd"],
-                )
 
             chatbot = gr.Chatbot(
                 show_label=False,
@@ -1785,8 +1787,10 @@ def render_text2sql_page(app=None) -> None:
 
         llm_status = f"⏳ LLM {settings.model_name} (checking...)"
 
+        from . import settings_store
         with holder_lock:
             holder["settings"] = settings
+            holder["settings_version"] = settings_store.get_version()
             holder["store"] = store
             holder["full_store"] = store
             holder["ds_type"] = ds_type
@@ -1877,6 +1881,18 @@ def render_text2sql_page(app=None) -> None:
         with holder_lock:
             holder["collector"] = collector
             store_ref = holder.get("store")
+            # The /settings page changed the LLM config since Connect: reload
+            # and drop the cached agent so it takes effect without re-Connect.
+            from . import settings_store
+            if (holder.get("settings") is not None
+                    and holder.get("settings_version") != settings_store.get_version()):
+                try:
+                    from .config import load_settings as _load_settings
+                    holder["settings"] = _load_settings()
+                    holder["settings_version"] = settings_store.get_version()
+                    holder["agent"] = None
+                except Exception:
+                    pass  # keep old settings; the run itself surfaces errors
             if holder.get("agent") is None:
                 from .text2sql.agent import Text2SQLAgent
                 agent = Text2SQLAgent(
@@ -2202,9 +2218,19 @@ def render_text2sql_page(app=None) -> None:
     # ── Wiring ──
     confirmed_sel = gr.State([])
 
-    lang_dd.change(
-        fn=_switch_lang,
-        inputs=[lang_dd, table_filter, status_box],
+    # Language follows the hub's choice (st-lang cookie), applied on load.
+    # _switch_lang takes two extra inputs — pass them through unchanged.
+    if app is not None:
+        from .lang_pref import STAMP_JS as _STAMP_JS
+        from .lang_pref import choice_from_request as _choice
+        app.load(fn=None, js=_STAMP_JS)
+
+        def _lang_on_load(f, s, request: gr.Request):
+            return _switch_lang(_choice(request), f, s)
+
+        app.load(
+        fn=_lang_on_load,
+        inputs=[table_filter, status_box],
         outputs=[
             lang_state,
             sidebar_title,

@@ -62,12 +62,14 @@ _HEAL_SYSTEM = """你是 UI 测试定位修复助手。一个测试步骤按名�
 若摘要中没有语义相近的元素,输出 {"found": false}。"""
 
 
-def suggest_locator(missing_name: str, page_digest: str,
-                    llm: "UITestLLM | None") -> str:
-    """One-line LABELS-table fix suggestion for a failed lookup; '' on any
-    problem — healing hints must never break a run."""
+def suggest_locator_struct(missing_name: str, page_digest: str,
+                           llm: "UITestLLM | None") -> tuple[str, str] | None:
+    """(label, hint) for a failed lookup, or None — never raises.
+
+    Anti-hallucination gate: the suggested label must literally appear in
+    the page digest, otherwise the retry could not succeed anyway."""
     if llm is None:
-        return ""
+        return None
     try:
         prompt = (f"找不到的元素名: {missing_name!r}\n\n"
                   f"当前页面摘要:\n{page_digest[:2500]}")
@@ -76,13 +78,25 @@ def suggest_locator(missing_name: str, page_digest: str,
         llm.spend(resp.usage)
         m = _JSON_RE.search(resp.reply_text or "")
         if not m:
-            return ""
+            return None
         obj = json.loads(m.group(0))
         if not obj.get("found") or not obj.get("label"):
-            return ""
-        label = str(obj["label"])[:60]
-        hint = str(obj.get("hint", ""))[:120]
-        return (f"[定位建议] 页面上疑似为 {label!r} — {hint} "
-                f"(如确认,请在 page.py::LABELS 为 {missing_name!r} 登记该别名)")
+            return None
+        label = str(obj["label"]).strip()[:60]
+        if not label or label not in page_digest:
+            return None
+        return label, str(obj.get("hint", ""))[:120]
     except Exception:  # noqa: BLE001
+        return None
+
+
+def suggest_locator(missing_name: str, page_digest: str,
+                    llm: "UITestLLM | None") -> str:
+    """One-line LABELS-table fix suggestion for a failed lookup; '' on any
+    problem — healing hints must never break a run."""
+    sug = suggest_locator_struct(missing_name, page_digest, llm)
+    if not sug:
         return ""
+    label, hint = sug
+    return (f"[定位建议] 页面上疑似为 {label!r} — {hint} "
+            f"(如确认,请在 page.py::LABELS 为 {missing_name!r} 登记该别名)")

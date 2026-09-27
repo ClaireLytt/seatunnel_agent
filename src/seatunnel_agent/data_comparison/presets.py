@@ -23,7 +23,10 @@ except ImportError:  # pragma: no cover
     InvalidToken = Exception
 
 
-_DEFAULT_PATH = Path.home() / ".seatunnel-agent" / "dc_connections.json"
+_DEFAULT_PATH = Path(os.getenv(
+    "SEATUNNEL_DC_PRESETS_PATH",
+    str(Path.home() / ".seatunnel-agent" / "dc_connections.json"),
+))
 _MAX_PRESETS = int(os.getenv("SEATUNNEL_DC_MAX_PRESETS", "50"))
 _KEY_PATH = Path(os.getenv(
     "SEATUNNEL_DC_KEY_PATH",

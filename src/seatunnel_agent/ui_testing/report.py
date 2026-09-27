@@ -66,6 +66,9 @@ def append_history(rr: RunResult, runs_dir: Path) -> Path:
         "tokens": rr.tokens,
         "verdicts": {c.case_id: c.verdict for c in rr.cases},
     }
+    healed = {c.case_id: c.healed for c in rr.cases if c.healed}
+    if healed:
+        record["healed"] = healed
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -76,7 +79,7 @@ def append_history(rr: RunResult, runs_dir: Path) -> Path:
 
 _VERDICT_COLOR = {
     "PASS": "#16a34a", "FAIL": "#dc2626", "ERROR": "#ea580c",
-    "SKIP": "#9ca3af", "MANUAL": "#6366f1",
+    "SKIP": "#9ca3af", "MANUAL": "#6366f1", "HEALED": "#d97706",
 }
 
 _CSS = """
@@ -167,17 +170,80 @@ def _case_html(c: CaseResult, run_dir: Path) -> str:
         f'<div class="body">{body or "<p>无明细</p>"}</div></details>')
 
 
+def _labels_patch_lines(rr: RunResult) -> list[str]:
+    """Paste-ready ``page.py::LABELS`` lines for every verified healed alias.
+
+    LABELS values are variable-length tuples and the locator chain iterates
+    all of them, so appending the healed label to the existing tuple is the
+    complete permanent fix."""
+    from .page import LABELS
+    healed: dict[str, tuple[list[str], list[str]]] = {}
+    for c in rr.cases:
+        for item in c.healed:
+            name, _, label = item.partition(" -> ")
+            labels, cids = healed.setdefault(name, ([], []))
+            if label and label not in labels:
+                labels.append(label)
+            if c.case_id not in cids:
+                cids.append(c.case_id)
+    def _q(s: str) -> str:
+        """Double-quoted python literal (labels may contain quotes)."""
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+    lines = []
+    for name, (labels, cids) in sorted(healed.items()):
+        base = LABELS.get(name, (name,))
+        merged = (*base, *[lb for lb in labels if lb not in base])
+        vals = ", ".join(_q(v) for v in merged)
+        lines.append(f'    {_q(name)}: ({vals}),   # healed: {", ".join(cids)}')
+    return lines
+
+
+def _print_labels_patch(rr: RunResult) -> None:
+    lines = _labels_patch_lines(rr)
+    if not lines:
+        return
+    print("🩹 自愈定位 — 粘贴进 page.py::LABELS 使修复永久化:")
+    for line in lines:
+        print(line)
+
+
+def _healed_patch_html(rr: RunResult) -> str:
+    lines = _labels_patch_lines(rr)
+    if not lines:
+        return ""
+    body = _esc("\n".join(lines))
+    return ('<details class="case" data-v="HEALED" open>'
+            '<summary><span class="badge" style="background:#d97706">🩹 自愈定位'
+            '</span><span class="cid">LABELS patch</span>'
+            '<span>粘贴进 page.py::LABELS 使修复永久化</span></summary>'
+            f'<pre style="padding:12px 16px;overflow-x:auto">{body}</pre>'
+            "</details>")
+
+
+def write_labels_patch(rr: RunResult, run_dir: Path) -> Path | None:
+    lines = _labels_patch_lines(rr)
+    if not lines:
+        return None
+    path = run_dir / "labels_patch.txt"
+    path.write_text(
+        "# 自愈定位补丁 — 粘贴进 src/seatunnel_agent/ui_testing/page.py::LABELS\n"
+        + "\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
 def write_html(rr: RunResult, run_dir: Path) -> Path:
     counts = rr.counts()
     stats = ['<div class="stat active" data-v="ALL"><b>'
              f'{len(rr.cases)}</b><span>全部</span></div>']
-    for k in ("PASS", "FAIL", "ERROR", "SKIP", "MANUAL"):
+    for k in ("PASS", "HEALED", "FAIL", "ERROR", "SKIP", "MANUAL"):
         stats.append(
             f'<div class="stat" data-v="{k}">'
             f'<b style="color:{_VERDICT_COLOR[k]}">{counts[k]}</b>'
             f'<span>{k}</span></div>')
 
     cases_html = "".join(_case_html(c, run_dir) for c in rr.cases)
+    cases_html += _healed_patch_html(rr)
     coverage_html = _coverage_html()
     rundiff_html = _rundiff_html(rr, run_dir)
     applog = ""
@@ -276,13 +342,18 @@ def print_summary(rr: RunResult) -> None:
     print("─" * 62)
     for c in rr.cases:
         mark = {"PASS": "✅", "FAIL": "❌", "ERROR": "💥",
-                "SKIP": "⏭️", "MANUAL": "📝"}.get(c.verdict, "?")
+                "SKIP": "⏭️", "MANUAL": "📝", "HEALED": "🩹"}.get(c.verdict, "?")
         line = f"{mark} {c.verdict:<6} {c.case_id:<5} {c.title}"
         if c.reason and c.verdict in ("FAIL", "ERROR"):
             line += f"  — {mask(c.reason)[:70]}"
+        if c.verdict == "HEALED":
+            line += f"  — {'; '.join(c.healed)[:70]}"
         print(line)
     print("─" * 62)
     print(f"PASS {counts['PASS']} · FAIL {counts['FAIL']} · "
           f"ERROR {counts['ERROR']} · SKIP {counts['SKIP']} · "
-          f"MANUAL {counts['MANUAL']} · 耗时 {rr.elapsed_ms / 1000:.0f}s"
+          f"MANUAL {counts['MANUAL']}"
+          + (f" · 🩹 HEALED {counts['HEALED']}" if counts["HEALED"] else "")
+          + f" · 耗时 {rr.elapsed_ms / 1000:.0f}s"
           + (f" · {rr.tokens} tokens" if rr.tokens else ""))
+    _print_labels_patch(rr)

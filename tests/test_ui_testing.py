@@ -366,6 +366,305 @@ class TestJudge:
         assert _parse("not json") is None
         assert _parse('{"verdict": "maybe"}') is None
 
+    def test_adversarial_verdict_fail(self, monkeypatch):
+        """verdict: fail — a false expectation must be judged fail."""
+        import json as _json
+
+        from seatunnel_agent.ui_testing import judge as judge_mod
+        from seatunnel_agent.ui_testing.models import Assertion
+
+        monkeypatch.setattr(judge_mod, "_judge_cache", {})
+        monkeypatch.setenv("UITEST_JUDGE_VISION", "0")
+
+        def _llm(judge_verdict):
+            resp = MagicMock()
+            resp.reply_text = _json.dumps(
+                {"verdict": judge_verdict, "reason": "r"})
+            resp.usage = {"input": 1, "output": 1}
+            llm = MagicMock()
+            llm.client.provider = "anthropic"
+            llm.client.chat.return_value = resp
+            return llm
+
+        class _DC:
+            def digest(self, max_result_chars=2500):
+                return "same summary"
+
+        a = Assertion(kind="ai_judge",
+                      args={"expect": "行数完全一致", "verdict": "fail"})
+        # judge correctly rejects the false claim -> assertion passes
+        ok_log = judge_mod.run_judge(a, _DC(), _llm("fail"))
+        assert ok_log.ok and "期望判 fail" in ok_log.desc
+        # judge rubber-stamps -> assertion fails loudly
+        monkeypatch.setattr(judge_mod, "_judge_cache", {})
+        bad_log = judge_mod.run_judge(a, _DC(), _llm("pass"))
+        assert not bad_log.ok
+        assert "幻觉盖章" in bad_log.detail
+
+    def test_cache_key_includes_wanted_verdict(self, monkeypatch):
+        """Same expect+digest with opposite wanted verdicts must not share
+        a cache entry."""
+        import json as _json
+
+        from seatunnel_agent.ui_testing import judge as judge_mod
+        from seatunnel_agent.ui_testing.models import Assertion
+
+        monkeypatch.setattr(judge_mod, "_judge_cache", {})
+        monkeypatch.setenv("UITEST_JUDGE_VISION", "0")
+        resp = MagicMock()
+        resp.reply_text = _json.dumps({"verdict": "pass", "reason": "r"})
+        resp.usage = {"input": 1, "output": 1}
+        llm = MagicMock()
+        llm.client.provider = "anthropic"
+        llm.client.chat.return_value = resp
+
+        class _DC:
+            def digest(self, max_result_chars=2500):
+                return "same summary"
+
+        pos = Assertion(kind="ai_judge", args={"expect": "X"})
+        neg = Assertion(kind="ai_judge", args={"expect": "X",
+                                               "verdict": "fail"})
+        assert judge_mod.run_judge(pos, _DC(), llm).ok          # pass wanted
+        neg_log = judge_mod.run_judge(neg, _DC(), llm)
+        assert not neg_log.ok                                   # fresh judge
+        assert "(cached)" not in neg_log.detail
+
+    def test_loader_rejects_bad_verdict(self):
+        from seatunnel_agent.ui_testing.loader import validate_case_yaml
+        bad = """
+- id: NEGX
+  title: bad verdict
+  tags: [full, sqlite]
+  steps: [{wait: 100, note: n}]
+  expect:
+    - ai_judge: {expect: x, verdict: maybe}
+"""
+        with pytest.raises(CaseLoadError):
+            validate_case_yaml(bad)
+
+    def test_cache_skips_second_llm_call(self, monkeypatch):
+        from seatunnel_agent.ui_testing import judge as judge_mod
+        from seatunnel_agent.ui_testing.models import Assertion
+
+        monkeypatch.setattr(judge_mod, "_judge_cache", {})
+        monkeypatch.setenv("UITEST_JUDGE_VISION", "0")
+        calls = {"n": 0}
+
+        class _Resp:
+            reply_text = '{"verdict": "pass", "reason": "ok"}'
+            usage = {"input": 1, "output": 1}
+
+        class _Client:
+            provider = "anthropic"
+            def chat(self, *a, **k):
+                calls["n"] += 1
+                return _Resp()
+
+        class _LLM:
+            client = _Client()
+            def spend(self, usage):
+                pass
+
+        class _DC:
+            def digest(self, max_result_chars=2500):
+                return "same summary"
+
+        a = Assertion(kind="ai_judge", args={"expect": "结果高亮"})
+        log1 = judge_mod.run_judge(a, _DC(), _LLM())
+        log2 = judge_mod.run_judge(a, _DC(), _LLM())
+        assert log1.ok and log2.ok
+        assert calls["n"] == 1                    # second verdict from cache
+        assert "(cached)" in log2.detail
+
+
+# ── locator self-healing loop ──
+
+class TestSelfHeal:
+    """The page's button was renamed to 'New Label'; cases still say 旧按钮."""
+
+    def _reset(self):
+        from seatunnel_agent.ui_testing import page as page_mod
+        from seatunnel_agent.ui_testing import runner
+        page_mod.reset_aliases()
+        runner._heal_failed.clear()
+
+    def _dc(self):
+        from seatunnel_agent.ui_testing import page as page_mod
+
+        class DC:
+            page = MagicMock()
+
+            def goto(self, p):
+                pass
+
+            def set_language(self, lang):
+                pass
+
+            def digest(self, **k):
+                return "[BUTTONS] New Label 保存"
+
+            def result_html(self):
+                return ""
+
+            def screenshot(self, p):
+                pass
+
+            def click_button(self, name, side=None):
+                for text in page_mod._texts(name):
+                    if text == "New Label":
+                        return
+                raise LookupError(f"button not found: {name} (side={side})")
+
+        return DC()
+
+    def _llm(self, label="New Label"):
+        import json as _json
+
+        from seatunnel_agent.ui_testing.agent import UITestLLM
+        llm = UITestLLM.__new__(UITestLLM)
+        llm.tokens_used = 0
+        resp = MagicMock()
+        resp.reply_text = _json.dumps(
+            {"found": True, "label": label, "hint": "renamed"})
+        resp.usage = {"input": 1, "output": 1}
+        llm.client = MagicMock()
+        llm.client.chat.return_value = resp
+        return llm
+
+    def _case(self):
+        from seatunnel_agent.ui_testing.models import TestCase
+        return TestCase(id="H1", title="heal demo", tags=["sqlite"],
+                        page="/x",
+                        steps=[Step(action="click", args={"target": "旧按钮"})])
+
+    def test_heal_success_then_alias_reused(self, tmp_path):
+        from seatunnel_agent.ui_testing import page as page_mod
+        from seatunnel_agent.ui_testing.runner import run_case
+        self._reset()
+        dc, llm = self._dc(), self._llm()
+
+        cr = run_case(self._case(), dc, llm, tmp_path)
+        assert cr.verdict == "HEALED"
+        assert cr.healed == ["旧按钮 -> New Label"]
+        assert page_mod.healed_aliases() == {"旧按钮": ["New Label"]}
+        heal_calls = llm.client.chat.call_count
+
+        # second case resolves straight through the alias: no failure, no LLM
+        cr2 = run_case(self._case(), dc, llm, tmp_path)
+        assert cr2.verdict == "PASS"
+        assert llm.client.chat.call_count == heal_calls
+        self._reset()
+
+    def test_bad_suggestion_rolls_back(self, tmp_path, monkeypatch):
+        from seatunnel_agent.ui_testing import page as page_mod
+        from seatunnel_agent.ui_testing import runner
+        self._reset()
+        dc = self._dc()
+        # '保存' IS on the page (passes the digest gate) but is not the
+        # renamed control — the verified retry must fail and roll back
+        llm = self._llm(label="保存")
+
+        cr = runner.run_case(self._case(), dc, llm, tmp_path)
+        assert cr.verdict == "ERROR"
+        assert "自愈失败" in cr.reason
+        assert page_mod.healed_aliases() == {}          # rolled back
+        assert "旧按钮" in runner._heal_failed           # negative cache
+
+        # later case: fails fast, no second suggestion round
+        calls = {"n": 0}
+        monkeypatch.setattr(
+            "seatunnel_agent.ui_testing.diagnose.suggest_locator_struct",
+            lambda *a, **k: calls.__setitem__("n", calls["n"] + 1))
+        cr2 = runner.run_case(self._case(), dc, llm, tmp_path)
+        assert cr2.verdict == "ERROR"
+        assert calls["n"] == 0
+        self._reset()
+
+    def test_digest_gate_blocks_hallucination(self):
+        from seatunnel_agent.ui_testing.diagnose import suggest_locator_struct
+        llm = self._llm(label="Ghost Button")   # not in the digest below
+        assert suggest_locator_struct("旧按钮", "[BUTTONS] New Label", llm) is None
+
+    def test_labels_patch_lines(self):
+        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.ui_testing.report import _labels_patch_lines
+        rr = RunResult(started_at="t", suite="smoke", cases=[
+            CaseResult("H1", "t", "HEALED", healed=["连接 -> Connect Now"]),
+        ])
+        (line,) = _labels_patch_lines(rr)
+        assert '"连接": ("连接", "Connect", "Connect Now")' in line
+        assert "healed: H1" in line
+
+    def test_labels_patch_escapes_quotes(self):
+        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.ui_testing.report import _labels_patch_lines
+        rr = RunResult(started_at="t", suite="smoke", cases=[
+            CaseResult("H1", "t", "HEALED", healed=['连接 -> Say "Hi"']),
+        ])
+        (line,) = _labels_patch_lines(rr)
+        assert '"Say \\"Hi\\""' in line          # valid python when pasted
+
+    def test_assert_side_healing(self, tmp_path):
+        from seatunnel_agent.ui_testing import page as page_mod
+        from seatunnel_agent.ui_testing.models import Assertion, TestCase
+        from seatunnel_agent.ui_testing.runner import run_case
+        self._reset()
+        llm = self._llm()
+
+        class DC:
+            page = MagicMock()
+
+            def goto(self, p):
+                pass
+
+            def set_language(self, lang):
+                pass
+
+            def digest(self, **k):
+                return "[INPUTS] New Label"
+
+            def screenshot(self, p):
+                pass
+
+            def textbox(self, name, side=None):
+                for text in page_mod._texts(name):
+                    if text == "New Label":
+                        box = MagicMock()
+                        box.input_value.return_value = "v"
+                        return box
+                raise LookupError(f"textbox not found: {name} (side={side})")
+
+            def dropdown_input(self, name, side=None):
+                # value_is falls back here after the textbox LookupError,
+                # exactly like the real DCPage
+                raise LookupError(f"dropdown not found: {name} (side={side})")
+
+        case = TestCase(id="H2", title="assert heal", tags=["sqlite"],
+                        page="/x", steps=[],
+                        expect=[Assertion(kind="value_is",
+                                          args={"of": "旧框", "value": "v"})])
+        cr = run_case(case, DC(), llm, tmp_path)
+        assert cr.verdict == "HEALED"
+        assert cr.healed == ["旧框 -> New Label"]
+        self._reset()
+
+    def test_healed_counts_and_flaky_normalization(self):
+        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.ui_testing.rundiff import CaseDelta, flaky_trend
+        rr = RunResult(started_at="t", suite="smoke", cases=[
+            CaseResult("H1", "t", "HEALED")])
+        assert rr.counts()["HEALED"] == 1
+        # HEALED -> PASS across rounds is the healing working, not flaky
+        rows = flaky_trend([
+            {"ts": "1", "verdicts": {"H1": "HEALED"}},
+            {"ts": "2", "verdicts": {"H1": "PASS"}},
+        ])
+        assert rows[0]["flaky"] is False
+        # a healed case that later hard-fails is a regression
+        assert CaseDelta("H1", "t", old="HEALED", new="FAIL",
+                         old_ms=0, new_ms=0).regressed
+
 
 # ── report masking ──
 

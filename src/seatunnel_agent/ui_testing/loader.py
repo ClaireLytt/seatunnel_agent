@@ -30,15 +30,18 @@ KNOWN_ACTIONS = frozenset({
     "goto", "click", "fill", "clear", "press", "select_ds", "select",
     "select_index", "dropdown_type", "check", "slide", "open_accordion", "wait_status_ok",
     "wait_status_error", "wait_result", "wait_text", "wait", "screenshot", "set_language",
+    "download", "popup_click", "drag_sidebar",
 })
 
 KNOWN_ASSERTS = frozenset({
     "text_contains", "text_not_contains", "value_is", "value_contains", "options_are",
     "options_count", "status_ok", "status_error", "visible", "hidden",
     "checked", "scrollable", "ai_judge",
+    "download_ok", "popup_contains", "sidebar_width",
 })
 
-KNOWN_TAGS = frozenset({"smoke", "full", "hive", "sqlite", "slow", "manual"})
+KNOWN_TAGS = frozenset({"smoke", "full", "hive", "sqlite", "slow", "manual",
+                        "isolated"})
 
 # fill targets whose values must never be inlined in YAML
 _FORBIDDEN_FILL_TARGETS = frozenset({"密码", "password", "Password"})
@@ -146,6 +149,12 @@ def _expand_assert(raw: Any, ctx: str) -> Assertion:
     if kind not in KNOWN_ASSERTS:
         raise CaseLoadError(f"{ctx}: unknown assertion {kind!r} "
                             f"(known: {sorted(KNOWN_ASSERTS)})")
+    if kind == "ai_judge":
+        want = str(args.get("verdict", "pass")).lower()
+        if want not in ("pass", "fail"):
+            raise CaseLoadError(
+                f"{ctx}: ai_judge verdict must be 'pass' or 'fail', "
+                f"got {want!r}")
     return Assertion(kind=kind, args=args, note=note)
 
 

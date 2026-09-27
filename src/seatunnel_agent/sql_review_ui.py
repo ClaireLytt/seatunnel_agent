@@ -49,10 +49,8 @@ def render_sql_review_page(app: gr.Blocks) -> None:
 
     with gr.Row():
         title_md = gr.Markdown(f"{t0('sr_title')}\n{t0('sr_subtitle')}")
-        lang_dd = gr.Dropdown(
-            choices=["English", "中文"], value="English",
-            show_label=False, container=False, min_width=140, scale=0,
-        )
+        home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
+                             elem_classes=["st-home-btn"])
     lang_state = gr.State(_DEFAULT_LANG)
 
     with gr.Row():
@@ -350,9 +348,17 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             gr.update(value=t("sr_refresh")),                       # refresh_btn
         )
 
-    lang_dd.change(
-        _switch_lang,
-        inputs=[lang_dd, report_md, stats_md],
+    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    home_btn.click(fn=None, js=HOME_JS)
+    # Language follows the hub's choice (st-lang cookie), applied on load.
+    app.load(fn=None, js=STAMP_JS)
+
+    def _lang_on_load(r, s, request: gr.Request):
+        return _switch_lang(choice_from_request(request), r, s)
+
+    app.load(
+        _lang_on_load,
+        inputs=[report_md, stats_md],
         outputs=[
             lang_state,
             title_md,
