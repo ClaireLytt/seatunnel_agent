@@ -841,6 +841,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Compare schemas, row counts, and data across two data sources" data-zh="跨数据源比对表结构、行数、数据差异">Compare schemas, row counts, and data across two data sources</div>
       <div class="st-hub-enter" style="color:#8b5cf6;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/dataskew">
+      <div class="st-hub-logo" style="background:#f59e0b;">⚖</div>
+      <div class="st-hub-card-title" data-en="Data Skew Analyzer" data-zh="数据倾斜分析">Data Skew Analyzer</div>
+      <div class="st-hub-card-desc" data-en="Detect SQL data-skew patterns statically and rewrite with LLM — Spark SQL / MaxCompute SQL" data-zh="静态识别 SQL 数据倾斜写法并用 LLM 改写优化 —— 支持 Spark SQL / MaxCompute SQL">Detect SQL data-skew patterns statically and rewrite with LLM — Spark SQL / MaxCompute SQL</div>
+      <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <a class="st-hub-card" href="/sqlreview">
       <div class="st-hub-logo" style="background:#10b981;">CR</div>
       <div class="st-hub-card-title" data-en="SQL Code Review" data-zh="SQL 代码审查">SQL Code Review</div>
@@ -974,6 +980,7 @@ def create_ui() -> gr.Blocks:
     from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
     from .data_comparison_ui import render_data_comparison_page
     from .sql_review_ui import render_sql_review_page
+    from .data_skew_ui import render_data_skew_page
 
     _hide_sub_nav_js = """
     () => {
@@ -1080,6 +1087,9 @@ def create_ui() -> gr.Blocks:
     with app.route("Settings", "/settings"):
         from .settings_ui import render_settings_page
         render_settings_page(app)
+
+    with app.route("Data Skew", "/dataskew"):
+        render_data_skew_page(app)
 
     return app
 
@@ -1574,16 +1584,20 @@ footer { display: none !important; }
     box-shadow: none !important;
 }
 
-/* Standalone pages (history, favorites, schema, sql review) need scrolling.
-   Only the outermost .gradio-container scrolls; everything inside is visible. */
+/* Standalone pages (history, favorites, schema, sql review, and any page
+   carrying the generic .st-scroll-page marker — e.g. data skew) need
+   scrolling. Only the outermost .gradio-container scrolls; everything
+   inside is visible. */
 body:has(.st-history-page),
 body:has(.st-review-page),
-body:has(.st-uitest-page) {
+body:has(.st-uitest-page),
+body:has(.st-scroll-page) {
     overflow: hidden !important;
 }
 body:has(.st-history-page) .gradio-container,
 body:has(.st-review-page) .gradio-container,
-body:has(.st-uitest-page) .gradio-container {
+body:has(.st-uitest-page) .gradio-container,
+body:has(.st-scroll-page) .gradio-container {
     overflow-y: auto !important;
     overflow-x: hidden !important;
     height: 100vh !important;
@@ -1593,7 +1607,9 @@ body:has(.st-history-page) .gradio-container > .main > .wrap,
 body:has(.st-review-page) .gradio-container > .main,
 body:has(.st-review-page) .gradio-container > .main > .wrap,
 body:has(.st-uitest-page) .gradio-container > .main,
-body:has(.st-uitest-page) .gradio-container > .main > .wrap {
+body:has(.st-uitest-page) .gradio-container > .main > .wrap,
+body:has(.st-scroll-page) .gradio-container > .main,
+body:has(.st-scroll-page) .gradio-container > .main > .wrap {
     overflow: visible !important;
     height: auto !important;
     min-height: auto !important;
@@ -1679,6 +1695,13 @@ body:has(.st-review-page) .sr-input-col {
 }
 .sr-report-card a[href*="#srline-"]:hover {
     border-bottom-style: solid !important;
+}
+
+/* Data Comparison keeps the fixed sidebar+main layout, so the page itself
+   cannot scroll — let the main result panel scroll internally instead. */
+body:has(.st-dc-page) .st-main {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
 }
 
 /* ══════════════════════════════════════════════
