@@ -163,6 +163,12 @@ def detect_chart_type(
     col_values = list(zip(*padded)) if padded else [[] for _ in columns]
     cat_cols, num_cols, date_cols = _classify_columns(col_values)
 
+    # Attribution breakdown signature (see attribution.breakdown_table):
+    # a categorical dimension plus prev/curr/delta -> waterfall of deltas.
+    lower = [c.lower() for c in columns]
+    if {"prev", "curr", "delta"}.issubset(lower):
+        return "waterfall"
+
     if not num_cols:
         return None
 
@@ -227,7 +233,24 @@ def build_chart(
     try:
         fig.patch.set_facecolor("#fafafa")
 
-        if chart_type == "bar":
+        if chart_type == "waterfall":
+            # Cumulative delta bars: green gains, red losses (the delta
+            # column when present, else the first numeric column).
+            lower = [c.lower() for c in columns]
+            delta_idx = lower.index("delta") if "delta" in lower else values_idx
+            deltas = [_safe_float(v) for v in col_values[delta_idx]]
+            bottoms: list[float] = []
+            cum = 0.0
+            for d in deltas:
+                bottoms.append(cum if d >= 0 else cum + d)
+                cum += d
+            colors = ["#59A14F" if d >= 0 else "#E15759" for d in deltas]
+            ax.bar(labels, [abs(d) for d in deltas], bottom=bottoms, color=colors)
+            ax.axhline(0, color="#888", linewidth=0.8)
+            ax.set_ylabel(columns[delta_idx])
+            ax.set_xlabel(columns[label_idx])
+            plt.xticks(rotation=45, ha="right")
+        elif chart_type == "bar":
             ax.bar(labels, values, color="#4C78A8")
             ax.set_ylabel(value_label)
             ax.set_xlabel(columns[label_idx])

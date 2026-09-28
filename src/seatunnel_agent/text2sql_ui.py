@@ -1436,6 +1436,14 @@ def render_text2sql_page(app=None) -> None:
     from dotenv import load_dotenv
     load_dotenv()
 
+    # Subscription scheduler rides along with the web UI (idempotent daemon
+    # thread; `seatunnel-agent t2s-cron --serve` covers UI-less deployments).
+    try:
+        from .text2sql.subscriptions import start_global_scheduler
+        start_global_scheduler()
+    except Exception:
+        pass  # subscriptions are optional — never block the page
+
     lang = "en"
     t = lambda k: _t2s(lang, k)
 
@@ -1598,6 +1606,60 @@ def render_text2sql_page(app=None) -> None:
             )
             template_preview = gr.Markdown("", elem_classes=["st-template-preview"])
 
+            metric_section_md = gr.Markdown(f"**{t('metric_section_title')}**")
+            metric_dd = gr.Dropdown(
+                choices=[],
+                value=None,
+                label=t("metric_section_title"),
+                show_label=False,
+                elem_classes=["st-sidebar-control"],
+            )
+            metric_preview = gr.Markdown("", elem_classes=["st-template-preview"])
+
+            with gr.Accordion(
+                t("sub_section_title"), open=False,
+                elem_classes=["st-filter-accordion"],
+            ) as sub_accordion:
+                sub_list_md = gr.Markdown(t("sub_none"))
+                sub_dd = gr.Dropdown(
+                    choices=[], value=None, show_label=False,
+                    elem_classes=["st-sidebar-control"],
+                )
+                with gr.Row(elem_classes=["st-filter-actions"]):
+                    sub_refresh_btn = gr.Button(
+                        t("sub_refresh"), size="sm",
+                        elem_classes=["st-filter-act-btn"],
+                    )
+                    sub_run_btn = gr.Button(
+                        t("sub_run_now"), size="sm",
+                        elem_classes=["st-filter-act-btn"],
+                    )
+                sub_name_tb = gr.Textbox(
+                    show_label=False, lines=1,
+                    placeholder=t("sub_name_ph"),
+                    elem_classes=["st-sidebar-control"],
+                )
+                sub_cron_tb = gr.Textbox(
+                    show_label=False, lines=1,
+                    placeholder=t("sub_cron_ph"),
+                    elem_classes=["st-sidebar-control"],
+                )
+                sub_metric_tb = gr.Textbox(
+                    show_label=False, lines=1,
+                    placeholder=t("sub_metric_ph"),
+                    elem_classes=["st-sidebar-control"],
+                )
+                sub_webhook_tb = gr.Textbox(
+                    show_label=False, lines=1,
+                    placeholder=t("sub_webhook_ph"),
+                    elem_classes=["st-sidebar-control"],
+                )
+                sub_create_btn = gr.Button(
+                    t("sub_create"), variant="primary", size="sm",
+                    elem_classes=["st-connect-btn"],
+                )
+                sub_status_md = gr.Markdown("")
+
         # ── Right panel (chat) ──
         with gr.Column(scale=1, elem_classes=["st-main"]):
             with gr.Row(elem_classes=["st-topbar-row"]):
@@ -1693,7 +1755,7 @@ def render_text2sql_page(app=None) -> None:
         t = lambda k: _t2s(lang, k)
         no = gr.update()
         def err(msg):
-            return (msg, no, no, no, no, no, no, no, no)
+            return (msg, no, no, no, no, no, no, no, no, no)
 
         ds_type = _DS_LABEL_TO_KEY.get(ds_label, "hive")
 
@@ -1785,6 +1847,24 @@ def render_text2sql_page(app=None) -> None:
         if len(store) == 0:
             return err(f"❌ {t('no_tables')}")
 
+        # ── Load metric semantic layer (opt-in: config/metrics.yaml) ──
+        metric_store = None
+        metric_note = ""
+        try:
+            from .text2sql.metrics import load_metric_store
+            m_store, m_errors = load_metric_store(store)
+            if len(m_store) > 0:
+                # Partial failures are likely real mistakes — surface them.
+                metric_store = m_store
+                metric_note = " · 📐 " + t("metric_loaded").format(n=len(m_store))
+                if m_errors:
+                    metric_note += " · ⚠️ " + t("metric_errors").format(n=len(m_errors))
+            # All metrics invalid: the file targets a different datasource
+            # (e.g. hive metrics while connected to the sqlite demo) — treat
+            # as "no metrics here" rather than warning.
+        except Exception:
+            metric_store = None  # metrics are optional; never block connect
+
         llm_status = f"⏳ LLM {settings.model_name} (checking...)"
 
         from . import settings_store
@@ -1795,6 +1875,7 @@ def render_text2sql_page(app=None) -> None:
             holder["full_store"] = store
             holder["ds_type"] = ds_type
             holder["db_config"] = db_config
+            holder["metrics"] = metric_store
             holder["agent"] = None
         with _shared_holder_lock:
             _shared_holder["full_store"] = store
@@ -1806,6 +1887,7 @@ def render_text2sql_page(app=None) -> None:
                 from .text2sql.agent import Text2SQLAgent
                 agent = Text2SQLAgent(
                     settings, store=store, ds_type=ds_type, db_config=db_config,
+                    metric_store=metric_store,
                 )
                 with holder_lock:
                     if holder.get("agent") is None:
@@ -1828,7 +1910,13 @@ def render_text2sql_page(app=None) -> None:
 
         threading.Thread(target=_warmup, daemon=True).start()
 
-        status = f"✅ {schema_source} · {db_note} · {llm_status}"
+        status = f"✅ {schema_source} · {db_note} · {llm_status}{metric_note}"
+
+        metric_choices = []
+        if metric_store is not None:
+            metric_choices = [
+                (f"{m.display_name} · {m.name}", m.name) for m in metric_store.metrics
+            ]
 
         choices = _table_choices(store, lang)
         holder["last_confirmed"] = list(choices)
@@ -1857,6 +1945,7 @@ def render_text2sql_page(app=None) -> None:
             choices,
             chat_up,
             input_up,
+            gr.update(choices=metric_choices, value=None),
         )
 
     _CHART_KEY_TO_TYPE = {"chart_bar": "bar", "chart_line": "line", "chart_pie": "pie", "chart_scatter": "scatter"}
@@ -1901,6 +1990,7 @@ def render_text2sql_page(app=None) -> None:
                     ds_type=holder.get("ds_type", "hive"),
                     db_config=holder.get("db_config"),
                     on_event=collector.on_event,
+                    metric_store=holder.get("metrics"),
                 )
                 holder["agent"] = agent
             else:
@@ -2212,7 +2302,16 @@ def render_text2sql_page(app=None) -> None:
             gr.update(label=t("chart_type_label"), choices=_chart_choices(lang), value=t("chart_auto")),
             gr.update(choices=template_choices(lang), value=None),
             gr.update(value=""),
+            gr.update(value=f"**{t('metric_section_title')}**"),
             gr.update(value=t("schema_browse_btn")),
+            gr.update(label=t("sub_section_title")),
+            gr.update(value=t("sub_refresh")),
+            gr.update(value=t("sub_run_now")),
+            gr.update(value=t("sub_create")),
+            gr.update(placeholder=t("sub_name_ph")),
+            gr.update(placeholder=t("sub_cron_ph")),
+            gr.update(placeholder=t("sub_metric_ph")),
+            gr.update(placeholder=t("sub_webhook_ph")),
         )
 
     # ── Wiring ──
@@ -2260,7 +2359,16 @@ def render_text2sql_page(app=None) -> None:
             chart_type_radio,
             template_dd,
             template_preview,
+            metric_section_md,
             schema_browse_btn,
+            sub_accordion,
+            sub_refresh_btn,
+            sub_run_btn,
+            sub_create_btn,
+            sub_name_tb,
+            sub_cron_tb,
+            sub_metric_tb,
+            sub_webhook_tb,
         ],
     )
 
@@ -2270,7 +2378,7 @@ def render_text2sql_page(app=None) -> None:
                 username_tb, password_tb, lang_state],
         outputs=[status_box, host_tb, port_tb, db_tb,
                  table_filter, filter_accordion, confirmed_sel,
-                 chatbot, user_input],
+                 chatbot, user_input, metric_dd],
     )
 
     def _show_stop():
@@ -2335,6 +2443,133 @@ def render_text2sql_page(app=None) -> None:
     template_dd.change(
         fn=_on_template_select, inputs=[template_dd, lang_state],
         outputs=[template_preview, user_input],
+    )
+
+    def _on_metric_select(name: str, lang: str):
+        """Show the metric's caliber card and pre-fill a suggested question."""
+        if not name:
+            return gr.update(), gr.update()
+        t = lambda k: _t2s(lang, k)
+        with holder_lock:
+            metric_store = holder.get("metrics")
+        m = metric_store.get(name) if metric_store is not None else None
+        if m is None:
+            return gr.update(), gr.update()
+
+        lines = [f"**{m.display_name}** (`{m.name}`)"]
+        if m.description:
+            lines.append(f"{t('metric_caliber')}: {m.description}")
+        if m.is_ratio:
+            lines.append(f"= {m.numerator} / {m.denominator}")
+        else:
+            lines.append(f"= `{m.expression}` FROM `{m.table}`")
+            if m.dimensions:
+                lines.append(f"{t('metric_dims')}: {', '.join(m.dimensions)}")
+        tail = " · ".join(
+            f"{t(k)}: {v}" for k, v in
+            (("metric_unit", m.unit), ("metric_owner", m.owner)) if v
+        )
+        if tail:
+            lines.append(tail)
+
+        if not m.is_ratio and m.dimensions:
+            hint = t("metric_ask_by_dim").format(dim=m.dimensions[0], name=m.display_name)
+        else:
+            hint = t("metric_ask").format(name=m.display_name)
+        return gr.update(value="  \n".join(lines)), gr.update(value=hint)
+
+    metric_dd.change(
+        fn=_on_metric_select, inputs=[metric_dd, lang_state],
+        outputs=[metric_preview, user_input],
+    )
+
+    # ── Subscriptions panel ──
+    def _sub_listing(lang: str):
+        from .text2sql.subscriptions import SubscriptionStore
+
+        t = lambda k: _t2s(lang, k)
+        subs = SubscriptionStore().list()
+        if not subs:
+            return t("sub_none"), gr.update(choices=[], value=None)
+        lines = []
+        for s in subs:
+            flag = "✓" if s.get("enabled", True) else "✗"
+            source = (s.get("metric") if s.get("source_type") == "metric"
+                      else f"fav:{s.get('favorite_id')}")
+            status = s.get("last_status") or "-"
+            lines.append(
+                f"- {flag} **{s.get('name')}** `{s.get('cron')}` · {source} · {status}"
+            )
+        choices = [(f"{s.get('name')} · {s.get('cron')}", s.get("id")) for s in subs]
+        return "\n".join(lines), gr.update(choices=choices, value=None)
+
+    def _sub_refresh(lang: str):
+        return _sub_listing(lang)
+
+    def _sub_run(sub_id: str, lang: str):
+        from .text2sql.subscriptions import SubscriptionStore, run_subscription
+
+        t = lambda k: _t2s(lang, k)
+        if not sub_id:
+            listing, dd = _sub_listing(lang)
+            return t("sub_select_ph"), listing, dd
+        store = SubscriptionStore()
+        sub = store.get(sub_id)
+        if sub is None:
+            listing, dd = _sub_listing(lang)
+            return t("sub_none"), listing, dd
+        with holder_lock:
+            schema = holder.get("store")
+            metrics = holder.get("metrics")
+        outcome = run_subscription(
+            sub,
+            schema_store=schema if schema is not None and len(schema) else None,
+            metric_store=metrics,
+        )
+        store.record_run(sub_id, outcome.get("status", "error"), outcome.get("error", ""))
+        if outcome["status"] == "success":
+            msg = "✅ " + t("sub_run_ok").format(n=outcome["row_count"])
+        else:
+            msg = "❌ " + t("sub_run_fail").format(err=outcome.get("error", "")[:200])
+        listing, dd = _sub_listing(lang)
+        return msg, listing, dd
+
+    def _sub_create(name: str, cron: str, metric: str, webhook: str, lang: str):
+        from .text2sql.subscriptions import SubscriptionStore
+
+        t = lambda k: _t2s(lang, k)
+        listing, dd = _sub_listing(lang)
+        if not (name or "").strip() or not (cron or "").strip() \
+                or not (metric or "").strip():
+            return "⚠️ " + t("sub_need_fields"), listing, dd
+        with holder_lock:
+            ds_type = holder.get("ds_type", "hive")
+            db_config = holder.get("db_config")
+        database = ""
+        if ds_type == "sqlite" and db_config is not None:
+            database = db_config.database or ""
+        try:
+            SubscriptionStore().add(
+                name=name, cron=cron, source_type="metric",
+                metric=metric.strip(), ds_type=ds_type, database=database,
+                webhook_url=(webhook or "").strip(),
+            )
+        except ValueError as exc:
+            return f"⚠️ {exc}", listing, dd
+        listing, dd = _sub_listing(lang)
+        return "✅ " + t("sub_created"), listing, dd
+
+    sub_refresh_btn.click(fn=_sub_refresh, inputs=[lang_state],
+                          outputs=[sub_list_md, sub_dd])
+    if app is not None:
+        app.load(fn=_sub_refresh, inputs=[lang_state],
+                 outputs=[sub_list_md, sub_dd])
+    sub_run_btn.click(fn=_sub_run, inputs=[sub_dd, lang_state],
+                      outputs=[sub_status_md, sub_list_md, sub_dd])
+    sub_create_btn.click(
+        fn=_sub_create,
+        inputs=[sub_name_tb, sub_cron_tb, sub_metric_tb, sub_webhook_tb, lang_state],
+        outputs=[sub_status_md, sub_list_md, sub_dd],
     )
 
     def _select_all(lang):

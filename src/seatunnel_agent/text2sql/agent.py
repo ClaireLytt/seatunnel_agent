@@ -53,14 +53,19 @@ class Text2SQLAgent:
         ds_type: str = "hive",
         db_config: DatabaseConfig | None = None,
         on_event: EventCallback | None = None,
+        metric_store: Any = None,
     ) -> None:
         self.settings = settings
         self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
-        self.runtime = Text2SQLRuntime(store=store, ds_type=ds_type, db_config=db_config)
+        self.runtime = Text2SQLRuntime(
+            store=store, metrics=metric_store, ds_type=ds_type, db_config=db_config,
+        )
         self.messages: list[dict[str, Any]] = []
         self.console = Console(file=_get_utf8_stdout())
         self._on_event = on_event
-        self._system_prompt = build_text2sql_prompt(store, dialect=ds_type)
+        self._system_prompt = build_text2sql_prompt(
+            store, dialect=ds_type, metric_store=metric_store,
+        )
 
     def _emit(self, event_type: str, data: dict[str, Any]) -> None:
         if self._on_event:

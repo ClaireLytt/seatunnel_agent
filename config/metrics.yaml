@@ -1,0 +1,37 @@
+# 指标语义层定义（Chat BI 口径白名单）
+# schema_ddl.sql 是"表的白名单"，本文件是"口径的白名单"：
+# 命中这里的指标时，SQL 由 build_metric_sql 确定性展开，不由 LLM 现场发挥。
+# 校验：seatunnel-agent metrics validate --ddl config/schema_ddl.sql
+version: 1
+metrics:
+  - name: sales_amount
+    display_name: 销售额
+    aliases: [销售金额, 营收, GMV]
+    description: 销售订单明细表中订单金额的合计（不含退款冲销）
+    table: cladata.sales_di
+    expression: SUM(amount)
+    time_column: pt
+    dimensions: [city, category, product_name]
+    unit: 元
+    owner: 数据组
+
+  - name: order_cnt
+    display_name: 订单量
+    aliases: [订单数, 单量]
+    description: 销售订单明细表中订单编号的去重计数
+    table: cladata.sales_di
+    expression: COUNT(DISTINCT order_id)
+    time_column: pt
+    dimensions: [city, category, product_name]
+    unit: 单
+    owner: 数据组
+
+  - name: avg_order_value
+    display_name: 客单价
+    aliases: [平均订单金额, AOV]
+    description: 销售额 / 订单量
+    type: ratio
+    numerator: sales_amount
+    denominator: order_cnt
+    unit: 元
+    owner: 数据组

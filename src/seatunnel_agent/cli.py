@@ -1345,6 +1345,346 @@ def skew_mcp(dialect: str, lang: str) -> None:
     server.run()
 
 
+@cli.command(name="t2s-bench")
+@click.option("--ddl", type=click.Path(exists=True), required=True,
+              help="schema DDL 文件（表白名单）")
+@click.option("--bench", "-b", "bench_file", type=click.Path(exists=True), required=True,
+              help="评测集 JSONL（{question, tables} 每行一条）")
+@click.option("--mode", type=click.Choice(["keyword", "hybrid", "both"]),
+              default="both", show_default=True, help="评测模式")
+@click.option("--gate", is_flag=True,
+              help="回归门禁：hybrid Top3 低于 keyword 时退出码 1")
+def t2s_bench(ddl: str, bench_file: str, mode: str, gate: bool) -> None:
+    """Text2SQL 表检索评测：对比 keyword-only 与 hybrid 的 Top1/Top3 命中率。"""
+    _ensure_utf8_stdio()
+    from .text2sql.bench import load_bench, render_bench_report, run_bench
+    from .text2sql.schema import SchemaStore
+
+    store = SchemaStore.from_file(ddl)
+    try:
+        cases = load_bench(bench_file)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+    if not cases:
+        raise click.ClickException("评测集为空")
+
+    modes = ["keyword", "hybrid"] if mode == "both" else [mode]
+    results = [run_bench(store, cases, m) for m in modes]
+    console.print(render_bench_report(results))
+
+    if gate and len(results) == 2:
+        kw, hy = results[0], results[1]
+        if hy.top3 < kw.top3:
+            console.print(
+                f"[red]回归门禁失败: hybrid Top3 {hy.top3_rate:.1%} < "
+                f"keyword {kw.top3_rate:.1%}[/red]"
+            )
+            raise SystemExit(1)
+        console.print("[green]回归门禁通过: hybrid 不低于 keyword[/green]")
+
+
+@cli.command(name="t2s-mcp")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
+@click.option("--metrics", "metrics_file", type=click.Path(exists=True), default=None,
+              help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--ds-type", type=str, default="hive", show_default=True,
+              help="SQL 方言 / 数据源类型")
+@click.option("--allow-execute", is_flag=True,
+              help="开放 execute_readonly_sql 工具（默认只出 SQL 不执行）")
+@click.option("--database", type=str, default="",
+              help="sqlite 数据库文件路径（仅 --ds-type sqlite 需要）")
+def t2s_mcp(ddl: str | None, metrics_file: str | None, ds_type: str,
+            allow_execute: bool, database: str) -> None:
+    """以 MCP server（stdio）暴露 Chat BI 确定性能力：表检索、指标口径、指标 SQL 展开。"""
+    from .text2sql.mcp_server import create_mcp_server
+
+    try:
+        server = create_mcp_server(
+            ddl_path=ddl or "", metrics_path=metrics_file or "",
+            ds_type=ds_type, allow_execute=allow_execute, database=database,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+    server.run()
+
+
+@cli.group(name="t2s-sub")
+def t2s_sub() -> None:
+    """Chat BI 订阅：定时执行指标/收藏查询并推送飞书卡片。"""
+
+
+@t2s_sub.command("list")
+def t2s_sub_list() -> None:
+    """列出全部订阅及其上次执行状态。"""
+    _ensure_utf8_stdio()
+    from .text2sql.subscriptions import SubscriptionStore
+
+    subs = SubscriptionStore().list()
+    if not subs:
+        console.print("暂无订阅（用 t2s-sub add 创建）")
+        return
+    from rich.table import Table
+    table = Table(title=f"订阅（{len(subs)} 个）")
+    for col in ("id", "名称", "cron", "来源", "启用", "上次执行", "状态"):
+        table.add_column(col)
+    for s in subs:
+        source = (s.get("metric") if s.get("source_type") == "metric"
+                  else f"fav:{s.get('favorite_id')}")
+        table.add_row(
+            s.get("id", ""), s.get("name", ""), s.get("cron", ""),
+            source or "", "✓" if s.get("enabled", True) else "✗",
+            s.get("last_run_at", "") or "-", s.get("last_status", "") or "-",
+        )
+    console.print(table)
+
+
+@t2s_sub.command("add")
+@click.option("--name", required=True, help="订阅名称")
+@click.option("--cron", "cron_expr", required=True,
+              help="5 字段 cron：分 时 日 月 周（周 0=周一）")
+@click.option("--metric", default="", help="指标名（与 --favorite 二选一）")
+@click.option("--favorite", "favorite_id", default="", help="收藏查询 ID")
+@click.option("--dim", "-d", "dims", multiple=True, help="下钻维度（可多次，仅指标订阅）")
+@click.option("--lookback", type=int, default=1, show_default=True,
+              help="回看天数：查询 [今天-N, 昨天]（仅指标订阅）")
+@click.option("--param", "-p", "params", multiple=True,
+              help="收藏参数 key=value（可多次；内置宏 today/yesterday/*_pt 自动生效）")
+@click.option("--ds-type", default="hive", show_default=True)
+@click.option("--connection", default="", help="连接预设名（设置页保存的连接）")
+@click.option("--database", default="", help="sqlite 数据库路径（仅 sqlite）")
+@click.option("--webhook", default="", help="飞书 incoming webhook URL")
+def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
+                dims: tuple[str, ...], lookback: int, params: tuple[str, ...],
+                ds_type: str, connection: str, database: str, webhook: str) -> None:
+    """新建订阅。"""
+    _ensure_utf8_stdio()
+    from .text2sql.subscriptions import SubscriptionStore
+
+    if bool(metric) == bool(favorite_id):
+        raise click.UsageError("--metric 与 --favorite 必须二选一")
+    param_map: dict[str, str] = {}
+    for p in params:
+        if "=" not in p:
+            raise click.UsageError(f"--param 格式应为 key=value: {p}")
+        k, v = p.split("=", 1)
+        param_map[k.strip()] = v
+    try:
+        entry = SubscriptionStore().add(
+            name=name, cron=cron_expr,
+            source_type="metric" if metric else "favorite",
+            metric=metric, dimensions=list(dims), lookback_days=lookback,
+            favorite_id=favorite_id, params=param_map,
+            ds_type=ds_type, connection=connection, database=database,
+            webhook_url=webhook,
+        )
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+    console.print(f"[green]已创建订阅 {entry['id']}: {entry['name']}[/green]")
+
+
+@t2s_sub.command("rm")
+@click.argument("sub_id")
+def t2s_sub_rm(sub_id: str) -> None:
+    """删除订阅。"""
+    from .text2sql.subscriptions import SubscriptionStore
+
+    if not SubscriptionStore().delete(sub_id):
+        raise click.ClickException(f"订阅 '{sub_id}' 不存在")
+    console.print("[green]已删除[/green]")
+
+
+@t2s_sub.command("enable")
+@click.argument("sub_id")
+@click.option("--off", is_flag=True, help="停用而非启用")
+def t2s_sub_enable(sub_id: str, off: bool) -> None:
+    """启用/停用订阅。"""
+    from .text2sql.subscriptions import SubscriptionStore
+
+    if not SubscriptionStore().set_enabled(sub_id, not off):
+        raise click.ClickException(f"订阅 '{sub_id}' 不存在")
+    console.print(f"[green]已{'停用' if off else '启用'}[/green]")
+
+
+@t2s_sub.command("run")
+@click.argument("sub_id")
+def t2s_sub_run(sub_id: str) -> None:
+    """立即执行一次订阅（不等 cron）。"""
+    _ensure_utf8_stdio()
+    from .text2sql.subscriptions import SubscriptionStore, run_subscription
+
+    store = SubscriptionStore()
+    sub = store.get(sub_id)
+    if sub is None:
+        raise click.ClickException(f"订阅 '{sub_id}' 不存在")
+    outcome = run_subscription(sub)
+    store.record_run(sub_id, outcome.get("status", "error"), outcome.get("error", ""))
+    if outcome["status"] == "success":
+        console.print(f"[green]执行成功: {outcome['row_count']} 行[/green]")
+        console.print(outcome["sql"])
+    else:
+        console.print(f"[red]执行失败: {outcome.get('error', '')}[/red]")
+        raise SystemExit(1)
+
+
+@cli.command(name="t2s-cron")
+@click.option("--once", is_flag=True, help="只检查一次到期订阅后退出（供外部调度器调用）")
+@click.option("--tick", type=int, default=20, show_default=True, help="轮询间隔秒")
+def t2s_cron(once: bool, tick: int) -> None:
+    """订阅调度器：常驻轮询 cron 到期的订阅并执行（无 UI 部署用）。"""
+    _ensure_utf8_stdio()
+    import time as _time
+
+    from .text2sql.subscriptions import Scheduler
+
+    scheduler = Scheduler(tick_seconds=tick)
+    if once:
+        fired = scheduler.check_once()
+        console.print(f"到期执行 {len(fired)} 个订阅" + (f": {', '.join(fired)}" if fired else ""))
+        return
+    console.print(f"订阅调度器已启动（每 {tick}s 检查一次，Ctrl+C 退出）")
+    scheduler.start()
+    try:
+        while True:
+            _time.sleep(3600)
+    except KeyboardInterrupt:
+        scheduler.stop()
+        console.print("已退出")
+
+
+def _load_metrics_for_cli(metrics_file: str | None, ddl: str | None):
+    """Shared loader for the metrics subcommands: (store, errors)."""
+    from .text2sql.metrics import load_metric_store
+
+    schema_store = None
+    if ddl:
+        from .text2sql.schema import SchemaStore
+        schema_store = SchemaStore.from_file(ddl)
+    return load_metric_store(schema_store, path=metrics_file)
+
+
+@cli.group()
+def metrics() -> None:
+    """指标语义层：查看/校验 metrics.yaml 中的指标口径定义（Chat BI）。"""
+
+
+@metrics.command("list")
+@click.option("--file", "-f", "metrics_file", type=click.Path(exists=True),
+              default=None, help="指标定义文件（默认 config/metrics.yaml）")
+def metrics_list(metrics_file: str | None) -> None:
+    """列出全部已定义指标。"""
+    _ensure_utf8_stdio()
+    store, errors = _load_metrics_for_cli(metrics_file, None)
+    for err in errors:
+        console.print(f"[yellow]警告: {err}[/yellow]")
+    if len(store) == 0:
+        console.print("未找到任何指标定义（config/metrics.yaml）")
+        return
+    from rich.table import Table
+    table = Table(title=f"指标目录（{len(store)} 个）")
+    for col in ("name", "展示名", "类型", "口径", "单位", "负责人"):
+        table.add_column(col)
+    for m in store.metrics:
+        caliber = (f"{m.numerator} / {m.denominator}" if m.is_ratio
+                   else f"{m.expression} FROM {m.table}")
+        table.add_row(m.name, m.display_name, m.metric_type, caliber, m.unit, m.owner)
+    console.print(table)
+
+
+@metrics.command("show")
+@click.argument("name")
+@click.option("--file", "-f", "metrics_file", type=click.Path(exists=True),
+              default=None, help="指标定义文件（默认 config/metrics.yaml）")
+def metrics_show(name: str, metrics_file: str | None) -> None:
+    """查看单个指标的完整口径定义。"""
+    _ensure_utf8_stdio()
+    store, errors = _load_metrics_for_cli(metrics_file, None)
+    for err in errors:
+        console.print(f"[yellow]警告: {err}[/yellow]")
+    m = store.get(name)
+    if m is None:
+        known = ", ".join(x.name for x in store.metrics) or "(无)"
+        raise click.ClickException(f"指标 '{name}' 未定义。已知指标: {known}")
+    console.print(f"[bold]{m.name}[/bold] ({m.display_name})")
+    if m.aliases:
+        console.print(f"别名: {', '.join(m.aliases)}")
+    if m.description:
+        console.print(f"口径: {m.description}")
+    if m.is_ratio:
+        console.print(f"类型: ratio = {m.numerator} / {m.denominator}")
+    else:
+        console.print(f"类型: additive = {m.expression} FROM {m.table}")
+        console.print(f"时间列: {m.time_column or '(无)'}")
+        console.print(f"允许维度: {', '.join(m.dimensions) or '(无)'}")
+        for f in m.default_filters:
+            console.print(f"恒定过滤: {f}")
+    if m.unit:
+        console.print(f"单位: {m.unit}")
+    if m.owner:
+        console.print(f"负责人: {m.owner}")
+
+
+@metrics.command("validate")
+@click.option("--file", "-f", "metrics_file", type=click.Path(exists=True),
+              default=None, help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--ddl", type=click.Path(exists=True), required=True,
+              help="schema DDL 文件（表白名单），用于交叉校验")
+def metrics_validate(metrics_file: str | None, ddl: str) -> None:
+    """校验指标定义与 DDL 的一致性（CI 门禁：有错误时退出码 1）。"""
+    _ensure_utf8_stdio()
+    store, errors = _load_metrics_for_cli(metrics_file, ddl)
+    if errors:
+        for err in errors:
+            console.print(f"[red]{err}[/red]")
+        raise SystemExit(1)
+    console.print(f"[green]校验通过：{len(store)} 个指标定义与 DDL 一致[/green]")
+
+
+@metrics.command("sql")
+@click.argument("name")
+@click.option("--file", "-f", "metrics_file", type=click.Path(exists=True),
+              default=None, help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--ddl", type=click.Path(exists=True), required=True,
+              help="schema DDL 文件（表白名单）")
+@click.option("--dim", "-d", "dims", multiple=True, help="下钻维度（可多次）")
+@click.option("--start", default=None, help="开始日期 YYYY-MM-DD / yyyyMMdd")
+@click.option("--end", default=None, help="结束日期（含）")
+@click.option("--max-partition", default=None, help="无时间范围时的最新分区值")
+@click.option("--where", "-w", "filters", multiple=True, help="附加过滤条件（可多次）")
+def metrics_sql(
+    name: str, metrics_file: str | None, ddl: str, dims: tuple[str, ...],
+    start: str | None, end: str | None, max_partition: str | None,
+    filters: tuple[str, ...],
+) -> None:
+    """确定性展开指标 SQL（不执行）——同样的参数永远得到同一条 SQL。"""
+    _ensure_utf8_stdio()
+    from .text2sql.metrics import MetricError, build_metric_sql, parse_time_range
+
+    store, errors = _load_metrics_for_cli(metrics_file, ddl)
+    if errors:
+        for err in errors:
+            console.print(f"[red]{err}[/red]")
+        raise SystemExit(1)
+    m = store.get(name)
+    if m is None:
+        known = ", ".join(x.name for x in store.metrics) or "(无)"
+        raise click.ClickException(f"指标 '{name}' 未定义。已知指标: {known}")
+
+    from .text2sql.schema import SchemaStore
+    schema_store = SchemaStore.from_file(ddl)
+    try:
+        sql = build_metric_sql(
+            m, store, schema_store,
+            dimensions=list(dims),
+            time_range=parse_time_range(start or "", end or ""),
+            max_partition=max_partition,
+            extra_filters=list(filters),
+        )
+    except MetricError as exc:
+        raise click.ClickException(str(exc))
+    click.echo(sql)
+
+
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------

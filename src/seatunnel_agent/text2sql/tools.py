@@ -23,6 +23,7 @@ from .executor import (
 )
 from .exporter import export_csv
 from .matcher import match_tables
+from .metrics import MetricError, MetricStore, build_metric_sql, parse_time_range
 from .partition import classify_table, has_partition_filter
 from .qlog import QueryLogger
 from .schema import SchemaStore
@@ -99,6 +100,128 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "match_metrics",
+        "description": (
+            "Rank defined business metrics (指标) matching the question. "
+            "Returns each metric's caliber description (口径), source table, "
+            "allowed dimensions, unit and owner. MUST be called first whenever "
+            "the question involves a business metric; if a metric matches, use "
+            "build_metric_sql instead of hand-writing the aggregation. Also "
+            "sufficient by itself to answer caliber questions ('X的口径是什么') "
+            "— do NOT execute SQL for those."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "The user's natural-language question",
+                },
+            },
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "build_metric_sql",
+        "description": (
+            "Deterministically expand a defined metric into SQL (same inputs "
+            "always yield identical SQL — the caliber-consistency guarantee). "
+            "Returns the SQL only; run it with execute_sql afterwards. "
+            "Dimensions must come from the metric's allowed list. For "
+            "partitioned time columns provide a date range or max_partition "
+            "(from get_max_partition)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "description": "Metric name as returned by match_metrics",
+                },
+                "dimensions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Group-by dimension columns (allowed list only)",
+                },
+                "start_date": {
+                    "type": "string",
+                    "description": "Start date, YYYY-MM-DD or yyyyMMdd",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": "End date (inclusive), YYYY-MM-DD or yyyyMMdd",
+                },
+                "max_partition": {
+                    "type": "string",
+                    "description": (
+                        "Latest partition value to use when no date range was "
+                        "given (from get_max_partition)"
+                    ),
+                },
+                "extra_filters": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Additional SQL boolean conditions, e.g. "
+                        "\"channel = 'app'\""
+                    ),
+                },
+            },
+            "required": ["metric"],
+        },
+    },
+    {
+        "name": "run_attribution",
+        "description": (
+            "Attribute a defined metric's change between two periods (为什么"
+            "涨/跌): deterministic totals comparison + per-dimension drill-down "
+            "with contribution decomposition (contributions sum exactly to the "
+            "total change rate). Requires TWO explicit date ranges — compute "
+            "the comparison period yourself (环比 = preceding period of equal "
+            "length; 同比 = same period last year). Omit 'dimension' to "
+            "auto-explore all allowed dimensions and pick the most explanatory "
+            "one. Ratio metrics are decomposed into numerator/denominator "
+            "attributions automatically. Costs 2 + 2×dimensions SQL queries — "
+            "call it ONCE per question. The result table is shown to the user "
+            "automatically (waterfall chart included)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "description": "Metric name as returned by match_metrics",
+                },
+                "curr_start": {
+                    "type": "string",
+                    "description": "Current period start, YYYY-MM-DD or yyyyMMdd",
+                },
+                "curr_end": {
+                    "type": "string",
+                    "description": "Current period end (inclusive; defaults to curr_start)",
+                },
+                "prev_start": {
+                    "type": "string",
+                    "description": "Comparison period start",
+                },
+                "prev_end": {
+                    "type": "string",
+                    "description": "Comparison period end (inclusive; defaults to prev_start)",
+                },
+                "dimension": {
+                    "type": "string",
+                    "description": "Drill down on this single dimension only (optional)",
+                },
+                "extra_filters": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Additional SQL boolean conditions applied to both periods",
+                },
+            },
+            "required": ["metric", "curr_start", "prev_start"],
+        },
+    },
+    {
         "name": "execute_sql",
         "description": (
             "Validate and execute a SELECT statement on the connected database. "
@@ -171,8 +294,10 @@ class Text2SQLRuntime:
     """Shared state for one Text2SQL session."""
 
     store: SchemaStore
+    metrics: MetricStore | None = None
     ds_type: str = "hive"
     db_config: DatabaseConfig | None = None
+    source: str = "ui"  # audit tag for qlog: ui / api / mcp / subscription
     logger: QueryLogger = field(default_factory=QueryLogger)
     default_limit: int = 1000
     last_result: QueryResult | None = None
@@ -184,6 +309,16 @@ class Text2SQLRuntime:
     cache: SqlResultCache = field(default_factory=SqlResultCache)
     _executor: DatabaseExecutor | None = None
     _executor_lock: threading.Lock = field(default_factory=threading.Lock)
+    _retriever: Any = field(default=None, repr=False)
+
+    @property
+    def retriever(self):
+        """Hybrid retriever, rebuilt whenever the schema store is swapped
+        (table-whitelist filtering replaces the store object)."""
+        from .retrieval import HybridRetriever
+        if self._retriever is None or self._retriever.store is not self.store:
+            self._retriever = HybridRetriever(self.store)
+        return self._retriever
 
     @property
     def executor(self) -> DatabaseExecutor:
@@ -208,7 +343,10 @@ class Text2SQLRuntime:
 
 def _tool_match_tables(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
     query = inp.get("query", "")
-    matches = match_tables(query, rt.store, top_n=5)
+    try:
+        matches = rt.retriever.rank(query, top_n=5)
+    except Exception:  # retrieval must never break the tool — degrade
+        matches = match_tables(query, rt.store, top_n=5)
     return {
         "candidates": [
             {
@@ -268,6 +406,215 @@ def _tool_get_max_partition(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[st
     }
 
 
+def _metric_payload(m: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "name": m.name,
+        "display_name": m.display_name,
+        "description": m.description,
+        "type": m.metric_type,
+        "unit": m.unit,
+        "owner": m.owner,
+    }
+    if m.is_ratio:
+        payload["numerator"] = m.numerator
+        payload["denominator"] = m.denominator
+    else:
+        payload["table"] = m.table
+        payload["expression"] = m.expression
+        payload["time_column"] = m.time_column
+        payload["dimensions"] = list(m.dimensions)
+        payload["default_filters"] = list(m.default_filters)
+    return payload
+
+
+def _tool_match_metrics(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    if rt.metrics is None or len(rt.metrics) == 0:
+        return {
+            "candidates": [],
+            "count": 0,
+            "note": (
+                "No metric definitions loaded (metrics.yaml). Fall back to "
+                "match_tables and write the aggregation yourself."
+            ),
+        }
+    query = inp.get("query", "")
+    matches = rt.metrics.match(query, top_n=5)
+    return {
+        "candidates": [
+            {**_metric_payload(r.metric), "score": round(r.score, 2), "hits": r.hits}
+            for r in matches
+        ],
+        "count": len(matches),
+    }
+
+
+def _tool_build_metric_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    if rt.metrics is None or len(rt.metrics) == 0:
+        return {"error": "No metric definitions loaded (metrics.yaml)"}
+    name = str(inp.get("metric", "")).strip()
+    metric = rt.metrics.get(name)
+    if metric is None:
+        known = ", ".join(m.name for m in rt.metrics.metrics)
+        return {"error": f"Metric '{name}' is not defined. Known metrics: {known}"}
+
+    try:
+        time_range = parse_time_range(
+            str(inp.get("start_date", "") or ""),
+            str(inp.get("end_date", "") or ""),
+        )
+        sql = build_metric_sql(
+            metric,
+            rt.metrics,
+            rt.store,
+            dimensions=inp.get("dimensions") or [],
+            time_range=time_range,
+            max_partition=str(inp.get("max_partition", "") or "").strip() or None,
+            extra_filters=inp.get("extra_filters") or [],
+        )
+    except MetricError as exc:
+        return {"error": str(exc)}
+    return {
+        "success": True,
+        "metric": _metric_payload(metric),
+        "sql": sql,
+        "note": "Run this SQL with execute_sql. Do not edit the aggregation.",
+    }
+
+
+def _attribution_execute(rt: Text2SQLRuntime, user_query: str, metric_name: str = ""):
+    """Build the validated/cached/logged execute_fn for run_attribution."""
+
+    def _check_truncated(result: QueryResult) -> None:
+        # enforce_limit trims at the SQL level, so the executor never sees
+        # the overflow — a row count AT the limit means the drill-down was
+        # (or may have been) cut off, and contributions would silently stop
+        # summing to the total change rate.
+        if result.truncated or result.row_count >= rt.default_limit:
+            raise MetricError(
+                f"维度基数过大：下钻结果达到 {rt.default_limit} 行上限，"
+                "贡献分解将不完整。请指定低基数维度（dimension 参数）重试。"
+            )
+
+    def _execute(sql: str) -> tuple[list[str], list[tuple]]:
+        validation = validate_sql(sql, rt.store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        final_sql = enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type)
+        cached = rt.cache.get(final_sql, rt.ds_type)
+        if cached is not None:
+            _check_truncated(cached)
+            return cached.columns, list(cached.rows)
+        result = rt.executor.run(final_sql, max_rows=rt.default_limit)
+        rt.cache.put(final_sql, rt.ds_type, result)
+        rt.logger.log(
+            user_query=user_query, generated_sql=final_sql, status="success",
+            matched_tables=validation.tables,
+            exec_time_ms=result.elapsed_ms, row_count=result.row_count,
+            extra={"source": rt.source, "metric": metric_name, "kind": "attribution"},
+        )
+        _check_truncated(result)
+        return result.columns, list(result.rows)
+
+    return _execute
+
+
+def _run_one_attribution(
+    inp: dict[str, Any], rt: Text2SQLRuntime, metric: Any,
+) -> "Any":
+    from .attribution import run_attribution
+    from .metrics import parse_time_range
+
+    curr_range = parse_time_range(
+        str(inp.get("curr_start", "") or ""), str(inp.get("curr_end", "") or ""),
+    )
+    prev_range = parse_time_range(
+        str(inp.get("prev_start", "") or ""), str(inp.get("prev_end", "") or ""),
+    )
+    if curr_range is None or prev_range is None:
+        raise MetricError("归因分析必须提供 curr_start 和 prev_start")
+    dim = str(inp.get("dimension", "") or "").strip()
+    return run_attribution(
+        metric, rt.metrics, rt.store,
+        _attribution_execute(rt, inp.get("user_query", ""), metric.name),
+        curr_range=curr_range,
+        prev_range=prev_range,
+        dimensions=[dim] if dim else None,
+        extra_filters=inp.get("extra_filters") or [],
+    )
+
+
+def _publish_breakdown(rt: Text2SQLRuntime, result: Any) -> None:
+    """Expose the best dimension's breakdown as the last result so the
+    existing UI machinery (table, waterfall chart, CSV) picks it up."""
+    from .attribution import breakdown_table
+
+    best = next(
+        (b for b in result.dimensions if b.dimension == result.best_dimension),
+        None,
+    )
+    if best is None or not best.rows:
+        return
+    columns, rows = breakdown_table(best)
+    rt.prev_result = rt.last_result
+    rt.prev_sql = rt.last_sql
+    rt.last_result = QueryResult(
+        columns=columns, rows=rows, row_count=len(rows),
+        truncated=False, elapsed_ms=0,
+    )
+    if result.sqls:
+        rt.last_sql = result.sqls[-1]
+
+
+def _tool_run_attribution(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    from .attribution import attribution_to_dict
+
+    if rt.metrics is None or len(rt.metrics) == 0:
+        return {"error": "No metric definitions loaded (metrics.yaml)"}
+    name = str(inp.get("metric", "")).strip()
+    metric = rt.metrics.get(name)
+    if metric is None:
+        known = ", ".join(m.name for m in rt.metrics.metrics)
+        return {"error": f"Metric '{name}' is not defined. Known metrics: {known}"}
+
+    try:
+        if metric.is_ratio:
+            num = rt.metrics.get(metric.numerator)
+            den = rt.metrics.get(metric.denominator)
+            if num is None or den is None:
+                return {"error": f"ratio 指标 '{name}' 的分子/分母定义无效"}
+            num_res = _run_one_attribution(inp, rt, num)
+            den_res = _run_one_attribution(inp, rt, den)
+            _publish_breakdown(rt, num_res)
+
+            def _ratio(n: float, d: float) -> float | None:
+                return n / d if d else None
+
+            prev_ratio = _ratio(num_res.prev_total, den_res.prev_total)
+            curr_ratio = _ratio(num_res.curr_total, den_res.curr_total)
+            return {
+                "success": True,
+                "metric": metric.name,
+                "type": "ratio",
+                "prev_ratio": round(prev_ratio, 6) if prev_ratio is not None else None,
+                "curr_ratio": round(curr_ratio, 6) if curr_ratio is not None else None,
+                "numerator": attribution_to_dict(num_res),
+                "denominator": attribution_to_dict(den_res),
+                "note": (
+                    "v1 boundary: ratio metrics are decomposed into separate "
+                    "numerator/denominator attributions (no two-factor split). "
+                    "Present both movements side by side."
+                ),
+            }
+
+        result = _run_one_attribution(inp, rt, metric)
+        _publish_breakdown(rt, result)
+        return {"success": True, "type": "additive", **attribution_to_dict(result)}
+    except MetricError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        return {"error": f"Attribution failed: {_sanitize_db_error(str(exc))}"}
+
+
 def _build_sql_error(rt: Text2SQLRuntime, error_msg: str, **extra: Any) -> dict[str, Any]:
     """Increment retry counter and build a structured error response."""
     rt.sql_retries += 1
@@ -292,6 +639,7 @@ def _log_and_reject(
     rt.logger.log(
         user_query=user_query, generated_sql=sql, status=status,
         matched_tables=tables, error=error_msg,
+        extra={"source": rt.source},
     )
     extra: dict[str, Any] = {"sql": sql} if status == "error" else {}
     return _build_sql_error(rt, error_msg, **extra)
@@ -372,6 +720,7 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
             user_query=user_query, generated_sql=final_sql, status="cache_hit",
             matched_tables=validation.tables,
             exec_time_ms=0, row_count=cached.row_count,
+            extra={"source": rt.source},
         )
         return _build_success(cached, final_sql, validation, cached=True, elapsed_ms=0)
 
@@ -397,6 +746,7 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
         user_query=user_query, generated_sql=final_sql, status="success",
         matched_tables=validation.tables,
         exec_time_ms=result.elapsed_ms, row_count=result.row_count,
+        extra={"source": rt.source},
     )
     out = _build_success(result, final_sql, validation)
     if rt.prev_result is not None:
@@ -590,6 +940,9 @@ def _tool_export_pdf(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]
 
 _TOOL_HANDLERS = {
     "match_tables": _tool_match_tables,
+    "match_metrics": _tool_match_metrics,
+    "build_metric_sql": _tool_build_metric_sql,
+    "run_attribution": _tool_run_attribution,
     "get_table_schema": _tool_get_table_schema,
     "get_max_partition": _tool_get_max_partition,
     "explain_sql": _tool_explain_sql,

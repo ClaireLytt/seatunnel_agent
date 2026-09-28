@@ -42,6 +42,7 @@ show results and export CSV files.
 - **match_tables**: Rank candidate tables for the user's question by
   keyword/comment relevance. Always start here unless the user named an
   exact table.
+{metric_tool_doc}\
 - **get_table_schema**: Full column list with Chinese comments, partition
   columns and table type (incremental/full/other). Call before writing SQL.
 {partition_tool_doc}\
@@ -118,6 +119,51 @@ When the user selects a template, adapt the pattern to their tables and columns.
   N-1 PRECEDING AND CURRENT ROW).
 - **Cumulative Sum (累计求和)**: SUM(metric) OVER(ORDER BY date ROWS UNBOUNDED
   PRECEDING).
+"""
+
+_METRIC_TOOL_DOC = """\
+- **match_metrics**: Rank defined business metrics (指标) for the question,
+  with caliber (口径), source table, allowed dimensions, unit and owner.
+- **build_metric_sql**: Deterministically expand a metric into SQL. Returns
+  SQL only; run it with execute_sql.
+- **run_attribution**: Explain a metric's move between two periods
+  (为什么涨/跌): totals + per-dimension contribution decomposition. Needs
+  two explicit date ranges. Call once per question.
+"""
+
+_METRIC_RULES = """\
+
+## Metric Caliber Rules (指标口径一致性 — hard rules)
+
+A metric catalog is loaded. To guarantee caliber consistency:
+
+1. Whenever the question involves a business metric (GMV, 订单量, 退款率,
+   any name in the catalog below), call **match_metrics FIRST** — before
+   match_tables.
+2. If a metric matches, you MUST use **build_metric_sql** to produce the
+   SQL. NEVER hand-write the aggregation, table choice or default filters
+   for a defined metric, and NEVER edit the SQL it returns (adding a LIMIT
+   is unnecessary — execute_sql enforces one).
+3. If the metric's time column is a partition column and the user gave no
+   time range, call get_max_partition on the metric's table first, then
+   pass max_partition to build_metric_sql.
+4. For caliber questions ("X的口径是什么", "X和Y有什么区别"), answer
+   directly from match_metrics output. Do NOT execute SQL.
+5. For "why did X change" questions (为什么涨/跌/异动归因), use
+   **run_attribution** with two explicit date ranges. Compute the
+   comparison period yourself: 环比 = the preceding period of equal
+   length; 同比 = the same period one year earlier. Call it ONCE — it
+   already drills every allowed dimension. Present its facts first
+   (totals, top contributors per the best dimension, new/gone members),
+   then add your interpretation clearly marked as 分析解读. The
+   contribution percentages are exact (they sum to the total change
+   rate) — never recompute or round-trip them.
+6. Only when no metric matches, fall back to the normal
+   match_tables -> get_table_schema -> SQL flow.
+
+## Metric Catalog (已定义指标)
+
+{metric_catalog}
 """
 
 _PARTITION_TOOL_DOC = """\
@@ -240,18 +286,24 @@ _DIALECT_TIPS: dict[str, str] = {
 def build_text2sql_prompt(
     store: SchemaStore | None = None,
     dialect: str = "hive",
+    metric_store=None,
 ) -> str:
     dialect_name = DIALECT_NAMES.get(dialect, dialect)
     is_partition_engine = dialect in PARTITION_ENGINES
+    has_metrics = metric_store is not None and len(metric_store) > 0
 
     prompt = _BASE_PROMPT.format(
         dialect_name=dialect_name,
+        metric_tool_doc=_METRIC_TOOL_DOC if has_metrics else "",
         partition_tool_doc=_PARTITION_TOOL_DOC if is_partition_engine else "",
         partition_safety_rule=_PARTITION_SAFETY if is_partition_engine else "",
         join_pattern=_JOIN_PATTERN_HIVE if is_partition_engine else "",
         dialect_tips=_DIALECT_TIPS.get(dialect, ""),
     )
     parts = [prompt]
+
+    if has_metrics:
+        parts.append(_METRIC_RULES.format(metric_catalog=metric_store.catalog_summary()))
 
     intent_rules = _load_resource("intent_rules.md")
     if intent_rules:
@@ -265,8 +317,26 @@ def build_text2sql_prompt(
         )
 
     if store is not None and len(store) > 0:
-        parts.append(
-            "\n## Registered Tables (仅允许查询以下表)\n\n" + store.summary()
-        )
+        from ..config import env_int
+
+        limit = env_int("T2S_SCHEMA_PROMPT_LIMIT", 50)
+        if len(store) <= limit:
+            parts.append(
+                "\n## Registered Tables (仅允许查询以下表)\n\n" + store.summary()
+            )
+        else:
+            # Context-rot guard (PRD §5.2): with a large schema, inject only
+            # table names and force retrieval through match_tables.
+            names = store.table_names
+            shown = names[:200]
+            listing = ", ".join(shown)
+            if len(names) > len(shown):
+                listing += f", ... ({len(names) - len(shown)} more)"
+            parts.append(
+                f"\n## Registered Tables ({len(names)} tables — names only)\n\n"
+                "The schema is too large to inline. You MUST call "
+                "match_tables to find candidate tables and get_table_schema "
+                "before writing SQL. Whitelisted table names:\n" + listing
+            )
 
     return "\n".join(parts)
