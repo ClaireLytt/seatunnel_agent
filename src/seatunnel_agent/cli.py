@@ -1566,6 +1566,101 @@ def t2s_cron(once: bool, tick: int) -> None:
         console.print("已退出")
 
 
+@cli.command(name="t2s-eval")
+@click.option("--dataset", type=click.Path(exists=True), required=True,
+              help="评测集 JSONL（{question, golden_sql} 每行一条）")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="schema DDL（sqlite 缺省时自动内省）")
+@click.option("--ds-type", default="sqlite", show_default=True)
+@click.option("--database", default="", help="sqlite 数据库路径")
+@click.option("--connection", default="", help="连接预设名（设置页保存的连接）")
+@click.option("--limit", type=int, default=0, help="只评前 N 题（控成本试跑）")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="报告写入文件")
+@click.pass_context
+def t2s_eval(ctx: click.Context, dataset: str, ddl: str | None, ds_type: str,
+             database: str, connection: str, limit: int,
+             output: str | None) -> None:
+    """Text2SQL 端到端评测：问题→agent(真实 LLM)→结果集 与 golden SQL 对比。
+
+    换 --model/--provider 重跑即可做多模型准确率对比。
+    """
+    _ensure_utf8_stdio()
+    from .text2sql.evaluate import (
+        load_dataset,
+        make_agent_runner,
+        render_eval_report,
+        run_eval,
+    )
+    from .text2sql.metrics import load_metric_store
+    from .text2sql.schema import SchemaStore
+    from .text2sql.subscriptions import resolve_db_config
+
+    try:
+        settings = _settings_with_overrides(ctx)
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+
+    try:
+        cases = load_dataset(dataset)
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+    if limit > 0:
+        cases = cases[:limit]
+    if not cases:
+        raise click.ClickException("评测集为空")
+
+    db_config = resolve_db_config({
+        "ds_type": ds_type, "connection": connection, "database": database,
+    })
+    if db_config is None:
+        raise click.ClickException("无法解析数据库连接")
+
+    if ddl:
+        store = SchemaStore.from_file(ddl)
+    else:
+        from .text2sql.executor import create_executor
+        store = SchemaStore.from_db(create_executor(db_config))
+    if len(store) == 0:
+        raise click.ClickException("未加载到任何表")
+    metric_store, _errs = load_metric_store(store)
+
+    runner = make_agent_runner(
+        settings, store, ds_type, db_config,
+        metric_store=metric_store if len(metric_store) else None,
+    )
+    console.print(f"共 {len(cases)} 题,模型 {settings.model_name},开始评测...")
+    report = run_eval(cases, runner, db_config, store=store)
+    text = render_eval_report(report, model_name=settings.model_name)
+    console.print(text)
+    if output:
+        from pathlib import Path as _P
+        _P(output).write_text(text, encoding="utf-8")
+        console.print(f"[green]报告已写入 {output}[/green]")
+
+
+def _settings_with_overrides(ctx: click.Context):
+    """load_settings honoring the global --model/--provider overrides."""
+    model = (ctx.obj or {}).get("model") if ctx.obj else None
+    provider = (ctx.obj or {}).get("provider") if ctx.obj else None
+    old_model = os.environ.get("MODEL_NAME")
+    old_provider = os.environ.get("LLM_PROVIDER")
+    try:
+        if model:
+            os.environ["MODEL_NAME"] = model
+        if provider:
+            os.environ["LLM_PROVIDER"] = provider
+        from .config import load_settings
+        return load_settings()
+    finally:
+        for key, old in (("MODEL_NAME", old_model), ("LLM_PROVIDER", old_provider)):
+            if os.environ.get(key) != (old or ""):
+                if old is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = old
+
+
 @cli.group()
 def dqc() -> None:
     """DQC 数据质量：规则化表级检查（行数/空值率/唯一性/枚举域）。"""
