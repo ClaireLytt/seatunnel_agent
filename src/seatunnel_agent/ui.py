@@ -1862,7 +1862,12 @@ body:has(.st-dc-page) .st-main {
     min-width: 640px !important;
 }
 
-/* Right main content: fill remaining width, flex column to pin input at bottom */
+/* Right main content: fill remaining width, flex column to pin input at bottom.
+   flex-wrap MUST be nowrap: Gradio columns default to wrap, and in a
+   fixed-height column container any child taller than the viewport gets
+   wrapped into a second column to the RIGHT — outside the container, then
+   clipped by overflow:hidden. Symptom: tall results (e.g. Compare All)
+   render into the DOM but are completely invisible. */
 .st-main {
     flex: 1 1 0 !important;
     min-width: 0 !important;
@@ -1872,6 +1877,7 @@ body:has(.st-dc-page) .st-main {
     padding: 0 !important;
     display: flex !important;
     flex-direction: column !important;
+    flex-wrap: nowrap !important;
 }
 /* Hide Gradio's native sidebar if accidentally present */
 .gradio-sidebar { display: none !important; }
