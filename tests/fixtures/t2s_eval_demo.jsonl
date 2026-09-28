@@ -1,0 +1,22 @@
+# Text2SQL end-to-end eval set over the seeded sqlite demo db (config/uitest_demo.db).
+# Run: seatunnel-agent t2s-eval --dataset tests/fixtures/t2s_eval_demo.jsonl --ds-type sqlite --database config/uitest_demo.db
+{"question": "dc_test_orders_a 一共有多少条订单", "golden_sql": "SELECT COUNT(*) FROM dc_test_orders_a"}
+{"question": "订单表 dc_test_orders_a 里 amount 金额的总和是多少", "golden_sql": "SELECT SUM(amount) FROM dc_test_orders_a"}
+{"question": "按 category 分组统计 dc_test_orders_a 的订单数", "golden_sql": "SELECT category, COUNT(*) FROM dc_test_orders_a GROUP BY category"}
+{"question": "dc_test_orders_a 每个 category 的 amount 合计", "golden_sql": "SELECT category, SUM(amount) FROM dc_test_orders_a GROUP BY category"}
+{"question": "dc_test_orders_a 中 status 有哪些取值,每种多少条", "golden_sql": "SELECT status, COUNT(*) FROM dc_test_orders_a GROUP BY status"}
+{"question": "dc_test_orders_a 里 amount 最大的一条订单的 order_no 和 amount", "golden_sql": "SELECT order_no, amount FROM dc_test_orders_a ORDER BY amount DESC LIMIT 1"}
+{"question": "dc_test_orders_a 的平均订单金额 amount", "golden_sql": "SELECT AVG(amount) FROM dc_test_orders_a"}
+{"question": "dc_test_orders_a 中 amount 大于 100 的订单有几条", "golden_sql": "SELECT COUNT(*) FROM dc_test_orders_a WHERE amount > 100"}
+{"question": "dc_test_metrics_a 表按 region 汇总 sales", "golden_sql": "SELECT region, SUM(sales) FROM dc_test_metrics_a GROUP BY region"}
+{"question": "dc_test_metrics_a 里每个 region 的 qty 总量", "golden_sql": "SELECT region, SUM(qty) FROM dc_test_metrics_a GROUP BY region"}
+{"question": "dc_test_metrics_a 中 sales 最高的 region 是哪个", "golden_sql": "SELECT region FROM dc_test_metrics_a GROUP BY region ORDER BY SUM(sales) DESC LIMIT 1"}
+{"question": "dc_test_metrics_a 总共有几个不同的 region", "golden_sql": "SELECT COUNT(DISTINCT region) FROM dc_test_metrics_a"}
+{"question": "dc_test_same_a 表里 score 的平均分", "golden_sql": "SELECT AVG(score) FROM dc_test_same_a"}
+{"question": "dc_test_same_a 中 score 最高的 name", "golden_sql": "SELECT name FROM dc_test_same_a ORDER BY score DESC LIMIT 1"}
+{"question": "dc_test_same_a 一共有多少行", "golden_sql": "SELECT COUNT(*) FROM dc_test_same_a"}
+{"question": "dc_test_part_a 按 dt 分组的 val 合计", "golden_sql": "SELECT dt, SUM(val) FROM dc_test_part_a GROUP BY dt"}
+{"question": "dc_test_part_a 里有多少个不同的 dt", "golden_sql": "SELECT COUNT(DISTINCT dt) FROM dc_test_part_a"}
+{"question": "dc_test_schema_a 表的 amount 总和", "golden_sql": "SELECT SUM(amount) FROM dc_test_schema_a"}
+{"question": "dc_test_orders_a 按 status 统计 amount 平均值", "golden_sql": "SELECT status, AVG(amount) FROM dc_test_orders_a GROUP BY status"}
+{"question": "dc_test_orders_a 中 category 的去重数量", "golden_sql": "SELECT COUNT(DISTINCT category) FROM dc_test_orders_a"}
