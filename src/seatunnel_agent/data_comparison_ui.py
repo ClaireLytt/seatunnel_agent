@@ -1941,10 +1941,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                      skew_cols_str="", stratified_col="",
                      checksum_cols_str="", partition_col="", custom_agg_str="",
                      progress=gr.Progress()):
+        _log.info("compare_all start: tables=%r/%r lang=%r", table_a, table_b, lang_val)
         with holder_lock:
             if holder.get("executor_a") is None or holder.get("executor_b") is None:
+                _log.info("compare_all early-return: executors not connected")
                 return dc(lang_val, "dc_connect_both")
         if not table_a or not table_b:
+            _log.info("compare_all early-return: tables not selected")
             return dc(lang_val, "dc_select_tables")
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
@@ -2073,11 +2076,15 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
             _safe_progress(1.0, "Done")
             summary_html = build_summary_card(report, lang_val)
-            return (summary_html + schema_html + count_html + sample_html
+            html = (summary_html + schema_html + count_html + sample_html
                     + agg_html + profile_html + skew_html
                     + checksum_html + partition_html + custom_agg_html)
+            _log.info("compare_all done: tables=%r/%r elapsed=%dms html=%d chars",
+                      table_a, table_b, elapsed, len(html))
+            return html
 
         except Exception as e:
+            _log.exception("compare_all failed: tables=%r/%r", table_a, table_b)
             if webhook_url and webhook_url.strip():
                 threading.Thread(
                     target=_send_webhook,
