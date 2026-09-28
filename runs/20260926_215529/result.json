@@ -1,0 +1,223 @@
+{
+  "started_at": "20260926_215529",
+  "suite": "C1,A4,SET1",
+  "cases": [
+    {
+      "case_id": "C1",
+      "title": "结构对比一致 (orders 对 9 列相同)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2043,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 722,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 105,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 102,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1930,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 722,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 113,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 92,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1125,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1142,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '结构对比'}",
+          "ok": true,
+          "elapsed_ms": 104,
+          "detail": "clicked '结构对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-5df7omf0o\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1112,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '表结构完全一致'}",
+          "ok": true,
+          "elapsed_ms": 9,
+          "detail": "'结果区' does contain '表结构完全一致' (expected to contain); actual='     表结构对比 — 表结构完全一致 '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 12343,
+      "healed": []
+    },
+    {
+      "case_id": "A4",
+      "title": "端口非法给出明确错误",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': '主机', 'value': '127.0.0.1', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 355,
+          "detail": "filled '主机'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '端口', 'value': 'abc', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 167,
+          "detail": "filled '端口'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 111,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_error: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 106,
+          "detail": "status: ❌ 端口号必须是数字",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "status_error: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 8,
+          "detail": "status[A] expected ❌, actual '❌ 端口号必须是数字'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '状态', 'side': 'A', 'text': '端口号必须是数字'}",
+          "ok": true,
+          "elapsed_ms": 8,
+          "detail": "'状态' does contain '端口号必须是数字' (expected to contain); actual='❌ 端口号必须是数字'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 1895,
+      "healed": []
+    },
+    {
+      "case_id": "SET1",
+      "title": "设置页加载并展示当前生效配置",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 511,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "visible: {'target': '保存设置'}",
+          "ok": true,
+          "elapsed_ms": 1395,
+          "detail": "'保存设置' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '测试连接'}",
+          "ok": true,
+          "elapsed_ms": 1415,
+          "detail": "'测试连接' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '恢复 env'}",
+          "ok": true,
+          "elapsed_ms": 1413,
+          "detail": "'恢复 env' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '当前生效配置'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '当前生效配置' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '页面', 'text': 'Traceback'}",
+          "ok": true,
+          "elapsed_ms": 2,
+          "detail": "'页面' does not contain 'Traceback' (expected to NOT contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 5691,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "Exception in callback _ProactorBasePipeTransport._call_connection_lost()\nhandle: <Handle _ProactorBasePipeTransport._call_connection_lost()>\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\events.py\", line 89, in _run\n    self._context.run(self._callback, *self._args)\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\proactor_events.py\", line 165, in _call_connection_lost\n    self._sock.shutdown(socket.SHUT_RDWR)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^\nConnectionResetError: [WinError 10054] Զ������ǿ�ȹر���һ�����е����ӡ�",
+  "elapsed_ms": 35340,
+  "tokens": 0
+}

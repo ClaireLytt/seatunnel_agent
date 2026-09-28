@@ -1,0 +1,321 @@
+{
+  "started_at": "20260926_223131",
+  "suite": "NEG1,NEG2,NEG3",
+  "cases": [
+    {
+      "case_id": "NEG1",
+      "title": "行数明明 10 vs 9,虚假预期「完全一致」必须被判 fail",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1995,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 728,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 122,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 119,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1924,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 725,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 112,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 111,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1102,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1133,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 91,
+          "detail": "clicked '行数对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-is40fdddx\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1116,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "ai_judge: 行数对比结果显示两侧行数完全一致 (期望判 fail)",
+          "ok": true,
+          "elapsed_ms": 8513,
+          "detail": "行数对比结果显示 行数(A): 10 与 行数(B): 9，差异 +1 (+10.0%)，两侧行数并不一致",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 3017,
+      "elapsed_ms": 20749,
+      "healed": []
+    },
+    {
+      "case_id": "NEG2",
+      "title": "结构明明一致,虚假预期「发现类型不一致」必须被判 fail",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1958,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 728,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 109,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 110,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1960,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 711,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 115,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 90,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1128,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1142,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '结构对比'}",
+          "ok": true,
+          "elapsed_ms": 101,
+          "detail": "clicked '结构对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-iuiei5e9j\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1096,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "ai_judge: 结构对比发现了多处列类型不一致并标红 (期望判 fail)",
+          "ok": true,
+          "elapsed_ms": 6575,
+          "detail": "页面结果显示'表结构对比 — 表结构完全一致',未出现任何列类型不一致或标红提示,与预期相反",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 2989,
+      "elapsed_ms": 16979,
+      "healed": []
+    },
+    {
+      "case_id": "NEG3",
+      "title": "页面上不存在的元素,虚假预期「显示导出成功提示」必须被判 fail",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1972,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 727,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 129,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 115,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1957,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 715,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 117,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 101,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1130,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1140,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 117,
+          "detail": "clicked '行数对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-xstkxnq71\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1116,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "ai_judge: 页面顶部显示绿色的「Excel 导出成功」提示条 (期望判 fail)",
+          "ok": true,
+          "elapsed_ms": 6562,
+          "detail": "页面顶部未见绿色的「Excel 导出成功」提示条,仅显示「行数对比」结果卡片",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 3008,
+      "elapsed_ms": 17368,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "",
+  "elapsed_ms": 70814,
+  "tokens": 9014
+}

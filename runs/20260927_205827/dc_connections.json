@@ -1,0 +1,14 @@
+[
+  {
+    "id": "c51413371acf",
+    "name": "dsk-conn",
+    "ds_type": "mysql",
+    "host": "127.0.0.1",
+    "port": 3306,
+    "database": "skewdb",
+    "username": "",
+    "password": "",
+    "environment": "",
+    "created_at": "2026-09-27T12:59:20.961636+00:00"
+  }
+]

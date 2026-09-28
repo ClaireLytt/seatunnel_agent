@@ -1,0 +1,431 @@
+{
+  "started_at": "20260927_181210",
+  "suite": "DSK1,DSK2,DSK3,DSK4,DSK5,DSK6,DSK7,DSK8,DSK9,DSK10,DSK11,DSK12,DSK13,DSK14,DSK15,DSK16,SCR9,SR2",
+  "cases": [
+    {
+      "case_id": "DSK1",
+      "title": "空 SQL 点分析给出提示",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 99,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng translucent\" style=\"position: absolute; padding: 0px;\"><!----> <div class=\"clear-status svelte-1uj8rng\"><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"清除\" aria-haspopup=\"false\" title=\"清除\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg width=\"100%\" height=\"100%\" viewBox=\"0 0 24 24\" version=\"1.1\" xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" xml:space=\"preserve\" stroke=\"currentColor\" style=\"fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;\"><g transform=\"matrix(1.14096,-0.140958,-0.140958,1.14096,-0.0559523,0.0559523)\"><path d=\"M18,6L6.087,17.913\" style=\"fill:none;fill-rule:nonzero;stroke-width:2px;\"></path></g><path d=\"M4.364,4.364L19.636,19.636\" style=\"fill:none;fill-rule:nonzero;stroke-width:2px;\"></path></svg><!----> <!----></div></button><!----></div> <span class=\"error svelte-1uj8rng\">错误</span> <!----><!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>The skew analysis report will appear here</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1098,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '请先粘贴 SQL'}",
+          "ok": true,
+          "elapsed_ms": 21,
+          "detail": "'结果区' does contain '请先粘贴 SQL' (expected to contain); actual='       ❌ 请先粘贴 SQL 脚本。\\n  '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 3609,
+      "healed": []
+    },
+    {
+      "case_id": "DSK2",
+      "title": "COUNT(DISTINCT) 被标记且报告带引擎参数 (DS001)",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'}",
+          "ok": false,
+          "elapsed_ms": 20743,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK2_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 21735,
+      "healed": []
+    },
+    {
+      "case_id": "DSK3",
+      "title": "JOIN 键未过滤 NULL 被标记 (DS007)",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT a.id FROM ods.a a LEFT JOIN ods.b b ON a.uid = b.uid'}",
+          "ok": false,
+          "elapsed_ms": 20746,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK3_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': 'SELECT a.id FROM ods.a a LEFT JOIN ods.b b ON a.uid = b.uid'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 21693,
+      "healed": []
+    },
+    {
+      "case_id": "DSK4",
+      "title": "JOIN 键套函数被标记 (DS008)",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT a.id FROM ods.a a JOIN ods.b b ON substr(a.uid,1,8) = b.uid'}",
+          "ok": false,
+          "elapsed_ms": 20749,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK4_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': 'SELECT a.id FROM ods.a a JOIN ods.b b ON substr(a.uid,1,8) = b.uid'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 21732,
+      "healed": []
+    },
+    {
+      "case_id": "DSK5",
+      "title": "全局 ORDER BY 无 LIMIT 报高风险 (DS005)",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT * FROM ods.t ORDER BY amount'}",
+          "ok": false,
+          "elapsed_ms": 20748,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK5_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': 'SELECT * FROM ods.t ORDER BY amount'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 21717,
+      "healed": []
+    },
+    {
+      "case_id": "DSK6",
+      "title": "SELECT DISTINCT 与 UNION 去重同时标记 (DS003+DS004)",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT DISTINCT id FROM ods.a UNION SELECT id FROM ods.b'}",
+          "ok": false,
+          "elapsed_ms": 20750,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK6_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': 'SELECT DISTINCT id FROM ods.a UNION SELECT id FROM ods.b'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 21753,
+      "healed": []
+    },
+    {
+      "case_id": "DSK7",
+      "title": "干净 SQL 报告无风险且无优化 SQL 下载",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': \"SELECT id, name FROM ods.user WHERE dt = '2024-06-01'\"}",
+          "ok": false,
+          "elapsed_ms": 20747,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK7_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': \"SELECT id, name FROM ods.user WHERE dt = '2024-06-01'\"} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 21708,
+      "healed": []
+    },
+    {
+      "case_id": "DSK8",
+      "title": "清空按钮恢复初始状态",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct id) FROM ods.t'}",
+          "ok": false,
+          "elapsed_ms": 20731,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK8_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': 'SELECT count(distinct id) FROM ods.t'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 21737,
+      "healed": []
+    },
+    {
+      "case_id": "DSK9",
+      "title": "MaxCompute 方言报告给 odps 引擎参数",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "select: {'of': 'SQL 方言', 'value': 'MaxCompute SQL'}",
+          "ok": false,
+          "elapsed_ms": 20760,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"input[aria-label='SQL Dialect']\").first\n    - locator resolved to <input role=\"combobox\" autocomplete=\"off\" aria-expanded=\"false\" aria-autocomplete=\"list\" aria-label=\"SQL Dialect\" aria-controls=\"c1-options\" class=\"border-none svelte-1xfsv4t\"/>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK9_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: select: {'of': 'SQL 方言', 'value': 'MaxCompute SQL'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"input[aria-label='SQL Dialect']\").first\n    - locator resolved to <input role=\"combobox\" autocomplete=\"off\" aria-expanded=\"false\" aria-autocomplete=\"list\" aria-label=\"SQL Dialect\" aria-controls=\"c1-options\" class=\"border-none svelte-1xfsv4t\"/>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 21735,
+      "healed": []
+    },
+    {
+      "case_id": "DSK10",
+      "title": "英文界面静态报告为英文",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'}",
+          "ok": false,
+          "elapsed_ms": 20768,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK10_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 22062,
+      "healed": []
+    },
+    {
+      "case_id": "DSK11",
+      "title": "未连接数据源点实测验证给出提示",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '连接数据源'}",
+          "ok": true,
+          "elapsed_ms": 382,
+          "detail": "opened '连接数据源'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT region, count(*) FROM dc_test_metrics_a GROUP BY region'}",
+          "ok": false,
+          "elapsed_ms": 20738,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK11_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': 'SELECT region, count(*) FROM dc_test_metrics_a GROUP BY region'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 22418,
+      "healed": []
+    },
+    {
+      "case_id": "DSK12",
+      "title": "SQLite 数据源连接成功且采样选项齐全",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '连接数据源'}",
+          "ok": true,
+          "elapsed_ms": 373,
+          "detail": "opened '连接数据源'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '数据源类型', 'value': 'SQLite'}",
+          "ok": false,
+          "elapsed_ms": 20757,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"input[aria-label='Datasource type']\").first\n    - locator resolved to <input role=\"combobox\" autocomplete=\"off\" aria-expanded=\"false\" aria-autocomplete=\"list\" aria-controls=\"c2-options\" aria-label=\"Datasource type\" class=\"border-none svelte-1xfsv4t\"/>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK12_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: select: {'of': '数据源类型', 'value': 'SQLite'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"input[aria-label='Datasource type']\").first\n    - locator resolved to <input role=\"combobox\" autocomplete=\"off\" aria-expanded=\"false\" aria-autocomplete=\"list\" aria-controls=\"c2-options\" aria-label=\"Datasource type\" class=\"border-none svelte-1xfsv4t\"/>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 22150,
+      "healed": []
+    },
+    {
+      "case_id": "DSK13",
+      "title": "实测探查确认 GROUP BY 键倾斜",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '连接数据源'}",
+          "ok": true,
+          "elapsed_ms": 358,
+          "detail": "opened '连接数据源'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '数据源类型', 'value': 'SQLite'}",
+          "ok": false,
+          "elapsed_ms": 20765,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"input[aria-label='Datasource type']\").first\n    - locator resolved to <input role=\"combobox\" autocomplete=\"off\" aria-expanded=\"false\" aria-autocomplete=\"list\" aria-controls=\"c2-options\" aria-label=\"Datasource type\" class=\"border-none svelte-1xfsv4t\"/>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK13_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: select: {'of': '数据源类型', 'value': 'SQLite'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"input[aria-label='Datasource type']\").first\n    - locator resolved to <input role=\"combobox\" autocomplete=\"off\" aria-expanded=\"false\" aria-autocomplete=\"list\" aria-controls=\"c2-options\" aria-label=\"Datasource type\" class=\"border-none svelte-1xfsv4t\"/>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 22078,
+      "healed": []
+    },
+    {
+      "case_id": "DSK14",
+      "title": "未生成优化 SQL 点一致性实测给出提示",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '连接数据源'}",
+          "ok": true,
+          "elapsed_ms": 355,
+          "detail": "opened '连接数据源'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '数据源类型', 'value': 'SQLite'}",
+          "ok": false,
+          "elapsed_ms": 20778,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"input[aria-label='Datasource type']\").first\n    - locator resolved to <input role=\"combobox\" autocomplete=\"off\" aria-expanded=\"false\" aria-autocomplete=\"list\" aria-controls=\"c2-options\" aria-label=\"Datasource type\" class=\"border-none svelte-1xfsv4t\"/>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK14_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: select: {'of': '数据源类型', 'value': 'SQLite'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"input[aria-label='Datasource type']\").first\n    - locator resolved to <input role=\"combobox\" autocomplete=\"off\" aria-expanded=\"false\" aria-autocomplete=\"list\" aria-controls=\"c2-options\" aria-label=\"Datasource type\" class=\"border-none svelte-1xfsv4t\"/>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <span class=\"error svelte-1uj8rng\">错误</span> from <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> subtree intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 22132,
+      "healed": []
+    },
+    {
+      "case_id": "DSK15",
+      "title": "报告下载为 .md 且内容完整",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'}",
+          "ok": false,
+          "elapsed_ms": 20734,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK15_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 21716,
+      "healed": []
+    },
+    {
+      "case_id": "DSK16",
+      "title": "分析历史记录并一键载入",
+      "verdict": "ERROR",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'}",
+          "ok": false,
+          "elapsed_ms": 20739,
+          "detail": "TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+          "screenshot": "shots/DSK16_step_fail.png"
+        }
+      ],
+      "asserts": [],
+      "reason": "步骤失败: fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'} — TimeoutError: Locator.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"body\").locator(\"label:has(span:text-is('SQL'))\").locator(\"textarea, input[type='text'], input[type='password']\").first\n    - locator resolved to <textarea dir=\"ltr\" rows=\"14\" data-testid=\"textbox\" class=\"svelte-1hguek3\" placeholder=\"Paste the SQL to analyze for data skew…\"></textarea>\n  - attempting click action\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n    - waiting 20ms\n    2 × waiting for element to be visible, enabled and stable\n      - element is visible, enabled and stable\n      - scrolling into view if needed\n      - done scrolling\n      - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n    - retrying click action\n      - waiting 100ms\n    18 × waiting for element to be visible, enabled and stable\n       - element is visible, enabled and stable\n       - scrolling into view if needed\n       - done scrolling\n       - <div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng\">…</div> intercepts pointer events\n     - retrying click action\n       - waiting 500ms\n",
+      "tokens": 0,
+      "elapsed_ms": 21726,
+      "healed": []
+    },
+    {
+      "case_id": "SCR9",
+      "title": "数据倾斜页整体可滚动 (.st-scroll-page 标记)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 514,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.gradio-container'}",
+          "ok": true,
+          "elapsed_ms": 640,
+          "detail": "container '.gradio-container' at 500px viewport: overflowY=auto, scrollHeight=757, clientHeight=500, scrolledTo=257, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2044,
+      "healed": []
+    },
+    {
+      "case_id": "SR2",
+      "title": "SELECT * 静态审查出报告",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': \"SELECT * FROM ods.user_log WHERE dt = '2024-06-01'\"}",
+          "ok": true,
+          "elapsed_ms": 1606,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始审查'}",
+          "ok": true,
+          "elapsed_ms": 99,
+          "detail": "clicked '开始审查'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>审查报告将显示在这里</em></p>\\n</span><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1174,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'SELECT *'}",
+          "ok": true,
+          "elapsed_ms": 18,
+          "detail": "'结果区' does contain 'SELECT *' (expected to contain); actual='    CR 报告\\n🔴 严重问题（必须修复）\\n无\\n🟡 潜在风险（建议修复）\\n\\n\\n\\n序号\\n问题描述\\n代码位置\\n风险说明\\n优化建议\\n\\n\\n\\n1\\n使用 SELECT * 读取全部字段\\n行 1\\n不必要的大表扫描 / 列裁剪失效\\n只 SELECT 需要的字段\\n\\n\\n🟢 优化建议（可选）\\n无\\n🔗 表级血缘\\n\\n来源表：ods.user_log\\n目标表：无（仅查询）\\n列级血缘：\\n\\n← *\\n\\n\\n\\n\\n\\n📊 检查统计\\n\\n检查项总数：17\\n通过：16\\n问题：0\\n风险：1\\n\\n💡 总体评价\\n代码无严重问题，但存在 1 个潜在风险，建议按优化建议修复后再上线。\\n'",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '下载报告'}",
+          "ok": true,
+          "elapsed_ms": 1385,
+          "detail": "'下载报告' visible=True, expected visible",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 5240,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "        block_fn, result[\"prediction\"], state\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2063, in postprocess_data\n    prediction_value = postprocess_update_dict(\n        block=state[block._id],\n        update_dict=prediction_value,\n        postprocess=block_fn.postprocess,\n    )\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 581, in postprocess_update_dict\n    update_dict[\"value\"] = block.postprocess(value)\n                           ~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\components\\upload_button.py\", line 238, in postprocess\n    size=Path(value).stat().st_size,\n         ~~~~~~~~~~~~~~~~^^\n  File \"D:\\development\\miniconda\\Lib\\pathlib\\_local.py\", line 515, in stat\n    return os.stat(self, follow_symlinks=follow_symlinks)\n           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [WinError 2] ϵͳ�Ҳ���ָ�����ļ���: '�ϴ� SQL �ļ�'\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\queueing.py\", line 882, in process_events\n    response = await route_utils.call_process_api(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<5 lines>...\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\route_utils.py\", line 410, in call_process_api\n    output = await app.get_blocks().process_api(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<12 lines>...\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2344, in process_api\n    data = await self.postprocess_data(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        block_fn, result[\"prediction\"], state\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2063, in postprocess_data\n    prediction_value = postprocess_update_dict(\n        block=state[block._id],\n        update_dict=prediction_value,\n        postprocess=block_fn.postprocess,\n    )\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 581, in postprocess_update_dict\n    update_dict[\"value\"] = block.postprocess(value)\n                           ~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\components\\upload_button.py\", line 238, in postprocess\n    size=Path(value).stat().st_size,\n         ~~~~~~~~~~~~~~~~^^\n  File \"D:\\development\\miniconda\\Lib\\pathlib\\_local.py\", line 515, in stat\n    return os.stat(self, follow_symlinks=follow_symlinks)\n           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [WinError 2] ϵͳ�Ҳ���ָ�����ļ���: '�ϴ� SQL �ļ�'\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\queueing.py\", line 882, in process_events\n    response = await route_utils.call_process_api(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<5 lines>...\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\route_utils.py\", line 410, in call_process_api\n    output = await app.get_blocks().process_api(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<12 lines>...\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2344, in process_api\n    data = await self.postprocess_data(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        block_fn, result[\"prediction\"], state\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2063, in postprocess_data\n    prediction_value = postprocess_update_dict(\n        block=state[block._id],\n        update_dict=prediction_value,\n        postprocess=block_fn.postprocess,\n    )\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 581, in postprocess_update_dict\n    update_dict[\"value\"] = block.postprocess(value)\n                           ~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\components\\upload_button.py\", line 238, in postprocess\n    size=Path(value).stat().st_size,\n         ~~~~~~~~~~~~~~~~^^\n  File \"D:\\development\\miniconda\\Lib\\pathlib\\_local.py\", line 515, in stat\n    return os.stat(self, follow_symlinks=follow_symlinks)\n           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [WinError 2] ϵͳ�Ҳ���ָ�����ļ���: '�ϴ� SQL �ļ�'\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\queueing.py\", line 882, in process_events\n    response = await route_utils.call_process_api(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<5 lines>...\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\route_utils.py\", line 410, in call_process_api\n    output = await app.get_blocks().process_api(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<12 lines>...\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2344, in process_api\n    data = await self.postprocess_data(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        block_fn, result[\"prediction\"], state\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2063, in postprocess_data\n    prediction_value = postprocess_update_dict(\n        block=state[block._id],\n        update_dict=prediction_value,\n        postprocess=block_fn.postprocess,\n    )\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 581, in postprocess_update_dict\n    update_dict[\"value\"] = block.postprocess(value)\n                           ~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\components\\upload_button.py\", line 238, in postprocess\n    size=Path(value).stat().st_size,\n         ~~~~~~~~~~~~~~~~^^\n  File \"D:\\development\\miniconda\\Lib\\pathlib\\_local.py\", line 515, in stat\n    return os.stat(self, follow_symlinks=follow_symlinks)\n           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [WinError 2] ϵͳ�Ҳ���ָ�����ļ���: '�ϴ� SQL �ļ�'\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\queueing.py\", line 882, in process_events\n    response = await route_utils.call_process_api(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<5 lines>...\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\route_utils.py\", line 410, in call_process_api\n    output = await app.get_blocks().process_api(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<12 lines>...\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2344, in process_api\n    data = await self.postprocess_data(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        block_fn, result[\"prediction\"], state\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2063, in postprocess_data\n    prediction_value = postprocess_update_dict(\n        block=state[block._id],\n        update_dict=prediction_value,\n        postprocess=block_fn.postprocess,\n    )\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 581, in postprocess_update_dict\n    update_dict[\"value\"] = block.postprocess(value)\n                           ~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\components\\upload_button.py\", line 238, in postprocess\n    size=Path(value).stat().st_size,\n         ~~~~~~~~~~~~~~~~^^\n  File \"D:\\development\\miniconda\\Lib\\pathlib\\_local.py\", line 515, in stat\n    return os.stat(self, follow_symlinks=follow_symlinks)\n           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [WinError 2] ϵͳ�Ҳ���ָ�����ļ���: '�ϴ� SQL �ļ�'\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\queueing.py\", line 882, in process_events\n    response = await route_utils.call_process_api(\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<5 lines>...\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\route_utils.py\", line 410, in call_process_api\n    output = await app.get_blocks().process_api(\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    ...<12 lines>...\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2344, in process_api\n    data = await self.postprocess_data(\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n        block_fn, result[\"prediction\"], state\n        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n    )\n    ^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 2063, in postprocess_data\n    prediction_value = postprocess_update_dict(\n        block=state[block._id],\n        update_dict=prediction_value,\n        postprocess=block_fn.postprocess,\n    )\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\blocks.py\", line 581, in postprocess_update_dict\n    update_dict[\"value\"] = block.postprocess(value)\n                           ~~~~~~~~~~~~~~~~~^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\site-packages\\gradio\\components\\upload_button.py\", line 238, in postprocess\n    size=Path(value).stat().st_size,\n         ~~~~~~~~~~~~~~~~^^\n  File \"D:\\development\\miniconda\\Lib\\pathlib\\_local.py\", line 515, in stat\n    return os.stat(self, follow_symlinks=follow_symlinks)\n           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [WinError 2] ϵͳ�Ҳ���ָ�����ļ���: '�ϴ� SQL �ļ�'",
+  "elapsed_ms": 353522,
+  "tokens": 0
+}

@@ -1,0 +1,3203 @@
+{
+  "started_at": "20260926_223807",
+  "suite": "smoke",
+  "cases": [
+    {
+      "case_id": "X1",
+      "title": "未连接直接对比被拦截",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "click: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 122,
+          "detail": "clicked '行数对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-fjxpubw61\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1094,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '请先连接两个数据源'}",
+          "ok": true,
+          "elapsed_ms": 9,
+          "detail": "'结果区' does contain '请先连接两个数据源' (expected to contain); actual='     请先连接两个数据源 '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4218,
+      "healed": []
+    },
+    {
+      "case_id": "T2S1",
+      "title": "Text2SQL 侧栏 SQLite 连接 (隐藏字段回归)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite'}",
+          "ok": true,
+          "elapsed_ms": 1952,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db'}",
+          "ok": true,
+          "elapsed_ms": 739,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接'}",
+          "ok": true,
+          "elapsed_ms": 134,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 225,
+          "detail": "status: ✅ Loaded 10 tables from SQLite (config/uitest_demo.db) · ✅ SQLite SQLite: config",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 19,
+          "detail": "status[A] expected ✅, actual '✅ Loaded 10 tables from SQLite (config/uitest_demo.db) · ✅ SQLite SQLite: config/uitest_demo.db · ⏳ LLM kimi-k2.7-code (checking...)'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '状态', 'text': '10 tables'}",
+          "ok": true,
+          "elapsed_ms": 16,
+          "detail": "'状态' does contain '10 tables' (expected to contain); actual='✅ Loaded 10 tables from SQLite (config/uitest_demo.db) · ✅ SQLite SQLite: config/uitest_demo.db · ⏳ LLM kimi-k2.7-code (checking...)'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'dc_test_orders_a'}",
+          "ok": true,
+          "elapsed_ms": 6,
+          "detail": "'页面' does contain 'dc_test_orders_a' (expected to contain); actual='☰\\n🗄 Data Source Config\\nData Source\\nDatabase\\nConnect\\nReload Schema\\nTables (10)\\n▼\\nTextbox\\ndc_test_metrics_a\\ndc_test_metrics_b\\ndc_test_orders_a\\ndc_test_orders_b\\ndc_test_part_a\\ndc_test_part_b\\ndc_test_same_a\\ndc_test_same_b\\ndc_test_schema_a\\ndc_test_schema_b\\nAll\\nNone\\n✔ Confirm\\n✕ Cancel\\n📖 Schema Browser\\nSta…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 14538,
+      "healed": []
+    },
+    {
+      "case_id": "P2",
+      "title": "自定义 SQL 只读限制拦截 DELETE",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2188,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 735,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 167,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 166,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1911,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 736,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 175,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 172,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "open_accordion: {'target': '自定义 SQL'}",
+          "ok": true,
+          "elapsed_ms": 350,
+          "detail": "opened '自定义 SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'SQL (A)', 'value': 'DELETE FROM dc_test_orders_a'}",
+          "ok": true,
+          "elapsed_ms": 957,
+          "detail": "filled 'SQL (A)'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'SQL (B)', 'value': 'SELECT 1'}",
+          "ok": true,
+          "elapsed_ms": 350,
+          "detail": "filled 'SQL (B)'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': 'SQL 对比'}",
+          "ok": true,
+          "elapsed_ms": 142,
+          "detail": "clicked 'SQL 对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-9e6k5xmjs\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1139,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '仅允许 SELECT'}",
+          "ok": true,
+          "elapsed_ms": 9,
+          "detail": "'结果区' does contain '仅允许 SELECT' (expected to contain); actual='     仅允许 SELECT 语句 '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 12310,
+      "healed": []
+    },
+    {
+      "case_id": "C1",
+      "title": "结构对比一致 (orders 对 9 列相同)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2022,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 733,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 178,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 181,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1903,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 749,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 173,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 167,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1191,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1194,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '结构对比'}",
+          "ok": true,
+          "elapsed_ms": 156,
+          "detail": "clicked '结构对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-flfcadr0i\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1134,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '表结构完全一致'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "'结果区' does contain '表结构完全一致' (expected to contain); actual='     表结构对比 — 表结构完全一致 '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 11199,
+      "healed": []
+    },
+    {
+      "case_id": "C2",
+      "title": "结构对比差异 (schema 对列名/类型不同)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2041,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 755,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 157,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 156,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 2019,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 743,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 146,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 155,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_schema_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1170,
+          "detail": "selected 'dc_test_schema_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_schema_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1168,
+          "detail": "selected 'dc_test_schema_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '结构对比'}",
+          "ok": true,
+          "elapsed_ms": 160,
+          "detail": "clicked '结构对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-spcja5952\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1160,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'user_name'}",
+          "ok": true,
+          "elapsed_ms": 8,
+          "detail": "'结果区' does contain 'user_name' (expected to contain); actual='     表结构对比 — 删除: 1 · 新增: 2字段类型 (A)类型 (B)状态nameTEXT删除user_nameTEXT新增remarkTEXT新增 '",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'remark'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "'结果区' does contain 'remark' (expected to contain); actual='     表结构对比 — 删除: 1 · 新增: 2字段类型 (A)类型 (B)状态nameTEXT删除user_nameTEXT新增remarkTEXT新增 '",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'name'}",
+          "ok": true,
+          "elapsed_ms": 12,
+          "detail": "'结果区' does contain 'name' (expected to contain); actual='     表结构对比 — 删除: 1 · 新增: 2字段类型 (A)类型 (B)状态nameTEXT删除user_nameTEXT新增remarkTEXT新增 '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 11235,
+      "healed": []
+    },
+    {
+      "case_id": "C3",
+      "title": "行数对比呈现 10 vs 9 差异",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2029,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 726,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 191,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 186,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 2018,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 741,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 168,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 154,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1151,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1151,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 156,
+          "detail": "clicked '行数对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-da5ca3vhp\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1150,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '10'}",
+          "ok": true,
+          "elapsed_ms": 7,
+          "detail": "'结果区' does contain '10' (expected to contain); actual='     行数对比行数 (A): 10 \\xa0 行数 (B): 9 \\xa0 差异: +1 (+10.0%) '",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '9'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "'结果区' does contain '9' (expected to contain); actual='     行数对比行数 (A): 10 \\xa0 行数 (B): 9 \\xa0 差异: +1 (+10.0%) '",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '+1'}",
+          "ok": true,
+          "elapsed_ms": 8,
+          "detail": "'结果区' does contain '+1' (expected to contain); actual='     行数对比行数 (A): 10 \\xa0 行数 (B): 9 \\xa0 差异: +1 (+10.0%) '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 11227,
+      "healed": []
+    },
+    {
+      "case_id": "C4",
+      "title": "行数对比一致 (same 对 5 = 5)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2037,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 746,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 172,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 174,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 2000,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 739,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 168,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 200,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_same_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1082,
+          "detail": "selected 'dc_test_same_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_same_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1110,
+          "detail": "selected 'dc_test_same_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 189,
+          "detail": "clicked '行数对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-h14nsqay1\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1173,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '5'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "'结果区' does contain '5' (expected to contain); actual='     行数对比行数 (A): 5 \\xa0 行数 (B): 5 \\xa0 一致 '",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '一致'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "'结果区' does contain '一致' (expected to contain); actual='     行数对比行数 (A): 5 \\xa0 行数 (B): 5 \\xa0 一致 '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 11144,
+      "healed": []
+    },
+    {
+      "case_id": "C5",
+      "title": "样本数据差异高亮 (id=3 amount / id=5 status)",
+      "verdict": "SKIP",
+      "steps": [],
+      "asserts": [],
+      "reason": "--no-llm 模式跳过含 ai 步骤/断言的用例",
+      "tokens": 0,
+      "elapsed_ms": 0,
+      "healed": []
+    },
+    {
+      "case_id": "D2",
+      "title": "百分比阈值 5% 未通过 (差异 10%)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2019,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 746,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 179,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 196,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 2024,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 728,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 156,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 166,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1163,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1157,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '阈值', 'value': '5%'}",
+          "ok": true,
+          "elapsed_ms": 139,
+          "detail": "filled '阈值'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 162,
+          "detail": "clicked '行数对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-9zfakwy7j\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1170,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '未通过'}",
+          "ok": true,
+          "elapsed_ms": 9,
+          "detail": "'结果区' does contain '未通过' (expected to contain); actual='     行数对比 未通过行数 (A): 10 \\xa0 行数 (B): 9 \\xa0 差异: +1 (+10.0%) '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 11388,
+      "healed": []
+    },
+    {
+      "case_id": "E4",
+      "title": "WHERE 防注入拦截禁止关键字",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1954,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 738,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 182,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 181,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 2008,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 740,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 187,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 184,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1173,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1165,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'WHERE', 'value': '1=1; drop table x'}",
+          "ok": true,
+          "elapsed_ms": 589,
+          "detail": "filled 'WHERE'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 184,
+          "detail": "clicked '行数对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-y4b5uv80y\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1163,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '禁止关键字'}",
+          "ok": true,
+          "elapsed_ms": 7,
+          "detail": "'结果区' does contain '禁止关键字' (expected to contain); actual='     WHERE 条件包含禁止关键字: drop '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 11813,
+      "healed": []
+    },
+    {
+      "case_id": "A4",
+      "title": "端口非法给出明确错误",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': '主机', 'value': '127.0.0.1', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 350,
+          "detail": "filled '主机'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '端口', 'value': 'abc', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 155,
+          "detail": "filled '端口'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 168,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_error: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 163,
+          "detail": "status: ❌ 端口号必须是数字",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "status_error: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "status[A] expected ❌, actual '❌ 端口号必须是数字'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '状态', 'side': 'A', 'text': '端口号必须是数字'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "'状态' does contain '端口号必须是数字' (expected to contain); actual='❌ 端口号必须是数字'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2173,
+      "healed": []
+    },
+    {
+      "case_id": "A5",
+      "title": "Tab 在空输入框填入灰色占位默认值",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "clear: {'target': '主机', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 105,
+          "detail": "cleared '主机'",
+          "screenshot": null
+        },
+        {
+          "desc": "press: {'keys': 'Tab', 'in': '主机', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 72,
+          "detail": "pressed Tab",
+          "screenshot": null
+        },
+        {
+          "desc": "clear: {'target': '端口', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 79,
+          "detail": "cleared '端口'",
+          "screenshot": null
+        },
+        {
+          "desc": "press: {'keys': 'Tab', 'in': '端口', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 52,
+          "detail": "pressed Tab",
+          "screenshot": null
+        },
+        {
+          "desc": "clear: {'target': '数据库', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 75,
+          "detail": "cleared '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "press: {'keys': 'Tab', 'in': '数据库', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 57,
+          "detail": "pressed Tab",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "value_is: {'of': '主机', 'side': 'A', 'value': '10.0.0.1'}",
+          "ok": true,
+          "elapsed_ms": 21,
+          "detail": "'主机' value: expected to equal '10.0.0.1', actual '10.0.0.1'",
+          "screenshot": null
+        },
+        {
+          "desc": "value_is: {'of': '端口', 'side': 'A', 'value': '10000'}",
+          "ok": true,
+          "elapsed_ms": 17,
+          "detail": "'端口' value: expected to equal '10000', actual '10000'",
+          "screenshot": null
+        },
+        {
+          "desc": "value_is: {'of': '数据库', 'side': 'A', 'value': 'default'}",
+          "ok": true,
+          "elapsed_ms": 16,
+          "detail": "'数据库' value: expected to equal 'default', actual 'default'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 1905,
+      "healed": []
+    },
+    {
+      "case_id": "A5b",
+      "title": "Tab 在非空输入框只切焦点不覆盖内容",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': '主机', 'value': '192.168.1.99', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 461,
+          "detail": "filled '主机'",
+          "screenshot": null
+        },
+        {
+          "desc": "press: {'keys': 'Tab', 'in': '主机', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 71,
+          "detail": "pressed Tab",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "value_is: {'of': '主机', 'side': 'A', 'value': '192.168.1.99'}",
+          "ok": true,
+          "elapsed_ms": 17,
+          "detail": "'主机' value: expected to equal '192.168.1.99', actual '192.168.1.99'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 1880,
+      "healed": []
+    },
+    {
+      "case_id": "A6",
+      "title": "双侧连接后两侧表下拉均可选",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2076,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 746,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 206,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 226,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 2078,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 726,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 209,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 265,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "status[A] expected ✅, actual '✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表'",
+          "screenshot": null
+        },
+        {
+          "desc": "status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "status[B] expected ✅, actual '✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表'",
+          "screenshot": null
+        },
+        {
+          "desc": "options_count: {'of': '选择表', 'side': 'A', 'n': 10}",
+          "ok": true,
+          "elapsed_ms": 793,
+          "detail": "'选择表' options: expected 10, actual 10: ['dc_test_metrics_a', 'dc_test_metrics_b', 'dc_test_orders_a', 'dc_test_orders_b', 'dc_test_part_a', 'dc_test_part_b', 'dc_test_same_a', 'dc_test_same_b', 'dc_test_schema_a', 'dc_test_schema_b']",
+          "screenshot": null
+        },
+        {
+          "desc": "options_count: {'of': '选择表', 'side': 'B', 'n': 10}",
+          "ok": true,
+          "elapsed_ms": 804,
+          "detail": "'选择表' options: expected 10, actual 10: ['dc_test_metrics_a', 'dc_test_metrics_b', 'dc_test_orders_a', 'dc_test_orders_b', 'dc_test_part_a', 'dc_test_part_b', 'dc_test_same_a', 'dc_test_same_b', 'dc_test_schema_a', 'dc_test_schema_b']",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 9622,
+      "healed": []
+    },
+    {
+      "case_id": "IMP1",
+      "title": "old/new 目录变更影响分析",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': '旧 SQL 目录', 'value': 'examples/impact_demo/old'}",
+          "ok": true,
+          "elapsed_ms": 836,
+          "detail": "filled '旧 SQL 目录'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '新 SQL 目录', 'value': 'examples/impact_demo/new'}",
+          "ok": true,
+          "elapsed_ms": 799,
+          "detail": "filled '新 SQL 目录'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '变更影响分析'}",
+          "ok": true,
+          "elapsed_ms": 188,
+          "detail": "clicked '变更影响分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----> <!----><!----><!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 hide-container auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: visible; min-width: min(0px, 100%);\"><!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-fntus0s8b\" class=\"prose gradio-style  svelte-26mp0t\"></div><!----></div><!----> <!----></div><!----> <!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 padded hide-container auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(0px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose  svelte-1xjkzpp\" dir=\"ltr\"><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>Fill both sides and click Analyze.</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!----></div><!----> <!----><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1255,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'dws.gmv_daily'}",
+          "ok": true,
+          "elapsed_ms": 19,
+          "detail": "'结果区' does contain 'dws.gmv_daily' (expected to contain); actual='            变更影响分析 (old → new)\\n变更 3 处 · 下游波及 1 表 · error 1 / warn 1 / info 1\\n❌ [error] ads.gmv_report — 上游被移除\\n\\n上游被移除: dws.user_stats -> ads.gmv_report\\n字段来源被移除: dws.user_stats.total_amount → total_amount\\n下游波及: rpt.gmv_dashboard (L1)\\n\\n⚠️ [warn] dws.gmv_daily — 字段口径变更\\n\\n新增字段血缘: dwd.orders_di.refund_amou…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'ads.gmv_report'}",
+          "ok": true,
+          "elapsed_ms": 16,
+          "detail": "'结果区' does contain 'ads.gmv_report' (expected to contain); actual='            变更影响分析 (old → new)\\n变更 3 处 · 下游波及 1 表 · error 1 / warn 1 / info 1\\n❌ [error] ads.gmv_report — 上游被移除\\n\\n上游被移除: dws.user_stats -> ads.gmv_report\\n字段来源被移除: dws.user_stats.total_amount → total_amount\\n下游波及: rpt.gmv_dashboard (L1)\\n\\n⚠️ [warn] dws.gmv_daily — 字段口径变更\\n\\n新增字段血缘: dwd.orders_di.refund_amou…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '字段口径变更'}",
+          "ok": true,
+          "elapsed_ms": 18,
+          "detail": "'结果区' does contain '字段口径变更' (expected to contain); actual='            变更影响分析 (old → new)\\n变更 3 处 · 下游波及 1 表 · error 1 / warn 1 / info 1\\n❌ [error] ads.gmv_report — 上游被移除\\n\\n上游被移除: dws.user_stats -> ads.gmv_report\\n字段来源被移除: dws.user_stats.total_amount → total_amount\\n下游波及: rpt.gmv_dashboard (L1)\\n\\n⚠️ [warn] dws.gmv_daily — 字段口径变更\\n\\n新增字段血缘: dwd.orders_di.refund_amou…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4314,
+      "healed": []
+    },
+    {
+      "case_id": "IMP4",
+      "title": "粘贴两段 SQL 直接看影响与 diff",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "click: {'target': '粘贴 SQL'}",
+          "ok": true,
+          "elapsed_ms": 83,
+          "detail": "clicked '粘贴 SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '旧 SQL', 'value': 'INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount) AS gmv FROM dwd.orders_di GROUP BY dt;'}",
+          "ok": true,
+          "elapsed_ms": 3093,
+          "detail": "filled '旧 SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '新 SQL', 'value': 'INSERT OVERWRITE TABLE dws.gmv_daily SELECT dt, SUM(amount - refund_amount) AS gmv FROM dwd.orders_di GROUP BY dt;'}",
+          "ok": true,
+          "elapsed_ms": 3584,
+          "detail": "filled '新 SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '分析粘贴的 SQL'}",
+          "ok": true,
+          "elapsed_ms": 164,
+          "detail": "clicked '分析粘贴的 SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----> <!----><!----><!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 hide-container auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: visible; min-width: min(0px, 100%);\"><!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-y20rtcex3\" class=\"prose gradio-style  svelte-26mp0t\"></div><!----></div><!----> <!----></div><!----> <!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 padded hide-container auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(0px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose  svelte-1xjkzpp\" dir=\"ltr\"><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>Fill both sides and click Analyze.</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!----></div><!----> <!----><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1213,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '字段口径变更'}",
+          "ok": true,
+          "elapsed_ms": 17,
+          "detail": "'结果区' does contain '字段口径变更' (expected to contain); actual='            变更影响分析 (old → new)\\n变更 1 处 · 下游波及 0 表 · error 0 / warn 0 / info 1\\nℹ️ [info] dws.gmv_daily — 字段口径变更\\n\\n新增字段血缘: dwd.orders_di.refund_amount → gmv\\ngmv: SUM(amount) AS gmv → SUM(amount - refund_amount) AS gmv\\n\\n\\n建议配合数据比对页对受影响表做上线前后校验。\\n\\nSQL diff\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\n--- old.sql\\n+++ new.sql\\n@@ -1…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'SQL diff'}",
+          "ok": true,
+          "elapsed_ms": 19,
+          "detail": "'结果区' does contain 'SQL diff' (expected to contain); actual='            变更影响分析 (old → new)\\n变更 1 处 · 下游波及 0 表 · error 0 / warn 0 / info 1\\nℹ️ [info] dws.gmv_daily — 字段口径变更\\n\\n新增字段血缘: dwd.orders_di.refund_amount → gmv\\ngmv: SUM(amount) AS gmv → SUM(amount - refund_amount) AS gmv\\n\\n\\n建议配合数据比对页对受影响表做上线前后校验。\\n\\nSQL diff\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\n--- old.sql\\n+++ new.sql\\n@@ -1…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'refund_amount'}",
+          "ok": true,
+          "elapsed_ms": 21,
+          "detail": "'结果区' does contain 'refund_amount' (expected to contain); actual='            变更影响分析 (old → new)\\n变更 1 处 · 下游波及 0 表 · error 0 / warn 0 / info 1\\nℹ️ [info] dws.gmv_daily — 字段口径变更\\n\\n新增字段血缘: dwd.orders_di.refund_amount → gmv\\ngmv: SUM(amount) AS gmv → SUM(amount - refund_amount) AS gmv\\n\\n\\n建议配合数据比对页对受影响表做上线前后校验。\\n\\nSQL diff\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\n--- old.sql\\n+++ new.sql\\n@@ -1…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 9835,
+      "healed": []
+    },
+    {
+      "case_id": "LIN1",
+      "title": "从 SQL 目录构建血缘图",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL 目录', 'value': 'examples/lineage_demo'}",
+          "ok": true,
+          "elapsed_ms": 705,
+          "detail": "filled 'SQL 目录'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '构建血缘图'}",
+          "ok": true,
+          "elapsed_ms": 153,
+          "detail": "clicked '构建血缘图'",
+          "screenshot": null
+        },
+        {
+          "desc": "构图结果写在侧栏 markdown,结果区无变化信号",
+          "ok": true,
+          "elapsed_ms": 2503,
+          "detail": "waited 2500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '血缘图已构建'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does contain '血缘图已构建' (expected to contain); actual='🩸 数据表全链路血缘\\n\\n跨 SQL 文件 / Hive 元数据血缘表构建全局血缘图 — 上下游链路、字段级影响分析、SLA 与基线展示。\\n\\n🏠\\n数据源\\nSQL 目录\\nSQL 方言\\n解析 SQL 文件用的方言（影响字段级血缘 AST 解析）\\nSeaTunnel 配置目录\\n从 Hive 元数据血缘表加载（需 .env 配置 HIVE_HOST）\\nHive 高级选项\\n▼\\n构建血缘图\\n\\n✅ 血缘图已构建：7 表 · 6 边 · 20 字段边 · SLA 表 0 张\\n\\n查询\\n目标表\\n从已加载表中选择或直接输入，如 zz.dwm_orders_df\\n方向\\n深度\\n↺\\n1\\n10\\n字段（可选）\\n查询血缘\\n表名搜…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '7 表'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '7 表' (expected to contain); actual='🩸 数据表全链路血缘\\n\\n跨 SQL 文件 / Hive 元数据血缘表构建全局血缘图 — 上下游链路、字段级影响分析、SLA 与基线展示。\\n\\n🏠\\n数据源\\nSQL 目录\\nSQL 方言\\n解析 SQL 文件用的方言（影响字段级血缘 AST 解析）\\nSeaTunnel 配置目录\\n从 Hive 元数据血缘表加载（需 .env 配置 HIVE_HOST）\\nHive 高级选项\\n▼\\n构建血缘图\\n\\n✅ 血缘图已构建：7 表 · 6 边 · 20 字段边 · SLA 表 0 张\\n\\n查询\\n目标表\\n从已加载表中选择或直接输入，如 zz.dwm_orders_df\\n方向\\n深度\\n↺\\n1\\n10\\n字段（可选）\\n查询血缘\\n表名搜…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4958,
+      "healed": []
+    },
+    {
+      "case_id": "LIN2",
+      "title": "查询目标表的上下游链路",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL 目录', 'value': 'examples/lineage_demo'}",
+          "ok": true,
+          "elapsed_ms": 708,
+          "detail": "filled 'SQL 目录'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '构建血缘图'}",
+          "ok": true,
+          "elapsed_ms": 166,
+          "detail": "clicked '构建血缘图'",
+          "screenshot": null
+        },
+        {
+          "desc": "构图结果写在侧栏,结果区无变化信号",
+          "ok": true,
+          "elapsed_ms": 2508,
+          "detail": "waited 2500ms",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '目标表', 'value': 'dws.gmv_daily'}",
+          "ok": true,
+          "elapsed_ms": 1082,
+          "detail": "selected 'dws.gmv_daily' in '目标表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '查询血缘'}",
+          "ok": true,
+          "elapsed_ms": 204,
+          "detail": "clicked '查询血缘'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----> <!----><!----><!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 hide-container auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: visible; min-width: min(0px, 100%);\"><!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-2foky3zsj\" class=\"prose gradio-style  svelte-26mp0t\"><p style=\"color:#9ca3af;\">No lineage graph yet</p></div><!----></div><!----> <!----></div><!----> <!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 padded hide-container auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(0px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose  svelte-1xjkzpp\" dir=\"ltr\"><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>The lineage report will appear here</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!----></div><!----> <!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block gr-accordion svelte-1plpy97 padded auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(0px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <button class=\"label-wrap svelte-e5lyqv\"><span class=\"svelte-e5lyqv\">Mermaid 源码（可复制）</span> <span class=\"icon svelte-e5lyqv\" style=\"transform: rotate(90deg);\">▼</span></button> <div data-testid=\"accordion-content\" style=\"display: none;\"><div id=\"\" class=\"column  svelte-siq5d6\" style=\"min-width: min(0px, 100%);\"><!----> <!----><!----><!----><!----><!----><!----></div><!----></div><!----><!----> <!----></div><!----> <!----><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1199,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'dwd.orders_di'}",
+          "ok": true,
+          "elapsed_ms": 11,
+          "detail": "'结果区' does contain 'dwd.orders_di' (expected to contain); actual='            血缘分析报告：dws.gmv_daily\\n血缘图\\nflowchart LR\\n    ods_orders_raw[\"ods.orders_raw\"]\\n    class ods_orders_raw layer_none\\n    ods_users_raw[\"ods.users_raw\"]\\n    class ods_users_raw layer_none\\n    dwd_orders_di[\"dwd.orders_di\"]\\n    class dwd_orders_di layer_none\\n    dws_gmv_daily[\"dws.gmv_daily\"]\\n  …'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'ads.'}",
+          "ok": true,
+          "elapsed_ms": 14,
+          "detail": "'结果区' does contain 'ads.' (expected to contain); actual='            血缘分析报告：dws.gmv_daily\\n血缘图\\nflowchart LR\\n    ods_orders_raw[\"ods.orders_raw\"]\\n    class ods_orders_raw layer_none\\n    ods_users_raw[\"ods.users_raw\"]\\n    class ods_users_raw layer_none\\n    dwd_orders_di[\"dwd.orders_di\"]\\n    class dwd_orders_di layer_none\\n    dws_gmv_daily[\"dws.gmv_daily\"]\\n  …'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 7325,
+      "healed": []
+    },
+    {
+      "case_id": "MIG1",
+      "title": "DataX JSON 迁移出 SeaTunnel 配置",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'DataX job JSON / sqoop 命令', 'value': '{\"job\":{\"setting\":{\"speed\":{\"channel\":2}},\"content\":[{\"reader\":{\"name\":\"mysqlreader\",\"parameter\":{\"username\":\"u\",\"password\":\"p\",\"column\":[\"a\",\"b\"],\"connection\":[{\"table\":[\"t1\"],\"jdbcUrl\":[\"jdbc:mysql://h:3306/db\"]}]}},\"writer\":{\"name\":\"streamwriter\",\"parameter\":{}}}]}}'}",
+          "ok": true,
+          "elapsed_ms": 8417,
+          "detail": "filled 'DataX job JSON / sqoop 命令'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '迁移'}",
+          "ok": true,
+          "elapsed_ms": 177,
+          "detail": "clicked '迁移'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----> <!----><!----><!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(160px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <label data-testid=\"block-label\" dir=\"ltr\" class=\"svelte-19djge9\"><span class=\"svelte-19djge9\"><svg width=\"100%\" height=\"100%\" viewBox=\"0 0 32 32\"><path fill=\"currentColor\" d=\"m31 16l-7 7l-1.41-1.41L28.17 16l-5.58-5.59L24 9l7 7zM1 16l7-7l1.41 1.41L3.83 16l5.58 5.59L8 23l-7-7zm11.42 9.484L17.64 6l1.932.517L14.352 26z\"></path></svg><!----></span> SeaTunnel 配置</label><!----> <div aria-label=\"Empty value\" class=\"empty svelte-v95lt3 large unpadded_box\"><div class=\"icon svelte-v95lt3\"><svg width=\"100%\" height=\"100%\" viewBox=\"0 0 32 32\"><path fill=\"currentColor\" d=\"m31 16l-7 7l-1.41-1.41L28.17 16l-5.58-5.59L24 9l7 7zM1 16l7-7l1.41 1.41L3.83 16l5.58 5.59L8 23l-7-7zm11.42 9.484L17.64 6l1.932.517L14.352 26z\"></path></svg><!----></div></div><!----><!----> <!----></div><!----> <!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 padded hide-container auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(0px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose  svelte-1xjkzpp\" dir=\"ltr\"><!----> <span class=\"md svelte-1hf8a14 prose\"></span><!----></div><!----></div> <!----><!----><!----> <!----></div><!----> <!----><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1317,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'select a', 'b from t1': None}",
+          "ok": true,
+          "elapsed_ms": 28,
+          "detail": "'结果区' does contain 'select a' (expected to contain); actual='     SeaTunnel 配置        ›9912345678910111213141516171819env {  job.mode = \"BATCH\"  parallelism = 2}source {  Jdbc {    url = \"jdbc:mysql://h:3306/db\"    driver = \"com.mysql.cj.jdbc.Driver\"    user = \"u\"    password = \"p\"    query = \"select a, b from t1\"  }}sink {  Console {  }}      DataX/Sqoop → S…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'Console'}",
+          "ok": true,
+          "elapsed_ms": 24,
+          "detail": "'结果区' does contain 'Console' (expected to contain); actual='     SeaTunnel 配置        ›9912345678910111213141516171819env {  job.mode = \"BATCH\"  parallelism = 2}source {  Jdbc {    url = \"jdbc:mysql://h:3306/db\"    driver = \"com.mysql.cj.jdbc.Driver\"    user = \"u\"    password = \"p\"    query = \"select a, b from t1\"  }}sink {  Console {  }}      DataX/Sqoop → S…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'parallelism = 2'}",
+          "ok": true,
+          "elapsed_ms": 25,
+          "detail": "'结果区' does contain 'parallelism = 2' (expected to contain); actual='     SeaTunnel 配置        ›9912345678910111213141516171819env {  job.mode = \"BATCH\"  parallelism = 2}source {  Jdbc {    url = \"jdbc:mysql://h:3306/db\"    driver = \"com.mysql.cj.jdbc.Driver\"    user = \"u\"    password = \"p\"    query = \"select a, b from t1\"  }}sink {  Console {  }}      DataX/Sqoop → S…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 11035,
+      "healed": []
+    },
+    {
+      "case_id": "MIG2",
+      "title": "sqoop import 迁移为 Jdbc→HdfsFile",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'DataX job JSON / sqoop 命令', 'value': 'sqoop import --connect jdbc:mysql://h:3306/db --username u --password p --table orders --target-dir /tmp/out -m 3'}",
+          "ok": true,
+          "elapsed_ms": 3578,
+          "detail": "filled 'DataX job JSON / sqoop 命令'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '迁移'}",
+          "ok": true,
+          "elapsed_ms": 147,
+          "detail": "clicked '迁移'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----> <!----><!----><!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(160px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <label data-testid=\"block-label\" dir=\"ltr\" class=\"svelte-19djge9\"><span class=\"svelte-19djge9\"><svg width=\"100%\" height=\"100%\" viewBox=\"0 0 32 32\"><path fill=\"currentColor\" d=\"m31 16l-7 7l-1.41-1.41L28.17 16l-5.58-5.59L24 9l7 7zM1 16l7-7l1.41 1.41L3.83 16l5.58 5.59L8 23l-7-7zm11.42 9.484L17.64 6l1.932.517L14.352 26z\"></path></svg><!----></span> SeaTunnel 配置</label><!----> <div aria-label=\"Empty value\" class=\"empty svelte-v95lt3 large unpadded_box\"><div class=\"icon svelte-v95lt3\"><svg width=\"100%\" height=\"100%\" viewBox=\"0 0 32 32\"><path fill=\"currentColor\" d=\"m31 16l-7 7l-1.41-1.41L28.17 16l-5.58-5.59L24 9l7 7zM1 16l7-7l1.41 1.41L3.83 16l5.58 5.59L8 23l-7-7zm11.42 9.484L17.64 6l1.932.517L14.352 26z\"></path></svg><!----></div></div><!----><!----> <!----></div><!----> <!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 padded hide-container auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(0px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose  svelte-1xjkzpp\" dir=\"ltr\"><!----> <span class=\"md svelte-1hf8a14 prose\"></span><!----></div><!----></div> <!----><!----><!----> <!----></div><!----> <!----><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1227,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'HdfsFile'}",
+          "ok": true,
+          "elapsed_ms": 24,
+          "detail": "'结果区' does contain 'HdfsFile' (expected to contain); actual='     SeaTunnel 配置        ›9912345678910111213141516171819202122env {  job.mode = \"BATCH\"  parallelism = 3}source {  Jdbc {    url = \"jdbc:mysql://h:3306/db\"    driver = \"com.mysql.cj.jdbc.Driver\"    user = \"u\"    password = \"p\"    query = \"select * from orders\"  }}sink {  HdfsFile {    path = \"/tmp/…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'select * from orders'}",
+          "ok": true,
+          "elapsed_ms": 21,
+          "detail": "'结果区' does contain 'select * from orders' (expected to contain); actual='     SeaTunnel 配置        ›9912345678910111213141516171819202122env {  job.mode = \"BATCH\"  parallelism = 3}source {  Jdbc {    url = \"jdbc:mysql://h:3306/db\"    driver = \"com.mysql.cj.jdbc.Driver\"    user = \"u\"    password = \"p\"    query = \"select * from orders\"  }}sink {  HdfsFile {    path = \"/tmp/…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 6083,
+      "healed": []
+    },
+    {
+      "case_id": "W1",
+      "title": "中文界面文案齐全",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "runner 已切中文,等 i18n 重渲染完成",
+          "ok": true,
+          "elapsed_ms": 306,
+          "detail": "waited 300ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "visible: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 1453,
+          "detail": "'行数对比' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '状态', 'side': 'A', 'text': '未连接'}",
+          "ok": true,
+          "elapsed_ms": 9,
+          "detail": "'状态' does contain '未连接' (expected to contain); actual='未连接'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 3161,
+      "healed": []
+    },
+    {
+      "case_id": "X2",
+      "title": "连接后未选表被拦截",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1989,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 758,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 246,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 270,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 2016,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 710,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 236,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 270,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 223,
+          "detail": "clicked '行数对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-mz6nn7ev2\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1262,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '请选择两侧的表'}",
+          "ok": true,
+          "elapsed_ms": 11,
+          "detail": "'结果区' does contain '请选择两侧的表' (expected to contain); actual='     请选择两侧的表 '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 9452,
+      "healed": []
+    },
+    {
+      "case_id": "X3",
+      "title": "刷新后全流程正常 (无残留状态)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "goto: {'target': '/datacompare'}",
+          "ok": true,
+          "elapsed_ms": 783,
+          "detail": "navigated",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2689,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 737,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 243,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 254,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 2112,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 740,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 248,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 253,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1148,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1143,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 244,
+          "detail": "clicked '行数对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-6h5brw4ah\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1217,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '10'}",
+          "ok": true,
+          "elapsed_ms": 9,
+          "detail": "'结果区' does contain '10' (expected to contain); actual='     行数对比行数 (A): 10 \\xa0 行数 (B): 9 \\xa0 差异: +1 (+10.0%) '",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '9'}",
+          "ok": true,
+          "elapsed_ms": 11,
+          "detail": "'结果区' does contain '9' (expected to contain); actual='     行数对比行数 (A): 10 \\xa0 行数 (B): 9 \\xa0 差异: +1 (+10.0%) '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 13342,
+      "healed": []
+    },
+    {
+      "case_id": "X4",
+      "title": "SQLite 分支隐藏字段回归 (浏览器提交 None)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2044,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 741,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 253,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 246,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "hidden: {'target': '主机', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1482,
+          "detail": "'主机' visible=False, expected hidden",
+          "screenshot": null
+        },
+        {
+          "desc": "hidden: {'target': '端口', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1503,
+          "detail": "'端口' visible=False, expected hidden",
+          "screenshot": null
+        },
+        {
+          "desc": "status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 8,
+          "detail": "status[A] expected ✅, actual '✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '状态', 'side': 'A', 'text': '10'}",
+          "ok": true,
+          "elapsed_ms": 9,
+          "detail": "'状态' does contain '10' (expected to contain); actual='✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 7786,
+      "healed": []
+    },
+    {
+      "case_id": "F1",
+      "title": "字段画像呈现空值率差异",
+      "verdict": "SKIP",
+      "steps": [],
+      "asserts": [],
+      "reason": "--no-llm 模式跳过含 ai 步骤/断言的用例",
+      "tokens": 0,
+      "elapsed_ms": 0,
+      "healed": []
+    },
+    {
+      "case_id": "G2",
+      "title": "校验和全匹配 (same 对)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1971,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 726,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 241,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 266,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 2109,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 720,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 245,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 261,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_same_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1101,
+          "detail": "selected 'dc_test_same_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_same_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1078,
+          "detail": "selected 'dc_test_same_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "open_accordion: {'target': '校验和'}",
+          "ok": true,
+          "elapsed_ms": 339,
+          "detail": "opened '校验和'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '校验和', 'value': 'name,score'}",
+          "ok": true,
+          "elapsed_ms": 401,
+          "detail": "filled '校验和'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '校验和对比'}",
+          "ok": true,
+          "elapsed_ms": 234,
+          "detail": "clicked '校验和对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-rx2tlrx2k\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1267,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '匹配'}",
+          "ok": true,
+          "elapsed_ms": 8,
+          "detail": "'结果区' does contain '匹配' (expected to contain); actual='     校验和比对 — ✅ 所有分段均匹配分段Checksum AChecksum BStatus03535匹配 '",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '结果区', 'text': '不匹配'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "'结果区' does not contain '不匹配' (expected to NOT contain); actual='     校验和比对 — ✅ 所有分段均匹配分段Checksum AChecksum BStatus03535匹配 '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 12425,
+      "healed": []
+    },
+    {
+      "case_id": "SCR1",
+      "title": "血缘页有滚动条",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 505,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.st-lin-page'}",
+          "ok": true,
+          "elapsed_ms": 647,
+          "detail": "container '.st-lin-page' at 500px viewport: overflowY=auto, scrollHeight=1943, clientHeight=500, scrolledTo=1443, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2718,
+      "healed": []
+    },
+    {
+      "case_id": "SCR2",
+      "title": "方言翻译页有滚动条",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 506,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.st-trp-page'}",
+          "ok": true,
+          "elapsed_ms": 653,
+          "detail": "container '.st-trp-page' at 500px viewport: overflowY=auto, scrollHeight=665, clientHeight=500, scrolledTo=165, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2277,
+      "healed": []
+    },
+    {
+      "case_id": "SCR3",
+      "title": "变更影响页有滚动条",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 505,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.st-imp-page'}",
+          "ok": true,
+          "elapsed_ms": 651,
+          "detail": "container '.st-imp-page' at 500px viewport: overflowY=auto, scrollHeight=571, clientHeight=500, scrolledTo=71, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2236,
+      "healed": []
+    },
+    {
+      "case_id": "SCR4",
+      "title": "数据比对页侧栏可滚动",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 504,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.st-dc-sidebar'}",
+          "ok": true,
+          "elapsed_ms": 647,
+          "detail": "container '.st-dc-sidebar' at 500px viewport: overflowY=auto, scrollHeight=1916, clientHeight=500, scrolledTo=1416, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2350,
+      "healed": []
+    },
+    {
+      "case_id": "SCR5",
+      "title": "SQL Review 页整体可滚动",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 512,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.gradio-container'}",
+          "ok": true,
+          "elapsed_ms": 638,
+          "detail": "container '.gradio-container' at 500px viewport: overflowY=auto, scrollHeight=835, clientHeight=500, scrolledTo=335, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2466,
+      "healed": []
+    },
+    {
+      "case_id": "SCR6",
+      "title": "Text2SQL 页侧栏可滚动",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 510,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.st-sidebar'}",
+          "ok": true,
+          "elapsed_ms": 646,
+          "detail": "container '.st-sidebar' at 500px viewport: overflowY=auto, scrollHeight=896, clientHeight=500, scrolledTo=396, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2738,
+      "healed": []
+    },
+    {
+      "case_id": "SCR7",
+      "title": "配置迁移页有滚动条",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 506,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.st-mig-page'}",
+          "ok": true,
+          "elapsed_ms": 643,
+          "detail": "container '.st-mig-page' at 500px viewport: overflowY=auto, scrollHeight=566, clientHeight=500, scrolledTo=66, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2167,
+      "healed": []
+    },
+    {
+      "case_id": "SCR8",
+      "title": "hub landing page scrolls to the last card",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "pure-assertion case, wait for hydration only",
+          "ok": true,
+          "elapsed_ms": 509,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.gradio-container'}",
+          "ok": true,
+          "elapsed_ms": 677,
+          "detail": "container '.gradio-container' at 500px viewport: overflowY=auto, scrollHeight=1101, clientHeight=500, scrolledTo=601, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2778,
+      "healed": []
+    },
+    {
+      "case_id": "SET1",
+      "title": "设置页加载并展示当前生效配置",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 511,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "visible: {'target': '保存设置'}",
+          "ok": true,
+          "elapsed_ms": 1471,
+          "detail": "'保存设置' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '测试连接'}",
+          "ok": true,
+          "elapsed_ms": 1428,
+          "detail": "'测试连接' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '恢复 env'}",
+          "ok": true,
+          "elapsed_ms": 1417,
+          "detail": "'恢复 env' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '当前生效配置'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '当前生效配置' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '页面', 'text': 'Traceback'}",
+          "ok": true,
+          "elapsed_ms": 6,
+          "detail": "'页面' does not contain 'Traceback' (expected to NOT contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 6246,
+      "healed": []
+    },
+    {
+      "case_id": "SET2",
+      "title": "非法 Base URL 保存被拦截并给出明确错误",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'Base URL', 'value': 'notaurl'}",
+          "ok": true,
+          "elapsed_ms": 279,
+          "detail": "filled 'Base URL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '保存设置'}",
+          "ok": true,
+          "elapsed_ms": 203,
+          "detail": "clicked '保存设置'",
+          "screenshot": null
+        },
+        {
+          "desc": "保存回调为本地校验,无网络请求,短等待即可",
+          "ok": true,
+          "elapsed_ms": 508,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'Base URL 必须以'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain 'Base URL 必须以' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n❌ Base URL…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 12200,
+      "healed": []
+    },
+    {
+      "case_id": "SET3",
+      "title": "保存模型名覆盖并即时反映在当前配置",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': '模型名称', 'value': 'uitest-model-x'}",
+          "ok": true,
+          "elapsed_ms": 509,
+          "detail": "filled '模型名称'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '保存设置'}",
+          "ok": true,
+          "elapsed_ms": 198,
+          "detail": "clicked '保存设置'",
+          "screenshot": null
+        },
+        {
+          "desc": "保存为本地文件写入,短等待即可",
+          "ok": true,
+          "elapsed_ms": 511,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已保存'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does contain '已保存' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · 界面设置(覆盖 .env)\\n\\n提供商: openai · 模型名称: uitest-model-x\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已保存,立即…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'uitest-model-x'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain 'uitest-model-x' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · 界面设置(覆盖 .env)\\n\\n提供商: openai · 模型名称: uitest-model-x\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已保存,立即…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '界面设置'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '界面设置' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · 界面设置(覆盖 .env)\\n\\n提供商: openai · 模型名称: uitest-model-x\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已保存,立即…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 12434,
+      "healed": []
+    },
+    {
+      "case_id": "SET4",
+      "title": "恢复 .env 清除界面覆盖值",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "click: {'target': '恢复 env'}",
+          "ok": true,
+          "elapsed_ms": 184,
+          "detail": "clicked '恢复 env'",
+          "screenshot": null
+        },
+        {
+          "desc": "恢复为本地文件删除,短等待即可",
+          "ok": true,
+          "elapsed_ms": 513,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已恢复'}",
+          "ok": true,
+          "elapsed_ms": 6,
+          "detail": "'页面' does contain '已恢复' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已恢复,Web …'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '页面', 'text': 'uitest-model-x'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does not contain 'uitest-model-x' (expected to NOT contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已恢复,Web …'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 11894,
+      "healed": []
+    },
+    {
+      "case_id": "SET6",
+      "title": "配置档案存档并一键启用",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '配置档案'}",
+          "ok": true,
+          "elapsed_ms": 354,
+          "detail": "opened '配置档案'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '档案名', 'value': 't1'}",
+          "ok": true,
+          "elapsed_ms": 125,
+          "detail": "filled '档案名'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '模型名称', 'value': 'uitest-prof-x'}",
+          "ok": true,
+          "elapsed_ms": 477,
+          "detail": "filled '模型名称'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '存为档案'}",
+          "ok": true,
+          "elapsed_ms": 253,
+          "detail": "clicked '存为档案'",
+          "screenshot": null
+        },
+        {
+          "desc": "本地文件写入,短等待即可",
+          "ok": true,
+          "elapsed_ms": 411,
+          "detail": "waited 400ms",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择档案', 'value': 't1'}",
+          "ok": true,
+          "elapsed_ms": 760,
+          "detail": "selected 't1' in '选择档案'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '启用档案'}",
+          "ok": true,
+          "elapsed_ms": 196,
+          "detail": "clicked '启用档案'",
+          "screenshot": null
+        },
+        {
+          "desc": "本地文件写入,短等待即可",
+          "ok": true,
+          "elapsed_ms": 405,
+          "detail": "waited 400ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已启用档案'}",
+          "ok": true,
+          "elapsed_ms": 6,
+          "detail": "'页面' does contain '已启用档案' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · 界面设置(覆盖 .env)\\n\\n提供商: openai · 模型名称: uitest-prof-x\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n\\nSave the current form as a named p…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'uitest-prof-x'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does contain 'uitest-prof-x' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · 界面设置(覆盖 .env)\\n\\n提供商: openai · 模型名称: uitest-prof-x\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n\\nSave the current form as a named p…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '界面设置'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '界面设置' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · 界面设置(覆盖 .env)\\n\\n提供商: openai · 模型名称: uitest-prof-x\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n\\nSave the current form as a named p…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 24205,
+      "healed": []
+    },
+    {
+      "case_id": "SET7",
+      "title": "删除档案(SET6 清理其一)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '配置档案'}",
+          "ok": true,
+          "elapsed_ms": 339,
+          "detail": "opened '配置档案'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择档案', 'value': 't1'}",
+          "ok": true,
+          "elapsed_ms": 706,
+          "detail": "selected 't1' in '选择档案'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '删除档案'}",
+          "ok": true,
+          "elapsed_ms": 174,
+          "detail": "clicked '删除档案'",
+          "screenshot": null
+        },
+        {
+          "desc": "本地文件写入,短等待即可",
+          "ok": true,
+          "elapsed_ms": 406,
+          "detail": "waited 400ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已删除档案'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '已删除档案' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · 界面设置(覆盖 .env)\\n\\n提供商: openai · 模型名称: uitest-prof-x\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n\\nSave the current form as a named p…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 12826,
+      "healed": []
+    },
+    {
+      "case_id": "SET8",
+      "title": "恢复 .env 清除档案启用的覆盖(SET6 清理其二)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "click: {'target': '恢复 env'}",
+          "ok": true,
+          "elapsed_ms": 194,
+          "detail": "clicked '恢复 env'",
+          "screenshot": null
+        },
+        {
+          "desc": "本地文件写入,短等待即可",
+          "ok": true,
+          "elapsed_ms": 409,
+          "detail": "waited 400ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已恢复'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '已恢复' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已恢复,Web …'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '页面', 'text': 'uitest-prof-x'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does not contain 'uitest-prof-x' (expected to NOT contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已恢复,Web …'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 12226,
+      "healed": []
+    },
+    {
+      "case_id": "SET9",
+      "title": "设置页保存数据库连接(与数据对比页共用预设)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '数据库连接'}",
+          "ok": true,
+          "elapsed_ms": 351,
+          "detail": "opened '数据库连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '连接名称', 'value': 't-conn'}",
+          "ok": true,
+          "elapsed_ms": 263,
+          "detail": "filled '连接名称'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '连接主机', 'value': '127.0.0.1'}",
+          "ok": true,
+          "elapsed_ms": 352,
+          "detail": "filled '连接主机'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '端口', 'value': '3306'}",
+          "ok": true,
+          "elapsed_ms": 198,
+          "detail": "filled '端口'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'demo'}",
+          "ok": true,
+          "elapsed_ms": 201,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '连接类型', 'value': 'MySQL'}",
+          "ok": true,
+          "elapsed_ms": 829,
+          "detail": "selected 'MySQL' in '连接类型'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '保存连接'}",
+          "ok": true,
+          "elapsed_ms": 205,
+          "detail": "clicked '保存连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "本地文件写入,短等待即可",
+          "ok": true,
+          "elapsed_ms": 408,
+          "detail": "waited 400ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已保存连接'}",
+          "ok": true,
+          "elapsed_ms": 6,
+          "detail": "'页面' does contain '已保存连接' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\n\\nShared with the Data Compar…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 't-conn'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain 't-conn' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\n\\nShared with the Data Compar…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '127.0.0.1:3306'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does contain '127.0.0.1:3306' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\n\\nShared with the Data Compar…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 14018,
+      "healed": []
+    },
+    {
+      "case_id": "SET10",
+      "title": "删除数据库连接(SET9 清理)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '数据库连接'}",
+          "ok": true,
+          "elapsed_ms": 368,
+          "detail": "opened '数据库连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择连接', 'value': 't-conn'}",
+          "ok": true,
+          "elapsed_ms": 843,
+          "detail": "selected 't-conn' in '选择连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '删除连接'}",
+          "ok": true,
+          "elapsed_ms": 199,
+          "detail": "clicked '删除连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "本地文件写入,短等待即可",
+          "ok": true,
+          "elapsed_ms": 413,
+          "detail": "waited 400ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已删除连接'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '已删除连接' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\n\\nShared with the Data Compar…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '暂无已保存的连接'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does contain '暂无已保存的连接' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\n\\nShared with the Data Compar…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 13034,
+      "healed": []
+    },
+    {
+      "case_id": "SET5",
+      "title": "设置页有滚动条",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "表单较短,展开高级设置撑高内容后再压缩视口断言",
+          "ok": true,
+          "elapsed_ms": 339,
+          "detail": "opened '高级设置'",
+          "screenshot": null
+        },
+        {
+          "desc": "等手风琴展开动画结束",
+          "ok": true,
+          "elapsed_ms": 503,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.st-set-page'}",
+          "ok": true,
+          "elapsed_ms": 644,
+          "detail": "container '.st-set-page' at 500px viewport: overflowY=auto, scrollHeight=1154, clientHeight=500, scrolledTo=654, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2631,
+      "healed": []
+    },
+    {
+      "case_id": "B3",
+      "title": "下拉框内模糊搜索 (子串过滤)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2050,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 759,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 274,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 343,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "dropdown_type: {'of': '选择表', 'text': 'orders', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 757,
+          "detail": "typed 'orders' in dropdown",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "options_are: {'of': '选择表', 'side': 'A', 'keep_filter': True, 'values': ['dc_test_orders_a', 'dc_test_orders_b']}",
+          "ok": true,
+          "elapsed_ms": 681,
+          "detail": "'选择表' options: expected ['dc_test_orders_a', 'dc_test_orders_b'], actual ['dc_test_orders_a', 'dc_test_orders_b']",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 6351,
+      "healed": []
+    },
+    {
+      "case_id": "B4",
+      "title": "完整表名精确匹配并选中",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2188,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 740,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 235,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 262,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1185,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "value_is: {'of': '选择表', 'side': 'A', 'value': 'dc_test_orders_a'}",
+          "ok": true,
+          "elapsed_ms": 1479,
+          "detail": "'选择表' value: expected to equal 'dc_test_orders_a', actual 'dc_test_orders_a'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 7554,
+      "healed": []
+    },
+    {
+      "case_id": "B5",
+      "title": "清空搜索恢复全部选项且选中值保留",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2041,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 739,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 256,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 257,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1176,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "dropdown_type: {'of': '选择表', 'text': '', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 477,
+          "detail": "typed '' in dropdown",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "options_count: {'of': '选择表', 'side': 'A', 'n': 10}",
+          "ok": true,
+          "elapsed_ms": 790,
+          "detail": "'选择表' options: expected 10, actual 10: ['dc_test_metrics_a', 'dc_test_metrics_b', 'dc_test_orders_a', 'dc_test_orders_b', 'dc_test_part_a', 'dc_test_part_b', 'dc_test_same_a', 'dc_test_same_b', 'dc_test_schema_a', 'dc_test_schema_b']",
+          "screenshot": null
+        },
+        {
+          "desc": "value_is: {'of': '选择表', 'side': 'A', 'value': 'dc_test_orders_a'}",
+          "ok": true,
+          "elapsed_ms": 1470,
+          "detail": "'选择表' value: expected to equal 'dc_test_orders_a', actual 'dc_test_orders_a'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 8729,
+      "healed": []
+    },
+    {
+      "case_id": "SR1",
+      "title": "空 SQL 点审查给出提示",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "click: {'target': '开始审查'}",
+          "ok": true,
+          "elapsed_ms": 205,
+          "detail": "clicked '开始审查'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>审查报告将显示在这里</em></p>\\n</span><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1217,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '请先输入 SQL'}",
+          "ok": true,
+          "elapsed_ms": 30,
+          "detail": "'结果区' does contain '请先输入 SQL' (expected to contain); actual='    请先输入 SQL。\\n'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2697,
+      "healed": []
+    },
+    {
+      "case_id": "SR2",
+      "title": "SELECT * 静态审查出报告",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': \"SELECT * FROM ods.user_log WHERE dt = '2024-06-01'\"}",
+          "ok": true,
+          "elapsed_ms": 1622,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始审查'}",
+          "ok": true,
+          "elapsed_ms": 186,
+          "detail": "clicked '开始审查'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>审查报告将显示在这里</em></p>\\n</span><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1236,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'SELECT *'}",
+          "ok": true,
+          "elapsed_ms": 22,
+          "detail": "'结果区' does contain 'SELECT *' (expected to contain); actual='    CR 报告\\n🔴 严重问题（必须修复）\\n无\\n🟡 潜在风险（建议修复）\\n\\n\\n\\n序号\\n问题描述\\n代码位置\\n风险说明\\n优化建议\\n\\n\\n\\n1\\n使用 SELECT * 读取全部字段\\n行 1\\n不必要的大表扫描 / 列裁剪失效\\n只 SELECT 需要的字段\\n\\n\\n🟢 优化建议（可选）\\n无\\n🔗 表级血缘\\n\\n来源表：ods.user_log\\n目标表：无（仅查询）\\n列级血缘：\\n\\n← *\\n\\n\\n\\n\\n\\n📊 检查统计\\n\\n检查项总数：17\\n通过：16\\n问题：0\\n风险：1\\n\\n💡 总体评价\\n代码无严重问题，但存在 1 个潜在风险，建议按优化建议修复后再上线。\\n'",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '下载报告'}",
+          "ok": true,
+          "elapsed_ms": 1433,
+          "detail": "'下载报告' visible=True, expected visible",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 5793,
+      "healed": []
+    },
+    {
+      "case_id": "SR3",
+      "title": "分区列套函数被标记 (partition_func_on_col)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': \"SELECT id FROM ods.user_log WHERE substr(dt,1,7) = '2024-06'\"}",
+          "ok": true,
+          "elapsed_ms": 1929,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始审查'}",
+          "ok": true,
+          "elapsed_ms": 166,
+          "detail": "clicked '开始审查'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>审查报告将显示在这里</em></p>\\n</span><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1209,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'SUBSTR'}",
+          "ok": true,
+          "elapsed_ms": 24,
+          "detail": "'结果区' does contain 'SUBSTR' (expected to contain); actual=\"    CR 报告\\n🔴 严重问题（必须修复）\\n无\\n🟡 潜在风险（建议修复）\\n\\n\\n\\n序号\\n问题描述\\n代码位置\\n风险说明\\n优化建议\\n\\n\\n\\n1\\n对分区列 dt 使用函数 SUBSTR(...) 过滤\\n行 1\\n分区裁剪失效，全表扫描\\n改为对常量侧计算的范围条件，如 dt >= '...' AND dt < '...'\\n\\n\\n🟢 优化建议（可选）\\n无\\n🔗 表级血缘\\n\\n来源表：ods.user_log\\n目标表：无（仅查询）\\n列级血缘：\\nid ← id\\n\\n\\n\\n📊 检查统计\\n\\n检查项总数：17\\n通过：16\\n问题：0\\n风险：1\\n\\n💡 总体评价\\n代码无严重问题，但存在 1 个潜在风险，建议按优化建议修复后再上线。\\n\"",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '分区'}",
+          "ok": true,
+          "elapsed_ms": 19,
+          "detail": "'结果区' does contain '分区' (expected to contain); actual=\"    CR 报告\\n🔴 严重问题（必须修复）\\n无\\n🟡 潜在风险（建议修复）\\n\\n\\n\\n序号\\n问题描述\\n代码位置\\n风险说明\\n优化建议\\n\\n\\n\\n1\\n对分区列 dt 使用函数 SUBSTR(...) 过滤\\n行 1\\n分区裁剪失效，全表扫描\\n改为对常量侧计算的范围条件，如 dt >= '...' AND dt < '...'\\n\\n\\n🟢 优化建议（可选）\\n无\\n🔗 表级血缘\\n\\n来源表：ods.user_log\\n目标表：无（仅查询）\\n列级血缘：\\nid ← id\\n\\n\\n\\n📊 检查统计\\n\\n检查项总数：17\\n通过：16\\n问题：0\\n风险：1\\n\\n💡 总体评价\\n代码无严重问题，但存在 1 个潜在风险，建议按优化建议修复后再上线。\\n\"",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4568,
+      "healed": []
+    },
+    {
+      "case_id": "TRP1",
+      "title": "单条 hive→doris 翻译",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select: {'of': '源方言', 'value': 'hive'}",
+          "ok": true,
+          "elapsed_ms": 800,
+          "detail": "selected 'hive' in '源方言'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '目标方言', 'value': 'doris'}",
+          "ok": true,
+          "elapsed_ms": 802,
+          "detail": "selected 'doris' in '目标方言'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'SQL 输入', 'value': \"SELECT get_json_object(p,'$.a') AS a FROM t\"}",
+          "ok": true,
+          "elapsed_ms": 1403,
+          "detail": "filled 'SQL 输入'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '翻译'}",
+          "ok": true,
+          "elapsed_ms": 171,
+          "detail": "clicked '翻译'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----> <!----><!----><!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(160px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <label data-testid=\"block-label\" dir=\"ltr\" class=\"svelte-19djge9\"><span class=\"svelte-19djge9\"><svg width=\"100%\" height=\"100%\" viewBox=\"0 0 32 32\"><path fill=\"currentColor\" d=\"m31 16l-7 7l-1.41-1.41L28.17 16l-5.58-5.59L24 9l7 7zM1 16l7-7l1.41 1.41L3.83 16l5.58 5.59L8 23l-7-7zm11.42 9.484L17.64 6l1.932.517L14.352 26z\"></path></svg><!----></span> 翻译后 SQL</label><!----> <div aria-label=\"Empty value\" class=\"empty svelte-v95lt3 large unpadded_box\"><div class=\"icon svelte-v95lt3\"><svg width=\"100%\" height=\"100%\" viewBox=\"0 0 32 32\"><path fill=\"currentColor\" d=\"m31 16l-7 7l-1.41-1.41L28.17 16l-5.58-5.59L24 9l7 7zM1 16l7-7l1.41 1.41L3.83 16l5.58 5.59L8 23l-7-7zm11.42 9.484L17.64 6l1.932.517L14.352 26z\"></path></svg><!----></div></div><!----><!----> <!----></div><!----> <!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 padded hide-container auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(0px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose  svelte-1xjkzpp\" dir=\"ltr\"><!----> <span class=\"md svelte-1hf8a14 prose\"></span><!----></div><!----></div> <!----><!----><!----> <!----></div><!----> <!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block gr-accordion svelte-1plpy97 padded auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(0px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <button class=\"label-wrap svelte-e5lyqv\"><span class=\"svelte-e5lyqv\">LLM 建议（可选，llm-generated）</span> <span class=\"icon svelte-e5lyqv\" style=\"transform: rotate(90deg);\">▼</span></button> <div data-testid=\"accordion-content\" style=\"display: none;\"><div id=\"\" class=\"column  svelte-siq5d6\" style=\"min-width: min(0px, 100%);\"><!----> <!----><!----><!----><!----><!----><!----><!----><!----></div><!----></div><!----><!----> <!----></div><!----> <!----><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1318,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'JSON_EXTRACT'}",
+          "ok": true,
+          "elapsed_ms": 15,
+          "detail": "'结果区' does contain 'JSON_EXTRACT' (expected to contain); actual=\"     翻译后 SQL        ›9123SELECT  JSON_EXTRACT(p, '$.a') AS aFROM t;      SQL 方言翻译 (hive → doris)\\n语句 1 (行 1)\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\nSELECT\\n  JSON_EXTRACT(p, '$.a') AS a\\nFROM t\\n\\n未发现不兼容点 — 可全自动迁移。\\n语句 1 · 全自动 1 · 需人工 0 · 失败 0\\n\\n机器翻译结果，上线前需人工复核；建议配合数据比对页验证结果等价。\\n\\n      LLM 建议（可选，llm-generated） ▼    \"",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '全自动 1'}",
+          "ok": true,
+          "elapsed_ms": 18,
+          "detail": "'结果区' does contain '全自动 1' (expected to contain); actual=\"     翻译后 SQL        ›9123SELECT  JSON_EXTRACT(p, '$.a') AS aFROM t;      SQL 方言翻译 (hive → doris)\\n语句 1 (行 1)\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\nSELECT\\n  JSON_EXTRACT(p, '$.a') AS a\\nFROM t\\n\\n未发现不兼容点 — 可全自动迁移。\\n语句 1 · 全自动 1 · 需人工 0 · 失败 0\\n\\n机器翻译结果，上线前需人工复核；建议配合数据比对页验证结果等价。\\n\\n      LLM 建议（可选，llm-generated） ▼    \"",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 5640,
+      "healed": []
+    },
+    {
+      "case_id": "TRP2",
+      "title": "未知 UDF 进入不兼容清单",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select: {'of': '源方言', 'value': 'hive'}",
+          "ok": true,
+          "elapsed_ms": 797,
+          "detail": "selected 'hive' in '源方言'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '目标方言', 'value': 'doris'}",
+          "ok": true,
+          "elapsed_ms": 817,
+          "detail": "selected 'doris' in '目标方言'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'SQL 输入', 'value': 'SELECT my_udf(a) FROM t'}",
+          "ok": true,
+          "elapsed_ms": 791,
+          "detail": "filled 'SQL 输入'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '翻译'}",
+          "ok": true,
+          "elapsed_ms": 198,
+          "detail": "clicked '翻译'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----> <!----><!----><!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(160px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <label data-testid=\"block-label\" dir=\"ltr\" class=\"svelte-19djge9\"><span class=\"svelte-19djge9\"><svg width=\"100%\" height=\"100%\" viewBox=\"0 0 32 32\"><path fill=\"currentColor\" d=\"m31 16l-7 7l-1.41-1.41L28.17 16l-5.58-5.59L24 9l7 7zM1 16l7-7l1.41 1.41L3.83 16l5.58 5.59L8 23l-7-7zm11.42 9.484L17.64 6l1.932.517L14.352 26z\"></path></svg><!----></span> 翻译后 SQL</label><!----> <div aria-label=\"Empty value\" class=\"empty svelte-v95lt3 large unpadded_box\"><div class=\"icon svelte-v95lt3\"><svg width=\"100%\" height=\"100%\" viewBox=\"0 0 32 32\"><path fill=\"currentColor\" d=\"m31 16l-7 7l-1.41-1.41L28.17 16l-5.58-5.59L24 9l7 7zM1 16l7-7l1.41 1.41L3.83 16l5.58 5.59L8 23l-7-7zm11.42 9.484L17.64 6l1.932.517L14.352 26z\"></path></svg><!----></div></div><!----><!----> <!----></div><!----> <!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block  svelte-1plpy97 padded hide-container auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(0px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose  svelte-1xjkzpp\" dir=\"ltr\"><!----> <span class=\"md svelte-1hf8a14 prose\"></span><!----></div><!----></div> <!----><!----><!----> <!----></div><!----> <!----><!----><!----><!----><!----><!----><div id=\"\" class=\"block gr-accordion svelte-1plpy97 padded auto-margin\" dir=\"ltr\" style=\"--start-top: 0px; --start-left: 0px; --start-width: 0px; --start-height: 0px; border-style: solid; overflow: auto; min-width: min(0px, 100%);\"><!----><!----><div data-testid=\"status-tracker\" class=\"wrap default full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <button class=\"label-wrap svelte-e5lyqv\"><span class=\"svelte-e5lyqv\">LLM 建议（可选，llm-generated）</span> <span class=\"icon svelte-e5lyqv\" style=\"transform: rotate(90deg);\">▼</span></button> <div data-testid=\"accordion-content\" style=\"display: none;\"><div id=\"\" class=\"column  svelte-siq5d6\" style=\"min-width: min(0px, 100%);\"><!----> <!----><!----><!----><!----><!----><!----><!----><!----></div><!----></div><!----><!----> <!----></div><!----> <!----><!---->'}",
+          "ok": true,
+          "elapsed_ms": 1250,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '未知函数 my_udf'}",
+          "ok": true,
+          "elapsed_ms": 18,
+          "detail": "'结果区' does contain '未知函数 my_udf' (expected to contain); actual='     翻译后 SQL        ›9123SELECT  MY_UDF(a)FROM t;      SQL 方言翻译 (hive → doris)\\n语句 1 (行 1)\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\nSELECT\\n  MY_UDF(a)\\nFROM t\\n\\n\\n⚠️ [warn] 行 1 · 未知函数 my_udf — 目标方言中无法确认等价写法，需人工核对 — 将 UDF 映射为目标内置函数或在目标引擎注册\\n\\n语句 1 · 全自动 0 · 需人工 1 · 失败 0\\n\\n机器翻译结果，上线前需人工复核；建议配合数据比对页验证结果等价。\\n\\n      LLM 建议（可选，llm-…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '需人工 1'}",
+          "ok": true,
+          "elapsed_ms": 17,
+          "detail": "'结果区' does contain '需人工 1' (expected to contain); actual='     翻译后 SQL        ›9123SELECT  MY_UDF(a)FROM t;      SQL 方言翻译 (hive → doris)\\n语句 1 (行 1)\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\nSELECT\\n  MY_UDF(a)\\nFROM t\\n\\n\\n⚠️ [warn] 行 1 · 未知函数 my_udf — 目标方言中无法确认等价写法，需人工核对 — 将 UDF 映射为目标内置函数或在目标引擎注册\\n\\n语句 1 · 全自动 0 · 需人工 1 · 失败 0\\n\\n机器翻译结果，上线前需人工复核；建议配合数据比对页验证结果等价。\\n\\n      LLM 建议（可选，llm-…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 5034,
+      "healed": []
+    },
+    {
+      "case_id": "E2",
+      "title": "行级展开显示主键两侧完整行值",
+      "verdict": "MANUAL",
+      "steps": [],
+      "asserts": [],
+      "reason": "标注为人工用例",
+      "tokens": 0,
+      "elapsed_ms": 0,
+      "healed": []
+    },
+    {
+      "case_id": "LIN12",
+      "title": "提问 (自然语言血缘问答)",
+      "verdict": "MANUAL",
+      "steps": [],
+      "asserts": [],
+      "reason": "标注为人工用例",
+      "tokens": 0,
+      "elapsed_ms": 0,
+      "healed": []
+    },
+    {
+      "case_id": "S4",
+      "title": "Webhook 通知 (外部接收端)",
+      "verdict": "MANUAL",
+      "steps": [],
+      "asserts": [],
+      "reason": "标注为人工用例",
+      "tokens": 0,
+      "elapsed_ms": 0,
+      "healed": []
+    },
+    {
+      "case_id": "B1",
+      "title": "侧边栏默认宽度约 720px 无挤压",
+      "verdict": "MANUAL",
+      "steps": [],
+      "asserts": [],
+      "reason": "标注为人工用例",
+      "tokens": 0,
+      "elapsed_ms": 0,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "Exception in callback _ProactorBasePipeTransport._call_connection_lost()\nhandle: <Handle _ProactorBasePipeTransport._call_connection_lost()>\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\events.py\", line 89, in _run\n    self._context.run(self._callback, *self._args)\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\proactor_events.py\", line 165, in _call_connection_lost\n    self._sock.shutdown(socket.SHUT_RDWR)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^\nConnectionResetError: [WinError 10054] Զ������ǿ�ȹر���һ�����е����ӡ�",
+  "elapsed_ms": 407737,
+  "tokens": 0
+}

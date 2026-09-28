@@ -1,0 +1,341 @@
+{
+  "started_at": "20260928_171525",
+  "suite": "CBI1,CBI2,CBI3,CBI4",
+  "cases": [
+    {
+      "case_id": "CBI1",
+      "title": "指标目录面板 · 连接后加载指标并点选出口径卡片",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite'}",
+          "ok": true,
+          "elapsed_ms": 2989,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db'}",
+          "ok": true,
+          "elapsed_ms": 754,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接'}",
+          "ok": true,
+          "elapsed_ms": 81,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 201,
+          "detail": "status: ✅ Loaded 10 tables from SQLite (config/uitest_demo.db) · ✅ SQLite SQLite: config",
+          "screenshot": null
+        },
+        {
+          "desc": "select_index: {'of': '📐 Metrics', 'index': 0}",
+          "ok": true,
+          "elapsed_ms": 651,
+          "detail": "selected option[0] = '订单金额 · order_amount'",
+          "screenshot": null
+        },
+        {
+          "desc": "口径卡片渲染 + 建议问题填充",
+          "ok": true,
+          "elapsed_ms": 605,
+          "detail": "waited 600ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 22,
+          "detail": "status[A] expected ✅, actual '✅ Loaded 10 tables from SQLite (config/uitest_demo.db) · ✅ SQLite SQLite: config/uitest_demo.db · ⏳ LLM kimi-k2.7-code (checking...) · 📐 2 metrics'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '状态', 'text': '2 metrics'}",
+          "ok": true,
+          "elapsed_ms": 15,
+          "detail": "'状态' does contain '2 metrics' (expected to contain); actual='✅ Loaded 10 tables from SQLite (config/uitest_demo.db) · ✅ SQLite SQLite: config/uitest_demo.db · ⏳ LLM kimi-k2.7-code (checking...) · 📐 2 metrics'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'UI 测试专用口径'}",
+          "ok": true,
+          "elapsed_ms": 6,
+          "detail": "'页面' does contain 'UI 测试专用口径' (expected to contain); actual='☰\\n🗄 Data Source Config\\nData Source\\nDatabase\\nConnect\\nReload Schema\\nTables (10)\\n▼\\nTextbox\\ndc_test_metrics_a\\ndc_test_metrics_b\\ndc_test_orders_a\\ndc_test_orders_b\\ndc_test_part_a\\ndc_test_part_b\\ndc_test_same_a\\ndc_test_same_b\\ndc_test_schema_a\\ndc_test_schema_b\\nAll\\nNone\\n✔ Confirm\\n✕ Cancel\\n📖 Schema Browser\\nSta…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'SUM(amount)'}",
+          "ok": true,
+          "elapsed_ms": 6,
+          "detail": "'页面' does contain 'SUM(amount)' (expected to contain); actual='☰\\n🗄 Data Source Config\\nData Source\\nDatabase\\nConnect\\nReload Schema\\nTables (10)\\n▼\\nTextbox\\ndc_test_metrics_a\\ndc_test_metrics_b\\ndc_test_orders_a\\ndc_test_orders_b\\ndc_test_part_a\\ndc_test_part_b\\ndc_test_same_a\\ndc_test_same_b\\ndc_test_schema_a\\ndc_test_schema_b\\nAll\\nNone\\n✔ Confirm\\n✕ Cancel\\n📖 Schema Browser\\nSta…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 17150,
+      "healed": []
+    },
+    {
+      "case_id": "CBI2",
+      "title": "订阅面板 · 创建指标订阅并立即执行成功",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite'}",
+          "ok": true,
+          "elapsed_ms": 1980,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db'}",
+          "ok": true,
+          "elapsed_ms": 811,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接'}",
+          "ok": true,
+          "elapsed_ms": 107,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 197,
+          "detail": "status: ✅ Loaded 10 tables from SQLite (config/uitest_demo.db) · ✅ SQLite SQLite: config",
+          "screenshot": null
+        },
+        {
+          "desc": "open_accordion: {'target': '🔔 Subscriptions'}",
+          "ok": true,
+          "elapsed_ms": 421,
+          "detail": "opened '🔔 Subscriptions'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'Subscription name...', 'value': 'UI冒烟订阅'}",
+          "ok": true,
+          "elapsed_ms": 268,
+          "detail": "filled 'Subscription name...'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'cron: min hour dom mon dow', 'value': '0 9 * * *'}",
+          "ok": true,
+          "elapsed_ms": 354,
+          "detail": "filled 'cron: min hour dom mon dow'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'Metric name (e.g. sales_amount)', 'value': 'order_amount'}",
+          "ok": true,
+          "elapsed_ms": 448,
+          "detail": "filled 'Metric name (e.g. sales_amount)'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '＋ Create'}",
+          "ok": true,
+          "elapsed_ms": 125,
+          "detail": "clicked '＋ Create'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_text: {'text': 'Subscription created', 'in': 'body'}",
+          "ok": true,
+          "elapsed_ms": 92,
+          "detail": "text appeared: 'Subscription created'",
+          "screenshot": null
+        },
+        {
+          "desc": "select_index: {'of': '🔔 Subscriptions', 'index': 0}",
+          "ok": true,
+          "elapsed_ms": 552,
+          "detail": "selected option[0] = 'UI冒烟订阅 · 0 9 * * *'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '▶ Run now'}",
+          "ok": true,
+          "elapsed_ms": 108,
+          "detail": "clicked '▶ Run now'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_text: {'text': 'Executed', 'in': 'body', 'timeout_ms': 20000}",
+          "ok": true,
+          "elapsed_ms": 87,
+          "detail": "text appeared: 'Executed'",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'UI冒烟订阅'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain 'UI冒烟订阅' (expected to contain); actual='☰\\n🗄 Data Source Config\\nData Source\\nDatabase\\nConnect\\nReload Schema\\nTables (10)\\n▼\\nTextbox\\ndc_test_metrics_a\\ndc_test_metrics_b\\ndc_test_orders_a\\ndc_test_orders_b\\ndc_test_part_a\\ndc_test_part_b\\ndc_test_same_a\\ndc_test_same_b\\ndc_test_schema_a\\ndc_test_schema_b\\nAll\\nNone\\n✔ Confirm\\n✕ Cancel\\n📖 Schema Browser\\nSta…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'Executed'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain 'Executed' (expected to contain); actual='☰\\n🗄 Data Source Config\\nData Source\\nDatabase\\nConnect\\nReload Schema\\nTables (10)\\n▼\\nTextbox\\ndc_test_metrics_a\\ndc_test_metrics_b\\ndc_test_orders_a\\ndc_test_orders_b\\ndc_test_part_a\\ndc_test_part_b\\ndc_test_same_a\\ndc_test_same_b\\ndc_test_schema_a\\ndc_test_schema_b\\nAll\\nNone\\n✔ Confirm\\n✕ Cancel\\n📖 Schema Browser\\nSta…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '页面', 'text': 'Traceback'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does not contain 'Traceback' (expected to NOT contain); actual='☰\\n🗄 Data Source Config\\nData Source\\nDatabase\\nConnect\\nReload Schema\\nTables (10)\\n▼\\nTextbox\\ndc_test_metrics_a\\ndc_test_metrics_b\\ndc_test_orders_a\\ndc_test_orders_b\\ndc_test_part_a\\ndc_test_part_b\\ndc_test_same_a\\ndc_test_same_b\\ndc_test_schema_a\\ndc_test_schema_b\\nAll\\nNone\\n✔ Confirm\\n✕ Cancel\\n📖 Schema Browser\\nSta…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 37018,
+      "healed": []
+    },
+    {
+      "case_id": "CBI3",
+      "title": "订阅面板 · 必填校验与非法 cron 给出明确错误",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '🔔 Subscriptions'}",
+          "ok": true,
+          "elapsed_ms": 357,
+          "detail": "opened '🔔 Subscriptions'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '＋ Create'}",
+          "ok": true,
+          "elapsed_ms": 143,
+          "detail": "clicked '＋ Create'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_text: {'text': 'required', 'in': 'body'}",
+          "ok": true,
+          "elapsed_ms": 116,
+          "detail": "text appeared: 'required'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'Subscription name...', 'value': '坏订阅'}",
+          "ok": true,
+          "elapsed_ms": 173,
+          "detail": "filled 'Subscription name...'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'cron: min hour dom mon dow', 'value': 'garbage'}",
+          "ok": true,
+          "elapsed_ms": 310,
+          "detail": "filled 'cron: min hour dom mon dow'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'Metric name (e.g. sales_amount)', 'value': 'order_amount'}",
+          "ok": true,
+          "elapsed_ms": 448,
+          "detail": "filled 'Metric name (e.g. sales_amount)'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '＋ Create'}",
+          "ok": true,
+          "elapsed_ms": 114,
+          "detail": "clicked '＋ Create'",
+          "screenshot": null
+        },
+        {
+          "desc": "校验错误渲染",
+          "ok": true,
+          "elapsed_ms": 811,
+          "detail": "waited 800ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'cron'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain 'cron' (expected to contain); actual='☰\\n🗄 Data Source Config\\nData Source\\nHost\\nPort\\nDatabase\\nConnect\\nReload Schema\\nTables (10)\\n▼\\n📖 Schema Browser\\nStatus\\n+ New Chat\\n📜 Query History\\n\\n⭐ Favorites\\n\\n⭐ Save to Favorites\\n⭐ Favorites\\n\\nSQL Templates\\n\\nSQL Templates\\n\\n📐 Metrics\\n\\n📐 Metrics\\n🔔 Subscriptions\\n▼\\n✓ UI冒烟订阅 0 9 * * * · order_amount · success…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '页面', 'text': 'Traceback'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does not contain 'Traceback' (expected to NOT contain); actual='☰\\n🗄 Data Source Config\\nData Source\\nHost\\nPort\\nDatabase\\nConnect\\nReload Schema\\nTables (10)\\n▼\\n📖 Schema Browser\\nStatus\\n+ New Chat\\n📜 Query History\\n\\n⭐ Favorites\\n\\n⭐ Save to Favorites\\n⭐ Favorites\\n\\nSQL Templates\\n\\nSQL Templates\\n\\n📐 Metrics\\n\\n📐 Metrics\\n🔔 Subscriptions\\n▼\\n✓ UI冒烟订阅 0 9 * * * · order_amount · success…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 23808,
+      "healed": []
+    },
+    {
+      "case_id": "CBI4",
+      "title": "指标目录 · 未配置指标的数据源不显示指标计数 (静默降级)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "set_language: {'target': '中文'}",
+          "ok": true,
+          "elapsed_ms": 1134,
+          "detail": "language -> 中文",
+          "screenshot": null
+        },
+        {
+          "desc": "i18n 重渲染",
+          "ok": true,
+          "elapsed_ms": 606,
+          "detail": "waited 600ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '指标目录'}",
+          "ok": true,
+          "elapsed_ms": 37,
+          "detail": "'页面' does contain '指标目录' (expected to contain); actual='☰\\n🗄 数据源配置\\n数据源类型\\n主机地址\\n端口\\n数据库\\n连接 / Connect\\n重新加载 Schema\\n查询表 (10)\\n▼\\n📖 表结构浏览\\n状态\\n+ 新建对话\\n📜 历史查询\\n\\n⭐ 收藏\\n\\n⭐ 收藏此查询\\n⭐ 收藏夹\\n\\nSQL Templates\\n\\nSQL Templates\\n\\n📐 指标目录\\n\\n📐 Metrics\\n🔔 订阅\\n▼\\n🏠\\nSQL\\n智能问数 · 用自然语言查询数据\\n查询所有学生信息\\n成绩最高的3个学生\\n每个城市的销售总额\\n图表类型\\n自动\\n柱状图\\n折线图\\n饼图\\n散点图\\n无\\nTextbox\\n➤'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '页面', 'text': 'Traceback'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does not contain 'Traceback' (expected to NOT contain); actual='☰\\n🗄 数据源配置\\n数据源类型\\n主机地址\\n端口\\n数据库\\n连接 / Connect\\n重新加载 Schema\\n查询表 (10)\\n▼\\n📖 表结构浏览\\n状态\\n+ 新建对话\\n📜 历史查询\\n\\n⭐ 收藏\\n\\n⭐ 收藏此查询\\n⭐ 收藏夹\\n\\nSQL Templates\\n\\nSQL Templates\\n\\n📐 指标目录\\n\\n📐 Metrics\\n🔔 订阅\\n▼\\n🏠\\nSQL\\n智能问数 · 用自然语言查询数据\\n查询所有学生信息\\n成绩最高的3个学生\\n每个城市的销售总额\\n图表类型\\n自动\\n柱状图\\n折线图\\n饼图\\n散点图\\n无\\nTextbox\\n➤'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2990,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "",
+  "elapsed_ms": 102579,
+  "tokens": 0
+}

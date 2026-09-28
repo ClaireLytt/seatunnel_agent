@@ -1,0 +1,127 @@
+{
+  "started_at": "20260927_184920",
+  "suite": "Q4",
+  "cases": [
+    {
+      "case_id": "Q4",
+      "title": "查看报告新窗口含完整报告内容",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2031,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 711,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 123,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 104,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1929,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 732,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 109,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 90,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1109,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1147,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '行数对比'}",
+          "ok": true,
+          "elapsed_ms": 92,
+          "detail": "clicked '行数对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-173j12we7\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1116,
+          "detail": "result settled",
+          "screenshot": null
+        },
+        {
+          "desc": "popup_click: {'target': '查看报告'}",
+          "ok": true,
+          "elapsed_ms": 2261,
+          "detail": "popup captured, 107 chars",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "popup_contains: {'text': '数据比对报告'}",
+          "ok": true,
+          "elapsed_ms": 0,
+          "detail": "popup does contain '数据比对报告'; text='数据比对报告\\n2026-09-27 10:49:49 UTC\\n打印\\n对比摘要 \\xa0 完成 1 项对比 · 发现 1 项差异\\n行数对比\\n行数 (A): 10 \\xa0 行数 (B): 9 \\xa0 差异: +1 (+10.0%)\\n'",
+          "screenshot": null
+        },
+        {
+          "desc": "popup_contains: {'text': '行数'}",
+          "ok": true,
+          "elapsed_ms": 0,
+          "detail": "popup does contain '行数'; text='数据比对报告\\n2026-09-27 10:49:49 UTC\\n打印\\n对比摘要 \\xa0 完成 1 项对比 · 发现 1 项差异\\n行数对比\\n行数 (A): 10 \\xa0 行数 (B): 9 \\xa0 差异: +1 (+10.0%)\\n'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 14921,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "",
+  "elapsed_ms": 31877,
+  "tokens": 0
+}

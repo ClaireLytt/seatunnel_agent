@@ -1,0 +1,312 @@
+{
+  "started_at": "20260927_184817",
+  "suite": "DSK16,DSK17,DSK18,DSK19,DSK12",
+  "cases": [
+    {
+      "case_id": "DSK12",
+      "title": "SQLite 数据源连接成功且采样选项齐全",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '连接数据源'}",
+          "ok": true,
+          "elapsed_ms": 401,
+          "detail": "opened '连接数据源'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '数据源类型', 'value': 'SQLite'}",
+          "ok": true,
+          "elapsed_ms": 885,
+          "detail": "selected 'SQLite' in '数据源类型'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db'}",
+          "ok": true,
+          "elapsed_ms": 730,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接'}",
+          "ok": true,
+          "elapsed_ms": 94,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_text: {'text': '已连接'}",
+          "ok": true,
+          "elapsed_ms": 53,
+          "detail": "text appeared: '已连接'",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已连接'}",
+          "ok": true,
+          "elapsed_ms": 6,
+          "detail": "'页面' does contain '已连接' (expected to contain); actual='⚖️ SQL 数据倾斜分析\\n\\n静态倾斜规则 + LLM 改写。支持 Spark SQL（Spark 3）与 MaxCompute SQL（Hive 作为兼容输入）。默认纯静态分析不执行 SQL；可选连接数据源，用真实键值分布验证倾斜。\\n\\n🏠\\nSQL\\nSQL 方言\\n分析模式\\n静态扫描（快速，不调用 LLM）\\nLLM 优化（改写 SQL）\\n开始分析\\n上传 SQL 文件\\n清空\\n连接数据源（可选——用真实数据验证倾斜）\\n▼\\n数据源类型\\n探查采样\\n主机\\n端口\\n数据库\\n用户名\\n密码\\n连接\\n验证倾斜（实测数据）\\n一致性实测（运行两版 SQL）\\n\\n✅ 已连接：SQLite: config/uitest_dem…'",
+          "screenshot": null
+        },
+        {
+          "desc": "options_are: {'of': '探查采样', 'values': ['全量（不采样）', '10%', '1%']}",
+          "ok": true,
+          "elapsed_ms": 758,
+          "detail": "'探查采样' options: expected ['1%', '10%', '全量（不采样）'], actual ['1%', '10%', '全量（不采样）']",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 5805,
+      "healed": []
+    },
+    {
+      "case_id": "DSK16",
+      "title": "分析历史记录并一键载入",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'}",
+          "ok": true,
+          "elapsed_ms": 1561,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 74,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1282,
+          "detail": "result settled",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '清空'}",
+          "ok": true,
+          "elapsed_ms": 78,
+          "detail": "clicked '清空'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><h1>📊 数据倾斜分析报告</h1>\\n<ul>\\n<li><strong>方言</strong>: spark  - <strong>语句数</strong>: 1</li>\\n</ul>\\n<h2>总体结论</h2>\\n<p>⚠️ 潜在倾斜：1 处发现值得排查。</p>\\n<h2>倾斜风险明细</h2>\\n<h3>🟡 潜在倾斜（建议排查）</h3>\\n<table>\\n<thead>\\n<tr>\\n<th>#</th>\\n<th>类别</th>\\n<th>位置</th>\\n<th>问题描述</th>\\n<th>影响</th>\\n<th>优化建议</th>\\n</tr>\\n</thead>\\n<tbody><tr>\\n<td>1</td>\\n<td>COUNT(DISTINCT) 单点聚合</td>\\n<td>行 1</td>\\n<td>COUNT(DISTINCT user_id) 会把全部数据汇聚到单个 Reducer/Task 去重计数</td>\\n<td>数据量大时该 Task 成为长尾，任务整体被拖慢甚至 OOM</td>\\n<td>改为两阶段：先 GROUP BY user_id 去重再 COUNT，或用 approx_count_distinct(user_id)（允许约 2% 误差时）</td>\\n</tr>\\n</tbody></table>\\n<h2>引擎参数建议</h2>\\n<ul>\\n<li>开启 AQE 倾斜自动处理：<code>set spark.sql.adaptive.enabled=true; set spark.sql.adaptive.skewJoin.enabled=true;</code></li>\\n<li>GROUP BY 倾斜可提高并行度：<code>set spark.sql.shuffle.partitions=&lt;按数据量调大&gt;</code> 或对热点 key 加盐两阶段聚合</li>\\n</ul>\\n<h2>优化点说明</h2>\\n<table>\\n<thead>\\n<tr>\\n<th>#</th>\\n<th>优化点</th>\\n<th>原写法</th>\\n<th>优化后</th>\\n<th>预期收益</th>\\n</tr>\\n</thead>\\n<tbody><tr>\\n<td>1</td>\\n<td>COUNT(DISTINCT user_id) 会把全部数据汇聚到单个 Reducer/Task 去重计数</td>\\n<td><code>count(distinct user_id)</code></td>\\n<td><code>approx_count_distinct(user_id) / 两阶段 GROUP BY</code></td>\\n<td>去重下推为两阶段聚合，消除单点热点</td>\\n</tr>\\n</tbody></table>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1072,
+          "detail": "result settled",
+          "screenshot": null
+        },
+        {
+          "desc": "open_accordion: {'target': '分析历史'}",
+          "ok": true,
+          "elapsed_ms": 331,
+          "detail": "opened '分析历史'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '历史刷新'}",
+          "ok": true,
+          "elapsed_ms": 86,
+          "detail": "clicked '历史刷新'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_text: {'text': 'count(distinct user_id)'}",
+          "ok": true,
+          "elapsed_ms": 91,
+          "detail": "text appeared: 'count(distinct user_id)'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '载入所选'}",
+          "ok": true,
+          "elapsed_ms": 99,
+          "detail": "clicked '载入所选'",
+          "screenshot": null
+        },
+        {
+          "desc": "载入是纯状态回填,SQL 框无 loading 信号",
+          "ok": true,
+          "elapsed_ms": 511,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "value_contains: {'of': 'SQL', 'value': 'count(distinct user_id)'}",
+          "ok": true,
+          "elapsed_ms": 11,
+          "detail": "'SQL' value: expected to contain 'count(distinct user_id)', actual 'SELECT count(distinct user_id) FROM ods.user_log'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 6338,
+      "healed": []
+    },
+    {
+      "case_id": "DSK17",
+      "title": "审查页一键跳转倾斜分析并带入 SQL (localStorage 桥)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct uid) FROM ods.t'}",
+          "ok": true,
+          "elapsed_ms": 1212,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "popup_click: {'target': '倾斜分析'}",
+          "ok": true,
+          "elapsed_ms": 2358,
+          "detail": "popup captured, 308 chars",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "popup_contains: {'text': '数据倾斜分析'}",
+          "ok": true,
+          "elapsed_ms": 0,
+          "detail": "popup does contain '数据倾斜分析'; text='⚖️ SQL 数据倾斜分析\\n\\n静态倾斜规则 + LLM 改写。支持 Spark SQL（Spark 3）与 MaxCompute SQL（Hive 作为兼容输入）。默认纯静态分析不执行 SQL；可选连接数据源，用真实键值分布验证倾斜。\\n\\n🏠\\nSQL\\nSQL 方言\\n分析模式\\n静态扫描（快速，不调用 LLM）\\nLLM 优化（改写 SQL）\\n开始分析\\n上传 SQL 文件\\n清空\\n连接数据源（可选——用真实数据验证倾斜）\\n▼\\n分析历史（最近 20 条）\\n▼\\n\\n倾斜分析报告将显示在这里\\nSELECT count(distinct uid) FROM ods.t\\nSpark SQL (Spark 3)\\nst'",
+          "screenshot": null
+        },
+        {
+          "desc": "popup_contains: {'text': 'count(distinct uid)'}",
+          "ok": true,
+          "elapsed_ms": 0,
+          "detail": "popup does contain 'count(distinct uid)'; text='⚖️ SQL 数据倾斜分析\\n\\n静态倾斜规则 + LLM 改写。支持 Spark SQL（Spark 3）与 MaxCompute SQL（Hive 作为兼容输入）。默认纯静态分析不执行 SQL；可选连接数据源，用真实键值分布验证倾斜。\\n\\n🏠\\nSQL\\nSQL 方言\\n分析模式\\n静态扫描（快速，不调用 LLM）\\nLLM 优化（改写 SQL）\\n开始分析\\n上传 SQL 文件\\n清空\\n连接数据源（可选——用真实数据验证倾斜）\\n▼\\n分析历史（最近 20 条）\\n▼\\n\\n倾斜分析报告将显示在这里\\nSELECT count(distinct uid) FROM ods.t\\nSpark SQL (Spark 3)\\nst'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4541,
+      "healed": []
+    },
+    {
+      "case_id": "DSK18",
+      "title": "上传 SQL 文件填入编辑框并可直接分析",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "upload_file: {'target': '上传 SQL 文件', 'path': 'examples/skew_demo.sql'}",
+          "ok": true,
+          "elapsed_ms": 461,
+          "detail": "uploaded 'examples/skew_demo.sql' via '上传 SQL 文件'",
+          "screenshot": null
+        },
+        {
+          "desc": "上传经服务器回填 SQL 框,无 loading 信号",
+          "ok": true,
+          "elapsed_ms": 1015,
+          "detail": "waited 1000ms",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 85,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1238,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "value_contains: {'of': 'SQL', 'value': 'count(distinct o.user_id)'}",
+          "ok": true,
+          "elapsed_ms": 13,
+          "detail": "'SQL' value: expected to contain 'count(distinct o.user_id)', actual '-- Data Skew demo script (used by the DSK18 UI test case and handy for\\n-- trying the /dataskew page or `seatunnel-agent skew -f examples/skew_demo.sql`).\\n-- Deliberately trips three static rules:\\n--   DS001: COUNT(DISTINCT) single-point aggregation\\n--   DS007: LEFT JOIN key without a NULL filter\\n--   DS005: trailing global ORDER BY without LIMIT\\nSELECT o.category,\\n       count(distinct o.user_id) AS uv\\nFROM ods.orders o\\nLEFT JOIN ods.users u ON o.user_id = u.id\\nGROUP BY o.category\\nORDER BY uv;\\n'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'COUNT(DISTINCT) 单点聚合'}",
+          "ok": true,
+          "elapsed_ms": 35,
+          "detail": "'结果区' does contain 'COUNT(DISTINCT) 单点聚合' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⛔ 高倾斜风险：发现 1 处高风险写法——建议在大数据量运行前修复。\\n倾斜风险明细\\n🔴 高倾斜风险（强烈建议修复）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\n全局 ORDER BY\\n行 12\\n末尾的全局 ORDER BY 不带 LIMIT，会把全部结果送入单个 Task 排序\\n单 Task 全量排序，是最典型的人为单点\\n加 LIMIT 只取 TopN；或去掉 ORDER BY 交给下游 BI 排序；必须全排时可先 SORT BY 局部有序\\n\\n\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '全局 ORDER BY'}",
+          "ok": true,
+          "elapsed_ms": 26,
+          "detail": "'结果区' does contain '全局 ORDER BY' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⛔ 高倾斜风险：发现 1 处高风险写法——建议在大数据量运行前修复。\\n倾斜风险明细\\n🔴 高倾斜风险（强烈建议修复）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\n全局 ORDER BY\\n行 12\\n末尾的全局 ORDER BY 不带 LIMIT，会把全部结果送入单个 Task 排序\\n单 Task 全量排序，是最典型的人为单点\\n加 LIMIT 只取 TopN；或去掉 ORDER BY 交给下游 BI 排序；必须全排时可先 SORT BY 局部有序\\n\\n\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 3892,
+      "healed": []
+    },
+    {
+      "case_id": "DSK19",
+      "title": "英文界面未连接点实测验证提示为英文",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '连接数据源'}",
+          "ok": true,
+          "elapsed_ms": 381,
+          "detail": "opened '连接数据源'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT region, count(*) FROM dc_test_metrics_a GROUP BY region'}",
+          "ok": true,
+          "elapsed_ms": 2041,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '验证倾斜（实测）'}",
+          "ok": true,
+          "elapsed_ms": 90,
+          "detail": "clicked '验证倾斜（实测）'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_text: {'text': 'Connect a data source first'}",
+          "ok": true,
+          "elapsed_ms": 188,
+          "detail": "text appeared: 'Connect a data source first'",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'Connect a data source first'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "'页面' does contain 'Connect a data source first' (expected to contain); actual='⚖️ SQL Data Skew Analyzer\\n\\nStatic skew-pattern rules + LLM rewrite. Supports Spark SQL (Spark 3) and MaxCompute SQL (Hive accepted as compatible input). Static analysis by default — optionally connect a data source to verify skew with real key distributions.\\n\\n🏠\\nSQL\\nSQL Dialect\\nAnalysis Mode\\nStatic s…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4110,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "",
+  "elapsed_ms": 41441,
+  "tokens": 0
+}

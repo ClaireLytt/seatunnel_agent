@@ -1,0 +1,23 @@
+[
+  {
+    "id": "b7a3fd3a769c",
+    "name": "UI冒烟订阅",
+    "cron": "0 9 * * *",
+    "source_type": "metric",
+    "metric": "order_amount",
+    "dimensions": [],
+    "lookback_days": 1,
+    "favorite_id": "",
+    "params": {},
+    "ds_type": "sqlite",
+    "connection": "",
+    "database": "config/uitest_demo.db",
+    "webhook_url": "",
+    "lang": "zh",
+    "enabled": true,
+    "created_at": "2026-09-28T09:16:29+00:00",
+    "last_run_at": "2026-09-28T09:16:40+00:00",
+    "last_status": "success",
+    "last_error": ""
+  }
+]

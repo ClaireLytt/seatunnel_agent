@@ -1,0 +1,132 @@
+{
+  "started_at": "20260927_172714",
+  "suite": "DSK1,DSK12,SCR9",
+  "cases": [
+    {
+      "case_id": "DSK1",
+      "title": "空 SQL 点分析给出提示",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 94,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1144,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '请先粘贴 SQL'}",
+          "ok": true,
+          "elapsed_ms": 22,
+          "detail": "'结果区' does contain '请先粘贴 SQL' (expected to contain); actual='       ❌ 请先粘贴 SQL 脚本。\\n  '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 3622,
+      "healed": []
+    },
+    {
+      "case_id": "DSK12",
+      "title": "SQLite 数据源连接成功且采样选项齐全",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '连接数据源'}",
+          "ok": true,
+          "elapsed_ms": 356,
+          "detail": "opened '连接数据源'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '数据源类型', 'value': 'SQLite'}",
+          "ok": true,
+          "elapsed_ms": 883,
+          "detail": "selected 'SQLite' in '数据源类型'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db'}",
+          "ok": true,
+          "elapsed_ms": 711,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接'}",
+          "ok": true,
+          "elapsed_ms": 80,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_text: {'text': '已连接'}",
+          "ok": true,
+          "elapsed_ms": 86,
+          "detail": "text appeared: '已连接'",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已连接'}",
+          "ok": true,
+          "elapsed_ms": 6,
+          "detail": "'页面' does contain '已连接' (expected to contain); actual='⚖️ SQL 数据倾斜分析\\n\\n静态倾斜规则 + LLM 改写。支持 Spark SQL（Spark 3）与 MaxCompute SQL（Hive 作为兼容输入）。默认纯静态分析不执行 SQL；可选连接数据源，用真实键值分布验证倾斜。\\n\\n🏠\\nSQL\\nSQL 方言\\n分析模式\\n静态扫描（快速，不调用 LLM）\\nLLM 优化（改写 SQL）\\n开始分析\\n清空\\n连接数据源（可选——用真实数据验证倾斜）\\n▼\\n数据源类型\\n探查采样\\n主机\\n端口\\n数据库\\n用户名\\n密码\\n连接\\n验证倾斜（实测数据）\\n一致性实测（运行两版 SQL）\\n\\n✅ 已连接：SQLite: config/uitest_demo.db\\n\\n倾斜分析…'",
+          "screenshot": null
+        },
+        {
+          "desc": "options_are: {'of': '探查采样', 'values': ['全量（不采样）', '10%', '1%']}",
+          "ok": true,
+          "elapsed_ms": 752,
+          "detail": "'探查采样' options: expected ['1%', '10%', '全量（不采样）'], actual ['1%', '10%', '全量（不采样）']",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4034,
+      "healed": []
+    },
+    {
+      "case_id": "SCR9",
+      "title": "数据倾斜页整体可滚动 (.st-scroll-page 标记)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 515,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.gradio-container'}",
+          "ok": true,
+          "elapsed_ms": 632,
+          "detail": "container '.gradio-container' at 500px viewport: overflowY=auto, scrollHeight=701, clientHeight=500, scrolledTo=201, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2032,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "Exception in callback _ProactorBasePipeTransport._call_connection_lost()\nhandle: <Handle _ProactorBasePipeTransport._call_connection_lost()>\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\events.py\", line 89, in _run\n    self._context.run(self._callback, *self._args)\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\proactor_events.py\", line 165, in _call_connection_lost\n    self._sock.shutdown(socket.SHUT_RDWR)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^\nConnectionResetError: [WinError 10054] Զ������ǿ�ȹر���һ�����е����ӡ�",
+  "elapsed_ms": 24585,
+  "tokens": 0
+}

@@ -1,0 +1,71 @@
+{
+  "started_at": "20260927_171305",
+  "suite": "DSK12",
+  "cases": [
+    {
+      "case_id": "DSK12",
+      "title": "SQLite 数据源连接成功且采样选项齐全",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '连接数据源'}",
+          "ok": true,
+          "elapsed_ms": 371,
+          "detail": "opened '连接数据源'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '数据源类型', 'value': 'SQLite'}",
+          "ok": true,
+          "elapsed_ms": 867,
+          "detail": "selected 'SQLite' in '数据源类型'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db'}",
+          "ok": true,
+          "elapsed_ms": 715,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接'}",
+          "ok": true,
+          "elapsed_ms": 74,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_text: {'text': '已连接'}",
+          "ok": true,
+          "elapsed_ms": 30,
+          "detail": "text appeared: '已连接'",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已连接'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '已连接' (expected to contain); actual='⚖️ SQL 数据倾斜分析\\n\\n静态倾斜规则 + LLM 改写。支持 Spark SQL（Spark 3）与 MaxCompute SQL（Hive 作为兼容输入）。默认纯静态分析不执行 SQL；可选连接数据源，用真实键值分布验证倾斜。\\n\\n🏠\\nSQL\\nSQL 方言\\n分析模式\\n静态扫描（快速，不调用 LLM）\\nLLM 优化（改写 SQL）\\n开始分析\\n清空\\n连接数据源（可选——用真实数据验证倾斜）\\n▼\\n数据源类型\\n探查采样\\n主机\\n端口\\n数据库\\n用户名\\n密码\\n连接\\n验证倾斜（实测数据）\\n一致性实测（运行两版 SQL）\\n\\n✅ 已连接：SQLite: config/uitest_demo.db\\n\\n倾斜分析…'",
+          "screenshot": null
+        },
+        {
+          "desc": "options_are: {'of': '探查采样', 'values': ['全量（不采样）', '10%', '1%']}",
+          "ok": true,
+          "elapsed_ms": 733,
+          "detail": "'探查采样' options: expected ['1%', '10%', '全量（不采样）'], actual ['1%', '10%', '全量（不采样）']",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 5022,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "",
+  "elapsed_ms": 19938,
+  "tokens": 0
+}

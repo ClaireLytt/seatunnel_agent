@@ -1,0 +1,22 @@
+version: 1
+metrics:
+  - name: order_amount
+    display_name: 订单金额
+    aliases: [订单总额, order amount]
+    description: 订单表 amount 字段合计（UI 测试专用口径）
+    table: dc_test_orders_a
+    expression: SUM(amount)
+    time_column: update_time
+    dimensions: [category, status]
+    unit: 元
+    owner: uitest
+  - name: order_cnt
+    display_name: 订单量
+    aliases: [订单数]
+    description: 订单表行数（UI 测试专用口径）
+    table: dc_test_orders_a
+    expression: COUNT(id)
+    time_column: update_time
+    dimensions: [category, status]
+    unit: 单
+    owner: uitest

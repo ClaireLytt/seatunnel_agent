@@ -1,0 +1,305 @@
+{
+  "started_at": "20260926_222406",
+  "suite": "SET1,SET3,SET4,SET9,SET10",
+  "cases": [
+    {
+      "case_id": "SET1",
+      "title": "设置页加载并展示当前生效配置",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 511,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "visible: {'target': '保存设置'}",
+          "ok": true,
+          "elapsed_ms": 1453,
+          "detail": "'保存设置' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '测试连接'}",
+          "ok": true,
+          "elapsed_ms": 1445,
+          "detail": "'测试连接' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '恢复 env'}",
+          "ok": true,
+          "elapsed_ms": 1412,
+          "detail": "'恢复 env' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '当前生效配置'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does contain '当前生效配置' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '页面', 'text': 'Traceback'}",
+          "ok": true,
+          "elapsed_ms": 3,
+          "detail": "'页面' does not contain 'Traceback' (expected to NOT contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 7356,
+      "healed": []
+    },
+    {
+      "case_id": "SET3",
+      "title": "保存模型名覆盖并即时反映在当前配置",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': '模型名称', 'value': 'uitest-model-x'}",
+          "ok": true,
+          "elapsed_ms": 480,
+          "detail": "filled '模型名称'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '保存设置'}",
+          "ok": true,
+          "elapsed_ms": 86,
+          "detail": "clicked '保存设置'",
+          "screenshot": null
+        },
+        {
+          "desc": "保存为本地文件写入,短等待即可",
+          "ok": true,
+          "elapsed_ms": 511,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已保存'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does contain '已保存' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · 界面设置(覆盖 .env)\\n\\n提供商: openai · 模型名称: uitest-model-x\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已保存,立即…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 'uitest-model-x'}",
+          "ok": true,
+          "elapsed_ms": 3,
+          "detail": "'页面' does contain 'uitest-model-x' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · 界面设置(覆盖 .env)\\n\\n提供商: openai · 模型名称: uitest-model-x\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已保存,立即…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '界面设置'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '界面设置' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · 界面设置(覆盖 .env)\\n\\n提供商: openai · 模型名称: uitest-model-x\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已保存,立即…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 12017,
+      "healed": []
+    },
+    {
+      "case_id": "SET4",
+      "title": "恢复 .env 清除界面覆盖值",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "click: {'target': '恢复 env'}",
+          "ok": true,
+          "elapsed_ms": 80,
+          "detail": "clicked '恢复 env'",
+          "screenshot": null
+        },
+        {
+          "desc": "恢复为本地文件删除,短等待即可",
+          "ok": true,
+          "elapsed_ms": 508,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已恢复'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does contain '已恢复' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已恢复,Web …'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '页面', 'text': 'uitest-model-x'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does not contain 'uitest-model-x' (expected to NOT contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼\\n\\n✅ 已恢复,Web …'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 11519,
+      "healed": []
+    },
+    {
+      "case_id": "SET9",
+      "title": "设置页保存数据库连接(与数据对比页共用预设)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '数据库连接'}",
+          "ok": true,
+          "elapsed_ms": 368,
+          "detail": "opened '数据库连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '连接名称', 'value': 't-conn'}",
+          "ok": true,
+          "elapsed_ms": 249,
+          "detail": "filled '连接名称'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '连接主机', 'value': '127.0.0.1'}",
+          "ok": true,
+          "elapsed_ms": 338,
+          "detail": "filled '连接主机'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '端口', 'value': '3306'}",
+          "ok": true,
+          "elapsed_ms": 184,
+          "detail": "filled '端口'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'demo'}",
+          "ok": true,
+          "elapsed_ms": 199,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '连接类型', 'value': 'MySQL'}",
+          "ok": true,
+          "elapsed_ms": 781,
+          "detail": "selected 'MySQL' in '连接类型'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '保存连接'}",
+          "ok": true,
+          "elapsed_ms": 87,
+          "detail": "clicked '保存连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "本地文件写入,短等待即可",
+          "ok": true,
+          "elapsed_ms": 402,
+          "detail": "waited 400ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已保存连接'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '已保存连接' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\n\\nShared with the Data Compar…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': 't-conn'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain 't-conn' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\n\\nShared with the Data Compar…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '127.0.0.1:3306'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '127.0.0.1:3306' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\n\\nShared with the Data Compar…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 13595,
+      "healed": []
+    },
+    {
+      "case_id": "SET10",
+      "title": "删除数据库连接(SET9 清理)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '数据库连接'}",
+          "ok": true,
+          "elapsed_ms": 364,
+          "detail": "opened '数据库连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择连接', 'value': 't-conn'}",
+          "ok": true,
+          "elapsed_ms": 848,
+          "detail": "selected 't-conn' in '选择连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '删除连接'}",
+          "ok": true,
+          "elapsed_ms": 95,
+          "detail": "clicked '删除连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "本地文件写入,短等待即可",
+          "ok": true,
+          "elapsed_ms": 406,
+          "detail": "waited 400ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '已删除连接'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does contain '已删除连接' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\n\\nShared with the Data Compar…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '暂无已保存的连接'}",
+          "ok": true,
+          "elapsed_ms": 3,
+          "detail": "'页面' does contain '暂无已保存的连接' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\n\\nShared with the Data Compar…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 12676,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "Exception in callback _ProactorBasePipeTransport._call_connection_lost()\nhandle: <Handle _ProactorBasePipeTransport._call_connection_lost()>\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\events.py\", line 89, in _run\n    self._context.run(self._callback, *self._args)\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\proactor_events.py\", line 165, in _call_connection_lost\n    self._sock.shutdown(socket.SHUT_RDWR)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^\nConnectionResetError: [WinError 10054] Զ������ǿ�ȹر���һ�����е����ӡ�",
+  "elapsed_ms": 72701,
+  "tokens": 0
+}

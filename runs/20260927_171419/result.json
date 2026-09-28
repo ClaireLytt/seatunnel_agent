@@ -1,0 +1,175 @@
+{
+  "started_at": "20260927_171419",
+  "suite": "B3,DSK13",
+  "cases": [
+    {
+      "case_id": "DSK13",
+      "title": "实测探查确认 GROUP BY 键倾斜",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "open_accordion: {'target': '连接数据源'}",
+          "ok": true,
+          "elapsed_ms": 386,
+          "detail": "opened '连接数据源'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '数据源类型', 'value': 'SQLite'}",
+          "ok": true,
+          "elapsed_ms": 894,
+          "detail": "selected 'SQLite' in '数据源类型'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db'}",
+          "ok": true,
+          "elapsed_ms": 731,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接'}",
+          "ok": true,
+          "elapsed_ms": 75,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_text: {'text': '已连接'}",
+          "ok": true,
+          "elapsed_ms": 60,
+          "detail": "text appeared: '已连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT region, count(*) FROM dc_test_metrics_a GROUP BY region'}",
+          "ok": true,
+          "elapsed_ms": 1995,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 72,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1203,
+          "detail": "result settled",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '验证倾斜（实测）'}",
+          "ok": true,
+          "elapsed_ms": 72,
+          "detail": "clicked '验证倾斜（实测）'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><h1>📊 数据倾斜分析报告</h1>\\n<ul>\\n<li><strong>方言</strong>: spark  - <strong>语句数</strong>: 1</li>\\n</ul>\\n<h2>总体结论</h2>\\n<p>✅ 语法层面未发现明显倾斜写法。</p>\\n<h2>倾斜风险明细</h2>\\n<p>✅ 静态规则未发现明显的倾斜风险写法。</p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1125,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '倾斜验证（实测）'}",
+          "ok": true,
+          "elapsed_ms": 24,
+          "detail": "'结果区' does contain '倾斜验证（实测）' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n✅ 语法层面未发现明显倾斜写法。\\n倾斜风险明细\\n✅ 静态规则未发现明显的倾斜风险写法。\\n倾斜验证（实测）\\n⛔ 实测数据确认 1 个键存在倾斜。\\n\\n\\n\\n表.列\\n探查原因\\n总行数\\nNULL 占比\\nTop 值（占比）\\n判定\\n\\n\\n\\ndc_test_metrics_a.region\\nGROUP BY 分组键\\n20\\n0.0%\\nnorth (80.0%), south (10.0%), west (5.0%)\\n⛔ 确认倾斜\\n\\n\\n建议引擎参数（基于实测倾斜）\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\nSET spark…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'GROUP BY 分组键'}",
+          "ok": true,
+          "elapsed_ms": 20,
+          "detail": "'结果区' does contain 'GROUP BY 分组键' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n✅ 语法层面未发现明显倾斜写法。\\n倾斜风险明细\\n✅ 静态规则未发现明显的倾斜风险写法。\\n倾斜验证（实测）\\n⛔ 实测数据确认 1 个键存在倾斜。\\n\\n\\n\\n表.列\\n探查原因\\n总行数\\nNULL 占比\\nTop 值（占比）\\n判定\\n\\n\\n\\ndc_test_metrics_a.region\\nGROUP BY 分组键\\n20\\n0.0%\\nnorth (80.0%), south (10.0%), west (5.0%)\\n⛔ 确认倾斜\\n\\n\\n建议引擎参数（基于实测倾斜）\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\nSET spark…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '确认倾斜'}",
+          "ok": true,
+          "elapsed_ms": 23,
+          "detail": "'结果区' does contain '确认倾斜' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n✅ 语法层面未发现明显倾斜写法。\\n倾斜风险明细\\n✅ 静态规则未发现明显的倾斜风险写法。\\n倾斜验证（实测）\\n⛔ 实测数据确认 1 个键存在倾斜。\\n\\n\\n\\n表.列\\n探查原因\\n总行数\\nNULL 占比\\nTop 值（占比）\\n判定\\n\\n\\n\\ndc_test_metrics_a.region\\nGROUP BY 分组键\\n20\\n0.0%\\nnorth (80.0%), south (10.0%), west (5.0%)\\n⛔ 确认倾斜\\n\\n\\n建议引擎参数（基于实测倾斜）\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\nSET spark…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'north'}",
+          "ok": true,
+          "elapsed_ms": 22,
+          "detail": "'结果区' does contain 'north' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n✅ 语法层面未发现明显倾斜写法。\\n倾斜风险明细\\n✅ 静态规则未发现明显的倾斜风险写法。\\n倾斜验证（实测）\\n⛔ 实测数据确认 1 个键存在倾斜。\\n\\n\\n\\n表.列\\n探查原因\\n总行数\\nNULL 占比\\nTop 值（占比）\\n判定\\n\\n\\n\\ndc_test_metrics_a.region\\nGROUP BY 分组键\\n20\\n0.0%\\nnorth (80.0%), south (10.0%), west (5.0%)\\n⛔ 确认倾斜\\n\\n\\n建议引擎参数（基于实测倾斜）\\n\\n  \\n\\n  \\n  \\n\\n\\n\\n  \\n  \\n\\n\\nSET spark…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 8911,
+      "healed": []
+    },
+    {
+      "case_id": "B3",
+      "title": "下拉框内模糊搜索 (子串过滤)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1931,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 731,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 123,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 99,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "dropdown_type: {'of': '选择表', 'text': 'orders', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 666,
+          "detail": "typed 'orders' in dropdown",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "options_are: {'of': '选择表', 'side': 'A', 'keep_filter': True, 'values': ['dc_test_orders_a', 'dc_test_orders_b']}",
+          "ok": true,
+          "elapsed_ms": 684,
+          "detail": "'选择表' options: expected ['dc_test_orders_a', 'dc_test_orders_b'], actual ['dc_test_orders_a', 'dc_test_orders_b']",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 5671,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "",
+  "elapsed_ms": 29458,
+  "tokens": 0
+}

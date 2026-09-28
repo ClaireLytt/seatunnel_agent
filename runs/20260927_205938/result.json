@@ -1,0 +1,806 @@
+{
+  "started_at": "20260927_205938",
+  "suite": "DSK1,DSK2,DSK3,DSK4,DSK5,DSK6,DSK7,DSK8,DSK9,DSK10,DSK15,DSK16,DSK17,DSK18,SCR9",
+  "cases": [
+    {
+      "case_id": "DSK1",
+      "title": "空 SQL 点分析给出提示",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 78,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1153,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '请先粘贴 SQL'}",
+          "ok": true,
+          "elapsed_ms": 24,
+          "detail": "'结果区' does contain '请先粘贴 SQL' (expected to contain); actual='       ❌ 请先粘贴 SQL 脚本。\\n  '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 3660,
+      "healed": []
+    },
+    {
+      "case_id": "DSK2",
+      "title": "COUNT(DISTINCT) 被标记且报告带引擎参数 (DS001)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'}",
+          "ok": true,
+          "elapsed_ms": 1552,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 74,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1211,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '数据倾斜分析报告'}",
+          "ok": true,
+          "elapsed_ms": 25,
+          "detail": "'结果区' does contain '数据倾斜分析报告' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nCOUNT(DISTINCT) 单点聚合\\n行 1\\nCOUNT(DISTINCT user_id) 会把全部数据汇聚到单个 Reducer/Task 去重计数\\n数据量大时该 Task 成为长尾，任务整体被拖慢甚至 OOM\\n改为两阶段：先 GROUP BY user_id 去重再 COUNT，或用 approx_count_distinct(user_id)（允许约 2% 误…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'COUNT(DISTINCT) 单点聚合'}",
+          "ok": true,
+          "elapsed_ms": 24,
+          "detail": "'结果区' does contain 'COUNT(DISTINCT) 单点聚合' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nCOUNT(DISTINCT) 单点聚合\\n行 1\\nCOUNT(DISTINCT user_id) 会把全部数据汇聚到单个 Reducer/Task 去重计数\\n数据量大时该 Task 成为长尾，任务整体被拖慢甚至 OOM\\n改为两阶段：先 GROUP BY user_id 去重再 COUNT，或用 approx_count_distinct(user_id)（允许约 2% 误…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '引擎参数建议'}",
+          "ok": true,
+          "elapsed_ms": 31,
+          "detail": "'结果区' does contain '引擎参数建议' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nCOUNT(DISTINCT) 单点聚合\\n行 1\\nCOUNT(DISTINCT user_id) 会把全部数据汇聚到单个 Reducer/Task 去重计数\\n数据量大时该 Task 成为长尾，任务整体被拖慢甚至 OOM\\n改为两阶段：先 GROUP BY user_id 去重再 COUNT，或用 approx_count_distinct(user_id)（允许约 2% 误…'",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '下载报告'}",
+          "ok": true,
+          "elapsed_ms": 1417,
+          "detail": "'下载报告' visible=True, expected visible",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 5257,
+      "healed": []
+    },
+    {
+      "case_id": "DSK3",
+      "title": "JOIN 键未过滤 NULL 被标记 (DS007)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT a.id FROM ods.a a LEFT JOIN ods.b b ON a.uid = b.uid'}",
+          "ok": true,
+          "elapsed_ms": 1894,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 64,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1175,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'JOIN 键 NULL 值倾斜'}",
+          "ok": true,
+          "elapsed_ms": 57,
+          "detail": "'结果区' does contain 'JOIN 键 NULL 值倾斜' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nJOIN 键 NULL 值倾斜\\n行 1\\nLEFT JOIN 的关联键 a.uid 未做 NULL 过滤/打散，NULL 值会全部落到同一个 Task\\n关联键 NULL 占比高时形成超大热点分区\\n主表 NULL 键先过滤（WHERE a.uid IS NOT NULL，NULL 部分 UNION ALL 回来），或在子查询中先把 NULL 键物化为随机盐值列再关联（rand…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'NULL 过滤'}",
+          "ok": true,
+          "elapsed_ms": 35,
+          "detail": "'结果区' does contain 'NULL 过滤' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nJOIN 键 NULL 值倾斜\\n行 1\\nLEFT JOIN 的关联键 a.uid 未做 NULL 过滤/打散，NULL 值会全部落到同一个 Task\\n关联键 NULL 占比高时形成超大热点分区\\n主表 NULL 键先过滤（WHERE a.uid IS NOT NULL，NULL 部分 UNION ALL 回来），或在子查询中先把 NULL 键物化为随机盐值列再关联（rand…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4159,
+      "healed": []
+    },
+    {
+      "case_id": "DSK4",
+      "title": "JOIN 键套函数被标记 (DS008)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT a.id FROM ods.a a JOIN ods.b b ON substr(a.uid,1,8) = b.uid'}",
+          "ok": true,
+          "elapsed_ms": 2101,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 61,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1192,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'JOIN 键函数 / 类型转换'}",
+          "ok": true,
+          "elapsed_ms": 16,
+          "detail": "'结果区' does contain 'JOIN 键函数 / 类型转换' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nJOIN 键函数 / 类型转换\\n行 1\\nJOIN 关联条件中对键使用了函数/类型转换：substr(a.uid,1,8) = b.uid\\n隐式转换或函数计算可能让大量不同值折叠成同一个 hash 值，制造倾斜，且无法利用分桶/索引\\n在上游把关联键清洗成一致的类型与格式，JOIN 时用裸列关联\\n\\n\\n🔵 优化建议（可选）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'substr(a.uid', 1: None, '8)': None}",
+          "ok": true,
+          "elapsed_ms": 15,
+          "detail": "'结果区' does contain 'substr(a.uid' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nJOIN 键函数 / 类型转换\\n行 1\\nJOIN 关联条件中对键使用了函数/类型转换：substr(a.uid,1,8) = b.uid\\n隐式转换或函数计算可能让大量不同值折叠成同一个 hash 值，制造倾斜，且无法利用分桶/索引\\n在上游把关联键清洗成一致的类型与格式，JOIN 时用裸列关联\\n\\n\\n🔵 优化建议（可选）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4306,
+      "healed": []
+    },
+    {
+      "case_id": "DSK5",
+      "title": "全局 ORDER BY 无 LIMIT 报高风险 (DS005)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT * FROM ods.t ORDER BY amount'}",
+          "ok": true,
+          "elapsed_ms": 1141,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 90,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1194,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '高倾斜风险'}",
+          "ok": true,
+          "elapsed_ms": 21,
+          "detail": "'结果区' does contain '高倾斜风险' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⛔ 高倾斜风险：发现 1 处高风险写法——建议在大数据量运行前修复。\\n倾斜风险明细\\n🔴 高倾斜风险（强烈建议修复）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\n全局 ORDER BY\\n行 1\\n末尾的全局 ORDER BY 不带 LIMIT，会把全部结果送入单个 Task 排序\\n单 Task 全量排序，是最典型的人为单点\\n加 LIMIT 只取 TopN；或去掉 ORDER BY 交给下游 BI 排序；必须全排时可先 SORT BY 局部有序\\n\\n\\n优化点说明\\n\\n\\n\\n#\\n优化点\\n原写法\\n优化后\\n预…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '全局 ORDER BY'}",
+          "ok": true,
+          "elapsed_ms": 15,
+          "detail": "'结果区' does contain '全局 ORDER BY' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⛔ 高倾斜风险：发现 1 处高风险写法——建议在大数据量运行前修复。\\n倾斜风险明细\\n🔴 高倾斜风险（强烈建议修复）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\n全局 ORDER BY\\n行 1\\n末尾的全局 ORDER BY 不带 LIMIT，会把全部结果送入单个 Task 排序\\n单 Task 全量排序，是最典型的人为单点\\n加 LIMIT 只取 TopN；或去掉 ORDER BY 交给下游 BI 排序；必须全排时可先 SORT BY 局部有序\\n\\n\\n优化点说明\\n\\n\\n\\n#\\n优化点\\n原写法\\n优化后\\n预…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '单个 Task 排序'}",
+          "ok": true,
+          "elapsed_ms": 15,
+          "detail": "'结果区' does contain '单个 Task 排序' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⛔ 高倾斜风险：发现 1 处高风险写法——建议在大数据量运行前修复。\\n倾斜风险明细\\n🔴 高倾斜风险（强烈建议修复）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\n全局 ORDER BY\\n行 1\\n末尾的全局 ORDER BY 不带 LIMIT，会把全部结果送入单个 Task 排序\\n单 Task 全量排序，是最典型的人为单点\\n加 LIMIT 只取 TopN；或去掉 ORDER BY 交给下游 BI 排序；必须全排时可先 SORT BY 局部有序\\n\\n\\n优化点说明\\n\\n\\n\\n#\\n优化点\\n原写法\\n优化后\\n预…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 3421,
+      "healed": []
+    },
+    {
+      "case_id": "DSK6",
+      "title": "SELECT DISTINCT 与 UNION 去重同时标记 (DS003+DS004)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT DISTINCT id FROM ods.a UNION SELECT id FROM ods.b'}",
+          "ok": true,
+          "elapsed_ms": 1800,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 80,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1197,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'UNION 隐式去重'}",
+          "ok": true,
+          "elapsed_ms": 19,
+          "detail": "'结果区' does contain 'UNION 隐式去重' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nUNION 隐式去重\\n行 1\\nUNION（不带 ALL）会对两侧结果做隐式全量去重\\n额外一次全量 shuffle + 排序去重；数据不重复时纯属浪费\\n如两侧数据本身不重复或允许重复，改为 UNION ALL\\n\\n\\n🔵 优化建议（可选）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\n全局 DISTINCT 去重\\n行 1\\nSELECT DISTINCT 触发全字段全…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '全局 DISTINCT 去重'}",
+          "ok": true,
+          "elapsed_ms": 20,
+          "detail": "'结果区' does contain '全局 DISTINCT 去重' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nUNION 隐式去重\\n行 1\\nUNION（不带 ALL）会对两侧结果做隐式全量去重\\n额外一次全量 shuffle + 排序去重；数据不重复时纯属浪费\\n如两侧数据本身不重复或允许重复，改为 UNION ALL\\n\\n\\n🔵 优化建议（可选）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\n全局 DISTINCT 去重\\n行 1\\nSELECT DISTINCT 触发全字段全…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4052,
+      "healed": []
+    },
+    {
+      "case_id": "DSK7",
+      "title": "干净 SQL 报告无风险且无优化 SQL 下载",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': \"SELECT id, name FROM ods.user WHERE dt = '2024-06-01'\"}",
+          "ok": true,
+          "elapsed_ms": 1686,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 85,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1191,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '语法层面未发现明显倾斜写法'}",
+          "ok": true,
+          "elapsed_ms": 18,
+          "detail": "'结果区' does contain '语法层面未发现明显倾斜写法' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n✅ 语法层面未发现明显倾斜写法。\\n倾斜风险明细\\n✅ 静态规则未发现明显的倾斜风险写法。\\n  '",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '下载报告'}",
+          "ok": true,
+          "elapsed_ms": 1415,
+          "detail": "'下载报告' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "hidden: {'target': '下载优化 SQL'}",
+          "ok": true,
+          "elapsed_ms": 1415,
+          "detail": "'下载优化 SQL' visible=False, expected hidden",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 6759,
+      "healed": []
+    },
+    {
+      "case_id": "DSK8",
+      "title": "清空按钮恢复初始状态",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct id) FROM ods.t'}",
+          "ok": true,
+          "elapsed_ms": 1173,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 74,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1169,
+          "detail": "result settled",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '清空'}",
+          "ok": true,
+          "elapsed_ms": 80,
+          "detail": "clicked '清空'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><h1>📊 数据倾斜分析报告</h1>\\n<ul>\\n<li><strong>方言</strong>: spark  - <strong>语句数</strong>: 1</li>\\n</ul>\\n<h2>总体结论</h2>\\n<p>⚠️ 潜在倾斜：1 处发现值得排查。</p>\\n<h2>倾斜风险明细</h2>\\n<h3>🟡 潜在倾斜（建议排查）</h3>\\n<table>\\n<thead>\\n<tr>\\n<th>#</th>\\n<th>类别</th>\\n<th>位置</th>\\n<th>问题描述</th>\\n<th>影响</th>\\n<th>优化建议</th>\\n</tr>\\n</thead>\\n<tbody><tr>\\n<td>1</td>\\n<td>COUNT(DISTINCT) 单点聚合</td>\\n<td>行 1</td>\\n<td>COUNT(DISTINCT id) 会把全部数据汇聚到单个 Reducer/Task 去重计数</td>\\n<td>数据量大时该 Task 成为长尾，任务整体被拖慢甚至 OOM</td>\\n<td>改为两阶段：先 GROUP BY id 去重再 COUNT，或用 approx_count_distinct(id)（允许约 2% 误差时）</td>\\n</tr>\\n</tbody></table>\\n<h2>引擎参数建议</h2>\\n<ul>\\n<li>开启 AQE 倾斜自动处理：<code>set spark.sql.adaptive.enabled=true; set spark.sql.adaptive.skewJoin.enabled=true;</code></li>\\n<li>GROUP BY 倾斜可提高并行度：<code>set spark.sql.shuffle.partitions=&lt;按数据量调大&gt;</code> 或对热点 key 加盐两阶段聚合</li>\\n</ul>\\n<h2>优化点说明</h2>\\n<table>\\n<thead>\\n<tr>\\n<th>#</th>\\n<th>优化点</th>\\n<th>原写法</th>\\n<th>优化后</th>\\n<th>预期收益</th>\\n</tr>\\n</thead>\\n<tbody><tr>\\n<td>1</td>\\n<td>COUNT(DISTINCT id) 会把全部数据汇聚到单个 Reducer/Task 去重计数</td>\\n<td><code>count(distinct id)</code></td>\\n<td><code>approx_count_distinct(id) / 两阶段 GROUP BY</code></td>\\n<td>去重下推为两阶段聚合，消除单点热点</td>\\n</tr>\\n</tbody></table>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1081,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '倾斜分析报告将显示在这里'}",
+          "ok": true,
+          "elapsed_ms": 23,
+          "detail": "'结果区' does contain '倾斜分析报告将显示在这里' (expected to contain); actual='       倾斜分析报告将显示在这里\\n  '",
+          "screenshot": null
+        },
+        {
+          "desc": "value_is: {'of': 'SQL', 'value': ''}",
+          "ok": true,
+          "elapsed_ms": 12,
+          "detail": "'SQL' value: expected to equal '', actual ''",
+          "screenshot": null
+        },
+        {
+          "desc": "hidden: {'target': '下载报告'}",
+          "ok": true,
+          "elapsed_ms": 1417,
+          "detail": "'下载报告' visible=False, expected hidden",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 5969,
+      "healed": []
+    },
+    {
+      "case_id": "DSK9",
+      "title": "MaxCompute 方言报告给 odps 引擎参数",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select: {'of': 'SQL 方言', 'value': 'MaxCompute SQL'}",
+          "ok": true,
+          "elapsed_ms": 1095,
+          "detail": "selected 'MaxCompute SQL' in 'SQL 方言'",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'}",
+          "ok": true,
+          "elapsed_ms": 1545,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 72,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1188,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'maxcompute'}",
+          "ok": true,
+          "elapsed_ms": 23,
+          "detail": "'结果区' does contain 'maxcompute' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: maxcompute  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nCOUNT(DISTINCT) 单点聚合\\n行 1\\nCOUNT(DISTINCT user_id) 会把全部数据汇聚到单个 Reducer/Task 去重计数\\n数据量大时该 Task 成为长尾，任务整体被拖慢甚至 OOM\\n改为两阶段：内层 GROUP BY user_id 去重，外层 COUNT(1)；避免直接 COUNT(DISTINCT)\\n\\n\\n引擎参数建议\\n\\n…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'odps.sql.groupby.skewindata'}",
+          "ok": true,
+          "elapsed_ms": 24,
+          "detail": "'结果区' does contain 'odps.sql.groupby.skewindata' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: maxcompute  - 语句数: 1\\n\\n总体结论\\n⚠️ 潜在倾斜：1 处发现值得排查。\\n倾斜风险明细\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\nCOUNT(DISTINCT) 单点聚合\\n行 1\\nCOUNT(DISTINCT user_id) 会把全部数据汇聚到单个 Reducer/Task 去重计数\\n数据量大时该 Task 成为长尾，任务整体被拖慢甚至 OOM\\n改为两阶段：内层 GROUP BY user_id 去重，外层 COUNT(1)；避免直接 COUNT(DISTINCT)\\n\\n\\n引擎参数建议\\n\\n…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4893,
+      "healed": []
+    },
+    {
+      "case_id": "DSK10",
+      "title": "英文界面静态报告为英文",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'}",
+          "ok": true,
+          "elapsed_ms": 1556,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 94,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>The skew analysis report will appear here</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1187,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'Data Skew Analysis Report'}",
+          "ok": true,
+          "elapsed_ms": 24,
+          "detail": "'结果区' does contain 'Data Skew Analysis Report' (expected to contain); actual='       📊 Data Skew Analysis Report\\n\\nDialect: spark  - Statements: 1\\n\\nSummary\\n⚠️ Potential skew: 1 finding(s) worth reviewing.\\nSkew Findings\\n🟡 Potential skew (review recommended)\\n\\n\\n\\n#\\nCategory\\nLocation\\nProblem\\nImpact\\nSuggestion\\n\\n\\n\\n1\\nCOUNT(DISTINCT) single-point aggregation\\nline 1\\nCOUNT(DISTINCT user_…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'Engine-Level Hints'}",
+          "ok": true,
+          "elapsed_ms": 23,
+          "detail": "'结果区' does contain 'Engine-Level Hints' (expected to contain); actual='       📊 Data Skew Analysis Report\\n\\nDialect: spark  - Statements: 1\\n\\nSummary\\n⚠️ Potential skew: 1 finding(s) worth reviewing.\\nSkew Findings\\n🟡 Potential skew (review recommended)\\n\\n\\n\\n#\\nCategory\\nLocation\\nProblem\\nImpact\\nSuggestion\\n\\n\\n\\n1\\nCOUNT(DISTINCT) single-point aggregation\\nline 1\\nCOUNT(DISTINCT user_…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4166,
+      "healed": []
+    },
+    {
+      "case_id": "DSK15",
+      "title": "报告下载为 .md 且内容完整",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'}",
+          "ok": true,
+          "elapsed_ms": 1582,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 76,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1226,
+          "detail": "result settled",
+          "screenshot": null
+        },
+        {
+          "desc": "download: {'target': '下载报告'}",
+          "ok": true,
+          "elapsed_ms": 857,
+          "detail": "downloaded data_skew_report.md -> C:\\Users\\Lenovo\\AppData\\Local\\Temp\\uitest_dl_39ffl8mq\\data_skew_report.md",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "download_ok: {'ext': '.md', 'text': '数据倾斜分析报告'}",
+          "ok": true,
+          "elapsed_ms": 3,
+          "detail": "download ok: data_skew_report.md (1245 bytes)",
+          "screenshot": null
+        },
+        {
+          "desc": "download_ok: {'ext': '.md', 'text': 'COUNT(DISTINCT) 单点聚合'}",
+          "ok": true,
+          "elapsed_ms": 0,
+          "detail": "download ok: data_skew_report.md (1245 bytes)",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4979,
+      "healed": []
+    },
+    {
+      "case_id": "DSK16",
+      "title": "分析历史记录并一键载入",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct user_id) FROM ods.user_log'}",
+          "ok": true,
+          "elapsed_ms": 1559,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 74,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1198,
+          "detail": "result settled",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '清空'}",
+          "ok": true,
+          "elapsed_ms": 87,
+          "detail": "clicked '清空'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><h1>📊 数据倾斜分析报告</h1>\\n<ul>\\n<li><strong>方言</strong>: spark  - <strong>语句数</strong>: 1</li>\\n</ul>\\n<h2>总体结论</h2>\\n<p>⚠️ 潜在倾斜：1 处发现值得排查。</p>\\n<h2>倾斜风险明细</h2>\\n<h3>🟡 潜在倾斜（建议排查）</h3>\\n<table>\\n<thead>\\n<tr>\\n<th>#</th>\\n<th>类别</th>\\n<th>位置</th>\\n<th>问题描述</th>\\n<th>影响</th>\\n<th>优化建议</th>\\n</tr>\\n</thead>\\n<tbody><tr>\\n<td>1</td>\\n<td>COUNT(DISTINCT) 单点聚合</td>\\n<td>行 1</td>\\n<td>COUNT(DISTINCT user_id) 会把全部数据汇聚到单个 Reducer/Task 去重计数</td>\\n<td>数据量大时该 Task 成为长尾，任务整体被拖慢甚至 OOM</td>\\n<td>改为两阶段：先 GROUP BY user_id 去重再 COUNT，或用 approx_count_distinct(user_id)（允许约 2% 误差时）</td>\\n</tr>\\n</tbody></table>\\n<h2>引擎参数建议</h2>\\n<ul>\\n<li>开启 AQE 倾斜自动处理：<code>set spark.sql.adaptive.enabled=true; set spark.sql.adaptive.skewJoin.enabled=true;</code></li>\\n<li>GROUP BY 倾斜可提高并行度：<code>set spark.sql.shuffle.partitions=&lt;按数据量调大&gt;</code> 或对热点 key 加盐两阶段聚合</li>\\n</ul>\\n<h2>优化点说明</h2>\\n<table>\\n<thead>\\n<tr>\\n<th>#</th>\\n<th>优化点</th>\\n<th>原写法</th>\\n<th>优化后</th>\\n<th>预期收益</th>\\n</tr>\\n</thead>\\n<tbody><tr>\\n<td>1</td>\\n<td>COUNT(DISTINCT user_id) 会把全部数据汇聚到单个 Reducer/Task 去重计数</td>\\n<td><code>count(distinct user_id)</code></td>\\n<td><code>approx_count_distinct(user_id) / 两阶段 GROUP BY</code></td>\\n<td>去重下推为两阶段聚合，消除单点热点</td>\\n</tr>\\n</tbody></table>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1088,
+          "detail": "result settled",
+          "screenshot": null
+        },
+        {
+          "desc": "open_accordion: {'target': '分析历史'}",
+          "ok": true,
+          "elapsed_ms": 331,
+          "detail": "opened '分析历史'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '历史刷新'}",
+          "ok": true,
+          "elapsed_ms": 87,
+          "detail": "clicked '历史刷新'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_text: {'text': 'count(distinct user_id)'}",
+          "ok": true,
+          "elapsed_ms": 94,
+          "detail": "text appeared: 'count(distinct user_id)'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '载入所选'}",
+          "ok": true,
+          "elapsed_ms": 94,
+          "detail": "clicked '载入所选'",
+          "screenshot": null
+        },
+        {
+          "desc": "载入是纯状态回填,SQL 框无 loading 信号",
+          "ok": true,
+          "elapsed_ms": 503,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "value_contains: {'of': 'SQL', 'value': 'count(distinct user_id)'}",
+          "ok": true,
+          "elapsed_ms": 9,
+          "detail": "'SQL' value: expected to contain 'count(distinct user_id)', actual 'SELECT count(distinct user_id) FROM ods.user_log'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 6131,
+      "healed": []
+    },
+    {
+      "case_id": "DSK17",
+      "title": "审查页一键跳转倾斜分析并带入 SQL (localStorage 桥)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "fill: {'target': 'SQL', 'value': 'SELECT count(distinct uid) FROM ods.t'}",
+          "ok": true,
+          "elapsed_ms": 1206,
+          "detail": "filled 'SQL'",
+          "screenshot": null
+        },
+        {
+          "desc": "popup_click: {'target': '倾斜分析'}",
+          "ok": true,
+          "elapsed_ms": 2226,
+          "detail": "popup captured, 308 chars",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "popup_contains: {'text': '数据倾斜分析'}",
+          "ok": true,
+          "elapsed_ms": 0,
+          "detail": "popup does contain '数据倾斜分析'; text='⚖️ SQL 数据倾斜分析\\n\\n静态倾斜规则 + LLM 改写。支持 Spark SQL（Spark 3）与 MaxCompute SQL（Hive 作为兼容输入）。默认纯静态分析不执行 SQL；可选连接数据源，用真实键值分布验证倾斜。\\n\\n🏠\\nSQL\\nSQL 方言\\n分析模式\\n静态扫描（快速，不调用 LLM）\\nLLM 优化（改写 SQL）\\n开始分析\\n上传 SQL 文件\\n清空\\n连接数据源（可选——用真实数据验证倾斜）\\n▼\\n分析历史（最近 20 条）\\n▼\\n\\n倾斜分析报告将显示在这里\\nSELECT count(distinct uid) FROM ods.t\\nSpark SQL (Spark 3)\\nst'",
+          "screenshot": null
+        },
+        {
+          "desc": "popup_contains: {'text': 'count(distinct uid)'}",
+          "ok": true,
+          "elapsed_ms": 0,
+          "detail": "popup does contain 'count(distinct uid)'; text='⚖️ SQL 数据倾斜分析\\n\\n静态倾斜规则 + LLM 改写。支持 Spark SQL（Spark 3）与 MaxCompute SQL（Hive 作为兼容输入）。默认纯静态分析不执行 SQL；可选连接数据源，用真实键值分布验证倾斜。\\n\\n🏠\\nSQL\\nSQL 方言\\n分析模式\\n静态扫描（快速，不调用 LLM）\\nLLM 优化（改写 SQL）\\n开始分析\\n上传 SQL 文件\\n清空\\n连接数据源（可选——用真实数据验证倾斜）\\n▼\\n分析历史（最近 20 条）\\n▼\\n\\n倾斜分析报告将显示在这里\\nSELECT count(distinct uid) FROM ods.t\\nSpark SQL (Spark 3)\\nst'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 4358,
+      "healed": []
+    },
+    {
+      "case_id": "DSK18",
+      "title": "上传 SQL 文件填入编辑框并可直接分析",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "upload_file: {'target': '上传 SQL 文件', 'path': 'examples/skew_demo.sql'}",
+          "ok": true,
+          "elapsed_ms": 445,
+          "detail": "uploaded 'examples/skew_demo.sql' via '上传 SQL 文件'",
+          "screenshot": null
+        },
+        {
+          "desc": "上传经服务器回填 SQL 框,无 loading 信号",
+          "ok": true,
+          "elapsed_ms": 1015,
+          "detail": "waited 1000ms",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '开始分析'}",
+          "ok": true,
+          "elapsed_ms": 94,
+          "detail": "clicked '开始分析'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div data-testid=\"markdown-wrapper\" class=\"svelte-16ln60g\"><div data-testid=\"markdown\" class=\"prose dsk-report-card svelte-1xjkzpp\" dir=\"ltr\"><div class=\"icon-button-wrapper top-panel hide-top-corner  svelte-1pnho82\"><!----><button class=\"icon-button svelte-3jwzs9 padded\" aria-label=\"Copy conversation\" aria-haspopup=\"false\" title=\"Copy conversation\" style=\"--border-color: transparent; color: var(--block-label-text-color); --bg-color: var(--block-background-fill);\"><!----> <div class=\"svelte-3jwzs9 small\"><svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 33 33\" color=\"currentColor\" aria-hidden=\"true\" width=\"100%\" height=\"100%\"><path fill=\"currentColor\" d=\"M28 10v18H10V10h18m0-2H10a2 2 0 0 0-2 2v18a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2Z\"></path><path fill=\"currentColor\" d=\"M4 18H2V4a2 2 0 0 1 2-2h14v2H4Z\"></path></svg><!----> <!----></div></button><!----> <!----></div><!----> <span class=\"md svelte-1hf8a14 prose\"><p><em>倾斜分析报告将显示在这里</em></p>\\n</span><!----></div><!----></div> <!----><!----><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1253,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "value_contains: {'of': 'SQL', 'value': 'count(distinct o.user_id)'}",
+          "ok": true,
+          "elapsed_ms": 11,
+          "detail": "'SQL' value: expected to contain 'count(distinct o.user_id)', actual '-- Data Skew demo script (used by the DSK18 UI test case and handy for\\n-- trying the /dataskew page or `seatunnel-agent skew -f examples/skew_demo.sql`).\\n-- Deliberately trips three static rules:\\n--   DS001: COUNT(DISTINCT) single-point aggregation\\n--   DS007: LEFT JOIN key without a NULL filter\\n--   DS005: trailing global ORDER BY without LIMIT\\nSELECT o.category,\\n       count(distinct o.user_id) AS uv\\nFROM ods.orders o\\nLEFT JOIN ods.users u ON o.user_id = u.id\\nGROUP BY o.category\\nORDER BY uv;\\n'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': 'COUNT(DISTINCT) 单点聚合'}",
+          "ok": true,
+          "elapsed_ms": 26,
+          "detail": "'结果区' does contain 'COUNT(DISTINCT) 单点聚合' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⛔ 高倾斜风险：发现 1 处高风险写法——建议在大数据量运行前修复。\\n倾斜风险明细\\n🔴 高倾斜风险（强烈建议修复）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\n全局 ORDER BY\\n行 12\\n末尾的全局 ORDER BY 不带 LIMIT，会把全部结果送入单个 Task 排序\\n单 Task 全量排序，是最典型的人为单点\\n加 LIMIT 只取 TopN；或去掉 ORDER BY 交给下游 BI 排序；必须全排时可先 SORT BY 局部有序\\n\\n\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置…'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '全局 ORDER BY'}",
+          "ok": true,
+          "elapsed_ms": 29,
+          "detail": "'结果区' does contain '全局 ORDER BY' (expected to contain); actual='       📊 数据倾斜分析报告\\n\\n方言: spark  - 语句数: 1\\n\\n总体结论\\n⛔ 高倾斜风险：发现 1 处高风险写法——建议在大数据量运行前修复。\\n倾斜风险明细\\n🔴 高倾斜风险（强烈建议修复）\\n\\n\\n\\n#\\n类别\\n位置\\n问题描述\\n影响\\n优化建议\\n\\n\\n\\n1\\n全局 ORDER BY\\n行 12\\n末尾的全局 ORDER BY 不带 LIMIT，会把全部结果送入单个 Task 排序\\n单 Task 全量排序，是最典型的人为单点\\n加 LIMIT 只取 TopN；或去掉 ORDER BY 交给下游 BI 排序；必须全排时可先 SORT BY 局部有序\\n\\n\\n🟡 潜在倾斜（建议排查）\\n\\n\\n\\n#\\n类别\\n位置…'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 3850,
+      "healed": []
+    },
+    {
+      "case_id": "SCR9",
+      "title": "数据倾斜页整体可滚动 (.st-scroll-page 标记)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 509,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "scrollable: {'selector': '.gradio-container'}",
+          "ok": true,
+          "elapsed_ms": 636,
+          "detail": "container '.gradio-container' at 500px viewport: overflowY=auto, scrollHeight=819, clientHeight=500, scrolledTo=319, bottomGap=0.0px",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 2089,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "Exception in callback _ProactorBasePipeTransport._call_connection_lost()\nhandle: <Handle _ProactorBasePipeTransport._call_connection_lost()>\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\events.py\", line 89, in _run\n    self._context.run(self._callback, *self._args)\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\proactor_events.py\", line 165, in _call_connection_lost\n    self._sock.shutdown(socket.SHUT_RDWR)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^\nConnectionResetError: [WinError 10054] Զ������ǿ�ȹر���һ�����е����ӡ�\nException in callback _ProactorBasePipeTransport._call_connection_lost()\nhandle: <Handle _ProactorBasePipeTransport._call_connection_lost()>\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\events.py\", line 89, in _run\n    self._context.run(self._callback, *self._args)\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\proactor_events.py\", line 165, in _call_connection_lost\n    self._sock.shutdown(socket.SHUT_RDWR)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^\nConnectionResetError: [WinError 10054] Զ������ǿ�ȹر���һ�����е����ӡ�",
+  "elapsed_ms": 83253,
+  "tokens": 0
+}

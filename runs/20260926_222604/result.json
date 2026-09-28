@@ -1,0 +1,86 @@
+{
+  "started_at": "20260926_222604",
+  "suite": "SET1,SET4,SET10",
+  "cases": [
+    {
+      "case_id": "SET1",
+      "title": "设置页加载并展示当前生效配置",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "纯断言用例,等页面水合完成即可",
+          "ok": true,
+          "elapsed_ms": 507,
+          "detail": "waited 500ms",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "visible: {'target': '保存设置'}",
+          "ok": true,
+          "elapsed_ms": 1454,
+          "detail": "'保存设置' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '测试连接'}",
+          "ok": true,
+          "elapsed_ms": 1415,
+          "detail": "'测试连接' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "visible: {'target': '恢复 env'}",
+          "ok": true,
+          "elapsed_ms": 1429,
+          "detail": "'恢复 env' visible=True, expected visible",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '页面', 'text': '当前生效配置'}",
+          "ok": true,
+          "elapsed_ms": 5,
+          "detail": "'页面' does contain '当前生效配置' (expected to contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_not_contains: {'in': '页面', 'text': 'Traceback'}",
+          "ok": true,
+          "elapsed_ms": 4,
+          "detail": "'页面' does not contain 'Traceback' (expected to NOT contain); actual='⚙️ 设置\\n🏠\\n\\n在这里配置 LLM API,无需修改本地 .env 文件。保存后立即生效,并覆盖 .env 中的同名配置(仅影响 Web 界面)。留空的字段保持下方当前配置不变。\\n\\n当前生效配置 · .env / 环境变量\\n\\n提供商: openai · 模型名称: kimi-k2.7-code\\nAPI Key: sk-***YyGG · Base URL: https://www.ydata.space/v1\\n提供商\\nAPI Key\\n模型名称\\nBase URL\\n高级设置\\n▼\\n保存\\n测试连接\\n恢复 .env\\n配置档案\\n▼\\n数据库连接\\n▼\\nLLM 用量(近 30 天)\\n▼'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 7313,
+      "healed": []
+    },
+    {
+      "case_id": "SET4",
+      "title": "恢复 .env 清除界面覆盖值",
+      "verdict": "SKIP",
+      "steps": [],
+      "asserts": [],
+      "reason": "外接应用 (--base-url) 无配置隔离,跳过会改写真实配置的用例",
+      "tokens": 0,
+      "elapsed_ms": 0,
+      "healed": []
+    },
+    {
+      "case_id": "SET10",
+      "title": "删除数据库连接(SET9 清理)",
+      "verdict": "SKIP",
+      "steps": [],
+      "asserts": [],
+      "reason": "外接应用 (--base-url) 无配置隔离,跳过会改写真实配置的用例",
+      "tokens": 0,
+      "elapsed_ms": 0,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "",
+  "elapsed_ms": 8557,
+  "tokens": 0
+}

@@ -1,0 +1,258 @@
+{
+  "started_at": "20260926_220608",
+  "suite": "A5,X4,C1",
+  "cases": [
+    {
+      "case_id": "C1",
+      "title": "结构对比一致 (orders 对 9 列相同)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 2028,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 729,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 131,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 112,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1985,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 725,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 100,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 119,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_a', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1122,
+          "detail": "selected 'dc_test_orders_a' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "select: {'of': '选择表', 'value': 'dc_test_orders_b', 'side': 'B'}",
+          "ok": true,
+          "elapsed_ms": 1124,
+          "detail": "selected 'dc_test_orders_b' in '选择表'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '结构对比'}",
+          "ok": true,
+          "elapsed_ms": 115,
+          "detail": "clicked '结构对比'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_result: {'_before_html': '<!----><!----><!----> <!----> <div data-testid=\"status-tracker\" class=\"wrap center full svelte-1uj8rng hide\" style=\"position: absolute; padding: 0px;\"><!----> <!----></div> <!----><!----> <div class=\"html-container svelte-1jts93g\"><!----><div id=\"html-a98yw1e9e\" class=\"prose gradio-style st-schema-card svelte-26mp0t\"><div style=\"display:flex;align-items:center;justify-content:center;height:60vh;color:#9ca3af;font-size:15px;\">Connect two data sources and click Compare</div></div><!----></div><!----> <!---->'}",
+          "ok": true,
+          "elapsed_ms": 1107,
+          "detail": "result settled",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "text_contains: {'in': '结果区', 'text': '表结构完全一致'}",
+          "ok": true,
+          "elapsed_ms": 10,
+          "detail": "'结果区' does contain '表结构完全一致' (expected to contain); actual='     表结构对比 — 表结构完全一致 '",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 12432,
+      "healed": []
+    },
+    {
+      "case_id": "A5",
+      "title": "Tab 在空输入框填入灰色占位默认值",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "clear: {'target': '主机', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 70,
+          "detail": "cleared '主机'",
+          "screenshot": null
+        },
+        {
+          "desc": "press: {'keys': 'Tab', 'in': '主机', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 72,
+          "detail": "pressed Tab",
+          "screenshot": null
+        },
+        {
+          "desc": "clear: {'target': '端口', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 77,
+          "detail": "cleared '端口'",
+          "screenshot": null
+        },
+        {
+          "desc": "press: {'keys': 'Tab', 'in': '端口', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 58,
+          "detail": "pressed Tab",
+          "screenshot": null
+        },
+        {
+          "desc": "clear: {'target': '数据库', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 75,
+          "detail": "cleared '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "press: {'keys': 'Tab', 'in': '数据库', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 56,
+          "detail": "pressed Tab",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "value_is: {'of': '主机', 'side': 'A', 'value': '10.0.0.1'}",
+          "ok": true,
+          "elapsed_ms": 16,
+          "detail": "'主机' value: expected to equal '10.0.0.1', actual '10.0.0.1'",
+          "screenshot": null
+        },
+        {
+          "desc": "value_is: {'of': '端口', 'side': 'A', 'value': '10000'}",
+          "ok": true,
+          "elapsed_ms": 17,
+          "detail": "'端口' value: expected to equal '10000', actual '10000'",
+          "screenshot": null
+        },
+        {
+          "desc": "value_is: {'of': '数据库', 'side': 'A', 'value': 'default'}",
+          "ok": true,
+          "elapsed_ms": 20,
+          "detail": "'数据库' value: expected to equal 'default', actual 'default'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 1636,
+      "healed": []
+    },
+    {
+      "case_id": "X4",
+      "title": "SQLite 分支隐藏字段回归 (浏览器提交 None)",
+      "verdict": "PASS",
+      "steps": [
+        {
+          "desc": "select_ds: {'value': 'SQLite', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1943,
+          "detail": "ds = SQLite",
+          "screenshot": null
+        },
+        {
+          "desc": "fill: {'target': '数据库', 'value': 'config/uitest_demo.db', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 712,
+          "detail": "filled '数据库'",
+          "screenshot": null
+        },
+        {
+          "desc": "click: {'target': '连接', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 123,
+          "detail": "clicked '连接'",
+          "screenshot": null
+        },
+        {
+          "desc": "wait_status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 109,
+          "detail": "status: ✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表",
+          "screenshot": null
+        }
+      ],
+      "asserts": [
+        {
+          "desc": "hidden: {'target': '主机', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1459,
+          "detail": "'主机' visible=False, expected hidden",
+          "screenshot": null
+        },
+        {
+          "desc": "hidden: {'target': '端口', 'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 1443,
+          "detail": "'端口' visible=False, expected hidden",
+          "screenshot": null
+        },
+        {
+          "desc": "status_ok: {'side': 'A'}",
+          "ok": true,
+          "elapsed_ms": 7,
+          "detail": "status[A] expected ✅, actual '✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表'",
+          "screenshot": null
+        },
+        {
+          "desc": "text_contains: {'in': '状态', 'side': 'A', 'text': '10'}",
+          "ok": true,
+          "elapsed_ms": 7,
+          "detail": "'状态' does contain '10' (expected to contain); actual='✅ SQLite SQLite: config/uitest_demo.db · 已加载 10 张表'",
+          "screenshot": null
+        }
+      ],
+      "reason": "",
+      "tokens": 0,
+      "elapsed_ms": 6948,
+      "healed": []
+    }
+  ],
+  "app_log_tail": "Exception in callback _ProactorBasePipeTransport._call_connection_lost()\nhandle: <Handle _ProactorBasePipeTransport._call_connection_lost()>\nTraceback (most recent call last):\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\events.py\", line 89, in _run\n    self._context.run(self._callback, *self._args)\n    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"D:\\development\\miniconda\\Lib\\asyncio\\proactor_events.py\", line 165, in _call_connection_lost\n    self._sock.shutdown(socket.SHUT_RDWR)\n    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^\nConnectionResetError: [WinError 10054] Զ������ǿ�ȹر���һ�����е����ӡ�",
+  "elapsed_ms": 37044,
+  "tokens": 0
+}

@@ -1,0 +1,1 @@
+{"timestamp": "2026-09-27T12:58:55+00:00", "source": "ui", "mode": "static", "dialect": "spark", "counts": {"high": 0, "medium": 0, "low": 0}, "verdict": "clean", "optimized": false, "sql": "SELECT region, count(*) FROM dc_test_metrics_a GROUP BY region"}
