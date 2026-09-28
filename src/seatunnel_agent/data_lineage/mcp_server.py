@@ -169,14 +169,9 @@ def create_mcp_server(
     sql_dialect: str = "hive",
 ):
     """FastMCP server (stdio) wrapping the lineage tools."""
-    try:
-        from mcp.server.fastmcp import FastMCP
-    except ImportError as exc:
-        raise RuntimeError(
-            "未安装 mcp 依赖，请先执行: pip install 'seatunnel-agent[mcp]'"
-        ) from exc
+    from ..mcp_compat import fastmcp_class
 
-    server = FastMCP("seatunnel-lineage", instructions=_INSTRUCTIONS)
+    server = fastmcp_class()("seatunnel-lineage", instructions=_INSTRUCTIONS)
     functions = build_tool_functions(
         sql_dir=sql_dir, seatunnel_dir=seatunnel_dir, use_hive=use_hive,
         meta_table=meta_table, partition=partition, sql_dialect=sql_dialect,

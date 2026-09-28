@@ -655,6 +655,24 @@ seatunnel-agent skew-stats                                           # history &
 seatunnel-agent skew-mcp                                             # MCP server (stdio)
 ```
 
+### MCP Toolbox (`seatunnel-agent mcp`)
+
+One stdio MCP server that hands the whole agent suite to any MCP client
+(Claude Code / Claude Desktop / Cline / Cursor): SQL review, dialect
+translation, data-skew analysis, change-impact diff, DataX/Sqoop migration,
+plus schema browsing / **read-only** querying / cross-database row-count &
+schema comparison over the saved connections from the Settings page
+(referenced by NAME — credentials never enter the model context). Every
+tool is deterministic: no LLM calls inside, zero tokens. Lineage tools load
+when a graph source is given. Design doc: [`docs/mcp_toolbox.md`](docs/mcp_toolbox.md)
+
+```bash
+pip install 'seatunnel-agent[mcp]'
+seatunnel-agent mcp                          # 12-tool base set
+seatunnel-agent mcp --sql-dir sql/           # + 7 lineage tools
+claude mcp add seatunnel-agent -- seatunnel-agent mcp   # Claude Code
+```
+
 ### UI Testing Agent
 
 Browser-driven regression for the Gradio pages (real Chromium via Playwright,
@@ -1313,6 +1331,22 @@ seatunnel-agent skew -D sql/ --fail-on high                          # 目录级
 seatunnel-agent skew -f etl.sql --llm -o report.md                   # + LLM 改写
 seatunnel-agent skew-stats                                           # history & aggregates
 seatunnel-agent skew-mcp                                             # MCP server (stdio)
+```
+
+### MCP 工具箱（`seatunnel-agent mcp`）
+
+一个 stdio MCP server 把整套 agent 交给任意 MCP 客户端（Claude Code /
+Claude Desktop / Cline / Cursor）：SQL 审查、方言翻译、数据倾斜分析、
+变更影响 diff、DataX/Sqoop 迁移，以及基于设置页已保存连接的表结构浏览、
+**只读**查询、跨库行数/结构比对（按连接名引用，凭据不进模型上下文）。
+所有工具均为确定性实现：内部不调用 LLM、零 token。血缘工具在给出图来源
+时加载。设计文档：[`docs/mcp_toolbox.md`](docs/mcp_toolbox.md)
+
+```bash
+pip install 'seatunnel-agent[mcp]'
+seatunnel-agent mcp                          # 12 个基础工具
+seatunnel-agent mcp --sql-dir sql/           # + 7 个血缘工具
+claude mcp add seatunnel-agent -- seatunnel-agent mcp   # Claude Code
 ```
 
 ### UI 测试 Agent
