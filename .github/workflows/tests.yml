@@ -31,3 +31,17 @@ jobs:
           python -m pytest tests/ -q
           --cov=seatunnel_agent --cov-report=term-missing:skip-covered
           --cov-fail-under=60
+
+      # The unit suite runs without the mcp package by design; this step
+      # guards the SDK-compat shim (mcp 2.x renamed FastMCP -> MCPServer)
+      # by booting the real server on the current SDK and listing tools.
+      - name: MCP server boot smoke (current mcp SDK)
+        run: |
+          pip install "mcp>=1.2"
+          python -c "
+          import anyio
+          from seatunnel_agent.mcp_toolbox import create_mcp_server
+          tools = anyio.run(create_mcp_server().list_tools)
+          assert len(tools) >= 15, [t.name for t in tools]
+          print('mcp boot ok:', len(tools), 'tools')
+          "

@@ -68,14 +68,9 @@ def build_tool_functions(
 
 def create_mcp_server(default_dialect: str = "spark", default_lang: str = "zh"):
     """FastMCP server (stdio) wrapping the skew tools."""
-    try:
-        from mcp.server.fastmcp import FastMCP
-    except ImportError as exc:
-        raise RuntimeError(
-            "未安装 mcp 依赖，请先执行: pip install 'seatunnel-agent[mcp]'"
-        ) from exc
+    from ..mcp_compat import fastmcp_class
 
-    server = FastMCP("seatunnel-dataskew", instructions=_INSTRUCTIONS)
+    server = fastmcp_class()("seatunnel-dataskew", instructions=_INSTRUCTIONS)
     functions = build_tool_functions(
         default_dialect=default_dialect, default_lang=default_lang)
     for fn in functions.values():

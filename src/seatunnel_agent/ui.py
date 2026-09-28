@@ -883,6 +883,12 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports" data-zh="真实浏览器驱动的页面自动回归 — YAML 用例、LLM 模糊断言、HTML 报告">Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports</div>
       <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/mcp">
+      <div class="st-hub-logo" style="background:#6366f1;">MCP</div>
+      <div class="st-hub-card-title" data-en="MCP Toolbox" data-zh="MCP 工具箱">MCP Toolbox</div>
+      <div class="st-hub-card-desc" data-en="The whole suite as one MCP server for Claude Code / Desktop — tools, client setup &amp; call audit" data-zh="整套 agent 一个 MCP server 交给 Claude Code / Desktop —— 工具清单、接入配置与调用审计">The whole suite as one MCP server for Claude Code / Desktop — tools, client setup &amp; call audit</div>
+      <div class="st-hub-enter" style="color:#6366f1;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <a class="st-hub-card" href="/settings">
       <div class="st-hub-logo" style="background:#64748b;">⚙</div>
       <div class="st-hub-card-title" data-en="Settings" data-zh="设置">Settings</div>
@@ -981,6 +987,7 @@ def create_ui() -> gr.Blocks:
     from .data_comparison_ui import render_data_comparison_page
     from .sql_review_ui import render_sql_review_page
     from .data_skew_ui import render_data_skew_page
+    from .mcp_toolbox_ui import render_mcp_page
 
     _hide_sub_nav_js = """
     () => {
@@ -1090,6 +1097,9 @@ def create_ui() -> gr.Blocks:
 
     with app.route("Data Skew", "/dataskew"):
         render_data_skew_page(app)
+
+    with app.route("MCP Toolbox", "/mcp"):
+        render_mcp_page(app)
 
     return app
 

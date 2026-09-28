@@ -1345,6 +1345,106 @@ def skew_mcp(dialect: str, lang: str) -> None:
     server.run()
 
 
+@cli.command(name="mcp")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Default report language")
+@click.option("--sql-dir", type=click.Path(exists=True, file_okay=False), default=None,
+              help="启用血缘工具：从目录下的 *.sql 构建血缘图（递归）")
+@click.option("--sql-dialect", type=click.Choice(
+                  ["hive", "spark", "flink", "maxcompute", "mysql",
+                   "postgresql", "clickhouse", "doris", "starrocks", "sqlite"]),
+              default="hive", show_default=True,
+              help="解析 --sql-dir 脚本用的 SQL 方言")
+@click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False), default=None,
+              help="启用血缘工具：从 SeaTunnel 配置目录构建 source→sink 血缘")
+@click.option("--hive", "use_hive", is_flag=True,
+              help="启用血缘工具：从 Hive 元数据血缘表构建（需 .env 配置）")
+@click.option("--meta-table", type=str, default=None,
+              help="血缘元数据表名（默认 zz.dwm_meta_table_lineage_df）")
+@click.option("--partition", type=str, default=None,
+              help="指定 pt 分区（默认自动取最新分区）")
+@click.option("--connections", type=str, default=None,
+              help="数据库工具可用的连接名白名单（逗号分隔；默认全部已保存连接）")
+@click.option("--no-db", "no_db", is_flag=True,
+              help="纯静态模式：只暴露 6 个静态分析工具，不加载任何数据库工具")
+def mcp_toolbox_cmd(
+    lang: str,
+    sql_dir: str | None,
+    sql_dialect: str,
+    seatunnel_dir: str | None,
+    use_hive: bool,
+    meta_table: str | None,
+    partition: str | None,
+    connections: str | None,
+    no_db: bool,
+) -> None:
+    """统一 MCP 工具箱（stdio）：SQL 审查/方言翻译/倾斜分析/变更影响/配置迁移
+    + 已保存连接上的表结构浏览、只读查询与跨库比对。全部确定性实现，不调用
+    LLM。血缘工具在给出 --sql-dir / --seatunnel-dir / --hive 之一时加载。"""
+    from .mcp_toolbox import create_mcp_server
+
+    allow = ([n.strip() for n in connections.split(",") if n.strip()]
+             if connections else None)
+    try:
+        server = create_mcp_server(
+            default_lang=lang, sql_dir=sql_dir, seatunnel_dir=seatunnel_dir,
+            use_hive=use_hive, meta_table=meta_table, partition=partition,
+            sql_dialect=sql_dialect, connections=allow, include_db=not no_db,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+    server.run()
+
+
+@cli.command(name="mcp-stats")
+@click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
+def mcp_stats(recent: int) -> None:
+    """MCP 工具箱调用审计与统计 (logs/mcp_toolbox.jsonl)。"""
+    import json as _json
+    from collections import Counter, defaultdict
+
+    from .mcp_toolbox import _audit_file
+
+    path = _audit_file()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        console.print("[yellow]还没有 MCP 工具调用记录。[/yellow]")
+        return
+    records = []
+    for line in lines:
+        try:
+            records.append(_json.loads(line))
+        except ValueError:
+            continue
+    if not records:
+        console.print("[yellow]还没有 MCP 工具调用记录。[/yellow]")
+        return
+    console.print("[bold]最近调用[/bold]")
+    for r in records[-recent:]:
+        mark = "✅" if r.get("ok") else "⛔"
+        console.print(
+            f"  {r.get('timestamp', '')}  {mark} {r.get('tool', ''):<24} "
+            f"{r.get('elapsed_ms', 0):>6} ms  {str(r.get('args', ''))[:60]}")
+    by_tool: dict[str, list] = defaultdict(list)
+    for r in records:
+        by_tool[r.get("tool", "?")].append(r)
+    ok_total = sum(1 for r in records if r.get("ok"))
+    console.print(
+        f"\n[bold]汇总[/bold] 共 {len(records)} 次调用 · 成功 {ok_total} · "
+        f"失败 {len(records) - ok_total}")
+    rows = sorted(by_tool.items(), key=lambda kv: -len(kv[1]))
+    for tool, rs in rows:
+        ok = sum(1 for r in rs if r.get("ok"))
+        avg = sum(int(r.get("elapsed_ms", 0)) for r in rs) // max(len(rs), 1)
+        console.print(f"  {tool:<26} {len(rs):>4} 次 · 成功率 "
+                      f"{100 * ok // max(len(rs), 1):>3}% · 平均 {avg} ms")
+    fails = Counter(r.get("tool", "?") for r in records if not r.get("ok"))
+    if fails:
+        top = " · ".join(f"{t}×{c}" for t, c in fails.most_common(5))
+        console.print(f"[bold]失败集中在[/bold] {top}")
+
+
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
