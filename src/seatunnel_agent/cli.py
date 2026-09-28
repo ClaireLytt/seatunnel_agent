@@ -1566,6 +1566,125 @@ def t2s_cron(once: bool, tick: int) -> None:
         console.print("已退出")
 
 
+@cli.group()
+def dqc() -> None:
+    """DQC 数据质量：规则化表级检查（行数/空值率/唯一性/枚举域）。"""
+
+
+@dqc.command("validate")
+@click.option("--rules", "-r", "rules_file", type=click.Path(exists=True),
+              required=True, help="DQC 规则 YAML")
+@click.option("--ddl", type=click.Path(exists=True), required=True,
+              help="schema DDL（表白名单），交叉校验表/列存在性")
+def dqc_validate(rules_file: str, ddl: str) -> None:
+    """校验规则与 DDL 的一致性（CI 门禁：有错误时退出码 1）。"""
+    _ensure_utf8_stdio()
+    from .data_quality import load_rules, validate_rules
+    from .text2sql.schema import SchemaStore
+
+    rules, errors = load_rules(rules_file)
+    errors += validate_rules(rules, SchemaStore.from_file(ddl))
+    if errors:
+        for err in errors:
+            console.print(f"[red]{err}[/red]")
+        raise SystemExit(1)
+    n_checks = sum(len(r.checks) for r in rules)
+    console.print(f"[green]校验通过：{len(rules)} 张表 / {n_checks} 项检查[/green]")
+
+
+@dqc.command("run")
+@click.option("--rules", "-r", "rules_file", type=click.Path(exists=True),
+              required=True, help="DQC 规则 YAML")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="schema DDL（给出时检查 SQL 也过白名单校验）")
+@click.option("--ds-type", default="hive", show_default=True)
+@click.option("--database", default="", help="sqlite 数据库路径（仅 sqlite）")
+@click.option("--connection", default="", help="连接预设名（设置页保存的连接）")
+@click.option("--webhook", default="", help="有不通过项时推送飞书告警卡片")
+@click.option("--fail-on-violation/--no-fail-on-violation", default=True,
+              show_default=True, help="有不通过/异常项时退出码 1（CI 门禁）")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="报告写入文件")
+def dqc_run(rules_file: str, ddl: str | None, ds_type: str, database: str,
+            connection: str, webhook: str, fail_on_violation: bool,
+            output: str | None) -> None:
+    """执行全部质量检查并输出报告。"""
+    _ensure_utf8_stdio()
+    from .data_quality import load_rules, render_report, run_checks
+    from .data_quality.runner import push_failures
+    from .text2sql.executor import create_executor
+    from .text2sql.subscriptions import resolve_db_config
+
+    rules, errors = load_rules(rules_file)
+    if errors:
+        for err in errors:
+            console.print(f"[red]{err}[/red]")
+        raise SystemExit(1)
+    if not rules:
+        raise click.ClickException("规则文件为空")
+
+    schema_store = None
+    if ddl:
+        from .text2sql.schema import SchemaStore
+        schema_store = SchemaStore.from_file(ddl)
+
+    db_config = resolve_db_config({
+        "ds_type": ds_type, "connection": connection, "database": database,
+    })
+    if db_config is None:
+        raise click.ClickException(
+            "无法解析数据库连接（--connection 预设名、--database 或环境变量）")
+
+    results = run_checks(rules, create_executor(db_config),
+                         schema_store=schema_store, ds_type=ds_type)
+    report = render_report(results)
+    console.print(report)
+    if output:
+        from pathlib import Path as _P
+        _P(output).write_text(report, encoding="utf-8")
+        console.print(f"[green]报告已写入 {output}[/green]")
+    if webhook:
+        ok, msg = push_failures(results, webhook)
+        if not ok:
+            console.print(f"[yellow]告警推送失败: {msg}[/yellow]")
+    bad = sum(1 for r in results if r.status != "pass")
+    if bad and fail_on_violation:
+        raise SystemExit(1)
+
+
+@cli.command()
+@click.option("--sql-dir", type=click.Path(exists=True, file_okay=False),
+              required=True, help="数仓 SQL 目录（构建血缘图）")
+@click.option("--qlog", type=click.Path(exists=True), default=None,
+              help="查询审计日志（默认 logs/text2sql_queries.jsonl）")
+@click.option("--days", type=int, default=30, show_default=True,
+              help="审计窗口天数")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="报告写入文件")
+def govern(sql_dir: str, qlog: str | None, days: int,
+           output: str | None) -> None:
+    """数据治理建议：血缘图 × 查询审计 → 下线候选/热表/失败高发（只建议不动手）。"""
+    _ensure_utf8_stdio()
+    from .data_lineage.governance import (
+        analyze_governance,
+        load_qlog_records,
+        render_governance_markdown,
+    )
+    from .data_lineage.loaders import build_graph
+
+    graph, warnings = build_graph(sql_dir=sql_dir)
+    for w in warnings[:5]:
+        console.print(f"[yellow]警告: {w}[/yellow]")
+    records = load_qlog_records(qlog, days=days)
+    report = analyze_governance(graph, records, days=days)
+    text = render_governance_markdown(report)
+    console.print(text)
+    if output:
+        from pathlib import Path as _P
+        _P(output).write_text(text, encoding="utf-8")
+        console.print(f"[green]报告已写入 {output}[/green]")
+
+
 def _load_metrics_for_cli(metrics_file: str | None, ddl: str | None):
     """Shared loader for the metrics subcommands: (store, errors)."""
     from .text2sql.metrics import load_metric_store

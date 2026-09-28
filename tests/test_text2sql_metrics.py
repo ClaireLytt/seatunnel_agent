@@ -965,6 +965,51 @@ def test_mcp_trace_and_attribution_tools(tmp_path, monkeypatch) -> None:
     assert "trace_metric" in tools2
 
 
+def test_unified_entry_review_sql(sqlite_runtime) -> None:
+    out = json.loads(execute_text2sql_tool(
+        "review_sql",
+        {"sql": "SELECT channel FROM sales WHERE channel = NULL"},
+        sqlite_runtime,
+    ))
+    assert out["success"] is True
+    assert out["counts"].get("critical", 0) >= 1
+    assert any(f["category"] == "where_syntax" for f in out["findings"])
+
+    out = json.loads(execute_text2sql_tool(
+        "review_sql", {"sql": "SELECT 1", "dialect": "martian"}, sqlite_runtime,
+    ))
+    assert "Unknown review dialect" in out["error"]
+
+
+def test_unified_entry_skew_check(sqlite_runtime) -> None:
+    out = json.loads(execute_text2sql_tool(
+        "skew_check",
+        {"sql": "SELECT COUNT(DISTINCT order_id) FROM sales", "dialect": "hive"},
+        sqlite_runtime,
+    ))
+    assert out["success"] is True
+    assert out["finding_count"] >= 1
+    assert "COUNT(DISTINCT" in out["report_markdown"]
+
+
+def test_unified_entry_transpile_sql(sqlite_runtime) -> None:
+    pytest.importorskip("sqlglot")
+    out = json.loads(execute_text2sql_tool(
+        "transpile_sql",
+        {"sql": "SELECT NVL(amount, 0) FROM sales",
+         "source_dialect": "hive", "target_dialect": "doris"},
+        sqlite_runtime,
+    ))
+    assert out["success"] is True, out
+    assert out["dst_dialect"] == "doris"
+    assert out["statements"][0]["output_sql"]
+
+    out = json.loads(execute_text2sql_tool(
+        "transpile_sql", {"sql": "SELECT 1"}, sqlite_runtime,
+    ))
+    assert "required" in out["error"]
+
+
 def test_tool_run_attribution_truncation_guard(sqlite_runtime) -> None:
     """A drill-down hitting the row limit must fail loudly, not silently
     produce an incomplete contribution decomposition."""

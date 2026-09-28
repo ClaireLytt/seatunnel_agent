@@ -294,6 +294,77 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "review_sql",
+        "description": (
+            "Static SQL code review (no execution): deterministic linter over "
+            "GROUP BY completeness, cartesian joins, = NULL, partition "
+            "filters, division-by-zero and more. Use when the user asks to "
+            "审查/检查 a SQL statement or pastes SQL asking 有没有问题. "
+            "This makes Chat BI the single conversational entry — no need to "
+            "send the user to the /sqlreview page for a quick check."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sql": {"type": "string", "description": "The SQL to review"},
+                "dialect": {
+                    "type": "string",
+                    "description": (
+                        "hive/spark/flink/maxcompute/mysql/postgresql/"
+                        "sqlserver/clickhouse/doris/sqlite (default: the "
+                        "session's data source)"
+                    ),
+                },
+            },
+            "required": ["sql"],
+        },
+    },
+    {
+        "name": "skew_check",
+        "description": (
+            "Static data-skew analysis for batch SQL (spark/hive/maxcompute): "
+            "COUNT(DISTINCT) single-point, NULL join keys, global sort, "
+            "join-key functions and more, with engine-parameter suggestions. "
+            "Use when the user pastes a batch SQL asking 会不会倾斜/为什么慢 "
+            "(for an already-executed slow query the result carries "
+            "skew_hints automatically)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sql": {"type": "string", "description": "The SQL to analyze"},
+                "dialect": {
+                    "type": "string",
+                    "description": "spark / hive / maxcompute (default spark)",
+                },
+            },
+            "required": ["sql"],
+        },
+    },
+    {
+        "name": "transpile_sql",
+        "description": (
+            "Deterministic SQL dialect translation (sqlglot) with a "
+            "structured incompatibility report. Use when the user asks to "
+            "转成/翻译成 another dialect (e.g. hive SQL 转 doris)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "sql": {"type": "string", "description": "The SQL to translate"},
+                "target_dialect": {
+                    "type": "string",
+                    "description": "hive / spark / doris / starrocks",
+                },
+                "source_dialect": {
+                    "type": "string",
+                    "description": "Source dialect (omit to auto-infer)",
+                },
+            },
+            "required": ["sql", "target_dialect"],
+        },
+    },
+    {
         "name": "explain_sql",
         "description": (
             "Run EXPLAIN on a SELECT statement to preview the execution plan "
@@ -875,6 +946,103 @@ def _skew_hints(sql: str, rt: Text2SQLRuntime, elapsed_ms: int) -> list[dict[str
         return []
 
 
+def _tool_review_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    """Unified-entry wrapper over the sql_review static linter."""
+    sql = str(inp.get("sql", "")).strip()
+    if not sql:
+        return {"error": "No SQL provided"}
+    dialect = str(inp.get("dialect", "") or "").strip().lower() \
+        or _REVIEW_DIALECT_BY_DS.get(rt.ds_type, "hive")
+    try:
+        from ..sql_review.linter import is_known_dialect, lint_sql
+
+        if not is_known_dialect(dialect):
+            return {"error": f"Unknown review dialect '{dialect}'"}
+        findings = lint_sql(sql, dialect=dialect, store=rt.store)
+    except Exception as exc:
+        return {"error": f"Review failed: {exc}"}
+    by_sev: dict[str, int] = {}
+    for f in findings:
+        by_sev[f.severity.value] = by_sev.get(f.severity.value, 0) + 1
+    return {
+        "success": True,
+        "dialect": dialect,
+        "counts": by_sev,
+        "findings": [
+            {
+                "severity": f.severity.value,
+                "category": f.category,
+                "location": f.location,
+                "description": f.description,
+                "impact": f.impact,
+                "suggestion": f.suggestion,
+            }
+            for f in findings[:20]
+        ],
+        "truncated": len(findings) > 20,
+    }
+
+
+def _tool_skew_check(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    """Unified-entry wrapper over the data_skew static analyzer."""
+    sql = str(inp.get("sql", "")).strip()
+    if not sql:
+        return {"error": "No SQL provided"}
+    dialect = str(inp.get("dialect", "") or "").strip().lower() \
+        or _SKEW_DIALECT_BY_DS.get(rt.ds_type, "spark")
+    try:
+        from ..data_skew.agent import static_skew_report
+        from ..data_skew.report import render_report
+
+        report = static_skew_report(sql, dialect=dialect)
+        return {
+            "success": True,
+            "dialect": report.dialect,
+            "finding_count": len(report.findings),
+            "report_markdown": render_report(report, "zh"),
+        }
+    except Exception as exc:
+        return {"error": f"Skew analysis failed: {exc}"}
+
+
+def _tool_transpile_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    """Unified-entry wrapper over the deterministic dialect translator."""
+    sql = str(inp.get("sql", "")).strip()
+    target = str(inp.get("target_dialect", "")).strip().lower()
+    if not sql or not target:
+        return {"error": "sql and target_dialect are required"}
+    source = str(inp.get("source_dialect", "") or "").strip().lower() or None
+    try:
+        from ..sql_transpile.i18n import issue_message
+        from ..sql_transpile.transpiler import translate
+
+        result = translate(sql, dst=target, src=source)
+    except Exception as exc:
+        return {"error": f"Translation failed: {exc}"}
+    return {
+        "success": True,
+        "src_dialect": result.src_dialect,
+        "dst_dialect": result.dst_dialect,
+        "src_inferred": result.src_inferred,
+        "counts": result.counts(),
+        "statements": [
+            {
+                "line": s.line,
+                "output_sql": s.output_sql,
+                "issues": [
+                    {
+                        "kind": i.kind,
+                        "level": i.level,
+                        "message": issue_message("zh", i.kind, i.params),
+                    }
+                    for i in s.issues[:10]
+                ],
+            }
+            for s in result.statements[:20]
+        ],
+    }
+
+
 def _tool_trace_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
     """Metric provenance: caliber level + lineage upstream chain."""
     import os
@@ -1205,6 +1373,9 @@ _TOOL_HANDLERS = {
     "build_metric_sql": _tool_build_metric_sql,
     "run_attribution": _tool_run_attribution,
     "trace_metric": _tool_trace_metric,
+    "review_sql": _tool_review_sql,
+    "skew_check": _tool_skew_check,
+    "transpile_sql": _tool_transpile_sql,
     "get_table_schema": _tool_get_table_schema,
     "get_max_partition": _tool_get_max_partition,
     "explain_sql": _tool_explain_sql,
