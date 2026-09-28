@@ -668,10 +668,15 @@ when a graph source is given. Design doc: [`docs/mcp_toolbox.md`](docs/mcp_toolb
 
 ```bash
 pip install 'seatunnel-agent[mcp]'
-seatunnel-agent mcp                          # 12-tool base set
-seatunnel-agent mcp --sql-dir sql/           # + 7 lineage tools
+seatunnel-agent mcp                          # 15-tool base set
+seatunnel-agent mcp --no-db                  # pure-static profile (6 tools)
+seatunnel-agent mcp --connections dev,stage  # allowlist of saved connections
+seatunnel-agent mcp --sql-dir sql/           # + lineage tools & data dictionary
+seatunnel-agent mcp-stats                    # audit trail of tool calls
 claude mcp add seatunnel-agent -- seatunnel-agent mcp   # Claude Code
 ```
+
+<!-- mcp-name: io.github.clairelytt/seatunnel-agent -->
 
 ### UI Testing Agent
 
@@ -1344,8 +1349,11 @@ Claude Desktop / Cline / Cursor）：SQL 审查、方言翻译、数据倾斜分
 
 ```bash
 pip install 'seatunnel-agent[mcp]'
-seatunnel-agent mcp                          # 12 个基础工具
-seatunnel-agent mcp --sql-dir sql/           # + 7 个血缘工具
+seatunnel-agent mcp                          # 15 个基础工具
+seatunnel-agent mcp --no-db                  # 纯静态模式（6 个工具，零数据库面）
+seatunnel-agent mcp --connections dev,stage  # 连接白名单
+seatunnel-agent mcp --sql-dir sql/           # + 血缘工具与数据字典
+seatunnel-agent mcp-stats                    # 工具调用审计统计
 claude mcp add seatunnel-agent -- seatunnel-agent mcp   # Claude Code
 ```
 

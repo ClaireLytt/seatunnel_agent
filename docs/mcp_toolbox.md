@@ -63,6 +63,17 @@
 治理体检等），另加 `data_dictionary()`（从血缘图生成分层数据字典，
 不连接数据库）。
 
+## 部署安全开关
+
+- `--no-db`：纯静态模式，只暴露 6 个静态分析工具——把工具箱交给不受控的
+  AI 时的零数据库攻击面选项。
+- `--connections dev,stage`：连接白名单，数据库工具只能使用列出的连接名
+  （`list_saved_connections` 同样只列白名单内的）。
+- 查询超时：连库调用带硬超时（默认 60s，`SEATUNNEL_MCP_QUERY_TIMEOUT`
+  可调）——挂住的查询不会永久阻塞 MCP 客户端，超时同时重置该连接缓存。
+- 失效连接自愈：任何查询失败都会丢弃缓存的 executor，下次调用自动重连
+  ——数据库重启不需要重启 MCP server。
+
 ## 审计与信任
 
 - **审计日志**：每次工具调用记一行 `logs/mcp_toolbox.jsonl`
@@ -119,10 +130,20 @@ Claude Desktop（`claude_desktop_config.json`）：
   的两种传输层。
 - 倾斜工具照旧写入分析历史（`source=mcp`），`skew-stats` 可见。
 
+## Resources（免工具调用的目录浏览）
+
+- `seatunnel://rules/data-skew` —— DS001–DS013 规则目录
+- `seatunnel://rules/sql-review` —— 审查规则类别目录
+- `seatunnel://dialects` —— 各工具支持的方言
+- `seatunnel://connections` —— 已保存连接（不含凭据；`--no-db` 时不注册）
+
 ## 发布到 registry
 
 产品化清单（server 已带 `version` 元数据，随包版本走）：
 
+0. 仓库根的 `server.json` 是可提交的注册清单（2025-10-17 schema，
+   `registryType: pypi` + stdio），README 已带 `mcp-name` 归属校验标记；
+   前置条件是包先发上 PyPI，之后 `mcp-publisher login github && mcp-publisher publish`。
 1. `pip install seatunnel-agent[mcp]` 可直接安装（extra 已在 pyproject 定义）。
 2. stdio 启动命令即 `seatunnel-agent mcp`，无额外配置也能起 15 个基础工具。
 3. 发布物料：本文档的工具清单表 + README 双语章节；registry 条目建议

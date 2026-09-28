@@ -313,3 +313,129 @@ def test_mcp_server_boot_with_annotations():
         ro = getattr(rq.annotations, "read_only_hint",
                      getattr(rq.annotations, "readOnlyHint", None))
         assert ro is True
+
+
+# ── round 3: allowlist / no-db / cache self-heal / verify history / stats ──
+
+
+def test_connections_allowlist(tools, tmp_path, monkeypatch):
+    _make_db(tmp_path / "a.db", "CREATE TABLE t (id INTEGER);")
+    _make_db(tmp_path / "b.db", "CREATE TABLE t (id INTEGER);")
+    _save_conn("dev-a", tmp_path / "a.db")
+    _save_conn("prod-x", tmp_path / "b.db")
+    fns = build_tool_functions(connections=["dev-a"])
+    assert "- t" in fns["list_tables"]("dev-a")
+    out = fns["list_tables"]("prod-x")
+    assert "白名单" in out
+    listing = fns["list_saved_connections"]()
+    assert "dev-a" in listing and "prod-x" not in listing
+
+
+def test_no_db_profile(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEATUNNEL_DC_PRESETS_PATH",
+                       str(tmp_path / "presets.json"))
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setenv("SEATUNNEL_MCP_AUDIT_PATH",
+                       str(tmp_path / "audit.jsonl"))
+    fns = build_tool_functions(include_db=False)
+    assert set(fns) == {"sql_review", "sql_transpile", "skew_check",
+                        "skew_check_file", "impact_diff",
+                        "migrate_to_seatunnel"}
+
+
+def test_dead_connection_cache_self_heals(tools, tmp_path):
+    db = tmp_path / "a.db"
+    _make_db(db, "CREATE TABLE t (id INTEGER); INSERT INTO t VALUES (1);")
+    _save_conn("dev-a", db)
+    assert "1 rows" in tools["run_query"]("dev-a", "SELECT id FROM t")
+    # simulate a schema change the cached handle would miss on some
+    # engines: drop the table, query fails, cache is invalidated -> the
+    # NEXT call reconnects and sees the recreated table
+    import sqlite3
+    conn = sqlite3.connect(db)
+    conn.executescript("DROP TABLE t;")
+    conn.commit(); conn.close()
+    out = tools["run_query"]("dev-a", "SELECT id FROM t")
+    assert "查询失败" in out
+    _make_db(db, "CREATE TABLE t (id INTEGER); INSERT INTO t VALUES (7);")
+    ok = tools["run_query"]("dev-a", "SELECT id FROM t")
+    assert "1 rows" in ok and "| 7 |" in ok
+
+
+def test_query_timeout(tools, tmp_path, monkeypatch):
+    _make_db(tmp_path / "a.db", "CREATE TABLE t (id INTEGER);")
+    _save_conn("dev-a", tmp_path / "a.db")
+    monkeypatch.setenv("SEATUNNEL_MCP_QUERY_TIMEOUT", "0.05")
+    slow = ("WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM c "
+            "WHERE x < 5000000) SELECT COUNT(*) FROM c")
+    out = tools["run_query"]("dev-a", slow)
+    assert "超时" in out or "timed out" in out
+
+
+def test_skew_verify_writes_history(tools, tmp_path):
+    rows = ",".join("('north')" for _ in range(16)) + ",('south')"
+    _make_db(tmp_path / "a.db",
+             f"CREATE TABLE m (region TEXT); INSERT INTO m VALUES {rows};")
+    _save_conn("dev-a", tmp_path / "a.db")
+    tools["skew_verify"]("dev-a", "SELECT region, count(*) FROM m GROUP BY region")
+    from seatunnel_agent.data_skew.history import default_history
+    recs = default_history().recent()
+    assert recs and recs[0]["mode"] == "verify"
+    assert recs[0]["source"] == "mcp"
+    assert recs[0]["probes"]["confirmed"] >= 1
+
+
+def test_cli_mcp_stats(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    audit = tmp_path / "audit.jsonl"
+    monkeypatch.setenv("SEATUNNEL_MCP_AUDIT_PATH", str(audit))
+    monkeypatch.setenv("SEATUNNEL_DC_PRESETS_PATH",
+                       str(tmp_path / "presets.json"))
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    runner = CliRunner()
+    empty = runner.invoke(cli, ["mcp-stats"])
+    assert empty.exit_code == 0 and "还没有" in empty.output
+    fns = build_tool_functions()
+    fns["sql_transpile"]("SELECT 1", to_dialect="doris")
+    fns["sql_transpile"]("SELECT 1", to_dialect="oracle9000")  # a failure
+    res = runner.invoke(cli, ["mcp-stats"])
+    assert res.exit_code == 0, res.output
+    assert "共 2 次调用" in res.output and "sql_transpile" in res.output
+
+
+def test_mcp_server_resources():
+    pytest.importorskip("mcp")
+    import anyio
+
+    from seatunnel_agent.mcp_toolbox import create_mcp_server
+
+    s = create_mcp_server()
+    uris = {str(r.uri) for r in anyio.run(s.list_resources)}
+    assert "seatunnel://rules/data-skew" in uris
+    assert "seatunnel://connections" in uris
+    s2 = create_mcp_server(include_db=False)
+    uris2 = {str(r.uri) for r in anyio.run(s2.list_resources)}
+    assert "seatunnel://connections" not in uris2
+    assert len(anyio.run(s2.list_tools)) == 6
+
+
+def test_server_json_manifest_valid():
+    import json
+
+    from seatunnel_agent import __version__
+
+    doc = json.loads(open("server.json", encoding="utf-8").read())
+    assert doc["version"] == __version__
+    pkg = doc["packages"][0]
+    assert pkg["registryType"] == "pypi"
+    assert pkg["identifier"] == "seatunnel-agent"
+    assert pkg["version"] == __version__
+    assert pkg["transport"]["type"] == "stdio"
+    # PyPI ownership validation needs the mcp-name marker in the README
+    readme = open("README.md", encoding="utf-8").read()
+    assert f"mcp-name: {doc['name']}" in readme

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-10-17/server.schema.json",
+  "name": "io.github.clairelytt/seatunnel-agent",
+  "description": "Big-data SQL toolbox: static review, dialect transpile, data-skew analysis with live verification, change-impact diff, DataX/Sqoop migration, and cross-database compare over named saved connections. Deterministic tools only - no LLM calls inside.",
+  "version": "0.2.0",
+  "websiteUrl": "https://github.com/ClaireLytt/seatunnel_agent",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "seatunnel-agent",
+      "version": "0.2.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        }
+      ]
+    }
+  ]
+}

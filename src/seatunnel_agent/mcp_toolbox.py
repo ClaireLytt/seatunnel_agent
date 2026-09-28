@@ -134,11 +134,16 @@ def build_tool_functions(
     meta_table: str | None = None,
     partition: str | None = None,
     sql_dialect: str = "hive",
+    connections: list[str] | None = None,
+    include_db: bool = True,
 ) -> dict[str, Callable[..., str]]:
     """All toolbox callables keyed by tool name.
 
     Lineage tools are included only when a lineage source (*sql_dir*,
     *seatunnel_dir* or *use_hive*) is configured — they need a graph.
+    *connections* is an allowlist of saved-connection NAMES the database
+    tools may use (None = all); *include_db=False* drops the database
+    tools entirely (a pure-static server with zero DB attack surface).
     """
     tools: dict[str, Callable[..., str]] = {}
 
@@ -232,12 +237,44 @@ def build_tool_functions(
     from .data_skew.mcp_server import build_tool_functions as _skew_tools
     tools.update(_skew_tools(default_lang=default_lang))
 
+    if not include_db:
+        return {name: _audited(name, fn) for name, fn in tools.items()}
+
     # ── database tools over NAMED saved connections ─────────────────────
     # (shared store with the Settings / Data Comparison pages; passwords
     # stay in the encrypted store and never pass through tool arguments)
 
+    _allow = {n.strip() for n in (connections or []) if n.strip()} or None
     _executors: dict[str, Any] = {}
     _lock = threading.Lock()
+    _pool: dict[str, Any] = {}
+
+    def _invalidate(name: str) -> None:
+        """Drop a cached executor so the next call reconnects — a database
+        restart must not brick the long-running server."""
+        with _lock:
+            _executors.pop((name or "").strip(), None)
+
+    def _db(name: str, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Run a DB call with a hard timeout (a hung query must not block
+        the MCP client forever). The underlying query may keep running in
+        its thread — the tool call itself always returns."""
+        import concurrent.futures
+
+        timeout = float(os.environ.get("SEATUNNEL_MCP_QUERY_TIMEOUT", "60"))
+        with _lock:
+            pool = _pool.get("pool")
+            if pool is None:
+                pool = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+                _pool["pool"] = pool
+        fut = pool.submit(fn, *args, **kwargs)
+        try:
+            return fut.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            _invalidate(name)
+            raise TimeoutError(
+                f"查询超时（{timeout:.0f}s，连接已重置）/ query timed out "
+                f"after {timeout:.0f}s; connection reset") from None
 
     def _store():
         # honor SEATUNNEL_DC_PRESETS_PATH at CALL time (the module-level
@@ -252,6 +289,9 @@ def build_tool_functions(
         key = (name or "").strip()
         if not key:
             return None, "connection 不能为空 / connection name required"
+        if _allow is not None and key not in _allow:
+            return None, (f"连接 '{key}' 不在服务启动时的白名单内 / connection "
+                          f"not in the server's allowlist: {', '.join(sorted(_allow))}")
         with _lock:
             if key in _executors:
                 return _executors[key], ""
@@ -293,6 +333,8 @@ def build_tool_functions(
             presets = _store().list()
         except Exception as exc:  # noqa: BLE001
             return f"读取连接预设失败 / preset store error: {exc}"
+        if _allow is not None:
+            presets = [p for p in presets if p.get("name") in _allow]
         if not presets:
             return ("暂无已保存连接——在 Web 界面 /settings 的“数据库连接”里添加。"
                     " / No saved connections; add one on the /settings page.")
@@ -309,8 +351,9 @@ def build_tool_functions(
         if err:
             return err
         try:
-            names = executor.show_tables()
+            names = _db(connection, executor.show_tables)
         except Exception as exc:  # noqa: BLE001
+            _invalidate(connection)
             return f"查询失败 / query failed: {exc}"
         kw = (keyword or "").strip().lower()
         if kw:
@@ -327,8 +370,9 @@ def build_tool_functions(
         if not _SIMPLE_TABLE_RE.match((table or "").strip()):
             return f"非法表名 / invalid table name: {table!r}"
         try:
-            schema = executor.describe_table(table.strip())
+            schema = _db(connection, executor.describe_table, table.strip())
         except Exception as exc:  # noqa: BLE001
+            _invalidate(connection)
             return f"查询失败 / query failed: {exc}"
         lines = [f"**{schema.full_name}**"
                  + (f" — {schema.comment}" if schema.comment else ""),
@@ -361,8 +405,9 @@ def build_tool_functions(
         if executor.config.ds_type in _LIMIT_DS:
             query = f"SELECT * FROM (\n{query}\n) mcp_q LIMIT {n}"
         try:
-            res = executor.run(query, max_rows=n)
+            res = _db(connection, executor.run, query, max_rows=n)
         except Exception as exc:  # noqa: BLE001
+            _invalidate(connection)
             return f"查询失败 / query failed: {exc}"
         if not res.rows:
             return "（0 行 / 0 rows）"
@@ -388,8 +433,9 @@ def build_tool_functions(
             if (where or "").strip():
                 q += f" WHERE {where.strip()}"
             try:
-                res = executor.run(q, max_rows=1)
+                res = _db(conn, executor.run, q, max_rows=1)
             except Exception as exc:  # noqa: BLE001
+                _invalidate(conn)
                 return f"[{conn}] 查询失败 / query failed: {exc}"
             counts.append(int(res.rows[0][0] or 0))
         a, b = counts
@@ -410,8 +456,9 @@ def build_tool_functions(
             if err:
                 return err
             try:
-                schemas.append(executor.describe_table(table))
+                schemas.append(_db(conn, executor.describe_table, table))
             except Exception as exc:  # noqa: BLE001
+                _invalidate(conn)
                 return f"[{conn}] 查询失败 / query failed: {exc}"
         sa, sb = schemas
         cols_a = {c.name.lower(): c for c in sa.columns}
@@ -456,9 +503,16 @@ def build_tool_functions(
         ds = executor.config.ds_type
         pct = effective_sample_pct(ds, int(sample_pct or 0))
         try:
-            results = run_probes(executor, targets, ds_type=ds, sample_pct=pct)
+            results = _db(connection, run_probes, executor, targets,
+                          ds_type=ds, sample_pct=pct)
         except Exception as exc:  # noqa: BLE001
+            _invalidate(connection)
             return f"探查失败 / probing failed: {exc}"
+        from .data_skew.history import default_history
+        default_history().log_verify(
+            sql, targets=len(targets),
+            confirmed=sum(1 for r in results if r.verdict == "confirmed"),
+            source="mcp")
         return render_probe_section(results, _lang(lang),
                                     dialect=normalize_dialect(dialect),
                                     sample_pct=pct)
@@ -474,8 +528,12 @@ def build_tool_functions(
         executor, err = _executor_for(connection)
         if err:
             return err
-        res = check_consistency(executor, original_sql or "",
-                                optimized_sql or "")
+        try:
+            res = _db(connection, check_consistency, executor,
+                      original_sql or "", optimized_sql or "")
+        except TimeoutError as exc:
+            _invalidate(connection)
+            return str(exc)
         return render_consistency_section(res, _lang(lang))
 
     def compare_checksum(connection_a: str, connection_b: str, table_a: str,
@@ -498,8 +556,9 @@ def build_tool_functions(
             if err:
                 return err
             try:
-                schema = executor.describe_table(table)
+                schema = _db(conn, executor.describe_table, table)
             except Exception as exc:  # noqa: BLE001
+                _invalidate(conn)
                 return f"[{conn}] 查询失败 / query failed: {exc}"
             sides.append((executor, table, schema))
         (ex_a, ta, sa), (ex_b, tbx, sb) = sides
@@ -508,12 +567,14 @@ def build_tool_functions(
         if not cols:
             return "两表无同名列，无法计算校验和 / no shared columns"
         rows = []
-        for ex, table in ((ex_a, ta), (ex_b, tbx)):
+        for conn_name, ex, table in ((connection_a, ex_a, ta),
+                                     (connection_b, ex_b, tbx)):
             q = build_checksum_sql(table, cols, ds_type=ex.config.ds_type,
                                    where=(where or "").strip())
             try:
-                rows.append(ex.run(q, max_rows=64).rows)
+                rows.append(_db(conn_name, ex.run, q, max_rows=64).rows)
             except Exception as exc:  # noqa: BLE001
+                _invalidate(conn_name)
                 return f"[{table}] 校验和查询失败 / checksum query failed: {exc}"
         result = compare_checksums(ta, tbx, rows[0], rows[1])
         if not result.mismatch_count:
@@ -578,6 +639,8 @@ def create_mcp_server(
     meta_table: str | None = None,
     partition: str | None = None,
     sql_dialect: str = "hive",
+    connections: list[str] | None = None,
+    include_db: bool = True,
 ):
     """FastMCP server (stdio) wrapping the whole toolbox."""
     from . import __version__
@@ -593,6 +656,7 @@ def create_mcp_server(
         default_lang=default_lang, sql_dir=sql_dir,
         seatunnel_dir=seatunnel_dir, use_hive=use_hive,
         meta_table=meta_table, partition=partition, sql_dialect=sql_dialect,
+        connections=connections, include_db=include_db,
     )
 
     # every tool is read-only; the pure-static ones are idempotent too
@@ -618,7 +682,62 @@ def create_mcp_server(
         server.tool()(fn)
 
     _register_prompts(server)
+    _register_resources(server, functions)
     return server
+
+
+def _register_resources(server, functions: dict[str, Callable[..., str]]) -> None:
+    """Static catalogs as MCP resources — browsable without spending a tool
+    call (best-effort: skipped on SDKs without resource support)."""
+    if not hasattr(server, "resource"):
+        return
+
+    def skew_rule_catalog() -> str:
+        """数据倾斜静态规则目录（DS001–DS013）。"""
+        from .data_skew.detector import RULE_TEXTS
+
+        lines = ["# Data Skew rules", ""]
+        for key in sorted(RULE_TEXTS):
+            desc = RULE_TEXTS[key].get("zh", {}).get("desc", "")
+            lines.append(f"- **{key}**: {desc}")
+        return "\n".join(lines)
+
+    def review_rule_catalog() -> str:
+        """SQL 审查规则类别目录。"""
+        from .sql_review.report import CHECK_CATALOG
+
+        lines = ["# SQL Review categories", ""]
+        for key, label in CHECK_CATALOG.items():
+            lines.append(f"- **{key}**: {label}")
+        return "\n".join(lines)
+
+    def dialect_catalog() -> str:
+        """各工具支持的方言清单。"""
+        from .data_skew.detector import DIALECTS as skew_d
+        from .sql_review.linter import DIALECTS as review_d
+        from .sql_transpile import DIALECTS as transpile_d
+
+        return ("# Supported dialects\n\n"
+                f"- sql_review: {', '.join(review_d)}\n"
+                f"- sql_transpile: {', '.join(transpile_d)}\n"
+                f"- skew_check / skew_verify: {', '.join(skew_d)}\n")
+
+    resources = [
+        ("seatunnel://rules/data-skew", skew_rule_catalog),
+        ("seatunnel://rules/sql-review", review_rule_catalog),
+        ("seatunnel://dialects", dialect_catalog),
+    ]
+    if "list_saved_connections" in functions:
+        def saved_connections() -> str:
+            """已保存的数据库连接（名称/类型/host/库，不含凭据）。"""
+            return functions["list_saved_connections"]()
+
+        resources.append(("seatunnel://connections", saved_connections))
+    for uri, fn in resources:
+        try:
+            server.resource(uri)(fn)
+        except Exception:  # noqa: BLE001 — resources are optional polish
+            return
 
 
 def _register_prompts(server) -> None:
