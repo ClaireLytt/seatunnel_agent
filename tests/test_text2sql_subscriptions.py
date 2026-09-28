@@ -231,6 +231,110 @@ def test_run_subscription_never_raises(stores) -> None:
 
 
 # ----------------------------------------------------------------------
+# metric_watch (anomaly alert subscription)
+# ----------------------------------------------------------------------
+
+
+def _watch_sub(sales_db: str, **over) -> dict:
+    sub = {
+        "id": "w1", "name": "GMV异动监控", "cron": "0 9 * * *",
+        "source_type": "metric_watch", "metric": "gmv",
+        "dimensions": ["channel"], "threshold_pct": 5.0, "watch_mode": "dod",
+        "ds_type": "sqlite", "connection": "", "database": sales_db,
+        "webhook_url": "https://example/hook", "enabled": True,
+    }
+    sub.update(over)
+    return sub
+
+
+def test_metric_watch_alerts_over_threshold(sales_db, stores) -> None:
+    """昨天(03-02)=160 vs 前天(03-01)=150 → +6.67%, 阈值 5% → 告警."""
+    schema_store, metric_store = stores
+    pushes: list[tuple] = []
+
+    def fake_push(url, title, body, ok=True, **kw):
+        pushes.append((title, body, ok))
+        return True, "ok"
+
+    outcome = run_subscription(
+        _watch_sub(sales_db), schema_store, metric_store,
+        today=date(2026, 3, 3), push_fn=fake_push,
+    )
+    assert outcome["status"] == "alerted", outcome
+    assert outcome["change_rate_pct"] == pytest.approx(6.67, abs=0.01)
+    assert pushes and pushes[0][2] is False  # alert card is red
+    title, body, _ = pushes[0]
+    assert "GMV异动监控" in title
+    assert "+6.67%" in body
+    # top contributors on channel present
+    assert "主要贡献" in body
+    assert outcome["top_contributors"]
+
+
+def test_metric_watch_silent_below_threshold(sales_db, stores) -> None:
+    schema_store, metric_store = stores
+    pushes: list = []
+    outcome = run_subscription(
+        _watch_sub(sales_db, threshold_pct=50.0), schema_store, metric_store,
+        today=date(2026, 3, 3),
+        push_fn=lambda *a, **k: (pushes.append(a), (True, "ok"))[1],
+    )
+    assert outcome["status"] == "no_change"
+    assert pushes == []  # silence by design
+
+
+def test_metric_watch_store_validation(tmp_path) -> None:
+    store = SubscriptionStore(tmp_path / "subs.json")
+    with pytest.raises(ValueError, match="指标名"):
+        store.add(name="x", cron="0 9 * * *", source_type="metric_watch")
+    with pytest.raises(ValueError, match="watch_mode"):
+        store.add(name="x", cron="0 9 * * *", source_type="metric_watch",
+                  metric="gmv", watch_mode="weird")
+    with pytest.raises(ValueError, match="threshold"):
+        store.add(name="x", cron="0 9 * * *", source_type="metric_watch",
+                  metric="gmv", threshold_pct=0)
+    entry = store.add(name="x", cron="0 9 * * *", source_type="metric_watch",
+                      metric="gmv", threshold_pct=8, watch_mode="wow")
+    assert entry["threshold_pct"] == 8.0 and entry["watch_mode"] == "wow"
+
+
+def test_push_feishu_with_img_key(monkeypatch) -> None:
+    captured: dict = {}
+
+    class _Resp:
+        def read(self):
+            return b'{"code": 0}'
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=0):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _Resp()
+
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    ok, _ = push_feishu("https://hook/x", "t", "b", img_key="img_v3_xyz")
+    assert ok
+    elements = captured["body"]["card"]["elements"]
+    assert elements[-1] == {
+        "tag": "img", "img_key": "img_v3_xyz",
+        "alt": {"tag": "plain_text", "content": "chart"},
+    }
+
+
+def test_upload_feishu_image_needs_creds(monkeypatch) -> None:
+    from seatunnel_agent.text2sql.subscriptions import upload_feishu_image
+
+    monkeypatch.delenv("FEISHU_APP_ID", raising=False)
+    monkeypatch.delenv("FEISHU_APP_SECRET", raising=False)
+    assert upload_feishu_image(b"png") == ""  # no creds -> graceful ''
+
+
+# ----------------------------------------------------------------------
 # Feishu payload & card rendering
 # ----------------------------------------------------------------------
 

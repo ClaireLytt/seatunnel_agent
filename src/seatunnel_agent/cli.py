@@ -1454,27 +1454,41 @@ def t2s_sub_list() -> None:
 @click.option("--connection", default="", help="连接预设名（设置页保存的连接）")
 @click.option("--database", default="", help="sqlite 数据库路径（仅 sqlite）")
 @click.option("--webhook", default="", help="飞书 incoming webhook URL")
+@click.option("--watch", is_flag=True,
+              help="异动监控订阅：昨天 vs 参照期,变动超阈值才推送告警")
+@click.option("--threshold", type=float, default=10.0, show_default=True,
+              help="异动阈值百分比（仅 --watch）")
+@click.option("--watch-mode", type=click.Choice(["dod", "wow"]), default="dod",
+              show_default=True, help="参照期：dod=前一天, wow=上周同日（仅 --watch）")
 def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
                 dims: tuple[str, ...], lookback: int, params: tuple[str, ...],
-                ds_type: str, connection: str, database: str, webhook: str) -> None:
-    """新建订阅。"""
+                ds_type: str, connection: str, database: str, webhook: str,
+                watch: bool, threshold: float, watch_mode: str) -> None:
+    """新建订阅（--metric 定时推数 / --metric --watch 异动告警 / --favorite 收藏推数）。"""
     _ensure_utf8_stdio()
     from .text2sql.subscriptions import SubscriptionStore
 
     if bool(metric) == bool(favorite_id):
         raise click.UsageError("--metric 与 --favorite 必须二选一")
+    if watch and not metric:
+        raise click.UsageError("--watch 只能与 --metric 搭配")
     param_map: dict[str, str] = {}
     for p in params:
         if "=" not in p:
             raise click.UsageError(f"--param 格式应为 key=value: {p}")
         k, v = p.split("=", 1)
         param_map[k.strip()] = v
+    if watch:
+        source_type = "metric_watch"
+    else:
+        source_type = "metric" if metric else "favorite"
     try:
         entry = SubscriptionStore().add(
             name=name, cron=cron_expr,
-            source_type="metric" if metric else "favorite",
+            source_type=source_type,
             metric=metric, dimensions=list(dims), lookback_days=lookback,
             favorite_id=favorite_id, params=param_map,
+            threshold_pct=threshold, watch_mode=watch_mode,
             ds_type=ds_type, connection=connection, database=database,
             webhook_url=webhook,
         )

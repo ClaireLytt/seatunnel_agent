@@ -221,6 +221,57 @@ def breakdown_table(
     return columns, rows
 
 
+def _fmt(v: float) -> str:
+    return f"{v:,.4f}".rstrip("0").rstrip(".")
+
+
+def render_attribution_markdown(
+    results: list[AttributionResult],
+    title: str = "",
+) -> str:
+    """Standalone analysis-report Markdown (专题分析报告 export form).
+
+    ``results`` holds one entry for an additive metric, or the
+    numerator/denominator pair of a ratio metric.
+    """
+    lines: list[str] = []
+    head = title or f"{results[0].display_name} 异动归因报告"
+    lines.append(f"# {head}")
+    lines.append("")
+    lines.append(f"> 对比区间: {results[0].prev_label} → {results[0].curr_label}")
+    lines.append("> 本报告由确定性计算产出（贡献率之和恒等于总变动率）。")
+    for r in results:
+        unit = f" {r.unit}" if r.unit else ""
+        rate = (f"{r.change_rate * 100:+.2f}%" if r.change_rate is not None
+                else "N/A（基期为 0）")
+        lines.append("")
+        lines.append(f"## {r.display_name} ({r.metric})")
+        lines.append("")
+        lines.append(f"- 基期: {_fmt(r.prev_total)}{unit} → 当期: "
+                     f"{_fmt(r.curr_total)}{unit}")
+        lines.append(f"- 变动: {_fmt(r.delta)}{unit} ({rate})")
+        if r.best_dimension:
+            lines.append(f"- 最优解释维度: **{r.best_dimension}**")
+        for b in r.dimensions:
+            lines.append("")
+            lines.append(f"### 按 {b.dimension} 分解"
+                         + ("" if b.check_ok else " ⚠️ 自检未通过"))
+            lines.append("")
+            lines.append("| 成员 | 基期 | 当期 | 变动 | 贡献率 |")
+            lines.append("|---|---|---|---|---|")
+            for row in b.rows[:20]:
+                flag = " (新增)" if row.is_new else (" (消失)" if row.is_gone else "")
+                contrib = (f"{row.contribution * 100:+.2f}%"
+                           if row.contribution is not None else "-")
+                lines.append(
+                    f"| {row.value}{flag} | {_fmt(row.prev)} | {_fmt(row.curr)} "
+                    f"| {_fmt(row.delta)} | {contrib} |"
+                )
+    lines.append("")
+    lines.append(f"---\n共执行 {sum(r.sql_count for r in results)} 条 SQL。")
+    return "\n".join(lines)
+
+
 def attribution_to_dict(result: AttributionResult, max_rows: int = 10) -> dict[str, Any]:
     """Compact JSON payload for the agent tool result."""
     return {

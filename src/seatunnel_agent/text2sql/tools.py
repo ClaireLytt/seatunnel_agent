@@ -202,11 +202,31 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
                 "prev_start": {
                     "type": "string",
-                    "description": "Comparison period start",
+                    "description": (
+                        "Comparison period start (omit when compare_mode is set)"
+                    ),
                 },
                 "prev_end": {
                     "type": "string",
                     "description": "Comparison period end (inclusive; defaults to prev_start)",
+                },
+                "compare_mode": {
+                    "type": "string",
+                    "enum": ["mom", "wow", "yoy"],
+                    "description": (
+                        "Derive the comparison period deterministically from "
+                        "the current one: mom=环比 preceding period of equal "
+                        "length, wow=周同比 minus 7 days, yoy=同比 same dates "
+                        "last year. PREFER this over computing prev dates "
+                        "yourself."
+                    ),
+                },
+                "export_report": {
+                    "type": "boolean",
+                    "description": (
+                        "Also export a standalone Markdown analysis report "
+                        "(set true when the user asks for a 报告/导出)"
+                    ),
                 },
                 "dimension": {
                     "type": "string",
@@ -218,7 +238,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                     "description": "Additional SQL boolean conditions applied to both periods",
                 },
             },
-            "required": ["metric", "curr_start", "prev_start"],
+            "required": ["metric", "curr_start"],
         },
     },
     {
@@ -344,11 +364,13 @@ class Text2SQLRuntime:
 
     @property
     def retriever(self):
-        """Hybrid retriever, rebuilt whenever the schema store is swapped
-        (table-whitelist filtering replaces the store object)."""
+        """Hybrid retriever, rebuilt whenever the schema store or metric
+        store is swapped (table-whitelist filtering replaces the store)."""
         from .retrieval import HybridRetriever
-        if self._retriever is None or self._retriever.store is not self.store:
-            self._retriever = HybridRetriever(self.store)
+        if (self._retriever is None
+                or self._retriever.store is not self.store
+                or self._retriever.metric_store is not self.metrics):
+            self._retriever = HybridRetriever(self.store, metric_store=self.metrics)
         return self._retriever
 
     @property
@@ -469,7 +491,10 @@ def _tool_match_metrics(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, A
             ),
         }
     query = inp.get("query", "")
-    matches = rt.metrics.match(query, top_n=5)
+    try:
+        matches = rt.retriever.rank_metrics(query, top_n=5)
+    except Exception:  # retrieval must never break the tool — degrade
+        matches = rt.metrics.match(query, top_n=5)
     return {
         "candidates": [
             {**_metric_payload(r.metric), "score": round(r.score, 2), "hits": r.hits}
@@ -549,6 +574,32 @@ def _attribution_execute(rt: Text2SQLRuntime, user_query: str, metric_name: str 
     return _execute
 
 
+def _derive_prev_range(curr: Any, mode: str) -> Any:
+    """Deterministic comparison-period derivation (mom/wow/yoy)."""
+    from datetime import date, timedelta
+
+    from .partition import TimeRange
+
+    start, end = curr.start, curr.end
+
+    def _year_back(d: "date") -> "date":
+        try:
+            return d.replace(year=d.year - 1)
+        except ValueError:  # Feb 29
+            return d - timedelta(days=365)
+
+    if mode == "mom":
+        span = (end - start).days + 1
+        return TimeRange(start=start - timedelta(days=span),
+                         end=end - timedelta(days=span))
+    if mode == "wow":
+        return TimeRange(start=start - timedelta(days=7),
+                         end=end - timedelta(days=7))
+    if mode == "yoy":
+        return TimeRange(start=_year_back(start), end=_year_back(end))
+    raise MetricError(f"compare_mode 只支持 mom/wow/yoy (got '{mode}')")
+
+
 def _run_one_attribution(
     inp: dict[str, Any], rt: Text2SQLRuntime, metric: Any,
 ) -> "Any":
@@ -558,11 +609,17 @@ def _run_one_attribution(
     curr_range = parse_time_range(
         str(inp.get("curr_start", "") or ""), str(inp.get("curr_end", "") or ""),
     )
-    prev_range = parse_time_range(
-        str(inp.get("prev_start", "") or ""), str(inp.get("prev_end", "") or ""),
-    )
-    if curr_range is None or prev_range is None:
-        raise MetricError("归因分析必须提供 curr_start 和 prev_start")
+    if curr_range is None:
+        raise MetricError("归因分析必须提供 curr_start")
+    mode = str(inp.get("compare_mode", "") or "").strip().lower()
+    if mode:
+        prev_range = _derive_prev_range(curr_range, mode)
+    else:
+        prev_range = parse_time_range(
+            str(inp.get("prev_start", "") or ""), str(inp.get("prev_end", "") or ""),
+        )
+    if prev_range is None:
+        raise MetricError("归因分析必须提供 prev_start 或 compare_mode")
     dim = str(inp.get("dimension", "") or "").strip()
     return run_attribution(
         metric, rt.metrics, rt.store,
@@ -596,6 +653,26 @@ def _publish_breakdown(rt: Text2SQLRuntime, result: Any) -> None:
         rt.last_sql = result.sqls[-1]
 
 
+def _maybe_export_report(
+    inp: dict[str, Any], metric: Any, results: list, out: dict[str, Any],
+) -> None:
+    """Export the standalone Markdown analysis report on request."""
+    if not inp.get("export_report"):
+        return
+    try:
+        from .attribution import render_attribution_markdown
+        from .exporter import _resolve_target
+
+        text = render_attribution_markdown(
+            results, title=f"{metric.display_name} 异动归因报告",
+        )
+        target = _resolve_target(None, f"attribution_{metric.name}", "md")
+        target.write_text(text, encoding="utf-8")
+        out["report_path"] = str(target.resolve())
+    except Exception as exc:  # report is a bonus — never fail the analysis
+        out["report_error"] = str(exc)
+
+
 def _tool_run_attribution(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
     from .attribution import attribution_to_dict
 
@@ -622,7 +699,7 @@ def _tool_run_attribution(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
 
             prev_ratio = _ratio(num_res.prev_total, den_res.prev_total)
             curr_ratio = _ratio(num_res.curr_total, den_res.curr_total)
-            return {
+            out: dict[str, Any] = {
                 "success": True,
                 "metric": metric.name,
                 "type": "ratio",
@@ -636,10 +713,14 @@ def _tool_run_attribution(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
                     "Present both movements side by side."
                 ),
             }
+            _maybe_export_report(inp, metric, [num_res, den_res], out)
+            return out
 
         result = _run_one_attribution(inp, rt, metric)
         _publish_breakdown(rt, result)
-        return {"success": True, "type": "additive", **attribution_to_dict(result)}
+        out = {"success": True, "type": "additive", **attribution_to_dict(result)}
+        _maybe_export_report(inp, metric, [result], out)
+        return out
     except MetricError as exc:
         return {"error": str(exc)}
     except Exception as exc:

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -815,6 +816,153 @@ def test_tool_run_attribution_ratio(sqlite_runtime) -> None:
     assert abs(out["curr_ratio"] - 160.0 / 3) < 1e-6
     assert out["numerator"]["metric"] == "gmv"
     assert out["denominator"]["metric"] == "order_cnt"
+
+
+def test_tool_run_attribution_compare_mode(sqlite_runtime) -> None:
+    """compare_mode derives the comparison period deterministically."""
+    out = json.loads(execute_text2sql_tool(
+        "run_attribution",
+        {"metric": "gmv", "curr_start": "2026-03-02", "compare_mode": "mom"},
+        sqlite_runtime,
+    ))
+    assert out["success"] is True, out
+    # mom on a single day = the preceding day -> 03-01 vs 03-02
+    assert out["prev_period"] == "2026-03-01"
+    assert out["prev_total"] == 150.0 and out["curr_total"] == 160.0
+
+    out = json.loads(execute_text2sql_tool(
+        "run_attribution",
+        {"metric": "gmv", "curr_start": "2026-03-02", "compare_mode": "weird"},
+        sqlite_runtime,
+    ))
+    assert "compare_mode" in out["error"]
+
+    out = json.loads(execute_text2sql_tool(
+        "run_attribution", {"metric": "gmv", "curr_start": "2026-03-02"},
+        sqlite_runtime,
+    ))
+    assert "prev_start" in out["error"] or "compare_mode" in out["error"]
+
+
+def test_tool_run_attribution_export_report(sqlite_runtime, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("EXPORT_DIR", str(tmp_path))  # in case exporter honors it
+    from seatunnel_agent.text2sql import exporter as _exp
+    monkeypatch.setattr(
+        _exp, "default_desktop_dir", lambda: tmp_path, raising=False,
+    )
+    out = json.loads(execute_text2sql_tool(
+        "run_attribution",
+        {"metric": "gmv", "curr_start": "2026-03-02",
+         "prev_start": "2026-03-01", "export_report": True},
+        sqlite_runtime,
+    ))
+    assert out["success"] is True, out
+    path = out.get("report_path", "")
+    assert path.endswith(".md"), out
+    text = Path(path).read_text(encoding="utf-8")
+    assert "异动归因报告" in text
+    assert "| app" in text  # breakdown table rows
+    assert "贡献率" in text
+
+
+def test_render_attribution_markdown_ratio() -> None:
+    from seatunnel_agent.text2sql.attribution import (
+        AttributionResult,
+        render_attribution_markdown,
+    )
+
+    a = AttributionResult(
+        metric="x", display_name="X", unit="元", prev_label="a", curr_label="b",
+        prev_total=1, curr_total=2, delta=1, change_rate=1.0,
+    )
+    b = AttributionResult(
+        metric="y", display_name="Y", unit="", prev_label="a", curr_label="b",
+        prev_total=0, curr_total=3, delta=3, change_rate=None,
+    )
+    text = render_attribution_markdown([a, b], title="T")
+    assert text.startswith("# T")
+    assert "## X (x)" in text and "## Y (y)" in text
+    assert "N/A（基期为 0）" in text
+
+
+def test_metric_hybrid_ranking(sqlite_runtime) -> None:
+    """match_metrics now rides the hybrid retriever (BM25 bridges words the
+    alias scorer misses via expression/description tokens)."""
+    out = json.loads(execute_text2sql_tool(
+        "match_metrics", {"query": "成交总额怎么样"}, sqlite_runtime,
+    ))
+    assert out["count"] >= 1
+    assert out["candidates"][0]["name"] == "gmv"
+    # retriever rebuilt when metric store swaps
+    first = sqlite_runtime.retriever
+    sqlite_runtime.metrics = sqlite_runtime.metrics  # same -> cached
+    assert sqlite_runtime.retriever is first
+
+
+def test_api_key_auth(monkeypatch) -> None:
+    pytest.importorskip("fastapi")
+    from fastapi import Depends, FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.api_auth import require_api_key
+    from seatunnel_agent.text2sql.api import router
+
+    app = FastAPI()
+    app.include_router(router, dependencies=[Depends(require_api_key)])
+    client = TestClient(app)
+
+    monkeypatch.delenv("SEATUNNEL_API_KEY", raising=False)
+    assert client.get("/api/text2sql/health").status_code == 200  # open
+
+    monkeypatch.setenv("SEATUNNEL_API_KEY", "sekrit")
+    assert client.get("/api/text2sql/health").status_code == 401
+    assert client.get(
+        "/api/text2sql/health", headers={"X-API-Key": "wrong"},
+    ).status_code == 401
+    assert client.get(
+        "/api/text2sql/health", headers={"X-API-Key": "sekrit"},
+    ).status_code == 200
+
+
+def test_mcp_trace_and_attribution_tools(tmp_path, monkeypatch) -> None:
+    import sqlite3
+
+    from seatunnel_agent.text2sql.mcp_server import build_tool_functions
+
+    db = tmp_path / "s.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE sales(order_id TEXT, amount REAL, channel TEXT, dt TEXT)")
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?)", [
+        ("o1", 150.0, "app", "2026-03-01"), ("o2", 160.0, "app", "2026-03-02"),
+    ])
+    conn.commit()
+    conn.close()
+    ddl = tmp_path / "schema.sql"
+    ddl.write_text(_SQLITE_DDL, encoding="utf-8")
+    metrics = tmp_path / "metrics.yaml"
+    metrics.write_text(_SQLITE_METRICS, encoding="utf-8")
+    monkeypatch.delenv("T2S_LINEAGE_SQL_DIR", raising=False)
+
+    tools = build_tool_functions(
+        ddl_path=str(ddl), metrics_path=str(metrics),
+        ds_type="sqlite", allow_execute=True, database=str(db),
+    )
+    out = json.loads(tools["trace_metric"]("gmv"))
+    assert out["sources"][0]["table"] == "sales"
+    assert "note" in out  # lineage dir unset
+
+    out = json.loads(tools["metric_attribution"](
+        "gmv", curr_start="2026-03-02", prev_start="2026-03-01",
+    ))
+    assert out["type"] == "additive"
+    assert out["prev_total"] == 150.0 and out["curr_total"] == 160.0
+
+    # without allow_execute the attribution tool is absent
+    tools2 = build_tool_functions(
+        ddl_path=str(ddl), metrics_path=str(metrics), ds_type="sqlite",
+    )
+    assert "metric_attribution" not in tools2
+    assert "trace_metric" in tools2
 
 
 def test_tool_run_attribution_truncation_guard(sqlite_runtime) -> None:

@@ -183,6 +183,60 @@ def build_tool_functions(
             return _json({"error": str(exc)})
         return _json({"metric": m.name, "sql": sql})
 
+    _lineage_cache: dict[str, Any] = {}
+
+    def trace_metric(metric: str, depth: int = 3) -> str:
+        """指标溯源：口径层（来源表/表达式/恒定过滤）+ 血缘图上游加工链路
+        （需服务端配置 T2S_LINEAGE_SQL_DIR，未配置时仅返回口径层）。"""
+        import os
+
+        m = metric_store.get(metric)
+        if m is None:
+            known = ", ".join(x.name for x in metric_store.metrics) or "(无)"
+            return _json({"error": f"指标 '{metric}' 未定义。已知指标: {known}"})
+        depth = max(1, min(int(depth), 10))
+        if m.is_ratio:
+            parts = [metric_store.get(m.numerator), metric_store.get(m.denominator)]
+            parts = [p for p in parts if p is not None and not p.is_ratio]
+        else:
+            parts = [m]
+        out: dict[str, Any] = {
+            "metric": m.name,
+            "sources": [
+                {"metric": p.name, "table": p.table, "expression": p.expression,
+                 "default_filters": list(p.default_filters)}
+                for p in parts
+            ],
+        }
+        sql_dir = os.getenv("T2S_LINEAGE_SQL_DIR", "").strip()
+        if not sql_dir:
+            out["note"] = "上游血缘链未启用（服务端未配置 T2S_LINEAGE_SQL_DIR）"
+            return _json(out)
+        try:
+            graph = _lineage_cache.get(sql_dir)
+            if graph is None:
+                from ..data_lineage.loaders import build_graph
+
+                graph, _warns = build_graph(sql_dir=sql_dir)
+                _lineage_cache[sql_dir] = graph
+            out["lineage"] = []
+            for p in parts:
+                chain = graph.upstream_of(p.table, depth=depth)
+                out["lineage"].append({
+                    "table": p.table,
+                    "missing_in_graph": chain.missing_root,
+                    "upstream": sorted(
+                        ({"table": t, "depth": -d}
+                         for t, d in chain.depth_of.items()
+                         if t != chain.root and d < 0),
+                        key=lambda x: (x["depth"], x["table"]),
+                    ),
+                    "edges": [list(e) for e in chain.edges][:50],
+                })
+        except Exception as exc:
+            out["lineage_error"] = f"血缘图构建失败: {exc}"
+        return _json(out)
+
     tools: dict[str, Callable[..., str]] = {
         "list_tables": list_tables,
         "get_table_schema": get_table_schema,
@@ -190,6 +244,7 @@ def build_tool_functions(
         "match_metrics": match_metrics,
         "explain_metric": explain_metric,
         "metric_sql": metric_sql,
+        "trace_metric": trace_metric,
     }
 
     if allow_execute:
@@ -237,6 +292,64 @@ def build_tool_functions(
             })
 
         tools["execute_readonly_sql"] = execute_readonly_sql
+
+        def metric_attribution(
+            metric: str,
+            curr_start: str,
+            prev_start: str,
+            curr_end: str = "",
+            prev_end: str = "",
+            dimension: str = "",
+        ) -> str:
+            """指标异动归因：两期总量对比 + 逐维度贡献分解（贡献率之和恒等于
+            总变动率）。日期支持 YYYY-MM-DD / yyyyMMdd；dimension 省略时自动
+            遍历允许维度。查询预算 2+2K 条 SQL。"""
+            from .attribution import attribution_to_dict, run_attribution
+            from .metrics import MetricError, parse_time_range
+            from .tools import _sanitize_db_error
+
+            m = metric_store.get(metric)
+            if m is None:
+                known = ", ".join(x.name for x in metric_store.metrics) or "(无)"
+                return _json({"error": f"指标 '{metric}' 未定义。已知指标: {known}"})
+            db_config = _db_config()
+            if db_config is None:
+                return _json({"error": "未配置数据库连接（设置对应环境变量）"})
+            executor = create_executor(db_config)
+
+            def _execute(sql: str):
+                validation = validate_sql(sql, schema_store)
+                if not validation.ok:
+                    raise MetricError(
+                        "SQL rejected: " + "; ".join(validation.errors))
+                result = executor.run(
+                    enforce_limit(sql, dialect=ds_type), max_rows=1000)
+                if result.truncated or result.row_count >= 1000:
+                    raise MetricError("维度基数过大：下钻结果达到 1000 行上限")
+                return result.columns, list(result.rows)
+
+            def _attribute(target):
+                return attribution_to_dict(run_attribution(
+                    target, metric_store, schema_store, _execute,
+                    curr_range=parse_time_range(curr_start, curr_end),
+                    prev_range=parse_time_range(prev_start, prev_end),
+                    dimensions=[dimension] if dimension.strip() else None,
+                ))
+
+            try:
+                if m.is_ratio:
+                    return _json({
+                        "metric": m.name, "type": "ratio",
+                        "numerator": _attribute(metric_store.get(m.numerator)),
+                        "denominator": _attribute(metric_store.get(m.denominator)),
+                    })
+                return _json({"type": "additive", **_attribute(m)})
+            except MetricError as exc:
+                return _json({"error": str(exc)})
+            except Exception as exc:
+                return _json({"error": _sanitize_db_error(str(exc))})
+
+        tools["metric_attribution"] = metric_attribution
 
     return tools
 

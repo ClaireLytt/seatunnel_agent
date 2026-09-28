@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .executor import DatabaseConfig, config_from_env, create_executor
+from .attribution import NULL_LABEL
 from .favorites import FavoritesStore, apply_params
 from .metrics import MetricError, MetricStore, build_metric_sql, load_metric_store
 from .partition import TimeRange, pt_value
@@ -43,7 +44,10 @@ logger = logging.getLogger(__name__)
 _MAX_SUBSCRIPTIONS = 100
 _CARD_MAX_ROWS = 10
 
-SOURCE_TYPES = ("metric", "favorite")
+SOURCE_TYPES = ("metric", "favorite", "metric_watch")
+
+#: metric_watch comparison modes: dod = 昨天 vs 前天, wow = 昨天 vs 上周同日
+WATCH_MODES = ("dod", "wow")
 
 
 # ----------------------------------------------------------------------
@@ -194,6 +198,8 @@ class SubscriptionStore:
         lookback_days: int = 1,
         favorite_id: str = "",
         params: dict[str, str] | None = None,
+        threshold_pct: float = 10.0,
+        watch_mode: str = "dod",
         ds_type: str = "hive",
         connection: str = "",
         database: str = "",
@@ -205,8 +211,12 @@ class SubscriptionStore:
         parse_cron(cron)  # validate early
         if source_type not in SOURCE_TYPES:
             raise ValueError(f"source_type 只支持 {', '.join(SOURCE_TYPES)}")
-        if source_type == "metric" and not metric.strip():
-            raise ValueError("metric 订阅必须给出指标名")
+        if source_type in ("metric", "metric_watch") and not metric.strip():
+            raise ValueError(f"{source_type} 订阅必须给出指标名")
+        if watch_mode not in WATCH_MODES:
+            raise ValueError(f"watch_mode 只支持 {', '.join(WATCH_MODES)}")
+        if threshold_pct <= 0:
+            raise ValueError("threshold_pct 必须 > 0")
         if source_type == "favorite" and not favorite_id.strip():
             raise ValueError("favorite 订阅必须给出收藏 ID")
         if lookback_days < 1:
@@ -221,6 +231,8 @@ class SubscriptionStore:
             "lookback_days": lookback_days,
             "favorite_id": favorite_id.strip(),
             "params": dict(params or {}),
+            "threshold_pct": float(threshold_pct),
+            "watch_mode": watch_mode,
             "ds_type": ds_type,
             "connection": connection.strip(),
             "database": database.strip(),
@@ -291,16 +303,106 @@ def render_card_markdown(
     return "\n".join(lines)
 
 
+def _feishu_tenant_token(timeout: int = 15) -> str:
+    """App tenant token from FEISHU_APP_ID/FEISHU_APP_SECRET ('' if unset)."""
+    import urllib.request
+
+    app_id = os.getenv("FEISHU_APP_ID", "").strip()
+    app_secret = os.getenv("FEISHU_APP_SECRET", "").strip()
+    if not app_id or not app_secret:
+        return ""
+    req = urllib.request.Request(
+        "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
+        data=json.dumps({"app_id": app_id, "app_secret": app_secret}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return data.get("tenant_access_token", "") if data.get("code") == 0 else ""
+
+
+def upload_feishu_image(png_bytes: bytes, timeout: int = 30) -> str:
+    """Upload a PNG via the Feishu image API; returns img_key ('' on any
+    failure — chart embedding is strictly best-effort and needs app creds)."""
+    import urllib.request
+    import uuid as _uuid
+
+    try:
+        token = _feishu_tenant_token(timeout)
+        if not token:
+            return ""
+        boundary = f"----st{_uuid.uuid4().hex}"
+        body = b"".join([
+            f"--{boundary}\r\n".encode(),
+            b'Content-Disposition: form-data; name="image_type"\r\n\r\nmessage\r\n',
+            f"--{boundary}\r\n".encode(),
+            b'Content-Disposition: form-data; name="image"; filename="chart.png"\r\n',
+            b"Content-Type: image/png\r\n\r\n",
+            png_bytes,
+            f"\r\n--{boundary}--\r\n".encode(),
+        ])
+        req = urllib.request.Request(
+            "https://open.feishu.cn/open-apis/im/v1/images",
+            data=body,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        if data.get("code") == 0:
+            return data.get("data", {}).get("image_key", "")
+    except Exception:  # noqa: BLE001 — best-effort by contract
+        pass
+    return ""
+
+
+def _chart_png(columns: list[str], rows: list[tuple]) -> bytes:
+    """Auto-detected chart PNG for the result ('' bytes when not chartable
+    or matplotlib is missing)."""
+    try:
+        import io
+
+        from .chart import build_chart, detect_chart_type
+
+        ct = detect_chart_type(columns, rows)
+        if not ct:
+            return b""
+        fig = build_chart(columns, rows, ct)
+        if fig is None:
+            return b""
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", bbox_inches="tight", dpi=120)
+        import matplotlib.pyplot as plt
+
+        plt.close(fig)
+        return buf.getvalue()
+    except Exception:
+        return b""
+
+
 def push_feishu(
     webhook_url: str,
     title: str,
     body_markdown: str,
     ok: bool = True,
     timeout: int = 15,
+    img_key: str = "",
 ) -> tuple[bool, str]:
     """POST an interactive card to a Feishu incoming webhook."""
     import urllib.request
 
+    elements: list[dict] = [
+        {"tag": "div", "text": {"tag": "lark_md", "content": body_markdown}},
+    ]
+    if img_key:
+        elements.append({
+            "tag": "img", "img_key": img_key,
+            "alt": {"tag": "plain_text", "content": "chart"},
+        })
     card = {
         "msg_type": "interactive",
         "card": {
@@ -308,9 +410,7 @@ def push_feishu(
                 "title": {"tag": "plain_text", "content": title},
                 "template": "blue" if ok else "red",
             },
-            "elements": [
-                {"tag": "div", "text": {"tag": "lark_md", "content": body_markdown}},
-            ],
+            "elements": elements,
         },
     }
     req = urllib.request.Request(
@@ -398,6 +498,110 @@ def _build_subscription_sql(
         raise MetricError(str(exc))
 
 
+def _run_metric_watch(
+    sub: dict[str, Any],
+    schema_store: SchemaStore,
+    metric_store: MetricStore,
+    executor,
+    today: date,
+    push_fn: Callable[..., tuple[bool, str]],
+) -> dict[str, Any]:
+    """Anomaly-watch subscription: compare yesterday against the reference
+    period; push an alert card ONLY when |change| crosses the threshold.
+    Deterministic math, LLM-free."""
+    name = sub.get("name", "?")
+    webhook = (sub.get("webhook_url") or "").strip()
+    metric = metric_store.get(sub.get("metric", ""))
+    if metric is None:
+        raise MetricError(f"指标 '{sub.get('metric')}' 未定义")
+    if metric.is_ratio:
+        raise MetricError("metric_watch v1 只支持加法型指标")
+
+    yesterday = today - timedelta(days=1)
+    ref = yesterday - timedelta(days=7 if sub.get("watch_mode") == "wow" else 1)
+    ds_type = sub.get("ds_type", "hive")
+
+    def _total(day: date) -> float:
+        sql = build_metric_sql(
+            metric, metric_store, schema_store,
+            time_range=TimeRange(start=day, end=day),
+        )
+        validation = validate_sql(sql, schema_store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        result = executor.run(enforce_limit(sql, dialect=ds_type), max_rows=10)
+        if not result.rows or result.rows[0][-1] is None:
+            return 0.0
+        return float(result.rows[0][-1])
+
+    curr, prev = _total(yesterday), _total(ref)
+    delta = curr - prev
+    rate = (delta / abs(prev)) if prev else None
+    threshold = float(sub.get("threshold_pct", 10.0))
+    triggered = (abs(rate) * 100 >= threshold) if rate is not None else curr != 0
+
+    outcome: dict[str, Any] = {
+        "status": "alerted" if triggered else "no_change",
+        "error": "",
+        "sql": "",
+        "curr": curr, "prev": prev, "delta": delta,
+        "change_rate_pct": round(rate * 100, 2) if rate is not None else None,
+        "threshold_pct": threshold,
+        "curr_day": yesterday.isoformat(), "ref_day": ref.isoformat(),
+    }
+    if not triggered:
+        return outcome  # silence by design — no card below the threshold
+
+    # top contributors on the first allowed dimension (best-effort)
+    top_lines = ""
+    dim = (sub.get("dimensions") or list(metric.dimensions)[:1] or [None])[0]
+    if dim:
+        try:
+            def _by_dim(day: date) -> dict[str, float]:
+                sql = build_metric_sql(
+                    metric, metric_store, schema_store, dimensions=[dim],
+                    time_range=TimeRange(start=day, end=day),
+                )
+                result = executor.run(
+                    enforce_limit(sql, dialect=ds_type), max_rows=1000)
+                return {
+                    (NULL_LABEL if r[0] is None else str(r[0])):
+                        float(r[-1]) if r[-1] is not None else 0.0
+                    for r in result.rows
+                }
+
+            c_map, p_map = _by_dim(yesterday), _by_dim(ref)
+            deltas = sorted(
+                ((k, c_map.get(k, 0.0) - p_map.get(k, 0.0))
+                 for k in set(c_map) | set(p_map)),
+                key=lambda kv: abs(kv[1]), reverse=True,
+            )[:3]
+            top_lines = "\n" + "\n".join(
+                f"- {k}: {d:+,.2f}" for k, d in deltas
+            )
+            outcome["top_contributors"] = [
+                {"value": k, "delta": round(d, 4)} for k, d in deltas
+            ]
+        except Exception:
+            pass  # contributors are a bonus
+
+    rate_txt = f"{rate * 100:+.2f}%" if rate is not None else "N/A(基期为0)"
+    unit = f" {metric.unit}" if metric.unit else ""
+    contributor_block = f"\n主要贡献 ({dim}):{top_lines}" if top_lines else ""
+    body = (
+        f"**{metric.display_name}** 异动告警（阈值 ±{threshold:g}%）\n"
+        f"{ref.isoformat()}: {prev:,.2f}{unit} → "
+        f"{yesterday.isoformat()}: {curr:,.2f}{unit}\n"
+        f"变动 {delta:+,.2f}{unit} ({rate_txt})" + contributor_block
+    )
+    if webhook:
+        pushed, msg = push_fn(webhook, f"⚠️ {name}", body, ok=False)
+        if not pushed:
+            outcome["status"] = "push_failed"
+            outcome["error"] = msg
+    return outcome
+
+
 def run_subscription(
     sub: dict[str, Any],
     schema_store: SchemaStore | None = None,
@@ -426,6 +630,15 @@ def run_subscription(
             schema_store = SchemaStore.from_file(ddl)
         if metric_store is None:
             metric_store, _errors = load_metric_store(schema_store)
+
+        if sub.get("source_type") == "metric_watch":
+            db_config = resolve_db_config(sub)
+            if db_config is None:
+                return _fail("无法解析数据库连接（检查连接预设名或环境变量配置）")
+            return _run_metric_watch(
+                sub, schema_store, metric_store,
+                create_executor(db_config), today or date.today(), push_fn,
+            )
 
         sql = _build_subscription_sql(
             sub, schema_store, metric_store, today, favorites,
@@ -458,7 +671,14 @@ def run_subscription(
     pushed, push_msg = True, ""
     if webhook:
         body = render_card_markdown(result.columns, [tuple(r) for r in result.rows])
-        pushed, push_msg = push_fn(webhook, f"📊 {name}", body, ok=True)
+        # chart embedding: best-effort, needs FEISHU_APP_ID/SECRET for upload
+        img_key = ""
+        png = _chart_png(result.columns, [tuple(r) for r in result.rows])
+        if png:
+            img_key = upload_feishu_image(png)
+        pushed, push_msg = push_fn(
+            webhook, f"📊 {name}", body, ok=True, img_key=img_key,
+        )
 
     return {
         "status": "success" if pushed else "push_failed",

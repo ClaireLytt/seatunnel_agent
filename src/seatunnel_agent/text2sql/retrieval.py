@@ -184,11 +184,22 @@ def _parse_weights() -> tuple[float, float, float]:
     return 0.4, 0.3, 0.3
 
 
+def metric_document(metric) -> str:
+    """The retrieval document for one metric definition."""
+    parts = [metric.name, metric.display_name, *metric.aliases,
+             metric.description]
+    if not metric.is_ratio:
+        parts.append(metric.expression)
+    return " ".join(p for p in parts if p)
+
+
 @dataclass
 class HybridRetriever:
-    """Fused table ranking. Build once per schema; rank per question."""
+    """Fused table (and metric) ranking. Build once per schema; rank per
+    question."""
 
     store: SchemaStore
+    metric_store: object = None  # optional MetricStore for rank_metrics
     index_dir: Path = field(default_factory=lambda: _INDEX_DIR)
     embed_fn: object = None  # test hook: (texts) -> vectors; None = env config
 
@@ -199,6 +210,19 @@ class HybridRetriever:
         self._hash = schema_hash(self.store)
         self._doc_vectors: list[list[float]] | None = None
         self._vector_failed = False
+        # metric channel (optional)
+        self._metrics = list(self.metric_store.metrics) if (
+            self.metric_store is not None and len(self.metric_store)
+        ) else []
+        self._metric_docs = [metric_document(m) for m in self._metrics]
+        self._metric_bm25 = BM25([_doc_tokens(d) for d in self._metric_docs])
+        if self._metric_docs:
+            text = "\n".join(sorted(self._metric_docs))
+            self._metric_hash = hashlib.sha256(
+                text.encode("utf-8")).hexdigest()[:16]
+        else:
+            self._metric_hash = ""
+        self._metric_vectors: list[list[float]] | None = None
 
     # -- vector channel ------------------------------------------------
 
@@ -254,19 +278,57 @@ class HybridRetriever:
         self._doc_vectors = vectors
         return vectors
 
+    def _load_metric_vectors(self) -> list[list[float]] | None:
+        if self._vector_failed or not self._metric_docs:
+            return None
+        if self._metric_vectors is not None:
+            return self._metric_vectors
+        embedder = self._embedder()
+        if embedder is None:
+            return None
+        fn, tag = embedder
+        safe_tag = re.sub(r"[^\w.-]", "_", tag)
+        cache = self.index_dir / f"{self._metric_hash}.{safe_tag}.m.emb.json"
+        if cache.is_file():
+            try:
+                data = json.loads(cache.read_text(encoding="utf-8"))
+                if len(data.get("vectors", [])) == len(self._metric_docs):
+                    self._metric_vectors = data["vectors"]
+                    return self._metric_vectors
+            except (json.JSONDecodeError, OSError):
+                pass
+        try:
+            vectors = fn(self._metric_docs)
+        except Exception as exc:
+            logger.warning("Embedding channel disabled for this session: %s", exc)
+            self._vector_failed = True
+            return None
+        try:
+            self.index_dir.mkdir(parents=True, exist_ok=True)
+            cache.write_text(json.dumps({"vectors": vectors}), encoding="utf-8")
+        except OSError:
+            pass
+        self._metric_vectors = vectors
+        return vectors
+
+    def _query_vector(self, query: str) -> list[float] | None:
+        embedder = self._embedder()
+        if embedder is None or self._vector_failed:
+            return None
+        fn, _tag = embedder
+        try:
+            return fn([query])[0]
+        except Exception as exc:
+            logger.warning("Embedding channel disabled for this session: %s", exc)
+            self._vector_failed = True
+            return None
+
     def _vector_scores(self, query: str) -> list[float] | None:
         doc_vectors = self._load_doc_vectors()
         if doc_vectors is None:
             return None
-        embedder = self._embedder()
-        if embedder is None:
-            return None
-        fn, _tag = embedder
-        try:
-            qvec = fn([query])[0]
-        except Exception as exc:
-            logger.warning("Embedding channel disabled for this session: %s", exc)
-            self._vector_failed = True
+        qvec = self._query_vector(query)
+        if qvec is None:
             return None
         return [_cosine(qvec, dv) for dv in doc_vectors]
 
@@ -308,4 +370,43 @@ class HybridRetriever:
             m.score = round(score, 6)
             fused.append(m)
         fused.sort(key=lambda m: (m.score, m.column_hit_count), reverse=True)
+        return fused[:top_n]
+
+    def rank_metrics(self, query: str, top_n: int = 5) -> list:
+        """Fused metric ranking (MetricMatch objects, fused score in [0,1]).
+        Falls back to the MetricStore's own keyword scoring when this
+        retriever was built without a metric store."""
+        if not self._metrics:
+            return []
+        english, ngrams = tokenize(query)
+        keyword = [
+            self.metric_store._score(m, query, english, ngrams)
+            for m in self._metrics
+        ]
+        kw = self._max_norm([r.score for r in keyword])
+        bm = self._max_norm(self._metric_bm25.scores(_doc_tokens(query)))
+
+        vec_raw: list[float] | None = None
+        metric_vectors = self._load_metric_vectors()
+        if metric_vectors is not None:
+            qvec = self._query_vector(query)
+            if qvec is not None:
+                vec_raw = [_cosine(qvec, dv) for dv in metric_vectors]
+
+        w_kw, w_bm, w_vec = _parse_weights()
+        if vec_raw is None:
+            total = w_kw + w_bm
+            w_kw, w_bm, w_vec = w_kw / total, w_bm / total, 0.0
+            vec = [0.0] * len(self._metrics)
+        else:
+            vec = self._max_norm(vec_raw)
+
+        fused = []
+        for i, r in enumerate(keyword):
+            score = w_kw * kw[i] + w_bm * bm[i] + w_vec * vec[i]
+            if score <= 0:
+                continue
+            r.score = round(score, 6)
+            fused.append(r)
+        fused.sort(key=lambda r: r.score, reverse=True)
         return fused[:top_n]

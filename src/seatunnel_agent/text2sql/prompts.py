@@ -163,7 +163,14 @@ A metric catalog is loaded. To guarantee caliber consistency:
 6. For provenance questions ("这个数是从哪些表算出来的", "X 的加工链路"),
    use **trace_metric** and present the caliber plus the upstream chain.
    Do NOT execute SQL.
-7. Only when no metric matches, fall back to the normal
+7. Follow-up questions inherit the previous turn's metric, time range and
+   filters unless the user changes them: "再按省份拆一下" means the SAME
+   metric and period with dimensions=[省份列]; "那上个月呢" means the same
+   metric and dimensions with the period shifted. Re-use build_metric_sql
+   with the inherited parameters — do not re-guess tables.
+8. For attribution, prefer compare_mode (mom/wow/yoy) over computing the
+   comparison dates yourself.
+9. Only when no metric matches, fall back to the normal
    match_tables -> get_table_schema -> SQL flow.
 
 ## Metric Catalog (已定义指标)
