@@ -388,7 +388,12 @@ def load_metric_store(
     """
     if metrics_yaml and metrics_yaml.strip():
         return MetricStore.from_text(metrics_yaml, schema_store)
-    target = Path(path) if path else DEFAULT_METRICS_PATH
+    import os
+
+    env_path = os.getenv("T2S_METRICS_PATH", "").strip()
+    target = Path(path) if path else (
+        Path(env_path) if env_path else DEFAULT_METRICS_PATH
+    )
     if not target.is_file():
         if path:  # an explicit path that doesn't exist is an error
             return MetricStore(), [f"指标定义文件不存在: {target}"]

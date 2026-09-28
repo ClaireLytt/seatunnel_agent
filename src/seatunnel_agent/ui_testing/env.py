@@ -25,6 +25,33 @@ _log = logging.getLogger(__name__)
 DEFAULT_PORT = 7912
 _FORBIDDEN_PORT = 7860
 
+# Chat BI metric catalog for the CBI cases — defined on the seeded
+# dc_test_* sqlite tables so the /text2sql metric panel has content.
+_UITEST_METRICS_YAML = """\
+version: 1
+metrics:
+  - name: order_amount
+    display_name: 订单金额
+    aliases: [订单总额, order amount]
+    description: 订单表 amount 字段合计（UI 测试专用口径）
+    table: dc_test_orders_a
+    expression: SUM(amount)
+    time_column: update_time
+    dimensions: [category, status]
+    unit: 元
+    owner: uitest
+  - name: order_cnt
+    display_name: 订单量
+    aliases: [订单数]
+    description: 订单表行数（UI 测试专用口径）
+    table: dc_test_orders_a
+    expression: COUNT(id)
+    time_column: update_time
+    dimensions: [category, status]
+    unit: 单
+    owner: uitest
+"""
+
 # Runs create_ui + launch directly instead of ui.main() — no inbrowser,
 # no port-kill logic, quiet.
 _LAUNCH_SNIPPET = """
@@ -103,6 +130,15 @@ class AppUnderTest:
             self.log_path.parent / "dc_connections.json")
         child_env["SEATUNNEL_SKEW_HISTORY_PATH"] = str(
             self.log_path.parent / "data_skew_history.jsonl")
+        # Chat BI: metric catalog matching the seeded sqlite tables (the
+        # repo's config/metrics.yaml targets the hive demo schema), and an
+        # isolated subscription store so CBI cases never pollute the repo.
+        metrics_path = self.log_path.parent / "uitest_metrics.yaml"
+        metrics_path.parent.mkdir(parents=True, exist_ok=True)
+        metrics_path.write_text(_UITEST_METRICS_YAML, encoding="utf-8")
+        child_env["T2S_METRICS_PATH"] = str(metrics_path)
+        child_env["T2S_SUBSCRIPTIONS_PATH"] = str(
+            self.log_path.parent / "t2s_subscriptions.json")
         self.proc = subprocess.Popen(
             [sys.executable, "-c", _LAUNCH_SNIPPET % self.port],
             stdout=self._log_file, stderr=subprocess.STDOUT,

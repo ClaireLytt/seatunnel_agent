@@ -788,6 +788,31 @@ def test_api_metrics_attribution_requires_db() -> None:
     assert "db_config" in resp.json()["detail"]
 
 
+def test_sqlite_from_db_bare_table_names(sqlite_runtime) -> None:
+    """SQLite introspection must not prefix table names with the db file
+    path — that used to poison the whitelist so no SQL could ever pass."""
+    from seatunnel_agent.text2sql.executor import create_executor
+    from seatunnel_agent.text2sql.validator import validate_sql
+
+    store = SchemaStore.from_db(create_executor(sqlite_runtime.db_config))
+    assert store.table_names == ["sales"]
+    result = validate_sql("SELECT COUNT(*) FROM sales", store)
+    assert result.ok, result.errors
+
+
+def test_load_metric_store_env_path(tmp_path, monkeypatch) -> None:
+    target = tmp_path / "m.yaml"
+    target.write_text(
+        "metrics:\n  - name: x\n    table: t\n    expression: SUM(a)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("T2S_METRICS_PATH", str(target))
+    from seatunnel_agent.text2sql.metrics import load_metric_store
+
+    store, errors = load_metric_store()
+    assert errors == [] and store.get("x") is not None
+
+
 def test_waterfall_chart_detection_and_build() -> None:
     pytest.importorskip("matplotlib")
     from seatunnel_agent.text2sql.chart import build_chart, detect_chart_type

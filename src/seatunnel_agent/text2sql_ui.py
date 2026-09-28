@@ -1623,6 +1623,7 @@ def render_text2sql_page(app=None) -> None:
                 sub_list_md = gr.Markdown(t("sub_none"))
                 sub_dd = gr.Dropdown(
                     choices=[], value=None, show_label=False,
+                    label=t("sub_section_title"),  # aria-label for UI tests
                     elem_classes=["st-sidebar-control"],
                 )
                 with gr.Row(elem_classes=["st-filter-actions"]):
