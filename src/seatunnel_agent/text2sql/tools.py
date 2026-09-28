@@ -222,12 +222,41 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "trace_metric",
+        "description": (
+            "Trace a defined metric's data provenance (指标溯源: 这个数从哪些"
+            "表怎么算出来的): returns the caliber level (source table, "
+            "expression, constant filters) plus the upstream table chain from "
+            "the data-lineage graph when T2S_LINEAGE_SQL_DIR is configured. "
+            "Use for '这个指标的数据来源/加工链路' questions — do NOT execute "
+            "SQL for those. Ratio metrics trace both numerator and denominator."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "description": "Metric name as returned by match_metrics",
+                },
+                "depth": {
+                    "type": "integer",
+                    "description": "Upstream traversal depth (default 3)",
+                },
+            },
+            "required": ["metric"],
+        },
+    },
+    {
         "name": "execute_sql",
         "description": (
             "Validate and execute a SELECT statement on the connected database. "
             "Rejects non-SELECT statements and non-whitelisted tables; enforces "
             "a row LIMIT. Returns columns, preview rows, row count and elapsed "
-            "time. A CSV download link is shown automatically."
+            "time. A CSV download link is shown automatically. The result may "
+            "carry advisory fields: review_findings (static SQL-review issues "
+            "found before execution) and skew_hints (data-skew patterns, "
+            "attached when the query ran slow) — mention the critical ones to "
+            "the user, clearly marked as 静态检查提示."
         ),
         "input_schema": {
             "type": "object",
@@ -310,6 +339,8 @@ class Text2SQLRuntime:
     _executor: DatabaseExecutor | None = None
     _executor_lock: threading.Lock = field(default_factory=threading.Lock)
     _retriever: Any = field(default=None, repr=False)
+    _lineage_graph: Any = field(default=None, repr=False)
+    _lineage_dir: str = field(default="", repr=False)
 
     @property
     def retriever(self):
@@ -692,6 +723,148 @@ def _build_success(
     return out
 
 
+# ds_type -> sql_review linter dialect (module integration: free safety net)
+_REVIEW_DIALECT_BY_DS = {
+    "hive": "hive", "sparksql": "spark", "flinksql": "flink",
+    "mysql": "mysql", "postgresql": "postgresql", "sqlserver": "sqlserver",
+    "clickhouse": "clickhouse", "doris": "doris", "sqlite": "sqlite",
+}
+
+# ds_type -> data_skew detector dialect (batch warehouses only)
+_SKEW_DIALECT_BY_DS = {"hive": "hive", "sparksql": "spark"}
+
+_SLOW_QUERY_MS_DEFAULT = 5000
+
+
+def _review_findings(sql: str, rt: Text2SQLRuntime) -> list[dict[str, Any]]:
+    """Static SQL-review pre-flight (critical/risk only, capped, never raises)."""
+    dialect = _REVIEW_DIALECT_BY_DS.get(rt.ds_type)
+    if dialect is None:
+        return []
+    try:
+        from ..sql_review.linter import lint_sql
+        from ..sql_review.report import Severity
+
+        findings = lint_sql(sql, dialect=dialect, store=rt.store)
+        picked = [
+            f for f in findings
+            if f.severity in (Severity.CRITICAL, Severity.RISK)
+        ][:5]
+        return [
+            {
+                "severity": f.severity.value,
+                "category": f.category,
+                "location": f.location,
+                "description": f.description,
+                "suggestion": f.suggestion,
+            }
+            for f in picked
+        ]
+    except Exception:
+        return []  # advisory only — never block execution
+
+
+def _skew_hints(sql: str, rt: Text2SQLRuntime, elapsed_ms: int) -> list[dict[str, Any]]:
+    """Data-skew advice for slow batch-engine queries (never raises)."""
+    dialect = _SKEW_DIALECT_BY_DS.get(rt.ds_type)
+    if dialect is None:
+        return []
+    try:
+        import os
+
+        threshold = int(os.getenv("T2S_SLOW_QUERY_MS", _SLOW_QUERY_MS_DEFAULT))
+    except ValueError:
+        threshold = _SLOW_QUERY_MS_DEFAULT
+    if elapsed_ms < threshold:
+        return []
+    try:
+        from ..data_skew.detector import detect_skew
+
+        findings, _hints = detect_skew(sql, dialect=dialect)
+        return [
+            {
+                "severity": f.severity.value,
+                "category": f.category,
+                "description": f.description,
+                "suggestion": f.suggestion,
+            }
+            for f in findings[:3]
+        ]
+    except Exception:
+        return []
+
+
+def _tool_trace_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    """Metric provenance: caliber level + lineage upstream chain."""
+    import os
+
+    if rt.metrics is None or len(rt.metrics) == 0:
+        return {"error": "No metric definitions loaded (metrics.yaml)"}
+    name = str(inp.get("metric", "")).strip()
+    metric = rt.metrics.get(name)
+    if metric is None:
+        known = ", ".join(m.name for m in rt.metrics.metrics)
+        return {"error": f"Metric '{name}' is not defined. Known metrics: {known}"}
+    depth = max(1, min(int(inp.get("depth", 3) or 3), 10))
+
+    # caliber level (always available)
+    if metric.is_ratio:
+        parts = [rt.metrics.get(metric.numerator), rt.metrics.get(metric.denominator)]
+        parts = [p for p in parts if p is not None and not p.is_ratio]
+    else:
+        parts = [metric]
+    out: dict[str, Any] = {
+        "success": True,
+        "metric": _metric_payload(metric),
+        "sources": [
+            {"metric": p.name, "table": p.table, "expression": p.expression,
+             "default_filters": list(p.default_filters)}
+            for p in parts
+        ],
+    }
+
+    sql_dir = os.getenv("T2S_LINEAGE_SQL_DIR", "").strip()
+    if not sql_dir:
+        out["note"] = (
+            "上游血缘链未启用：设置 T2S_LINEAGE_SQL_DIR 指向数仓 SQL 目录后，"
+            "trace_metric 会附带每张来源表的上游加工链路。当前仅返回口径层。"
+        )
+        return out
+
+    try:
+        graph = rt._lineage_graph
+        if graph is None or getattr(rt, "_lineage_dir", "") != sql_dir:
+            from ..data_lineage.loaders import build_graph
+
+            graph, warnings = build_graph(sql_dir=sql_dir)
+            rt._lineage_graph = graph
+            rt._lineage_dir = sql_dir
+            if warnings:
+                out["lineage_warnings"] = warnings[:5]
+        chains = []
+        for p in parts:
+            chain = graph.upstream_of(p.table, depth=depth)
+            chains.append({
+                "table": p.table,
+                "missing_in_graph": chain.missing_root,
+                "upstream_count": chain.upstream_count,
+                "upstream": sorted(
+                    (
+                        {"table": t, "depth": -d}
+                        for t, d in chain.depth_of.items()
+                        if t != chain.root and d < 0
+                    ),
+                    key=lambda x: (x["depth"], x["table"]),
+                ),
+                "edges": [list(e) for e in chain.edges][:50],
+                "truncated": chain.truncated,
+            })
+        out["lineage"] = chains
+    except Exception as exc:
+        out["lineage_error"] = f"血缘图构建失败: {exc}"
+    return out
+
+
 def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
     sql = inp.get("sql", "")
     user_query = inp.get("user_query", "")
@@ -749,6 +922,13 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
         extra={"source": rt.source},
     )
     out = _build_success(result, final_sql, validation)
+    # Cross-module advisories (free safety nets — never block, never raise):
+    findings = _review_findings(sql, rt)
+    if findings:
+        out["review_findings"] = findings
+    hints = _skew_hints(sql, rt, result.elapsed_ms)
+    if hints:
+        out["skew_hints"] = hints
     if rt.prev_result is not None:
         from .differ import diff_results
         diff = diff_results(
@@ -943,6 +1123,7 @@ _TOOL_HANDLERS = {
     "match_metrics": _tool_match_metrics,
     "build_metric_sql": _tool_build_metric_sql,
     "run_attribution": _tool_run_attribution,
+    "trace_metric": _tool_trace_metric,
     "get_table_schema": _tool_get_table_schema,
     "get_max_partition": _tool_get_max_partition,
     "explain_sql": _tool_explain_sql,

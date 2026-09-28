@@ -413,6 +413,109 @@ def test_tool_build_metric_sql_errors(schema_store, metric_store) -> None:
 
 
 # ----------------------------------------------------------------------
+# Cross-module integrations (direction 7): review / skew / lineage
+# ----------------------------------------------------------------------
+
+
+def test_execute_sql_attaches_review_findings(sqlite_runtime) -> None:
+    """Chat BI × SQL Review: static critical findings ride along the result."""
+    pytest.importorskip("sqlglot")
+    out = json.loads(execute_text2sql_tool(
+        "execute_sql",
+        {"sql": "SELECT channel FROM sales WHERE dt = '2026-03-01' "
+                "AND channel = NULL"},
+        sqlite_runtime,
+    ))
+    assert out["success"] is True  # advisory, never blocking
+    cats = [f["category"] for f in out.get("review_findings", [])]
+    assert "where_syntax" in cats  # the '= NULL' classic
+    sev = {f["severity"] for f in out["review_findings"]}
+    assert sev <= {"critical", "risk"}  # suggestions are filtered out
+
+
+def test_execute_sql_attaches_skew_hints_when_slow(sqlite_runtime, monkeypatch) -> None:
+    """Chat BI × skew: slow batch-engine queries get skew advice."""
+    monkeypatch.setenv("T2S_SLOW_QUERY_MS", "0")  # everything counts as slow
+    sqlite_runtime.ds_type = "hive"  # batch engine; executor stays sqlite
+    out = json.loads(execute_text2sql_tool(
+        "execute_sql",
+        {"sql": "SELECT COUNT(DISTINCT order_id) AS c FROM sales "
+                "WHERE dt = '2026-03-01'"},
+        sqlite_runtime,
+    ))
+    assert out["success"] is True
+    cats = [h["category"] for h in out.get("skew_hints", [])]
+    assert "count_distinct" in cats
+
+    # below threshold -> no hints
+    monkeypatch.setenv("T2S_SLOW_QUERY_MS", "999999")
+    sqlite_runtime.cache = type(sqlite_runtime.cache)()  # bypass result cache
+    out = json.loads(execute_text2sql_tool(
+        "execute_sql",
+        {"sql": "SELECT COUNT(DISTINCT order_id) AS c2 FROM sales "
+                "WHERE dt = '2026-03-01'"},
+        sqlite_runtime,
+    ))
+    assert "skew_hints" not in out
+
+
+def test_trace_metric_caliber_only_without_lineage_dir(
+    sqlite_runtime, monkeypatch,
+) -> None:
+    monkeypatch.delenv("T2S_LINEAGE_SQL_DIR", raising=False)
+    out = json.loads(execute_text2sql_tool(
+        "trace_metric", {"metric": "gmv"}, sqlite_runtime,
+    ))
+    assert out["success"] is True
+    assert out["sources"][0]["table"] == "sales"
+    assert out["sources"][0]["expression"] == "SUM(amount)"
+    assert "T2S_LINEAGE_SQL_DIR" in out["note"]
+    assert "lineage" not in out
+
+
+def test_trace_metric_with_lineage_upstream(
+    sqlite_runtime, tmp_path, monkeypatch,
+) -> None:
+    """Chat BI × lineage: the upstream chain of the metric's source table."""
+    pytest.importorskip("sqlglot")
+    sql_dir = tmp_path / "warehouse"
+    sql_dir.mkdir()
+    (sql_dir / "etl_sales.sql").write_text(
+        "INSERT OVERWRITE TABLE sales\n"
+        "SELECT o.order_id, o.amount, o.channel, o.dt\n"
+        "FROM raw_orders o JOIN dim_channel c ON o.channel = c.channel;\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("T2S_LINEAGE_SQL_DIR", str(sql_dir))
+    out = json.loads(execute_text2sql_tool(
+        "trace_metric", {"metric": "gmv", "depth": 3}, sqlite_runtime,
+    ))
+    assert out["success"] is True, out
+    chain = out["lineage"][0]
+    assert chain["table"] == "sales"
+    upstream_tables = {u["table"] for u in chain["upstream"]}
+    assert "raw_orders" in upstream_tables
+    assert "dim_channel" in upstream_tables
+    # graph is cached on the runtime
+    assert sqlite_runtime._lineage_graph is not None
+
+    # ratio metric traces both sides
+    out = json.loads(execute_text2sql_tool(
+        "trace_metric", {"metric": "aov"}, sqlite_runtime,
+    ))
+    assert out["success"] is True
+    assert len(out["sources"]) == 2
+    assert len(out["lineage"]) == 2
+
+
+def test_trace_metric_unknown(sqlite_runtime) -> None:
+    out = json.loads(execute_text2sql_tool(
+        "trace_metric", {"metric": "nope"}, sqlite_runtime,
+    ))
+    assert "not defined" in out["error"]
+
+
+# ----------------------------------------------------------------------
 # REST API
 # ----------------------------------------------------------------------
 

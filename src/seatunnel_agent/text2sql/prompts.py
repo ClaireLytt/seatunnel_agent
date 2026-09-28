@@ -129,6 +129,8 @@ _METRIC_TOOL_DOC = """\
 - **run_attribution**: Explain a metric's move between two periods
   (为什么涨/跌): totals + per-dimension contribution decomposition. Needs
   two explicit date ranges. Call once per question.
+- **trace_metric**: A metric's data provenance (指标溯源): caliber level
+  plus the upstream table chain from the lineage graph. No SQL executed.
 """
 
 _METRIC_RULES = """\
@@ -158,7 +160,10 @@ A metric catalog is loaded. To guarantee caliber consistency:
    then add your interpretation clearly marked as 分析解读. The
    contribution percentages are exact (they sum to the total change
    rate) — never recompute or round-trip them.
-6. Only when no metric matches, fall back to the normal
+6. For provenance questions ("这个数是从哪些表算出来的", "X 的加工链路"),
+   use **trace_metric** and present the caliber plus the upstream chain.
+   Do NOT execute SQL.
+7. Only when no metric matches, fall back to the normal
    match_tables -> get_table_schema -> SQL flow.
 
 ## Metric Catalog (已定义指标)
