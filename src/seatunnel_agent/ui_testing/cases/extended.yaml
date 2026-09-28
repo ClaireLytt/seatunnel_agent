@@ -153,12 +153,14 @@
     - wait: 1200
       note: 页面挂载
     - click: Refresh
-    - wait: 1500
-      note: 下拉 choices 刷新无信号
+    - wait: 4000
+      note: 下拉 choices 刷新无信号;CI 机慢,1.5s 不够(夜跑两轮均在此翻车)
   steps:
-    - select_index: {of: "combobox[1]", index: 2}
-      note: 表下拉无标签(label=\"\"),按页面第 2 个 combobox 定位;index 2 = dc_test_orders_a
-    - wait_text: {text: order_no, timeout_ms: 10000}
+    - select: {of: "combobox[0]", value: dc_test_orders_a}
+      note: 表下拉无标签,按 combobox 定位 —— 页面语言下拉在 af1d540 移除后
+            只剩这一个 combobox(旧 index 1 自那时起就指向不存在的元素);
+            按值选择,不再赌 choices 顺序
+    - wait_text: {text: order_no, timeout_ms: 20000}
   expect:
     - text_contains: {in: 页面, text: order_no}
     - text_contains: {in: 页面, text: amount}

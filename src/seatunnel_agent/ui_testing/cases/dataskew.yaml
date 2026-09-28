@@ -281,3 +281,17 @@
     - value_is: {of: 主机, value: "127.0.0.1"}
     - value_is: {of: 端口, value: "3306"}
     - value_is: {of: 数据库, value: skewdb}
+
+- id: DSK21
+  title: 删除倾斜页测试连接(DSK20 清理)
+  tags: [full, sqlite, isolated]
+  page: /settings
+  steps:
+    - open_accordion: {target: 数据库连接}
+    - select: {of: 选择连接, value: dsk-conn}
+    - click: 删除连接
+    - wait: 400
+      note: 清理共享 preset store —— 残留 dsk-conn 会让 SET10 的
+            “暂无已保存的连接”断言在 full 套件里失败(首个夜跑抓到的)
+  expect:
+    - text_contains: {in: 页面, text: 已删除连接}
