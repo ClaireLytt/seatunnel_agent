@@ -184,3 +184,132 @@ def test_lineage_tools_only_with_source(tmp_path, monkeypatch):
     assert any(n.startswith("lineage_") for n in with_lin)
     out = with_lin["lineage_query"]("dw.ads")
     assert "dw.orders" in out
+
+
+# ── round 2: skew_verify / consistency / checksum / limit wrap / audit ─────
+
+
+def test_run_query_engine_side_limit_wrap(tools, tmp_path):
+    _make_db(tmp_path / "a.db",
+             "CREATE TABLE t (id INTEGER); INSERT INTO t VALUES "
+             + ",".join(f"({i})" for i in range(10)) + ";")
+    _save_conn("dev-a", tmp_path / "a.db")
+    out = tools["run_query"]("dev-a", "SELECT id FROM t ORDER BY id", max_rows=3)
+    assert "3 rows" in out
+    # a query carrying its own LIMIT still works when wrapped
+    out2 = tools["run_query"]("dev-a", "SELECT id FROM t LIMIT 5", max_rows=100)
+    assert "5 rows" in out2
+
+
+def test_skew_verify_confirms_hot_key(tools, tmp_path):
+    rows = ",".join("('north')" for _ in range(16)) + ",('south'),('east'),('west'),('south')"
+    _make_db(tmp_path / "a.db",
+             f"CREATE TABLE m (region TEXT); INSERT INTO m VALUES {rows};")
+    _save_conn("dev-a", tmp_path / "a.db")
+    out = tools["skew_verify"](
+        "dev-a", "SELECT region, count(*) FROM m GROUP BY region")
+    assert "确认倾斜" in out and "north" in out
+    assert "改写模板" in out          # measured rewrite templates included
+    assert "SQL 不能为空" in tools["skew_verify"]("dev-a", "  ")
+
+
+def test_compare_query_results(tools, tmp_path):
+    _make_db(tmp_path / "a.db",
+             "CREATE TABLE t (id INTEGER); INSERT INTO t VALUES (1),(2),(3);")
+    _save_conn("dev-a", tmp_path / "a.db")
+    same = tools["compare_query_results"](
+        "dev-a", "SELECT id FROM t", "SELECT id FROM t ORDER BY id DESC")
+    assert "✅" in same
+    diff = tools["compare_query_results"](
+        "dev-a", "SELECT id FROM t", "SELECT id FROM t WHERE id > 1")
+    assert "⛔" in diff
+    guarded = tools["compare_query_results"](
+        "dev-a", "SELECT id FROM t", "DELETE FROM t")
+    assert "仅支持单条" in guarded or "single" in guarded.lower()
+
+
+def test_compare_checksum(tools, tmp_path):
+    script = ("CREATE TABLE t (id INTEGER, v TEXT); "
+              "INSERT INTO t VALUES (1,'a'),(2,'b'),(3,'c');")
+    _make_db(tmp_path / "a.db", script)
+    _make_db(tmp_path / "b.db", script)
+    # sqlite's fingerprint is length-based (no hash function), so the
+    # difference must change a value's LENGTH to be visible there
+    _make_db(tmp_path / "c.db",
+             "CREATE TABLE t (id INTEGER, v TEXT); "
+             "INSERT INTO t VALUES (1,'a'),(2,'bbbb'),(3,'c');")
+    _save_conn("dev-a", tmp_path / "a.db")
+    _save_conn("dev-b", tmp_path / "b.db")
+    _save_conn("dev-c", tmp_path / "c.db")
+    assert "✅" in tools["compare_checksum"]("dev-a", "dev-b", "t")
+    assert "⛔" in tools["compare_checksum"]("dev-a", "dev-c", "t")
+    assert "分号" in tools["compare_checksum"]("dev-a", "dev-b", "t",
+                                               where="1=1; --")
+
+
+def test_audit_log_written(tmp_path, monkeypatch):
+    import json
+
+    monkeypatch.setenv("SEATUNNEL_DC_PRESETS_PATH",
+                       str(tmp_path / "presets.json"))
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    audit = tmp_path / "audit.jsonl"
+    monkeypatch.setenv("SEATUNNEL_MCP_AUDIT_PATH", str(audit))
+    fns = build_tool_functions()
+    fns["sql_transpile"]("SELECT 1", to_dialect="doris")
+    fns["list_tables"]("nope")   # error path is audited too
+    lines = [json.loads(x) for x in
+             audit.read_text(encoding="utf-8").splitlines()]
+    assert [r["tool"] for r in lines] == ["sql_transpile", "list_tables"]
+    assert lines[0]["ok"] is True
+    assert "doris" in lines[0]["args"]
+    assert lines[1]["elapsed_ms"] >= 0
+
+
+def test_data_dictionary_with_sql_dir(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEATUNNEL_DC_PRESETS_PATH",
+                       str(tmp_path / "presets.json"))
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setenv("SEATUNNEL_MCP_AUDIT_PATH",
+                       str(tmp_path / "audit.jsonl"))
+    sql_dir = tmp_path / "sql"
+    sql_dir.mkdir()
+    (sql_dir / "a.sql").write_text(
+        "INSERT OVERWRITE TABLE dw.ads SELECT id FROM dw.orders;",
+        encoding="utf-8")
+    fns = build_tool_functions(sql_dir=str(sql_dir))
+    out = fns["data_dictionary"]()
+    assert "数据字典" in out and "dw.ads" in out
+
+
+def test_audited_wrapper_converts_exceptions(tmp_path, monkeypatch):
+    monkeypatch.setenv("SEATUNNEL_MCP_AUDIT_PATH",
+                       str(tmp_path / "audit.jsonl"))
+    from seatunnel_agent.mcp_toolbox import _audited
+
+    def boom(x: int) -> str:
+        raise ValueError("nope")
+
+    wrapped = _audited("boom", boom)
+    out = wrapped(1)
+    assert "内部错误" in out and "ValueError" in out
+
+
+def test_mcp_server_boot_with_annotations():
+    pytest.importorskip("mcp")
+    import anyio
+
+    from seatunnel_agent.mcp_toolbox import create_mcp_server
+
+    s = create_mcp_server()
+    tool_list = anyio.run(s.list_tools)
+    names = {t.name for t in tool_list}
+    assert {"sql_review", "run_query", "skew_verify",
+            "compare_checksum"} <= names
+    rq = next(t for t in tool_list if t.name == "run_query")
+    if rq.annotations is not None:          # SDKs with annotation support
+        ro = getattr(rq.annotations, "read_only_hint",
+                     getattr(rq.annotations, "readOnlyHint", None))
+        assert ro is True

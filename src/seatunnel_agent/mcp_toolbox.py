@@ -30,11 +30,77 @@ package); :func:`create_mcp_server` only wires them into FastMCP.
 
 from __future__ import annotations
 
+import functools
+import json
+import os
 import re
 import threading
+import time
+from pathlib import Path
 from typing import Any, Callable
 
 MAX_QUERY_ROWS = 500
+
+# engines whose SQL accepts a trailing LIMIT on a wrapped subquery — for
+# the rest, run_query falls back to the fetch-side cap only
+_LIMIT_DS = frozenset({"hive", "sparksql", "mysql", "postgresql", "sqlite",
+                       "clickhouse", "doris", "starrocks"})
+
+# tool-call audit trail (an AI client is executing these against real
+# databases): logs/mcp_toolbox.jsonl, best-effort, 10 MB rotation
+_AUDIT_ENV = "SEATUNNEL_MCP_AUDIT_PATH"
+_AUDIT_MAX_BYTES = 10 * 1024 * 1024
+_audit_lock = threading.Lock()
+
+
+def _audit_file() -> Path:
+    override = os.environ.get(_AUDIT_ENV)
+    return Path(override) if override else Path("logs") / "mcp_toolbox.jsonl"
+
+
+def _write_audit(record: dict) -> None:
+    try:
+        path = _audit_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with _audit_lock:
+            if path.exists() and path.stat().st_size > _AUDIT_MAX_BYTES:
+                path.replace(path.with_suffix(".jsonl.1"))
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError:
+        pass  # auditing must never break a tool call
+
+
+def _audited(name: str, fn: Callable[..., str]) -> Callable[..., str]:
+    """Wrap a tool: one audit line per call, exceptions become error text.
+
+    functools.wraps keeps __doc__ and __wrapped__, so FastMCP still sees
+    the real signature and docstring when building the tool schema."""
+    from datetime import datetime, timezone
+
+    @functools.wraps(fn)
+    def wrapper(*args: Any, **kwargs: Any) -> str:
+        t0 = time.time()
+        ok = True
+        try:
+            out = fn(*args, **kwargs)
+        except Exception as exc:  # noqa: BLE001 — errors are strings, always
+            ok = False
+            out = f"内部错误 / internal error: {type(exc).__name__}: {exc}"
+        summary = ", ".join(
+            [*(repr(a)[:120] for a in args),
+             *(f"{k}={repr(v)[:120]}" for k, v in kwargs.items())])
+        _write_audit({
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "tool": name,
+            "ok": ok and not str(out).startswith(("内部错误", "查询失败", "连接失败")),
+            "args": summary[:400],
+            "chars": len(str(out)),
+            "elapsed_ms": int((time.time() - t0) * 1000),
+        })
+        return out
+
+    return wrapper
 
 _INSTRUCTIONS = (
     "SeaTunnel Agent 大数据 SQL 工具箱：SQL 审查（静态规则）、方言翻译"
@@ -277,7 +343,8 @@ def build_tool_functions(
 
     def run_query(connection: str, sql: str, max_rows: int = 100) -> str:
         """在已保存连接上执行**只读**查询（仅允许单条 SELECT/WITH；多语句、
-        写操作一律拒绝），返回 Markdown 结果表。max_rows 上限 500。"""
+        写操作一律拒绝），返回 Markdown 结果表。max_rows 上限 500，且在
+        支持 LIMIT 的引擎上注入引擎侧 LIMIT（大表不做全量计算）。"""
         from .data_skew.consistency import extract_single_select
 
         executor, err = _executor_for(connection)
@@ -288,6 +355,11 @@ def build_tool_functions(
             return ("仅允许单条 SELECT/WITH 只读查询 / only a single read-only "
                     "SELECT/WITH statement is allowed")
         n = max(1, min(int(max_rows or 100), MAX_QUERY_ROWS))
+        # engine-side cap: the fetch cap alone still lets the engine
+        # compute the full result (a LIMIT-less SELECT on a big Hive
+        # table would full-scan)
+        if executor.config.ds_type in _LIMIT_DS:
+            query = f"SELECT * FROM (\n{query}\n) mcp_q LIMIT {n}"
         try:
             res = executor.run(query, max_rows=n)
         except Exception as exc:  # noqa: BLE001
@@ -364,6 +436,95 @@ def build_tool_functions(
             lines.append("- 类型差异 / type differences: " + "; ".join(type_diff))
         return "\n".join(lines)
 
+    def skew_verify(connection: str, sql: str, dialect: str = "spark",
+                    sample_pct: int = 10, lang: str = "") -> str:
+        """连库**实测验证**数据倾斜：解析 SQL 里的 JOIN/GROUP BY/COUNT(DISTINCT)/
+        窗口分区键，在已保存连接上并行探查真实键值分布（只读 GROUP BY 探针，
+        支持 TABLESAMPLE 采样），返回确认/疑似判定、热点值、引擎参数与按实测
+        值生成的改写模板。先用 skew_check 做静态扫描，再用本工具实测确认。"""
+        from .data_skew.detector import normalize_dialect
+        from .data_skew.probe import (
+            effective_sample_pct, extract_probe_targets, render_probe_section,
+            run_probes)
+
+        executor, err = _executor_for(connection)
+        if err:
+            return err
+        if not (sql or "").strip():
+            return "SQL 不能为空 / SQL must not be empty"
+        targets = extract_probe_targets(sql)
+        ds = executor.config.ds_type
+        pct = effective_sample_pct(ds, int(sample_pct or 0))
+        try:
+            results = run_probes(executor, targets, ds_type=ds, sample_pct=pct)
+        except Exception as exc:  # noqa: BLE001
+            return f"探查失败 / probing failed: {exc}"
+        return render_probe_section(results, _lang(lang),
+                                    dialect=normalize_dialect(dialect),
+                                    sample_pct=pct)
+
+    def compare_query_results(connection: str, original_sql: str,
+                              optimized_sql: str, lang: str = "") -> str:
+        """一致性实测：在同一连接上运行两版 SQL（各自仅允许单条 SELECT/WITH）
+        并比对——行数一致性、小结果集逐行多重集比对、大结果集逐列聚合指纹。
+        用于验证改写/迁移后的 SQL 与原 SQL 结果等价。"""
+        from .data_skew.consistency import (check_consistency,
+                                            render_consistency_section)
+
+        executor, err = _executor_for(connection)
+        if err:
+            return err
+        res = check_consistency(executor, original_sql or "",
+                                optimized_sql or "")
+        return render_consistency_section(res, _lang(lang))
+
+    def compare_checksum(connection_a: str, connection_b: str, table_a: str,
+                         table_b: str = "", where: str = "") -> str:
+        """跨连接比对两张表的分段校验和（同名列取交集，逐段哈希）：行数/结构
+        都一致后仍怀疑内容差异时用它，比逐行拉数便宜得多。where 可选，同时
+        作用于两侧，禁分号。"""
+        from .data_comparison.comparator import (build_checksum_sql,
+                                                 compare_checksums)
+
+        tb = (table_b or table_a or "").strip()
+        for t in (table_a, tb):
+            if not _SIMPLE_TABLE_RE.match((t or "").strip()):
+                return f"非法表名 / invalid table name: {t!r}"
+        if re.search(r"[;]", where or ""):
+            return "where 条件不能包含分号 / ';' not allowed in where"
+        sides = []
+        for conn, table in ((connection_a, table_a.strip()), (connection_b, tb)):
+            executor, err = _executor_for(conn)
+            if err:
+                return err
+            try:
+                schema = executor.describe_table(table)
+            except Exception as exc:  # noqa: BLE001
+                return f"[{conn}] 查询失败 / query failed: {exc}"
+            sides.append((executor, table, schema))
+        (ex_a, ta, sa), (ex_b, tbx, sb) = sides
+        names_b = {c.name.lower() for c in sb.columns}
+        cols = [c.name for c in sa.columns if c.name.lower() in names_b]
+        if not cols:
+            return "两表无同名列，无法计算校验和 / no shared columns"
+        rows = []
+        for ex, table in ((ex_a, ta), (ex_b, tbx)):
+            q = build_checksum_sql(table, cols, ds_type=ex.config.ds_type,
+                                   where=(where or "").strip())
+            try:
+                rows.append(ex.run(q, max_rows=64).rows)
+            except Exception as exc:  # noqa: BLE001
+                return f"[{table}] 校验和查询失败 / checksum query failed: {exc}"
+        result = compare_checksums(ta, tbx, rows[0], rows[1])
+        if not result.mismatch_count:
+            return (f"✅ 校验和一致：{result.match_count} 段全部匹配"
+                    f"（{len(cols)} 列参与）")
+        bad = [f"seg {i.segment}: {i.checksum_a[:24]} vs {i.checksum_b[:24]}"
+               for i in result.items if not i.match][:10]
+        return (f"⛔ 校验和不一致：{result.mismatch_count} 段不匹配 / "
+                f"{result.match_count} 段匹配（{len(cols)} 列参与）\n- "
+                + "\n- ".join(bad))
+
     tools.update(
         list_saved_connections=list_saved_connections,
         list_tables=list_tables,
@@ -371,6 +532,9 @@ def build_tool_functions(
         run_query=run_query,
         compare_row_count=compare_row_count,
         compare_schema=compare_schema,
+        skew_verify=skew_verify,
+        compare_query_results=compare_query_results,
+        compare_checksum=compare_checksum,
     )
 
     # ── lineage tools (only when a graph source is configured) ──────────
@@ -382,7 +546,28 @@ def build_tool_functions(
             sql_dialect=sql_dialect,
         ))
 
-    return tools
+        _dict_state: dict[str, Any] = {"graph": None}
+
+        def data_dictionary(lang: str = "") -> str:
+            """从血缘图生成数据字典（分层排序的表清单：来源/去向/字段血缘），
+            不连接数据库。"""
+            from .data_lineage.dictionary import (build_dictionary,
+                                                  render_dictionary_markdown)
+            from .data_lineage.loaders import build_graph
+
+            if _dict_state["graph"] is None:
+                _dict_state["graph"], _ = build_graph(
+                    sql_dir=sql_dir, seatunnel_dir=seatunnel_dir,
+                    use_hive=use_hive, meta_table=meta_table,
+                    partition=partition, sql_dialect=sql_dialect)
+            entries = build_dictionary(_dict_state["graph"])
+            return render_dictionary_markdown(entries, _lang(lang))
+
+        tools["data_dictionary"] = data_dictionary
+
+    # every tool gets the audit wrapper (one jsonl line per call; an
+    # exception becomes error text instead of a protocol-level failure)
+    return {name: _audited(name, fn) for name, fn in tools.items()}
 
 
 def create_mcp_server(
@@ -395,14 +580,84 @@ def create_mcp_server(
     sql_dialect: str = "hive",
 ):
     """FastMCP server (stdio) wrapping the whole toolbox."""
+    from . import __version__
     from .mcp_compat import fastmcp_class
 
-    server = fastmcp_class()("seatunnel-agent", instructions=_INSTRUCTIONS)
+    cls = fastmcp_class()
+    try:
+        server = cls("seatunnel-agent", instructions=_INSTRUCTIONS,
+                     version=__version__)
+    except TypeError:  # older SDKs without a version kwarg
+        server = cls("seatunnel-agent", instructions=_INSTRUCTIONS)
     functions = build_tool_functions(
         default_lang=default_lang, sql_dir=sql_dir,
         seatunnel_dir=seatunnel_dir, use_hive=use_hive,
         meta_table=meta_table, partition=partition, sql_dialect=sql_dialect,
     )
-    for fn in functions.values():
+
+    # every tool is read-only; the pure-static ones are idempotent too
+    # (db-backed answers can change between calls as data changes)
+    static_names = {"sql_review", "sql_transpile", "skew_check",
+                    "skew_check_file", "impact_diff", "migrate_to_seatunnel"}
+    annotations_cls = None
+    try:
+        from mcp.types import ToolAnnotations as annotations_cls
+    except ImportError:
+        pass
+    for name, fn in functions.items():
+        if annotations_cls is not None:
+            try:
+                server.tool(annotations=annotations_cls(
+                    readOnlyHint=True,
+                    destructiveHint=False,
+                    idempotentHint=name in static_names,
+                ))(fn)
+                continue
+            except TypeError:
+                pass  # SDK without the annotations kwarg
         server.tool()(fn)
+
+    _register_prompts(server)
     return server
+
+
+def _register_prompts(server) -> None:
+    """Canned multi-tool workflows as MCP prompts (best-effort: skipped on
+    SDKs without prompt support)."""
+    if not hasattr(server, "prompt"):
+        return
+
+    def skew_tuning_workflow(sql: str, connection: str = "") -> str:
+        """数据倾斜调优全流程：静态扫描 → 实测验证 → 改写 → 一致性验收。"""
+        conn = connection.strip() or "<用 list_saved_connections 选一个>"
+        return (
+            "请按以下流程对这段 SQL 做数据倾斜调优：\n"
+            f"1. 用 skew_check 做静态扫描（原文如下）。\n"
+            f"2. 用 skew_verify(connection={conn!r}) 实测验证，拿到确认倾斜的键、"
+            "热点值与改写模板。\n"
+            "3. 基于实测热点值改写 SQL（优先热点隔离/两阶段聚合，参考返回的模板）。\n"
+            f"4. 用 compare_query_results(connection={conn!r}) 验证改写与原 SQL "
+            "结果等价，不等价则修正后重验。\n"
+            "5. 汇总：确认的倾斜点、改写后 SQL、建议引擎参数。\n\n"
+            f"```sql\n{sql.strip()}\n```"
+        )
+
+    def migration_acceptance_workflow(connection_a: str, connection_b: str,
+                                      table: str) -> str:
+        """迁移验收三级比对：结构 → 行数 → 校验和。"""
+        return (
+            f"请对迁移表 {table} 做验收比对（源连接 {connection_a!r}，目标连接 "
+            f"{connection_b!r}），按代价从低到高逐级执行，任何一级不一致就停下"
+            "分析原因：\n"
+            f"1. compare_schema：结构差异（缺列/类型漂移）。\n"
+            f"2. compare_row_count：行数差异（可加 where 缩小到分区）。\n"
+            f"3. compare_checksum：分段校验和，定位内容差异所在的段。\n"
+            "4. 需要看具体数据时用 run_query 抽样（只读）。\n"
+            "最后输出验收结论：通过 / 不通过 + 差异清单。"
+        )
+
+    for fn in (skew_tuning_workflow, migration_acceptance_workflow):
+        try:
+            server.prompt()(fn)
+        except Exception:  # noqa: BLE001 — prompts are optional polish
+            return
