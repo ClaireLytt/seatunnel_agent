@@ -10,6 +10,7 @@
     - click: 批量行数
     - wait_result: {timeout_ms: 60000}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: dc_test_orders_a}
     - text_contains: {in: 结果区, text: dc_test_same_b}
 
@@ -23,6 +24,7 @@
     - click: 批量全量对比
     - wait_result: {timeout_ms: 240000}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: 通过}
     - text_not_contains: {in: 结果区, text: Traceback}
 
@@ -38,6 +40,7 @@
     - click: SQL 对比
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: electronics}
     - ai_judge: >-
         SQL 结果对比中 books(2 与 1)、electronics(3 与 4)、

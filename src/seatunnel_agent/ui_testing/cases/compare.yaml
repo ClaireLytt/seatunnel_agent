@@ -9,6 +9,7 @@
     - click: 结构对比
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: 表结构完全一致}
 
 - id: C2
@@ -33,6 +34,7 @@
     - click: 行数对比
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: "10"}
     - text_contains: {in: 结果区, text: "9"}
     - text_contains: {in: 结果区, text: "+1"}
@@ -60,6 +62,7 @@
     - click: 样本数据
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: "350"}
     - text_contains: {in: 结果区, text: refund}
     - ai_judge: >-
@@ -76,6 +79,7 @@
     - click: 全部对比
     - wait_result: {timeout_ms: 90000}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: 对比摘要}
     - text_contains: {in: 结果区, text: 行数对比}
     - text_not_contains: {in: 结果区, text: Traceback}
@@ -89,6 +93,7 @@
     - click: 聚合对比
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: "2122.49"}
     - text_contains: {in: 结果区, text: "3493.69"}
 

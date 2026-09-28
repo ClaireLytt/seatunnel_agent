@@ -9,6 +9,7 @@
     - click: 字段画像
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: email}
     - ai_judge: >-
         字段画像结果中 email 列的空值率 A 侧为 0%,B 侧约 22%,
@@ -37,6 +38,7 @@
     - click: 校验和对比
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: 不匹配}
 
 - id: G2
@@ -64,6 +66,7 @@
     - click: 对比分区
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: "2024-06-02"}
     - text_contains: {in: 结果区, text: "2024-06-03"}
     - ai_judge: >-
@@ -95,6 +98,7 @@
     - click: 分析倾斜
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: north}
     - ai_judge: >-
         倾斜分析结果中 A 侧 region 列 north 占比约 80%、被标记为
@@ -124,6 +128,7 @@
     - click: 比对自定义聚合
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: "2122.49"}
     - text_contains: {in: 结果区, text: "3493.69"}
     - text_contains: {in: 结果区, text: cats}
@@ -153,6 +158,7 @@
     - click: 质量检查
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: "77.78"}
     - ai_judge: >-
         质量检查结果中,B 侧 email 非空率约 77.8% 未通过 80% 阈值,
@@ -183,6 +189,7 @@
     - click: 增量对比
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_not_contains: {in: 结果区, text: Traceback}
     - ai_judge: >-
         增量对比只包含水位线 2024-06-05 00:00:00 之后的行:

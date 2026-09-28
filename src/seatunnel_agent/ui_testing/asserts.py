@@ -142,6 +142,50 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
                     + ("" if overflows else " — content does not overflow, "
                        "raise the case's content or lower height"))
 
+    if k == "result_in_view":
+        # Geometry guard: the result card must actually be VISIBLE, not just
+        # present in the DOM. Regression source: .st-main is a fixed-height
+        # flex column, and with flex-wrap:wrap a card taller than the
+        # viewport got wrapped into a second column OUTSIDE the container,
+        # then clipped by overflow:hidden — every text assert stayed green
+        # while the user saw a blank panel. Shrink the viewport width so a
+        # tall card is guaranteed to overflow, then check the card's box
+        # stays inside .st-main and is not covered by an overlay.
+        width = int(args.get("width", 950))
+        loc = dc.result_container()
+        if not loc.count():
+            return False, "no result card found"
+        orig = dc.page.viewport_size or {"width": 1600, "height": 900}
+        try:
+            dc.page.set_viewport_size({"width": width, "height": orig["height"]})
+            dc.page.wait_for_timeout(400)
+            info = loc.evaluate(
+                "el => {"
+                " const main = el.closest('.st-main') || el.parentElement;"
+                " const r = el.getBoundingClientRect();"
+                " const m = main.getBoundingClientRect();"
+                " const x = Math.min(Math.max(r.left + 8, m.left + 2), m.right - 2);"
+                " const y = Math.max(r.top + 8, m.top + 2);"
+                " const hit = document.elementFromPoint(x, y);"
+                " return { left: r.left, width: r.width, height: r.height,"
+                "          mLeft: m.left, mRight: m.right,"
+                "          covered: !(hit && el.contains(hit)) }; }")
+        finally:
+            dc.page.set_viewport_size(orig)
+            dc.page.wait_for_timeout(200)
+        main_w = info["mRight"] - info["mLeft"]
+        inside = (info["left"] >= info["mLeft"] - 2
+                  and info["left"] < info["mRight"]
+                  and info["width"] > main_w * 0.5)
+        ok = inside and info["height"] > 0 and not info["covered"]
+        return ok, (f"result card at {width}px viewport: "
+                    f"left={info['left']:.0f} width={info['width']:.0f} "
+                    f"height={info['height']:.0f} "
+                    f"main=[{info['mLeft']:.0f},{info['mRight']:.0f}] "
+                    f"covered={info['covered']}"
+                    + ("" if ok else
+                       " — card rendered outside the visible main column"))
+
     if k == "download_ok":
         if not dc.last_download:
             return False, "no download captured — run a 'download' step first"
