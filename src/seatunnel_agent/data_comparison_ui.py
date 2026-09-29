@@ -2278,7 +2278,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Report persistence (E) ──
 
-    def _save_report(lang_val):
+    def _save_report(table_a, table_b, lang_val):
         with holder_lock:
             report = holder.get("last_report")
         if not report:
@@ -2286,7 +2286,16 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         try:
             _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
             ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-            fpath = _REPORTS_DIR / f"compare_{ts}.json"
+
+            def _safe(name: str) -> str:
+                return re.sub(r"[^0-9A-Za-z_\-一-鿿]", "_",
+                              str(name or ""))[:40]
+
+            # table names in the filename so the load dropdown is findable
+            # ("compare_20260929_*.json 一堆数字不知道谁是谁")
+            pair = (f"{_safe(table_a)}_vs_{_safe(table_b)}_"
+                    if table_a and table_b else "")
+            fpath = _REPORTS_DIR / f"compare_{pair}{ts}.json"
             data = report.to_dict()
             with open(fpath, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -2299,7 +2308,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     def _list_reports():
         if not _REPORTS_DIR.is_dir():
             return gr.update(choices=[], value=None)
-        files = sorted(_REPORTS_DIR.glob("compare_*.json"), reverse=True)
+        files = sorted(_REPORTS_DIR.glob("compare_*.json"),
+                       key=lambda f: f.stat().st_mtime, reverse=True)
         names = [f.name for f in files[:_MAX_REPORT_FILES]]
         return gr.update(choices=names, value=None)
 
@@ -3306,8 +3316,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 # Report diff (Phase 5A)
                 with gr.Row():
                     report_old_dd = gr.Dropdown(choices=[], label=t("dc_report_old"),
+                                                 filterable=True,
                                                  elem_classes=["st-sidebar-control"])
                     report_new_dd = gr.Dropdown(choices=[], label=t("dc_report_new"),
+                                                 filterable=True,
                                                  elem_classes=["st-sidebar-control"])
                 report_diff_btn = gr.Button(t("dc_report_compare"), size="sm",
                                              elem_classes=["st-connect-btn"])
@@ -3353,6 +3365,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             with gr.Row():
                 save_btn = gr.Button(t("dc_save_report"), size="sm", elem_classes=["st-connect-btn"])
                 load_dd = gr.Dropdown(choices=[], label=t("dc_load_report"),
+                                       filterable=True,
                                        elem_classes=["st-sidebar-control"])
                 load_btn = gr.Button("↻", size="sm", elem_classes=["st-connect-btn"])
 
@@ -3550,7 +3563,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     def _refresh_report_dds():
         if not _REPORTS_DIR.is_dir():
             return gr.update(choices=[]), gr.update(choices=[])
-        files = sorted(_REPORTS_DIR.glob("compare_*.json"), reverse=True)
+        files = sorted(_REPORTS_DIR.glob("compare_*.json"),
+                       key=lambda f: f.stat().st_mtime, reverse=True)
         names = [f.name for f in files[:_MAX_REPORT_FILES]]
         return gr.update(choices=names), gr.update(choices=names)
 
@@ -3630,7 +3644,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     )
 
     # E — Report persistence
-    save_btn.click(fn=_save_report, inputs=[lang_state],
+    save_btn.click(fn=_save_report, inputs=[table_a, table_b, lang_state],
                    outputs=[save_status, load_dd])
     load_btn.click(fn=_list_reports, inputs=[], outputs=[load_dd])
     load_dd.change(fn=_load_report, inputs=[load_dd, lang_state], outputs=[result_html])

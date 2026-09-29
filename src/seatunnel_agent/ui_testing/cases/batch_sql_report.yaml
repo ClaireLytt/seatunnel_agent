@@ -143,8 +143,11 @@
     - wait: 1500
       note: 保存为本地文件无 loading 信号,固定短等待
   steps:
+    - dropdown_type: {of: 加载报告, text: orders}
+      note: 文件名含表名(dc_test_orders_a_vs_...),打字即可搜索定位
     - select_index: {of: 加载报告, index: 0}
     - wait_result: {}
   expect:
     - text_contains: {in: 结果区, text: 已加载}
+    - text_contains: {in: 结果区, text: dc_test_orders}
     - result_in_view: {}

@@ -1090,11 +1090,18 @@ def build_trend_data(
         return []
 
     entries: list[dict[str, Any]] = []
-    for fpath in sorted(reports_dir.glob("compare_*.json")):
+
+    def _file_ts(p: Path) -> str:
+        # filenames are compare_[<ta>_vs_<tb>_]YYYYmmdd_HHMMSS.json — the
+        # timestamp is always the trailing token, table names are optional
+        m = re.search(r"(\d{8}_\d{6})$", p.stem)
+        return m.group(1) if m else p.stem.replace("compare_", "")
+
+    for fpath in sorted(reports_dir.glob("compare_*.json"), key=_file_ts):
         try:
             with open(fpath, "r", encoding="utf-8") as f:
                 d = json.load(f)
-            ts = fpath.stem.replace("compare_", "")
+            ts = _file_ts(fpath)
             report = CompareReport.from_dict(d)
             if report.row_count:
                 entries.append({
