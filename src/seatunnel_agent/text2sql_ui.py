@@ -835,7 +835,8 @@ def render_schema_browser_page(app=None) -> None:
             gr.update(value=f"## {t('schema_browser')}"),
             gr.update(value=t("schema_back")),
             gr.update(value=t("refresh")),
-            gr.update(choices=choices, value=None),
+            gr.update(choices=choices, value=None,
+                      label=t("schema_select_table")),
             "",
         )
 
@@ -855,10 +856,11 @@ def render_schema_browser_page(app=None) -> None:
         with _shared_holder_lock:
             _has_store = _shared_holder.get("full_store") is not None
         no_tables_msg = t("schema_no_tables") if not _has_store else ""
+        # A labeled dropdown is locatable by tests and screen readers alike —
+        # unlabeled, cases had to count "the page's 2nd combobox" (flaky).
         schema_dd = gr.Dropdown(
             choices=_table_choices_from_shared("en"),
-            value=None, label="",
-            show_label=False,
+            value=None, label=_t2s("en", "schema_select_table"),
         )
         schema_html = gr.HTML(no_tables_msg)
 

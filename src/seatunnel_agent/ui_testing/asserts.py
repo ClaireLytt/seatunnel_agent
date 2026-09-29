@@ -76,6 +76,18 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
         return sorted(opts) == sorted(want), (
             f"'{name}' options: expected {sorted(want)}, actual {sorted(opts)}")
 
+    if k == "options_not_contains":
+        # negative membership: the only order-independent contract for a
+        # shared store (asserting exact lists or emptiness couples the case
+        # to whatever OTHER cases saved earlier in the suite)
+        name = args.get("of")
+        value = str(args.get("value", ""))
+        keep = bool(args.get("keep_filter", False))
+        opts = dc.dropdown_options(name, side, keep_filter=keep)
+        return value not in opts, (
+            f"'{name}' options {'do NOT' if value not in opts else 'DO'} "
+            f"contain {value!r}: {opts}")
+
     if k in ("status_ok", "status_error"):
         mark = "✅" if k == "status_ok" else "❌"
         actual = dc.status_text(side or args.get("target", "A"))

@@ -156,7 +156,7 @@
     - wait: 1500
       note: 下拉 choices 刷新无信号
   steps:
-    - select_index: {of: "combobox[1]", index: 2}
+    - select_index: {of: "Select a table to inspect...", index: 2}
       note: 表下拉无标签(label=\"\"),按页面第 2 个 combobox 定位;index 2 = dc_test_orders_a
     - wait_text: {text: order_no, timeout_ms: 10000}
   expect:
