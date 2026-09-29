@@ -342,6 +342,93 @@ def build_count_card(
     )
 
 
+def build_sql_result_card(diff, lang: str = "en", columns=None) -> str:
+    """Card for custom-SQL result comparison.
+
+    diff_results is key-less, so a changed row surfaces as one removed (A)
+    plus one added (B) — unreadable for the aggregate-reconciliation SQL
+    this feature exists for. Pair removed/added rows by their FIRST column
+    (the natural group key) and render matched pairs as `A → B` per cell;
+    genuinely unmatched rows stay in only-A / only-B sections."""
+    t = lambda k: dc(lang, k)
+    cols = list(columns or [])
+
+    def _v(x) -> str:
+        # tame float repr noise (108.19999999999999 -> 108.2) while keeping
+        # deliberate long fractions (3000.1000001) visible
+        if isinstance(x, float):
+            return f"{x:.12g}"
+        return str(x)
+
+    removed = [tuple(r) for r in diff.removed_rows]
+    added = [tuple(r) for r in diff.added_rows]
+
+    by_key_b: dict = {}
+    for r in added:
+        by_key_b.setdefault(r[0] if r else None, []).append(r)
+    pairs, only_a = [], []
+    for r in removed:
+        k = r[0] if r else None
+        if by_key_b.get(k):
+            pairs.append((r, by_key_b[k].pop(0)))
+        else:
+            only_a.append(r)
+    only_b = [r for rows in by_key_b.values() for r in rows]
+
+    if not pairs and not only_a and not only_b:
+        badge = (f'<span style="color:#16a34a;font-weight:600;">'
+                 f'✅ {t("dc_sqlres_match")}</span>')
+        body = (f'<div style="color:#6b7280;font-size:12px;">'
+                f'{diff.old_count} = {diff.new_count} rows</div>')
+    else:
+        badge = (f'<span style="color:#dc2626;font-weight:600;">'
+                 f'{t("dc_sqlres_summary").format(changed=len(pairs), only_a=len(only_a), only_b=len(only_b))}</span>')
+        th, td = _TH, _TD
+        header = "".join(f"<th {th}>{_esc_html(str(c))}</th>" for c in cols)
+        body = ""
+        if pairs:
+            rows_html = ""
+            for ra, rb in pairs[:50]:
+                cells = ""
+                for i in range(max(len(ra), len(rb))):
+                    va = ra[i] if i < len(ra) else None
+                    vb = rb[i] if i < len(rb) else None
+                    if i == 0 or str(va) == str(vb):
+                        cells += f"<td {td}>{_esc_html(_v(va))}</td>"
+                    else:
+                        cells += (f'<td {td}><span style="color:#6b7280;">'
+                                  f'{_esc_html(_v(va))}</span> → '
+                                  f'<b style="color:#dc2626;">{_esc_html(_v(vb))}</b></td>')
+                rows_html += f'<tr style="background:#fef2f2;">{cells}</tr>'
+            body += (f'<div style="margin-top:6px;"><b style="color:#4f46e5;">'
+                     f'{t("dc_sqlres_changed")} ({len(pairs)})</b>'
+                     f'<table style="width:100%;border-collapse:collapse;margin-top:4px;">'
+                     f'<tr>{header}</tr>{rows_html}</table></div>')
+
+        def _plain(title, rows, color):
+            if not rows:
+                return ""
+            rows_html = "".join(
+                "<tr>" + "".join(f"<td {td}>{_esc_html(_v(v))}</td>" for v in r) + "</tr>"
+                for r in rows[:50])
+            return (f'<div style="margin-top:8px;"><b style="color:{color};">'
+                    f'{title} ({len(rows)})</b>'
+                    f'<table style="width:100%;border-collapse:collapse;margin-top:4px;">'
+                    f'<tr>{header}</tr>{rows_html}</table></div>')
+
+        body += _plain(t("dc_sqlres_only_a"), only_a, "#dc2626")
+        body += _plain(t("dc_sqlres_only_b"), only_b, "#d97706")
+
+    if any(re.fullmatch(r"_c\d+", str(c)) for c in cols):
+        body += (f'<div style="color:#d97706;font-size:12px;margin-top:8px;">'
+                 f'💡 {t("dc_sqlres_alias_hint")}</div>')
+
+    return _details_card(
+        f'<span style="color:#0891b2;">{t("dc_sqlres_title")} — {badge}</span>',
+        body,
+    )
+
+
 def build_sample_diff_card(
     diff: ResultDiff, lang: str = "en", columns: list[str] | None = None,
 ) -> str:
@@ -2052,7 +2139,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             )
             diff = diff_results(ra.columns, ra.rows, rb.columns, rb.rows)
             cols = ra.columns or rb.columns
-            return build_sample_diff_card(diff, lang_val, columns=cols)
+            return build_sql_result_card(diff, lang_val, columns=cols)
         except Exception as e:
             return _error_html(lang_val, e)
 
