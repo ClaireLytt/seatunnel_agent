@@ -1592,6 +1592,11 @@ def render_text2sql_page(app=None) -> None:
                 t("save_favorite"), variant="primary", size="sm",
                 elem_classes=["st-connect-btn"],
             )
+            with gr.Row():
+                fb_up_btn = gr.Button(t("fb_up"), variant="secondary", size="sm",
+                                      elem_classes=["st-connect-btn"])
+                fb_down_btn = gr.Button(t("fb_down"), variant="secondary", size="sm",
+                                        elem_classes=["st-connect-btn"])
             fav_link = gr.Button(t("favorites"), variant="secondary", size="sm",
                                  elem_classes=["st-connect-btn"])
             fav_link.click(fn=None, js="() => { window.open('/favorites', '_blank'); }")
@@ -2054,13 +2059,15 @@ def render_text2sql_page(app=None) -> None:
         if rt and rt.last_sql:
             with holder_lock:
                 holder["_last_sql"] = rt.last_sql
-                last_q = ""
-                if agent and agent.messages:
+                # Raw question (pre few-shot augmentation) for favorites and
+                # the feedback flywheel.
+                last_q = getattr(agent, "last_user_question", "") if agent else ""
+                if not last_q and agent and agent.messages:
                     for m in reversed(agent.messages):
                         if m.get("role") == "user":
-                            last_q = str(m.get("content", ""))[:60]
+                            last_q = str(m.get("content", ""))
                             break
-                holder["_last_question"] = last_q
+                holder["_last_question"] = last_q[:200]
 
         chart_update = gr.update(visible=False)
         _dl_messages: list[tuple[int, dict]] = []
@@ -2229,6 +2236,45 @@ def render_text2sql_page(app=None) -> None:
         )
         gr.Info(t("favorite_saved"))
 
+    # ── Feedback flywheel (few-shot example store) ──
+
+    def _handle_feedback(positive: bool, lang: str):
+        t = lambda k: _t2s(lang, k)
+        with holder_lock:
+            agent = holder.get("agent")
+            sql_fallback = holder.get("_last_sql", "")
+            question = holder.get("_last_question", "")
+        rt = agent.runtime if agent else None
+        sql = (rt.last_sql if rt else "") or sql_fallback
+        if not sql or not question:
+            raise gr.Error(t("fb_nothing"))
+        from .text2sql.examples import ExampleStore
+        ex_store = getattr(agent, "example_store", None) or ExampleStore()
+        try:
+            if positive:
+                from .text2sql.validator import extract_tables
+                ex_store.add(
+                    question=question, sql=sql,
+                    tables=extract_tables(sql), source="feedback",
+                )
+            else:
+                ex_store.remove_by_question(question)
+            if rt is not None:
+                rt.logger.log(
+                    user_query=question, generated_sql=sql,
+                    status="feedback_up" if positive else "feedback_down",
+                    extra={"source": rt.source, "kind": "feedback"},
+                )
+        except Exception as exc:
+            raise gr.Error(str(exc))
+        gr.Info(t("fb_saved") if positive else t("fb_removed"))
+
+    def _fb_up(lang: str):
+        _handle_feedback(True, lang)
+
+    def _fb_down(lang: str):
+        _handle_feedback(False, lang)
+
     def _apply_filter(selected: list, lang: str):
         t = lambda k: _t2s(lang, k)
         with holder_lock:
@@ -2299,6 +2345,8 @@ def render_text2sql_page(app=None) -> None:
             gr.update(choices=choices, value=new_selected),
             gr.update(value=f"**{t('fav_section_title')}**"),
             gr.update(value=t("save_favorite")),
+            gr.update(value=t("fb_up")),
+            gr.update(value=t("fb_down")),
             gr.update(value=t("favorites")),
             gr.update(label=t("chart_type_label"), choices=_chart_choices(lang), value=t("chart_auto")),
             gr.update(choices=template_choices(lang), value=None),
@@ -2356,6 +2404,8 @@ def render_text2sql_page(app=None) -> None:
             table_filter,
             fav_section_md,
             save_fav_btn,
+            fb_up_btn,
+            fb_down_btn,
             fav_link,
             chart_type_radio,
             template_dd,
@@ -2421,6 +2471,8 @@ def render_text2sql_page(app=None) -> None:
                             outputs=[status_box, table_filter, filter_accordion, confirmed_sel])
 
     save_fav_btn.click(fn=_save_favorite, inputs=[lang_state])
+    fb_up_btn.click(fn=_fb_up, inputs=[lang_state])
+    fb_down_btn.click(fn=_fb_down, inputs=[lang_state])
 
     def _on_template_select(choice: str, lang: str):
         if not choice:

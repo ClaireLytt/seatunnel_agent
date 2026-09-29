@@ -1913,6 +1913,72 @@ def metrics_sql(
     click.echo(sql)
 
 
+@cli.group(name="t2s-examples")
+def t2s_examples() -> None:
+    """Chat BI few-shot 示例库：已验证的 问题→SQL 对（准确率飞轮）。"""
+
+
+@t2s_examples.command("list")
+@click.option("--file", "-f", "examples_file", type=click.Path(),
+              default=None, help="示例库文件（默认 config/t2s_examples.json）")
+def t2s_examples_list(examples_file: str | None) -> None:
+    """列出全部示例。"""
+    _ensure_utf8_stdio()
+    from .text2sql.examples import ExampleStore
+
+    store = ExampleStore(examples_file)
+    items = store.list()
+    if not items:
+        console.print("示例库为空（UI 里对查询结果点 👍 即可沉淀示例）")
+        return
+    from rich.table import Table
+    table = Table(title=f"few-shot 示例库（{len(items)} 条）")
+    for col in ("id", "问题", "来源", "SQL"):
+        table.add_column(col)
+    for it in items:
+        table.add_row(
+            it.get("id", ""), it.get("question", "")[:50],
+            it.get("source", ""), it.get("sql", "").replace("\n", " ")[:60],
+        )
+    console.print(table)
+
+
+@t2s_examples.command("add")
+@click.option("--question", "-q", required=True, help="自然语言问题")
+@click.option("--sql", "-s", required=True, help="对应的正确 SQL")
+@click.option("--file", "-f", "examples_file", type=click.Path(),
+              default=None, help="示例库文件（默认 config/t2s_examples.json）")
+def t2s_examples_add(question: str, sql: str, examples_file: str | None) -> None:
+    """手工添加一条验证示例。"""
+    _ensure_utf8_stdio()
+    from .text2sql.examples import ExampleStore
+    from .text2sql.validator import extract_tables
+
+    store = ExampleStore(examples_file)
+    try:
+        entry = store.add(question=question, sql=sql,
+                          tables=extract_tables(sql), source="manual")
+    except ValueError as exc:
+        raise click.ClickException(str(exc))
+    console.print(f"[green]已添加示例 {entry['id']}（现共 {len(store)} 条）[/green]")
+
+
+@t2s_examples.command("rm")
+@click.argument("example_id")
+@click.option("--file", "-f", "examples_file", type=click.Path(),
+              default=None, help="示例库文件（默认 config/t2s_examples.json）")
+def t2s_examples_rm(example_id: str, examples_file: str | None) -> None:
+    """按 id 删除一条示例。"""
+    _ensure_utf8_stdio()
+    from .text2sql.examples import ExampleStore
+
+    store = ExampleStore(examples_file)
+    if store.remove(example_id):
+        console.print(f"[green]已删除 {example_id}[/green]")
+    else:
+        raise click.ClickException(f"示例 '{example_id}' 不存在")
+
+
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------

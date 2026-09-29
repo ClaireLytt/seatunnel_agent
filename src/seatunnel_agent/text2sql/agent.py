@@ -54,13 +54,24 @@ class Text2SQLAgent:
         db_config: DatabaseConfig | None = None,
         on_event: EventCallback | None = None,
         metric_store: Any = None,
+        example_store: Any = None,
     ) -> None:
         self.settings = settings
         self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
         self.runtime = Text2SQLRuntime(
             store=store, metrics=metric_store, ds_type=ds_type, db_config=db_config,
         )
+        if example_store is None:
+            # Default store is opt-in by content: an absent/empty JSON file
+            # keeps behavior identical to before.
+            try:
+                from .examples import ExampleStore
+                example_store = ExampleStore()
+            except Exception:
+                example_store = None
+        self.example_store = example_store
         self.messages: list[dict[str, Any]] = []
+        self.last_user_question: str = ""
         self.console = Console(file=_get_utf8_stdout())
         self._on_event = on_event
         self._system_prompt = build_text2sql_prompt(
@@ -77,15 +88,23 @@ class Text2SQLAgent:
 
     def chat(self, message: str) -> str:
         """Continue a multi-turn conversation, preserving history."""
-        self.messages.append({"role": "user", "content": message})
+        self.last_user_question = message
+        self.messages.append({"role": "user", "content": self._augment(message)})
         self.console.print(Panel(message, title="Text2SQL", border_style="cyan"))
         return self._agent_loop()
 
     def run(self, question: str) -> str:
         """Answer a single question with fresh history."""
-        self.messages = [{"role": "user", "content": question}]
+        self.last_user_question = question
+        self.messages = [{"role": "user", "content": self._augment(question)}]
         self.console.print(Panel(question, title="Text2SQL", border_style="cyan"))
         return self._agent_loop()
+
+    def _augment(self, question: str) -> str:
+        """Attach verified few-shot examples (BM25 top-K) to the question."""
+        from .examples import augment_question
+
+        return augment_question(question, self.example_store)
 
     def reset(self) -> None:
         self.messages = []
