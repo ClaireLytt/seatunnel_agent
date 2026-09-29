@@ -463,9 +463,10 @@ class Text2SQLRuntime:
     @property
     def value_index(self):
         """Value-level index (cell values -> table/column), lazily loaded or
-        auto-built where cheap; None when unavailable. Rebuilt when the
-        schema store is swapped (table-whitelist filtering)."""
-        if self._value_index is None or self._value_index_store is not self.store:
+        auto-built where cheap; None when unavailable. A None result is
+        cached too (no per-call schema hashing on large stores); the store
+        swap on connect/table-filtering triggers the retry."""
+        if self._value_index_store is not self.store:
             from .values import load_or_build
             self._value_index = load_or_build(self)
             self._value_index_store = self.store

@@ -197,3 +197,61 @@ def test_load_or_build_non_sqlite_needs_optin(store, monkeypatch, tmp_path) -> N
     monkeypatch.delenv("T2S_VALUE_INDEX", raising=False)
     rt = Text2SQLRuntime(store=store, ds_type="hive")
     assert load_or_build(rt) is None  # no cache, no opt-in -> disabled
+
+
+def test_search_digit_values_need_boundaries() -> None:
+    """Digit-only values must not fire on dates/numbers containing them
+    (review fix)."""
+    index = ValueIndex(data={"orders": {"status_code": ("2026", "01")}})
+    assert index.search("2026-03-01 的订单") == []
+    assert index.search("分区 20260301 的数据") == []
+    hits = index.search("状态码为 2026 的订单")
+    assert {(h.column, h.value) for h in hits} == {("status_code", "2026")}
+
+
+def test_build_sqlserver_uses_top(store, monkeypatch) -> None:
+    """SQL Server sampling must use TOP, not LIMIT (review fix)."""
+    captured: list[str] = []
+
+    class _FakeResult:
+        rows = [("A",), ("B",)]
+
+    class _FakeConfig:
+        ds_type = "sqlserver"
+
+    class _FakeExecutor:
+        config = _FakeConfig()
+
+        def run(self, sql, max_rows=0):
+            captured.append(sql)
+            return _FakeResult()
+
+    index = ValueIndex.build(_FakeExecutor(), store)
+    assert captured and all("TOP" in s and "LIMIT" not in s for s in captured)
+    assert len(index) > 0
+
+
+def test_runtime_value_index_caches_none(store, monkeypatch) -> None:
+    """A None index is cached per store — no per-call rebuild attempt
+    (review fix: avoids O(tables) schema hashing on every match_tables)."""
+    from seatunnel_agent.text2sql.tools import Text2SQLRuntime
+
+    calls = {"n": 0}
+
+    def _fake_load_or_build(rt):
+        calls["n"] += 1
+        return None
+
+    monkeypatch.setattr(
+        "seatunnel_agent.text2sql.values.load_or_build", _fake_load_or_build,
+    )
+    rt = Text2SQLRuntime(store=store, ds_type="hive")
+    assert rt.value_index is None
+    assert rt.value_index is None
+    assert calls["n"] == 1  # second access served from cache
+
+    # store swap triggers exactly one retry
+    from seatunnel_agent.text2sql.schema import SchemaStore as _SS
+    rt.store = _SS([])
+    assert rt.value_index is None
+    assert calls["n"] == 2

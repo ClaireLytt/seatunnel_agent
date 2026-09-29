@@ -171,6 +171,21 @@ def run_attribution(
     if curr_range.is_empty or prev_range.is_empty:
         raise MetricError("归因分析必须提供当前与对比两个完整时间范围")
 
+    # Validate the crossed pair BEFORE spending the 2 + 2K query budget.
+    explicit_pair: list[str] | None = None
+    if cross_dimensions:
+        allowed = {d.lower() for d in metric.dimensions}
+        picked = [d for d in cross_dimensions if d.strip()][:2]
+        if len(picked) != 2 or picked[0].lower() == picked[1].lower():
+            raise MetricError("cross_dimensions 必须是两个不同的维度")
+        for d in picked:
+            if d.lower() not in allowed:
+                raise MetricError(
+                    f"维度 '{d}' 不在指标 '{metric.name}' 的允许维度中"
+                    f"（允许: {', '.join(metric.dimensions) or '无'}）"
+                )
+        explicit_pair = picked
+
     if dimensions:
         allowed = {d.lower() for d in metric.dimensions}
         for d in dimensions:
@@ -248,18 +263,8 @@ def run_attribution(
 
     # Crossed two-dimension drill-down (+2 SQLs).
     pair: list[str] | None = None
-    if cross_dimensions:
-        allowed = {d.lower() for d in metric.dimensions}
-        picked = [d for d in cross_dimensions if d.strip()][:2]
-        if len(picked) != 2 or picked[0].lower() == picked[1].lower():
-            raise MetricError("cross_dimensions 必须是两个不同的维度")
-        for d in picked:
-            if d.lower() not in allowed:
-                raise MetricError(
-                    f"维度 '{d}' 不在指标 '{metric.name}' 的允许维度中"
-                    f"（允许: {', '.join(metric.dimensions) or '无'}）"
-                )
-        pair = picked
+    if explicit_pair:
+        pair = explicit_pair
     elif cross and len(result.dimensions) >= 2:
         ranked = sorted(
             result.dimensions, key=lambda b: b.concentration, reverse=True,
@@ -272,7 +277,7 @@ def run_attribution(
         # parts; keep best_dimension pointing at it only when explicitly
         # requested via cross_dimensions (the auto mode keeps the single
         # dimension as the headline and the cross as supporting detail).
-        if cross_dimensions:
+        if explicit_pair:
             result.best_dimension = crossed.dimension
 
     result.sql_count = len(sqls)

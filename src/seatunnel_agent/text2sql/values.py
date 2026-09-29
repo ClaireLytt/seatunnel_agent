@@ -99,10 +99,16 @@ class ValueIndex:
             cols: dict[str, tuple[str, ...]] = {}
             for col in candidate_columns(table):
                 q = quote_identifier(col, ds_type)
-                sql = (
-                    f"SELECT DISTINCT {q} FROM {table.full_name} "
-                    f"WHERE {q} IS NOT NULL LIMIT {max_distinct + 1}"
-                )
+                if ds_type == "sqlserver":  # T-SQL has TOP, not LIMIT
+                    sql = (
+                        f"SELECT DISTINCT TOP {max_distinct + 1} {q} "
+                        f"FROM {table.full_name} WHERE {q} IS NOT NULL"
+                    )
+                else:
+                    sql = (
+                        f"SELECT DISTINCT {q} FROM {table.full_name} "
+                        f"WHERE {q} IS NOT NULL LIMIT {max_distinct + 1}"
+                    )
                 try:
                     result = executor.run(sql, max_rows=max_distinct + 1)
                 except Exception as exc:
@@ -177,6 +183,14 @@ class ValueIndex:
                         continue
                     if _ENGLISH_TOKEN_RE.fullmatch(v):
                         matched = v.lower() in query_tokens
+                    elif v.isdigit():
+                        # Digit-only values (status codes etc.) must stand
+                        # alone — a substring match would fire on every
+                        # date/number in the question ("2026-03-01" ⊃ "2026",
+                        # so date separators count as word chars here).
+                        matched = re.search(
+                            rf"(?<![\w./:-]){re.escape(v)}(?![\w./:-])", query,
+                        ) is not None
                     else:
                         matched = v in query or v.lower() in query_lower
                     if matched:

@@ -1652,3 +1652,27 @@ def test_tool_run_attribution_cross_sqlite(star_sqlite_runtime) -> None:
     assert crossed["check_ok"] is True
     values = {r["value"] for r in crossed["top_contributors"]}
     assert "app / 手机App" in values
+
+
+def test_attribution_cross_validated_before_queries() -> None:
+    """Invalid cross_dimensions must fail BEFORE any SQL runs (review fix)."""
+    from seatunnel_agent.text2sql.attribution import run_attribution
+    from seatunnel_agent.text2sql.schema import parse_ddl
+
+    schema_store = SchemaStore(parse_ddl(_SQLITE_DDL))
+    store, errors = MetricStore.from_text(_SQLITE_METRICS, schema_store)
+    assert errors == []
+    calls: list[str] = []
+
+    def execute(sql: str):
+        calls.append(sql)
+        return ["gmv"], [(1.0,)]
+
+    with pytest.raises(MetricError, match="不在指标"):
+        run_attribution(
+            store.get("gmv"), store, schema_store, execute,
+            curr_range=TimeRange(start=date(2026, 3, 2), end=date(2026, 3, 2)),
+            prev_range=TimeRange(start=date(2026, 3, 1), end=date(2026, 3, 1)),
+            cross_dimensions=["channel", "no_such_dim"],
+        )
+    assert calls == []  # zero queries spent on invalid input

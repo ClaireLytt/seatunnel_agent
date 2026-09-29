@@ -48,7 +48,11 @@ class ExampleStore:
             data = json.loads(self.path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             return []
-        return data if isinstance(data, list) else []
+        if not isinstance(data, list):
+            return []
+        # The file is hand-editable — drop malformed entries instead of
+        # letting them crash retrieval/augmentation later.
+        return [it for it in data if isinstance(it, dict)]
 
     def _write(self, items: list[dict[str, Any]]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -136,7 +140,10 @@ class ExampleStore:
 
     def top(self, question: str, k: int = 3) -> list[dict[str, Any]]:
         """BM25 top-K verified examples for ``question`` (score > 0 only)."""
-        items = [it for it in self._read() if it.get("verified")]
+        items = [
+            it for it in self._read()
+            if it.get("verified") and it.get("question") and it.get("sql")
+        ]
         if not items or not question.strip():
             return []
         from .retrieval import BM25, _doc_tokens
@@ -162,18 +169,18 @@ def augment_question(question: str, store: ExampleStore | None, k: int = 3) -> s
         return question
     try:
         hits = store.top(question, k=k)
+        if not hits:
+            return question
+        lines = [
+            question,
+            "",
+            "[参考示例 — 此前已被用户确认正确的 问题→SQL 对，供风格与表选择参考；"
+            "仍须遵守全部硬规则（指标口径、白名单、分区过滤）]",
+        ]
+        for it in hits:
+            lines.append(f"Q: {it.get('question', '')}")
+            lines.append(f"SQL: {it.get('sql', '')}")
+            lines.append("")
+        return "\n".join(lines).rstrip()
     except Exception:
         return question  # examples must never break the chat
-    if not hits:
-        return question
-    lines = [
-        question,
-        "",
-        "[参考示例 — 此前已被用户确认正确的 问题→SQL 对，供风格与表选择参考；"
-        "仍须遵守全部硬规则（指标口径、白名单、分区过滤）]",
-    ]
-    for it in hits:
-        lines.append(f"Q: {it['question']}")
-        lines.append(f"SQL: {it['sql']}")
-        lines.append("")
-    return "\n".join(lines).rstrip()

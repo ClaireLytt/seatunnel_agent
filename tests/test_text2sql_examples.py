@@ -150,3 +150,22 @@ def test_cli_examples_roundtrip(tmp_path) -> None:
     assert r.exit_code == 0
     r = runner.invoke(cli, ["t2s-examples", "rm", "nope", "-f", f])
     assert r.exit_code != 0
+
+
+def test_malformed_entries_never_crash(tmp_path) -> None:
+    """Hand-edited files with non-dict / missing-key entries must not crash
+    retrieval or augmentation (review fix)."""
+    p = tmp_path / "ex.json"
+    p.write_text(json.dumps([
+        "not a dict",
+        {"verified": True},                          # missing question/sql
+        {"question": "各城市销售额", "verified": True},  # missing sql
+        {"id": "ok1", "question": "各城市销售额统计",
+         "sql": "SELECT city FROM sales", "verified": True},
+    ], ensure_ascii=False), encoding="utf-8")
+    store = ExampleStore(p)
+    assert len(store.list()) == 3  # non-dict dropped at read
+    hits = store.top("各城市销售额", k=5)
+    assert [h["id"] for h in hits] == ["ok1"]  # only complete entries retrieved
+    out = augment_question("各城市销售额", store)
+    assert "SELECT city FROM sales" in out
