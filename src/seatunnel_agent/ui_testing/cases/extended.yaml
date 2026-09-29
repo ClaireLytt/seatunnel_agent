@@ -153,12 +153,14 @@
     - wait: 1200
       note: 页面挂载
     - click: Refresh
-    - wait: 1500
-      note: 下拉 choices 刷新无信号
+    - wait: 4000
+      note: 下拉 choices 刷新无信号;CI 机慢,1.5s 不够(夜跑两轮均在此翻车)
   steps:
-    - select_index: {of: "Select a table to inspect...", index: 2}
-      note: 表下拉无标签(label=\"\"),按页面第 2 个 combobox 定位;index 2 = dc_test_orders_a
-    - wait_text: {text: order_no, timeout_ms: 10000}
+    - select: {of: "Select a table to inspect...", value: dc_test_orders_a}
+      note: 两边修法取优 —— datacom 给下拉加了真实 label(schema_select_table,
+            不再数 combobox);main 改为按值选择(不赌 choices 顺序)并放宽
+            CI 时序,合并保留全部
+    - wait_text: {text: order_no, timeout_ms: 20000}
   expect:
     - text_contains: {in: 页面, text: order_no}
     - text_contains: {in: 页面, text: amount}

@@ -1,0 +1,61 @@
+# MCP 组 · MCP 工具箱展示/状态页 (/mcp)。纯前端展示 + 本地审计文件读取,
+# 无外部依赖。审计文件在被测应用里已隔离 (SEATUNNEL_MCP_AUDIT_PATH,
+# 每轮全新),所以 MCP3 的预期是"暂无记录"。
+
+- id: MCP1
+  title: 工具清单完整展示
+  tags: [smoke, sqlite]
+  page: /mcp
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - text_contains: {in: 页面, text: skew_verify}
+    - text_contains: {in: 页面, text: sql_transpile}
+    - text_contains: {in: 页面, text: compare_checksum}
+    - text_contains: {in: 页面, text: run_query}
+
+- id: MCP2
+  title: 客户端接入配置可复制
+  tags: [smoke, sqlite]
+  page: /mcp
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - text_contains: {in: 页面, text: claude mcp add seatunnel-agent}
+    - text_contains: {in: 页面, text: mcpServers}
+    - text_contains: {in: 页面, text: --no-db}
+
+- id: MCP3
+  title: 审计面板刷新(隔离环境为空)
+  tags: [full, sqlite]
+  page: /mcp
+  steps:
+    - click: 刷新审计
+    - wait: 500
+      note: 读本地 jsonl,无 loading 信号
+  expect:
+    - text_contains: {in: 页面, text: 暂无 MCP 工具调用记录}
+
+- id: MCP4
+  title: 英文界面工具表为英文
+  tags: [full, sqlite]
+  page: /mcp
+  lang: en
+  steps:
+    - wait: 500
+      note: 纯断言用例,语言经 cookie 于加载时应用
+  expect:
+    - text_contains: {in: 页面, text: Read-only query}
+    - text_contains: {in: 页面, text: What it does}
+
+- id: SCR11
+  title: MCP 页整体可滚动 (.st-scroll-page 标记)
+  tags: [smoke, sqlite]
+  page: /mcp
+  steps:
+    - wait: 500
+      note: 纯断言用例,等页面水合完成即可
+  expect:
+    - scrollable: {selector: .gradio-container}
