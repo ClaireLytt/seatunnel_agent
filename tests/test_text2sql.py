@@ -719,6 +719,39 @@ class TestHiveSchemaFetch:
         assert schema.partition_columns == []
         assert schema.comment == "order fact table"
 
+    def test_describe_partitioned_table_with_detailed_section(self):
+        """Partition columns still parse, and every section after
+        '# Detailed Table Information' (Storage Information, Constraints)
+        stays out of the column list."""
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
+        config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
+        executor = HiveExecutor(config)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            ("# col_name", "data_type", "comment"),
+            ("id", "bigint", ""),
+            ("", "", ""),
+            ("# Partition Information", "", ""),
+            ("# col_name", "data_type", "comment"),
+            ("dt", "string", "partition date"),
+            ("", "", ""),
+            ("# Detailed Table Information", "", ""),
+            ("Owner:", "hive", ""),
+            ("OwnerType:", "USER", ""),
+            ("", "", ""),
+            ("# Storage Information", "", ""),
+            ("SerDe Library:", "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe", ""),
+            ("", "", ""),
+            ("# Constraints", "", ""),
+            ("Constraint Name:", "pk_123", ""),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        with patch.object(executor, "_connect", return_value=mock_conn):
+            schema = executor.describe_table("orders_part")
+        assert [c.name for c in schema.columns] == ["id"]
+        assert [c.name for c in schema.partition_columns] == ["dt"]
+
     def test_from_db(self):
         from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
         from seatunnel_agent.text2sql.schema import SchemaStore, TableSchema, ColumnSchema
