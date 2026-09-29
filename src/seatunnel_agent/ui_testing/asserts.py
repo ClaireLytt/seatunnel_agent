@@ -194,6 +194,21 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
                     + ("" if ok else
                        " — card rendered outside the visible main column"))
 
+    if k == "perf_budget":
+        # Performance regression guard: the compare summary prints the
+        # server-side elapsed time ("耗时 12345ms" / "elapsed 12345ms") —
+        # bound it. Budgets are deliberately loose (catch gross
+        # serialization regressions, not CI jitter).
+        import re as _re
+        budget = int(args.get("ms", 60000))
+        text = dc.result_text()
+        m = _re.search(r"(?:耗时|elapsed)\s*(\d+)\s*ms", text)
+        if not m:
+            return False, "no elapsed-ms figure found in the result area"
+        actual = int(m.group(1))
+        return actual <= budget, (
+            f"server elapsed {actual}ms vs budget {budget}ms")
+
     if k == "result_stable":
         # The result panel must not re-render within the window — guards
         # trigger_mode="once" on slow buttons: a duplicate queued run would
