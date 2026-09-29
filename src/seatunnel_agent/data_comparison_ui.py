@@ -228,9 +228,15 @@ def _with_validation(holder, holder_lock, fn):
         table_b = args[1] if len(args) > 1 else ""
         if not table_a or not table_b:
             return dc(lang_val, "dc_select_tables")
+        t0 = time.perf_counter()
         try:
-            return fn(*args)
+            result = fn(*args)
+            _log.info("%s ok: tables=%r/%r elapsed=%dms", fn.__name__,
+                      table_a, table_b, int((time.perf_counter() - t0) * 1000))
+            return result
         except Exception as e:
+            _log.exception("%s failed: tables=%r/%r elapsed=%dms", fn.__name__,
+                           table_a, table_b, int((time.perf_counter() - t0) * 1000))
             return _error_html(lang_val, e)
     return wrapper
 
@@ -1963,6 +1969,15 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
         try:
             t0 = time.perf_counter()
+            stage_ms: list[tuple[str, int]] = []
+            _stage_t = t0
+
+            def _mark(name: str) -> None:
+                nonlocal _stage_t
+                now = time.perf_counter()
+                stage_ms.append((name, int((now - _stage_t) * 1000)))
+                _stage_t = now
+
             ex_a, ex_b = _snap_executors()
 
             _safe_progress(0.1, dc(lang_val, "dc_running"))
@@ -1971,24 +1986,30 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 lambda: ex_b.describe_table(table_b),
             )
 
+            _mark("describe")
             _safe_progress(0.25, dc(lang_val, "dc_running"))
             schema_result, schema_html = _schema_inner(table_a, table_b, lang_val, where_val, desc_a, desc_b)
 
+            _mark("schema")
             _safe_progress(0.4, dc(lang_val, "dc_running"))
             count_result, _ = _count_inner(table_a, table_b, lang_val, where_val)
             count_html = build_count_card(count_result, lang_val, threshold)
 
+            _mark("count")
             _safe_progress(0.55, dc(lang_val, "dc_running"))
             sample_result, sample_html = _sample_inner(
                 table_a, table_b, lang_val, where_val, key_cols_str,
                 strategy, col_mapping_str, masking_on, stratified_col)
 
+            _mark("sample")
             _safe_progress(0.7, dc(lang_val, "dc_running"))
             agg_result, agg_html = _agg_inner(table_a, table_b, lang_val, where_val, desc_a, desc_b)
 
+            _mark("aggregate")
             _safe_progress(0.8, dc(lang_val, "dc_running"))
             profile_result, profile_html = _profile_inner(table_a, table_b, lang_val, where_val)
 
+            _mark("profile")
             skew_result = None
             skew_html = ""
             if skew_cols_str and skew_cols_str.strip():
@@ -2079,8 +2100,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             html = (summary_html + schema_html + count_html + sample_html
                     + agg_html + profile_html + skew_html
                     + checksum_html + partition_html + custom_agg_html)
-            _log.info("compare_all done: tables=%r/%r elapsed=%dms html=%d chars",
-                      table_a, table_b, elapsed, len(html))
+            _log.info("compare_all done: tables=%r/%r elapsed=%dms html=%d chars stages=%s",
+                      table_a, table_b, elapsed, len(html),
+                      " ".join(f"{n}={ms}ms" for n, ms in stage_ms))
             return html
 
         except Exception as e:
@@ -3267,13 +3289,21 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     agg_btn.click(fn=_compare_agg,
                   inputs=[table_a, table_b, lang_state, where_input],
                   outputs=[result_html])
-    all_btn.click(fn=_compare_all,
-                  inputs=[table_a, table_b, lang_state, where_input, key_input,
-                          threshold_input, sample_strategy, mapping_input,
-                          masking_checkbox, webhook_url_input, webhook_on_fail,
-                          skew_cols_input, stratified_col_input,
-                          checksum_cols_input, partition_col_input, custom_agg_input],
-                  outputs=[result_html])
+    # Compare All runs for ~20s on real warehouses; disable the button while
+    # it runs so an impatient double-click cannot queue a duplicate run
+    # (observed in the wild: the second run re-hits the DBs for nothing and
+    # repaints the result area a second time).
+    all_btn.click(fn=lambda: gr.update(interactive=False),
+                  outputs=[all_btn], queue=False,
+    ).then(fn=_compare_all,
+           inputs=[table_a, table_b, lang_state, where_input, key_input,
+                   threshold_input, sample_strategy, mapping_input,
+                   masking_checkbox, webhook_url_input, webhook_on_fail,
+                   skew_cols_input, stratified_col_input,
+                   checksum_cols_input, partition_col_input, custom_agg_input],
+           outputs=[result_html],
+    ).then(fn=lambda: gr.update(interactive=True),
+           outputs=[all_btn], queue=False)
     batch_btn.click(fn=_batch_count,
                     inputs=[lang_state, where_input],
                     outputs=[result_html])
@@ -3292,9 +3322,15 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     custom_agg_btn.click(fn=_compare_custom_agg,
                          inputs=[table_a, table_b, lang_state, where_input, custom_agg_input],
                          outputs=[result_html])
-    batch_full_btn.click(fn=_batch_full,
-                         inputs=[lang_state, where_input, threshold_input],
-                         outputs=[result_html])
+    # Same double-click guard as Compare All: batch full compare walks every
+    # common table pair and is the slowest action on the page.
+    batch_full_btn.click(fn=lambda: gr.update(interactive=False),
+                         outputs=[batch_full_btn], queue=False,
+    ).then(fn=_batch_full,
+           inputs=[lang_state, where_input, threshold_input],
+           outputs=[result_html],
+    ).then(fn=lambda: gr.update(interactive=True),
+           outputs=[batch_full_btn], queue=False)
 
     # B — Custom SQL
     sql_btn.click(fn=_compare_sql,

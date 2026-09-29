@@ -831,11 +831,15 @@ def check_aggregate_threshold(result: AggregateResult, threshold: ThresholdConfi
 # ---------------------------------------------------------------------------
 
 def parse_column_mapping(raw: str) -> ColumnMapping:
-    """Parse 'col_a:col_b, name:full_name' into {col_a: col_b}."""
+    """Parse 'col_a:col_b, name:full_name' into {col_a: col_b}.
+
+    Pairs may be separated by commas or newlines — users pasting one
+    mapping per line used to have everything after the first colon
+    swallowed into a single bogus value."""
     mapping: ColumnMapping = {}
     if not raw.strip():
         return mapping
-    for pair in raw.split(","):
+    for pair in re.split(r"[,\n]", raw):
         pair = pair.strip()
         if ":" not in pair:
             continue

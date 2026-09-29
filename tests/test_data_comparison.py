@@ -1047,6 +1047,16 @@ class TestColumnMapping:
         m = parse_column_mapping("good:pair, nocolon, another:one")
         assert m == {"good": "pair", "another": "one"}
 
+    def test_parse_newline_separated(self):
+        # One mapping per line — used to collapse into a single bogus pair
+        # whose value swallowed all the following lines.
+        m = parse_column_mapping("OwnerType: owner_type\nCreateTime: create_time")
+        assert m == {"OwnerType": "owner_type", "CreateTime": "create_time"}
+
+    def test_parse_mixed_separators(self):
+        m = parse_column_mapping("a:b, c:d\ne:f")
+        assert m == {"a": "b", "c": "d", "e": "f"}
+
     def test_apply_mapping(self):
         cols = ["full_name", "age", "col_b"]
         mapping = {"name": "full_name", "col_a": "col_b"}
