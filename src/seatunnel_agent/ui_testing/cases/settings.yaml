@@ -127,7 +127,9 @@
       note: 本地文件写入,短等待即可
   expect:
     - text_contains: {in: 页面, text: 已删除连接}
-    - text_contains: {in: 页面, text: 暂无已保存的连接}
+    # 不能断言"暂无已保存的连接":full 套件里 dc 页的保存连接用例会往同一
+    # store 写入,库不为空。契约是"被删的连接消失"——它的 host:port 唯一。
+    - text_not_contains: {in: 页面, text: "127.0.0.1:3306"}
 
 - id: SET5
   title: 设置页有滚动条

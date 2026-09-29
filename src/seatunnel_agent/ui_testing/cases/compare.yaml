@@ -205,20 +205,23 @@
     - text_not_contains: {in: 结果区, text: Traceback}
     - text_contains: {in: 结果区, text: 样本}
 
-# 防连点:全部对比运行期间按钮禁用,完成后恢复(19s 的 Hive 场景曾诱发
-# 双击 → 排队重跑 → 结果被二次覆盖)。sqlite 下全程约 10s,时窗充裕。
+# 防连点(trigger_mode="once"):运行中双击不得触发第二次执行。功能性
+# 契约——第一次结果渲染后 15s 内结果区不得重绘(重复运行约 12s 完成,
+# 会带着不同的"耗时"重绘)。曾试过运行期禁用按钮做视觉反馈,但该更新
+# 在多页路由下到不了前端,C7 因此改为验证行为而非样式。
 - id: C7
-  title: 全部对比运行中按钮禁用完成后恢复
+  title: 全部对比双击只执行一次
   tags: [full, sqlite]
-  timeout_s: 150
+  timeout_s: 200
   setup:
     - use: select_orders
   steps:
     - click: 全部对比
-    - wait: 800
-      note: 禁用事件 queue=False 即时生效,等渲染一拍
-    - assert: {enabled: {target: 全部对比, on: false}}
+    - wait: 1000
+      note: 确保首次运行已在执行中,第二次点击才构成"运行中双击"
+    - click: 全部对比
+      note: 运行中的第二次点击,trigger_mode=once 应将其丢弃
     - wait_result: {timeout_ms: 90000}
   expect:
-    - enabled: {target: 全部对比, on: true}
     - text_contains: {in: 结果区, text: 对比摘要}
+    - result_stable: {ms: 15000}

@@ -194,6 +194,18 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
                     + ("" if ok else
                        " — card rendered outside the visible main column"))
 
+    if k == "result_stable":
+        # The result panel must not re-render within the window — guards
+        # trigger_mode="once" on slow buttons: a duplicate queued run would
+        # repaint the panel with a different elapsed-ms summary.
+        ms = int(args.get("ms", 12000))
+        before = dc.result_container().inner_html()
+        dc.page.wait_for_timeout(ms)
+        after = dc.result_container().inner_html()
+        return before == after, (
+            f"result panel {'unchanged' if before == after else 'RE-RENDERED'} "
+            f"within {ms}ms window")
+
     if k == "visual_baseline":
         # Pixel-level regression against a stored baseline screenshot of the
         # result card. Geometry asserts (result_in_view) still miss
