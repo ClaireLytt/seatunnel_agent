@@ -1383,6 +1383,50 @@ def t2s_bench(ddl: str, bench_file: str, mode: str, gate: bool) -> None:
         console.print("[green]回归门禁通过: hybrid 不低于 keyword[/green]")
 
 
+@cli.command(name="t2s-index-values")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
+@click.option("--ds-type", type=str, default="sqlite", show_default=True,
+              help="数据源类型")
+@click.option("--database", type=str, default="",
+              help="sqlite 数据库文件路径（仅 --ds-type sqlite 需要）")
+@click.option("--connection", type=str, default="",
+              help="已保存连接的名称（settings 页配置），优先于环境变量")
+def t2s_index_values(ddl: str | None, ds_type: str, database: str,
+                     connection: str) -> None:
+    """构建值级检索索引：采样低基数字符串列的枚举值（问题里的取值 → 表/列/字面量）。"""
+    _ensure_utf8_stdio()
+    import os as _os
+
+    from .text2sql.executor import create_executor
+    from .text2sql.retrieval import schema_hash
+    from .text2sql.schema import SchemaStore
+    from .text2sql.subscriptions import resolve_db_config
+    from .text2sql.values import ValueIndex
+
+    from pathlib import Path
+
+    ddl_path = ddl or _os.getenv("SCHEMA_DDL_PATH", "config/schema_ddl.sql")
+    if not Path(ddl_path).is_file():
+        raise click.ClickException(f"DDL 文件不存在: {ddl_path}")
+    store = SchemaStore.from_file(ddl_path)
+    db_config = resolve_db_config({
+        "ds_type": ds_type, "connection": connection, "database": database,
+    })
+    if db_config is None:
+        raise click.ClickException("无法解析数据库连接（连接名/环境变量）")
+    executor = create_executor(db_config)
+    index = ValueIndex.build(executor, store)
+    if len(index) == 0:
+        console.print("[yellow]未采样到任何值（分区表被跳过；检查列类型/数据）[/yellow]")
+        return
+    path = index.save(schema_hash(store))
+    n_tables = len(index.data)
+    console.print(
+        f"[green]值索引已构建: {n_tables} 张表 / {len(index)} 列 -> {path}[/green]"
+    )
+
+
 @cli.command(name="t2s-mcp")
 @click.option("--ddl", type=click.Path(exists=True), default=None,
               help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")

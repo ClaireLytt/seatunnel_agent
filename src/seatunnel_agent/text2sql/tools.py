@@ -48,8 +48,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "description": (
             "Rank candidate tables for a natural-language question by keyword "
             "and comment relevance. Returns top tables with scores, comments "
-            "and which keywords matched. Call this first unless the user "
-            "already named an exact table."
+            "and which keywords matched. May also return value_hits — actual "
+            "cell values from a value index that appear in the question "
+            "(e.g. a region name): quote them VERBATIM in WHERE conditions. "
+            "Call this first unless the user already named an exact table."
         ),
         "input_schema": {
             "type": "object",
@@ -455,6 +457,19 @@ class Text2SQLRuntime:
     _retriever: Any = field(default=None, repr=False)
     _lineage_graph: Any = field(default=None, repr=False)
     _lineage_dir: str = field(default="", repr=False)
+    _value_index: Any = field(default=None, repr=False)
+    _value_index_store: Any = field(default=None, repr=False)
+
+    @property
+    def value_index(self):
+        """Value-level index (cell values -> table/column), lazily loaded or
+        auto-built where cheap; None when unavailable. Rebuilt when the
+        schema store is swapped (table-whitelist filtering)."""
+        if self._value_index is None or self._value_index_store is not self.store:
+            from .values import load_or_build
+            self._value_index = load_or_build(self)
+            self._value_index_store = self.store
+        return self._value_index
 
     @property
     def retriever(self):
@@ -494,7 +509,7 @@ def _tool_match_tables(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, An
         matches = rt.retriever.rank(query, top_n=5)
     except Exception:  # retrieval must never break the tool — degrade
         matches = match_tables(query, rt.store, top_n=5)
-    return {
+    out: dict[str, Any] = {
         "candidates": [
             {
                 "table": m.table.full_name,
@@ -509,6 +524,43 @@ def _tool_match_tables(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, An
         ],
         "count": len(matches),
     }
+
+    # Value-level hits: actual cell values appearing in the question.
+    try:
+        index = rt.value_index
+        hits = index.search(query) if index is not None else []
+    except Exception:
+        hits = []  # strictly additive — never break table matching
+    if hits:
+        out["value_hits"] = [
+            {"table": h.table, "column": h.column, "value": h.value}
+            for h in hits
+        ]
+        out["value_hits_note"] = (
+            "These are ACTUAL cell values matching the question. Use them "
+            "verbatim in WHERE conditions (e.g. column = 'value') instead of "
+            "guessing literals."
+        )
+        # A value hit can surface a table the name/comment channels missed.
+        seen = {c["table"] for c in out["candidates"]}
+        for h in hits:
+            if h.table not in seen:
+                table = rt.store.get(h.table)
+                if table is None:
+                    continue
+                seen.add(h.table)
+                out["candidates"].append({
+                    "table": table.full_name,
+                    "comment": table.comment,
+                    "score": 0.0,
+                    "table_type": table.table_type,
+                    "name_hits": [],
+                    "comment_hits": [],
+                    "matched_columns": [h.column],
+                    "value_match": True,
+                })
+        out["count"] = len(out["candidates"])
+    return out
 
 
 def _tool_get_table_schema(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
