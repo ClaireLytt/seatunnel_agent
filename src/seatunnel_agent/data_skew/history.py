@@ -142,6 +142,20 @@ class SkewHistory:
         except OSError:
             pass  # history is best-effort; never break the analysis
 
+    def last_splitkey(self, table: str) -> dict | None:
+        """The most recent splitkey record for *table*, or None.
+
+        Feeds the re-check comparison line: run the check, change the
+        config, run it again — the report says whether the fix landed."""
+        if not table:
+            return None
+        for rec in self.recent(200):
+            if rec.get("mode") != "splitkey":
+                continue
+            if (rec.get("splitkey") or {}).get("table") == table:
+                return rec
+        return None
+
     def recent(self, n: int = 20) -> list[dict]:
         """Latest *n* records, newest first.  [] on any problem."""
         try:

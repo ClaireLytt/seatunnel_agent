@@ -1346,6 +1346,8 @@ def skew_stats(recent: int) -> None:
 @click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
 @click.option("--fail", "fail_flag", is_flag=True,
               help="已配置的 partition_column 实测倾斜/低基数/NULL 过多时退出码 1（CI 门禁）")
+@click.option("--apply", "apply_flag", is_flag=True,
+              help="把实测推荐的分片键写回配置文件（原文件备份为 .bak），随后重新体检即完成闭环")
 def skew_splitkey(
     conf_path: str,
     ds_type: str,
@@ -1356,6 +1358,7 @@ def skew_splitkey(
     lang: str,
     output: str | None,
     fail_flag: bool,
+    apply_flag: bool,
 ) -> None:
     """SeaTunnel 分片键体检 — 连库实测作业配置的 partition_column 分布。
 
@@ -1364,9 +1367,12 @@ def skew_splitkey(
     from pathlib import Path
 
     from .data_skew.history import default_history
+    from .data_skew.i18n import dsk as _dsk
     from .data_skew.probe import effective_sample_pct
     from .data_skew.splitkey import (
         SplitKeyError,
+        apply_split_key,
+        pick_best_key,
         render_splitkey_section,
         run_split_key,
     )
@@ -1399,22 +1405,43 @@ def skew_splitkey(
         spec, configured, candidates = run_split_key(
             executor, conf_text, ds_type=ds_type, sample_pct=pct)
     except SplitKeyError as exc:
-        from .data_skew.i18n import dsk as _dsk
         raise click.ClickException(_dsk(lang, exc.key).format(err=exc.arg))
     except Exception as exc:  # noqa: BLE001 — connection/query failures
         raise click.ClickException(f"体检失败: {exc}")
 
     key_verdict = configured.verdict(spec.tasks) if configured else "none"
-    default_history().log_splitkey(
+    history = default_history()
+    # previous check of the same table BEFORE logging this one — feeds the
+    # re-check comparison line (did the last fix land?)
+    previous = history.last_splitkey(spec.table)
+    history.log_splitkey(
         spec.table, spec.partition_column, key_verdict,
         candidates=len(candidates), source="cli")
 
     md = render_splitkey_section(spec, configured, candidates, lang,
-                                 sample_pct=pct)
+                                 sample_pct=pct, previous=previous)
     console.print(md)
     if output:
         Path(output).write_text(md, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if apply_flag:
+        best = pick_best_key(spec, configured, candidates)
+        if best is None or best.column == spec.partition_column:
+            console.print(_dsk(lang, "spk_apply_none"))
+        else:
+            try:
+                new_text = apply_split_key(
+                    conf_text, spec, best.column,
+                    partition_num=max(spec.partition_num, spec.tasks))
+            except SplitKeyError as exc:
+                raise click.ClickException(
+                    _dsk(lang, exc.key).format(err=exc.arg))
+            bak = conf_path + ".bak"
+            Path(bak).write_text(conf_text, encoding="utf-8")
+            Path(conf_path).write_text(new_text, encoding="utf-8")
+            console.print(_dsk(lang, "spk_apply_done").format(
+                opt=spec.split_option, col=best.column, bak=bak))
 
     if fail_flag and key_verdict in ("bad", "low_ndv", "null"):
         console.print(f"\n[red]partition_column 实测判定为 {key_verdict}，检查未通过。[/red]")

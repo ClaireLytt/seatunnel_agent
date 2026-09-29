@@ -112,12 +112,13 @@ def build_tool_functions(
             return dsk(lg, exc.key).format(err=exc.arg)
         except Exception as exc:  # noqa: BLE001 — surface to the caller
             return f"体检失败 / split-key check failed: {exc}"
+        previous = history.last_splitkey(spec.table)
         history.log_splitkey(
             spec.table, spec.partition_column,
             configured.verdict(spec.tasks) if configured else "none",
             candidates=len(candidates), source="mcp")
         return render_splitkey_section(spec, configured, candidates, lg,
-                                       sample_pct=pct)
+                                       sample_pct=pct, previous=previous)
 
     def skew_split_key_file(path: str, ds_type: str = "mysql",
                             sample_pct: int = 0, lang: str = "") -> str:

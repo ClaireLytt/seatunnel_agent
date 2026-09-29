@@ -767,8 +767,13 @@ def build_profile_card(result: ProfileResult, lang: str = "en") -> str:
     )
 
 
-def build_skew_card(result: SkewResult, lang: str = "en") -> str:
-    """Build HTML card for data skew analysis."""
+def build_skew_card(result: SkewResult, lang: str = "en",
+                    conn_b=None) -> str:
+    """Build HTML card for data skew analysis.
+
+    *conn_b* is side B's ``DatabaseConfig`` (or None, e.g. when rendering a
+    saved report): with it, the goto-dataskew button also hands the
+    connection over via a short-lived cookie — no password travels."""
     t = lambda k: dc(lang, k)
     esc = _esc_html
     if not result.items:
@@ -803,10 +808,26 @@ def build_skew_card(result: SkewResult, lang: str = "en") -> str:
                 f"GROUP BY {col}\n"
                 f"ORDER BY cnt DESC\nLIMIT 100;"
             )
+            conn_js = ""
+            if conn_b is not None:
+                # side B connection minus the password, as a 3-minute
+                # cookie the /dataskew page reads on load (gr.Request)
+                payload = json.dumps({
+                    "ds_type": str(getattr(conn_b, "ds_type", "") or ""),
+                    "host": str(getattr(conn_b, "host", "") or ""),
+                    "port": str(getattr(conn_b, "port", "") or ""),
+                    "database": str(getattr(conn_b, "database", "") or ""),
+                    "username": str(getattr(conn_b, "username", "") or ""),
+                }, ensure_ascii=False)
+                conn_js = (
+                    "document.cookie = 'st_dataskew_conn=' + "
+                    "encodeURIComponent(" + json.dumps(payload)
+                    + ") + '; path=/; max-age=180';"
+                )
             onclick = esc(
                 "localStorage.setItem('st_dataskew_sql', "
                 + json.dumps(handoff_sql, ensure_ascii=False)
-                + "); window.open('/dataskew', '_blank');"
+                + "); " + conn_js + " window.open('/dataskew', '_blank');"
             )
             goto_html = (
                 f' <button onclick="{onclick}" style="margin-left:8px;'
@@ -1907,7 +1928,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             total_a=total_a, total_b=total_b,
             items=items,
         )
-        return result, build_skew_card(result, lang_val)
+        return result, build_skew_card(result, lang_val,
+                                       conn_b=ex_b.config)
 
     def _compare_skew_fn(table_a, table_b, lang_val, where_val, skew_cols_str):
         ok, msg = _validate_where(where_val, lang_val)

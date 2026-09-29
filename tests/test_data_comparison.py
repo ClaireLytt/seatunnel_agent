@@ -4552,3 +4552,42 @@ class TestSkewCardHandoff:
         html = self._card(item)
         assert "st_dataskew_sql" not in html
         assert "两侧" not in html
+
+    def test_goto_button_carries_connection(self):
+        """With side B's config the button also hands the connection over
+        via a short-lived cookie — minus the password."""
+        from seatunnel_agent.data_comparison_ui import build_skew_card
+        from seatunnel_agent.text2sql.executor.base import DatabaseConfig
+
+        item = SkewItem(column="region", gini_a=0.8, gini_b=0.78,
+                        top1_pct_a=70.0, top1_pct_b=68.0)
+        res = SkewResult("ta", "tb", total_a=100, total_b=100, items=[item])
+        cfg = DatabaseConfig(ds_type="mysql", host="db-b", port=3306,
+                             database="shop", username="ro",
+                             password="s3cret")
+        html = build_skew_card(res, "zh", conn_b=cfg)
+        assert "st_dataskew_conn" in html
+        assert "db-b" in html and "shop" in html
+        assert "s3cret" not in html          # password never travels
+        assert "max-age=180" in html         # short-lived
+        # without a connection the card renders as before
+        html2 = build_skew_card(res, "zh")
+        assert "st_dataskew_conn" not in html2
+        assert "st_dataskew_sql" in html2
+
+    def test_parse_conn_handoff_roundtrip(self):
+        import json as _json
+        from urllib.parse import quote
+
+        from seatunnel_agent.data_skew_ui import parse_conn_handoff
+
+        raw = quote(_json.dumps({
+            "ds_type": "MySQL", "host": "db-b", "port": 3306,
+            "database": "shop", "username": "ro"}))
+        assert parse_conn_handoff(raw) == {
+            "ds_type": "mysql", "host": "db-b", "port": "3306",
+            "database": "shop", "username": "ro"}
+        assert parse_conn_handoff(None) is None
+        assert parse_conn_handoff("") is None
+        assert parse_conn_handoff("not-json") is None
+        assert parse_conn_handoff(quote("[1, 2]")) is None

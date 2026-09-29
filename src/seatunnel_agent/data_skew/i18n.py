@@ -147,6 +147,40 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "The same column choice applies to the sink side: a skewed "
             "Doris/ClickHouse bucket key materializes this skew into storage."
         ),
+        "spk_recheck_improved": (
+            "🔁 Re-check vs last run ({ts}, key=`{pk}`, verdict {pv}) → now "
+            "{cv} — ✅ the split-key issue is resolved, loop closed."
+        ),
+        "spk_recheck_regressed": (
+            "🔁 Re-check vs last run ({ts}, key=`{pk}`, verdict {pv}) → now "
+            "{cv} — ⚠️ regression: the key measured fine before, check for "
+            "data drift."
+        ),
+        "spk_recheck_still_bad": (
+            "🔁 Re-check vs last run ({ts}, key=`{pk}`, verdict {pv}) → now "
+            "{cv} — ⚠️ still unresolved: switch partition_column to a ranked "
+            "candidate and re-check."
+        ),
+        "spk_apply_fail": (
+            "❌ Could not anchor the edit in the config text — nothing was "
+            "changed."
+        ),
+        "spk_apply_done": (
+            "✅ Split key written back to the config: {opt} = \"{col}\" "
+            "(original backed up as {bak}). Re-run the check to verify."
+        ),
+        "spk_apply_none": (
+            "ℹ️ Nothing to write back: no usable (good/suspect) key was "
+            "measured, or the configured key is already the best choice."
+        ),
+        "dsk_conn_handoff": (
+            "🔗 Connection handed over from Data Comparison side B "
+            "({ds} {host}:{port}/{db}) — enter the password and click Connect."
+        ),
+        "dsk_conn_handoff_unsupported": (
+            "⚠️ The data source handed over from Data Comparison ({t}) does "
+            "not support live probing here — pick a supported type manually."
+        ),
         # --- consistency measurement ---
         "cst_btn": "Measure Consistency (runs both SQLs)",
         "cst_running": "Running the original and the optimized SQL for comparison…",
@@ -334,6 +368,35 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "spk_sink_note": (
             "写入端同理：Doris/ClickHouse 的分桶键若用该倾斜列，"
             "倾斜会物化到目标端存储。"
+        ),
+        "spk_recheck_improved": (
+            "🔁 复测对比：上次体检（{ts}，key=`{pk}`，判定 {pv}）→ 本次判定 "
+            "{cv} —— ✅ 分片键问题已解决，闭环完成。"
+        ),
+        "spk_recheck_regressed": (
+            "🔁 复测对比：上次体检（{ts}，key=`{pk}`，判定 {pv}）→ 本次判定 "
+            "{cv} —— ⚠️ 出现退化：该键此前实测正常，请排查数据分布变化。"
+        ),
+        "spk_recheck_still_bad": (
+            "🔁 复测对比：上次体检（{ts}，key=`{pk}`，判定 {pv}）→ 本次判定 "
+            "{cv} —— ⚠️ 仍未解决：请按候选列修改 partition_column 后再次体检。"
+        ),
+        "spk_apply_fail": "❌ 无法在配置文本中定位写入点，未做任何修改。",
+        "spk_apply_done": (
+            "✅ 已把分片键写回配置：{opt} = \"{col}\"（原文件备份为 {bak}）。"
+            "请重新体检验证。"
+        ),
+        "spk_apply_none": (
+            "ℹ️ 没有可写回的推荐分片键：未实测到 good/suspect 的键，"
+            "或现配置已是最优。"
+        ),
+        "dsk_conn_handoff": (
+            "🔗 已带入数据比对页 B 侧连接（{ds} {host}:{port}/{db}）——"
+            "请补密码后点连接。"
+        ),
+        "dsk_conn_handoff_unsupported": (
+            "⚠️ 数据比对页带入的数据源类型（{t}）不支持在此实测——"
+            "请手动选择支持的类型。"
         ),
         # --- consistency measurement ---
         "cst_btn": "一致性实测（运行两版 SQL）",

@@ -1513,8 +1513,10 @@ from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
     SourceSpec,
     SplitKeyError,
     SplitStat,
+    apply_split_key,
     check_split_key,
     parse_seatunnel_source,
+    pick_best_key,
     rank_candidates,
     render_splitkey_section,
 )
@@ -1579,6 +1581,7 @@ def test_parse_source_cdc_hyphenated():
     assert spec.table == "test_db.users"
     # the incremental-snapshot chunk key is the CDC split key
     assert spec.partition_column == "id"
+    assert spec.split_option == "scan.incremental.snapshot.chunk.key-column"
     assert spec.tasks == 2
 
 
@@ -1689,6 +1692,136 @@ def test_render_splitkey_section_error_row():
 
 
 # ---------------------------------------------------------------------------
+# split-key: re-check comparison + write-back (the loop-closing half)
+# ---------------------------------------------------------------------------
+
+def _prev_rec(verdict: str, key: str = "region") -> dict:
+    return {"timestamp": "2026-09-29T10:00:00+00:00",
+            "splitkey": {"table": "orders", "partition_column": key,
+                         "key_verdict": verdict, "candidates": 3}}
+
+
+def test_recheck_line_states():
+    spec = SourceSpec(plugin="Jdbc", table="orders", partition_column="id",
+                      partition_num=4)
+    good = SplitStat("id", total=100, ndv=100, top1_count=1)
+    bad = SplitStat("id", total=100, ndv=50, top1_count=80)
+
+    # bad -> good: the fix landed, loop closed
+    md = render_splitkey_section(spec, good, [], "zh",
+                                 previous=_prev_rec("bad"))
+    assert "复测对比" in md and "已解决" in md and "`region`" in md
+
+    # good -> bad: regression
+    md = render_splitkey_section(spec, bad, [], "zh",
+                                 previous=_prev_rec("good", key="id"))
+    assert "退化" in md
+
+    # bad -> bad: still unresolved
+    md = render_splitkey_section(spec, bad, [], "zh",
+                                 previous=_prev_rec("bad"))
+    assert "仍未解决" in md
+
+    # good -> good: quiet, and first run renders no comparison at all
+    md = render_splitkey_section(spec, good, [], "zh",
+                                 previous=_prev_rec("good", key="id"))
+    assert "复测对比" not in md
+    md = render_splitkey_section(spec, good, [], "zh", previous=None)
+    assert "复测对比" not in md
+
+
+def test_apply_split_key_replace_multiline():
+    conf = (
+        "source {\n"
+        "  Jdbc {\n"
+        '    table_name = "orders"\n'
+        '    partition_column = "region"\n'
+        "    partition_num = 4\n"
+        "  }\n"
+        "}\n"
+        "sink { Console {} }\n"
+    )
+    spec = parse_seatunnel_source(conf)
+    out = apply_split_key(conf, spec, "id", partition_num=8)
+    assert 'partition_column = "id"' in out
+    assert "partition_num = 8" in out
+    assert "region" not in out
+    assert 'table_name = "orders"' in out  # formatting preserved
+    # the rewritten config round-trips through the parser
+    spec2 = parse_seatunnel_source(out)
+    assert spec2.partition_column == "id"
+    assert spec2.partition_num == 8
+
+
+def test_apply_split_key_oneline_replace_and_insert():
+    # replace on a single-line source, partition_num appended inline
+    conf = ('source { Jdbc { table_name = "orders", '
+            'partition_column = "region" } } sink {}')
+    spec = parse_seatunnel_source(conf)
+    out = apply_split_key(conf, spec, "id", partition_num=2)
+    spec2 = parse_seatunnel_source(out)
+    assert spec2.partition_column == "id"
+    assert spec2.partition_num == 2
+
+    # no key configured: inserted inline after the table option
+    conf = 'source { Jdbc { table_name = "orders" } } sink {}'
+    spec = parse_seatunnel_source(conf)
+    out = apply_split_key(conf, spec, "id", partition_num=2)
+    spec2 = parse_seatunnel_source(out)
+    assert spec2.partition_column == "id"
+    assert spec2.partition_num == 2
+
+
+def test_apply_split_key_skips_comments():
+    conf = (
+        "source {\n"
+        "  Jdbc {\n"
+        '    table_name = "orders"\n'
+        '    # partition_column = "old_commented_out"\n'
+        '    partition_column = "region"\n'
+        "  }\n"
+        "}\n"
+    )
+    spec = parse_seatunnel_source(conf)
+    out = apply_split_key(conf, spec, "id")
+    assert '# partition_column = "old_commented_out"' in out  # untouched
+    assert 'partition_column = "id"' in out
+    assert '"region"' not in out
+
+
+def test_apply_split_key_cdc_chunk_key():
+    spec = parse_seatunnel_source(_CONF_CDC)
+    out = apply_split_key(_CONF_CDC, spec, "user_id")
+    assert 'scan.incremental.snapshot.chunk.key-column = "user_id"' in out
+    assert "partition_num" not in out  # CDC option carries no partition_num
+    assert parse_seatunnel_source(out).partition_column == "user_id"
+
+
+def test_apply_split_key_no_anchor():
+    import pytest
+
+    conf = 'source { Jdbc { query = "select a.x from a join b" } } sink {}'
+    spec = SourceSpec(plugin="Jdbc", table="a")  # as if resolved elsewhere
+    # query anchor exists -> inline insert works even for query sources
+    out = apply_split_key(conf, spec, "id")
+    assert 'partition_column = "id"' in out
+    # nothing to anchor on at all
+    with pytest.raises(SplitKeyError) as e:
+        apply_split_key("env { parallelism = 2 }", spec, "id")
+    assert e.value.key == "spk_apply_fail"
+
+
+def test_pick_best_key():
+    spec = SourceSpec(plugin="Jdbc", table="orders",
+                      partition_column="region", parallelism=2)
+    good = SplitStat("id", total=100, ndv=100, top1_count=1)
+    bad = SplitStat("region", total=100, ndv=50, top1_count=80)
+    assert pick_best_key(spec, bad, [good]).column == "id"
+    assert pick_best_key(spec, good, [bad]).column == "id"   # keep configured
+    assert pick_best_key(spec, bad, [bad]) is None
+
+
+# ---------------------------------------------------------------------------
 # split-key: approx NDV, history, MCP tools, CLI
 # ---------------------------------------------------------------------------
 
@@ -1717,6 +1850,21 @@ def test_history_log_splitkey(tmp_path):
     assert bad["splitkey"] == {"table": "orders", "partition_column": "region",
                                "key_verdict": "bad", "candidates": 3}
     assert "orders" in bad["sql"]  # readable in the history panel
+
+
+def test_history_last_splitkey(tmp_path):
+    from seatunnel_agent.data_skew.history import SkewHistory
+
+    h = SkewHistory(log_dir=tmp_path)
+    assert h.last_splitkey("orders") is None       # empty history
+    h.log_splitkey("orders", "region", "bad", candidates=3)
+    h.log_splitkey("t2", "id", "good", candidates=1)
+    h.log_splitkey("orders", "id", "good", candidates=2)
+    rec = h.last_splitkey("orders")
+    assert rec["splitkey"]["partition_column"] == "id"   # latest wins
+    assert rec["splitkey"]["key_verdict"] == "good"
+    assert h.last_splitkey("nope") is None
+    assert h.last_splitkey("") is None
 
 
 _SPLITKEY_CONF = """
@@ -1817,3 +1965,45 @@ def test_cli_skew_splitkey(monkeypatch, tmp_path):
     runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite",
                         "-o", str(out)])
     assert "分片键体检" in out.read_text(encoding="utf-8")
+
+
+def test_cli_skew_splitkey_apply_closes_loop(monkeypatch, tmp_path):
+    """check → --apply writes the fix back → re-check reports it resolved."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_orders_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    conf_file = tmp_path / "job.conf"
+    conf_file.write_text(_SPLITKEY_CONF, encoding="utf-8")
+
+    runner = CliRunner()
+    # 1. region is skewed → --apply rewrites the config (backup kept)
+    res = runner.invoke(cli, ["skew-splitkey", str(conf_file),
+                              "--ds", "sqlite", "--apply"])
+    assert res.exit_code == 0, res.output
+    assert "已把分片键写回配置" in res.output
+    new_conf = conf_file.read_text(encoding="utf-8")
+    assert 'partition_column = "id"' in new_conf
+    bak = tmp_path / "job.conf.bak"
+    assert 'partition_column = "region"' in bak.read_text(encoding="utf-8")
+
+    # 2. re-check the rewritten config: the comparison line closes the loop
+    res2 = runner.invoke(cli, ["skew-splitkey", str(conf_file),
+                               "--ds", "sqlite", "--fail"])
+    assert res2.exit_code == 0, res2.output   # CI gate now passes
+    assert "复测对比" in res2.output
+    assert "已解决" in res2.output
+
+    # 3. good key + --apply again: nothing to write back
+    res3 = runner.invoke(cli, ["skew-splitkey", str(conf_file),
+                               "--ds", "sqlite", "--apply"])
+    assert res3.exit_code == 0
+    assert "没有可写回" in res3.output

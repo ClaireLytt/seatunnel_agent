@@ -54,6 +54,9 @@ class SourceSpec:
     partition_column: str = ""
     partition_num: int = 0
     parallelism: int = 0
+    # which config option carried the split key — "partition_column" (JDBC)
+    # or the CDC chunk key; apply_split_key() writes back through it
+    split_option: str = "partition_column"
 
     @property
     def tasks(self) -> int:
@@ -187,15 +190,23 @@ def parse_seatunnel_source(conf_text: str) -> SourceSpec:
         except (TypeError, ValueError):
             parallelism = 0
 
+    # CDC jobs split the snapshot by chunk key-column, not
+    # partition_column — both are "the column parallel reads split on"
+    split_option = "partition_column"
+    partition_column = _get("partition_column")
+    if not partition_column:
+        cdc_key = _get("scan.incremental.snapshot.chunk.key-column")
+        if cdc_key:
+            partition_column, split_option = (
+                cdc_key, "scan.incremental.snapshot.chunk.key-column")
+
     return SourceSpec(
         plugin=plugin,
         table=table,
-        # CDC jobs split the snapshot by chunk key-column, not
-        # partition_column — both are "the column parallel reads split on"
-        partition_column=_get_any(
-            "partition_column", "scan.incremental.snapshot.chunk.key-column"),
+        partition_column=partition_column,
         partition_num=_int("partition_num"),
         parallelism=parallelism,
+        split_option=split_option,
     )
 
 
@@ -292,6 +303,26 @@ def rank_candidates(stats: list[SplitStat], tasks: int) -> list[SplitStat]:
         _VERDICT_RANK.get(s.verdict(tasks), 5), s.top1_ratio, -s.ndv))
 
 
+# verdicts a split key can ship with
+_GOOD_VERDICTS = ("good", "suspect")
+
+
+def pick_best_key(
+    spec: SourceSpec,
+    configured: SplitStat | None,
+    candidates: list[SplitStat],
+) -> SplitStat | None:
+    """The key the report recommends: keep a good configured key, else the
+    best usable measured candidate; ``None`` when nothing qualifies."""
+    tasks = spec.tasks
+    if configured is not None and configured.verdict(tasks) in _GOOD_VERDICTS:
+        return configured
+    for s in rank_candidates(candidates, tasks):
+        if s.verdict(tasks) in _GOOD_VERDICTS:
+            return s
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
@@ -309,14 +340,36 @@ def _stat_row(s: SplitStat, tasks: int, lang: str) -> str:
             f"{_pct(s.null_ratio)} | {top1} | {verdict} |")
 
 
+def _recheck_line(previous: dict, cur_verdict: str, lang: str) -> str:
+    """One-line before/after comparison against the last splitkey check of
+    the same table (from history) — the loop-closing 'did the fix land?'
+    signal. Quiet when both checks are fine."""
+    sk = previous.get("splitkey") or {}
+    pv = str(sk.get("key_verdict") or "none")
+    pk = str(sk.get("partition_column") or "") or "(none)"
+    ts = str(previous.get("timestamp") or "")[:16].replace("T", " ")
+    prev_ok = pv in _GOOD_VERDICTS
+    cur_ok = cur_verdict in _GOOD_VERDICTS
+    if prev_ok and cur_ok:
+        return ""
+    key = ("spk_recheck_improved" if cur_ok
+           else "spk_recheck_regressed" if prev_ok
+           else "spk_recheck_still_bad")
+    return dsk(lang, key).format(ts=ts, pk=pk, pv=pv, cv=cur_verdict)
+
+
 def render_splitkey_section(
     spec: SourceSpec,
     configured: SplitStat | None,
     candidates: list[SplitStat],
     lang: str,
     sample_pct: int = 0,
+    previous: dict | None = None,
 ) -> str:
-    """Bilingual '## SeaTunnel 分片键体检（实测）' markdown section."""
+    """Bilingual '## SeaTunnel 分片键体检（实测）' markdown section.
+
+    *previous* is the table's last splitkey history record (or None): it
+    renders as a re-check comparison line so a fixed key shows as fixed."""
     lang = normalize_lang(lang)
     zh = lang == "zh"
     tasks = spec.tasks
@@ -341,6 +394,12 @@ def render_splitkey_section(
     else:
         parts += [dsk(lang, "spk_none_configured"), ""]
 
+    if previous is not None:
+        cur_v = configured.verdict(tasks) if configured is not None else "none"
+        line = _recheck_line(previous, cur_v, lang)
+        if line:
+            parts += [line, ""]
+
     ranked = rank_candidates(candidates, tasks) if candidates else []
     if ranked:
         parts += [dsk(lang, "spk_candidates"), "", header, sep]
@@ -351,11 +410,7 @@ def render_splitkey_section(
 
     # config snippet: keep a good configured key, else promote the best
     # measured candidate
-    best: SplitStat | None = None
-    if configured is not None and configured.verdict(tasks) in ("good", "suspect"):
-        best = configured
-    elif ranked and ranked[0].verdict(tasks) in ("good", "suspect"):
-        best = ranked[0]
+    best = pick_best_key(spec, configured, candidates)
     if best is not None:
         note = ("实测 top1≈{p}，NDV={n}" if zh else "measured top1≈{p}, NDV={n}").format(
             p=_pct(best.top1_ratio), n=best.ndv)
@@ -371,6 +426,82 @@ def render_splitkey_section(
         ]
     parts += [dsk(lang, "spk_sink_note"), ""]
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Write-back
+# ---------------------------------------------------------------------------
+
+# an option's `= value` tail: quoted string or bare token
+_OPT_VALUE = r"(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|[^\s,}]+)"
+_APPLY_ANCHOR_RE = re.compile(
+    r"(?<![\w$.-])(?:table_path|table_name|table-names|table-name"
+    r"|table|query)" + _OPT_VALUE)
+_APPLY_PN_RE = re.compile(r"(?<![\w$.-])partition_num" + _OPT_VALUE)
+
+
+def _is_code_line(line: str) -> bool:
+    ls = line.lstrip()
+    return not (ls.startswith("#") or ls.startswith("//"))
+
+
+def apply_split_key(conf_text: str, spec: SourceSpec, column: str,
+                    partition_num: int = 0) -> str:
+    """Return *conf_text* with its split key rewritten to *column*.
+
+    Text-level edit so the config keeps its comments and formatting
+    (comment lines are never touched): replaces the value of the option
+    that carried the key (``spec.split_option``); when no split key was
+    configured, appends ``partition_column`` (+ ``partition_num``) inline
+    after the table option. Raises SplitKeyError('spk_apply_fail') when no
+    anchor is found."""
+    opt = spec.split_option or "partition_column"
+    opt_re = re.compile(rf"(?<![\w$.-]){re.escape(opt)}{_OPT_VALUE}")
+    lines = conf_text.split("\n")
+
+    # partition_num travels with the JDBC option only (a CDC chunk key
+    # has no partition_num); update an existing one in place first
+    need_pn = bool(partition_num) and opt == "partition_column"
+    if need_pn:
+        for i, line in enumerate(lines):
+            if not _is_code_line(line):
+                continue
+            m = _APPLY_PN_RE.search(line)
+            if m:
+                lines[i] = (line[:m.start()]
+                            + f"partition_num{m.group(1)}{partition_num}"
+                            + line[m.end():])
+                need_pn = False
+                break
+
+    for i, line in enumerate(lines):
+        if not _is_code_line(line):
+            continue
+        m = opt_re.search(line)
+        if not m:
+            continue
+        new = f'{opt}{m.group(1)}"{column}"'
+        if need_pn:
+            new += f", partition_num = {partition_num}"
+        lines[i] = line[:m.start()] + new + line[m.end():]
+        return "\n".join(lines)
+
+    if opt != "partition_column":
+        # a CDC chunk key written in nested (non-dotted) HOCON — no
+        # reliable text anchor, refuse rather than guess
+        raise SplitKeyError("spk_apply_fail")
+    for i, line in enumerate(lines):
+        if not _is_code_line(line):
+            continue
+        m = _APPLY_ANCHOR_RE.search(line)
+        if not m:
+            continue
+        insert = f', partition_column = "{column}"'
+        if need_pn:
+            insert += f", partition_num = {partition_num}"
+        lines[i] = line[:m.end()] + insert + line[m.end():]
+        return "\n".join(lines)
+    raise SplitKeyError("spk_apply_fail")
 
 
 def run_split_key(

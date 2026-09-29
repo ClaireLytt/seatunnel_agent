@@ -87,6 +87,33 @@ _CST_HEAD_RE = _head_re(dsk("zh", "cst_section"), dsk("en", "cst_section"))
 _SPK_HEAD_RE = _head_re(dsk("zh", "spk_section"), dsk("en", "spk_section"))
 _NEXT_H2_RE = re.compile(r"(?m)^[ \t]{0,3}#{1,2}\s")
 
+# Cookie the Data Comparison page sets alongside the SQL handoff so the
+# user lands here with side B's connection pre-filled (no password).
+CONN_HANDOFF_COOKIE = "st_dataskew_conn"
+
+
+def parse_conn_handoff(raw: str | None) -> dict | None:
+    """Decode the ``st_dataskew_conn`` cookie into a connection dict, or
+    None when absent/garbled. Pure so it is unit-testable."""
+    import json
+    from urllib.parse import unquote
+
+    if not raw:
+        return None
+    try:
+        data = json.loads(unquote(raw))
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {
+        "ds_type": str(data.get("ds_type") or "").lower(),
+        "host": str(data.get("host") or ""),
+        "port": str(data.get("port") or ""),
+        "database": str(data.get("database") or ""),
+        "username": str(data.get("username") or ""),
+    }
+
 
 def _remove_section(report: str, head_re: re.Pattern[str]) -> str:
     """Drop one appended '## …' section (up to the next h1/h2) from the report."""
@@ -325,8 +352,11 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             spec, configured, candidates = run_split_key(
                 conn["executor"], conf_text,
                 ds_type=conn["ds_type"], sample_pct=pct)
+            # last check of the same table (fetched before logging this
+            # one) renders as the re-check comparison line
             section = render_splitkey_section(
-                spec, configured, candidates, lang, sample_pct=pct)
+                spec, configured, candidates, lang, sample_pct=pct,
+                previous=history.last_splitkey(spec.table))
         except SplitKeyError as exc:
             return gr.update(), dsk(lang, exc.key).format(err=exc.arg)
         except Exception as exc:  # noqa: BLE001 — surface in the UI
@@ -700,3 +730,37 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                 t.dispatchEvent(new Event('input', {bubbles: true}));
             }
         }, 600)""")
+
+    # Connection handed over from Data Comparison (short-lived cookie set by
+    # the skew card's goto button; no password travels): pre-fill the form
+    # and open the accordion, the user adds the password and connects.
+    def _conn_handoff_on_load(request: gr.Request):
+        noop = tuple(gr.update() for _ in range(7))
+        data = parse_conn_handoff(
+            (request.cookies or {}).get(CONN_HANDOFF_COOKIE))
+        if data is None:
+            return noop
+        from .lang_pref import choice_from_request
+        lg = choice_from_request(request)
+        if data["ds_type"] not in _PROBE_DS:
+            return (*tuple(gr.update() for _ in range(6)),
+                    dsk(lg, "dsk_conn_handoff_unsupported").format(
+                        t=data["ds_type"] or "?"))
+        return (
+            gr.update(open=True),                    # conn_acc
+            gr.update(value=data["ds_type"]),        # ds_dd
+            gr.update(value=data["host"]),           # host_tb
+            gr.update(value=data["port"]),           # port_tb
+            gr.update(value=data["database"]),       # db_tb
+            gr.update(value=data["username"]),       # user_tb
+            dsk(lg, "dsk_conn_handoff").format(
+                ds=data["ds_type"], host=data["host"],
+                port=data["port"], db=data["database"]),  # conn_status
+        )
+
+    app.load(
+        _conn_handoff_on_load,
+        inputs=None,
+        outputs=[conn_acc, ds_dd, host_tb, port_tb, db_tb, user_tb,
+                 conn_status],
+    )
