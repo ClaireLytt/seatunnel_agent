@@ -1558,6 +1558,54 @@ def test_parse_source_list_form_table_from_query():
     assert spec.tasks == 2  # nothing configured → floor of 2
 
 
+_CONF_CDC = """
+env { parallelism = 2 }
+source {
+  MySQL-CDC {
+    hostname = "localhost"
+    database-name = "test_db"
+    table-name = "users"
+    scan.incremental.snapshot.chunk.key-column = "id"
+  }
+}
+sink { Console {} }
+"""
+
+
+def test_parse_source_cdc_hyphenated():
+    """CDC connectors use hyphenated options and split db from table."""
+    spec = parse_seatunnel_source(_CONF_CDC)
+    assert spec.plugin == "MySQL-CDC"
+    assert spec.table == "test_db.users"
+    # the incremental-snapshot chunk key is the CDC split key
+    assert spec.partition_column == "id"
+    assert spec.tasks == 2
+
+
+def test_parse_source_cdc_plural_list_options():
+    spec = parse_seatunnel_source("""
+source = [{ plugin_name = "MySQL-CDC",
+            database-names = ["shop"],
+            table-names = ["shop.orders", "shop.users"] }]
+sink {}
+""")
+    assert spec.plugin == "MySQL-CDC"
+    # first list entry, already db-qualified -> no double prefix
+    assert spec.table == "shop.orders"
+    assert spec.partition_column == ""
+
+
+def test_parse_repo_demo_conf():
+    """The repo's own CDC demo config must parse (regression: spk_no_table)."""
+    from pathlib import Path as _P
+
+    text = (_P(__file__).parent.parent / "examples"
+            / "mysql_to_console.conf").read_text(encoding="utf-8")
+    spec = parse_seatunnel_source(text)
+    assert spec.plugin == "MySQL-CDC"
+    assert spec.table == "test_db.users"
+
+
 def test_parse_source_errors():
     import pytest
 
@@ -1637,7 +1685,7 @@ def test_render_splitkey_section_error_row():
     stat = SplitStat("k", error="table not found | details")
     md = render_splitkey_section(spec, stat, [], "en")
     assert "table not found" in md
-    assert "\|" in md  # pipe escaped for the markdown table
+    assert r"\|" in md  # pipe escaped for the markdown table
 
 
 # ---------------------------------------------------------------------------

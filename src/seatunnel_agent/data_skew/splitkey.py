@@ -111,7 +111,12 @@ def parse_seatunnel_source(conf_text: str) -> SourceSpec:
     """Resolve the first source plugin's base table + split settings.
 
     Accepts both source shapes: ``source { Jdbc { … } }`` and the list form
-    ``source = [{ plugin_name = "Jdbc", … }]``.
+    ``source = [{ plugin_name = "Jdbc", … }]``.  Understands the JDBC
+    options (``table_path`` / ``table_name`` / ``partition_column``) and the
+    CDC connectors' hyphenated ones (``database-name(s)`` /
+    ``table-name(s)``, list options take the first entry, and the
+    incremental-snapshot split key
+    ``scan.incremental.snapshot.chunk.key-column``).
     """
     try:
         from pyhocon import ConfigFactory
@@ -140,14 +145,31 @@ def parse_seatunnel_source(conf_text: str) -> SourceSpec:
 
     def _get(key: str, default: str = "") -> str:
         v = params.get(key, default)
+        if isinstance(v, (list, tuple)):  # CDC list options: first entry
+            v = v[0] if v else default
         return str(v).strip() if v is not None else default
 
-    table = _get("table_path") or _get("table_name") or _get("table")
+    def _get_any(*keys: str) -> str:
+        for key in keys:
+            v = _get(key)
+            if v:
+                return v
+        return ""
+
+    # JDBC snake_case options first, then the CDC connectors' hyphenated
+    # ones (MySQL-CDC & co.; table-names entries are usually db-qualified)
+    table = _get_any("table_path", "table_name", "table",
+                     "table-name", "table-names")
     if not table:
         query = _get("query")
         m = _QUERY_FROM_RE.search(query) if query else None
         if m:
             table = m.group(1)
+    if table and "." not in table:
+        # CDC splits database and table into separate options
+        db = _get_any("database-name", "database-names", "database_name")
+        if db:
+            table = f"{db}.{table}"
     if not table or not _TABLE_RE.match(table):
         raise SplitKeyError("spk_no_table")
 
@@ -168,7 +190,10 @@ def parse_seatunnel_source(conf_text: str) -> SourceSpec:
     return SourceSpec(
         plugin=plugin,
         table=table,
-        partition_column=_get("partition_column"),
+        # CDC jobs split the snapshot by chunk key-column, not
+        # partition_column — both are "the column parallel reads split on"
+        partition_column=_get_any(
+            "partition_column", "scan.incremental.snapshot.chunk.key-column"),
         partition_num=_int("partition_num"),
         parallelism=parallelism,
     )
