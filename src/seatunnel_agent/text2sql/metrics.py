@@ -8,7 +8,9 @@ the same question always produces byte-identical SQL — the core guarantee
 of aggregation-caliber consistency.
 
 Two metric kinds:
-- ``additive``: a single aggregation over one table (SUM/COUNT/...).
+- ``additive``: a single aggregation over one table (SUM/COUNT/...),
+  optionally star-joined to non-partitioned dimension tables (``joins``)
+  so dimensions may live in dim tables (``alias.column``).
 - ``ratio``: numerator / denominator, each referencing an additive metric.
 """
 
@@ -24,6 +26,15 @@ from .schema import SchemaStore, TableSchema
 
 _NAME_RE = re.compile(r"^[a-z_][a-z0-9_]*$")
 _IDENT_RE = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]*")
+
+#: Fixed alias of the fact table when a metric declares joins.
+FACT_ALIAS = "t"
+
+# Bare (unqualified, non-function) column references — used to prefix fact
+# columns with the fact alias when the metric declares joins.
+_BARE_COLUMN_RE = re.compile(
+    r"(?<![\w.])([a-zA-Z_][a-zA-Z0-9_]*)(?!\s*[(.])"
+)
 
 # Identifiers immediately followed by "(" are function calls, not columns.
 _FUNC_CALL_RE = re.compile(r"\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\(")
@@ -70,6 +81,24 @@ def parse_time_range(start_raw: str, end_raw: str) -> TimeRange | None:
 
 
 @dataclass(frozen=True)
+class JoinSpec:
+    """One star-schema join from the fact table to a dimension table.
+
+    v1 boundary: the joined table must be non-partitioned (partitioned dim
+    tables should be materialized as snapshots first); measures
+    (``expression`` / ``default_filters``) stay on the fact table — joins
+    only contribute dimensions and their own ON-clause filters.
+    """
+
+    table: str                    # full name; must be in the schema whitelist
+    alias: str                    # unique, != FACT_ALIAS
+    local_key: str                # join column on the fact table
+    remote_key: str               # join column on the dimension table
+    join_type: str = "left"       # "left" | "inner"
+    filters: tuple[str, ...] = ()  # conditions on the dim table (ON clause)
+
+
+@dataclass(frozen=True)
 class MetricDef:
     name: str                     # unique id, snake_case English
     display_name: str = ""
@@ -82,8 +111,9 @@ class MetricDef:
     table: str = ""
     expression: str = ""
     time_column: str = ""
-    dimensions: tuple[str, ...] = ()
+    dimensions: tuple[str, ...] = ()  # bare fact column, or "alias.column"
     default_filters: tuple[str, ...] = ()
+    joins: tuple[JoinSpec, ...] = ()
     # ratio fields (names of additive metrics)
     numerator: str = ""
     denominator: str = ""
@@ -125,6 +155,55 @@ def _expression_columns(expr: str) -> set[str]:
             continue
         cols.add(word)
     return cols
+
+
+def _parse_joins(raw: dict, where: str, errors: list[str]) -> tuple[JoinSpec, ...]:
+    joins_raw = raw.get("joins", [])
+    if not isinstance(joins_raw, list):
+        errors.append(f"{where}: joins 必须是列表")
+        return ()
+    joins: list[JoinSpec] = []
+    seen_aliases: set[str] = set()
+    for i, j in enumerate(joins_raw):
+        if not isinstance(j, dict):
+            errors.append(f"{where}: joins[{i}] 必须是映射")
+            continue
+        j_table = str(j.get("table", "") or "").strip()
+        local_key = str(j.get("local_key", "") or "").strip()
+        remote_key = str(j.get("remote_key", "") or "").strip() or local_key
+        alias = str(j.get("alias", "") or "").strip().lower() or f"j{i + 1}"
+        j_type = str(j.get("type", "left") or "left").strip().lower()
+        filters_raw = j.get("filters", [])
+        if not isinstance(filters_raw, list):
+            errors.append(f"{where}: joins[{i}].filters 必须是列表")
+            filters_raw = []
+        if not j_table or not local_key:
+            errors.append(f"{where}: joins[{i}] 必须给出 table 和 local_key")
+            continue
+        if j_type not in ("left", "inner"):
+            errors.append(
+                f"{where}: joins[{i}].type 只支持 left / inner (got '{j_type}')"
+            )
+            continue
+        if not _NAME_RE.match(alias) or alias == FACT_ALIAS:
+            errors.append(
+                f"{where}: joins[{i}].alias '{alias}' 非法"
+                f"（小写标识符，且不能是保留别名 '{FACT_ALIAS}'）"
+            )
+            continue
+        if alias in seen_aliases:
+            errors.append(f"{where}: joins[{i}].alias '{alias}' 重复")
+            continue
+        seen_aliases.add(alias)
+        joins.append(JoinSpec(
+            table=j_table,
+            alias=alias,
+            local_key=local_key,
+            remote_key=remote_key,
+            join_type=j_type,
+            filters=tuple(str(f).strip() for f in filters_raw if str(f).strip()),
+        ))
+    return tuple(joins)
 
 
 def _parse_one(raw: dict, index: int, errors: list[str]) -> MetricDef | None:
@@ -169,9 +248,12 @@ def _parse_one(raw: dict, index: int, errors: list[str]) -> MetricDef | None:
         time_column=str(raw.get("time_column", "") or "").strip(),
         dimensions=tuple(str(d).strip() for d in dims_raw if str(d).strip()),
         default_filters=tuple(str(f).strip() for f in filters_raw if str(f).strip()),
+        joins=_parse_joins(raw, where, errors),
         numerator=str(raw.get("numerator", "") or "").strip(),
         denominator=str(raw.get("denominator", "") or "").strip(),
     )
+    if mtype == "ratio" and metric.joins:
+        errors.append(f"{where}: ratio 指标不能直接声明 joins（在分子/分母上声明）")
 
     if mtype == "additive":
         if not metric.table:
@@ -285,6 +367,39 @@ class MetricStore:
             return [f"{where}: 表 '{m.table}' 不在 schema 白名单中"]
         all_cols = {c.name.lower() for c in table.columns + table.partition_columns}
 
+        # star-schema joins: dim table whitelisted + non-partitioned, keys exist
+        join_cols: dict[str, set[str]] = {}
+        for spec in m.joins:
+            jt = schema_store.get(spec.table)
+            if jt is None:
+                errors.append(f"{where}: join 表 '{spec.table}' 不在 schema 白名单中")
+                continue
+            if jt.is_partitioned:
+                errors.append(
+                    f"{where}: join 表 '{spec.table}' 是分区表 — 星型 JOIN v1 "
+                    "仅支持非分区维表（分区维表请先物化为非分区快照）"
+                )
+                continue
+            cols = {c.name.lower() for c in jt.columns}
+            join_cols[spec.alias] = cols
+            if spec.local_key.lower() not in all_cols:
+                errors.append(
+                    f"{where}: join '{spec.alias}' 的 local_key "
+                    f"'{spec.local_key}' 不存在于事实表"
+                )
+            if spec.remote_key.lower() not in cols:
+                errors.append(
+                    f"{where}: join '{spec.alias}' 的 remote_key "
+                    f"'{spec.remote_key}' 不存在于 '{spec.table}'"
+                )
+            for f in spec.filters:
+                for col in _expression_columns(f):
+                    if col not in cols:
+                        errors.append(
+                            f"{where}: join '{spec.alias}' 的 filter "
+                            f"引用了不存在的列 '{col}'"
+                        )
+
         for col in _expression_columns(m.expression):
             if col not in all_cols:
                 errors.append(f"{where}: expression 引用了不存在的列 '{col}'")
@@ -302,7 +417,19 @@ class MetricStore:
                     f"分区列（如 '{hint}'），否则生成的 SQL 会因缺少分区过滤被拒绝"
                 )
         for dim in m.dimensions:
-            if dim.lower() not in all_cols:
+            if "." in dim:
+                alias, _, col = dim.lower().partition(".")
+                if alias not in join_cols:
+                    errors.append(
+                        f"{where}: dimension '{dim}' 引用了未声明的 join 别名 "
+                        f"'{alias}'"
+                    )
+                elif col not in join_cols[alias]:
+                    errors.append(
+                        f"{where}: dimension '{dim}' 不存在于 join 表"
+                        f"（别名 '{alias}'）"
+                    )
+            elif dim.lower() not in all_cols:
                 errors.append(f"{where}: dimension '{dim}' 不存在于表中")
         for f in m.default_filters:
             for col in _expression_columns(f):
@@ -443,30 +570,107 @@ def _time_filter(
     return None
 
 
+def _map_outside_literals(text: str, fn) -> str:
+    """Apply ``fn`` to the segments of ``text`` outside string literals."""
+    out: list[str] = []
+    last = 0
+    for m in _STRING_LITERAL_RE.finditer(text):
+        out.append(fn(text[last:m.start()]))
+        out.append(m.group(0))
+        last = m.end()
+    out.append(fn(text[last:]))
+    return "".join(out)
+
+
+def _qualify_columns(expr: str, cols: set[str], alias: str) -> str:
+    """Prefix bare references to ``cols`` with ``alias.`` (deterministic
+    text rewrite: qualified refs, function calls, keywords and string
+    literals are left untouched)."""
+
+    def _sub(segment: str) -> str:
+        def _repl(m: re.Match) -> str:
+            word = m.group(1)
+            if word.lower() in cols and word.lower() not in _EXPR_KEYWORDS:
+                return f"{alias}.{word}"
+            return word
+        return _BARE_COLUMN_RE.sub(_repl, segment)
+
+    return _map_outside_literals(expr, _sub)
+
+
+def dim_output_name(dim: str) -> str:
+    """Result-column name of a dimension ('ch.channel_name' -> 'channel_name')."""
+    return dim.rsplit(".", 1)[-1]
+
+
 def _build_additive_sql(
     metric: MetricDef,
     table: TableSchema,
+    schema_store: SchemaStore,
     dimensions: list[str],
     time_range: TimeRange | None,
     max_partition: str | None,
     extra_filters: list[str],
 ) -> str:
+    has_joins = bool(metric.joins)
+    if has_joins:
+        fact_cols = {
+            c.name.lower() for c in table.columns + table.partition_columns
+        }
+        qualify = lambda e: _qualify_columns(e, fact_cols, FACT_ALIAS)  # noqa: E731
+    else:
+        qualify = lambda e: e  # noqa: E731
+
     conditions: list[str] = []
     tf = _time_filter(metric, table, time_range, max_partition)
     if tf:
-        conditions.append(tf)
-    conditions.extend(f"({f})" for f in metric.default_filters)
-    conditions.extend(f"({f})" for f in extra_filters)
+        conditions.append(qualify(tf))
+    conditions.extend(f"({qualify(f)})" for f in metric.default_filters)
+    conditions.extend(f"({qualify(f)})" for f in extra_filters)
 
-    select_items = list(dimensions) + [f"{metric.expression} AS {metric.name}"]
+    if not has_joins:
+        select_items = list(dimensions) + [f"{metric.expression} AS {metric.name}"]
+        lines = [
+            "SELECT " + ", ".join(select_items),
+            f"FROM {table.full_name}",
+        ]
+        if conditions:
+            lines.append("WHERE " + "\n  AND ".join(conditions))
+        if dimensions:
+            lines.append("GROUP BY " + ", ".join(dimensions))
+        return "\n".join(lines)
+
+    # Star-schema form: fact table aliased as FACT_ALIAS, dims may be
+    # alias-qualified; result columns keep their bare names so ratio outer
+    # queries and breakdowns are alias-agnostic.
+    dim_refs = [d if "." in d else f"{FACT_ALIAS}.{d}" for d in dimensions]
+    select_items = [
+        f"{ref} AS {dim_output_name(d)}"
+        for ref, d in zip(dim_refs, dimensions)
+    ]
+    select_items.append(f"{qualify(metric.expression)} AS {metric.name}")
+
     lines = [
         "SELECT " + ", ".join(select_items),
-        f"FROM {table.full_name}",
+        f"FROM {table.full_name} {FACT_ALIAS}",
     ]
+    for spec in metric.joins:
+        jt = schema_store.get(spec.table)
+        j_cols = {c.name.lower() for c in jt.columns} if jt else set()
+        on_parts = [
+            f"{FACT_ALIAS}.{spec.local_key} = {spec.alias}.{spec.remote_key}"
+        ]
+        on_parts.extend(
+            f"({_qualify_columns(f, j_cols, spec.alias)})" for f in spec.filters
+        )
+        keyword = "LEFT JOIN" if spec.join_type == "left" else "INNER JOIN"
+        lines.append(
+            f"{keyword} {spec.table} {spec.alias} ON " + " AND ".join(on_parts)
+        )
     if conditions:
         lines.append("WHERE " + "\n  AND ".join(conditions))
-    if dimensions:
-        lines.append("GROUP BY " + ", ".join(dimensions))
+    if dim_refs:
+        lines.append("GROUP BY " + ", ".join(dim_refs))
     return "\n".join(lines)
 
 
@@ -510,7 +714,8 @@ def build_metric_sql(
         if table is None:
             raise MetricError(f"表 '{metric.table}' 不在 schema 白名单中")
         return _build_additive_sql(
-            metric, table, dimensions, time_range, max_partition, extra_filters,
+            metric, table, schema_store, dimensions, time_range, max_partition,
+            extra_filters,
         )
 
     num = store.get(metric.numerator)
@@ -552,8 +757,9 @@ def build_metric_sql(
             ") den",
         ])
 
-    dim_items = ", ".join(f"den.{d}" for d in dimensions)
-    on_items = " AND ".join(f"den.{d} = num.{d}" for d in dimensions)
+    dim_outs = [dim_output_name(d) for d in dimensions]
+    dim_items = ", ".join(f"den.{d}" for d in dim_outs)
+    on_items = " AND ".join(f"den.{d} = num.{d}" for d in dim_outs)
     return "\n".join([
         f"SELECT {dim_items}, {ratio_expr}",
         "FROM (",

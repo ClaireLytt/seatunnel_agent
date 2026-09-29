@@ -161,6 +161,9 @@ A metric catalog is loaded. To guarantee caliber consistency:
 3. If the metric's time column is a partition column and the user gave no
    time range, call get_max_partition on the metric's table first, then
    pass max_partition to build_metric_sql.
+3b. Star metrics (with joins) list dim-table dimensions as 'alias.column'
+   (e.g. ch.channel_name). Pass them to build_metric_sql / run_attribution
+   VERBATIM — never strip the alias prefix.
 4. For caliber questions ("X的口径是什么", "X和Y有什么区别"), answer
    directly from match_metrics output. Do NOT execute SQL.
 5. For "why did X change" questions (为什么涨/跌/异动归因), use
@@ -171,7 +174,11 @@ A metric catalog is loaded. To guarantee caliber consistency:
    (totals, top contributors per the best dimension, new/gone members),
    then add your interpretation clearly marked as 分析解读. The
    contribution percentages are exact (they sum to the total change
-   rate) — never recompute or round-trip them.
+   rate) — never recompute or round-trip them. For ratio metrics, lead
+   with factor_split (the exact numerator/denominator two-factor
+   decomposition) before the per-side breakdowns. When the user asks for
+   a combined/crossed view (哪个渠道的哪个省份), or no single dimension
+   concentrates the move, add cross=true (or cross_dimensions=[d1,d2]).
 6. For provenance questions ("这个数是从哪些表算出来的", "X 的加工链路"),
    use **trace_metric** and present the caliber plus the upstream chain.
    Do NOT execute SQL.

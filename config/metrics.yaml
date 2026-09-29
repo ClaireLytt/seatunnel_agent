@@ -2,6 +2,20 @@
 # schema_ddl.sql 是"表的白名单"，本文件是"口径的白名单"：
 # 命中这里的指标时，SQL 由 build_metric_sql 确定性展开，不由 LLM 现场发挥。
 # 校验：seatunnel-agent metrics validate --ddl config/schema_ddl.sql
+#
+# 星型 JOIN（维表维度）：additive 指标可声明 joins，把维表列作为下钻维度：
+#   - name: gmv
+#     table: dwd.dwd_trade_order_di      # 事实表（度量/过滤只能引用它的列）
+#     expression: SUM(pay_amount)
+#     time_column: dt
+#     joins:
+#       - table: dim.dim_channel         # 必须在表白名单中，且是非分区表
+#         alias: ch                      # 唯一别名（保留别名 t 是事实表）
+#         local_key: channel_id          # 事实表侧关联列
+#         remote_key: channel_id         # 维表侧关联列（缺省同 local_key）
+#         type: left                     # left | inner（缺省 left）
+#         filters: ["is_deleted = 0"]    # 附加在 ON 上的维表过滤
+#     dimensions: [channel_id, ch.channel_name]   # 维表维度写 别名.列名
 version: 1
 metrics:
   - name: sales_amount

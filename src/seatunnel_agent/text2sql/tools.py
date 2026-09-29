@@ -127,9 +127,13 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "Deterministically expand a defined metric into SQL (same inputs "
             "always yield identical SQL — the caliber-consistency guarantee). "
             "Returns the SQL only; run it with execute_sql afterwards. "
-            "Dimensions must come from the metric's allowed list. For "
-            "partitioned time columns provide a date range or max_partition "
-            "(from get_max_partition)."
+            "Dimensions must come from the metric's allowed list, verbatim — "
+            "including dim-table dimensions spelled 'alias.column' on star "
+            "metrics (metrics with joins). For star metrics, qualify "
+            "extra_filters columns yourself (fact columns are auto-prefixed "
+            "with 't.'; dim columns need their join alias). For partitioned "
+            "time columns provide a date range or max_partition (from "
+            "get_max_partition)."
         ),
         "input_schema": {
             "type": "object",
@@ -181,9 +185,13 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "length; 同比 = same period last year). Omit 'dimension' to "
             "auto-explore all allowed dimensions and pick the most explanatory "
             "one. Ratio metrics are decomposed into numerator/denominator "
-            "attributions automatically. Costs 2 + 2×dimensions SQL queries — "
-            "call it ONCE per question. The result table is shown to the user "
-            "automatically (waterfall chart included)."
+            "attributions automatically, plus an exact two-factor split "
+            "(numerator_effect + denominator_effect = ratio delta). Set "
+            "cross=true (or cross_dimensions=[d1,d2]) for a crossed "
+            "two-dimension drill-down when one dimension alone doesn't "
+            "explain the move. Costs 2 + 2×dimensions SQL queries (+2 with "
+            "cross) — call it ONCE per question. The result table is shown "
+            "to the user automatically (waterfall chart included)."
         ),
         "input_schema": {
             "type": "object",
@@ -231,6 +239,21 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "dimension": {
                     "type": "string",
                     "description": "Drill down on this single dimension only (optional)",
+                },
+                "cross": {
+                    "type": "boolean",
+                    "description": (
+                        "Also drill the crossed combination of the two most "
+                        "explanatory dimensions (+2 SQLs)"
+                    ),
+                },
+                "cross_dimensions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Explicit pair of dimensions to cross-drill, e.g. "
+                        "[\"channel\", \"province\"] (overrides cross)"
+                    ),
                 },
                 "extra_filters": {
                     "type": "array",
@@ -548,6 +571,12 @@ def _metric_payload(m: Any) -> dict[str, Any]:
         payload["time_column"] = m.time_column
         payload["dimensions"] = list(m.dimensions)
         payload["default_filters"] = list(m.default_filters)
+        if m.joins:
+            payload["joins"] = [
+                {"table": j.table, "alias": j.alias, "type": j.join_type,
+                 "on": f"t.{j.local_key} = {j.alias}.{j.remote_key}"}
+                for j in m.joins
+            ]
     return payload
 
 
@@ -699,6 +728,8 @@ def _run_one_attribution(
         prev_range=prev_range,
         dimensions=[dim] if dim else None,
         extra_filters=inp.get("extra_filters") or [],
+        cross=bool(inp.get("cross")),
+        cross_dimensions=inp.get("cross_dimensions") or None,
     )
 
 
@@ -726,6 +757,7 @@ def _publish_breakdown(rt: Text2SQLRuntime, result: Any) -> None:
 
 def _maybe_export_report(
     inp: dict[str, Any], metric: Any, results: list, out: dict[str, Any],
+    factor_split: dict[str, Any] | None = None,
 ) -> None:
     """Export the standalone Markdown analysis report on request."""
     if not inp.get("export_report"):
@@ -736,6 +768,7 @@ def _maybe_export_report(
 
         text = render_attribution_markdown(
             results, title=f"{metric.display_name} 异动归因报告",
+            factor_split=factor_split,
         )
         target = _resolve_target(None, f"attribution_{metric.name}", "md")
         target.write_text(text, encoding="utf-8")
@@ -768,8 +801,14 @@ def _tool_run_attribution(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
             def _ratio(n: float, d: float) -> float | None:
                 return n / d if d else None
 
+            from .attribution import ratio_factor_split
+
             prev_ratio = _ratio(num_res.prev_total, den_res.prev_total)
             curr_ratio = _ratio(num_res.curr_total, den_res.curr_total)
+            split = ratio_factor_split(
+                num_res.prev_total, num_res.curr_total,
+                den_res.prev_total, den_res.curr_total,
+            )
             out: dict[str, Any] = {
                 "success": True,
                 "metric": metric.name,
@@ -778,13 +817,26 @@ def _tool_run_attribution(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
                 "curr_ratio": round(curr_ratio, 6) if curr_ratio is not None else None,
                 "numerator": attribution_to_dict(num_res),
                 "denominator": attribution_to_dict(den_res),
-                "note": (
-                    "v1 boundary: ratio metrics are decomposed into separate "
-                    "numerator/denominator attributions (no two-factor split). "
-                    "Present both movements side by side."
-                ),
             }
-            _maybe_export_report(inp, metric, [num_res, den_res], out)
+            if split is not None:
+                out["factor_split"] = {
+                    k: round(v, 6) if isinstance(v, float) else v
+                    for k, v in split.items()
+                }
+                out["note"] = (
+                    "factor_split is the EXACT decomposition of the ratio's "
+                    "move: numerator_effect + denominator_effect = delta "
+                    "(numerator_effect = ΔN/D_curr, denominator_effect = "
+                    "N_prev/D_curr - N_prev/D_prev). Lead with it, then the "
+                    "per-side breakdowns."
+                )
+            else:
+                out["note"] = (
+                    "Two-factor split undefined (a period's denominator is 0); "
+                    "present the numerator/denominator movements side by side."
+                )
+            _maybe_export_report(inp, metric, [num_res, den_res], out,
+                                 factor_split=split)
             return out
 
         result = _run_one_attribution(inp, rt, metric)

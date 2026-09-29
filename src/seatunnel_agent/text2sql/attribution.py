@@ -83,16 +83,57 @@ def _scalar(columns: list[str], rows: list[tuple]) -> float:
         return 0.0
 
 
-def _breakdown_map(columns: list[str], rows: list[tuple]) -> dict[str, float]:
-    """dimension member -> value from a one-dimension metric query."""
+#: Separator between member values of a crossed-dimension breakdown key.
+CROSS_SEP = " / "
+
+#: Separator in the crossed breakdown's dimension label.
+CROSS_LABEL_SEP = " × "
+
+
+def _breakdown_map(
+    columns: list[str], rows: list[tuple], key_width: int = 1,
+) -> dict[str, float]:
+    """dimension member(s) -> value from a metric query with ``key_width``
+    leading dimension columns (crossed members join with :data:`CROSS_SEP`)."""
     out: dict[str, float] = {}
     for row in rows:
-        key = NULL_LABEL if row[0] is None else str(row[0])
+        key = CROSS_SEP.join(
+            NULL_LABEL if v is None else str(v) for v in row[:key_width]
+        )
         try:
             out[key] = float(row[-1]) if row[-1] is not None else 0.0
         except (TypeError, ValueError):
             out[key] = 0.0
     return out
+
+
+def ratio_factor_split(
+    num_prev: float, num_curr: float, den_prev: float, den_curr: float,
+) -> dict[str, float] | None:
+    """Exact two-factor decomposition of a ratio metric's move.
+
+        ΔR = R_curr - R_prev
+           = (N_c - N_p) / D_c          (numerator effect)
+           + N_p/D_c - N_p/D_p          (denominator effect)
+
+    The two effects sum *exactly* to ΔR (algebraic identity, self-checked).
+    Returns None when either denominator is 0 (split undefined).
+    """
+    if not den_prev or not den_curr:
+        return None
+    prev_ratio = num_prev / den_prev
+    curr_ratio = num_curr / den_curr
+    delta = curr_ratio - prev_ratio
+    num_effect = (num_curr - num_prev) / den_curr
+    den_effect = num_prev / den_curr - num_prev / den_prev
+    return {
+        "prev_ratio": prev_ratio,
+        "curr_ratio": curr_ratio,
+        "delta": delta,
+        "numerator_effect": num_effect,
+        "denominator_effect": den_effect,
+        "check_ok": abs((num_effect + den_effect) - delta) <= 1e-9,
+    }
 
 
 def _range_label(tr: TimeRange) -> str:
@@ -110,11 +151,17 @@ def run_attribution(
     prev_range: TimeRange,
     dimensions: list[str] | None = None,
     extra_filters: list[str] | None = None,
+    cross: bool = False,
+    cross_dimensions: list[str] | None = None,
 ) -> AttributionResult:
     """Attribute an **additive** metric's move between two periods.
 
     ``dimensions=None`` explores every allowed dimension (capped at
     :data:`MAX_AUTO_DIMENSIONS`) and picks the most explanatory one.
+    ``cross_dimensions=[d1, d2]`` adds a crossed two-dimension breakdown
+    (+2 SQLs); ``cross=True`` derives the pair automatically from the two
+    most explanatory single dimensions. The contribution identity holds
+    for the crossed breakdown too (GROUP BY still partitions the rows).
     Ratio metrics must be decomposed by the caller (see the agent tool).
     """
     if metric.is_ratio:
@@ -163,9 +210,10 @@ def run_attribution(
         change_rate=change_rate,
     )
 
-    for dim in dims:
-        prev_map = _breakdown_map(*_run([dim], prev_range))
-        curr_map = _breakdown_map(*_run([dim], curr_range))
+    def _drill(group_dims: list[str], label: str) -> DimensionBreakdown:
+        width = len(group_dims)
+        prev_map = _breakdown_map(*_run(group_dims, prev_range), key_width=width)
+        curr_map = _breakdown_map(*_run(group_dims, curr_range), key_width=width)
         rows: list[DimContribution] = []
         for key in sorted(set(prev_map) | set(curr_map)):
             p = prev_map.get(key, 0.0)
@@ -186,14 +234,47 @@ def run_attribution(
         concentration = sum(
             abs(r.contribution or 0.0) for r in rows[:3]
         )
-        result.dimensions.append(DimensionBreakdown(
-            dimension=dim, rows=rows,
+        return DimensionBreakdown(
+            dimension=label, rows=rows,
             concentration=concentration, check_ok=check_ok,
-        ))
+        )
+
+    for dim in dims:
+        result.dimensions.append(_drill([dim], dim))
 
     if result.dimensions:
         best = max(result.dimensions, key=lambda b: b.concentration)
         result.best_dimension = best.dimension
+
+    # Crossed two-dimension drill-down (+2 SQLs).
+    pair: list[str] | None = None
+    if cross_dimensions:
+        allowed = {d.lower() for d in metric.dimensions}
+        picked = [d for d in cross_dimensions if d.strip()][:2]
+        if len(picked) != 2 or picked[0].lower() == picked[1].lower():
+            raise MetricError("cross_dimensions 必须是两个不同的维度")
+        for d in picked:
+            if d.lower() not in allowed:
+                raise MetricError(
+                    f"维度 '{d}' 不在指标 '{metric.name}' 的允许维度中"
+                    f"（允许: {', '.join(metric.dimensions) or '无'}）"
+                )
+        pair = picked
+    elif cross and len(result.dimensions) >= 2:
+        ranked = sorted(
+            result.dimensions, key=lambda b: b.concentration, reverse=True,
+        )
+        pair = [ranked[0].dimension, ranked[1].dimension]
+    if pair:
+        crossed = _drill(pair, CROSS_LABEL_SEP.join(pair))
+        result.dimensions.append(crossed)
+        # The crossed breakdown always concentrates at least as well as its
+        # parts; keep best_dimension pointing at it only when explicitly
+        # requested via cross_dimensions (the auto mode keeps the single
+        # dimension as the headline and the cross as supporting detail).
+        if cross_dimensions:
+            result.best_dimension = crossed.dimension
+
     result.sql_count = len(sqls)
     result.sqls = sqls
     return result
@@ -228,11 +309,13 @@ def _fmt(v: float) -> str:
 def render_attribution_markdown(
     results: list[AttributionResult],
     title: str = "",
+    factor_split: dict[str, Any] | None = None,
 ) -> str:
     """Standalone analysis-report Markdown (专题分析报告 export form).
 
     ``results`` holds one entry for an additive metric, or the
-    numerator/denominator pair of a ratio metric.
+    numerator/denominator pair of a ratio metric (whose exact two-factor
+    split may be passed as ``factor_split``).
     """
     lines: list[str] = []
     head = title or f"{results[0].display_name} 异动归因报告"
@@ -240,6 +323,17 @@ def render_attribution_markdown(
     lines.append("")
     lines.append(f"> 对比区间: {results[0].prev_label} → {results[0].curr_label}")
     lines.append("> 本报告由确定性计算产出（贡献率之和恒等于总变动率）。")
+    if factor_split is not None:
+        lines.append("")
+        lines.append("## 双因素分解（精确恒等式）")
+        lines.append("")
+        lines.append(f"- 比率: {_fmt(factor_split['prev_ratio'])} → "
+                     f"{_fmt(factor_split['curr_ratio'])} "
+                     f"(Δ = {_fmt(factor_split['delta'])})")
+        lines.append(f"- 分子变动效应: {_fmt(factor_split['numerator_effect'])}")
+        lines.append(f"- 分母变动效应: {_fmt(factor_split['denominator_effect'])}")
+        lines.append("- 恒等式: 分子效应 + 分母效应 = Δ"
+                     + ("" if factor_split.get("check_ok") else " ⚠️ 自检未通过"))
     for r in results:
         unit = f" {r.unit}" if r.unit else ""
         rate = (f"{r.change_rate * 100:+.2f}%" if r.change_rate is not None
