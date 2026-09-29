@@ -3436,11 +3436,11 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     # repaints the result area a second time).
     def _btn_off():
         _log.info("all_btn disable event fired")
-        return gr.update(interactive=False)
+        return gr.Button(interactive=False)
 
     def _btn_on():
         _log.info("all_btn enable event fired")
-        return gr.update(interactive=True)
+        return gr.Button(interactive=True)
 
     all_btn.click(fn=_btn_off,
                   outputs=[all_btn], trigger_mode="once",
