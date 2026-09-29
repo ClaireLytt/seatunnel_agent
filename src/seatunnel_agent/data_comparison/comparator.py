@@ -556,15 +556,58 @@ def build_aggregate_sql(table_name: str, columns: list[str], where: str = "",
 _METRIC_OFFSETS = {"sum": 0, "avg": 1, "min": 2, "max": 3, "null_count": 4}
 
 
+# Cross-source normalization rules for loose value equality. Migrations
+# between engines produce "false diffs" from rendering, not data: trailing
+# whitespace in CHAR columns, '2024-01-01T00:00:00' vs '2024-01-01 00:00:00'
+# vs a bare date, NULL vs '' on engines that conflate them. Each rule can be
+# switched via environment variables (documented defaults chosen for the
+# common Hive↔MySQL case).
+_NORM_TRIM = os.getenv("DC_NORM_TRIM", "1") != "0"
+_NORM_TIMESTAMPS = os.getenv("DC_NORM_TIMESTAMPS", "1") != "0"
+_NORM_NULL_EQ_EMPTY = os.getenv("DC_NORM_NULL_EQ_EMPTY", "0") == "1"
+
+_TS_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})"                 # date
+    r"(?:[T ](\d{2}:\d{2})(?::(\d{2}))?"    # optional time
+    r"(?:\.(\d+))?"                         # optional fraction
+    r"(?:Z|[+-]\d{2}:?\d{2})?)?$"           # optional zone marker (ignored)
+)
+
+
+def _canon_timestamp(s: str) -> str | None:
+    """Canonical 'YYYY-MM-DD HH:MM:SS.frac' for ISO-ish datetime strings.
+
+    A bare date equals midnight; 'T' and ' ' separators, missing seconds and
+    trailing fractional zeros are normalized away. Returns None when the
+    string is not datetime-shaped."""
+    m = _TS_RE.match(s)
+    if not m:
+        return None
+    date, hm, sec, frac = m.groups()
+    frac = (frac or "").rstrip("0")
+    return f"{date} {hm or '00:00'}:{sec or '00'}" + (f".{frac}" if frac else "")
+
+
 def _close_enough(a: Any, b: Any, tolerance: float = 1e-6) -> bool:
     if a is None and b is None:
         return True
     if a is None or b is None:
+        if _NORM_NULL_EQ_EMPTY and (a in (None, "") and b in (None, "")):
+            return True
         return False
     try:
         fa, fb = float(a), float(b)
     except (TypeError, ValueError):
-        return str(a) == str(b)
+        sa, sb = str(a), str(b)
+        if _NORM_TRIM:
+            sa, sb = sa.strip(), sb.strip()
+        if sa == sb:
+            return True
+        if _NORM_TIMESTAMPS:
+            ca, cb = _canon_timestamp(sa), _canon_timestamp(sb)
+            if ca is not None and ca == cb:
+                return True
+        return False
     if math.isnan(fa) and math.isnan(fb):
         return True
     if math.isnan(fa) or math.isnan(fb):

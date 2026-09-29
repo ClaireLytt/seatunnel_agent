@@ -4357,3 +4357,39 @@ class TestDialectCastAndChecksum:
         )
         sql = generate_diff_sql(result, "my table", ds_type="mysql")
         assert "`my table`" in sql
+
+
+class TestValueNormalization:
+    """Cross-source loose equality: rendering differences are not diffs."""
+
+    def test_timestamp_t_separator(self):
+        assert _close_enough("2024-01-01T10:30:00", "2024-01-01 10:30:00")
+
+    def test_bare_date_equals_midnight(self):
+        assert _close_enough("2024-01-01", "2024-01-01 00:00:00")
+
+    def test_fractional_zeros_stripped(self):
+        assert _close_enough("2024-01-01 10:30:00.000", "2024-01-01 10:30:00")
+
+    def test_missing_seconds(self):
+        assert _close_enough("2024-01-01 10:30", "2024-01-01 10:30:00")
+
+    def test_different_timestamps_differ(self):
+        assert not _close_enough("2024-01-01 10:30:00", "2024-01-01 10:30:01")
+
+    def test_trailing_whitespace_trimmed(self):
+        assert _close_enough("north ", "north")
+        assert _close_enough("  north", "north\t")
+
+    def test_plain_strings_still_differ(self):
+        assert not _close_enough("north", "south")
+
+    def test_null_not_equal_empty_by_default(self):
+        assert not _close_enough(None, "")
+
+    def test_numeric_tolerance_unchanged(self):
+        assert _close_enough(10.0, 10.0 + 1e-9)
+        assert not _close_enough(10.0, 11.0)
+
+    def test_non_timestamp_shapes_not_canonicalized(self):
+        assert not _close_enough("2024-01-01x", "2024-01-01")
