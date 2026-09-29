@@ -1516,9 +1516,12 @@ from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
     apply_split_key,
     check_split_key,
     parse_seatunnel_source,
+    parse_seatunnel_sources,
     pick_best_key,
     rank_candidates,
+    render_splitkey_multi,
     render_splitkey_section,
+    run_split_key_multi,
 )
 
 _CONF_BLOCK = """
@@ -1897,7 +1900,8 @@ def test_mcp_split_key_validation(monkeypatch, tmp_path):
                        str(tmp_path / "hist.jsonl"))
     fns = build_tool_functions()
     assert set(fns) == {"skew_check", "skew_check_file",
-                        "skew_split_key", "skew_split_key_file"}
+                        "skew_split_key", "skew_split_key_file",
+                        "skew_split_key_apply"}
     spk = fns["skew_split_key"]
     assert "不能为空" in spk("")
     assert "ds_type" in spk(_SPLITKEY_CONF, ds_type="oracle")
@@ -2007,3 +2011,178 @@ def test_cli_skew_splitkey_apply_closes_loop(monkeypatch, tmp_path):
                                "--ds", "sqlite", "--apply"])
     assert res3.exit_code == 0
     assert "没有可写回" in res3.output
+
+
+# ---------------------------------------------------------------------------
+# split-key: multi-source configs
+# ---------------------------------------------------------------------------
+
+_CONF_MULTI = """
+env { parallelism = 2 }
+source = [
+  { plugin_name = "Jdbc", table_name = "orders", partition_column = "region" },
+  { plugin_name = "Jdbc", table_name = "users", partition_column = "uid" }
+]
+sink { Console {} }
+"""
+
+
+def _make_two_table_db(tmp_path):
+    """orders (skewed region / uniform id) + users (uniform uid)."""
+    import sqlite3
+
+    db = tmp_path / "multi.db"
+    conn = sqlite3.connect(db)
+    orders = ",".join(
+        f"({i}, '{'CN' if i <= 80 else 'US'}', {i * 10})" for i in range(1, 101))
+    users = ",".join(f"({i}, {i % 7})" for i in range(1, 101))
+    conn.executescript(
+        "CREATE TABLE orders (id INTEGER, region TEXT, amount INTEGER);"
+        f"INSERT INTO orders VALUES {orders};"
+        "CREATE TABLE users (uid INTEGER, grade INTEGER);"
+        f"INSERT INTO users VALUES {users};")
+    conn.commit()
+    conn.close()
+    return db
+
+
+def test_parse_sources_multi_list_form():
+    specs = parse_seatunnel_sources(_CONF_MULTI)
+    assert [s.table for s in specs] == ["orders", "users"]
+    assert [s.partition_column for s in specs] == ["region", "uid"]
+    assert all(s.parallelism == 2 for s in specs)
+    # the compat single-source path still resolves the first one
+    assert parse_seatunnel_source(_CONF_MULTI).table == "orders"
+
+
+def test_parse_sources_skips_unresolvable_entry():
+    conf = """
+    source = [
+      { plugin_name = "Jdbc", query = "select a.x from a join b on a.k=b.k" },
+      { plugin_name = "Jdbc", table_name = "orders" }
+    ]
+    sink {}
+    """
+    specs = parse_seatunnel_sources(conf)
+    assert [s.table for s in specs] == ["orders"]
+    # every entry unresolvable → spk_no_table, as before
+    bad = 'source = [{ plugin_name = "Jdbc", query = "select 1" }]\nsink {}'
+    try:
+        parse_seatunnel_sources(bad)
+        raise AssertionError("expected SplitKeyError")
+    except SplitKeyError as exc:
+        assert exc.key == "spk_no_table"
+
+
+def test_check_split_key_multi_sources(tmp_path):
+    import sqlite3
+
+    db = _make_two_table_db(tmp_path)
+    from seatunnel_agent.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+
+    md = check_split_key(ex, _CONF_MULTI, ds_type="sqlite", lang="zh")
+    # one header, both source bodies, the multi note, one sink note
+    assert md.count("## SeaTunnel 分片键体检") == 1
+    assert "2 个 source" in md
+    assert "`orders`" in md and "`users`" in md
+    assert md.count("写入端同理") == 1
+    # skewed region flagged, uniform uid fine
+    assert "`region`" in md and "`uid`" in md
+
+    en = check_split_key(ex, _CONF_MULTI, ds_type="sqlite", lang="en")
+    assert en.count("## SeaTunnel Split-Key Check") == 1
+    assert "2 sources" in en
+
+
+def test_run_split_key_multi_cap_and_truncated_note(tmp_path):
+    db = _make_two_table_db(tmp_path)
+    from seatunnel_agent.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+
+    results, total = run_split_key_multi(
+        ex, _CONF_MULTI, ds_type="sqlite", max_sources=1)
+    assert total == 2 and len(results) == 1
+    md = render_splitkey_multi(results, "zh", total=total)
+    assert "仅体检前 1 个" in md
+    en = render_splitkey_multi(results, "en", total=total)
+    assert "first 1" in en
+
+
+def test_render_splitkey_multi_single_source_unchanged():
+    spec = SourceSpec(plugin="Jdbc", table="t", partition_column="k")
+    stat = SplitStat("k", total=100, ndv=50, top1_count=3)
+    single = render_splitkey_multi([(spec, stat, [])], "en", total=1)
+    assert single == render_splitkey_section(spec, stat, [], "en")
+
+
+def test_cli_skew_splitkey_apply_refuses_multi(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_two_table_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    conf_file = tmp_path / "multi.conf"
+    conf_file.write_text(_CONF_MULTI, encoding="utf-8")
+
+    runner = CliRunner()
+    # plain check works and reports both sources
+    res = runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite"])
+    assert res.exit_code == 0, res.output
+    assert "orders" in res.output and "users" in res.output
+
+    # --apply refuses: a text edit could hit the wrong source block
+    res2 = runner.invoke(cli, ["skew-splitkey", str(conf_file),
+                               "--ds", "sqlite", "--apply"])
+    assert res2.exit_code != 0
+    assert "仅支持单 source" in res2.output
+    # nothing was written
+    assert conf_file.read_text(encoding="utf-8") == _CONF_MULTI
+    assert not (tmp_path / "multi.conf.bak").exists()
+
+
+def test_mcp_split_key_apply(monkeypatch, tmp_path):
+    from seatunnel_agent.data_skew.mcp_server import build_tool_functions
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_two_table_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    fns = build_tool_functions()
+    apply_fn = fns["skew_split_key_apply"]
+
+    # skewed region → patched config text with the measured key written in
+    out = apply_fn(_SPLITKEY_CONF, ds_type="sqlite")
+    assert out.startswith("# split key:")
+    assert 'partition_column = "id"' in out
+    assert 'table_name = "orders"' in out  # rest of the config intact
+
+    # already-good key → nothing to write back
+    good = out.split("\n", 1)[1]
+    assert "没有可写回" in apply_fn(good, ds_type="sqlite")
+
+    # multi-source config → refused
+    assert "仅支持单 source" in apply_fn(_CONF_MULTI, ds_type="sqlite")
+
+    # validation mirrors skew_split_key
+    assert "不能为空" in apply_fn("")
+    assert "ds_type" in apply_fn(_SPLITKEY_CONF, ds_type="oracle")

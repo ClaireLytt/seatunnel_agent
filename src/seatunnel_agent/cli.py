@@ -1373,8 +1373,8 @@ def skew_splitkey(
         SplitKeyError,
         apply_split_key,
         pick_best_key,
-        render_splitkey_section,
-        run_split_key,
+        render_splitkey_multi,
+        run_split_key_multi,
     )
     from .text2sql.executor.base import (
         DatabaseConfig,
@@ -1402,30 +1402,39 @@ def skew_splitkey(
     pct = effective_sample_pct(ds_type, sample)
     try:
         executor = create_executor(cfg)
-        spec, configured, candidates = run_split_key(
+        results, total = run_split_key_multi(
             executor, conf_text, ds_type=ds_type, sample_pct=pct)
     except SplitKeyError as exc:
         raise click.ClickException(_dsk(lang, exc.key).format(err=exc.arg))
     except Exception as exc:  # noqa: BLE001 — connection/query failures
         raise click.ClickException(f"体检失败: {exc}")
 
-    key_verdict = configured.verdict(spec.tasks) if configured else "none"
     history = default_history()
-    # previous check of the same table BEFORE logging this one — feeds the
-    # re-check comparison line (did the last fix land?)
-    previous = history.last_splitkey(spec.table)
-    history.log_splitkey(
-        spec.table, spec.partition_column, key_verdict,
-        candidates=len(candidates), source="cli")
+    # previous checks of the same tables BEFORE logging this run — feeds
+    # each source's re-check comparison line (did the last fix land?)
+    previous_by_table = {spec.table: prev for spec, _, _ in results
+                         if (prev := history.last_splitkey(spec.table))}
+    verdicts: list[str] = []
+    for spec, configured, candidates in results:
+        key_verdict = configured.verdict(spec.tasks) if configured else "none"
+        verdicts.append(key_verdict)
+        history.log_splitkey(
+            spec.table, spec.partition_column, key_verdict,
+            candidates=len(candidates), source="cli")
 
-    md = render_splitkey_section(spec, configured, candidates, lang,
-                                 sample_pct=pct, previous=previous)
+    md = render_splitkey_multi(results, lang, sample_pct=pct, total=total,
+                               previous_by_table=previous_by_table)
     console.print(md)
     if output:
         Path(output).write_text(md, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
 
     if apply_flag:
+        if total > 1:
+            # a text-level edit could anchor on the wrong source block
+            raise click.ClickException(
+                _dsk(lang, "spk_apply_multi").format(n=total))
+        spec, configured, candidates = results[0]
         best = pick_best_key(spec, configured, candidates)
         if best is None or best.column == spec.partition_column:
             console.print(_dsk(lang, "spk_apply_none"))
@@ -1443,8 +1452,9 @@ def skew_splitkey(
             console.print(_dsk(lang, "spk_apply_done").format(
                 opt=spec.split_option, col=best.column, bak=bak))
 
-    if fail_flag and key_verdict in ("bad", "low_ndv", "null"):
-        console.print(f"\n[red]partition_column 实测判定为 {key_verdict}，检查未通过。[/red]")
+    bad = [v for v in verdicts if v in ("bad", "low_ndv", "null")]
+    if fail_flag and bad:
+        console.print(f"\n[red]partition_column 实测判定为 {'/'.join(bad)}，检查未通过。[/red]")
         sys.exit(1)
 
 

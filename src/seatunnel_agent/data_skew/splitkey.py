@@ -28,6 +28,8 @@ from .probe import (
 
 MAX_CANDIDATES = 5
 MAX_PARALLEL = 4
+# multi-source configs: measure at most this many sources per check
+MAX_SOURCES = 3
 # a split key should hold clearly more distinct values than read tasks,
 # or range/hash splits collapse onto few tasks
 NDV_PER_TASK = 4
@@ -110,41 +112,8 @@ class SplitKeyError(ValueError):
         self.arg = arg
 
 
-def parse_seatunnel_source(conf_text: str) -> SourceSpec:
-    """Resolve the first source plugin's base table + split settings.
-
-    Accepts both source shapes: ``source { Jdbc { … } }`` and the list form
-    ``source = [{ plugin_name = "Jdbc", … }]``.  Understands the JDBC
-    options (``table_path`` / ``table_name`` / ``partition_column``) and the
-    CDC connectors' hyphenated ones (``database-name(s)`` /
-    ``table-name(s)``, list options take the first entry, and the
-    incremental-snapshot split key
-    ``scan.incremental.snapshot.chunk.key-column``).
-    """
-    try:
-        from pyhocon import ConfigFactory
-    except ImportError as exc:  # pragma: no cover — dependency of the app
-        raise SplitKeyError("spk_parse_fail", f"pyhocon not installed: {exc}")
-    try:
-        conf = ConfigFactory.parse_string(conf_text)
-    except Exception as exc:  # noqa: BLE001 — HOCON syntax error
-        raise SplitKeyError("spk_parse_fail", str(exc))
-
-    source = conf.get("source", None)
-    plugin, params = "", None
-    if isinstance(source, list):
-        for item in source:
-            if hasattr(item, "get"):
-                plugin = str(item.get("plugin_name", "") or "Jdbc")
-                params = item
-                break
-    elif source is not None and hasattr(source, "items"):
-        for name, block in source.items():
-            if hasattr(block, "get"):
-                plugin, params = str(name), block
-                break
-    if params is None:
-        raise SplitKeyError("spk_no_source")
+def _spec_from_params(plugin: str, params, parallelism: int) -> SourceSpec | None:
+    """One source entry → SourceSpec, or None when no base table resolves."""
 
     def _get(key: str, default: str = "") -> str:
         v = params.get(key, default)
@@ -174,21 +143,13 @@ def parse_seatunnel_source(conf_text: str) -> SourceSpec:
         if db:
             table = f"{db}.{table}"
     if not table or not _TABLE_RE.match(table):
-        raise SplitKeyError("spk_no_table")
+        return None
 
     def _int(key: str) -> int:
         try:
             return int(str(params.get(key, 0) or 0))
         except (TypeError, ValueError):
             return 0
-
-    env = conf.get("env", None)
-    parallelism = 0
-    if env is not None and hasattr(env, "get"):
-        try:
-            parallelism = int(str(env.get("parallelism", 0) or 0))
-        except (TypeError, ValueError):
-            parallelism = 0
 
     # CDC jobs split the snapshot by chunk key-column, not
     # partition_column — both are "the column parallel reads split on"
@@ -208,6 +169,66 @@ def parse_seatunnel_source(conf_text: str) -> SourceSpec:
         parallelism=parallelism,
         split_option=split_option,
     )
+
+
+def parse_seatunnel_sources(conf_text: str) -> list[SourceSpec]:
+    """Every resolvable source's base table + split settings, config order.
+
+    Accepts both source shapes: ``source { Jdbc { … } }`` and the list form
+    ``source = [{ plugin_name = "Jdbc", … }]``.  Understands the JDBC
+    options (``table_path`` / ``table_name`` / ``partition_column``) and the
+    CDC connectors' hyphenated ones (``database-name(s)`` /
+    ``table-name(s)``, list options take the first entry, and the
+    incremental-snapshot split key
+    ``scan.incremental.snapshot.chunk.key-column``).
+
+    Source entries whose base table cannot be resolved (e.g. a joining
+    query) are skipped; raises ``spk_no_source`` when no source block
+    exists and ``spk_no_table`` when none of them resolves.
+    """
+    try:
+        from pyhocon import ConfigFactory
+    except ImportError as exc:  # pragma: no cover — dependency of the app
+        raise SplitKeyError("spk_parse_fail", f"pyhocon not installed: {exc}")
+    try:
+        conf = ConfigFactory.parse_string(conf_text)
+    except Exception as exc:  # noqa: BLE001 — HOCON syntax error
+        raise SplitKeyError("spk_parse_fail", str(exc))
+
+    source = conf.get("source", None)
+    entries: list[tuple[str, object]] = []
+    if isinstance(source, list):
+        for item in source:
+            if hasattr(item, "get"):
+                entries.append((str(item.get("plugin_name", "") or "Jdbc"), item))
+    elif source is not None and hasattr(source, "items"):
+        for name, block in source.items():
+            if hasattr(block, "get"):
+                entries.append((str(name), block))
+    if not entries:
+        raise SplitKeyError("spk_no_source")
+
+    env = conf.get("env", None)
+    parallelism = 0
+    if env is not None and hasattr(env, "get"):
+        try:
+            parallelism = int(str(env.get("parallelism", 0) or 0))
+        except (TypeError, ValueError):
+            parallelism = 0
+
+    specs = []
+    for plugin, params in entries:
+        spec = _spec_from_params(plugin, params, parallelism)
+        if spec is not None:
+            specs.append(spec)
+    if not specs:
+        raise SplitKeyError("spk_no_table")
+    return specs
+
+
+def parse_seatunnel_source(conf_text: str) -> SourceSpec:
+    """First resolvable source — the single-source compatibility path."""
+    return parse_seatunnel_sources(conf_text)[0]
 
 
 # ---------------------------------------------------------------------------
@@ -365,15 +386,18 @@ def render_splitkey_section(
     lang: str,
     sample_pct: int = 0,
     previous: dict | None = None,
+    heading: bool = True,
 ) -> str:
     """Bilingual '## SeaTunnel 分片键体检（实测）' markdown section.
 
     *previous* is the table's last splitkey history record (or None): it
-    renders as a re-check comparison line so a fixed key shows as fixed."""
+    renders as a re-check comparison line so a fixed key shows as fixed.
+    *heading=False* renders the body only (no section header, no sink
+    note) — the multi-source renderer stitches bodies under one header."""
     lang = normalize_lang(lang)
     zh = lang == "zh"
     tasks = spec.tasks
-    parts = [dsk(lang, "spk_section"), ""]
+    parts = [dsk(lang, "spk_section"), ""] if heading else []
     src_line = (f"source `{spec.plugin}` → 表 `{spec.table}`，并行度 {tasks}"
                 if zh else
                 f"source `{spec.plugin}` → table `{spec.table}`, parallelism {tasks}")
@@ -424,6 +448,44 @@ def render_splitkey_section(
             "}",
             "```", "",
         ]
+    if heading:
+        parts += [dsk(lang, "spk_sink_note"), ""]
+    return "\n".join(parts)
+
+
+def render_splitkey_multi(
+    results: list[tuple[SourceSpec, SplitStat | None, list[SplitStat]]],
+    lang: str,
+    sample_pct: int = 0,
+    total: int = 0,
+    previous_by_table: dict[str, dict] | None = None,
+) -> str:
+    """One report for a (possibly multi-source) check.
+
+    A single-source result renders exactly like before; several sources
+    share one section header, with each source's body separated by a rule
+    and the sink note appearing once at the end. *total* is the number of
+    sources parsed (may exceed ``len(results)`` when the check was capped
+    at MAX_SOURCES); *previous_by_table* maps table → last history record."""
+    lang = normalize_lang(lang)
+    prev = previous_by_table or {}
+    if len(results) == 1 and (total or 1) <= 1:
+        spec, configured, candidates = results[0]
+        return render_splitkey_section(
+            spec, configured, candidates, lang, sample_pct=sample_pct,
+            previous=prev.get(spec.table))
+    note_key = ("spk_multi_truncated" if total > len(results)
+                else "spk_multi_note")
+    parts = [dsk(lang, "spk_section"), "",
+             dsk(lang, note_key).format(n=total or len(results),
+                                        shown=len(results)), ""]
+    bodies = [
+        render_splitkey_section(
+            spec, configured, candidates, lang, sample_pct=sample_pct,
+            previous=prev.get(spec.table), heading=False)
+        for spec, configured, candidates in results
+    ]
+    parts.append("\n---\n\n".join(bodies))
     parts += [dsk(lang, "spk_sink_note"), ""]
     return "\n".join(parts)
 
@@ -504,15 +566,8 @@ def apply_split_key(conf_text: str, spec: SourceSpec, column: str,
     raise SplitKeyError("spk_apply_fail")
 
 
-def run_split_key(
-    executor,
-    conf_text: str,
-    ds_type: str = "",
-    sample_pct: int = 0,
-) -> tuple[SourceSpec, SplitStat | None, list[SplitStat]]:
-    """Parse the config and measure everything; the structured half of
-    :func:`check_split_key`. Raises SplitKeyError on config problems."""
-    spec = parse_seatunnel_source(conf_text)
+def _measure_source(executor, spec: SourceSpec, ds_type: str,
+                    sample_pct: int) -> tuple[SourceSpec, SplitStat | None, list[SplitStat]]:
     configured = None
     if spec.partition_column:
         configured = measure_column(
@@ -525,6 +580,35 @@ def run_split_key(
     return spec, configured, candidates
 
 
+def run_split_key(
+    executor,
+    conf_text: str,
+    ds_type: str = "",
+    sample_pct: int = 0,
+) -> tuple[SourceSpec, SplitStat | None, list[SplitStat]]:
+    """Parse the config and measure its first source; the single-source
+    compatibility path. Raises SplitKeyError on config problems."""
+    spec = parse_seatunnel_source(conf_text)
+    return _measure_source(executor, spec, ds_type, sample_pct)
+
+
+def run_split_key_multi(
+    executor,
+    conf_text: str,
+    ds_type: str = "",
+    sample_pct: int = 0,
+    max_sources: int = MAX_SOURCES,
+) -> tuple[list[tuple[SourceSpec, SplitStat | None, list[SplitStat]]], int]:
+    """Parse the config and measure every source (capped at *max_sources*).
+
+    Returns ``(results, total_sources)``; the structured half of a
+    multi-source check. Raises SplitKeyError on config problems."""
+    specs = parse_seatunnel_sources(conf_text)
+    results = [_measure_source(executor, spec, ds_type, sample_pct)
+               for spec in specs[:max_sources]]
+    return results, len(specs)
+
+
 def check_split_key(
     executor,
     conf_text: str,
@@ -532,7 +616,9 @@ def check_split_key(
     sample_pct: int = 0,
     lang: str = "zh",
 ) -> str:
-    """Parse → measure → render. Raises SplitKeyError on config problems."""
-    spec, configured, candidates = run_split_key(
+    """Parse → measure (every source) → render. Raises SplitKeyError on
+    config problems."""
+    results, total = run_split_key_multi(
         executor, conf_text, ds_type=ds_type, sample_pct=sample_pct)
-    return render_splitkey_section(spec, configured, candidates, lang, sample_pct)
+    return render_splitkey_multi(results, lang, sample_pct=sample_pct,
+                                 total=total)

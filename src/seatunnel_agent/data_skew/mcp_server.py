@@ -23,7 +23,8 @@ _INSTRUCTIONS = (
     "JOIN 键函数、动态分区未打散等倾斜写法，输出严重度分级的中文/英文 Markdown 报告"
     "与引擎参数建议。支持 Spark SQL / MaxCompute SQL / Hive SQL。skew_check 系列为"
     "纯静态规则，不执行 SQL、不调用 LLM；skew_split_key 系列会按 .env 中的数据源"
-    "配置连库执行只读的分布探查（COUNT/GROUP BY），用于 SeaTunnel 分片键体检。"
+    "配置连库执行只读的分布探查（COUNT/GROUP BY），用于 SeaTunnel 分片键体检；"
+    "skew_split_key_apply 额外返回写入推荐分片键后的完整配置文本（不落盘）。"
 )
 
 # Engines whose executor supports the split-key probe queries
@@ -87,8 +88,8 @@ def build_tool_functions(
         from .probe import effective_sample_pct
         from .splitkey import (
             SplitKeyError,
-            render_splitkey_section,
-            run_split_key,
+            render_splitkey_multi,
+            run_split_key_multi,
         )
 
         conf = (conf or "").strip()
@@ -105,20 +106,22 @@ def build_tool_functions(
         pct = effective_sample_pct(ds, int(sample_pct or 0))
         try:
             executor = create_executor(cfg)
-            spec, configured, candidates = run_split_key(
+            results, total = run_split_key_multi(
                 executor, conf, ds_type=ds, sample_pct=pct)
         except SplitKeyError as exc:
             from .i18n import dsk
             return dsk(lg, exc.key).format(err=exc.arg)
         except Exception as exc:  # noqa: BLE001 — surface to the caller
             return f"体检失败 / split-key check failed: {exc}"
-        previous = history.last_splitkey(spec.table)
-        history.log_splitkey(
-            spec.table, spec.partition_column,
-            configured.verdict(spec.tasks) if configured else "none",
-            candidates=len(candidates), source="mcp")
-        return render_splitkey_section(spec, configured, candidates, lg,
-                                       sample_pct=pct, previous=previous)
+        previous_by_table = {spec.table: prev for spec, _, _ in results
+                             if (prev := history.last_splitkey(spec.table))}
+        for spec, configured, candidates in results:
+            history.log_splitkey(
+                spec.table, spec.partition_column,
+                configured.verdict(spec.tasks) if configured else "none",
+                candidates=len(candidates), source="mcp")
+        return render_splitkey_multi(results, lg, sample_pct=pct, total=total,
+                                     previous_by_table=previous_by_table)
 
     def skew_split_key_file(path: str, ds_type: str = "mysql",
                             sample_pct: int = 0, lang: str = "") -> str:
@@ -132,11 +135,64 @@ def build_tool_functions(
         return skew_split_key(text, ds_type=ds_type,
                               sample_pct=sample_pct, lang=lang)
 
+    def skew_split_key_apply(conf: str, ds_type: str = "mysql",
+                             sample_pct: int = 0, lang: str = "") -> str:
+        """在 skew_split_key 实测的基础上，把推荐分片键写入配置并返回修改后的
+        完整配置文本（不落盘，由调用方保存）。仅支持单 source 配置；无需修改时
+        返回说明。参数同 skew_split_key。"""
+        from ..text2sql.executor.base import config_from_env, create_executor
+        from .i18n import dsk
+        from .probe import effective_sample_pct
+        from .splitkey import (
+            SplitKeyError,
+            apply_split_key,
+            pick_best_key,
+            run_split_key_multi,
+        )
+
+        conf = (conf or "").strip()
+        if not conf:
+            return "配置不能为空 / config must not be empty"
+        ds = (ds_type or "mysql").strip().lower()
+        if ds not in _SPLITKEY_DS:
+            return f"ds_type 必须是 {', '.join(_SPLITKEY_DS)} 之一"
+        cfg = config_from_env(ds)
+        if cfg is None:
+            return (f"未在 .env 中找到 {ds} 的连接配置 / "
+                    f"no {ds} connection configured in .env")
+        lg = (lang or default_lang).strip().lower()
+        pct = effective_sample_pct(ds, int(sample_pct or 0))
+        try:
+            executor = create_executor(cfg)
+            results, total = run_split_key_multi(
+                executor, conf, ds_type=ds, sample_pct=pct)
+        except SplitKeyError as exc:
+            return dsk(lg, exc.key).format(err=exc.arg)
+        except Exception as exc:  # noqa: BLE001 — surface to the caller
+            return f"体检失败 / split-key check failed: {exc}"
+        if total > 1:
+            return dsk(lg, "spk_apply_multi").format(n=total)
+        spec, configured, candidates = results[0]
+        best = pick_best_key(spec, configured, candidates)
+        if best is None or best.column == spec.partition_column:
+            return dsk(lg, "spk_apply_none")
+        try:
+            patched = apply_split_key(
+                conf, spec, best.column,
+                partition_num=max(spec.partition_num, spec.tasks))
+        except SplitKeyError as exc:
+            return dsk(lg, exc.key).format(err=exc.arg)
+        # a HOCON comment header keeps the return directly saveable
+        note = (f"# split key: {spec.split_option} -> \"{best.column}\" "
+                f"(was \"{spec.partition_column or '(none)'}\", measured)")
+        return f"{note}\n{patched}"
+
     return {
         "skew_check": skew_check,
         "skew_check_file": skew_check_file,
         "skew_split_key": skew_split_key,
         "skew_split_key_file": skew_split_key_file,
+        "skew_split_key_apply": skew_split_key_apply,
     }
 
 

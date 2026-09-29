@@ -173,6 +173,19 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "ℹ️ Nothing to write back: no usable (good/suspect) key was "
             "measured, or the configured key is already the best choice."
         ),
+        "spk_apply_multi": (
+            "❌ The config has {n} sources — write-back only supports "
+            "single-source configs (a text edit could hit the wrong source). "
+            "Edit each source per the report instead."
+        ),
+        "spk_apply_dl": "⬇️ Download patched config",
+        "spk_multi_note": (
+            "The config declares {n} sources — each is checked below."
+        ),
+        "spk_multi_truncated": (
+            "The config declares {n} sources — the first {shown} are "
+            "checked below (per-check cap)."
+        ),
         "dsk_conn_handoff": (
             "🔗 Connection handed over from Data Comparison side B "
             "({ds} {host}:{port}/{db}) — enter the password and click Connect."
@@ -389,6 +402,15 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "spk_apply_none": (
             "ℹ️ 没有可写回的推荐分片键：未实测到 good/suspect 的键，"
             "或现配置已是最优。"
+        ),
+        "spk_apply_multi": (
+            "❌ 配置包含 {n} 个 source——写回仅支持单 source 配置"
+            "（文本级修改可能改错位置），请按报告逐个手动修改。"
+        ),
+        "spk_apply_dl": "⬇️ 下载修改后配置",
+        "spk_multi_note": "配置声明了 {n} 个 source，以下逐一体检。",
+        "spk_multi_truncated": (
+            "配置声明了 {n} 个 source，本次仅体检前 {shown} 个（单次上限）。"
         ),
         "dsk_conn_handoff": (
             "🔗 已带入数据比对页 B 侧连接（{ds} {host}:{port}/{db}）——"

@@ -235,7 +235,7 @@ def build_tool_functions(
 
     # data-skew tools (already factored for MCP) — history source stays 'mcp'
     from .data_skew.mcp_server import build_tool_functions as _skew_tools
-    tools.update(_skew_tools(default_lang=default_lang))
+    tools.update(_skew_tools(default_lang=default_lang, include_db=include_db))
 
     if not include_db:
         return {name: _audited(name, fn) for name, fn in tools.items()}

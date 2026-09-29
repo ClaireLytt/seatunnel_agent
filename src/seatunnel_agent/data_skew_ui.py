@@ -32,8 +32,10 @@ from .data_skew.probe import (
 )
 from .data_skew.splitkey import (
     SplitKeyError,
-    render_splitkey_section,
-    run_split_key,
+    apply_split_key,
+    pick_best_key,
+    render_splitkey_multi,
+    run_split_key_multi,
 )
 from .text2sql.executor.base import (
     DIALECT_NAMES,
@@ -200,6 +202,10 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                     spk_upload_btn = gr.UploadButton(
                         t0("dsk_upload_btn"), size="sm", scale=0, min_width=140,
                         file_types=[".conf", ".hocon", ".config", ".json", ".txt"])
+                # appears after a check that measured a better split key:
+                # the pasted config with the key already written in
+                spk_apply_dl_btn = gr.DownloadButton(
+                    t0("spk_apply_dl"), visible=False, size="sm")
             with gr.Accordion(t0("dsk_history_accordion"),
                               open=False) as hist_acc:
                 with gr.Row():
@@ -340,33 +346,59 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         return (_append_section(report_cur, section, _CST_HEAD_RE),
                 _restored_status(lang, conn))
 
+    def _patched_conf_update(conf_text: str, results, total: int):
+        """DownloadButton update: the pasted config with the measured best
+        key written in — only for single-source configs where the best key
+        differs from the configured one (mirrors the CLI --apply guard)."""
+        hide = gr.update(visible=False)
+        if total != 1:
+            return hide
+        spec, configured, candidates = results[0]
+        best = pick_best_key(spec, configured, candidates)
+        if best is None or best.column == spec.partition_column:
+            return hide
+        try:
+            patched = apply_split_key(
+                conf_text, spec, best.column,
+                partition_num=max(spec.partition_num, spec.tasks))
+        except SplitKeyError:
+            return hide
+        return gr.update(visible=True,
+                         value=_tmp_file("seatunnel_patched.conf", patched))
+
     def do_splitkey(conf_text: str, report_cur: str, sample: int,
                     lang: str, conn: dict | None):
+        hide = gr.update(visible=False)
         if not conn or conn.get("executor") is None:
-            return gr.update(), dsk(lang, "spk_need_conn")
+            return gr.update(), dsk(lang, "spk_need_conn"), hide
         conf_text = (conf_text or "").strip()
         if not conf_text:
-            return gr.update(), dsk(lang, "spk_empty_conf")
+            return gr.update(), dsk(lang, "spk_empty_conf"), hide
         pct = effective_sample_pct(conn["ds_type"], int(sample or 0))
         try:
-            spec, configured, candidates = run_split_key(
+            results, total = run_split_key_multi(
                 conn["executor"], conf_text,
                 ds_type=conn["ds_type"], sample_pct=pct)
-            # last check of the same table (fetched before logging this
-            # one) renders as the re-check comparison line
-            section = render_splitkey_section(
-                spec, configured, candidates, lang, sample_pct=pct,
-                previous=history.last_splitkey(spec.table))
+            # last checks of the same tables (fetched before logging this
+            # run) render as the re-check comparison lines
+            previous_by_table = {
+                spec.table: prev for spec, _, _ in results
+                if (prev := history.last_splitkey(spec.table))}
+            section = render_splitkey_multi(
+                results, lang, sample_pct=pct, total=total,
+                previous_by_table=previous_by_table)
         except SplitKeyError as exc:
-            return gr.update(), dsk(lang, exc.key).format(err=exc.arg)
+            return gr.update(), dsk(lang, exc.key).format(err=exc.arg), hide
         except Exception as exc:  # noqa: BLE001 — surface in the UI
-            return gr.update(), _err_md(exc, lang)
-        history.log_splitkey(
-            spec.table, spec.partition_column,
-            configured.verdict(spec.tasks) if configured else "none",
-            candidates=len(candidates), source="ui")
+            return gr.update(), _err_md(exc, lang), hide
+        for spec, configured, candidates in results:
+            history.log_splitkey(
+                spec.table, spec.partition_column,
+                configured.verdict(spec.tasks) if configured else "none",
+                candidates=len(candidates), source="ui")
         return (_append_section(report_cur, section, _SPK_HEAD_RE),
-                _restored_status(lang, conn))
+                _restored_status(lang, conn),
+                _patched_conf_update(conf_text, results, total))
 
     def _probe_for_llm(sql: str, lang: str, dialect: str, sample: int,
                        conn: dict | None) -> tuple[str, str]:
@@ -622,7 +654,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
     ).then(
         do_splitkey,
         inputs=[spk_conf_tb, report_md, sample_dd, lang_state, conn_state],
-        outputs=[report_md, conn_status],
+        outputs=[report_md, conn_status, spk_apply_dl_btn],
     )
 
     def do_conf_upload(path):
@@ -684,6 +716,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             gr.update(placeholder=t("spk_conf_placeholder")),      # spk_conf_tb
             gr.update(value=t("spk_btn")),                         # spk_btn
             gr.update(label=t("dsk_upload_btn")),                  # spk_upload_btn
+            gr.update(label=t("spk_apply_dl")),                    # spk_apply_dl_btn
             gr.update(label=t("dsk_history_accordion")),           # hist_acc
             gr.update(label=t("dsk_history_pick")),                # hist_dd
             gr.update(value=t("dsk_history_refresh")),             # hist_refresh_btn
@@ -710,6 +743,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             ds_dd, sample_dd, host_tb, port_tb, db_tb, user_tb, pwd_tb,
             connect_btn, verify_btn, cst_btn, conn_status,
             upload_btn, spk_acc, spk_conf_tb, spk_btn, spk_upload_btn,
+            spk_apply_dl_btn,
             hist_acc, hist_dd, hist_refresh_btn, hist_load_btn,
             hist_md,
         ],
