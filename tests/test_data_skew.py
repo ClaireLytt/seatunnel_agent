@@ -1451,3 +1451,190 @@ def test_cli_skew_stats(tmp_path, monkeypatch):
     assert res.exit_code == 0, res.output
     assert "共 2 次" in res.output
     assert "cli×2" in res.output.replace(" ", "")
+
+
+# ---------------------------------------------------------------------------
+# probe: storage/modeling-layer advice
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.probe import render_storage_advice  # noqa: E402
+
+
+def _hot_result(table="orders", col="region", total=100, hot=80, nulls=0):
+    r = ProbeResult(target=ProbeTarget(table, col, "group_key"),
+                    total=total, null_count=nulls)
+    if hot:
+        r.top = [("CN", hot), ("US", total - hot - nulls)]
+    return r
+
+
+def test_storage_advice_hot_key():
+    md = render_storage_advice([_hot_result()], "en")
+    assert "orders.region" in md
+    assert "partition_column" in md
+    assert "80.0%" in md
+    zh = render_storage_advice([_hot_result()], "zh")
+    assert "orders.region" in zh
+    assert "80.0%" in zh
+
+
+def test_storage_advice_null_heavy():
+    r = ProbeResult(target=ProbeTarget("t", "k", "join_key"),
+                    total=100, null_count=30)
+    r.top = [("NULL", 30), ("a", 10)]
+    # NULL confirmed but top1 (NULL bucket) also >= 20% → hot branch wins;
+    # use a mildly-hot top1 with heavy NULLs instead
+    r2 = ProbeResult(target=ProbeTarget("t", "k", "join_key"),
+                     total=1000, null_count=150)
+    r2.top = [("a", 100), ("b", 90)]
+    md = render_storage_advice([r2], "en")
+    assert "NULL ratio 15.0%" in md
+    zh = render_storage_advice([r2], "zh")
+    assert "15.0%" in zh
+
+
+def test_storage_advice_balanced_columns_silent():
+    r = ProbeResult(target=ProbeTarget("t", "id", "join_key"),
+                    total=1000, null_count=0)
+    r.top = [("1", 10), ("2", 9)]
+    assert render_storage_advice([r], "en") == ""
+
+
+def test_storage_advice_in_probe_section():
+    md = render_probe_section([_hot_result()], "zh", dialect="spark")
+    assert "存储/建模层建议" in md
+
+
+# ---------------------------------------------------------------------------
+# SeaTunnel split-key check
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
+    SourceSpec,
+    SplitKeyError,
+    SplitStat,
+    check_split_key,
+    parse_seatunnel_source,
+    rank_candidates,
+    render_splitkey_section,
+)
+
+_CONF_BLOCK = """
+env { parallelism = 4 }
+source {
+  Jdbc {
+    url = "jdbc:mysql://h:3306/shop"
+    table_name = "orders"
+    partition_column = "region"
+    partition_num = 8
+  }
+}
+sink { Console {} }
+"""
+
+_CONF_LIST = """
+source = [
+  { plugin_name = "Jdbc", query = "select * from shop.orders where dt='x'" }
+]
+sink { Console {} }
+"""
+
+
+def test_parse_source_block_form():
+    spec = parse_seatunnel_source(_CONF_BLOCK)
+    assert spec.plugin == "Jdbc"
+    assert spec.table == "orders"
+    assert spec.partition_column == "region"
+    assert spec.partition_num == 8
+    assert spec.parallelism == 4
+    assert spec.tasks == 8
+
+
+def test_parse_source_list_form_table_from_query():
+    spec = parse_seatunnel_source(_CONF_LIST)
+    assert spec.plugin == "Jdbc"
+    assert spec.table == "shop.orders"
+    assert spec.partition_column == ""
+    assert spec.tasks == 2  # nothing configured → floor of 2
+
+
+def test_parse_source_errors():
+    import pytest
+
+    with pytest.raises(SplitKeyError) as e1:
+        parse_seatunnel_source("source { Jdbc {{{")
+    assert e1.value.key == "spk_parse_fail"
+    with pytest.raises(SplitKeyError) as e2:
+        parse_seatunnel_source("sink { Console {} }")
+    assert e2.value.key == "spk_no_source"
+    with pytest.raises(SplitKeyError) as e3:
+        parse_seatunnel_source(
+            'source { Jdbc { query = "select a.x from a join b" } } sink {}')
+    assert e3.value.key == "spk_no_table"
+
+
+def test_splitstat_verdicts():
+    tasks = 4
+    good = SplitStat("id", total=10000, ndv=10000, top1_count=1)
+    assert good.verdict(tasks) == "good"
+    bad = SplitStat("region", total=100, ndv=100, top1_count=80)
+    assert bad.verdict(tasks) == "bad"
+    low = SplitStat("region", total=100, ndv=5, top1_count=3)
+    assert low.verdict(tasks) == "low_ndv"
+    nul = SplitStat("k", total=100, ndv=100, null_count=30)
+    assert nul.verdict(tasks) == "null"
+    err = SplitStat("k", error="boom")
+    assert err.verdict(tasks) == "error"
+    assert SplitStat("k").verdict(tasks) == "empty"
+
+
+def test_rank_candidates_orders_good_first():
+    tasks = 2
+    bad = SplitStat("region", total=100, ndv=100, top1_count=80)
+    good = SplitStat("id", total=100, ndv=100, top1_count=2)
+    mild = SplitStat("uid", total=100, ndv=100, top1_count=10)
+    ranked = rank_candidates([bad, mild, good], tasks)
+    assert [s.column for s in ranked] == ["id", "uid", "region"]
+
+
+def test_check_split_key_end_to_end(tmp_path):
+    # region skewed (80% 'CN'), id uniform → verdicts + snippet promote id
+    rows = ",".join(
+        f"({i}, '{'CN' if i <= 80 else 'US'}', {i * 10})"
+        for i in range(1, 101))
+    ex = _sqlite_executor(
+        tmp_path,
+        "CREATE TABLE orders (id INTEGER, region TEXT, amount INTEGER);"
+        f"INSERT INTO orders VALUES {rows};")
+    conf = """
+    env { parallelism = 2 }
+    source { Jdbc { table_name = "orders", partition_column = "region" } }
+    sink { Console {} }
+    """
+    md = check_split_key(ex, conf, ds_type="sqlite", lang="zh")
+    assert "## SeaTunnel 分片键体检" in md
+    assert "`region`" in md
+    # configured key is low-cardinality → flagged, id promoted in the snippet
+    assert "partition_column = \"id\"" in md
+    assert "```hocon" in md
+    en = check_split_key(ex, conf, ds_type="sqlite", lang="en")
+    assert "## SeaTunnel Split-Key Check" in en
+
+
+def test_check_split_key_no_partition_column(tmp_path):
+    ex = _sqlite_executor(
+        tmp_path,
+        "CREATE TABLE t (id INTEGER, v TEXT);"
+        "INSERT INTO t VALUES (1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e'),"
+        "(6,'f'),(7,'g'),(8,'h'),(9,'i'),(10,'j');")
+    conf = 'source { Jdbc { table_name = "t" } } sink {}'
+    md = check_split_key(ex, conf, ds_type="sqlite", lang="zh")
+    assert "未配置 `partition_column`" in md
+
+
+def test_render_splitkey_section_error_row():
+    spec = SourceSpec(plugin="Jdbc", table="t", partition_column="k")
+    stat = SplitStat("k", error="table not found | details")
+    md = render_splitkey_section(spec, stat, [], "en")
+    assert "table not found" in md
+    assert "\|" in md  # pipe escaped for the markdown table

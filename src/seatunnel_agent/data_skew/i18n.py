@@ -103,6 +103,50 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_sampled_note": "(estimated from a {pct}% table sample)",
         "prb_engine_params": "**Suggested engine settings (based on measured skew)**",
         "prb_rewrite_head": "**Rewrite templates (from measured values — fill in the column lists)**",
+        "prb_storage_head": "**Storage / modeling-layer advice (based on measured skew)**",
+        # --- SeaTunnel split-key check ---
+        "spk_accordion": "SeaTunnel split-key check (paste a job config)",
+        "spk_conf_placeholder": (
+            "Paste the SeaTunnel job config (HOCON) — the JDBC source's "
+            "partition_column will be measured against the connected database…"
+        ),
+        "spk_btn": "Check split key",
+        "spk_need_conn": "⚠️ Connect a data source first (the split key is measured on real data).",
+        "spk_empty_conf": "❌ Paste a SeaTunnel job config first.",
+        "spk_parse_fail": "❌ Could not parse the config: {err}",
+        "spk_no_source": "❌ No source block with a table/query was found in the config.",
+        "spk_no_table": (
+            "❌ Could not resolve a base table from the source block "
+            "(complex query — set table_path or simplify the query)."
+        ),
+        "spk_section": "## SeaTunnel Split-Key Check (measured)",
+        "spk_configured": "Configured `partition_column`",
+        "spk_none_configured": (
+            "No `partition_column` configured — the source reads single-threaded; "
+            "pick a uniform column below to enable parallel reads."
+        ),
+        "spk_col_column": "Column",
+        "spk_col_rows": "Rows",
+        "spk_col_ndv": "NDV",
+        "spk_col_null": "NULL ratio",
+        "spk_col_top1": "Top-1 share",
+        "spk_col_verdict": "Verdict",
+        "spk_verdict_good": "✅ uniform — good split key",
+        "spk_verdict_suspect": "⚠️ mildly skewed — usable, watch task balance",
+        "spk_verdict_bad": "⛔ skewed — one task will read most of the data",
+        "spk_verdict_low_ndv": "⛔ NDV too low for the configured parallelism",
+        "spk_verdict_null": "⛔ NULL-heavy — NULL rows funnel into one split",
+        "spk_verdict_error": "probe failed",
+        "spk_candidates": "**Candidate split columns (measured, best first)**",
+        "spk_no_candidates": (
+            "No numeric/date candidate columns could be measured on this table."
+        ),
+        "spk_snippet_head": "**Suggested source config**",
+        "spk_sampled_note": "(estimated from a {pct}% table sample)",
+        "spk_sink_note": (
+            "The same column choice applies to the sink side: a skewed "
+            "Doris/ClickHouse bucket key materializes this skew into storage."
+        ),
         # --- consistency measurement ---
         "cst_btn": "Measure Consistency (runs both SQLs)",
         "cst_running": "Running the original and the optimized SQL for comparison…",
@@ -252,6 +296,45 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_sampled_note": "（按 {pct}% 表采样估算）",
         "prb_engine_params": "**建议引擎参数（基于实测倾斜）**",
         "prb_rewrite_head": "**改写模板（按实测值生成——列清单需自行补全）**",
+        "prb_storage_head": "**存储/建模层建议（基于实测倾斜）**",
+        # --- SeaTunnel split-key check ---
+        "spk_accordion": "SeaTunnel 分片键体检（粘贴作业配置）",
+        "spk_conf_placeholder": (
+            "粘贴 SeaTunnel 作业配置（HOCON）——将连库实测 JDBC source 的 "
+            "partition_column 分布是否均匀…"
+        ),
+        "spk_btn": "体检分片键",
+        "spk_need_conn": "⚠️ 请先连接数据源（分片键需在真实数据上实测）。",
+        "spk_empty_conf": "❌ 请先粘贴 SeaTunnel 作业配置。",
+        "spk_parse_fail": "❌ 配置解析失败：{err}",
+        "spk_no_source": "❌ 配置中未找到带 table/query 的 source 块。",
+        "spk_no_table": "❌ 无法从 source 块解析出基表（查询较复杂——请配置 table_path 或简化 query）。",
+        "spk_section": "## SeaTunnel 分片键体检（实测）",
+        "spk_configured": "已配置的 `partition_column`",
+        "spk_none_configured": (
+            "未配置 `partition_column`——source 将单线程读取；"
+            "可从下方候选列中选择均匀键开启并行读。"
+        ),
+        "spk_col_column": "列",
+        "spk_col_rows": "总行数",
+        "spk_col_ndv": "NDV（基数）",
+        "spk_col_null": "NULL 占比",
+        "spk_col_top1": "Top-1 占比",
+        "spk_col_verdict": "判定",
+        "spk_verdict_good": "✅ 分布均匀——适合作分片键",
+        "spk_verdict_suspect": "⚠️ 轻度倾斜——可用，注意 task 均衡",
+        "spk_verdict_bad": "⛔ 倾斜——单个 task 将读取大部分数据",
+        "spk_verdict_low_ndv": "⛔ 基数过低，撑不起配置的并行度",
+        "spk_verdict_null": "⛔ NULL 过多——NULL 行会集中到同一分片",
+        "spk_verdict_error": "探查失败",
+        "spk_candidates": "**候选分片列（实测，优先级从高到低）**",
+        "spk_no_candidates": "该表未能实测到数值/日期类候选列。",
+        "spk_snippet_head": "**建议的 source 配置**",
+        "spk_sampled_note": "（按 {pct}% 表采样估算）",
+        "spk_sink_note": (
+            "写入端同理：Doris/ClickHouse 的分桶键若用该倾斜列，"
+            "倾斜会物化到目标端存储。"
+        ),
         # --- consistency measurement ---
         "cst_btn": "一致性实测（运行两版 SQL）",
         "cst_running": "正在运行原 SQL 与优化后 SQL 进行对比…",

@@ -30,6 +30,7 @@ from .data_skew.probe import (
     render_probe_section,
     run_probes,
 )
+from .data_skew.splitkey import SplitKeyError, check_split_key
 from .text2sql.executor.base import (
     DIALECT_NAMES,
     DS_DEFAULTS,
@@ -79,6 +80,7 @@ def _head_re(*heads: str) -> re.Pattern[str]:
 
 _PROBE_HEAD_RE = _head_re(dsk("zh", "prb_section"), dsk("en", "prb_section"))
 _CST_HEAD_RE = _head_re(dsk("zh", "cst_section"), dsk("en", "cst_section"))
+_SPK_HEAD_RE = _head_re(dsk("zh", "spk_section"), dsk("en", "spk_section"))
 _NEXT_H2_RE = re.compile(r"(?m)^[ \t]{0,3}#{1,2}\s")
 
 
@@ -155,6 +157,18 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                     cst_btn = gr.Button(t0("cst_btn"), size="sm",
                                         variant="secondary")
                 conn_status = gr.Markdown(t0("dsk_conn_status_none"))
+            with gr.Accordion(t0("spk_accordion"), open=False) as spk_acc:
+                spk_conf_tb = gr.Textbox(
+                    label="SeaTunnel config", lines=8, max_lines=8,
+                    placeholder=t0("spk_conf_placeholder"),
+                    show_label=False,
+                )
+                with gr.Row():
+                    spk_btn = gr.Button(t0("spk_btn"), size="sm",
+                                        variant="secondary")
+                    spk_upload_btn = gr.UploadButton(
+                        t0("dsk_upload_btn"), size="sm", scale=0, min_width=140,
+                        file_types=[".conf", ".hocon", ".config", ".json", ".txt"])
             with gr.Accordion(t0("dsk_history_accordion"),
                               open=False) as hist_acc:
                 with gr.Row():
@@ -293,6 +307,25 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         except Exception as exc:  # noqa: BLE001 — surface in the UI
             return gr.update(), _err_md(exc, lang)
         return (_append_section(report_cur, section, _CST_HEAD_RE),
+                _restored_status(lang, conn))
+
+    def do_splitkey(conf_text: str, report_cur: str, sample: int,
+                    lang: str, conn: dict | None):
+        if not conn or conn.get("executor") is None:
+            return gr.update(), dsk(lang, "spk_need_conn")
+        conf_text = (conf_text or "").strip()
+        if not conf_text:
+            return gr.update(), dsk(lang, "spk_empty_conf")
+        pct = effective_sample_pct(conn["ds_type"], int(sample or 0))
+        try:
+            section = check_split_key(
+                conn["executor"], conf_text,
+                ds_type=conn["ds_type"], sample_pct=pct, lang=lang)
+        except SplitKeyError as exc:
+            return gr.update(), dsk(lang, exc.key).format(err=exc.arg)
+        except Exception as exc:  # noqa: BLE001 — surface in the UI
+            return gr.update(), _err_md(exc, lang)
+        return (_append_section(report_cur, section, _SPK_HEAD_RE),
                 _restored_status(lang, conn))
 
     def _probe_for_llm(sql: str, lang: str, dialect: str, sample: int,
@@ -542,6 +575,30 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         outputs=[report_md, conn_status],
     )
 
+    spk_btn.click(
+        lambda lang: gr.update(value=f"⏳ {dsk(lang, 'dsk_verify_running')}"),
+        inputs=[lang_state],
+        outputs=[conn_status],
+    ).then(
+        do_splitkey,
+        inputs=[spk_conf_tb, report_md, sample_dd, lang_state, conn_state],
+        outputs=[report_md, conn_status],
+    )
+
+    def do_conf_upload(path):
+        if isinstance(path, (list, tuple)):
+            path = path[0] if path else None
+        if not path:
+            return gr.update()
+        try:
+            text = Path(str(path)).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return gr.update()
+        return gr.update(value=text[:200_000])
+
+    spk_upload_btn.upload(do_conf_upload, inputs=[spk_upload_btn],
+                          outputs=[spk_conf_tb])
+
     # Language switch — the returned tuple must stay positionally aligned
     # with the outputs list below.
     def _placeholder_update(current: str, key: str, lg: str):
@@ -583,6 +640,10 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             _placeholder_update(conn_cur, "dsk_conn_status_none", lg),  # conn_status
             # UploadButton: value is the uploaded FILE — the text is `label`
             gr.update(label=t("dsk_upload_btn")),                  # upload_btn
+            gr.update(label=t("spk_accordion")),                   # spk_acc
+            gr.update(placeholder=t("spk_conf_placeholder")),      # spk_conf_tb
+            gr.update(value=t("spk_btn")),                         # spk_btn
+            gr.update(label=t("dsk_upload_btn")),                  # spk_upload_btn
             gr.update(label=t("dsk_history_accordion")),           # hist_acc
             gr.update(label=t("dsk_history_pick")),                # hist_dd
             gr.update(value=t("dsk_history_refresh")),             # hist_refresh_btn
@@ -608,7 +669,8 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             conn_acc, preset_dd, preset_load_btn,
             ds_dd, sample_dd, host_tb, port_tb, db_tb, user_tb, pwd_tb,
             connect_btn, verify_btn, cst_btn, conn_status,
-            upload_btn, hist_acc, hist_dd, hist_refresh_btn, hist_load_btn,
+            upload_btn, spk_acc, spk_conf_tb, spk_btn, spk_upload_btn,
+            hist_acc, hist_dd, hist_refresh_btn, hist_load_btn,
             hist_md,
         ],
     )

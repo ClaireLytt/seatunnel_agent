@@ -74,6 +74,7 @@ from .data_comparison.comparator import (
     compare_profiles,
     compare_schemas,
     compare_skew,
+    skew_side_verdict,
     detect_sensitive_columns,
     diff_by_key,
     find_common_tables,
@@ -187,6 +188,16 @@ def _build_webhook_summary(report: CompareReport) -> dict:
             for it in report.aggregate.items[:_SUMMARY_MAX_ITEMS]
             if not it.match
         ][:_SUMMARY_MAX_ITEMS]
+    if report.skew is not None and report.skew.items:
+        verdict, v_cols = skew_side_verdict(report.skew)
+        summary["skew"] = {
+            "verdict": verdict,
+            "columns": v_cols[:_SUMMARY_MAX_ITEMS],
+            "top1_max": max(max(it.top1_pct_a, it.top1_pct_b)
+                            for it in report.skew.items),
+            "gini_max": max(max(it.gini_a, it.gini_b)
+                            for it in report.skew.items),
+        }
     return summary
 
 
@@ -768,6 +779,21 @@ def build_skew_card(result: SkewResult, lang: str = "en") -> str:
     th = _TH
     td = _TD
 
+    # Side-vs-side qualification: sync-pipeline symptom vs business fact
+    verdict, v_cols = skew_side_verdict(result)
+    verdict_html = ""
+    if verdict != "ok":
+        style = ("color:#dc2626;background:#fef2f2;" if verdict == "mismatch"
+                 else "color:#b45309;background:#fffbeb;")
+        key = ("dc_skew_verdict_mismatch" if verdict == "mismatch"
+               else "dc_skew_verdict_both")
+        cols = ", ".join(f"<b>{esc(c)}</b>" for c in v_cols[:5])
+        verdict_html = (
+            f'<div style="{style}border-radius:6px;padding:6px 10px;'
+            f'margin-top:8px;font-size:12px;">'
+            + t(key).format(cols=cols) + "</div>"
+        )
+
     items_html = ""
     for item in result.items:
         warn_a = ' style="color:#dc2626;font-weight:600;"' if item.gini_a > GINI_SKEW_THRESHOLD else ""
@@ -796,6 +822,7 @@ def build_skew_card(result: SkewResult, lang: str = "en") -> str:
         'background:#f8fafc;margin-bottom:8px;">'
         f'<summary style="font-weight:600;font-size:13px;color:#0d9488;cursor:pointer;">'
         f'{t("dc_skew_result")} — {result.total_a:,} / {result.total_b:,} rows</summary>'
+        f'{verdict_html}'
         f'<table style="width:100%;border-collapse:collapse;margin-top:8px;">'
         f'<tr><th {th}>{t("dc_skew_column")}</th>'
         f'<th {th}>{t("dc_skew_gini")} A</th><th {th}>{t("dc_skew_gini")} B</th>'
@@ -2619,7 +2646,11 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             return dc(lang_val, "dc_trend_no_data"), gr.update(visible=False)
         try:
             plt = _get_matplotlib()
-            fig, axes = plt.subplots(3, 1, figsize=(8, 9), sharex=True)
+            # A 4th subplot for skew drift, only when any report measured skew
+            has_skew = any(e.get("skew_top1") is not None for e in entries)
+            n_plots = 4 if has_skew else 3
+            fig, axes = plt.subplots(n_plots, 1,
+                                     figsize=(8, 3 * n_plots), sharex=True)
             timestamps = [e["timestamp"] for e in entries]
             x = range(len(timestamps))
 
@@ -2642,9 +2673,25 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             schema_changes = [e.get("schema_changes", 0) for e in entries]
             axes[2].bar(x, schema_changes, color="#ef4444", alpha=0.8)
             axes[2].set_ylabel(dc(lang_val, "dc_trend_schema"))
-            axes[2].set_xticks(list(x))
-            axes[2].set_xticklabels(timestamps, rotation=45, ha="right", fontsize=8)
             axes[2].grid(True, alpha=0.3)
+
+            # Subplot 4: Skew Top-1 % (distribution drift; gaps where the
+            # report carried no skew analysis)
+            if has_skew:
+                top1s = [e.get("skew_top1") for e in entries]
+                axes[3].plot(x, [v if v is not None else float("nan")
+                                 for v in top1s],
+                             marker="o", color="#8b5cf6",
+                             linewidth=2, markersize=5)
+                axes[3].set_ylabel(dc(lang_val, "dc_trend_skew"))
+                axes[3].set_ylim(0, 100)
+                axes[3].axhline(y=50, color="#dc2626", linestyle="--",
+                                linewidth=0.8)
+                axes[3].grid(True, alpha=0.3)
+
+            last = axes[n_plots - 1]
+            last.set_xticks(list(x))
+            last.set_xticklabels(timestamps, rotation=45, ha="right", fontsize=8)
 
             fig.set_facecolor("#fafafa")
             fig.tight_layout()

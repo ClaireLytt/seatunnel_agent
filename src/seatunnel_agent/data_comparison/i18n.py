@@ -157,7 +157,7 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_trend_no_data": "No historical data for trends",
         "dc_history_count": "{n} comparison records",
         "dc_alert_rules": "Alert Rules",
-        "dc_alert_rules_hint": "metric>threshold:consecutive (e.g. delta>100:3)",
+        "dc_alert_rules_hint": "metric>threshold:consecutive (e.g. delta>100:3, skew_top1>50:2, skew_top1_jump>10:1)",
         "dc_alert_result": "Alert Results",
         "dc_alert_triggered": "TRIGGERED",
         "dc_alert_ok": "OK",
@@ -218,6 +218,16 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_skew_top1": "Top-1 %",
         "dc_skew_ndv": "NDV",
         "dc_skew_no_columns": "Please specify columns to analyze",
+        "dc_skew_verdict_mismatch": (
+            "⛔ A/B distributions disagree on: {cols} — if B is synced from A "
+            "this points at the sync pipeline (split/filter logic): fix the "
+            "data first, don't tune the compute."
+        ),
+        "dc_skew_verdict_both": (
+            "⚠️ Both sides skew the same way on: {cols} — a business fact "
+            "(hot key). Protect downstream GROUP BY/JOIN on this key: see the "
+            "Data Skew page for rewrites and engine settings."
+        ),
         # CC — checksum comparison
         "dc_checksum": "Checksum",
         "dc_checksum_result": "Checksum Comparison",
@@ -260,6 +270,7 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_batch_tpl_agg": "Agg Mismatches",
         "dc_trend_mismatches": "Aggregate Mismatches",
         "dc_trend_schema": "Schema Changes",
+        "dc_trend_skew": "Skew Top-1 % (worst column)",
         "dc_preset_env": "Environment",
         # Phase 5 — new features
         "dc_report_diff": "Report Diff",
@@ -428,7 +439,7 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_trend_chart": "对比趋势",
         "dc_trend_no_data": "无历史数据可用于趋势分析",
         "dc_alert_rules": "告警规则",
-        "dc_alert_rules_hint": "指标>阈值:连续次数（如 delta>100:3）",
+        "dc_alert_rules_hint": "指标>阈值:连续次数（如 delta>100:3、skew_top1>50:2、skew_top1_jump>10:1）",
         "dc_alert_result": "告警结果",
         "dc_alert_triggered": "已触发",
         "dc_alert_ok": "正常",
@@ -490,6 +501,14 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_skew_top1": "Top-1 占比",
         "dc_skew_ndv": "去重值数",
         "dc_skew_no_columns": "请指定要分析的列",
+        "dc_skew_verdict_mismatch": (
+            "⛔ 两侧分布不一致：{cols}——若 B 应同步自 A，先排查同步链路"
+            "（分片/过滤逻辑），修数据而不是调计算。"
+        ),
+        "dc_skew_verdict_both": (
+            "⚠️ 两侧一致倾斜：{cols}——业务事实（热 key）。下游按该键 "
+            "GROUP BY/JOIN 时建议到「数据倾斜」页做改写与引擎参数防护。"
+        ),
         # CC — checksum comparison
         "dc_checksum": "校验和",
         "dc_checksum_result": "校验和比对",
@@ -532,6 +551,7 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_batch_tpl_agg": "聚合不一致",
         "dc_trend_mismatches": "聚合不一致数",
         "dc_trend_schema": "结构变更数",
+        "dc_trend_skew": "倾斜 Top-1 占比（最差列）",
         "dc_preset_env": "环境",
         # Phase 5 — new features
         "dc_report_diff": "报告对比",
