@@ -570,11 +570,17 @@ def _time_filter(
     return None
 
 
+# Spans the qualifier must never rewrite: string literals AND backtick-quoted
+# identifiers (`t.col` inside backticks would be an invalid identifier).
+_PROTECTED_SPAN_RE = re.compile(r"'(?:[^'\\]|\\.)*'|`[^`]*`")
+
+
 def _map_outside_literals(text: str, fn) -> str:
-    """Apply ``fn`` to the segments of ``text`` outside string literals."""
+    """Apply ``fn`` to the segments of ``text`` outside protected spans
+    (string literals and backtick-quoted identifiers)."""
     out: list[str] = []
     last = 0
-    for m in _STRING_LITERAL_RE.finditer(text):
+    for m in _PROTECTED_SPAN_RE.finditer(text):
         out.append(fn(text[last:m.start()]))
         out.append(m.group(0))
         last = m.end()

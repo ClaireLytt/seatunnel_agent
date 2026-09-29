@@ -388,26 +388,42 @@ def metrics_attribution(req: AttributionRequest) -> dict[str, Any]:
             )
         return result.columns, list(result.rows)
 
-    def _attribute(target) -> dict[str, Any]:
-        return attribution_to_dict(run_attribution(
+    def _attribute_raw(target):
+        return run_attribution(
             target, metric_store, store, _execute,
             curr_range=parse_time_range(req.curr_start, req.curr_end or ""),
             prev_range=parse_time_range(req.prev_start, req.prev_end or ""),
             dimensions=[req.dimension] if req.dimension else None,
             extra_filters=req.extra_filters,
-        ))
+        )
 
     try:
         if metric.is_ratio:
+            from .attribution import ratio_factor_split
+
             num = metric_store.get(metric.numerator)
             den = metric_store.get(metric.denominator)
-            return {
+            num_res = _attribute_raw(num)
+            den_res = _attribute_raw(den)
+            out: dict[str, Any] = {
                 "metric": metric.name,
                 "type": "ratio",
-                "numerator": _attribute(num),
-                "denominator": _attribute(den),
+                "numerator": attribution_to_dict(num_res),
+                "denominator": attribution_to_dict(den_res),
             }
-        return {"type": "additive", **_attribute(metric)}
+            # Exact two-factor split (parity with the agent tool) — computed
+            # from the raw totals, not the rounded payload.
+            split = ratio_factor_split(
+                num_res.prev_total, num_res.curr_total,
+                den_res.prev_total, den_res.curr_total,
+            )
+            if split is not None:
+                out["factor_split"] = {
+                    k: round(v, 6) if isinstance(v, float) else v
+                    for k, v in split.items()
+                }
+            return out
+        return {"type": "additive", **attribution_to_dict(_attribute_raw(metric))}
     except MetricError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except HTTPException:

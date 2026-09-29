@@ -175,3 +175,15 @@ def test_board_corrupt_file(tmp_path) -> None:
     p = tmp_path / "x.json"
     p.write_text("{oops", encoding="utf-8")
     assert BoardStore(p).list() == []
+
+
+def test_push_email_rejects_header_injection(monkeypatch) -> None:
+    """Address/title come from the user-editable subscription file — no
+    SMTP header smuggling (review fix)."""
+    from seatunnel_agent.text2sql.subscriptions import push_email
+
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
+    ok, msg = push_email("mailto:a@b.com\nBcc: evil@x.com", "t", "b")
+    assert not ok and "非法" in msg
+    ok, msg = push_email("mailto:a@b.com,c@d.com", "t", "b")
+    assert not ok and "非法" in msg

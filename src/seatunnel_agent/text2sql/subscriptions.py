@@ -522,10 +522,15 @@ def push_email(
     import smtplib
     from email.mime.text import MIMEText
 
-    addr = target[len("mailto:"):].strip() if target.startswith("mailto:") else target
+    addr = target[len("mailto:"):].strip() if target.startswith("mailto:") else target.strip()
     host = os.getenv("SMTP_HOST", "").strip()
     if not host or not addr:
         return False, "SMTP_HOST 未配置或收件地址为空"
+    # The address and title come from the user-editable subscription file —
+    # reject/strip anything that could smuggle extra SMTP headers.
+    if any(c in addr for c in " \t\r\n,;"):
+        return False, f"收件地址非法: {addr!r}"
+    title = title.replace("\r", " ").replace("\n", " ")
     port = int(os.getenv("SMTP_PORT", "587") or 587)
     user = os.getenv("SMTP_USER", "").strip()
     password = os.getenv("SMTP_PASS", "")

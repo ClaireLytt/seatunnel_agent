@@ -1676,3 +1676,55 @@ def test_attribution_cross_validated_before_queries() -> None:
             cross_dimensions=["channel", "no_such_dim"],
         )
     assert calls == []  # zero queries spent on invalid input
+
+
+def test_join_qualify_protects_backticks(join_schema_store) -> None:
+    """Backtick-quoted identifiers must not be rewritten to `t.col` (which
+    would be an invalid identifier) — review fix."""
+    yaml_text = """
+metrics:
+  - name: gmv_bt
+    table: dwd.dwd_trade_order_di
+    expression: SUM(`pay_amount`)
+    time_column: dt
+    joins:
+      - {table: dim.dim_channel, alias: ch, local_key: channel}
+    dimensions: [ch.channel_name]
+"""
+    store, errors = MetricStore.from_text(yaml_text, join_schema_store)
+    assert errors == []
+    sql = build_metric_sql(
+        store.get("gmv_bt"), store, join_schema_store,
+        time_range=TimeRange(start=date(2026, 3, 1), end=date(2026, 3, 1)),
+    )
+    assert "SUM(`pay_amount`)" in sql          # untouched inside backticks
+    assert "`t.pay_amount`" not in sql
+    assert "t.dt = '20260301'" in sql          # unquoted refs still qualified
+
+
+def test_api_metrics_attribution_ratio_factor_split(sqlite_runtime, monkeypatch) -> None:
+    """REST ratio attribution carries factor_split (parity with the tool)."""
+    pytest.importorskip("fastapi")
+    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+
+    monkeypatch.setattr(
+        SchemaStore, "from_db",
+        classmethod(lambda cls, ex: cls(parse_ddl(_SQLITE_DDL))),
+    )
+    resp = _client().post("/api/text2sql/metrics/attribution", json={
+        "metric": "aov",
+        "curr_start": "2026-03-02",
+        "prev_start": "2026-03-01",
+        "ds_type": "sqlite",
+        "db_config": {"database": sqlite_runtime.db_config.database},
+        "metrics_yaml": _SQLITE_METRICS,
+    })
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["type"] == "ratio"
+    split = data.get("factor_split")
+    assert split is not None and split["check_ok"]
+    assert abs(split["prev_ratio"] - 50.0) < 1e-6
+    assert abs(
+        split["numerator_effect"] + split["denominator_effect"] - split["delta"]
+    ) < 1e-4

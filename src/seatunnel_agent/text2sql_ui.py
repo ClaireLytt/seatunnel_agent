@@ -2260,7 +2260,9 @@ def render_text2sql_page(app=None) -> None:
                 if m.get("role") == "user":
                     last_question = str(m.get("content", ""))[:60]
                     break
-        name = last_question or sql[:40]
+        # holder keeps up to 200 chars (feedback flywheel needs the full
+        # question); favorite names stay at the historic 60-char cap.
+        name = (last_question or sql[:40])[:60]
         fav_store.save(
             name=name,
             sql=sql,

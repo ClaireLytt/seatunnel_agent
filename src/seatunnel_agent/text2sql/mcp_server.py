@@ -328,22 +328,39 @@ def build_tool_functions(
                     raise MetricError("维度基数过大：下钻结果达到 1000 行上限")
                 return result.columns, list(result.rows)
 
-            def _attribute(target):
-                return attribution_to_dict(run_attribution(
+            def _attribute_raw(target):
+                return run_attribution(
                     target, metric_store, schema_store, _execute,
                     curr_range=parse_time_range(curr_start, curr_end),
                     prev_range=parse_time_range(prev_start, prev_end),
                     dimensions=[dimension] if dimension.strip() else None,
-                ))
+                )
 
             try:
                 if m.is_ratio:
-                    return _json({
+                    from .attribution import ratio_factor_split
+
+                    num_res = _attribute_raw(metric_store.get(m.numerator))
+                    den_res = _attribute_raw(metric_store.get(m.denominator))
+                    out = {
                         "metric": m.name, "type": "ratio",
-                        "numerator": _attribute(metric_store.get(m.numerator)),
-                        "denominator": _attribute(metric_store.get(m.denominator)),
-                    })
-                return _json({"type": "additive", **_attribute(m)})
+                        "numerator": attribution_to_dict(num_res),
+                        "denominator": attribution_to_dict(den_res),
+                    }
+                    split = ratio_factor_split(
+                        num_res.prev_total, num_res.curr_total,
+                        den_res.prev_total, den_res.curr_total,
+                    )
+                    if split is not None:
+                        out["factor_split"] = {
+                            k: round(v, 6) if isinstance(v, float) else v
+                            for k, v in split.items()
+                        }
+                    return _json(out)
+                return _json({
+                    "type": "additive",
+                    **attribution_to_dict(_attribute_raw(m)),
+                })
             except MetricError as exc:
                 return _json({"error": str(exc)})
             except Exception as exc:
