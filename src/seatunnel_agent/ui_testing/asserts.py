@@ -88,6 +88,14 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
         ok = vis if k == "visible" else not vis
         return ok, f"'{name}' visible={vis}, expected {k}"
 
+    if k == "enabled":
+        # interactive-state check: guards run-time button disabling (e.g.
+        # the double-click guard on slow compare buttons)
+        name = args.get("target", args.get("of"))
+        want = bool(args.get("on", True))
+        actual = dc.button(name, side).is_enabled()
+        return actual == want, f"'{name}' enabled={actual}, expected {want}"
+
     if k == "checked":
         name = args.get("target", args.get("of"))
         want = bool(args.get("on", True))

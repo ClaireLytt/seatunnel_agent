@@ -279,3 +279,22 @@
     - result_in_view: {}
     - text_contains: {in: 结果区, text: 分块校验}
     - text_contains: {in: 结果区, text: 仅 A 侧存在}
+
+# 分块校验 × 列映射:B 侧 name→user_name 重命名列也被校验(映射前这类列
+# 会被静默跳过 —— code review 发现的缺口)。
+- id: G5
+  title: 分块校验经列映射校验重命名列
+  tags: [full, sqlite]
+  setup:
+    - use: select_schema
+    - fill: {主键列: id}
+    - fill: {字段映射: "name:user_name"}
+    - open_accordion: 校验和
+    - fill: {校验和: name}
+  steps:
+    - click: 分块校验
+    - wait_result: {}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: 分块校验}
+    - text_not_contains: {in: 结果区, text: Traceback}

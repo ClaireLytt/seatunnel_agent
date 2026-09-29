@@ -204,3 +204,21 @@
   expect:
     - text_not_contains: {in: 结果区, text: Traceback}
     - text_contains: {in: 结果区, text: 样本}
+
+# 防连点:全部对比运行期间按钮禁用,完成后恢复(19s 的 Hive 场景曾诱发
+# 双击 → 排队重跑 → 结果被二次覆盖)。sqlite 下全程约 10s,时窗充裕。
+- id: C7
+  title: 全部对比运行中按钮禁用完成后恢复
+  tags: [full, sqlite]
+  timeout_s: 150
+  setup:
+    - use: select_orders
+  steps:
+    - click: 全部对比
+    - wait: 800
+      note: 禁用事件 queue=False 即时生效,等渲染一拍
+    - assert: {enabled: {target: 全部对比, on: false}}
+    - wait_result: {timeout_ms: 90000}
+  expect:
+    - enabled: {target: 全部对比, on: true}
+    - text_contains: {in: 结果区, text: 对比摘要}
