@@ -10,6 +10,7 @@
     - click: 生成同步配置
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: source}
     - text_contains: {in: 结果区, text: sink}
 
@@ -26,6 +27,7 @@
     - click: 生成差异 SQL
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: INSERT INTO}
     - text_contains: {in: 结果区, text: UPDATE}
 
@@ -45,6 +47,7 @@
     - wait: 2500
       note: 趋势图渲染到 gr.Plot,结果区无变化信号
   expect:
+    - result_in_view: {}
     - text_not_contains: {in: 页面, text: Traceback}
 
 - id: S2

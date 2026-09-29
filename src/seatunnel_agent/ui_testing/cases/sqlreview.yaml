@@ -20,6 +20,7 @@
     - click: 开始审查
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: SELECT *}
     - visible: {target: 下载报告}
 

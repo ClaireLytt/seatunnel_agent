@@ -1756,8 +1756,14 @@ body:has(.st-scroll-page) .dsk-input-col {
 .dsk-report-card tbody tr:nth-child(even) td { background: #fafafa !important; }
 
 /* Data Comparison keeps the fixed sidebar+main layout, so the page itself
-   cannot scroll — let the main result panel scroll internally instead. */
-body:has(.st-dc-page) .st-main {
+   cannot scroll — let the main result panel scroll internally instead.
+   The .st-main class is repeated to outrank Gradio's auto-prefixed copy of
+   the base .st-main rule (.gradio-container-X .contain .st-main, four
+   classes): Gradio duplicates custom CSS under that prefix, and the
+   prefixed `body:has(...)` variant can never match (body is not inside
+   .contain), so without the repetition this override silently loses and
+   the result panel gets no scrollbar. */
+body:has(.st-dc-page) .st-main.st-main.st-main.st-main {
     overflow-y: auto !important;
     overflow-x: hidden !important;
 }
@@ -1872,7 +1878,12 @@ body:has(.st-dc-page) .st-main {
     min-width: 640px !important;
 }
 
-/* Right main content: fill remaining width, flex column to pin input at bottom */
+/* Right main content: fill remaining width, flex column to pin input at bottom.
+   flex-wrap MUST be nowrap: Gradio columns default to wrap, and in a
+   fixed-height column container any child taller than the viewport gets
+   wrapped into a second column to the RIGHT — outside the container, then
+   clipped by overflow:hidden. Symptom: tall results (e.g. Compare All)
+   render into the DOM but are completely invisible. */
 .st-main {
     flex: 1 1 0 !important;
     min-width: 0 !important;
@@ -1882,6 +1893,7 @@ body:has(.st-dc-page) .st-main {
     padding: 0 !important;
     display: flex !important;
     flex-direction: column !important;
+    flex-wrap: nowrap !important;
 }
 /* Hide Gradio's native sidebar if accidentally present */
 .gradio-sidebar { display: none !important; }

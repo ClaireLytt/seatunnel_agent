@@ -227,6 +227,16 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_checksum_all_match": "All segments match",
         "dc_checksum_columns_hint": "Comma-separated columns for checksum",
         "dc_checksum_analyze": "Compare Checksum",
+        # chunked (blocked) verification for large tables
+        "dc_chunked_btn": "Chunked Verify",
+        "dc_chunked_result": "Chunked Verification",
+        "dc_chunked_need_pk": "Fill Key Columns with a numeric primary key first",
+        "dc_chunked_all_match": "All chunks match",
+        "dc_chunked_summary": "{chunks} chunks · {mismatched} mismatched · rows {ta}/{tb}",
+        "dc_chunked_only_a": "Only in A",
+        "dc_chunked_only_b": "Only in B",
+        "dc_chunked_changed": "Changed",
+        "dc_chunked_truncated": "drill-down truncated — narrow the WHERE filter to see the rest",
         # DD — partition comparison
         "dc_partition": "Partition",
         "dc_partition_result": "Partition Comparison",
@@ -488,6 +498,16 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_checksum_all_match": "所有分段均匹配",
         "dc_checksum_columns_hint": "逗号分隔的校验列",
         "dc_checksum_analyze": "校验和对比",
+        # 大表分块校验
+        "dc_chunked_btn": "分块校验",
+        "dc_chunked_result": "分块校验",
+        "dc_chunked_need_pk": "请先在主键列填入数值主键列",
+        "dc_chunked_all_match": "全部分块一致",
+        "dc_chunked_summary": "{chunks} 个分块 · {mismatched} 个不一致 · 行数 {ta}/{tb}",
+        "dc_chunked_only_a": "仅 A 侧存在",
+        "dc_chunked_only_b": "仅 B 侧存在",
+        "dc_chunked_changed": "内容不同",
+        "dc_chunked_truncated": "下钻结果被截断——收窄 WHERE 条件查看其余差异",
         # DD — partition comparison
         "dc_partition": "分区比对",
         "dc_partition_result": "分区比对结果",

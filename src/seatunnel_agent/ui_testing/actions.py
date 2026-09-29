@@ -38,6 +38,18 @@ def _dispatch(step: Step, dc: DCPage) -> str:
     a, args = step.action, step.args
     side = args.get("side")
 
+    if a == "assert":
+        # Mid-steps assertion — for transient states that are gone by the
+        # time the expect block runs (e.g. a button disabled DURING a run).
+        # args hold exactly one assertion mapping: {kind: {…}}.
+        from .asserts import run_assert
+        from .loader import _expand_assert
+        assertion = _expand_assert(dict(args), "inline assert step")
+        log = run_assert(assertion, dc)
+        if not log.ok:
+            raise AssertionError(log.detail)
+        return log.detail
+
     if a == "goto":
         dc.goto(args.get("target", args.get("path", "/datacompare")))
         return "navigated"

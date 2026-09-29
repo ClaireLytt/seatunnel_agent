@@ -23,6 +23,7 @@
     - click: 开始分析
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: 数据倾斜分析报告}
     - text_contains: {in: 结果区, text: COUNT(DISTINCT) 单点聚合}
     - text_contains: {in: 结果区, text: 引擎参数建议}
