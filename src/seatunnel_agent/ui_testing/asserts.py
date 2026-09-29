@@ -186,6 +186,51 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
                     + ("" if ok else
                        " — card rendered outside the visible main column"))
 
+    if k == "visual_baseline":
+        # Pixel-level regression against a stored baseline screenshot of the
+        # result card. Geometry asserts (result_in_view) still miss
+        # white-on-white text, z-index overlays and font collapse; a pixel
+        # diff catches those. Rendering differs across OS/font stacks, so
+        # this only runs when UITEST_VISUAL=1 (baselines are per-machine);
+        # otherwise it passes with a note instead of flaking CI.
+        import os
+        name = str(args.get("name", ""))
+        if not name:
+            return False, "visual_baseline requires a 'name' argument"
+        if os.getenv("UITEST_VISUAL") != "1":
+            return True, f"visual baseline {name!r} skipped (set UITEST_VISUAL=1)"
+        threshold = float(args.get("threshold", 0.03))
+        loc = dc.result_container()
+        if not loc.count():
+            return False, "no result card found"
+        png = loc.screenshot()
+
+        from pathlib import Path as _P
+        base_dir = _P(__file__).parent / "baselines"
+        base_dir.mkdir(exist_ok=True)
+        base_path = base_dir / f"{name}.png"
+        if not base_path.exists():
+            base_path.write_bytes(png)
+            return True, f"baseline created: {base_path}"
+
+        import io as _io
+
+        from PIL import Image
+        actual = Image.open(_io.BytesIO(png)).convert("RGB")
+        expected = Image.open(base_path).convert("RGB")
+        if actual.size != expected.size:
+            actual = actual.resize(expected.size)
+        pa, pe = actual.tobytes(), expected.tobytes()
+        diff = sum(1 for x, y in zip(pa, pe) if abs(x - y) > 24)
+        ratio = diff / max(len(pe), 1)
+        ok = ratio <= threshold
+        if not ok:
+            fail_path = base_dir / f"{name}.actual.png"
+            fail_path.write_bytes(png)
+            return False, (f"visual diff {ratio:.1%} > {threshold:.1%} "
+                           f"vs {base_path.name}; actual saved to {fail_path}")
+        return True, f"visual diff {ratio:.1%} <= {threshold:.1%}"
+
     if k == "download_ok":
         if not dc.last_download:
             return False, "no download captured — run a 'download' step first"

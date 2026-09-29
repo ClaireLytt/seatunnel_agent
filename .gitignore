@@ -55,3 +55,6 @@ runs/
 config/uitest_demo.db
 .claude/worktrees/
 config/uitest_cases/
+
+# per-machine visual regression baselines (UITEST_VISUAL=1)
+src/seatunnel_agent/ui_testing/baselines/

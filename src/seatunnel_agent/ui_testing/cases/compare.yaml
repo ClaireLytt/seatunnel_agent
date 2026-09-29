@@ -83,6 +83,7 @@
     - text_contains: {in: 结果区, text: 对比摘要}
     - text_contains: {in: 结果区, text: 行数对比}
     - text_not_contains: {in: 结果区, text: Traceback}
+    - visual_baseline: {name: c6_compare_all}
 
 - id: D1
   title: 聚合对比标记 SUM/MAX 不一致
