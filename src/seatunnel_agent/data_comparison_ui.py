@@ -115,8 +115,34 @@ def _esc_html(s: str) -> str:
             .replace(">", "&gt;").replace('"', "&quot;"))
 
 
+_ERR_ESSENCE_RES = (
+    # HiveServer2 thrift blobs: the one useful sentence hides in errorMessage=
+    re.compile(r"errorMessage=[\"'](.+?)[\"']\)?,?\s*(?:operationHandle|$)", re.S),
+    # driver exceptions that lead with the interesting line
+    re.compile(r"((?:Parse|Semantic|Operational|Programming)(?:Exception|Error)[^\n]{0,200})"),
+)
+
+
 def _error_html(lang: str, exc: Exception) -> str:
-    return f'<div style="color:#dc2626;">❌ {dc(lang, "dc_error")}: {_esc_html(str(exc))}</div>'
+    """Error card: lead with the one sentence that matters, collapse the
+    raw exception behind <details> — a full TExecuteStatementResp thrift
+    dump was unreadable (three separate user reports)."""
+    raw = str(exc)
+    essence = ""
+    for pat in _ERR_ESSENCE_RES:
+        m = pat.search(raw)
+        if m:
+            essence = m.group(1).strip()
+            break
+    head = essence if essence and essence != raw.strip() else raw
+    html = (f'<div style="color:#dc2626;font-weight:600;">'
+            f'❌ {dc(lang, "dc_error")}: {_esc_html(head[:500])}</div>')
+    if essence and essence != raw.strip():
+        html += (f'<details style="margin-top:6px;"><summary style="color:#6b7280;'
+                 f'font-size:12px;cursor:pointer;">{_esc_html(type(exc).__name__)}'
+                 f' — raw</summary><pre style="white-space:pre-wrap;font-size:11px;'
+                 f'color:#6b7280;">{_esc_html(raw[:4000])}</pre></details>')
+    return html
 
 
 _log = logging.getLogger(__name__)
