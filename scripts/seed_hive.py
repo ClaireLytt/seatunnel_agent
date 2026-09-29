@@ -56,6 +56,13 @@ def main() -> int:
     cursor = conn.cursor()
     t0 = time.time()
     try:
+        # Hive 4 on Tez trips its default counter cap (120) on multi-row
+        # INSERT VALUES ("Too many counters: 121 max=120") — raise it for
+        # this session. Harmless on MR-based warehouses.
+        try:
+            cursor.execute("SET tez.counters.max=4096")
+        except Exception as exc:  # noqa: BLE001 — best-effort knob
+            print(f"SET tez.counters.max skipped: {exc}")
         for i, s in enumerate(stmts, 1):
             head = re.sub(r"\s+", " ", s)[:70]
             print(f"[{i}/{len(stmts)}] {head}", flush=True)

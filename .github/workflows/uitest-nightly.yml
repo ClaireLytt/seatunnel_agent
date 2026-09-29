@@ -99,7 +99,11 @@ jobs:
           python -m playwright install --with-deps chromium
 
       - name: Start HiveServer2 (docker)
-        run: docker run -d --name hs2 -p 10000:10000 -e SERVICE_NAME=hiveserver2 apache/hive:4.0.0
+        run: >
+          docker run -d --name hs2 -p 10000:10000
+          -e SERVICE_NAME=hiveserver2
+          -e SERVICE_OPTS=-Dtez.counters.max=4096
+          apache/hive:4.0.0
 
       - name: Wait for HiveServer2
         run: |
