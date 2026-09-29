@@ -229,6 +229,15 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_checksum_analyze": "Compare Checksum",
         # chunked (blocked) verification for large tables
         "dc_chunked_btn": "Chunked Verify",
+        "dc_reset_options": "Reset Options",
+        # custom-SQL result comparison card
+        "dc_sqlres_title": "SQL Result Comparison",
+        "dc_sqlres_match": "Result sets are identical",
+        "dc_sqlres_summary": "{changed} changed · {only_a} only in A · {only_b} only in B",
+        "dc_sqlres_changed": "Changed (matched by first column)",
+        "dc_sqlres_only_a": "Only in A",
+        "dc_sqlres_only_b": "Only in B",
+        "dc_sqlres_alias_hint": "Tip: alias aggregate columns (e.g. SUM(amount) AS total) for readable column names",
         "dc_chunked_result": "Chunked Verification",
         "dc_chunked_need_pk": "Fill Key Columns with a numeric primary key first",
         "dc_chunked_all_match": "All chunks match",
@@ -500,6 +509,15 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_checksum_analyze": "校验和对比",
         # 大表分块校验
         "dc_chunked_btn": "分块校验",
+        "dc_reset_options": "重置选项",
+        # 自定义 SQL 结果对比卡
+        "dc_sqlres_title": "SQL 结果对比",
+        "dc_sqlres_match": "两侧结果完全一致",
+        "dc_sqlres_summary": "{changed} 组变更 · 仅 A 侧 {only_a} · 仅 B 侧 {only_b}",
+        "dc_sqlres_changed": "变更(按第一列配对)",
+        "dc_sqlres_only_a": "仅 A 侧存在",
+        "dc_sqlres_only_b": "仅 B 侧存在",
+        "dc_sqlres_alias_hint": "提示:给聚合列起别名(如 SUM(amount) AS total)可获得可读列名",
         "dc_chunked_result": "分块校验",
         "dc_chunked_need_pk": "请先在主键列填入数值主键列",
         "dc_chunked_all_match": "全部分块一致",
