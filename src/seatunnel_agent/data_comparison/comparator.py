@@ -287,6 +287,7 @@ class CompareReport:
     checksum: ChecksumResult | None = None
     partition: PartitionResult | None = None
     custom_agg: CustomAggResult | None = None
+    chunked: Any | None = None  # ChunkedResult (import cycle: see .chunked)
     elapsed_ms: int = 0
 
     def to_dict(self) -> dict:
@@ -366,6 +367,13 @@ class CompareReport:
         partition = _ri(d.get("partition"), PartitionCompareItem, PartitionResult)
         custom_agg = _ri(d.get("custom_agg"), CustomAggItem, CustomAggResult)
 
+        chunked = None
+        if d.get("chunked"):
+            from .chunked import ChunkedResult, ChunkMismatch
+            cd = dict(d["chunked"])
+            mism = [ChunkMismatch(**m) for m in cd.pop("mismatched", [])]
+            chunked = ChunkedResult(**cd, mismatched=mism)
+
         sample = None
         if d.get("sample"):
             from ..text2sql.differ import ResultDiff
@@ -392,6 +400,7 @@ class CompareReport:
             checksum=checksum,
             partition=partition,
             custom_agg=custom_agg,
+            chunked=chunked,
             elapsed_ms=d.get("elapsed_ms", 0),
         )
 

@@ -846,6 +846,62 @@ def build_checksum_card(result, lang: str = "en") -> str:
     )
 
 
+def build_chunked_card(result, lang: str = "en") -> str:
+    """Build HTML card for chunked (blocked) verification."""
+    t = lambda k: dc(lang, k)
+    summary = t("dc_chunked_summary").format(
+        chunks=result.chunk_count, mismatched=len(result.mismatched),
+        ta=result.total_a, tb=result.total_b)
+    if result.match:
+        badge = (f'<span style="color:#16a34a;font-weight:600;">'
+                 f'✅ {t("dc_chunked_all_match")}</span>')
+    else:
+        badge = (f'<span style="color:#dc2626;font-weight:600;">'
+                 f'{len(result.mismatched)} {t("dc_checksum_mismatch")}</span>')
+
+    body = f'<div style="color:#6b7280;font-size:12px;">{_esc_html(summary)}</div>'
+    if result.note:
+        body += (f'<div style="color:#d97706;font-size:12px;margin-top:4px;">'
+                 f'{_esc_html(result.note)}</div>')
+
+    def _keys(label: str, keys: list, color: str) -> str:
+        if not keys:
+            return ""
+        shown = ", ".join(_esc_html(str(k)) for k in keys[:50])
+        more = f" … (+{len(keys) - 50})" if len(keys) > 50 else ""
+        return (f'<div style="margin-top:6px;"><b style="color:{color};">'
+                f'{label} ({len(keys)})</b>: '
+                f'<span style="font-family:monospace;font-size:12px;">'
+                f'{shown}{more}</span></div>')
+
+    body += _keys(t("dc_chunked_only_a"), result.only_a, "#dc2626")
+    body += _keys(t("dc_chunked_only_b"), result.only_b, "#d97706")
+    body += _keys(t("dc_chunked_changed"), result.changed, "#4f46e5")
+    if result.drill_truncated:
+        body += (f'<div style="color:#d97706;font-size:12px;margin-top:6px;">'
+                 f'⚠️ {t("dc_chunked_truncated")}</div>')
+
+    if result.mismatched:
+        th, td = _TH, _TD
+        rows_html = ""
+        for cm in result.mismatched[:50]:
+            rows_html += (
+                f'<tr style="background:#fef2f2;">'
+                f'<td {td}>{cm.chunk_id}</td>'
+                f'<td {td}>[{cm.pk_lo:g}, {cm.pk_hi:g})</td>'
+                f'<td {td}>{cm.count_a}</td><td {td}>{cm.count_b}</td></tr>')
+        body += (
+            f'<table style="width:100%;border-collapse:collapse;margin-top:8px;">'
+            f'<tr><th {th}>Chunk</th><th {th}>PK Range</th>'
+            f'<th {th}>Rows A</th><th {th}>Rows B</th></tr>'
+            f'{rows_html}</table>')
+
+    return _details_card(
+        f'<span style="color:#0891b2;">{t("dc_chunked_result")} — {badge}</span>',
+        body,
+    )
+
+
 def build_partition_card(result, lang: str = "en") -> str:
     """Build HTML card for partition-level comparison."""
     t = lambda k: dc(lang, k)
@@ -1847,6 +1903,54 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         return html
 
     _compare_checksum = _with_validation(holder, holder_lock, _compare_checksum_fn)
+
+    # ── Chunked (blocked) verification for large tables ──
+
+    def _chunked_inner(table_a, table_b, lang_val, where_val="",
+                       key_cols_str="", checksum_cols_str=""):
+        from .data_comparison.chunked import compare_chunked
+        ex_a, ex_b = _snap_executors()
+        key_cols = [k.strip() for k in (key_cols_str or "").split(",") if k.strip()]
+        if not key_cols:
+            return None, (
+                '<div style="padding:10px;color:#d97706;background:#fffbeb;'
+                'border-radius:8px;margin-bottom:8px;">'
+                f'{dc(lang_val, "dc_chunked_need_pk")}</div>')
+        pk = key_cols[0]
+        cols = [c.strip() for c in (checksum_cols_str or "").split(",") if c.strip()]
+        if not cols:
+            desc_a, desc_b = run_parallel(
+                lambda: ex_a.describe_table(table_a),
+                lambda: ex_b.describe_table(table_b),
+            )
+            names_a = {c.name.lower(): c.name for c in desc_a.columns}
+            names_b = {c.name.lower() for c in desc_b.columns}
+            cols = [names_a[k] for k in names_a
+                    if k in names_b and k != pk.lower()]
+
+        def _run_a(sql, n):
+            return ex_a.run(sql, max_rows=n).rows
+
+        def _run_b(sql, n):
+            return ex_b.run(sql, max_rows=n).rows
+
+        result = compare_chunked(
+            _run_a, _run_b, table_a, table_b, pk, cols,
+            ex_a.config.ds_type, ex_b.config.ds_type, where=where_val or "")
+        return result, build_chunked_card(result, lang_val)
+
+    def _compare_chunked_fn(table_a, table_b, lang_val, where_val,
+                            key_cols_str="", checksum_cols_str=""):
+        ok, msg = _validate_where(where_val, lang_val)
+        if not ok:
+            return msg
+        result, html = _chunked_inner(table_a, table_b, lang_val, where_val,
+                                      key_cols_str, checksum_cols_str)
+        if result is not None:
+            _store_partial("chunked", result)
+        return html
+
+    _compare_chunked_btn_fn = _with_validation(holder, holder_lock, _compare_chunked_fn)
 
     # ── Partition comparison (DD) ──
 
@@ -3066,6 +3170,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 checksum_btn = gr.Button(
                     t("dc_checksum_analyze"), size="sm",
                     elem_classes=["st-connect-btn"])
+                # chunked verification (uses Key Columns as the numeric PK)
+                chunked_btn = gr.Button(
+                    t("dc_chunked_btn"), size="sm",
+                    elem_classes=["st-connect-btn"])
 
             with gr.Accordion(t("dc_partition"), open=False) as partition_accordion:
                 partition_col_input = gr.Textbox(
@@ -3316,6 +3424,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     checksum_btn.click(fn=_compare_checksum,
                        inputs=[table_a, table_b, lang_state, where_input, checksum_cols_input],
                        outputs=[result_html])
+    chunked_btn.click(fn=_compare_chunked_btn_fn,
+                      inputs=[table_a, table_b, lang_state, where_input,
+                              key_input, checksum_cols_input],
+                      outputs=[result_html])
     partition_btn.click(fn=_compare_partition,
                         inputs=[table_a, table_b, lang_state, where_input, partition_col_input],
                         outputs=[result_html])
@@ -3626,6 +3738,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(label=t_fn("dc_checksum"),
                       placeholder=t_fn("dc_checksum_columns_hint")),    # checksum_cols_input
             gr.update(value=t_fn("dc_checksum_analyze")),               # checksum_btn
+            gr.update(value=t_fn("dc_chunked_btn")),                    # chunked_btn
             gr.update(label=t_fn("dc_partition")),                      # partition_accordion
             gr.update(label=t_fn("dc_partition_col"),
                       placeholder=t_fn("dc_partition_col_hint")),       # partition_col_input
@@ -3695,7 +3808,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             # Round 6 — skew
             skew_accordion, skew_cols_input, skew_btn,
             # Round 7 — checksum, partition, custom agg
-            checksum_accordion, checksum_cols_input, checksum_btn,
+            checksum_accordion, checksum_cols_input, checksum_btn, chunked_btn,
             partition_accordion, partition_col_input, partition_btn,
             custom_agg_accordion, custom_agg_input, custom_agg_btn,
             # Round 8 — stratified sampling

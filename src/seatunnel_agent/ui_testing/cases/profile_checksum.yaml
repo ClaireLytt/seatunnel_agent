@@ -264,3 +264,18 @@
   expect:
     - visible: {target: 样本数据}
     - text_not_contains: {in: 结果区, text: Traceback}
+
+- id: G4
+  title: 分块校验定位缺失/修改行主键
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - fill: {主键列: id}
+    - open_accordion: 校验和
+  steps:
+    - click: 分块校验
+    - wait_result: {}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: 分块校验}
+    - text_contains: {in: 结果区, text: 仅 A 侧存在}
