@@ -229,6 +229,7 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_checksum_analyze": "Compare Checksum",
         # chunked (blocked) verification for large tables
         "dc_chunked_btn": "Chunked Verify",
+        "dc_reset_options": "Reset Options",
         "dc_chunked_result": "Chunked Verification",
         "dc_chunked_need_pk": "Fill Key Columns with a numeric primary key first",
         "dc_chunked_all_match": "All chunks match",
@@ -500,6 +501,7 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_checksum_analyze": "校验和对比",
         # 大表分块校验
         "dc_chunked_btn": "分块校验",
+        "dc_reset_options": "重置选项",
         "dc_chunked_result": "分块校验",
         "dc_chunked_need_pk": "请先在主键列填入数值主键列",
         "dc_chunked_all_match": "全部分块一致",

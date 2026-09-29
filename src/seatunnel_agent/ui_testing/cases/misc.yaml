@@ -232,3 +232,28 @@
     - hidden: {target: 端口, side: A}
     - status_ok: {side: A}
     - text_contains: {in: 状态, side: A, text: "10"}
+
+# 重置选项:一键取消所有已选功能 —— 之前只能逐个手动清空十几个输入框。
+- id: R3
+  title: 重置选项一键清空全部对比选项
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_orders
+    - fill: {WHERE 条件: "id > 1"}
+    - fill: {阈值: "5%"}
+    - fill: {主键列: id}
+    - open_accordion: 数据倾斜
+    - fill: {倾斜分析列: region}
+    - open_accordion: 校验和
+    - fill: {校验和: amount}
+  steps:
+    - click: 重置选项
+    - wait: 600
+      note: 批量更新渲染一拍
+  expect:
+    - value_is: {of: WHERE 条件, value: ""}
+    - value_is: {of: 阈值, value: ""}
+    - value_is: {of: 主键列, value: ""}
+    - value_is: {of: 倾斜分析列, value: ""}
+    - value_is: {of: 校验和, value: ""}
+    - checked: {target: 启用脱敏, on: true}

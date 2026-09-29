@@ -3158,6 +3158,12 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             # Feature G — Data masking
             masking_checkbox = gr.Checkbox(label=t("dc_masking_enabled"), value=True)
 
+            # One-click undo for every optional compare feature: clearing a
+            # dozen textboxes by hand to get back to a plain compare was the
+            # only way to "deselect" features before.
+            reset_options_btn = gr.Button(t("dc_reset_options"), size="sm",
+                                          elem_classes=["st-connect-btn"])
+
             # Feature A — Incremental comparison
             with gr.Accordion(t("dc_incremental"), open=False) as incremental_accordion:
                 watermark_col_input = gr.Textbox(
@@ -3410,6 +3416,40 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     )
 
     # Strategy change — show/hide stratified column input
+    def _reset_options():
+        """Restore every optional compare feature to its default — the
+        one-click way to deselect features (connections and table picks
+        stay untouched)."""
+        return (
+            gr.update(value=""),                    # where_input
+            gr.update(value=""),                    # threshold_input
+            gr.update(value=""),                    # key_input
+            gr.update(value=""),                    # mapping_input
+            gr.update(value="TOP N"),               # sample_strategy
+            gr.update(value="", visible=False),     # stratified_col_input
+            gr.update(value=True),                  # masking_checkbox
+            gr.update(value=""),                    # watermark_col_input
+            gr.update(value=""),                    # watermark_val_input
+            gr.update(value=""),                    # quality_rules_input
+            gr.update(value=""),                    # skew_cols_input
+            gr.update(value=""),                    # checksum_cols_input
+            gr.update(value=""),                    # partition_col_input
+            gr.update(value=""),                    # custom_agg_input
+            gr.update(value=""),                    # webhook_url_input
+            gr.update(value=False),                 # webhook_on_fail
+            gr.update(value=""),                    # alert_rules_input
+        )
+
+    reset_options_btn.click(
+        fn=_reset_options,
+        outputs=[where_input, threshold_input, key_input, mapping_input,
+                 sample_strategy, stratified_col_input, masking_checkbox,
+                 watermark_col_input, watermark_val_input,
+                 quality_rules_input, skew_cols_input, checksum_cols_input,
+                 partition_col_input, custom_agg_input,
+                 webhook_url_input, webhook_on_fail, alert_rules_input],
+    )
+
     sample_strategy.change(
         fn=lambda s: gr.update(visible=(s == "STRATIFIED")),
         inputs=[sample_strategy],
@@ -3731,6 +3771,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(value=t_fn("dc_trend_chart")),                    # trend_btn
             # Round 5 components
             gr.update(label=t_fn("dc_masking_enabled")),                # masking_checkbox
+            gr.update(value=t_fn("dc_reset_options")),                  # reset_options_btn
             gr.update(label=t_fn("dc_incremental")),                    # incremental_accordion
             gr.update(label=t_fn("dc_watermark_col"),
                       placeholder=t_fn("dc_watermark_hint")),           # watermark_col_input
@@ -3829,7 +3870,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             schedule_start_btn, schedule_stop_btn,
             trend_accordion, alert_rules_input, trend_btn,
             # Round 5
-            masking_checkbox,
+            masking_checkbox, reset_options_btn,
             incremental_accordion, watermark_col_input, watermark_val_input, incremental_btn,
             quality_accordion, quality_rules_input, quality_btn,
             gen_diff_sql_btn,
