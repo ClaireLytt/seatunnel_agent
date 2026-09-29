@@ -342,7 +342,9 @@ class TestCoverage:
         if cov is None:
             pytest.skip("checklist html not present")
         counts = cov.counts()
-        assert len(cov.rows) == 75
+        # 75 original items + C7/G4/G5/Q6 backfilled for the chunked-verify,
+        # double-click-guard and report-search features
+        assert len(cov.rows) == 79
         assert counts["runner"] == 3            # P0-1/2/3
         assert counts["auto"] >= 55             # PRD acceptance threshold
         assert counts["missing"] <= 8
