@@ -4520,3 +4520,35 @@ class TestSkewTrend:
             quiet = check_trend_alerts(
                 entries, parse_alert_rules("skew_top1_jump>40:1"))
             assert not quiet[0].triggered
+
+
+class TestSkewCardHandoff:
+    """The both-skewed verdict offers a one-click handoff to /dataskew."""
+
+    def _card(self, item):
+        from seatunnel_agent.data_comparison_ui import build_skew_card
+        res = SkewResult("ta", "tb", total_a=100, total_b=100, items=[item])
+        return build_skew_card(res, "zh")
+
+    def test_both_skewed_has_goto_button(self):
+        item = SkewItem(column="region", gini_a=0.8, gini_b=0.78,
+                        top1_pct_a=70.0, top1_pct_b=68.0)
+        html = self._card(item)
+        assert "st_dataskew_sql" in html
+        assert "去数据倾斜页分析" in html
+        assert "GROUP BY region" in html      # handoff SQL targets the hot key
+        assert "FROM tb" in html              # ... on the B-side table
+        assert "window.open('/dataskew'" in html
+
+    def test_mismatch_has_no_button(self):
+        item = SkewItem(column="region", top1_pct_a=80.0, top1_pct_b=25.0)
+        html = self._card(item)
+        assert "两侧分布不一致" in html
+        assert "st_dataskew_sql" not in html
+
+    def test_uniform_has_no_verdict(self):
+        item = SkewItem(column="id", gini_a=0.1, gini_b=0.1,
+                        top1_pct_a=2.0, top1_pct_b=2.0)
+        html = self._card(item)
+        assert "st_dataskew_sql" not in html
+        assert "两侧" not in html

@@ -788,10 +788,37 @@ def build_skew_card(result: SkewResult, lang: str = "en") -> str:
         key = ("dc_skew_verdict_mismatch" if verdict == "mismatch"
                else "dc_skew_verdict_both")
         cols = ", ".join(f"<b>{esc(c)}</b>" for c in v_cols[:5])
+        goto_html = ""
+        if verdict == "both_skewed" and v_cols:
+            # Hand a hot-key GROUP BY over to /dataskew via the same
+            # localStorage bridge the SQL-review page uses: the group key
+            # becomes a probe target there, so 验证倾斜 measures it and the
+            # rewrite templates / engine params come pre-filled.
+            col = v_cols[0]
+            handoff_sql = (
+                f"-- from Data Comparison: `{result.table_b}`.`{col}` skewed "
+                f"on both sides\n"
+                f"SELECT {col}, COUNT(*) AS cnt\n"
+                f"FROM {result.table_b}\n"
+                f"GROUP BY {col}\n"
+                f"ORDER BY cnt DESC\nLIMIT 100;"
+            )
+            onclick = esc(
+                "localStorage.setItem('st_dataskew_sql', "
+                + json.dumps(handoff_sql, ensure_ascii=False)
+                + "); window.open('/dataskew', '_blank');"
+            )
+            goto_html = (
+                f' <button onclick="{onclick}" style="margin-left:8px;'
+                'padding:1px 8px;font-size:11px;color:#0d9488;'
+                'background:#f0fdfa;border:1px solid #99f6e4;'
+                'border-radius:4px;cursor:pointer;">'
+                + t("dc_skew_goto_dataskew") + "</button>"
+            )
         verdict_html = (
             f'<div style="{style}border-radius:6px;padding:6px 10px;'
             f'margin-top:8px;font-size:12px;">'
-            + t(key).format(cols=cols) + "</div>"
+            + t(key).format(cols=cols) + goto_html + "</div>"
         )
 
     items_html = ""

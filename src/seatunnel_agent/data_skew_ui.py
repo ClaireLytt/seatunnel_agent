@@ -30,7 +30,11 @@ from .data_skew.probe import (
     render_probe_section,
     run_probes,
 )
-from .data_skew.splitkey import SplitKeyError, check_split_key
+from .data_skew.splitkey import (
+    SplitKeyError,
+    render_splitkey_section,
+    run_split_key,
+)
 from .text2sql.executor.base import (
     DIALECT_NAMES,
     DS_DEFAULTS,
@@ -318,13 +322,19 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             return gr.update(), dsk(lang, "spk_empty_conf")
         pct = effective_sample_pct(conn["ds_type"], int(sample or 0))
         try:
-            section = check_split_key(
+            spec, configured, candidates = run_split_key(
                 conn["executor"], conf_text,
-                ds_type=conn["ds_type"], sample_pct=pct, lang=lang)
+                ds_type=conn["ds_type"], sample_pct=pct)
+            section = render_splitkey_section(
+                spec, configured, candidates, lang, sample_pct=pct)
         except SplitKeyError as exc:
             return gr.update(), dsk(lang, exc.key).format(err=exc.arg)
         except Exception as exc:  # noqa: BLE001 — surface in the UI
             return gr.update(), _err_md(exc, lang)
+        history.log_splitkey(
+            spec.table, spec.partition_column,
+            configured.verdict(spec.tasks) if configured else "none",
+            candidates=len(candidates), source="ui")
         return (_append_section(report_cur, section, _SPK_HEAD_RE),
                 _restored_status(lang, conn))
 

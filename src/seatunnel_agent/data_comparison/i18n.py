@@ -228,6 +228,7 @@ DC_I18N: dict[str, dict[str, str]] = {
             "(hot key). Protect downstream GROUP BY/JOIN on this key: see the "
             "Data Skew page for rewrites and engine settings."
         ),
+        "dc_skew_goto_dataskew": "Analyze on Data Skew page →",
         # CC — checksum comparison
         "dc_checksum": "Checksum",
         "dc_checksum_result": "Checksum Comparison",
@@ -509,6 +510,7 @@ DC_I18N: dict[str, dict[str, str]] = {
             "⚠️ 两侧一致倾斜：{cols}——业务事实（热 key）。下游按该键 "
             "GROUP BY/JOIN 时建议到「数据倾斜」页做改写与引擎参数防护。"
         ),
+        "dc_skew_goto_dataskew": "去数据倾斜页分析 →",
         # CC — checksum comparison
         "dc_checksum": "校验和",
         "dc_checksum_result": "校验和比对",

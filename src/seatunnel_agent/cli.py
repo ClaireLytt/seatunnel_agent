@@ -1329,6 +1329,98 @@ def skew_stats(recent: int) -> None:
         console.print(f"[bold]LLM 改写[/bold] {llm_runs} 次,产出优化 SQL {optimized} 次")
 
 
+@cli.command(name="skew-splitkey")
+@click.argument("conf_path", type=click.Path(exists=True, dir_okay=False))
+@click.option("--ds", "ds_type",
+              type=click.Choice(["hive", "sparksql", "mysql", "postgresql",
+                                 "sqlite", "clickhouse", "doris"]),
+              default="mysql", show_default=True, help="数据源类型")
+@click.option("--db", type=str, default=None,
+              help="host:port/database（缺省时读 .env 中该数据源的配置）")
+@click.option("--db-user", type=str, default=None, help="数据库用户名")
+@click.option("--db-password", type=str, default=None, help="数据库密码")
+@click.option("--sample", type=int, default=0, show_default=True,
+              help="探查采样百分比（0 = 全量；仅 Hive/Spark/PG 生效）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+@click.option("--fail", "fail_flag", is_flag=True,
+              help="已配置的 partition_column 实测倾斜/低基数/NULL 过多时退出码 1（CI 门禁）")
+def skew_splitkey(
+    conf_path: str,
+    ds_type: str,
+    db: str | None,
+    db_user: str | None,
+    db_password: str | None,
+    sample: int,
+    lang: str,
+    output: str | None,
+    fail_flag: bool,
+) -> None:
+    """SeaTunnel 分片键体检 — 连库实测作业配置的 partition_column 分布。
+
+    CONF_PATH: SeaTunnel 作业配置文件（HOCON）。"""
+    import re as _re
+    from pathlib import Path
+
+    from .data_skew.history import default_history
+    from .data_skew.probe import effective_sample_pct
+    from .data_skew.splitkey import (
+        SplitKeyError,
+        render_splitkey_section,
+        run_split_key,
+    )
+    from .text2sql.executor.base import (
+        DatabaseConfig,
+        config_from_env,
+        create_executor,
+    )
+
+    conf_text = Path(conf_path).read_text(encoding="utf-8", errors="replace")
+
+    if db:
+        m = _re.fullmatch(r"([\w.\-]+):(\d+)/([\w.\-]+)", db.strip())
+        if not m:
+            raise click.UsageError("--db 格式应为 host:port/database")
+        cfg = DatabaseConfig(
+            ds_type=ds_type,
+            host=m.group(1), port=int(m.group(2)), database=m.group(3),
+            username=db_user, password=db_password,
+        )
+    else:
+        cfg = config_from_env(ds_type)
+        if cfg is None:
+            raise click.ClickException(
+                f".env 中未找到 {ds_type} 的连接配置——请配置 .env 或用 --db 指定")
+
+    pct = effective_sample_pct(ds_type, sample)
+    try:
+        executor = create_executor(cfg)
+        spec, configured, candidates = run_split_key(
+            executor, conf_text, ds_type=ds_type, sample_pct=pct)
+    except SplitKeyError as exc:
+        from .data_skew.i18n import dsk as _dsk
+        raise click.ClickException(_dsk(lang, exc.key).format(err=exc.arg))
+    except Exception as exc:  # noqa: BLE001 — connection/query failures
+        raise click.ClickException(f"体检失败: {exc}")
+
+    key_verdict = configured.verdict(spec.tasks) if configured else "none"
+    default_history().log_splitkey(
+        spec.table, spec.partition_column, key_verdict,
+        candidates=len(candidates), source="cli")
+
+    md = render_splitkey_section(spec, configured, candidates, lang,
+                                 sample_pct=pct)
+    console.print(md)
+    if output:
+        Path(output).write_text(md, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_flag and key_verdict in ("bad", "low_ndv", "null"):
+        console.print(f"\n[red]partition_column 实测判定为 {key_verdict}，检查未通过。[/red]")
+        sys.exit(1)
+
+
 @cli.command(name="skew-mcp")
 @click.option("--dialect", "-d", type=click.Choice(["spark", "maxcompute", "hive"]),
               default="spark", show_default=True, help="Default SQL dialect")

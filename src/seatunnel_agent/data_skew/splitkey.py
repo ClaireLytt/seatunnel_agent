@@ -178,9 +178,24 @@ def parse_seatunnel_source(conf_text: str) -> SourceSpec:
 # Measurement
 # ---------------------------------------------------------------------------
 
-def _stats_sql(column: str, table_expr: str) -> str:
+# Approximate-NDV function per engine: an exact COUNT(DISTINCT) on a big
+# table is the most expensive part of the check, and the NDV only feeds a
+# threshold (>= NDV_PER_TASK * tasks), so a few % of HLL error is free money.
+_APPROX_NDV: dict[str, str] = {
+    "sparksql": "approx_count_distinct({col})",
+    "clickhouse": "uniq({col})",
+    "doris": "ndv({col})",
+}
+
+
+def _ndv_expr(column: str, ds_type: str) -> str:
+    tpl = _APPROX_NDV.get(ds_type)
+    return tpl.format(col=column) if tpl else f"COUNT(DISTINCT {column})"
+
+
+def _stats_sql(column: str, table_expr: str, ds_type: str = "") -> str:
     return (
-        f"SELECT COUNT(*) AS total, COUNT(DISTINCT {column}) AS ndv, "
+        f"SELECT COUNT(*) AS total, {_ndv_expr(column, ds_type)} AS ndv, "
         f"SUM(CASE WHEN {column} IS NULL THEN 1 ELSE 0 END) AS nulls "
         f"FROM {table_expr}"
     )
@@ -200,7 +215,7 @@ def measure_column(executor, table: str, column: str,
     s = SplitStat(column=column)
     expr = _table_expr(table, ds_type, sample_pct)
     try:
-        rq = executor.run(_stats_sql(column, expr), max_rows=1)
+        rq = executor.run(_stats_sql(column, expr, ds_type), max_rows=1)
         s.total = int(rq.rows[0][0] or 0)
         s.ndv = int(rq.rows[0][1] or 0)
         s.null_count = int(rq.rows[0][2] or 0)
@@ -333,14 +348,14 @@ def render_splitkey_section(
     return "\n".join(parts)
 
 
-def check_split_key(
+def run_split_key(
     executor,
     conf_text: str,
     ds_type: str = "",
     sample_pct: int = 0,
-    lang: str = "zh",
-) -> str:
-    """Parse → measure → render. Raises SplitKeyError on config problems."""
+) -> tuple[SourceSpec, SplitStat | None, list[SplitStat]]:
+    """Parse the config and measure everything; the structured half of
+    :func:`check_split_key`. Raises SplitKeyError on config problems."""
     spec = parse_seatunnel_source(conf_text)
     configured = None
     if spec.partition_column:
@@ -351,4 +366,17 @@ def check_split_key(
     except Exception:  # noqa: BLE001 — schema listing is best-effort
         names = []
     candidates = measure_columns(executor, spec.table, names, ds_type, sample_pct)
+    return spec, configured, candidates
+
+
+def check_split_key(
+    executor,
+    conf_text: str,
+    ds_type: str = "",
+    sample_pct: int = 0,
+    lang: str = "zh",
+) -> str:
+    """Parse → measure → render. Raises SplitKeyError on config problems."""
+    spec, configured, candidates = run_split_key(
+        executor, conf_text, ds_type=ds_type, sample_pct=sample_pct)
     return render_splitkey_section(spec, configured, candidates, lang, sample_pct)

@@ -21,16 +21,27 @@ from .history import default_history
 _INSTRUCTIONS = (
     "SQL 数据倾斜静态分析：识别 COUNT(DISTINCT) 单点、NULL 关联键、全局排序/去重、"
     "JOIN 键函数、动态分区未打散等倾斜写法，输出严重度分级的中文/英文 Markdown 报告"
-    "与引擎参数建议。支持 Spark SQL / MaxCompute SQL / Hive SQL。纯静态规则，"
-    "不执行 SQL、不调用 LLM。"
+    "与引擎参数建议。支持 Spark SQL / MaxCompute SQL / Hive SQL。skew_check 系列为"
+    "纯静态规则，不执行 SQL、不调用 LLM；skew_split_key 系列会按 .env 中的数据源"
+    "配置连库执行只读的分布探查（COUNT/GROUP BY），用于 SeaTunnel 分片键体检。"
 )
+
+# Engines whose executor supports the split-key probe queries
+_SPLITKEY_DS = ("hive", "sparksql", "mysql", "postgresql", "sqlite",
+                "clickhouse", "doris")
 
 
 def build_tool_functions(
     default_dialect: str = "spark",
     default_lang: str = "zh",
+    include_db: bool = True,
 ) -> dict[str, Callable[..., str]]:
-    """Skew tool callables keyed by name."""
+    """Skew tool callables keyed by name.
+
+    *include_db=False* returns only the pure-static tools — the unified
+    toolbox composes those and provides its own saved-connection variant
+    of the split-key check; the .env-based one here serves the standalone
+    ``skew-mcp`` server."""
     history = default_history()
 
     def skew_check(sql: str, dialect: str = "", lang: str = "") -> str:
@@ -63,7 +74,69 @@ def build_tool_functions(
             return f"读取文件失败 / cannot read file: {exc}"
         return skew_check(text, dialect=dialect, lang=lang)
 
-    return {"skew_check": skew_check, "skew_check_file": skew_check_file}
+    if not include_db:
+        return {"skew_check": skew_check, "skew_check_file": skew_check_file}
+
+    def skew_split_key(conf: str, ds_type: str = "mysql",
+                       sample_pct: int = 0, lang: str = "") -> str:
+        """SeaTunnel 分片键体检：解析作业配置（HOCON）中 JDBC source 的
+        partition_column，按 .env 中该 ds_type 的连接配置连库实测其分布
+        （NDV / NULL 占比 / top-1 占比，只读查询），并实测候选列给出推荐。
+        ds_type: hive / sparksql / mysql / postgresql / sqlite / clickhouse / doris。"""
+        from ..text2sql.executor.base import config_from_env, create_executor
+        from .probe import effective_sample_pct
+        from .splitkey import (
+            SplitKeyError,
+            render_splitkey_section,
+            run_split_key,
+        )
+
+        conf = (conf or "").strip()
+        if not conf:
+            return "配置不能为空 / config must not be empty"
+        ds = (ds_type or "mysql").strip().lower()
+        if ds not in _SPLITKEY_DS:
+            return f"ds_type 必须是 {', '.join(_SPLITKEY_DS)} 之一"
+        cfg = config_from_env(ds)
+        if cfg is None:
+            return (f"未在 .env 中找到 {ds} 的连接配置 / "
+                    f"no {ds} connection configured in .env")
+        lg = (lang or default_lang).strip().lower()
+        pct = effective_sample_pct(ds, int(sample_pct or 0))
+        try:
+            executor = create_executor(cfg)
+            spec, configured, candidates = run_split_key(
+                executor, conf, ds_type=ds, sample_pct=pct)
+        except SplitKeyError as exc:
+            from .i18n import dsk
+            return dsk(lg, exc.key).format(err=exc.arg)
+        except Exception as exc:  # noqa: BLE001 — surface to the caller
+            return f"体检失败 / split-key check failed: {exc}"
+        history.log_splitkey(
+            spec.table, spec.partition_column,
+            configured.verdict(spec.tasks) if configured else "none",
+            candidates=len(candidates), source="mcp")
+        return render_splitkey_section(spec, configured, candidates, lg,
+                                       sample_pct=pct)
+
+    def skew_split_key_file(path: str, ds_type: str = "mysql",
+                            sample_pct: int = 0, lang: str = "") -> str:
+        """SeaTunnel 分片键体检（参数同 skew_split_key，path 为配置文件路径）。"""
+        from pathlib import Path
+
+        try:
+            text = Path(path).read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return f"读取文件失败 / cannot read file: {exc}"
+        return skew_split_key(text, ds_type=ds_type,
+                              sample_pct=sample_pct, lang=lang)
+
+    return {
+        "skew_check": skew_check,
+        "skew_check_file": skew_check_file,
+        "skew_split_key": skew_split_key,
+        "skew_split_key_file": skew_split_key_file,
+    }
 
 
 def create_mcp_server(default_dialect: str = "spark", default_lang: str = "zh"):

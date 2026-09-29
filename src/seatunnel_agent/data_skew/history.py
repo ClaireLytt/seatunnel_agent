@@ -104,6 +104,44 @@ class SkewHistory:
         except OSError:
             pass  # history is best-effort; never break the analysis
 
+    def log_splitkey(
+        self,
+        table: str,
+        partition_column: str,
+        verdict: str,          # good | suspect | bad | low_ndv | null | none
+        candidates: int = 0,
+        source: str = "ui",
+    ) -> None:
+        """A SeaTunnel split-key check record (mode='splitkey'). The counts
+        encode the configured key's verdict so the history table's marks
+        stay meaningful: bad-ish → high, suspect/unconfigured → medium."""
+        counts = {"high": 0, "medium": 0, "low": 0}
+        if verdict in ("bad", "low_ndv", "null"):
+            counts["high"] = 1
+        elif verdict in ("suspect", "none"):
+            counts["medium"] = 1
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "source": source,
+            "mode": "splitkey",
+            "dialect": "",
+            "counts": counts,
+            "verdict": ("high" if counts["high"]
+                        else "medium" if counts["medium"] else "clean"),
+            "splitkey": {"table": table, "partition_column": partition_column,
+                         "key_verdict": verdict, "candidates": candidates},
+            "sql": f"-- splitkey: {table} partition_column={partition_column or '(none)'}",
+        }
+        line = json.dumps(record, ensure_ascii=False) + "\n"
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            with self._lock:
+                self._rotate_if_needed()
+                with open(self.log_file, "a", encoding="utf-8") as f:
+                    f.write(line)
+        except OSError:
+            pass  # history is best-effort; never break the analysis
+
     def recent(self, n: int = 20) -> list[dict]:
         """Latest *n* records, newest first.  [] on any problem."""
         try:

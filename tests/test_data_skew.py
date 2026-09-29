@@ -1638,3 +1638,134 @@ def test_render_splitkey_section_error_row():
     md = render_splitkey_section(spec, stat, [], "en")
     assert "table not found" in md
     assert "\|" in md  # pipe escaped for the markdown table
+
+
+# ---------------------------------------------------------------------------
+# split-key: approx NDV, history, MCP tools, CLI
+# ---------------------------------------------------------------------------
+
+def test_stats_sql_approx_ndv_per_engine():
+    from seatunnel_agent.data_skew.splitkey import _stats_sql
+
+    assert "approx_count_distinct(c)" in _stats_sql("c", "t", "sparksql")
+    assert "uniq(c)" in _stats_sql("c", "t", "clickhouse")
+    assert "ndv(c)" in _stats_sql("c", "t", "doris")
+    for exact in ("mysql", "hive", "postgresql", "sqlite", ""):
+        assert "COUNT(DISTINCT c)" in _stats_sql("c", "t", exact)
+
+
+def test_history_log_splitkey(tmp_path):
+    from seatunnel_agent.data_skew.history import SkewHistory
+
+    h = SkewHistory(log_dir=tmp_path)
+    h.log_splitkey("orders", "region", "bad", candidates=3, source="cli")
+    h.log_splitkey("orders", "", "none", candidates=2)
+    h.log_splitkey("t2", "id", "good", candidates=1, source="mcp")
+    recs = h.recent(10)
+    assert [r["verdict"] for r in recs] == ["clean", "medium", "high"]
+    bad = recs[2]
+    assert bad["mode"] == "splitkey"
+    assert bad["counts"] == {"high": 1, "medium": 0, "low": 0}
+    assert bad["splitkey"] == {"table": "orders", "partition_column": "region",
+                               "key_verdict": "bad", "candidates": 3}
+    assert "orders" in bad["sql"]  # readable in the history panel
+
+
+_SPLITKEY_CONF = """
+env { parallelism = 2 }
+source { Jdbc { table_name = "orders", partition_column = "region" } }
+sink { Console {} }
+"""
+
+
+def _make_orders_db(tmp_path):
+    """A sqlite DB with a skewed region column and a uniform id."""
+    import sqlite3
+
+    db = tmp_path / "spk.db"
+    conn = sqlite3.connect(db)
+    rows = ",".join(
+        f"({i}, '{'CN' if i <= 80 else 'US'}', {i * 10})" for i in range(1, 101))
+    conn.executescript(
+        "CREATE TABLE orders (id INTEGER, region TEXT, amount INTEGER);"
+        f"INSERT INTO orders VALUES {rows};")
+    conn.commit()
+    conn.close()
+    return db
+
+
+def test_mcp_split_key_validation(monkeypatch, tmp_path):
+    from seatunnel_agent.data_skew.mcp_server import build_tool_functions
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    fns = build_tool_functions()
+    assert set(fns) == {"skew_check", "skew_check_file",
+                        "skew_split_key", "skew_split_key_file"}
+    spk = fns["skew_split_key"]
+    assert "不能为空" in spk("")
+    assert "ds_type" in spk(_SPLITKEY_CONF, ds_type="oracle")
+    monkeypatch.delenv("MYSQL_HOST", raising=False)
+    assert ".env" in spk(_SPLITKEY_CONF, ds_type="mysql")
+
+
+def test_mcp_split_key_end_to_end(monkeypatch, tmp_path):
+    from seatunnel_agent.data_skew.history import default_history
+    from seatunnel_agent.data_skew.mcp_server import build_tool_functions
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_orders_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    fns = build_tool_functions()
+    md = fns["skew_split_key"](_SPLITKEY_CONF, ds_type="sqlite", lang="zh")
+    assert "## SeaTunnel 分片键体检" in md
+    assert 'partition_column = "id"' in md  # skewed region → id promoted
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "splitkey" and rec["source"] == "mcp"
+    assert rec["splitkey"]["key_verdict"] in ("bad", "low_ndv")
+
+    # file variant + missing file
+    conf_file = tmp_path / "job.conf"
+    conf_file.write_text(_SPLITKEY_CONF, encoding="utf-8")
+    md2 = fns["skew_split_key_file"](str(conf_file), ds_type="sqlite")
+    assert "## SeaTunnel 分片键体检" in md2
+    assert "读取文件失败" in fns["skew_split_key_file"](str(tmp_path / "nope.conf"))
+
+
+def test_cli_skew_splitkey(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_orders_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    conf_file = tmp_path / "job.conf"
+    conf_file.write_text(_SPLITKEY_CONF, encoding="utf-8")
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite"])
+    assert res.exit_code == 0, res.output
+    assert "SeaTunnel" in res.output
+
+    # CI gate: the configured region key measures skewed → exit 1
+    gated = runner.invoke(
+        cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite", "--fail"])
+    assert gated.exit_code == 1
+    assert "检查未通过" in gated.output
+
+    # report file output
+    out = tmp_path / "spk.md"
+    runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite",
+                        "-o", str(out)])
+    assert "分片键体检" in out.read_text(encoding="utf-8")
