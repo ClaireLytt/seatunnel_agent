@@ -2282,7 +2282,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         with holder_lock:
             report = holder.get("last_report")
         if not report:
-            return dc(lang_val, "dc_error")
+            return dc(lang_val, "dc_error"), gr.update()
         try:
             _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
             ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -2290,9 +2290,11 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             data = report.to_dict()
             with open(fpath, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            return f'✅ {dc(lang_val, "dc_saved")} — {fpath.name}'
+            # refresh the load dropdown so the new file is pickable at once
+            return (f'✅ {dc(lang_val, "dc_saved")} — {fpath.name}',
+                    _list_reports())
         except Exception as e:
-            return f'❌ {dc(lang_val, "dc_error")}: {_esc_html(str(e))}'
+            return f'❌ {dc(lang_val, "dc_error")}: {_esc_html(str(e))}', gr.update()
 
     def _list_reports():
         if not _REPORTS_DIR.is_dir():
@@ -3628,7 +3630,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     )
 
     # E — Report persistence
-    save_btn.click(fn=_save_report, inputs=[lang_state], outputs=[save_status])
+    save_btn.click(fn=_save_report, inputs=[lang_state],
+                   outputs=[save_status, load_dd])
     load_btn.click(fn=_list_reports, inputs=[], outputs=[load_dd])
     load_dd.change(fn=_load_report, inputs=[load_dd, lang_state], outputs=[result_html])
 
@@ -3783,6 +3786,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         from .lang_pref import STAMP_JS as _STAMP_JS
         from .lang_pref import choice_from_request as _choice
         app.load(fn=None, js=_STAMP_JS)
+        # saved-report dropdown: choices are baked empty at build time —
+        # populate on page load so the user never needs the ↻ button first
+        app.load(fn=_list_reports, inputs=[], outputs=[load_dd])
 
         def _lang_on_load(a, b, request: gr.Request):
             return _switch_lang(_choice(request), a, b)

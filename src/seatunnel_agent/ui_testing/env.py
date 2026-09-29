@@ -103,6 +103,10 @@ class AppUnderTest:
             self.log_path.parent / "dc_connections.json")
         child_env["SEATUNNEL_SKEW_HISTORY_PATH"] = str(
             self.log_path.parent / "data_skew_history.jsonl")
+        # ... and from the developer's real saved comparison reports, so
+        # save/load-report cases see a deterministic (empty) directory.
+        child_env["DC_REPORTS_DIR"] = str(
+            self.log_path.parent / "dc_reports")
         self.proc = subprocess.Popen(
             [sys.executable, "-c", _LAUNCH_SNIPPET % self.port],
             stdout=self._log_file, stderr=subprocess.STDOUT,

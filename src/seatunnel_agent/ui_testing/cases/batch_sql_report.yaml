@@ -129,3 +129,22 @@
   expect:
     - popup_contains: {text: 数据比对报告}
     - popup_contains: {text: 行数}
+
+# 保存后下拉自动刷新(不再依赖 ↻),选中即渲染历史报告 —— 用户实测发现
+# "加载报告点开没有东西":choices 构建期固化为空,只有点 ↻ 才有选项。
+- id: Q5b
+  title: 保存后加载报告下拉直接有选项且可加载
+  tags: [full, sqlite]
+  setup:
+    - use: select_orders
+    - click: 行数对比
+    - wait_result: {}
+    - click: 保存报告
+    - wait: 1500
+      note: 保存为本地文件无 loading 信号,固定短等待
+  steps:
+    - select_index: {of: 加载报告, index: 0}
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 已加载}
+    - result_in_view: {}
