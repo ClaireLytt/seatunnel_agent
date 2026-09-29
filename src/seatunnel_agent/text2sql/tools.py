@@ -958,16 +958,23 @@ def _build_success(
     validation: ValidationResult, **extra: Any,
 ) -> dict[str, Any]:
     """Build a structured success response for execute_sql."""
+    from .masking import apply_masking
+
+    preview, masked_cols = apply_masking(
+        result.columns, result.rows[:_PREVIEW_ROWS],
+    )
     out: dict[str, Any] = {
         "success": True,
         "sql": sql,
         "columns": result.columns,
-        "preview_rows": [list(r) for r in result.rows[:_PREVIEW_ROWS]],
+        "preview_rows": [list(r) for r in preview],
         "row_count": result.row_count,
         "truncated": result.truncated,
         "elapsed_ms": result.elapsed_ms,
         **extra,
     }
+    if masked_cols:
+        out["masked_columns"] = masked_cols
     if validation.column_warnings:
         out["column_warnings"] = validation.column_warnings
     report = check_quality(result.columns, result.rows)
@@ -1426,10 +1433,12 @@ def _tool_get_result_page(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
 def _tool_export_csv(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
     if rt.last_result is None:
         return {"error": "No query result to export. Run execute_sql first."}
+    from .masking import apply_masking
+    rows, _masked = apply_masking(rt.last_result.columns, rt.last_result.rows)
     try:
         path = export_csv(
             rt.last_result.columns,
-            rt.last_result.rows,
+            rows,
             path=inp.get("path"),
             name_hint=inp.get("name_hint", "query_result"),
         )
@@ -1442,10 +1451,12 @@ def _tool_export_excel(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, An
     if rt.last_result is None:
         return {"error": "No query result to export. Run execute_sql first."}
     from .exporter import export_excel
+    from .masking import apply_masking
+    rows, _masked = apply_masking(rt.last_result.columns, rt.last_result.rows)
     try:
         path = export_excel(
             rt.last_result.columns,
-            rt.last_result.rows,
+            rows,
             path=inp.get("path"),
             name_hint=inp.get("name_hint", "query_result"),
         )
@@ -1458,10 +1469,12 @@ def _tool_export_pdf(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]
     if rt.last_result is None:
         return {"error": "No query result to export. Run execute_sql first."}
     from .exporter import export_pdf
+    from .masking import apply_masking
+    rows, _masked = apply_masking(rt.last_result.columns, rt.last_result.rows)
     try:
         path = export_pdf(
             rt.last_result.columns,
-            rt.last_result.rows,
+            rows,
             path=inp.get("path"),
             name_hint=inp.get("name_hint", "query_result"),
             title=inp.get("title", "Query Result Report"),

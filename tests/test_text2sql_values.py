@@ -124,7 +124,6 @@ def test_search_cjk_substring_and_ascii_token() -> None:
 
 
 def test_match_tables_returns_value_hits(sqlite_env, monkeypatch, tmp_path) -> None:
-    from seatunnel_agent.text2sql.executor import DatabaseConfig
     from seatunnel_agent.text2sql.tools import (
         Text2SQLRuntime,
         execute_text2sql_tool,

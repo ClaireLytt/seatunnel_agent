@@ -2,6 +2,8 @@
 
 > Issue: https://github.com/ClaireLytt/seatunnel_agent/issues/35
 > 状态: v1 已实现 (2026-09-28) — M1 语义层 / M2 归因 / M3 混合检索+bench / M4 订阅+MCP 全部完成
+> v2 已实现 (2026-09-29) — 见 §12：星型 JOIN / 归因双因素+交叉维度 /
+> few-shot 示例库+反馈闭环 / 值级检索 / 多渠道推送+看板 / 列脱敏
 > 前置: Text2SQL 模块（复用其 agent 循环 / SchemaStore / validator / executor / chart / qlog）
 
 ## 1. 背景与目标
@@ -264,3 +266,23 @@ FastMCP，无 mcp 包也可单测）。CLI：`seatunnel-agent t2s-mcp`。
 - `croniter`（订阅调度，轻量纯 Python）
 - 其余零新增：YAML 解析用现有 pyyaml，BM25 纯手写（~60 行），
   embedding 复用 OpenAI 兼容 HTTP 调用，飞书推送用标准库 urllib/requests（项目已有 requests）
+
+
+## 12. v2 演进（2026-09-29）
+
+v1 的四个明示边界逐一解除，另补两块 v1 未覆盖的能力：
+
+| # | 能力 | 解除的 v1 边界 / 新增动机 | 实现 |
+|---|------|--------------------------|------|
+| A | **星型 JOIN** | v1 维度只能是事实表列；真实数仓维度值在维表里 | metrics.yaml `joins:` 声明（非分区维表、别名、ON 过滤），dimensions 支持 `别名.列名`；build_metric_sql 仍是纯函数（事实列自动 `t.` 前缀，结果列裸名，比率外层/归因对别名透明） |
+| B1 | **比率双因素分解** | v1 只出分子/分母各自变动 | `ratio_factor_split`: ΔR = ΔN/D_c + (N_p/D_c − N_p/D_p)，精确恒等式带自检，归因工具输出 `factor_split` |
+| B2 | **交叉维度下钻** | v1 只逐单维遍历 | `cross_dimensions=[d1,d2]` / `cross=true`（自动取浓度 Top2），+2 SQL，贡献恒等式对交叉分组成立 |
+| C | **few-shot 示例库 + 反馈闭环** | 新增：准确率飞轮 | ExampleStore（JSON，BM25 检索 Top-3 注入用户消息）；UI 👍/👎 沉淀/移除验证示例并落 qlog；CLI t2s-examples |
+| D | **值级检索** | 新增：问题中的取值（"华东"）与 schema 零词面交集 | ValueIndex 采样低基数字符串列枚举值（跳过分区表），match_tables 附 value_hits + 字面量 verbatim 提示；CLI t2s-index-values |
+| E1 | **多渠道推送** | v1 只支持飞书（明示扩展点） | push_card 按 URL 域名分发：飞书/钉钉/企微/邮件（mailto: + SMTP），订阅 schema 不变 |
+| E2 | **轻量看板** | 非目标"拖拽设计器"不变；钉选是自然消费形态 | BoardStore + UI 钉选/渲染（逐项过 validator/LIMIT，渲染进对话流） |
+| F | **列脱敏** | 新增：数据安全红线补齐 | 呈现边缘统一脱敏（预览/导出/卡片/看板），引擎内部保持原值；T2S_MASKING 开关 |
+
+v2 仍然保留的边界：join 维表必须非分区（分区维表先物化快照）；度量表达式
+只引用事实表列；比率交叉分解不做乘法逐成员分裂（factor_split 是总量级恒等
+式）；看板不做布局编辑。检索回归门禁已接入 CI（tests.yml）。

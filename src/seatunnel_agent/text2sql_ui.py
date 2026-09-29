@@ -36,6 +36,7 @@ from .text2sql.chat_history import (
     now_iso,
     save_t2s_session,
 )
+from .text2sql.boards import BoardStore, render_board
 from .text2sql.favorites import FavoritesStore
 from .text2sql.templates import SQL_TEMPLATES, template_choices, template_description
 from .text2sql.i18n import (
@@ -472,6 +473,8 @@ def _md_table(columns: list[str], rows: list[list[Any]], max_rows: int = 20, lan
 
 def _build_csv_data_uri(columns: list[str], rows: list) -> str:
     import csv as _csv, io as _io, base64 as _b64
+    from .text2sql.masking import apply_masking
+    rows, _masked = apply_masking(columns, rows)
     buf = _io.StringIO()
     w = _csv.writer(buf)
     w.writerow(columns)
@@ -1666,6 +1669,36 @@ def render_text2sql_page(app=None) -> None:
                 )
                 sub_status_md = gr.Markdown("")
 
+            with gr.Accordion(
+                t("board_section_title"), open=False,
+                elem_classes=["st-filter-accordion"],
+            ) as board_accordion:
+                board_list_md = gr.Markdown(t("board_none"))
+                board_dd = gr.Dropdown(
+                    choices=[], value=None, show_label=False,
+                    label=t("board_section_title"),  # aria-label for UI tests
+                    elem_classes=["st-sidebar-control"],
+                )
+                with gr.Row(elem_classes=["st-filter-actions"]):
+                    board_pin_btn = gr.Button(
+                        t("board_pin"), size="sm",
+                        elem_classes=["st-filter-act-btn"],
+                    )
+                    board_render_btn = gr.Button(
+                        t("board_render"), size="sm",
+                        elem_classes=["st-filter-act-btn"],
+                    )
+                board_name_tb = gr.Textbox(
+                    show_label=False, lines=1,
+                    placeholder=t("board_name_ph"),
+                    elem_classes=["st-sidebar-control"],
+                )
+                board_create_btn = gr.Button(
+                    t("board_create"), variant="primary", size="sm",
+                    elem_classes=["st-connect-btn"],
+                )
+                board_status_md = gr.Markdown("")
+
         # ── Right panel (chat) ──
         with gr.Column(scale=1, elem_classes=["st-main"]):
             with gr.Row(elem_classes=["st-topbar-row"]):
@@ -2361,6 +2394,11 @@ def render_text2sql_page(app=None) -> None:
             gr.update(placeholder=t("sub_cron_ph")),
             gr.update(placeholder=t("sub_metric_ph")),
             gr.update(placeholder=t("sub_webhook_ph")),
+            gr.update(label=t("board_section_title")),
+            gr.update(value=t("board_pin")),
+            gr.update(value=t("board_render")),
+            gr.update(placeholder=t("board_name_ph")),
+            gr.update(value=t("board_create")),
         )
 
     # ── Wiring ──
@@ -2420,6 +2458,11 @@ def render_text2sql_page(app=None) -> None:
             sub_cron_tb,
             sub_metric_tb,
             sub_webhook_tb,
+            board_accordion,
+            board_pin_btn,
+            board_render_btn,
+            board_name_tb,
+            board_create_btn,
         ],
     )
 
@@ -2624,6 +2667,136 @@ def render_text2sql_page(app=None) -> None:
         inputs=[sub_name_tb, sub_cron_tb, sub_metric_tb, sub_webhook_tb, lang_state],
         outputs=[sub_status_md, sub_list_md, sub_dd],
     )
+
+    # ── Boards (轻量看板) ──
+    board_store = BoardStore()
+
+    def _board_listing(lang: str):
+        t = lambda k: _t2s(lang, k)
+        boards = board_store.list()
+        if not boards:
+            return t("board_none"), gr.update(choices=[], value=None)
+        lines = [
+            f"- **{b['name']}** · {len(b.get('items', []))} 项"
+            for b in boards
+        ]
+        choices = [
+            (f"{b['name']} ({len(b.get('items', []))})", b["id"])
+            for b in boards
+        ]
+        return "\n".join(lines), gr.update(choices=choices)
+
+    def _board_refresh(lang: str):
+        return _board_listing(lang)
+
+    def _board_create(name: str, lang: str):
+        t = lambda k: _t2s(lang, k)
+        try:
+            board = board_store.create(name or "")
+        except ValueError as exc:
+            listing, dd = _board_listing(lang)
+            return f"⚠️ {exc}", listing, dd
+        boards = board_store.list()
+        choices = [
+            (f"{b['name']} ({len(b.get('items', []))})", b["id"])
+            for b in boards
+        ]
+        listing = "\n".join(
+            f"- **{b['name']}** · {len(b.get('items', []))} 项" for b in boards
+        )
+        return ("✅ " + t("board_created"), listing,
+                gr.update(choices=choices, value=board["id"]))
+
+    def _board_pin(board_id: str, lang: str):
+        t = lambda k: _t2s(lang, k)
+        if not board_id:
+            listing, dd = _board_listing(lang)
+            return f"⚠️ {t('board_pick')}", listing, dd
+        with holder_lock:
+            agent = holder.get("agent")
+            sql_fallback = holder.get("_last_sql", "")
+            question = holder.get("_last_question", "")
+        rt = agent.runtime if agent else None
+        sql = (rt.last_sql if rt else "") or sql_fallback
+        if not sql:
+            listing, dd = _board_listing(lang)
+            return f"⚠️ {t('no_sql_to_save')}", listing, dd
+        try:
+            board_store.pin(
+                board_id, title=question or sql[:40], sql=sql,
+                ds_type=holder.get("ds_type", ""),
+            )
+        except ValueError as exc:
+            listing, dd = _board_listing(lang)
+            return f"⚠️ {exc}", listing, dd
+        listing, dd = _board_listing(lang)
+        return "✅ " + t("board_pinned"), listing, dd
+
+    def _board_render(board_id: str, history: list, lang: str):
+        t = lambda k: _t2s(lang, k)
+        history = list(history or [])
+        if not board_id:
+            raise gr.Error(t("board_pick"))
+        board = board_store.get(board_id)
+        if board is None:
+            raise gr.Error(t("board_pick"))
+        if not board.get("items"):
+            raise gr.Error(t("board_empty"))
+        with holder_lock:
+            agent = holder.get("agent")
+            store_ref = holder.get("store")
+            ds_type = holder.get("ds_type", "hive")
+        rt = agent.runtime if agent else None
+        if rt is None or store_ref is None:
+            raise gr.Error(t("board_need_connect"))
+        try:
+            executor = rt.executor
+        except Exception:
+            raise gr.Error(t("board_need_connect"))
+
+        from .text2sql.chart import build_chart, detect_chart_type, fig_to_base64
+
+        entries = render_board(board, executor, store_ref, ds_type=ds_type)
+        title = _t2s(lang, "board_title_fmt").format(name=board["name"])
+        history.append({"role": "assistant", "content": f"### {title}"})
+        for e in entries:
+            parts = [f"**{e['title']}**"]
+            if e.get("error"):
+                parts.append(f"⚠️ {_esc_html(e['error'])}")
+                history.append({"role": "assistant", "content": "\n\n".join(parts)})
+                continue
+            parts.append(
+                _md_table(e["columns"], e["rows"], max_rows=10, lang=lang)
+            )
+            content = "\n\n".join(parts)
+            ct = detect_chart_type(e["columns"], e["rows"])
+            if ct:
+                try:
+                    fig = build_chart(e["columns"], e["rows"], ct)
+                    if fig is not None:
+                        uri = fig_to_base64(fig)
+                        import matplotlib.pyplot as _plt
+                        _plt.close(fig)
+                        content += (
+                            f'\n\n<img src="{uri}" alt="chart" '
+                            f'style="max-width:100%;border-radius:8px;" />'
+                        )
+                except Exception:
+                    pass  # charts are best-effort
+            history.append({"role": "assistant", "content": content})
+        return history
+
+    board_pin_btn.click(fn=_board_pin, inputs=[board_dd, lang_state],
+                        outputs=[board_status_md, board_list_md, board_dd])
+    board_render_btn.click(fn=_board_render,
+                           inputs=[board_dd, chatbot, lang_state],
+                           outputs=[chatbot])
+    board_create_btn.click(fn=_board_create,
+                           inputs=[board_name_tb, lang_state],
+                           outputs=[board_status_md, board_list_md, board_dd])
+    if app is not None:
+        app.load(fn=_board_refresh, inputs=[lang_state],
+                 outputs=[board_list_md, board_dd])
 
     def _select_all(lang):
         with holder_lock:

@@ -295,6 +295,9 @@ def render_card_markdown(
     columns: list[str], rows: list[tuple], max_rows: int = _CARD_MAX_ROWS,
 ) -> str:
     """Feishu lark_md table (pipe-drawn; lark_md has no real tables)."""
+    from .masking import apply_masking
+
+    rows, _masked = apply_masking(columns, list(rows))
     lines = [" | ".join(str(c) for c in columns)]
     for row in rows[:max_rows]:
         lines.append(" | ".join("" if v is None else str(v) for v in row))
@@ -429,6 +432,155 @@ def push_feishu(
     if code == 0:
         return True, "ok"
     return False, payload.get("msg", str(payload))
+
+
+# ----------------------------------------------------------------------
+# Other channels: DingTalk / WeCom bots, email — dispatched by target URL
+# ----------------------------------------------------------------------
+
+
+def _post_json(url: str, payload: dict, timeout: int) -> tuple[bool, dict | str]:
+    """POST JSON; returns (transport_ok, parsed_response | error_str)."""
+    import urllib.request
+
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return True, json.loads(resp.read().decode("utf-8"))
+    except Exception as exc:  # network / HTTP errors
+        return False, str(exc)
+
+
+def push_dingtalk(
+    webhook_url: str,
+    title: str,
+    body_markdown: str,
+    ok: bool = True,
+    timeout: int = 15,
+    img_key: str = "",  # signature-compatible; DingTalk has no img upload here
+) -> tuple[bool, str]:
+    """POST a markdown message to a DingTalk custom-robot webhook."""
+    del img_key
+    icon = "" if ok else "❌ "
+    sent, payload = _post_json(webhook_url, {
+        "msgtype": "markdown",
+        "markdown": {
+            "title": title,
+            "text": f"## {icon}{title}\n\n{body_markdown}",
+        },
+    }, timeout)
+    if not sent:
+        return False, str(payload)
+    if isinstance(payload, dict) and payload.get("errcode", -1) == 0:
+        return True, "ok"
+    return False, payload.get("errmsg", str(payload)) if isinstance(payload, dict) else str(payload)
+
+
+def push_wecom(
+    webhook_url: str,
+    title: str,
+    body_markdown: str,
+    ok: bool = True,
+    timeout: int = 15,
+    img_key: str = "",  # signature-compatible; not applicable
+) -> tuple[bool, str]:
+    """POST a markdown message to a WeCom (企业微信) group-bot webhook."""
+    del img_key
+    icon = "" if ok else "❌ "
+    content = f"## {icon}{title}\n\n{body_markdown}"
+    # WeCom caps markdown content at 4096 bytes (UTF-8).
+    while len(content.encode("utf-8")) > 4000:
+        content = content[: int(len(content) * 0.9)]
+    sent, payload = _post_json(webhook_url, {
+        "msgtype": "markdown",
+        "markdown": {"content": content},
+    }, timeout)
+    if not sent:
+        return False, str(payload)
+    if isinstance(payload, dict) and payload.get("errcode", -1) == 0:
+        return True, "ok"
+    return False, payload.get("errmsg", str(payload)) if isinstance(payload, dict) else str(payload)
+
+
+def push_email(
+    target: str,
+    title: str,
+    body_markdown: str,
+    ok: bool = True,
+    timeout: int = 15,
+    img_key: str = "",  # signature-compatible; not applicable
+) -> tuple[bool, str]:
+    """Send the card body as a plain-text email. Target is ``mailto:addr``;
+    SMTP settings come from SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS
+    (STARTTLS by default, SMTP_TLS=0 to disable)."""
+    del img_key
+    import smtplib
+    from email.mime.text import MIMEText
+
+    addr = target[len("mailto:"):].strip() if target.startswith("mailto:") else target
+    host = os.getenv("SMTP_HOST", "").strip()
+    if not host or not addr:
+        return False, "SMTP_HOST 未配置或收件地址为空"
+    port = int(os.getenv("SMTP_PORT", "587") or 587)
+    user = os.getenv("SMTP_USER", "").strip()
+    password = os.getenv("SMTP_PASS", "")
+    sender = os.getenv("SMTP_FROM", user or "seatunnel-agent@localhost").strip()
+
+    msg = MIMEText(body_markdown, "plain", "utf-8")
+    msg["Subject"] = ("" if ok else "[FAILED] ") + title
+    msg["From"] = sender
+    msg["To"] = addr
+    try:
+        with smtplib.SMTP(host, port, timeout=timeout) as smtp:
+            if os.getenv("SMTP_TLS", "1").strip() != "0":
+                smtp.starttls()
+            if user:
+                smtp.login(user, password)
+            smtp.sendmail(sender, [addr], msg.as_string())
+        return True, "ok"
+    except Exception as exc:
+        return False, str(exc)
+
+
+def detect_channel(target: str) -> str:
+    """Push channel from the target URL: feishu / dingtalk / wecom / email."""
+    t = (target or "").strip().lower()
+    if t.startswith("mailto:") or ("@" in t and "://" not in t):
+        return "email"
+    if "oapi.dingtalk.com" in t:
+        return "dingtalk"
+    if "qyapi.weixin.qq.com" in t:
+        return "wecom"
+    return "feishu"  # open.feishu.cn / larksuite, and the historic default
+
+
+_CHANNEL_PUSHERS: dict[str, Callable[..., tuple[bool, str]]] = {
+    "feishu": push_feishu,
+    "dingtalk": push_dingtalk,
+    "wecom": push_wecom,
+    "email": push_email,
+}
+
+
+def push_card(
+    webhook_url: str,
+    title: str,
+    body_markdown: str,
+    ok: bool = True,
+    timeout: int = 15,
+    img_key: str = "",
+) -> tuple[bool, str]:
+    """Channel-dispatching push: the subscription schema stays a single
+    target URL, and the channel is inferred from its domain (feishu is the
+    default, preserving pre-multi-channel behavior)."""
+    pusher = _CHANNEL_PUSHERS[detect_channel(webhook_url)]
+    return pusher(webhook_url, title, body_markdown, ok=ok, timeout=timeout,
+                  img_key=img_key)
 
 
 # ----------------------------------------------------------------------
@@ -607,7 +759,7 @@ def run_subscription(
     schema_store: SchemaStore | None = None,
     metric_store: MetricStore | None = None,
     today: date | None = None,
-    push_fn: Callable[..., tuple[bool, str]] = push_feishu,
+    push_fn: Callable[..., tuple[bool, str]] = push_card,
     favorites: FavoritesStore | None = None,
 ) -> dict[str, Any]:
     """Execute one subscription and push its card. Never raises: the outcome
@@ -673,9 +825,10 @@ def run_subscription(
         body = render_card_markdown(result.columns, [tuple(r) for r in result.rows])
         # chart embedding: best-effort, needs FEISHU_APP_ID/SECRET for upload
         img_key = ""
-        png = _chart_png(result.columns, [tuple(r) for r in result.rows])
-        if png:
-            img_key = upload_feishu_image(png)
+        if detect_channel(webhook) == "feishu":
+            png = _chart_png(result.columns, [tuple(r) for r in result.rows])
+            if png:
+                img_key = upload_feishu_image(png)
         pushed, push_msg = push_fn(
             webhook, f"📊 {name}", body, ok=True, img_key=img_key,
         )
