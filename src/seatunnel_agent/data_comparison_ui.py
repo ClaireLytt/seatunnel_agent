@@ -1134,6 +1134,8 @@ def build_standalone_report(report: CompareReport, lang: str = "en") -> str:
         cards.append(build_partition_card(report.partition, lang))
     if report.custom_agg is not None:
         cards.append(build_custom_agg_card(report.custom_agg, lang))
+    if report.chunked is not None:
+        cards.append(build_chunked_card(report.chunked, lang))
     if report.batch_counts is not None:
         cards.append(build_batch_count_card(report.batch_counts, lang))
 
@@ -1907,7 +1909,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     # ── Chunked (blocked) verification for large tables ──
 
     def _chunked_inner(table_a, table_b, lang_val, where_val="",
-                       key_cols_str="", checksum_cols_str=""):
+                       key_cols_str="", checksum_cols_str="",
+                       col_mapping_str=""):
         from .data_comparison.chunked import compare_chunked
         ex_a, ex_b = _snap_executors()
         key_cols = [k.strip() for k in (key_cols_str or "").split(",") if k.strip()]
@@ -1917,6 +1920,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 'border-radius:8px;margin-bottom:8px;">'
                 f'{dc(lang_val, "dc_chunked_need_pk")}</div>')
         pk = key_cols[0]
+        mapping = parse_column_mapping(col_mapping_str) if col_mapping_str else {}
         cols = [c.strip() for c in (checksum_cols_str or "").split(",") if c.strip()]
         if not cols:
             desc_a, desc_b = run_parallel(
@@ -1926,7 +1930,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             names_a = {c.name.lower(): c.name for c in desc_a.columns}
             names_b = {c.name.lower() for c in desc_b.columns}
             cols = [names_a[k] for k in names_a
-                    if k in names_b and k != pk.lower()]
+                    if k != pk.lower()
+                    and mapping.get(names_a[k], names_a[k]).lower() in names_b]
+        cols_b = [mapping.get(c, c) for c in cols]
+        pk_b = mapping.get(pk, pk)
+        if not cols:
+            # no shared non-pk columns: hash the pk itself on each side
+            cols, cols_b = [pk], [pk_b]
 
         def _run_a(sql, n):
             return ex_a.run(sql, max_rows=n).rows
@@ -1936,16 +1946,19 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
         result = compare_chunked(
             _run_a, _run_b, table_a, table_b, pk, cols,
-            ex_a.config.ds_type, ex_b.config.ds_type, where=where_val or "")
+            ex_a.config.ds_type, ex_b.config.ds_type, where=where_val or "",
+            columns_b=cols_b, pk_column_b=pk_b)
         return result, build_chunked_card(result, lang_val)
 
     def _compare_chunked_fn(table_a, table_b, lang_val, where_val,
-                            key_cols_str="", checksum_cols_str=""):
+                            key_cols_str="", checksum_cols_str="",
+                            col_mapping_str=""):
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
             return msg
         result, html = _chunked_inner(table_a, table_b, lang_val, where_val,
-                                      key_cols_str, checksum_cols_str)
+                                      key_cols_str, checksum_cols_str,
+                                      col_mapping_str)
         if result is not None:
             _store_partial("chunked", result)
         return html
@@ -2320,6 +2333,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 parts.append(build_partition_card(report.partition, lang_val))
             if report.custom_agg is not None:
                 parts.append(build_custom_agg_card(report.custom_agg, lang_val))
+            if report.chunked is not None:
+                parts.append(build_chunked_card(report.chunked, lang_val))
             if report.keyed_diff is not None:
                 parts.append(build_keyed_diff_card(report.keyed_diff, lang_val))
             if report.batch_counts is not None:
@@ -3426,7 +3441,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                        outputs=[result_html])
     chunked_btn.click(fn=_compare_chunked_btn_fn,
                       inputs=[table_a, table_b, lang_state, where_input,
-                              key_input, checksum_cols_input],
+                              key_input, checksum_cols_input, mapping_input],
                       outputs=[result_html])
     partition_btn.click(fn=_compare_partition,
                         inputs=[table_a, table_b, lang_state, where_input, partition_col_input],

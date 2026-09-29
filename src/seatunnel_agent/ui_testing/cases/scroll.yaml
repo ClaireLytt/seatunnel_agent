@@ -96,3 +96,18 @@
       note: 纯断言用例,等页面水合完成即可
   expect:
     - scrollable: {selector: .gradio-container}
+
+# 比对页结果区:内容(如"全部对比"的长卡片)超过一屏时必须能滚。
+# 该容器此前从未被 scrollable 覆盖 —— Gradio 给自定义 CSS 复制的带前缀
+# 高特异性规则悄悄压掉了 body:has(...) 的 overflow-y:auto 覆盖,结果区
+# 无滚动条、折叠线以下的卡片永远够不着(用户实测发现)。
+- id: SCR10
+  title: 数据比对页结果区可滚动
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_orders
+  steps:
+    - click: 全部对比
+    - wait_result: {timeout_ms: 90000}
+  expect:
+    - scrollable: {selector: .st-main}

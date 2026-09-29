@@ -570,22 +570,28 @@ _TS_RE = re.compile(
     r"^(\d{4}-\d{2}-\d{2})"                 # date
     r"(?:[T ](\d{2}:\d{2})(?::(\d{2}))?"    # optional time
     r"(?:\.(\d+))?"                         # optional fraction
-    r"(?:Z|[+-]\d{2}:?\d{2})?)?$"           # optional zone marker (ignored)
+    r"(Z|[+-]\d{2}:?\d{2})?)?$"             # optional zone suffix
 )
 
 
 def _canon_timestamp(s: str) -> str | None:
-    """Canonical 'YYYY-MM-DD HH:MM:SS.frac' for ISO-ish datetime strings.
+    """Canonical 'YYYY-MM-DD HH:MM:SS.frac[zone]' for ISO-ish datetimes.
 
     A bare date equals midnight; 'T' and ' ' separators, missing seconds and
-    trailing fractional zeros are normalized away. Returns None when the
-    string is not datetime-shaped."""
+    trailing fractional zeros are normalized away. The zone suffix is KEPT
+    (normalized: 'Z' == '+00:00' == '+0000'), so '10:30:00+08:00' never
+    equals '10:30:00Z' — those are instants eight hours apart. Returns None
+    when the string is not datetime-shaped."""
     m = _TS_RE.match(s)
     if not m:
         return None
-    date, hm, sec, frac = m.groups()
+    date, hm, sec, frac, zone = m.groups()
     frac = (frac or "").rstrip("0")
-    return f"{date} {hm or '00:00'}:{sec or '00'}" + (f".{frac}" if frac else "")
+    z = (zone or "").replace(":", "")
+    if z in ("+0000", "-0000"):
+        z = "Z"
+    return (f"{date} {hm or '00:00'}:{sec or '00'}"
+            + (f".{frac}" if frac else "") + z)
 
 
 def _close_enough(a: Any, b: Any, tolerance: float = 1e-6) -> bool:

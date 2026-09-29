@@ -4393,3 +4393,14 @@ class TestValueNormalization:
 
     def test_non_timestamp_shapes_not_canonicalized(self):
         assert not _close_enough("2024-01-01x", "2024-01-01")
+
+    def test_timezone_offsets_not_stripped(self):
+        # instants 8 hours apart must NOT compare equal
+        assert not _close_enough("2024-01-01 10:30:00+08:00",
+                                 "2024-01-01 10:30:00Z")
+        assert not _close_enough("2024-01-01 10:30:00+08:00",
+                                 "2024-01-01 10:30:00")
+
+    def test_equivalent_zone_spellings_equal(self):
+        assert _close_enough("2024-01-01 10:30:00Z", "2024-01-01T10:30:00+00:00")
+        assert _close_enough("2024-01-01 10:30:00+0800", "2024-01-01T10:30:00+08:00")
