@@ -148,6 +148,12 @@ def _expand_assert(raw: Any, ctx: str) -> Assertion:
     else:
         raise CaseLoadError(f"{ctx}: assertion must be a mapping, got {raw!r}")
 
+    # YAML 1.1 parses a bare `on:` key as boolean True — map it back (the
+    # step expander does the same; without this, `enabled`/`checked`
+    # asserts with `on: false` silently checked the opposite state)
+    if True in args:
+        args["on"] = args.pop(True)
+
     if kind not in KNOWN_ASSERTS:
         raise CaseLoadError(f"{ctx}: unknown assertion {kind!r} "
                             f"(known: {sorted(KNOWN_ASSERTS)})")

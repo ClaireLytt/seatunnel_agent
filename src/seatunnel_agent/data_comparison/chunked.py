@@ -287,15 +287,16 @@ def compare_chunked(
 
     ``columns_b``/``pk_column_b`` support column mapping: positions must
     align with ``columns``/``pk_column`` (side A names)."""
+    pk_b = pk_column_b or pk_column
     if not columns:
         # A table whose only shared column is the PK would render an
         # illegal empty CONCAT_WS(); hashing the PK itself still verifies
-        # row existence per chunk.
-        columns = [pk_column]
-    cols_b = columns_b if columns_b else columns
+        # row existence per chunk. Each side hashes its OWN pk name.
+        columns, cols_b = [pk_column], [pk_b]
+    else:
+        cols_b = columns_b if columns_b else columns
     if len(cols_b) != len(columns):
         raise ValueError("columns_b must align 1:1 with columns")
-    pk_b = pk_column_b or pk_column
 
     result = ChunkedResult(table_a=table_a, table_b=table_b,
                            pk_column=pk_column)

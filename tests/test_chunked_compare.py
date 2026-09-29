@@ -285,3 +285,16 @@ class TestColumnMapping:
         r = compare_chunked(run, run, "ta", "tb", "id", ["amount"],
                             "sqlite", "sqlite", columns_b=["total"])
         assert r.changed == [3]
+
+    def test_pk_only_fallback_uses_mapped_pk_on_b(self):
+        conn = sqlite3.connect(":memory:")
+        conn.execute("CREATE TABLE ta (id INTEGER)")
+        conn.execute("CREATE TABLE tb (uid INTEGER)")
+        conn.executemany("INSERT INTO ta VALUES (?)", [(i,) for i in range(1, 6)])
+        conn.executemany("INSERT INTO tb VALUES (?)", [(i,) for i in range(1, 5)])
+
+        def run(sql, n):
+            return conn.execute(sql).fetchmany(n)
+        r = compare_chunked(run, run, "ta", "tb", "id", [],
+                            "sqlite", "sqlite", pk_column_b="uid")
+        assert r.only_a == [5]

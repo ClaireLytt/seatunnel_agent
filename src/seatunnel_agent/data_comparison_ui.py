@@ -2306,12 +2306,15 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             return f'❌ {dc(lang_val, "dc_error")}: {_esc_html(str(e))}', gr.update()
 
     def _list_reports():
+        # never touch `value`: setting it (even to None) fires load_dd's
+        # .change, whose handler overwrites the result panel — saving a
+        # report used to wipe the comparison the user had just rendered
         if not _REPORTS_DIR.is_dir():
-            return gr.update(choices=[], value=None)
+            return gr.update(choices=[])
         files = sorted(_REPORTS_DIR.glob("compare_*.json"),
                        key=lambda f: f.stat().st_mtime, reverse=True)
         names = [f.name for f in files[:_MAX_REPORT_FILES]]
-        return gr.update(choices=names, value=None)
+        return gr.update(choices=names)
 
     def _load_report(filename, lang_val):
         if not filename:
@@ -3431,8 +3434,16 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     # it runs so an impatient double-click cannot queue a duplicate run
     # (observed in the wild: the second run re-hits the DBs for nothing and
     # repaints the result area a second time).
-    all_btn.click(fn=lambda: gr.update(interactive=False),
-                  outputs=[all_btn], queue=False,
+    def _btn_off():
+        _log.info("all_btn disable event fired")
+        return gr.update(interactive=False)
+
+    def _btn_on():
+        _log.info("all_btn enable event fired")
+        return gr.update(interactive=True)
+
+    all_btn.click(fn=_btn_off,
+                  outputs=[all_btn], trigger_mode="once",
     ).then(fn=_compare_all,
            inputs=[table_a, table_b, lang_state, where_input, key_input,
                    threshold_input, sample_strategy, mapping_input,
@@ -3440,8 +3451,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                    skew_cols_input, stratified_col_input,
                    checksum_cols_input, partition_col_input, custom_agg_input],
            outputs=[result_html],
-    ).then(fn=lambda: gr.update(interactive=True),
-           outputs=[all_btn], queue=False)
+    ).then(fn=_btn_on,
+           outputs=[all_btn])
     batch_btn.click(fn=_batch_count,
                     inputs=[lang_state, where_input],
                     outputs=[result_html])
@@ -3467,12 +3478,12 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     # Same double-click guard as Compare All: batch full compare walks every
     # common table pair and is the slowest action on the page.
     batch_full_btn.click(fn=lambda: gr.update(interactive=False),
-                         outputs=[batch_full_btn], queue=False,
+                         outputs=[batch_full_btn], trigger_mode="once",
     ).then(fn=_batch_full,
            inputs=[lang_state, where_input, threshold_input],
            outputs=[result_html],
     ).then(fn=lambda: gr.update(interactive=True),
-           outputs=[batch_full_btn], queue=False)
+           outputs=[batch_full_btn])
 
     # B — Custom SQL
     sql_btn.click(fn=_compare_sql,
