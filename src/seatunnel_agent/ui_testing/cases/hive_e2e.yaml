@@ -1,0 +1,61 @@
+# HV 组 · Hive 真机端到端(需 HIVE_HOST;nightly 里由 docker Hive 提供,
+# 本地 export .env 的 HIVE_* 后 `run --suite hive` 即可)。
+# 数据由 scripts/seed_hive.py 重建(examples/dc_hive_test_data.sql):
+# A 10 行 / B 9 行,B 缺 id=9,10、多 id=11,id=3 amount 与 id=5 status 被改。
+# 这是唯一在真实 Hive 上执行 DESCRIBE FORMATTED 解析、方言 SQL(CONV/MD5
+# 分块哈希)与全量对比链路的自动化——OwnerType: 元数据泄漏正是在这里漏网的。
+
+- id: HV1
+  title: Hive 全部对比端到端渲染全部卡片
+  tags: [hive]
+  timeout_s: 400
+  steps:
+    - clear: {target: 主机, side: A}
+    - clear: {target: 端口, side: A}
+    - clear: {target: 数据库, side: A}
+    - click: {target: 连接, side: A}
+    - wait_status_ok: {side: A, timeout_ms: 90000}
+    - clear: {target: 主机, side: B}
+    - clear: {target: 端口, side: B}
+    - clear: {target: 数据库, side: B}
+    - click: {target: 连接, side: B}
+    - wait_status_ok: {side: B, timeout_ms: 90000}
+    - select: {of: 选择表, value: dc_test_orders_a, side: A}
+    - select: {of: 选择表, value: dc_test_orders_b, side: B}
+    - click: 全部对比
+    - wait_result: {timeout_ms: 240000}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: 对比摘要}
+    - text_contains: {in: 结果区, text: 行数对比}
+    - text_not_contains: {in: 结果区, text: Traceback}
+    - text_not_contains: {in: 结果区, text: OwnerType}
+
+- id: HV2
+  title: Hive 分块校验定位缺失与修改行(服务端 MD5 哈希)
+  tags: [hive]
+  timeout_s: 400
+  setup:
+    - clear: {target: 主机, side: A}
+    - clear: {target: 端口, side: A}
+    - clear: {target: 数据库, side: A}
+    - click: {target: 连接, side: A}
+    - wait_status_ok: {side: A, timeout_ms: 90000}
+    - clear: {target: 主机, side: B}
+    - clear: {target: 端口, side: B}
+    - clear: {target: 数据库, side: B}
+    - click: {target: 连接, side: B}
+    - wait_status_ok: {side: B, timeout_ms: 90000}
+    - select: {of: 选择表, value: dc_test_orders_a, side: A}
+    - select: {of: 选择表, value: dc_test_orders_b, side: B}
+    - fill: {主键列: id}
+    - open_accordion: 校验和
+  steps:
+    - click: 分块校验
+    - wait_result: {timeout_ms: 120000}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: 分块校验}
+    - text_contains: {in: 结果区, text: 仅 A 侧存在}
+    - text_contains: {in: 结果区, text: 内容不同}
+    - text_not_contains: {in: 结果区, text: Traceback}

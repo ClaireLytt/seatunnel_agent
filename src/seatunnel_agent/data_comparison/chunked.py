@@ -45,8 +45,21 @@ DEFAULT_DRILL_ROW_CAP = 20_000
 CLIENT_FETCH_CAP = 200_000
 
 # Column separator / NULL sentinel for row hashing (see module docstring).
+# Client-side they are the raw control characters; server-side they are
+# built at runtime via CHR()/CHAR() — embedding the raw bytes in the SQL
+# text breaks Hive, whose MapReduce job conf is XML and rejects control
+# characters (com.ctc.wstx WstxParsingException: Illegal character).
 _SEP = "\x1f"
 _NULL = "\x1e"
+
+_CHR_FUNC: dict[str, str] = {
+    "mysql":      "CHAR({n})",
+    "doris":      "CHR({n})",
+    "hive":       "CHR({n})",
+    "sparksql":   "CHR({n})",
+    "postgresql": "CHR({n})",
+    "sqlserver":  "CHAR({n})",
+}
 
 # Per-dialect SUM(first-8-hex-chars-of-MD5 as integer).  All expressions
 # parse the prefix big-endian and lower-case, so sums are cross-comparable.
@@ -116,11 +129,14 @@ def _chunk_expr(pk: str, lo: float, width: float, ds_type: str) -> str:
 
 def _row_expr(columns: list[str], ds_type: str) -> str:
     """NULL-safe, separator-safe concatenation of the row's columns."""
+    chr_tpl = _CHR_FUNC.get(ds_type, "CHR({n})")
+    sep = chr_tpl.format(n=ord(_SEP))
+    null = chr_tpl.format(n=ord(_NULL))
     parts = [
-        f"COALESCE({cast_to_string(quote_identifier(c, ds_type), ds_type)}, '{_NULL}')"
+        f"COALESCE({cast_to_string(quote_identifier(c, ds_type), ds_type)}, {null})"
         for c in columns
     ]
-    return f"CONCAT_WS('{_SEP}', {', '.join(parts)})"
+    return f"CONCAT_WS({sep}, {', '.join(parts)})"
 
 
 def build_chunk_map_sql(

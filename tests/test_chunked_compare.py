@@ -31,7 +31,7 @@ class TestChunkSqlBuilders:
         sql = build_chunk_map_sql("orders", "id", ["amount"],
                                   lo=0, width=50.0, ds_type="hive")
         assert "AS BIGINT" in sql
-        assert "MD5(CONCAT_WS(''," in sql
+        assert "MD5(CONCAT_WS(CHR(31)," in sql
 
     def test_postgres_chunk_map(self):
         sql = build_chunk_map_sql("orders", "id", ["amount"],
@@ -240,8 +240,16 @@ class TestHashCollisionSafety:
     def test_server_sql_uses_sentinels(self):
         sql = build_chunk_map_sql("t", "id", ["a", "b"], 0, 10.0, "mysql")
         assert "COALESCE(" in sql
-        assert "CONCAT_WS('\x1f'" in sql
-        assert "'\x1e'" in sql
+        # sentinels are built via CHAR()/CHR() at runtime: raw control
+        # characters in the SQL text break Hive's XML-serialized job conf
+        assert "CONCAT_WS(CHAR(31)" in sql
+        assert "CHAR(30)" in sql
+        assert chr(31) not in sql and chr(30) not in sql
+
+    def test_hive_sql_has_no_control_characters(self):
+        sql = build_chunk_map_sql("t", "id", ["a"], 0, 10.0, "hive")
+        assert "CHR(31)" in sql and "CHR(30)" in sql
+        assert not any(ord(ch) < 32 and ch not in "\n\t" for ch in sql)
 
 
 class TestClientFallbackSafety:
