@@ -246,6 +246,10 @@
     - fill: {倾斜分析列: region}
     - open_accordion: 校验和
     - fill: {校验和: amount}
+    - open_accordion: 自定义 SQL
+    - fill: {SQL (A): "SELECT 1"}
+    - open_accordion: 模板
+    - fill: {模板名称: tmp-x}
   steps:
     - click: 重置选项
     - wait: 600
@@ -256,4 +260,6 @@
     - value_is: {of: 主键列, value: ""}
     - value_is: {of: 倾斜分析列, value: ""}
     - value_is: {of: 校验和, value: ""}
+    - value_is: {of: SQL (A), value: ""}
+    - value_is: {of: 模板名称, value: ""}
     - checked: {target: 启用脱敏, on: true}

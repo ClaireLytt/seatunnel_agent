@@ -3438,8 +3438,21 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(value=""),                    # webhook_url_input
             gr.update(value=False),                 # webhook_on_fail
             gr.update(value=""),                    # alert_rules_input
+            gr.update(value=""),                    # sql_a_input
+            gr.update(value=""),                    # sql_b_input
+            gr.update(value=""),                    # template_name_input
+            gr.update(value=""),                    # preset_name_input
+            gr.update(value=""),                    # preset_env_input
+            gr.update(value="15"),                  # schedule_interval
+            gr.update(value=""),                    # lineage_sql_input
+            gr.update(value=""),                    # env_input_a
+            gr.update(value=""),                    # env_input_b
+            gr.update(value=""),                    # env_table_input
         )
 
+    # NOTE: dropdowns that carry .change handlers (加载报告/模板/预设/批量模板)
+    # are deliberately NOT reset — programmatic value changes would fire
+    # their handlers (the load_dd result-wipe bug all over again).
     reset_options_btn.click(
         fn=_reset_options,
         outputs=[where_input, threshold_input, key_input, mapping_input,
@@ -3447,7 +3460,11 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                  watermark_col_input, watermark_val_input,
                  quality_rules_input, skew_cols_input, checksum_cols_input,
                  partition_col_input, custom_agg_input,
-                 webhook_url_input, webhook_on_fail, alert_rules_input],
+                 webhook_url_input, webhook_on_fail, alert_rules_input,
+                 sql_a_input, sql_b_input, template_name_input,
+                 preset_name_input, preset_env_input, schedule_interval,
+                 lineage_sql_input, env_input_a, env_input_b,
+                 env_table_input],
     )
 
     sample_strategy.change(
