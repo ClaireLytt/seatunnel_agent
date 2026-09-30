@@ -340,7 +340,8 @@ def test_no_db_profile(tmp_path, monkeypatch):
                        str(tmp_path / "audit.jsonl"))
     fns = build_tool_functions(include_db=False)
     assert set(fns) == {"sql_review", "sql_transpile", "skew_check",
-                        "skew_check_file", "impact_diff",
+                        "skew_check_file", "skew_runtime_eventlog",
+                        "skew_runtime_history", "impact_diff",
                         "migrate_to_seatunnel"}
 
 
@@ -421,7 +422,7 @@ def test_mcp_server_resources():
     s2 = create_mcp_server(include_db=False)
     uris2 = {str(r.uri) for r in anyio.run(s2.list_resources)}
     assert "seatunnel://connections" not in uris2
-    assert len(anyio.run(s2.list_tools)) == 6
+    assert len(anyio.run(s2.list_tools)) == 8
 
 
 def test_server_json_manifest_valid():

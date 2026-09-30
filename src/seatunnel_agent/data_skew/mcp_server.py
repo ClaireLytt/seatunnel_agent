@@ -25,6 +25,8 @@ _INSTRUCTIONS = (
     "纯静态规则，不执行 SQL、不调用 LLM；skew_split_key 系列会按 .env 中的数据源"
     "配置连库执行只读的分布探查（COUNT/GROUP BY），用于 SeaTunnel 分片键体检；"
     "skew_split_key_apply 额外返回写入推荐分片键后的完整配置文本（不落盘）。"
+    "skew_runtime 系列从 Spark event log / History Server 的任务指标定位"
+    "拖尾 stage（运行时倾斜实锤），并映射回对应 SQL。"
 )
 
 # Engines whose executor supports the split-key probe queries
@@ -75,8 +77,56 @@ def build_tool_functions(
             return f"读取文件失败 / cannot read file: {exc}"
         return skew_check(text, dialect=dialect, lang=lang)
 
+    def skew_runtime_eventlog(path: str, lang: str = "") -> str:
+        """运行时倾斜诊断：解析 Spark event log（文件 / .gz / 滚动目录），按
+        任务时长与 shuffle 读的 max/median 定位拖尾 stage，并把倾斜 stage
+        映射回产生它的 SQL。离线分析，不连接任何集群。"""
+        from .i18n import dsk
+        from .runtime import (
+            RuntimeSkewError,
+            parse_eventlog,
+            render_runtime_section,
+        )
+
+        lg = (lang or default_lang).strip().lower()
+        try:
+            stages, label = parse_eventlog((path or "").strip())
+        except RuntimeSkewError as exc:
+            return dsk(lg, exc.key).format(err=exc.arg)
+        except OSError as exc:
+            return f"读取文件失败 / cannot read file: {exc}"
+        confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
+        suspect = sum(1 for s in stages if s.verdict() == "suspect")
+        history.log_runtime(label, len(stages), confirmed, suspect,
+                            source="mcp")
+        return render_runtime_section(stages, lg, source_label=label)
+
+    def skew_runtime_history(base_url: str, app_id: str, lang: str = "") -> str:
+        """运行时倾斜诊断：调用 Spark History Server REST API
+        （base_url 如 http://host:18080），按 taskSummary 分位数定位拖尾
+        stage。只读 GET，每个应用最多约 21 次请求。"""
+        from .i18n import dsk
+        from .runtime import (
+            RuntimeSkewError,
+            analyze_history_server,
+            render_runtime_section,
+        )
+
+        lg = (lang or default_lang).strip().lower()
+        try:
+            stages, label = analyze_history_server(base_url, app_id)
+        except RuntimeSkewError as exc:
+            return dsk(lg, exc.key).format(err=exc.arg)
+        confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
+        suspect = sum(1 for s in stages if s.verdict() == "suspect")
+        history.log_runtime(label, len(stages), confirmed, suspect,
+                            source="mcp")
+        return render_runtime_section(stages, lg, source_label=label)
+
     if not include_db:
-        return {"skew_check": skew_check, "skew_check_file": skew_check_file}
+        return {"skew_check": skew_check, "skew_check_file": skew_check_file,
+                "skew_runtime_eventlog": skew_runtime_eventlog,
+                "skew_runtime_history": skew_runtime_history}
 
     def skew_split_key(conf: str, ds_type: str = "mysql",
                        sample_pct: int = 0, lang: str = "") -> str:
@@ -190,6 +240,8 @@ def build_tool_functions(
     return {
         "skew_check": skew_check,
         "skew_check_file": skew_check_file,
+        "skew_runtime_eventlog": skew_runtime_eventlog,
+        "skew_runtime_history": skew_runtime_history,
         "skew_split_key": skew_split_key,
         "skew_split_key_file": skew_split_key_file,
         "skew_split_key_apply": skew_split_key_apply,

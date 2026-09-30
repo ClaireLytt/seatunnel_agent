@@ -30,6 +30,12 @@ from .data_skew.probe import (
     render_probe_section,
     run_probes,
 )
+from .data_skew.runtime import (
+    RuntimeSkewError,
+    analyze_history_server,
+    parse_eventlog,
+    render_runtime_section,
+)
 from .data_skew.splitkey import (
     SplitKeyError,
     apply_split_key,
@@ -87,6 +93,7 @@ def _head_re(*heads: str) -> re.Pattern[str]:
 _PROBE_HEAD_RE = _head_re(dsk("zh", "prb_section"), dsk("en", "prb_section"))
 _CST_HEAD_RE = _head_re(dsk("zh", "cst_section"), dsk("en", "cst_section"))
 _SPK_HEAD_RE = _head_re(dsk("zh", "spk_section"), dsk("en", "spk_section"))
+_RT_HEAD_RE = _head_re(dsk("zh", "rt_section"), dsk("en", "rt_section"))
 _NEXT_H2_RE = re.compile(r"(?m)^[ \t]{0,3}#{1,2}\s")
 
 # Cookie the Data Comparison page sets alongside the SQL handoff so the
@@ -206,6 +213,18 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                 # the pasted config with the key already written in
                 spk_apply_dl_btn = gr.DownloadButton(
                     t0("spk_apply_dl"), visible=False, size="sm")
+            with gr.Accordion(t0("rt_accordion"), open=False) as rt_acc:
+                with gr.Row():
+                    rt_url_tb = gr.Textbox(
+                        label=t0("rt_url"), placeholder="http://host:18080")
+                    rt_app_tb = gr.Textbox(
+                        label=t0("rt_app"), placeholder="application_…")
+                with gr.Row():
+                    rt_btn = gr.Button(t0("rt_btn"), size="sm",
+                                       variant="secondary")
+                    # event logs often have no extension — accept any file
+                    rt_upload_btn = gr.UploadButton(
+                        t0("rt_upload_btn"), size="sm", scale=0, min_width=170)
             with gr.Accordion(t0("dsk_history_accordion"),
                               open=False) as hist_acc:
                 with gr.Row():
@@ -399,6 +418,44 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         return (_append_section(report_cur, section, _SPK_HEAD_RE),
                 _restored_status(lang, conn),
                 _patched_conf_update(conf_text, results, total))
+
+    def _runtime_report(stages, label: str, report_cur: str, lang: str,
+                        conn: dict | None):
+        confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
+        suspect = sum(1 for s in stages if s.verdict() == "suspect")
+        history.log_runtime(label, len(stages), confirmed, suspect,
+                            source="ui")
+        section = render_runtime_section(stages, lang, source_label=label)
+        return (_append_section(report_cur, section, _RT_HEAD_RE),
+                _restored_status(lang, conn))
+
+    def do_runtime_file(path, report_cur: str, lang: str, conn: dict | None):
+        if isinstance(path, (list, tuple)):
+            path = path[0] if path else None
+        if not path:
+            return gr.update(), _restored_status(lang, conn)
+        try:
+            stages, label = parse_eventlog(str(path))
+        except RuntimeSkewError as exc:
+            return gr.update(), dsk(lang, exc.key).format(err=exc.arg)
+        except Exception as exc:  # noqa: BLE001 — surface in the UI
+            return gr.update(), _err_md(exc, lang)
+        # the uploaded temp name is meaningless — label with the app name
+        # from the log when it has one
+        label = label if not str(label).startswith("tmp") else "event log"
+        return _runtime_report(stages, label, report_cur, lang, conn)
+
+    def do_runtime_history(url: str, app_id: str, report_cur: str,
+                           lang: str, conn: dict | None):
+        if not (url or "").strip() or not (app_id or "").strip():
+            return gr.update(), dsk(lang, "rt_need_url")
+        try:
+            stages, label = analyze_history_server(url, app_id)
+        except RuntimeSkewError as exc:
+            return gr.update(), dsk(lang, exc.key).format(err=exc.arg)
+        except Exception as exc:  # noqa: BLE001 — surface in the UI
+            return gr.update(), _err_md(exc, lang)
+        return _runtime_report(stages, label, report_cur, lang, conn)
 
     def _probe_for_llm(sql: str, lang: str, dialect: str, sample: int,
                        conn: dict | None) -> tuple[str, str]:
@@ -657,6 +714,22 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         outputs=[report_md, conn_status, spk_apply_dl_btn],
     )
 
+    rt_btn.click(
+        lambda lang: gr.update(value=f"⏳ {dsk(lang, 'rt_running')}"),
+        inputs=[lang_state],
+        outputs=[conn_status],
+    ).then(
+        do_runtime_history,
+        inputs=[rt_url_tb, rt_app_tb, report_md, lang_state, conn_state],
+        outputs=[report_md, conn_status],
+    )
+
+    rt_upload_btn.upload(
+        do_runtime_file,
+        inputs=[rt_upload_btn, report_md, lang_state, conn_state],
+        outputs=[report_md, conn_status],
+    )
+
     def do_conf_upload(path):
         if isinstance(path, (list, tuple)):
             path = path[0] if path else None
@@ -717,6 +790,11 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             gr.update(value=t("spk_btn")),                         # spk_btn
             gr.update(label=t("dsk_upload_btn")),                  # spk_upload_btn
             gr.update(label=t("spk_apply_dl")),                    # spk_apply_dl_btn
+            gr.update(label=t("rt_accordion")),                    # rt_acc
+            gr.update(label=t("rt_url")),                          # rt_url_tb
+            gr.update(label=t("rt_app")),                          # rt_app_tb
+            gr.update(value=t("rt_btn")),                          # rt_btn
+            gr.update(label=t("rt_upload_btn")),                   # rt_upload_btn
             gr.update(label=t("dsk_history_accordion")),           # hist_acc
             gr.update(label=t("dsk_history_pick")),                # hist_dd
             gr.update(value=t("dsk_history_refresh")),             # hist_refresh_btn
@@ -744,6 +822,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             connect_btn, verify_btn, cst_btn, conn_status,
             upload_btn, spk_acc, spk_conf_tb, spk_btn, spk_upload_btn,
             spk_apply_dl_btn,
+            rt_acc, rt_url_tb, rt_app_tb, rt_btn, rt_upload_btn,
             hist_acc, hist_dd, hist_refresh_btn, hist_load_btn,
             hist_md,
         ],

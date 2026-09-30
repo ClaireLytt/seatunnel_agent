@@ -16,6 +16,9 @@
 | 连库探查（probe） | 数据层：热点值 / NULL 占比 / 表行数实测 | 是 | 否 |
 | 一致性实测 | 改写前后两版 SQL 的结果对比 | 是 | 否 |
 | SeaTunnel 分片键体检 | 同步层：source 并行读的 `partition_column` 分布 | 是 | 否 |
+| 运行时诊断 | 执行层：Spark 任务指标定位拖尾 stage | 否¹ | 否 |
+
+¹ event log 模式完全离线；History Server 模式只需能访问 18080 端口的只读 REST API。
 
 ### 静态规则一览
 
@@ -52,6 +55,20 @@
   配置文本、仅把分片键改写为推荐列（注释与格式原样保留）。仅单 source
   配置提供写回——多 source 的文本级修改可能改错位置，请按报告手动改。
 
+### 运行时诊断（UI）
+
+「运行时诊断」手风琴（无需连接数据源）：
+
+- **event log 文件**：上传 Spark event log（支持 `.gz`；离线可用）——按每个
+  stage 的任务时长与 shuffle 读的 **max / median** 找拖尾任务；
+- **History Server**：填地址（如 `http://host:18080`）+ Application ID，
+  走 `/api/v1` 的 `taskSummary` 分位数接口（每次最多约 21 个只读 GET）；
+- 判定与 AQE 倾斜定义同形：倍数够大（≥3 疑似 / ≥5 确认）**且**绝对量够大
+  （时长 ≥10s/30s、shuffle ≥32MB/128MB）——避免把 100ms 级任务的抖动当倾斜；
+- event log 里带 SQL 执行事件时，倾斜 stage 会**映射回产生它的 SQL**，
+  可直接粘到本页静态分析 / 连库探查里定位倾斜键；
+- 报告附 AQE 第一响应参数（`spark.sql.adaptive.skewJoin.*`）。
+
 ## CLI
 
 ```bash
@@ -72,6 +89,12 @@ seatunnel-agent skew-splitkey job.conf --ds mysql --fail
 seatunnel-agent skew-splitkey job.conf --ds mysql --apply
 seatunnel-agent skew-splitkey job.conf --ds mysql
 
+# 运行时诊断：离线 event log（文件 / .gz / 滚动目录）
+seatunnel-agent skew-runtime /path/to/eventlog --lang zh -o rt.md
+
+# 运行时诊断：History Server REST；--fail 存在确认倾斜 stage 时退出码 1
+seatunnel-agent skew-runtime --history http://host:18080 --app application_123 --fail
+
 # 历史统计
 seatunnel-agent skew-stats -n 50
 ```
@@ -90,6 +113,8 @@ seatunnel-agent skew-stats -n 50
 |---|---|
 | `skew_check(sql, dialect?, lang?)` | 静态倾斜扫描，Markdown 报告 |
 | `skew_check_file(path, ...)` | 同上，输入为文件路径 |
+| `skew_runtime_eventlog(path, lang?)` | 解析 Spark event log 定位拖尾 stage（离线，零依赖） |
+| `skew_runtime_history(base_url, app_id, lang?)` | 走 History Server REST 的同款诊断（只读 GET） |
 | `skew_split_key(conf, ds_type?, sample_pct?, lang?)` | 分片键体检（按 `.env` 连库，只读探查） |
 | `skew_split_key_file(path, ...)` | 同上，输入为配置文件路径 |
 | `skew_split_key_apply(conf, ds_type?, sample_pct?, lang?)` | 在体检基础上返回**写入推荐分片键后的完整配置文本**（不落盘，由调用方保存；仅单 source） |
@@ -110,4 +135,7 @@ seatunnel-agent skew-stats -n 50
 
 - 热点：top-1 占比 ≥ 20% 确认、≥ 5% 疑似；NULL 占比 ≥ 10% 确认；
 - 分片键：NDV < 4 × 并行任务数 判 `low_ndv`；`tasks = max(partition_num, env.parallelism, 2)`；
-- 体检每列固定两条有界查询（统计 + top-1），候选列最多 5 个、并发最多 4。
+- 体检每列固定两条有界查询（统计 + top-1），候选列最多 5 个、并发最多 4；
+- 运行时：任务时长 max/median ≥ 5 且 max ≥ 30s 确认（≥ 3 且 ≥ 10s 疑似），
+  shuffle 读 max/median ≥ 5 且 max ≥ 128MB 确认（≥ 3 且 ≥ 32MB 疑似）；
+  少于 3 个任务的 stage 不判定，报告展示最差的前 8 个 stage。

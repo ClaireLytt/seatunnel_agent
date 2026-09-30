@@ -142,6 +142,39 @@ class SkewHistory:
         except OSError:
             pass  # history is best-effort; never break the analysis
 
+    def log_runtime(
+        self,
+        app: str,
+        stages: int,
+        confirmed: int,
+        suspect: int,
+        source: str = "ui",
+    ) -> None:
+        """A runtime diagnosis record (mode='runtime'): Spark task-metric
+        analysis of one application (event log or History Server)."""
+        counts = {"high": confirmed, "medium": suspect, "low": 0}
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "source": source,
+            "mode": "runtime",
+            "dialect": "",
+            "counts": counts,
+            "verdict": ("high" if confirmed
+                        else "medium" if suspect else "clean"),
+            "runtime": {"app": app, "stages": stages,
+                        "confirmed": confirmed, "suspect": suspect},
+            "sql": f"-- runtime: {app}",
+        }
+        line = json.dumps(record, ensure_ascii=False) + "\n"
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            with self._lock:
+                self._rotate_if_needed()
+                with open(self.log_file, "a", encoding="utf-8") as f:
+                    f.write(line)
+        except OSError:
+            pass  # history is best-effort; never break the analysis
+
     def last_splitkey(self, table: str) -> dict | None:
         """The most recent splitkey record for *table*, or None.
 

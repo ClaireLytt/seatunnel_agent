@@ -186,6 +186,48 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "The config declares {n} sources — the first {shown} are "
             "checked below (per-check cap)."
         ),
+        # --- runtime diagnosis (Spark task metrics) ---
+        "rt_accordion": "Runtime diagnosis (Spark event log / History Server)",
+        "rt_upload_btn": "Analyze event log file",
+        "rt_url": "History Server URL",
+        "rt_app": "Application ID",
+        "rt_btn": "Fetch & diagnose",
+        "rt_running": "Analyzing Spark task metrics…",
+        "rt_need_url": "❌ Provide both the History Server URL and an application ID.",
+        "rt_read_fail": "❌ Could not read the event log: {err}",
+        "rt_http_fail": "❌ History Server request failed: {err}",
+        "rt_no_stages": "❌ No completed stages with task metrics were found.",
+        "rt_section": "## Runtime Skew Diagnosis (Spark task metrics)",
+        "rt_source": "Source: `{src}`",
+        "rt_counts": (
+            "{stages} stages measured — **{confirmed} confirmed skewed**, "
+            "{suspect} suspect."
+        ),
+        "rt_col_tasks": "Tasks",
+        "rt_col_dur": "Duration p50 → max",
+        "rt_col_dur_ratio": "Ratio",
+        "rt_col_shuf": "Shuffle read p50 → max",
+        "rt_col_shuf_ratio": "Ratio",
+        "rt_col_verdict": "Verdict",
+        "rt_verdict_confirmed": "⛔ straggler — skewed stage",
+        "rt_verdict_suspect": "⚠️ long tail — watch this stage",
+        "rt_verdict_ok": "✅ balanced",
+        "rt_more_stages": "*…and {n} more balanced stages.*",
+        "rt_sql_map_head": "**Skewed stages mapped to SQL (from the event log)**",
+        "rt_sql_map": "- Stage {sid} ← `{sql}`",
+        "rt_advice_head": (
+            "**Suggested first response (AQE skew handling)** — then paste "
+            "the mapped SQL above into the static analysis / live probe to "
+            "find the skewed key:"
+        ),
+        "rt_advice_next": (
+            "AQE only mitigates shuffle-side skew; a skewed GROUP BY / JOIN "
+            "key still needs the SQL-level fix from the report above."
+        ),
+        "rt_all_ok": (
+            "✅ Task durations and shuffle reads are balanced across every "
+            "measured stage — no runtime skew signal."
+        ),
         "dsk_conn_handoff": (
             "🔗 Connection handed over from Data Comparison side B "
             "({ds} {host}:{port}/{db}) — enter the password and click Connect."
@@ -411,6 +453,46 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "spk_multi_note": "配置声明了 {n} 个 source，以下逐一体检。",
         "spk_multi_truncated": (
             "配置声明了 {n} 个 source，本次仅体检前 {shown} 个（单次上限）。"
+        ),
+        # --- runtime diagnosis (Spark task metrics) ---
+        "rt_accordion": "运行时诊断（Spark event log / History Server）",
+        "rt_upload_btn": "分析 event log 文件",
+        "rt_url": "History Server 地址",
+        "rt_app": "Application ID",
+        "rt_btn": "拉取并诊断",
+        "rt_running": "正在分析 Spark 任务指标…",
+        "rt_need_url": "❌ 请同时填写 History Server 地址和 Application ID。",
+        "rt_read_fail": "❌ event log 读取失败：{err}",
+        "rt_http_fail": "❌ History Server 请求失败：{err}",
+        "rt_no_stages": "❌ 未找到带任务指标的已完成 stage。",
+        "rt_section": "## 运行时倾斜诊断（Spark 任务实测）",
+        "rt_source": "来源：`{src}`",
+        "rt_counts": (
+            "共实测 {stages} 个 stage —— **{confirmed} 个确认倾斜**，"
+            "{suspect} 个疑似。"
+        ),
+        "rt_col_tasks": "任务数",
+        "rt_col_dur": "时长 p50 → max",
+        "rt_col_dur_ratio": "倍数",
+        "rt_col_shuf": "shuffle 读 p50 → max",
+        "rt_col_shuf_ratio": "倍数",
+        "rt_col_verdict": "判定",
+        "rt_verdict_confirmed": "⛔ 拖尾任务——确认倾斜",
+        "rt_verdict_suspect": "⚠️ 长尾——建议关注",
+        "rt_verdict_ok": "✅ 均衡",
+        "rt_more_stages": "*……其余 {n} 个 stage 均衡。*",
+        "rt_sql_map_head": "**倾斜 stage 对应的 SQL（来自 event log）**",
+        "rt_sql_map": "- Stage {sid} ← `{sql}`",
+        "rt_advice_head": (
+            "**建议的第一响应（AQE 倾斜处理）**——随后把上面映射到的 SQL "
+            "粘到静态分析 / 连库探查里定位倾斜键："
+        ),
+        "rt_advice_next": (
+            "AQE 只能缓解 shuffle 侧倾斜；GROUP BY / JOIN 键本身倾斜仍需"
+            "按上方报告做 SQL 级修复。"
+        ),
+        "rt_all_ok": (
+            "✅ 各 stage 的任务时长与 shuffle 读均衡——未发现运行时倾斜信号。"
         ),
         "dsk_conn_handoff": (
             "🔗 已带入数据比对页 B 侧连接（{ds} {host}:{port}/{db}）——"

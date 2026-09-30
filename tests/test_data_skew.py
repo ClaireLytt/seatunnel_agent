@@ -1900,6 +1900,7 @@ def test_mcp_split_key_validation(monkeypatch, tmp_path):
                        str(tmp_path / "hist.jsonl"))
     fns = build_tool_functions()
     assert set(fns) == {"skew_check", "skew_check_file",
+                        "skew_runtime_eventlog", "skew_runtime_history",
                         "skew_split_key", "skew_split_key_file",
                         "skew_split_key_apply"}
     spk = fns["skew_split_key"]
@@ -2186,3 +2187,250 @@ def test_mcp_split_key_apply(monkeypatch, tmp_path):
     # validation mirrors skew_split_key
     assert "不能为空" in apply_fn("")
     assert "ds_type" in apply_fn(_SPLITKEY_CONF, ds_type="oracle")
+
+
+# ---------------------------------------------------------------------------
+# runtime diagnosis (Spark task metrics)
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.runtime import (  # noqa: E402
+    MIN_TASKS,
+    RuntimeSkewError,
+    StageSkew,
+    analyze_history_server,
+    check_runtime_eventlog,
+    parse_eventlog,
+    render_runtime_section,
+)
+
+
+def _eventlog_events() -> list:
+    """Stage 1: one 60s straggler vs ~2s median (confirmed, mapped to SQL);
+    stage 2: balanced. Plus a failed task and a torn line to ignore."""
+    events: list = [
+        {"Event": "SparkListenerApplicationStart", "App Name": "etl-daily"},
+        {"Event": ("org.apache.spark.sql.execution.ui."
+                   "SparkListenerSQLExecutionStart"),
+         "executionId": 0,
+         "description": "insert overwrite table dws.orders select ..."},
+        {"Event": "SparkListenerJobStart", "Job ID": 0, "Stage IDs": [1, 2],
+         "Properties": {"spark.sql.execution.id": "0"}},
+        {"Event": "SparkListenerStageCompleted",
+         "Stage Info": {"Stage ID": 1,
+                        "Stage Name": "Exchange hashpartitioning(k#1, 200)"}},
+        {"Event": "SparkListenerStageCompleted",
+         "Stage Info": {"Stage ID": 2, "Stage Name": "Scan parquet"}},
+    ]
+
+    def task(sid: int, dur_ms: int, shuf: int = 0, failed: bool = False):
+        return {"Event": "SparkListenerTaskEnd", "Stage ID": sid,
+                "Task Info": {"Launch Time": 0, "Finish Time": dur_ms,
+                              "Failed": failed},
+                "Task Metrics": {"Shuffle Read Metrics": {
+                    "Remote Bytes Read": shuf, "Local Bytes Read": 0}}}
+
+    for d in (2000, 2000, 2500, 60_000):
+        events.append(task(1, d, shuf=1024))
+    for d in (3000, 3100, 2900, 3000):
+        events.append(task(2, d))
+    events.append(task(2, 999_999, failed=True))  # must be ignored
+    return events
+
+
+def _write_eventlog(path, events=None) -> None:
+    import json as _json
+
+    lines = [_json.dumps(e) for e in (events or _eventlog_events())]
+    lines.insert(3, "{torn json line")  # parser must skip it
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def test_runtime_parse_eventlog(tmp_path):
+    log = tmp_path / "app-123"
+    _write_eventlog(log)
+    stages, label = parse_eventlog(log)
+    assert label == "etl-daily"
+    assert [s.stage_id for s in stages] == [1, 2]  # worst first
+    s1, s2 = stages
+    assert s1.verdict() == "confirmed"
+    assert s1.tasks == 4 and s1.dur_max == 60_000 and s1.dur_p50 == 2250
+    assert "dws.orders" in s1.sql_desc  # mapped via job start properties
+    assert s2.verdict() == "ok"
+    assert s2.tasks == 4  # the failed task did not count
+
+
+def test_runtime_parse_gz_and_rolling_dir(tmp_path):
+    import gzip
+    import json as _json
+
+    events = _eventlog_events()
+    gz = tmp_path / "app.gz"
+    with gzip.open(gz, "wt", encoding="utf-8") as f:
+        f.write("\n".join(_json.dumps(e) for e in events))
+    stages, _ = parse_eventlog(gz)
+    assert stages[0].verdict() == "confirmed"
+
+    # rolling event-log directory: events_* parts read in order
+    d = tmp_path / "eventlog_v2_app-1"
+    d.mkdir()
+    half = len(events) // 2
+    (d / "events_1_app-1").write_text(
+        "\n".join(_json.dumps(e) for e in events[:half]), encoding="utf-8")
+    (d / "events_2_app-1").write_text(
+        "\n".join(_json.dumps(e) for e in events[half:]), encoding="utf-8")
+    (d / "appstatus_app-1").write_text("", encoding="utf-8")  # ignored
+    stages, _ = parse_eventlog(d)
+    assert stages[0].verdict() == "confirmed"
+
+    empty = tmp_path / "empty_dir"
+    empty.mkdir()
+    try:
+        parse_eventlog(empty)
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_read_fail"
+
+
+def test_runtime_render(tmp_path):
+    log = tmp_path / "app-123"
+    _write_eventlog(log)
+    md = check_runtime_eventlog(log, lang="zh")
+    assert "## 运行时倾斜诊断" in md
+    assert "1 个确认倾斜" in md
+    assert "拖尾任务" in md
+    assert "spark.sql.adaptive.skewJoin.enabled=true" in md
+    assert "dws.orders" in md  # SQL mapping rendered
+    en = check_runtime_eventlog(log, lang="en")
+    assert "## Runtime Skew Diagnosis" in en
+    assert "straggler" in en
+
+    # balanced-only input → the all-ok line, no AQE block
+    ok = render_runtime_section(
+        [StageSkew(1, tasks=4, dur_p50=1000, dur_max=1200)], "zh")
+    assert "未发现运行时倾斜信号" in ok
+    assert "spark.sql.adaptive" not in ok
+
+
+def test_runtime_verdict_thresholds():
+    # high ratio but tiny absolute max → noise, not skew
+    assert StageSkew(1, tasks=8, dur_p50=10, dur_max=200).verdict() == "ok"
+    # confirmed via duration
+    assert StageSkew(1, tasks=8, dur_p50=5_000,
+                     dur_max=40_000).verdict() == "confirmed"
+    # confirmed via shuffle bytes alone
+    assert StageSkew(1, tasks=8, dur_p50=1000, dur_max=1100,
+                     shuf_p50=10 << 20,
+                     shuf_max=300 << 20).verdict() == "confirmed"
+    # suspect band
+    assert StageSkew(1, tasks=8, dur_p50=4_000,
+                     dur_max=15_000).verdict() == "suspect"
+    # too few tasks to judge
+    assert StageSkew(1, tasks=MIN_TASKS - 1, dur_p50=1000,
+                     dur_max=60_000).verdict() == "ok"
+
+
+def test_runtime_history_server_fake_fetch():
+    calls: list[str] = []
+
+    def fake_fetch(url: str):
+        calls.append(url)
+        if url.endswith("/stages?status=COMPLETE"):
+            return [
+                {"stageId": 7, "attemptId": 0, "name": "Exchange",
+                 "numCompleteTasks": 10, "executorRunTime": 100_000},
+                {"stageId": 3, "attemptId": 0, "name": "Scan",
+                 "numCompleteTasks": 10, "executorRunTime": 50_000},
+            ]
+        if "/stages/7/0/taskSummary" in url:
+            return {"duration": [2_000.0, 90_000.0],
+                    "shuffleReadMetrics": {"readBytes": [1_000.0, 2_000.0]}}
+        if "/stages/3/0/taskSummary" in url:
+            return {"duration": [3_000.0, 3_200.0],
+                    "shuffleReadMetrics": {"readBytes": [0.0, 0.0]}}
+        raise AssertionError(f"unexpected URL {url}")
+
+    stages, label = analyze_history_server(
+        "http://hs:18080/", "app-42", fetch=fake_fetch)
+    assert label == "app-42"
+    assert calls[0] == ("http://hs:18080/api/v1/applications/app-42"
+                       "/stages?status=COMPLETE")
+    assert "quantiles=0.5,1.0" in calls[1]
+    assert [s.stage_id for s in stages] == [7, 3]
+    assert stages[0].verdict() == "confirmed"
+    assert stages[1].verdict() == "ok"
+
+    # error paths
+    try:
+        analyze_history_server("http://hs:18080", "app-42",
+                               fetch=lambda url: (_ for _ in ()).throw(
+                                   OSError("boom")))
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_http_fail"
+    try:
+        analyze_history_server("http://hs:18080", "app-42",
+                               fetch=lambda url: [])
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_no_stages"
+    try:
+        analyze_history_server("", "", fetch=fake_fetch)
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_need_url"
+
+
+def test_cli_skew_runtime(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.data_skew.history import default_history
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    log = tmp_path / "app-123"
+    _write_eventlog(log)
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-runtime", str(log)])
+    assert res.exit_code == 0, res.output
+    assert "运行时倾斜诊断" in res.output
+
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "runtime" and rec["source"] == "cli"
+    assert rec["runtime"]["confirmed"] == 1
+
+    # CI gate: a confirmed stage exists → exit 1
+    gated = runner.invoke(cli, ["skew-runtime", str(log), "--fail"])
+    assert gated.exit_code == 1
+
+    # report file + argument validation
+    out = tmp_path / "rt.md"
+    runner.invoke(cli, ["skew-runtime", str(log), "-o", str(out)])
+    assert "运行时倾斜诊断" in out.read_text(encoding="utf-8")
+    both = runner.invoke(cli, ["skew-runtime", str(log),
+                               "--history", "http://hs:18080", "--app", "a"])
+    assert both.exit_code != 0
+    neither = runner.invoke(cli, ["skew-runtime"])
+    assert neither.exit_code != 0
+
+
+def test_mcp_runtime_tools(monkeypatch, tmp_path):
+    from seatunnel_agent.data_skew.history import default_history
+    from seatunnel_agent.data_skew.mcp_server import build_tool_functions
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    log = tmp_path / "app-123"
+    _write_eventlog(log)
+    fns = build_tool_functions()
+
+    md = fns["skew_runtime_eventlog"](str(log))
+    assert "## 运行时倾斜诊断" in md
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "runtime" and rec["source"] == "mcp"
+
+    # missing file → readable error text, no exception
+    assert "读取失败" in fns["skew_runtime_eventlog"](str(tmp_path / "nope"))
+    # history variant validates its inputs the same way
+    assert "History Server" in fns["skew_runtime_history"]("", "")

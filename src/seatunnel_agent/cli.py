@@ -1458,6 +1458,70 @@ def skew_splitkey(
         sys.exit(1)
 
 
+@cli.command(name="skew-runtime")
+@click.argument("eventlog", required=False,
+                type=click.Path(exists=True))
+@click.option("--history", "history_url", type=str, default=None,
+              help="Spark History Server 地址（如 http://host:18080），与 --app 搭配")
+@click.option("--app", "app_id", type=str, default=None,
+              help="History Server 上的 application ID")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+@click.option("--fail", "fail_flag", is_flag=True,
+              help="存在确认倾斜的 stage 时退出码 1（CI 门禁）")
+def skew_runtime(
+    eventlog: str | None,
+    history_url: str | None,
+    app_id: str | None,
+    lang: str,
+    output: str | None,
+    fail_flag: bool,
+) -> None:
+    """运行时倾斜诊断 — 从 Spark 任务指标定位拖尾 stage。
+
+    EVENTLOG: Spark event log 文件 / .gz / 滚动目录（离线），
+    或改用 --history + --app 走 History Server REST API（在线）。"""
+    from pathlib import Path
+
+    from .data_skew.history import default_history
+    from .data_skew.i18n import dsk as _dsk
+    from .data_skew.runtime import (
+        RuntimeSkewError,
+        analyze_history_server,
+        parse_eventlog,
+        render_runtime_section,
+    )
+
+    if bool(eventlog) == bool(history_url or app_id):
+        raise click.UsageError(
+            "指定 EVENTLOG 文件，或 --history 加 --app，二选一")
+    try:
+        if eventlog:
+            stages, label = parse_eventlog(eventlog)
+        else:
+            if not (history_url and app_id):
+                raise click.UsageError("--history 与 --app 需同时提供")
+            stages, label = analyze_history_server(history_url, app_id)
+    except RuntimeSkewError as exc:
+        raise click.ClickException(_dsk(lang, exc.key).format(err=exc.arg))
+
+    confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
+    suspect = sum(1 for s in stages if s.verdict() == "suspect")
+    default_history().log_runtime(label, len(stages), confirmed, suspect,
+                                  source="cli")
+
+    md = render_runtime_section(stages, lang, source_label=label)
+    console.print(md)
+    if output:
+        Path(output).write_text(md, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+    if fail_flag and confirmed:
+        console.print(f"\n[red]{confirmed} 个 stage 确认倾斜，检查未通过。[/red]")
+        sys.exit(1)
+
+
 @cli.command(name="skew-mcp")
 @click.option("--dialect", "-d", type=click.Choice(["spark", "maxcompute", "hive"]),
               default="spark", show_default=True, help="Default SQL dialect")
