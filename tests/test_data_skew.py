@@ -1451,3 +1451,1269 @@ def test_cli_skew_stats(tmp_path, monkeypatch):
     assert res.exit_code == 0, res.output
     assert "共 2 次" in res.output
     assert "cli×2" in res.output.replace(" ", "")
+
+
+# ---------------------------------------------------------------------------
+# probe: storage/modeling-layer advice
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.probe import render_storage_advice  # noqa: E402
+
+
+def _hot_result(table="orders", col="region", total=100, hot=80, nulls=0):
+    r = ProbeResult(target=ProbeTarget(table, col, "group_key"),
+                    total=total, null_count=nulls)
+    if hot:
+        r.top = [("CN", hot), ("US", total - hot - nulls)]
+    return r
+
+
+def test_storage_advice_hot_key():
+    md = render_storage_advice([_hot_result()], "en")
+    assert "orders.region" in md
+    assert "partition_column" in md
+    assert "80.0%" in md
+    zh = render_storage_advice([_hot_result()], "zh")
+    assert "orders.region" in zh
+    assert "80.0%" in zh
+
+
+def test_storage_advice_null_heavy():
+    r = ProbeResult(target=ProbeTarget("t", "k", "join_key"),
+                    total=100, null_count=30)
+    r.top = [("NULL", 30), ("a", 10)]
+    # NULL confirmed but top1 (NULL bucket) also >= 20% → hot branch wins;
+    # use a mildly-hot top1 with heavy NULLs instead
+    r2 = ProbeResult(target=ProbeTarget("t", "k", "join_key"),
+                     total=1000, null_count=150)
+    r2.top = [("a", 100), ("b", 90)]
+    md = render_storage_advice([r2], "en")
+    assert "NULL ratio 15.0%" in md
+    zh = render_storage_advice([r2], "zh")
+    assert "15.0%" in zh
+
+
+def test_storage_advice_balanced_columns_silent():
+    r = ProbeResult(target=ProbeTarget("t", "id", "join_key"),
+                    total=1000, null_count=0)
+    r.top = [("1", 10), ("2", 9)]
+    assert render_storage_advice([r], "en") == ""
+
+
+def test_storage_advice_in_probe_section():
+    md = render_probe_section([_hot_result()], "zh", dialect="spark")
+    assert "存储/建模层建议" in md
+
+
+# ---------------------------------------------------------------------------
+# SeaTunnel split-key check
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
+    SourceSpec,
+    SplitKeyError,
+    SplitStat,
+    apply_split_key,
+    check_split_key,
+    parse_seatunnel_source,
+    parse_seatunnel_sources,
+    pick_best_key,
+    rank_candidates,
+    render_splitkey_multi,
+    render_splitkey_section,
+    run_split_key_multi,
+)
+
+_CONF_BLOCK = """
+env { parallelism = 4 }
+source {
+  Jdbc {
+    url = "jdbc:mysql://h:3306/shop"
+    table_name = "orders"
+    partition_column = "region"
+    partition_num = 8
+  }
+}
+sink { Console {} }
+"""
+
+_CONF_LIST = """
+source = [
+  { plugin_name = "Jdbc", query = "select * from shop.orders where dt='x'" }
+]
+sink { Console {} }
+"""
+
+
+def test_parse_source_block_form():
+    spec = parse_seatunnel_source(_CONF_BLOCK)
+    assert spec.plugin == "Jdbc"
+    assert spec.table == "orders"
+    assert spec.partition_column == "region"
+    assert spec.partition_num == 8
+    assert spec.parallelism == 4
+    assert spec.tasks == 8
+
+
+def test_parse_source_list_form_table_from_query():
+    spec = parse_seatunnel_source(_CONF_LIST)
+    assert spec.plugin == "Jdbc"
+    assert spec.table == "shop.orders"
+    assert spec.partition_column == ""
+    assert spec.tasks == 2  # nothing configured → floor of 2
+
+
+_CONF_CDC = """
+env { parallelism = 2 }
+source {
+  MySQL-CDC {
+    hostname = "localhost"
+    database-name = "test_db"
+    table-name = "users"
+    scan.incremental.snapshot.chunk.key-column = "id"
+  }
+}
+sink { Console {} }
+"""
+
+
+def test_parse_source_cdc_hyphenated():
+    """CDC connectors use hyphenated options and split db from table."""
+    spec = parse_seatunnel_source(_CONF_CDC)
+    assert spec.plugin == "MySQL-CDC"
+    assert spec.table == "test_db.users"
+    # the incremental-snapshot chunk key is the CDC split key
+    assert spec.partition_column == "id"
+    assert spec.split_option == "scan.incremental.snapshot.chunk.key-column"
+    assert spec.tasks == 2
+
+
+def test_parse_source_cdc_plural_list_options():
+    spec = parse_seatunnel_source("""
+source = [{ plugin_name = "MySQL-CDC",
+            database-names = ["shop"],
+            table-names = ["shop.orders", "shop.users"] }]
+sink {}
+""")
+    assert spec.plugin == "MySQL-CDC"
+    # first list entry, already db-qualified -> no double prefix
+    assert spec.table == "shop.orders"
+    assert spec.partition_column == ""
+
+
+def test_parse_repo_demo_conf():
+    """The repo's own CDC demo config must parse (regression: spk_no_table)."""
+    from pathlib import Path as _P
+
+    text = (_P(__file__).parent.parent / "examples"
+            / "mysql_to_console.conf").read_text(encoding="utf-8")
+    spec = parse_seatunnel_source(text)
+    assert spec.plugin == "MySQL-CDC"
+    assert spec.table == "test_db.users"
+
+
+def test_parse_source_errors():
+    import pytest
+
+    with pytest.raises(SplitKeyError) as e1:
+        parse_seatunnel_source("source { Jdbc {{{")
+    assert e1.value.key == "spk_parse_fail"
+    with pytest.raises(SplitKeyError) as e2:
+        parse_seatunnel_source("sink { Console {} }")
+    assert e2.value.key == "spk_no_source"
+    with pytest.raises(SplitKeyError) as e3:
+        parse_seatunnel_source(
+            'source { Jdbc { query = "select a.x from a join b" } } sink {}')
+    assert e3.value.key == "spk_no_table"
+
+
+def test_splitstat_verdicts():
+    tasks = 4
+    good = SplitStat("id", total=10000, ndv=10000, top1_count=1)
+    assert good.verdict(tasks) == "good"
+    bad = SplitStat("region", total=100, ndv=100, top1_count=80)
+    assert bad.verdict(tasks) == "bad"
+    low = SplitStat("region", total=100, ndv=5, top1_count=3)
+    assert low.verdict(tasks) == "low_ndv"
+    nul = SplitStat("k", total=100, ndv=100, null_count=30)
+    assert nul.verdict(tasks) == "null"
+    err = SplitStat("k", error="boom")
+    assert err.verdict(tasks) == "error"
+    assert SplitStat("k").verdict(tasks) == "empty"
+
+
+def test_rank_candidates_orders_good_first():
+    tasks = 2
+    bad = SplitStat("region", total=100, ndv=100, top1_count=80)
+    good = SplitStat("id", total=100, ndv=100, top1_count=2)
+    mild = SplitStat("uid", total=100, ndv=100, top1_count=10)
+    ranked = rank_candidates([bad, mild, good], tasks)
+    assert [s.column for s in ranked] == ["id", "uid", "region"]
+
+
+def test_check_split_key_end_to_end(tmp_path):
+    # region skewed (80% 'CN'), id uniform → verdicts + snippet promote id
+    rows = ",".join(
+        f"({i}, '{'CN' if i <= 80 else 'US'}', {i * 10})"
+        for i in range(1, 101))
+    ex = _sqlite_executor(
+        tmp_path,
+        "CREATE TABLE orders (id INTEGER, region TEXT, amount INTEGER);"
+        f"INSERT INTO orders VALUES {rows};")
+    conf = """
+    env { parallelism = 2 }
+    source { Jdbc { table_name = "orders", partition_column = "region" } }
+    sink { Console {} }
+    """
+    md = check_split_key(ex, conf, ds_type="sqlite", lang="zh")
+    assert "## SeaTunnel 分片键体检" in md
+    assert "`region`" in md
+    # configured key is low-cardinality → flagged, id promoted in the snippet
+    assert "partition_column = \"id\"" in md
+    assert "```hocon" in md
+    en = check_split_key(ex, conf, ds_type="sqlite", lang="en")
+    assert "## SeaTunnel Split-Key Check" in en
+
+
+def test_check_split_key_no_partition_column(tmp_path):
+    ex = _sqlite_executor(
+        tmp_path,
+        "CREATE TABLE t (id INTEGER, v TEXT);"
+        "INSERT INTO t VALUES (1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e'),"
+        "(6,'f'),(7,'g'),(8,'h'),(9,'i'),(10,'j');")
+    conf = 'source { Jdbc { table_name = "t" } } sink {}'
+    md = check_split_key(ex, conf, ds_type="sqlite", lang="zh")
+    assert "未配置 `partition_column`" in md
+
+
+def test_render_splitkey_section_error_row():
+    spec = SourceSpec(plugin="Jdbc", table="t", partition_column="k")
+    stat = SplitStat("k", error="table not found | details")
+    md = render_splitkey_section(spec, stat, [], "en")
+    assert "table not found" in md
+    assert r"\|" in md  # pipe escaped for the markdown table
+
+
+# ---------------------------------------------------------------------------
+# split-key: re-check comparison + write-back (the loop-closing half)
+# ---------------------------------------------------------------------------
+
+def _prev_rec(verdict: str, key: str = "region") -> dict:
+    return {"timestamp": "2026-09-29T10:00:00+00:00",
+            "splitkey": {"table": "orders", "partition_column": key,
+                         "key_verdict": verdict, "candidates": 3}}
+
+
+def test_recheck_line_states():
+    spec = SourceSpec(plugin="Jdbc", table="orders", partition_column="id",
+                      partition_num=4)
+    good = SplitStat("id", total=100, ndv=100, top1_count=1)
+    bad = SplitStat("id", total=100, ndv=50, top1_count=80)
+
+    # bad -> good: the fix landed, loop closed
+    md = render_splitkey_section(spec, good, [], "zh",
+                                 previous=_prev_rec("bad"))
+    assert "复测对比" in md and "已解决" in md and "`region`" in md
+
+    # good -> bad: regression
+    md = render_splitkey_section(spec, bad, [], "zh",
+                                 previous=_prev_rec("good", key="id"))
+    assert "退化" in md
+
+    # bad -> bad: still unresolved
+    md = render_splitkey_section(spec, bad, [], "zh",
+                                 previous=_prev_rec("bad"))
+    assert "仍未解决" in md
+
+    # good -> good: quiet, and first run renders no comparison at all
+    md = render_splitkey_section(spec, good, [], "zh",
+                                 previous=_prev_rec("good", key="id"))
+    assert "复测对比" not in md
+    md = render_splitkey_section(spec, good, [], "zh", previous=None)
+    assert "复测对比" not in md
+
+
+def test_apply_split_key_replace_multiline():
+    conf = (
+        "source {\n"
+        "  Jdbc {\n"
+        '    table_name = "orders"\n'
+        '    partition_column = "region"\n'
+        "    partition_num = 4\n"
+        "  }\n"
+        "}\n"
+        "sink { Console {} }\n"
+    )
+    spec = parse_seatunnel_source(conf)
+    out = apply_split_key(conf, spec, "id", partition_num=8)
+    assert 'partition_column = "id"' in out
+    assert "partition_num = 8" in out
+    assert "region" not in out
+    assert 'table_name = "orders"' in out  # formatting preserved
+    # the rewritten config round-trips through the parser
+    spec2 = parse_seatunnel_source(out)
+    assert spec2.partition_column == "id"
+    assert spec2.partition_num == 8
+
+
+def test_apply_split_key_oneline_replace_and_insert():
+    # replace on a single-line source, partition_num appended inline
+    conf = ('source { Jdbc { table_name = "orders", '
+            'partition_column = "region" } } sink {}')
+    spec = parse_seatunnel_source(conf)
+    out = apply_split_key(conf, spec, "id", partition_num=2)
+    spec2 = parse_seatunnel_source(out)
+    assert spec2.partition_column == "id"
+    assert spec2.partition_num == 2
+
+    # no key configured: inserted inline after the table option
+    conf = 'source { Jdbc { table_name = "orders" } } sink {}'
+    spec = parse_seatunnel_source(conf)
+    out = apply_split_key(conf, spec, "id", partition_num=2)
+    spec2 = parse_seatunnel_source(out)
+    assert spec2.partition_column == "id"
+    assert spec2.partition_num == 2
+
+
+def test_apply_split_key_skips_comments():
+    conf = (
+        "source {\n"
+        "  Jdbc {\n"
+        '    table_name = "orders"\n'
+        '    # partition_column = "old_commented_out"\n'
+        '    partition_column = "region"\n'
+        "  }\n"
+        "}\n"
+    )
+    spec = parse_seatunnel_source(conf)
+    out = apply_split_key(conf, spec, "id")
+    assert '# partition_column = "old_commented_out"' in out  # untouched
+    assert 'partition_column = "id"' in out
+    assert '"region"' not in out
+
+
+def test_apply_split_key_cdc_chunk_key():
+    spec = parse_seatunnel_source(_CONF_CDC)
+    out = apply_split_key(_CONF_CDC, spec, "user_id")
+    assert 'scan.incremental.snapshot.chunk.key-column = "user_id"' in out
+    assert "partition_num" not in out  # CDC option carries no partition_num
+    assert parse_seatunnel_source(out).partition_column == "user_id"
+
+
+def test_apply_split_key_no_anchor():
+    import pytest
+
+    conf = 'source { Jdbc { query = "select a.x from a join b" } } sink {}'
+    spec = SourceSpec(plugin="Jdbc", table="a")  # as if resolved elsewhere
+    # query anchor exists -> inline insert works even for query sources
+    out = apply_split_key(conf, spec, "id")
+    assert 'partition_column = "id"' in out
+    # nothing to anchor on at all
+    with pytest.raises(SplitKeyError) as e:
+        apply_split_key("env { parallelism = 2 }", spec, "id")
+    assert e.value.key == "spk_apply_fail"
+
+
+def test_pick_best_key():
+    spec = SourceSpec(plugin="Jdbc", table="orders",
+                      partition_column="region", parallelism=2)
+    good = SplitStat("id", total=100, ndv=100, top1_count=1)
+    bad = SplitStat("region", total=100, ndv=50, top1_count=80)
+    assert pick_best_key(spec, bad, [good]).column == "id"
+    assert pick_best_key(spec, good, [bad]).column == "id"   # keep configured
+    assert pick_best_key(spec, bad, [bad]) is None
+
+
+# ---------------------------------------------------------------------------
+# split-key: approx NDV, history, MCP tools, CLI
+# ---------------------------------------------------------------------------
+
+def test_stats_sql_approx_ndv_per_engine():
+    from seatunnel_agent.data_skew.splitkey import _stats_sql
+
+    assert "approx_count_distinct(c)" in _stats_sql("c", "t", "sparksql")
+    assert "uniq(c)" in _stats_sql("c", "t", "clickhouse")
+    assert "ndv(c)" in _stats_sql("c", "t", "doris")
+    for exact in ("mysql", "hive", "postgresql", "sqlite", ""):
+        assert "COUNT(DISTINCT c)" in _stats_sql("c", "t", exact)
+
+
+def test_history_log_splitkey(tmp_path):
+    from seatunnel_agent.data_skew.history import SkewHistory
+
+    h = SkewHistory(log_dir=tmp_path)
+    h.log_splitkey("orders", "region", "bad", candidates=3, source="cli")
+    h.log_splitkey("orders", "", "none", candidates=2)
+    h.log_splitkey("t2", "id", "good", candidates=1, source="mcp")
+    recs = h.recent(10)
+    assert [r["verdict"] for r in recs] == ["clean", "medium", "high"]
+    bad = recs[2]
+    assert bad["mode"] == "splitkey"
+    assert bad["counts"] == {"high": 1, "medium": 0, "low": 0}
+    assert bad["splitkey"] == {"table": "orders", "partition_column": "region",
+                               "key_verdict": "bad", "candidates": 3}
+    assert "orders" in bad["sql"]  # readable in the history panel
+
+
+def test_history_last_splitkey(tmp_path):
+    from seatunnel_agent.data_skew.history import SkewHistory
+
+    h = SkewHistory(log_dir=tmp_path)
+    assert h.last_splitkey("orders") is None       # empty history
+    h.log_splitkey("orders", "region", "bad", candidates=3)
+    h.log_splitkey("t2", "id", "good", candidates=1)
+    h.log_splitkey("orders", "id", "good", candidates=2)
+    rec = h.last_splitkey("orders")
+    assert rec["splitkey"]["partition_column"] == "id"   # latest wins
+    assert rec["splitkey"]["key_verdict"] == "good"
+    assert h.last_splitkey("nope") is None
+    assert h.last_splitkey("") is None
+
+
+_SPLITKEY_CONF = """
+env { parallelism = 2 }
+source { Jdbc { table_name = "orders", partition_column = "region" } }
+sink { Console {} }
+"""
+
+
+def _make_orders_db(tmp_path):
+    """A sqlite DB with a skewed region column and a uniform id."""
+    import sqlite3
+
+    db = tmp_path / "spk.db"
+    conn = sqlite3.connect(db)
+    rows = ",".join(
+        f"({i}, '{'CN' if i <= 80 else 'US'}', {i * 10})" for i in range(1, 101))
+    conn.executescript(
+        "CREATE TABLE orders (id INTEGER, region TEXT, amount INTEGER);"
+        f"INSERT INTO orders VALUES {rows};")
+    conn.commit()
+    conn.close()
+    return db
+
+
+def test_mcp_split_key_validation(monkeypatch, tmp_path):
+    from seatunnel_agent.data_skew.mcp_server import build_tool_functions
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    fns = build_tool_functions()
+    assert set(fns) == {"skew_check", "skew_check_file",
+                        "skew_runtime_eventlog", "skew_runtime_history",
+                        "skew_split_key", "skew_split_key_file",
+                        "skew_split_key_apply"}
+    spk = fns["skew_split_key"]
+    assert "不能为空" in spk("")
+    assert "ds_type" in spk(_SPLITKEY_CONF, ds_type="oracle")
+    monkeypatch.delenv("MYSQL_HOST", raising=False)
+    assert ".env" in spk(_SPLITKEY_CONF, ds_type="mysql")
+
+
+def test_mcp_split_key_end_to_end(monkeypatch, tmp_path):
+    from seatunnel_agent.data_skew.history import default_history
+    from seatunnel_agent.data_skew.mcp_server import build_tool_functions
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_orders_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    fns = build_tool_functions()
+    md = fns["skew_split_key"](_SPLITKEY_CONF, ds_type="sqlite", lang="zh")
+    assert "## SeaTunnel 分片键体检" in md
+    assert 'partition_column = "id"' in md  # skewed region → id promoted
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "splitkey" and rec["source"] == "mcp"
+    assert rec["splitkey"]["key_verdict"] in ("bad", "low_ndv")
+
+    # file variant + missing file
+    conf_file = tmp_path / "job.conf"
+    conf_file.write_text(_SPLITKEY_CONF, encoding="utf-8")
+    md2 = fns["skew_split_key_file"](str(conf_file), ds_type="sqlite")
+    assert "## SeaTunnel 分片键体检" in md2
+    assert "读取文件失败" in fns["skew_split_key_file"](str(tmp_path / "nope.conf"))
+
+
+def test_cli_skew_splitkey(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_orders_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    conf_file = tmp_path / "job.conf"
+    conf_file.write_text(_SPLITKEY_CONF, encoding="utf-8")
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite"])
+    assert res.exit_code == 0, res.output
+    assert "SeaTunnel" in res.output
+
+    # CI gate: the configured region key measures skewed → exit 1
+    gated = runner.invoke(
+        cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite", "--fail"])
+    assert gated.exit_code == 1
+    assert "检查未通过" in gated.output
+
+    # report file output
+    out = tmp_path / "spk.md"
+    runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite",
+                        "-o", str(out)])
+    assert "分片键体检" in out.read_text(encoding="utf-8")
+
+
+def test_cli_skew_splitkey_apply_closes_loop(monkeypatch, tmp_path):
+    """check → --apply writes the fix back → re-check reports it resolved."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_orders_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    conf_file = tmp_path / "job.conf"
+    conf_file.write_text(_SPLITKEY_CONF, encoding="utf-8")
+
+    runner = CliRunner()
+    # 1. region is skewed → --apply rewrites the config (backup kept)
+    res = runner.invoke(cli, ["skew-splitkey", str(conf_file),
+                              "--ds", "sqlite", "--apply"])
+    assert res.exit_code == 0, res.output
+    assert "已把分片键写回配置" in res.output
+    new_conf = conf_file.read_text(encoding="utf-8")
+    assert 'partition_column = "id"' in new_conf
+    bak = tmp_path / "job.conf.bak"
+    assert 'partition_column = "region"' in bak.read_text(encoding="utf-8")
+
+    # 2. re-check the rewritten config: the comparison line closes the loop
+    res2 = runner.invoke(cli, ["skew-splitkey", str(conf_file),
+                               "--ds", "sqlite", "--fail"])
+    assert res2.exit_code == 0, res2.output   # CI gate now passes
+    assert "复测对比" in res2.output
+    assert "已解决" in res2.output
+
+    # 3. good key + --apply again: nothing to write back
+    res3 = runner.invoke(cli, ["skew-splitkey", str(conf_file),
+                               "--ds", "sqlite", "--apply"])
+    assert res3.exit_code == 0
+    assert "没有可写回" in res3.output
+
+
+# ---------------------------------------------------------------------------
+# split-key: multi-source configs
+# ---------------------------------------------------------------------------
+
+_CONF_MULTI = """
+env { parallelism = 2 }
+source = [
+  { plugin_name = "Jdbc", table_name = "orders", partition_column = "region" },
+  { plugin_name = "Jdbc", table_name = "users", partition_column = "uid" }
+]
+sink { Console {} }
+"""
+
+
+def _make_two_table_db(tmp_path):
+    """orders (skewed region / uniform id) + users (uniform uid)."""
+    import sqlite3
+
+    db = tmp_path / "multi.db"
+    conn = sqlite3.connect(db)
+    orders = ",".join(
+        f"({i}, '{'CN' if i <= 80 else 'US'}', {i * 10})" for i in range(1, 101))
+    users = ",".join(f"({i}, {i % 7})" for i in range(1, 101))
+    conn.executescript(
+        "CREATE TABLE orders (id INTEGER, region TEXT, amount INTEGER);"
+        f"INSERT INTO orders VALUES {orders};"
+        "CREATE TABLE users (uid INTEGER, grade INTEGER);"
+        f"INSERT INTO users VALUES {users};")
+    conn.commit()
+    conn.close()
+    return db
+
+
+def test_parse_sources_multi_list_form():
+    specs = parse_seatunnel_sources(_CONF_MULTI)
+    assert [s.table for s in specs] == ["orders", "users"]
+    assert [s.partition_column for s in specs] == ["region", "uid"]
+    assert all(s.parallelism == 2 for s in specs)
+    # the compat single-source path still resolves the first one
+    assert parse_seatunnel_source(_CONF_MULTI).table == "orders"
+
+
+def test_parse_sources_skips_unresolvable_entry():
+    conf = """
+    source = [
+      { plugin_name = "Jdbc", query = "select a.x from a join b on a.k=b.k" },
+      { plugin_name = "Jdbc", table_name = "orders" }
+    ]
+    sink {}
+    """
+    specs = parse_seatunnel_sources(conf)
+    assert [s.table for s in specs] == ["orders"]
+    # every entry unresolvable → spk_no_table, as before
+    bad = 'source = [{ plugin_name = "Jdbc", query = "select 1" }]\nsink {}'
+    try:
+        parse_seatunnel_sources(bad)
+        raise AssertionError("expected SplitKeyError")
+    except SplitKeyError as exc:
+        assert exc.key == "spk_no_table"
+
+
+def test_check_split_key_multi_sources(tmp_path):
+
+    db = _make_two_table_db(tmp_path)
+    from seatunnel_agent.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+
+    md = check_split_key(ex, _CONF_MULTI, ds_type="sqlite", lang="zh")
+    # one header, both source bodies, the multi note, one sink note
+    assert md.count("## SeaTunnel 分片键体检") == 1
+    assert "2 个 source" in md
+    assert "`orders`" in md and "`users`" in md
+    assert md.count("写入端同理") == 1
+    # skewed region flagged, uniform uid fine
+    assert "`region`" in md and "`uid`" in md
+
+    en = check_split_key(ex, _CONF_MULTI, ds_type="sqlite", lang="en")
+    assert en.count("## SeaTunnel Split-Key Check") == 1
+    assert "2 sources" in en
+
+
+def test_run_split_key_multi_cap_and_truncated_note(tmp_path):
+    db = _make_two_table_db(tmp_path)
+    from seatunnel_agent.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+
+    results, total = run_split_key_multi(
+        ex, _CONF_MULTI, ds_type="sqlite", max_sources=1)
+    assert total == 2 and len(results) == 1
+    md = render_splitkey_multi(results, "zh", total=total)
+    assert "仅体检前 1 个" in md
+    en = render_splitkey_multi(results, "en", total=total)
+    assert "first 1" in en
+
+
+def test_render_splitkey_multi_single_source_unchanged():
+    spec = SourceSpec(plugin="Jdbc", table="t", partition_column="k")
+    stat = SplitStat("k", total=100, ndv=50, top1_count=3)
+    single = render_splitkey_multi([(spec, stat, [])], "en", total=1)
+    assert single == render_splitkey_section(spec, stat, [], "en")
+
+
+def test_cli_skew_splitkey_apply_refuses_multi(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_two_table_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    conf_file = tmp_path / "multi.conf"
+    conf_file.write_text(_CONF_MULTI, encoding="utf-8")
+
+    runner = CliRunner()
+    # plain check works and reports both sources
+    res = runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite"])
+    assert res.exit_code == 0, res.output
+    assert "orders" in res.output and "users" in res.output
+
+    # --apply refuses: a text edit could hit the wrong source block
+    res2 = runner.invoke(cli, ["skew-splitkey", str(conf_file),
+                               "--ds", "sqlite", "--apply"])
+    assert res2.exit_code != 0
+    assert "仅支持单 source" in res2.output
+    # nothing was written
+    assert conf_file.read_text(encoding="utf-8") == _CONF_MULTI
+    assert not (tmp_path / "multi.conf.bak").exists()
+
+
+def test_mcp_split_key_apply(monkeypatch, tmp_path):
+    from seatunnel_agent.data_skew.mcp_server import build_tool_functions
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_two_table_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    fns = build_tool_functions()
+    apply_fn = fns["skew_split_key_apply"]
+
+    # skewed region → patched config text with the measured key written in
+    out = apply_fn(_SPLITKEY_CONF, ds_type="sqlite")
+    assert out.startswith("# split key:")
+    assert 'partition_column = "id"' in out
+    assert 'table_name = "orders"' in out  # rest of the config intact
+
+    # already-good key → nothing to write back
+    good = out.split("\n", 1)[1]
+    assert "没有可写回" in apply_fn(good, ds_type="sqlite")
+
+    # multi-source config → refused
+    assert "仅支持单 source" in apply_fn(_CONF_MULTI, ds_type="sqlite")
+
+    # validation mirrors skew_split_key
+    assert "不能为空" in apply_fn("")
+    assert "ds_type" in apply_fn(_SPLITKEY_CONF, ds_type="oracle")
+
+
+# ---------------------------------------------------------------------------
+# runtime diagnosis (Spark task metrics)
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.runtime import (  # noqa: E402
+    MIN_TASKS,
+    RuntimeSkewError,
+    StageSkew,
+    analyze_history_server,
+    check_runtime_eventlog,
+    parse_eventlog,
+    render_runtime_section,
+)
+
+
+def _eventlog_events() -> list:
+    """Stage 1: one 60s straggler vs ~2s median (confirmed, mapped to SQL);
+    stage 2: balanced. Plus a failed task and a torn line to ignore."""
+    events: list = [
+        {"Event": "SparkListenerApplicationStart", "App Name": "etl-daily"},
+        {"Event": ("org.apache.spark.sql.execution.ui."
+                   "SparkListenerSQLExecutionStart"),
+         "executionId": 0,
+         "description": "insert overwrite table dws.orders select ..."},
+        {"Event": "SparkListenerJobStart", "Job ID": 0, "Stage IDs": [1, 2],
+         "Properties": {"spark.sql.execution.id": "0"}},
+        {"Event": "SparkListenerStageCompleted",
+         "Stage Info": {"Stage ID": 1,
+                        "Stage Name": "Exchange hashpartitioning(k#1, 200)"}},
+        {"Event": "SparkListenerStageCompleted",
+         "Stage Info": {"Stage ID": 2, "Stage Name": "Scan parquet"}},
+    ]
+
+    def task(sid: int, dur_ms: int, shuf: int = 0, failed: bool = False):
+        return {"Event": "SparkListenerTaskEnd", "Stage ID": sid,
+                "Task Info": {"Launch Time": 0, "Finish Time": dur_ms,
+                              "Failed": failed},
+                "Task Metrics": {"Shuffle Read Metrics": {
+                    "Remote Bytes Read": shuf, "Local Bytes Read": 0}}}
+
+    for d in (2000, 2000, 2500, 60_000):
+        events.append(task(1, d, shuf=1024))
+    for d in (3000, 3100, 2900, 3000):
+        events.append(task(2, d))
+    events.append(task(2, 999_999, failed=True))  # must be ignored
+    return events
+
+
+def _write_eventlog(path, events=None) -> None:
+    import json as _json
+
+    lines = [_json.dumps(e) for e in (events or _eventlog_events())]
+    lines.insert(3, "{torn json line")  # parser must skip it
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def test_runtime_parse_eventlog(tmp_path):
+    log = tmp_path / "app-123"
+    _write_eventlog(log)
+    stages, label = parse_eventlog(log)
+    assert label == "etl-daily"
+    assert [s.stage_id for s in stages] == [1, 2]  # worst first
+    s1, s2 = stages
+    assert s1.verdict() == "confirmed"
+    assert s1.tasks == 4 and s1.dur_max == 60_000 and s1.dur_p50 == 2250
+    assert "dws.orders" in s1.sql_desc  # mapped via job start properties
+    assert s2.verdict() == "ok"
+    assert s2.tasks == 4  # the failed task did not count
+
+
+def test_runtime_parse_gz_and_rolling_dir(tmp_path):
+    import gzip
+    import json as _json
+
+    events = _eventlog_events()
+    gz = tmp_path / "app.gz"
+    with gzip.open(gz, "wt", encoding="utf-8") as f:
+        f.write("\n".join(_json.dumps(e) for e in events))
+    stages, _ = parse_eventlog(gz)
+    assert stages[0].verdict() == "confirmed"
+
+    # rolling event-log directory: events_* parts read in order
+    d = tmp_path / "eventlog_v2_app-1"
+    d.mkdir()
+    half = len(events) // 2
+    (d / "events_1_app-1").write_text(
+        "\n".join(_json.dumps(e) for e in events[:half]), encoding="utf-8")
+    (d / "events_2_app-1").write_text(
+        "\n".join(_json.dumps(e) for e in events[half:]), encoding="utf-8")
+    (d / "appstatus_app-1").write_text("", encoding="utf-8")  # ignored
+    stages, _ = parse_eventlog(d)
+    assert stages[0].verdict() == "confirmed"
+
+    empty = tmp_path / "empty_dir"
+    empty.mkdir()
+    try:
+        parse_eventlog(empty)
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_read_fail"
+
+
+def test_runtime_render(tmp_path):
+    log = tmp_path / "app-123"
+    _write_eventlog(log)
+    md = check_runtime_eventlog(log, lang="zh")
+    assert "## 运行时倾斜诊断" in md
+    assert "1 个确认倾斜" in md
+    assert "拖尾任务" in md
+    assert "spark.sql.adaptive.skewJoin.enabled=true" in md
+    assert "dws.orders" in md  # SQL mapping rendered
+    en = check_runtime_eventlog(log, lang="en")
+    assert "## Runtime Skew Diagnosis" in en
+    assert "straggler" in en
+
+    # balanced-only input → the all-ok line, no AQE block
+    ok = render_runtime_section(
+        [StageSkew(1, tasks=4, dur_p50=1000, dur_max=1200)], "zh")
+    assert "未发现运行时倾斜信号" in ok
+    assert "spark.sql.adaptive" not in ok
+
+
+def test_runtime_verdict_thresholds():
+    # high ratio but tiny absolute max → noise, not skew
+    assert StageSkew(1, tasks=8, dur_p50=10, dur_max=200).verdict() == "ok"
+    # confirmed via duration
+    assert StageSkew(1, tasks=8, dur_p50=5_000,
+                     dur_max=40_000).verdict() == "confirmed"
+    # confirmed via shuffle bytes alone
+    assert StageSkew(1, tasks=8, dur_p50=1000, dur_max=1100,
+                     shuf_p50=10 << 20,
+                     shuf_max=300 << 20).verdict() == "confirmed"
+    # suspect band
+    assert StageSkew(1, tasks=8, dur_p50=4_000,
+                     dur_max=15_000).verdict() == "suspect"
+    # too few tasks to judge
+    assert StageSkew(1, tasks=MIN_TASKS - 1, dur_p50=1000,
+                     dur_max=60_000).verdict() == "ok"
+
+
+def test_runtime_history_server_fake_fetch():
+    calls: list[str] = []
+
+    def fake_fetch(url: str):
+        calls.append(url)
+        if url.endswith("/stages?status=COMPLETE"):
+            return [
+                {"stageId": 7, "attemptId": 0, "name": "Exchange",
+                 "numCompleteTasks": 10, "executorRunTime": 100_000},
+                {"stageId": 3, "attemptId": 0, "name": "Scan",
+                 "numCompleteTasks": 10, "executorRunTime": 50_000},
+            ]
+        if "/stages/7/0/taskSummary" in url:
+            return {"duration": [2_000.0, 90_000.0],
+                    "shuffleReadMetrics": {"readBytes": [1_000.0, 2_000.0]}}
+        if "/stages/3/0/taskSummary" in url:
+            return {"duration": [3_000.0, 3_200.0],
+                    "shuffleReadMetrics": {"readBytes": [0.0, 0.0]}}
+        raise AssertionError(f"unexpected URL {url}")
+
+    stages, label = analyze_history_server(
+        "http://hs:18080/", "app-42", fetch=fake_fetch)
+    assert label == "app-42"
+    assert calls[0] == ("http://hs:18080/api/v1/applications/app-42"
+                       "/stages?status=COMPLETE")
+    assert "quantiles=0.5,1.0" in calls[1]
+    assert [s.stage_id for s in stages] == [7, 3]
+    assert stages[0].verdict() == "confirmed"
+    assert stages[1].verdict() == "ok"
+
+    # error paths
+    try:
+        analyze_history_server("http://hs:18080", "app-42",
+                               fetch=lambda url: (_ for _ in ()).throw(
+                                   OSError("boom")))
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_http_fail"
+    try:
+        analyze_history_server("http://hs:18080", "app-42",
+                               fetch=lambda url: [])
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_no_stages"
+    try:
+        analyze_history_server("", "", fetch=fake_fetch)
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_need_url"
+
+
+def test_cli_skew_runtime(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.data_skew.history import default_history
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    log = tmp_path / "app-123"
+    _write_eventlog(log)
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-runtime", str(log)])
+    assert res.exit_code == 0, res.output
+    assert "运行时倾斜诊断" in res.output
+
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "runtime" and rec["source"] == "cli"
+    assert rec["runtime"]["confirmed"] == 1
+
+    # CI gate: a confirmed stage exists → exit 1
+    gated = runner.invoke(cli, ["skew-runtime", str(log), "--fail"])
+    assert gated.exit_code == 1
+
+    # report file + argument validation
+    out = tmp_path / "rt.md"
+    runner.invoke(cli, ["skew-runtime", str(log), "-o", str(out)])
+    assert "运行时倾斜诊断" in out.read_text(encoding="utf-8")
+    both = runner.invoke(cli, ["skew-runtime", str(log),
+                               "--history", "http://hs:18080", "--app", "a"])
+    assert both.exit_code != 0
+    neither = runner.invoke(cli, ["skew-runtime"])
+    assert neither.exit_code != 0
+
+
+def test_mcp_runtime_tools(monkeypatch, tmp_path):
+    from seatunnel_agent.data_skew.history import default_history
+    from seatunnel_agent.data_skew.mcp_server import build_tool_functions
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    log = tmp_path / "app-123"
+    _write_eventlog(log)
+    fns = build_tool_functions()
+
+    md = fns["skew_runtime_eventlog"](str(log))
+    assert "## 运行时倾斜诊断" in md
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "runtime" and rec["source"] == "mcp"
+
+    # missing file → readable error text, no exception
+    assert "读取失败" in fns["skew_runtime_eventlog"](str(tmp_path / "nope"))
+    # history variant validates its inputs the same way
+    assert "History Server" in fns["skew_runtime_history"]("", "")
+
+
+# ---------------------------------------------------------------------------
+# split-key: directory patrol (batch mode) + metric trend / drift
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
+    _recheck_line,
+    batch_counts,
+    render_splitkey_batch,
+    run_split_key_batch,
+    scan_config_files,
+)
+
+
+def _patrol_dir(tmp_path):
+    """configs/: skewed key, good key, no key, one unparsable file, one
+    non-config file that must be ignored."""
+    d = tmp_path / "configs"
+    (d / "nested").mkdir(parents=True)
+    (d / "a_skewed.conf").write_text(
+        'env { parallelism = 2 }\n'
+        'source { Jdbc { table_name = "orders", partition_column = "region" } }\n'
+        'sink { Console {} }\n', encoding="utf-8")
+    (d / "nested" / "b_good.config").write_text(
+        'env { parallelism = 2 }\n'
+        'source { Jdbc { table_name = "orders", partition_column = "id" } }\n'
+        'sink { Console {} }\n', encoding="utf-8")
+    (d / "c_nokey.conf").write_text(
+        'source { Jdbc { table_name = "users" } }\nsink { Console {} }\n',
+        encoding="utf-8")
+    (d / "d_broken.conf").write_text("source {{{ not hocon", encoding="utf-8")
+    (d / "readme.txt").write_text("not a config", encoding="utf-8")
+    return d
+
+
+def test_scan_config_files(tmp_path):
+    d = _patrol_dir(tmp_path)
+    names = [p.name for p in scan_config_files(str(d))]
+    assert names == ["a_skewed.conf", "c_nokey.conf", "d_broken.conf",
+                     "b_good.config"]  # sorted by path; txt ignored
+
+
+def test_run_split_key_batch_and_render(tmp_path):
+    from seatunnel_agent.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+
+    db = _make_two_table_db(tmp_path)
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+    d = _patrol_dir(tmp_path)
+    items = run_split_key_batch(ex, scan_config_files(str(d)),
+                                ds_type="sqlite")
+    c = batch_counts(items)
+    assert c == {"files": 4, "sources": 3, "bad": 1, "none": 1, "errors": 1}
+    by_name = {item.path.split("\\")[-1].split("/")[-1]: item
+               for item in items}
+    assert by_name["a_skewed.conf"].worst_verdict() in ("bad", "low_ndv")
+    assert by_name["b_good.config"].worst_verdict() == "good"
+    assert by_name["c_nokey.conf"].worst_verdict() == "none"
+    assert by_name["d_broken.conf"].worst_verdict() == "error"
+
+    md = render_splitkey_batch(items, "zh")
+    assert "## SeaTunnel 分片键巡检" in md
+    assert "1 个键倾斜" in md and "1 个解析失败" in md
+    assert "`a_skewed.conf`" in md and "`id`" in md  # suggested key
+    assert "未配置分片键" in md
+    en = render_splitkey_batch(items, "en")
+    assert "## SeaTunnel Split-Key Patrol" in en
+    assert "1 skewed keys" in en
+
+
+def test_cli_skew_splitkey_dir_patrol(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.data_skew import notify
+    from seatunnel_agent.data_skew.history import default_history
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_two_table_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    posted: list[tuple[str, dict]] = []
+    monkeypatch.setattr(notify, "post_webhook",
+                        lambda url, payload: (posted.append((url, payload))
+                                              or (True, "200")))
+    d = _patrol_dir(tmp_path)
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
+                              "--webhook", "http://hook.local/x"])
+    assert res.exit_code == 0, res.output
+    assert "分片键巡检" in res.output
+    # the webhook fired with the counts and the summary markdown
+    assert posted and posted[0][0] == "http://hook.local/x"
+    payload = posted[0][1]
+    assert payload["kind"] == "splitkey_patrol"
+    assert payload["counts"]["bad"] == 1 and payload["counts"]["errors"] == 1
+    assert "巡检" in payload["text"]
+    # history got one record per measured source, with metrics
+    recs = [r for r in default_history().recent(10)
+            if r.get("mode") == "splitkey"]
+    assert len(recs) == 3
+    skewed = [r for r in recs
+              if (r["splitkey"].get("partition_column") == "region")]
+    assert skewed and skewed[0]["splitkey"]["top1_pct"] == 80.0
+
+    # CI gate + --apply refusal in dir mode
+    gated = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
+                                "--fail"])
+    assert gated.exit_code == 1
+    assert "巡检未通过" in gated.output
+    refused = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
+                                  "--apply"])
+    assert refused.exit_code != 0
+    assert "仅支持单个配置文件" in refused.output
+
+    # empty dir → clear error
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    res2 = runner.invoke(cli, ["skew-splitkey", str(empty), "--ds", "sqlite"])
+    assert res2.exit_code != 0
+    assert "未找到" in res2.output
+
+
+def test_history_metrics_trend_and_tables(tmp_path):
+    from seatunnel_agent.data_skew.history import SkewHistory
+
+    h = SkewHistory(tmp_path)
+    h.log_splitkey("shop.orders", "region", "good",
+                   top1_pct=8.0, ndv=200, null_pct=0.0)
+    h.log_splitkey("shop.orders", "region", "good",
+                   top1_pct=25.0, ndv=190, null_pct=0.1)
+    h.log_splitkey("shop.users", "uid", "good", top1_pct=1.0)
+
+    rec = h.recent(1)[0]
+    assert rec["splitkey"]["top1_pct"] == 1.0
+    trend = h.splitkey_trend("shop.orders")
+    assert [r["splitkey"]["top1_pct"] for r in trend] == [8.0, 25.0]  # oldest first
+    assert h.splitkey_tables() == ["shop.users", "shop.orders"]
+
+
+def test_recheck_drift_line():
+    prev = {"timestamp": "2026-09-30T08:00:00+00:00",
+            "splitkey": {"table": "orders", "partition_column": "id",
+                         "key_verdict": "good", "top1_pct": 8.0}}
+    # both verdicts fine but top1 jumped 8% → 25%: drift warning
+    line = _recheck_line(prev, "good", "zh", cur_top1=25.0)
+    assert "漂移" in line and "8.0%" in line and "25.0%" in line
+    assert "+17.0" in line
+    # small move stays quiet
+    assert _recheck_line(prev, "good", "zh", cur_top1=12.0) == ""
+    # no stored metric → quiet (backward compatible with old records)
+    old = {"timestamp": "t", "splitkey": {"key_verdict": "good"}}
+    assert _recheck_line(old, "good", "zh", cur_top1=90.0) == ""
+    en = _recheck_line(prev, "good", "en", cur_top1=25.0)
+    assert "drifted" in en
+
+
+# ---------------------------------------------------------------------------
+# sink-side key check
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
+    parse_seatunnel_sinks,
+    render_sinkkey_section,
+    run_sink_keys,
+    sink_verdict,
+)
+
+_CONF_SINK = """
+env { parallelism = 2 }
+source { Jdbc { table_name = "orders", partition_column = "id" } }
+sink {
+  Clickhouse { table = "dw.orders", sharding_key = "region" }
+  Doris { table.identifier = "dw.orders_d", fenodes = "x:8030" }
+}
+"""
+
+
+def test_parse_seatunnel_sinks_block_and_list():
+    sinks = parse_seatunnel_sinks(_CONF_SINK)
+    # Doris carries no key option in the config → only ClickHouse yields
+    assert len(sinks) == 1
+    s = sinks[0]
+    assert s.plugin == "Clickhouse" and s.option == "sharding_key"
+    assert s.columns == ["region"] and s.table == "dw.orders"
+
+    conf_list = """
+    source = [{ plugin_name = "Jdbc", table_name = "orders" }]
+    sink = [
+      { plugin_name = "HdfsFile", partition_by = ["dt", "region"] },
+      { plugin_name = "Jdbc", table = "t2", primary_keys = "id, region" }
+    ]
+    """
+    sinks = parse_seatunnel_sinks(conf_list)
+    assert [(s.plugin, s.option, s.columns) for s in sinks] == [
+        ("HdfsFile", "partition_by", ["dt", "region"]),
+        ("Jdbc", "primary_keys", ["id", "region"]),
+    ]
+    # no sink block at all → []
+    assert parse_seatunnel_sinks('source { Jdbc { table_name = "t" } }') == []
+
+
+def test_sink_verdict_ignores_low_ndv():
+    # a 2-value date-ish column is fine as a sink partition key…
+    even = SplitStat("dt", total=100, ndv=2, top1_count=15)
+    assert sink_verdict(even) == "suspect"  # 15% top1 → mildly hot
+    balanced = SplitStat("dt", total=100, ndv=30, top1_count=4)
+    assert sink_verdict(balanced) == "good"
+    # …but a hot or NULL-heavy one is not
+    hot = SplitStat("region", total=100, ndv=2, top1_count=80)
+    assert sink_verdict(hot) == "bad"
+    nully = SplitStat("k", total=100, ndv=50, null_count=30)
+    assert sink_verdict(nully) == "null"
+
+
+def test_run_sink_keys_and_render(tmp_path):
+    from seatunnel_agent.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+
+    db = _make_orders_db(tmp_path)
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+    results, src_table = run_sink_keys(ex, _CONF_SINK, ds_type="sqlite")
+    assert src_table == "orders"
+    assert len(results) == 1
+    spec, stats = results[0]
+    assert sink_verdict(stats[0]) == "bad"  # region is 80% CN
+
+    md = render_sinkkey_section(results, src_table, "zh")
+    assert md.startswith("### Sink 端键体检")
+    assert "`region`" in md and "热点键" in md
+    assert "物化到目标端存储" in md  # hot note present
+    en = render_sinkkey_section(results, src_table, "en")
+    assert "### Sink-Side Key Check" in en and "hot key" in en
+    # empty results render nothing
+    assert render_sinkkey_section([], "orders", "zh") == ""
+
+
+def test_check_split_key_appends_sink_section(tmp_path):
+    from seatunnel_agent.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+
+    db = _make_orders_db(tmp_path)
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+    md = check_split_key(ex, _CONF_SINK, ds_type="sqlite", lang="zh")
+    assert "## SeaTunnel 分片键体检" in md
+    assert "### Sink 端键体检" in md  # additive sub-section, same report
+    # a config without sink keys keeps the report unchanged
+    plain = check_split_key(ex, _SPLITKEY_CONF, ds_type="sqlite", lang="zh")
+    assert "Sink 端键体检" not in plain
+
+
+def test_cli_skew_stats_splitkey_trend(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.data_skew.history import default_history
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    h = default_history()
+    h.log_splitkey("shop.orders", "region", "bad", top1_pct=80.0)
+    h.log_splitkey("shop.orders", "id", "good", top1_pct=2.0)
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-stats"])
+    assert res.exit_code == 0, res.output
+    assert "分片键巡检" in res.output
+    assert "shop.orders" in res.output
+    assert "80%" in res.output and "2%" in res.output
