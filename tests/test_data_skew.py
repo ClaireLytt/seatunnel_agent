@@ -2076,7 +2076,6 @@ def test_parse_sources_skips_unresolvable_entry():
 
 
 def test_check_split_key_multi_sources(tmp_path):
-    import sqlite3
 
     db = _make_two_table_db(tmp_path)
     from seatunnel_agent.text2sql.executor.base import (
@@ -2446,7 +2445,6 @@ from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
     render_splitkey_batch,
     run_split_key_batch,
     scan_config_files,
-    splitkey_metrics,
 )
 
 
@@ -2606,8 +2604,6 @@ def test_recheck_drift_line():
 # ---------------------------------------------------------------------------
 
 from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
-    SinkSpec,
-    check_split_key,
     parse_seatunnel_sinks,
     render_sinkkey_section,
     run_sink_keys,
