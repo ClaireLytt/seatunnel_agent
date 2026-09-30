@@ -42,6 +42,7 @@ from .data_skew.splitkey import (
     pick_best_key,
     render_splitkey_multi,
     run_split_key_multi,
+    sink_key_section,
     splitkey_metrics,
 )
 from .text2sql.executor.base import (
@@ -407,6 +408,12 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             section = render_splitkey_multi(
                 results, lang, sample_pct=pct, total=total,
                 previous_by_table=previous_by_table)
+            # sink-side keys (sharding/partition/primary): additive check
+            snk = sink_key_section(conn["executor"], conf_text,
+                                   ds_type=conn["ds_type"], sample_pct=pct,
+                                   lang=lang)
+            if snk:
+                section = section + "\n" + snk
         except SplitKeyError as exc:
             return gr.update(), dsk(lang, exc.key).format(err=exc.arg), hide
         except Exception as exc:  # noqa: BLE001 — surface in the UI

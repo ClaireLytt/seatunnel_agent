@@ -641,12 +641,193 @@ def check_split_key(
     sample_pct: int = 0,
     lang: str = "zh",
 ) -> str:
-    """Parse → measure (every source) → render. Raises SplitKeyError on
-    config problems."""
+    """Parse → measure (every source + sink keys) → render. Raises
+    SplitKeyError on config problems."""
     results, total = run_split_key_multi(
         executor, conf_text, ds_type=ds_type, sample_pct=sample_pct)
-    return render_splitkey_multi(results, lang, sample_pct=sample_pct,
-                                 total=total)
+    md = render_splitkey_multi(results, lang, sample_pct=sample_pct,
+                               total=total)
+    snk = sink_key_section(executor, conf_text, ds_type=ds_type,
+                           sample_pct=sample_pct, lang=lang)
+    return md + ("\n" + snk if snk else "")
+
+
+def sink_key_section(
+    executor,
+    conf_text: str,
+    ds_type: str = "",
+    sample_pct: int = 0,
+    lang: str = "zh",
+) -> str:
+    """Best-effort sink-side key sub-section ('' when there is nothing to
+    measure or anything fails — it never breaks the split-key check)."""
+    try:
+        results, src_table = run_sink_keys(
+            executor, conf_text, ds_type=ds_type, sample_pct=sample_pct)
+        return render_sinkkey_section(results, src_table, lang,
+                                      sample_pct=sample_pct)
+    except Exception:  # noqa: BLE001 — strictly additive to the main check
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# Sink-side key check (bucket / sharding / partition keys)
+# ---------------------------------------------------------------------------
+
+# sink options that carry a data-distribution key, checked in this order;
+# each present option becomes its own SinkSpec (a sink may set several)
+_SINK_KEY_OPTIONS = ("sharding_key", "partition_by", "primary_keys")
+
+
+@dataclass
+class SinkSpec:
+    """One sink option that distributes rows by column(s)."""
+    plugin: str
+    option: str            # which config option carried the key(s)
+    columns: list[str]
+    table: str = ""        # sink table label, best-effort (for the report)
+
+
+def parse_seatunnel_sinks(conf_text: str) -> list[SinkSpec]:
+    """Every sink option that names distribution columns, config order.
+
+    Understands the ClickHouse ``sharding_key``, the file sinks'
+    ``partition_by`` and the JDBC sinks' ``primary_keys`` (upsert key).
+    Sinks without any of them (e.g. Doris, whose bucket key lives in the
+    Doris DDL) yield nothing. Never raises on a config that
+    :func:`parse_seatunnel_sources` accepted; [] when there is no sink."""
+    try:
+        from pyhocon import ConfigFactory
+        conf = ConfigFactory.parse_string(conf_text)
+    except Exception:  # noqa: BLE001 — the source parser already reported
+        return []
+
+    sink = conf.get("sink", None)
+    entries: list[tuple[str, object]] = []
+    if isinstance(sink, list):
+        for item in sink:
+            if hasattr(item, "get"):
+                entries.append((str(item.get("plugin_name", "") or "Sink"), item))
+    elif sink is not None and hasattr(sink, "items"):
+        for name, block in sink.items():
+            if hasattr(block, "get"):
+                entries.append((str(name), block))
+
+    out: list[SinkSpec] = []
+    for plugin, params in entries:
+        table = ""
+        for key in ("table.identifier", "table", "table_name", "database"):
+            try:
+                v = params.get(key, None)
+            except Exception:  # noqa: BLE001 — dotted lookup on odd shapes
+                v = None
+            if v is not None and not hasattr(v, "items"):
+                table = str(v).strip()
+                if table:
+                    break
+        for opt in _SINK_KEY_OPTIONS:
+            v = params.get(opt, None)
+            if v is None:
+                continue
+            cols = [str(x).strip() for x in v] if isinstance(v, (list, tuple)) \
+                else [s.strip() for s in str(v).split(",")]
+            cols = [c for c in cols if c and _TABLE_RE.match(c)]
+            if cols:
+                out.append(SinkSpec(plugin=plugin, option=opt,
+                                    columns=cols[:MAX_CANDIDATES], table=table))
+    return out
+
+
+def sink_verdict(stat: SplitStat) -> str:
+    """'good' | 'suspect' | 'bad' | 'null' | 'empty' | 'error' — hot-share
+    based only: unlike a split key, a sink key (e.g. a date partition_by)
+    may legitimately have a low NDV."""
+    if stat.error:
+        return "error"
+    if not stat.total:
+        return "empty"
+    if stat.null_ratio >= NULL_CONFIRMED:
+        return "null"
+    if stat.top1_ratio >= HOT_KEY_CONFIRMED:
+        return "bad"
+    if stat.top1_ratio >= HOT_KEY_SUSPECT:
+        return "suspect"
+    return "good"
+
+
+def run_sink_keys(
+    executor,
+    conf_text: str,
+    ds_type: str = "",
+    sample_pct: int = 0,
+) -> tuple[list[tuple[SinkSpec, list[SplitStat]]], str]:
+    """Measure every sink distribution key on the FIRST source's base table
+    (the rows a sink writes are the rows that source reads, so the source
+    distribution is the sink key's distribution). Returns
+    ``(per-sink results, source table)``; ([], "") when the config has no
+    sink keys or no resolvable source."""
+    try:
+        source = parse_seatunnel_sources(conf_text)[0]
+    except SplitKeyError:
+        return [], ""
+    sinks = parse_seatunnel_sinks(conf_text)
+    if not sinks:
+        return [], source.table
+    out = []
+    for spec in sinks:
+        stats = measure_columns(executor, source.table, spec.columns,
+                                ds_type, sample_pct)
+        out.append((spec, stats))
+    return out, source.table
+
+
+def _sink_stat_row(s: SplitStat, lang: str) -> str:
+    v = sink_verdict(s)
+    verdict = (dsk(lang, f"snk_verdict_{v}") if v not in ("empty", "error")
+               else dsk(lang, "prb_verdict_empty") if v == "empty"
+               else dsk(lang, "spk_verdict_error"))
+    if s.error:
+        err = s.error.replace("|", "\\|").replace("\n", " ")
+        err = err if len(err) <= 80 else err[:79] + "…"
+        return f"| `{s.column}` | - | - | - | {err} | {verdict} |"
+    top1 = (f"`{_safe_value(s.top1_value)}` ({_pct(s.top1_ratio)})"
+            if s.top1_count else "-")
+    return (f"| `{s.column}` | {s.total} | {s.ndv} | "
+            f"{_pct(s.null_ratio)} | {top1} | {verdict} |")
+
+
+def render_sinkkey_section(
+    results: list[tuple[SinkSpec, list[SplitStat]]],
+    source_table: str,
+    lang: str,
+    sample_pct: int = 0,
+) -> str:
+    """H3 sub-section (lives inside the split-key section) measuring the
+    sink-side keys; '' when there is nothing to show."""
+    if not results:
+        return ""
+    lang = normalize_lang(lang)
+    parts = [dsk(lang, "snk_section"), "",
+             dsk(lang, "snk_intro").format(table=source_table), ""]
+    if sample_pct:
+        parts += [dsk(lang, "spk_sampled_note").format(pct=sample_pct), ""]
+    header = (
+        f"| {dsk(lang, 'spk_col_column')} | {dsk(lang, 'spk_col_rows')} | "
+        f"{dsk(lang, 'spk_col_ndv')} | {dsk(lang, 'spk_col_null')} | "
+        f"{dsk(lang, 'spk_col_top1')} | {dsk(lang, 'spk_col_verdict')} |"
+    )
+    for spec, stats in results:
+        label = f"`{spec.plugin}`"
+        if spec.table:
+            label += f" → `{spec.table}`"
+        parts += [dsk(lang, "snk_line").format(sink=label, opt=spec.option),
+                  "", header, "|---|---|---|---|---|---|"]
+        parts += [_sink_stat_row(s, lang) for s in stats]
+        parts.append("")
+    if any(sink_verdict(s) in ("bad", "null") for _, stats in results
+           for s in stats):
+        parts += [dsk(lang, "snk_hot_note"), ""]
+    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------

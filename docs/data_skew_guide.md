@@ -53,7 +53,13 @@
   “已解决 / 仍未解决 / 出现退化”；
 - 当实测出更优分片键时出现 **「下载修改后配置」** 按钮：下载的就是你粘贴的
   配置文本、仅把分片键改写为推荐列（注释与格式原样保留）。仅单 source
-  配置提供写回——多 source 的文本级修改可能改错位置，请按报告手动改。
+  配置提供写回——多 source 的文本级修改可能改错位置，请按报告手动改；
+- **sink 端键体检**（同一次检查自动附带）：解析 sink 块里的分布键——
+  ClickHouse `sharding_key`、文件类 sink 的 `partition_by`、JDBC sink 的
+  `primary_keys`——在**源表**上实测其热点/NULL 占比（sink 写出的数据就是
+  source 读入的数据）。判定只看热点：`partition_by = dt` 这类低基数键不误报；
+  热点键提示「写入会集中到同一分桶/分片/分区」。Doris/StarRocks 的分桶键
+  定义在目标表 DDL 中、不在 SeaTunnel 配置里，故不在本检查范围。
 
 ### 运行时诊断（UI）
 
@@ -146,6 +152,10 @@ seatunnel-agent skew-stats -n 50
 | `skew_split_key(conf, ds_type?, sample_pct?, lang?)` | 分片键体检（按 `.env` 连库，只读探查） |
 | `skew_split_key_file(path, ...)` | 同上，输入为配置文件路径 |
 | `skew_split_key_apply(conf, ds_type?, sample_pct?, lang?)` | 在体检基础上返回**写入推荐分片键后的完整配置文本**（不落盘，由调用方保存；仅单 source） |
+
+统一工具箱（`seatunnel-agent mcp`）另有按**已保存连接名**连库的
+`skew_split_key_conn(connection, conf, sample_pct?, lang?)`——凭据留在加密
+预设库，不经过工具参数与模型上下文，报告同样附带 sink 端键体检。
 
 所有工具错误即文本、永不抛异常；`skew_check` 系列零依赖，`skew_split_key`
 系列只发起 COUNT / GROUP BY 只读查询。

@@ -331,6 +331,36 @@ def test_connections_allowlist(tools, tmp_path, monkeypatch):
     assert "dev-a" in listing and "prod-x" not in listing
 
 
+def test_skew_split_key_conn(tools, tmp_path):
+    """Split-key check over a NAMED saved connection (issue #21 D): the
+    password stays in the preset store, and the sink-side key sub-section
+    rides along."""
+    db = tmp_path / "spk.db"
+    rows = ",".join(
+        f"({i}, '{'CN' if i <= 80 else 'US'}', {i * 10})" for i in range(1, 101))
+    _make_db(db, "CREATE TABLE orders (id INTEGER, region TEXT, amount INTEGER);"
+                 f"INSERT INTO orders VALUES {rows};")
+    _save_conn("dev-a", db)
+    conf = """
+    env { parallelism = 2 }
+    source { Jdbc { table_name = "orders", partition_column = "region" } }
+    sink { Clickhouse { table = "dw.orders", sharding_key = "region" } }
+    """
+    out = tools["skew_split_key_conn"]("dev-a", conf)
+    assert "SeaTunnel 分片键体检" in out
+    assert 'partition_column = "id"' in out       # skewed region → id promoted
+    assert "Sink 端键体检" in out and "热点键" in out
+
+    # history carries the measured metrics, source=mcp
+    from seatunnel_agent.data_skew.history import default_history
+    rec = [r for r in default_history().recent(5) if r.get("mode") == "splitkey"][0]
+    assert rec["source"] == "mcp" and rec["splitkey"]["top1_pct"] == 80.0
+
+    # validation: unknown connection / empty config are readable errors
+    assert "未找到连接" in tools["skew_split_key_conn"]("nope", conf)
+    assert "不能为空" in tools["skew_split_key_conn"]("dev-a", "")
+
+
 def test_no_db_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("SEATUNNEL_DC_PRESETS_PATH",
                        str(tmp_path / "presets.json"))

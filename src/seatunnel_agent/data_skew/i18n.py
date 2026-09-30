@@ -201,6 +201,23 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "for the full per-column report, and `--apply` to write the "
             "suggested key back."
         ),
+        "snk_section": "### Sink-Side Key Check (measured)",
+        "snk_intro": (
+            "Sink distribution keys measured on the source table `{table}` "
+            "— the rows a sink writes are the rows this source reads."
+        ),
+        "snk_line": "sink {sink}, option `{opt}`:",
+        "snk_verdict_good": "✅ uniform — safe distribution key",
+        "snk_verdict_suspect": "⚠️ mildly hot — watch write balance",
+        "snk_verdict_bad": (
+            "⛔ hot key — writes pile onto one bucket/shard/partition"
+        ),
+        "snk_verdict_null": "⛔ NULL-heavy — NULL rows land in one bucket",
+        "snk_hot_note": (
+            "A hot sink key materializes the skew into the target's storage "
+            "(one bucket/partition keeps growing) — pick a more uniform "
+            "column or a composite key."
+        ),
         "spk_multi_note": (
             "The config declares {n} sources — each is checked below."
         ),
@@ -490,6 +507,20 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "spk_batch_hint": (
             "对被标记的配置运行 `seatunnel-agent skew-splitkey <文件>` "
             "查看完整逐列报告，`--apply` 可把建议键写回。"
+        ),
+        "snk_section": "### Sink 端键体检（实测）",
+        "snk_intro": (
+            "sink 的分布键在源表 `{table}` 上实测——sink 写出的数据就是该 "
+            "source 读入的数据。"
+        ),
+        "snk_line": "sink {sink}，选项 `{opt}`：",
+        "snk_verdict_good": "✅ 均匀——可放心作分布键",
+        "snk_verdict_suspect": "⚠️ 轻度热点——关注写入均衡",
+        "snk_verdict_bad": "⛔ 热点键——写入会集中到同一分桶/分片/分区",
+        "snk_verdict_null": "⛔ NULL 过多——NULL 行会落入同一分桶",
+        "snk_hot_note": (
+            "热点 sink 键会把倾斜物化到目标端存储（某个分桶/分区持续膨胀）"
+            "——建议换更均匀的列或使用组合键。"
         ),
         "spk_multi_note": "配置声明了 {n} 个 source，以下逐一体检。",
         "spk_multi_truncated": (

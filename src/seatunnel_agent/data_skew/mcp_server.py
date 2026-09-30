@@ -140,6 +140,7 @@ def build_tool_functions(
             SplitKeyError,
             render_splitkey_multi,
             run_split_key_multi,
+            sink_key_section,
             splitkey_metrics,
         )
 
@@ -172,8 +173,11 @@ def build_tool_functions(
                 configured.verdict(spec.tasks) if configured else "none",
                 candidates=len(candidates), source="mcp",
                 **splitkey_metrics(configured))
-        return render_splitkey_multi(results, lg, sample_pct=pct, total=total,
-                                     previous_by_table=previous_by_table)
+        md = render_splitkey_multi(results, lg, sample_pct=pct, total=total,
+                                   previous_by_table=previous_by_table)
+        snk = sink_key_section(executor, conf, ds_type=ds, sample_pct=pct,
+                               lang=lg)
+        return md + ("\n" + snk if snk else "")
 
     def skew_split_key_file(path: str, ds_type: str = "mysql",
                             sample_pct: int = 0, lang: str = "") -> str:

@@ -2601,6 +2601,108 @@ def test_recheck_drift_line():
     assert "drifted" in en
 
 
+# ---------------------------------------------------------------------------
+# sink-side key check
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
+    SinkSpec,
+    check_split_key,
+    parse_seatunnel_sinks,
+    render_sinkkey_section,
+    run_sink_keys,
+    sink_verdict,
+)
+
+_CONF_SINK = """
+env { parallelism = 2 }
+source { Jdbc { table_name = "orders", partition_column = "id" } }
+sink {
+  Clickhouse { table = "dw.orders", sharding_key = "region" }
+  Doris { table.identifier = "dw.orders_d", fenodes = "x:8030" }
+}
+"""
+
+
+def test_parse_seatunnel_sinks_block_and_list():
+    sinks = parse_seatunnel_sinks(_CONF_SINK)
+    # Doris carries no key option in the config → only ClickHouse yields
+    assert len(sinks) == 1
+    s = sinks[0]
+    assert s.plugin == "Clickhouse" and s.option == "sharding_key"
+    assert s.columns == ["region"] and s.table == "dw.orders"
+
+    conf_list = """
+    source = [{ plugin_name = "Jdbc", table_name = "orders" }]
+    sink = [
+      { plugin_name = "HdfsFile", partition_by = ["dt", "region"] },
+      { plugin_name = "Jdbc", table = "t2", primary_keys = "id, region" }
+    ]
+    """
+    sinks = parse_seatunnel_sinks(conf_list)
+    assert [(s.plugin, s.option, s.columns) for s in sinks] == [
+        ("HdfsFile", "partition_by", ["dt", "region"]),
+        ("Jdbc", "primary_keys", ["id", "region"]),
+    ]
+    # no sink block at all → []
+    assert parse_seatunnel_sinks('source { Jdbc { table_name = "t" } }') == []
+
+
+def test_sink_verdict_ignores_low_ndv():
+    # a 2-value date-ish column is fine as a sink partition key…
+    even = SplitStat("dt", total=100, ndv=2, top1_count=15)
+    assert sink_verdict(even) == "suspect"  # 15% top1 → mildly hot
+    balanced = SplitStat("dt", total=100, ndv=30, top1_count=4)
+    assert sink_verdict(balanced) == "good"
+    # …but a hot or NULL-heavy one is not
+    hot = SplitStat("region", total=100, ndv=2, top1_count=80)
+    assert sink_verdict(hot) == "bad"
+    nully = SplitStat("k", total=100, ndv=50, null_count=30)
+    assert sink_verdict(nully) == "null"
+
+
+def test_run_sink_keys_and_render(tmp_path):
+    from seatunnel_agent.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+
+    db = _make_orders_db(tmp_path)
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+    results, src_table = run_sink_keys(ex, _CONF_SINK, ds_type="sqlite")
+    assert src_table == "orders"
+    assert len(results) == 1
+    spec, stats = results[0]
+    assert sink_verdict(stats[0]) == "bad"  # region is 80% CN
+
+    md = render_sinkkey_section(results, src_table, "zh")
+    assert md.startswith("### Sink 端键体检")
+    assert "`region`" in md and "热点键" in md
+    assert "物化到目标端存储" in md  # hot note present
+    en = render_sinkkey_section(results, src_table, "en")
+    assert "### Sink-Side Key Check" in en and "hot key" in en
+    # empty results render nothing
+    assert render_sinkkey_section([], "orders", "zh") == ""
+
+
+def test_check_split_key_appends_sink_section(tmp_path):
+    from seatunnel_agent.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+
+    db = _make_orders_db(tmp_path)
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+    md = check_split_key(ex, _CONF_SINK, ds_type="sqlite", lang="zh")
+    assert "## SeaTunnel 分片键体检" in md
+    assert "### Sink 端键体检" in md  # additive sub-section, same report
+    # a config without sink keys keeps the report unchanged
+    plain = check_split_key(ex, _SPLITKEY_CONF, ds_type="sqlite", lang="zh")
+    assert "Sink 端键体检" not in plain
+
+
 def test_cli_skew_stats_splitkey_trend(monkeypatch, tmp_path):
     from click.testing import CliRunner
 

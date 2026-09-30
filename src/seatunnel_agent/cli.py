@@ -1405,6 +1405,7 @@ def skew_splitkey(
         run_split_key_batch,
         run_split_key_multi,
         scan_config_files,
+        sink_key_section,
         splitkey_metrics,
     )
     from .text2sql.executor.base import (
@@ -1502,6 +1503,10 @@ def skew_splitkey(
 
     md = render_splitkey_multi(results, lang, sample_pct=pct, total=total,
                                previous_by_table=previous_by_table)
+    snk = sink_key_section(executor, conf_text, ds_type=ds_type,
+                           sample_pct=pct, lang=lang)
+    if snk:
+        md = md + "\n" + snk
     console.print(md)
     if output:
         Path(output).write_text(md, encoding="utf-8")

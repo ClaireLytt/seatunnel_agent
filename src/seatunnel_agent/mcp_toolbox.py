@@ -517,6 +517,57 @@ def build_tool_functions(
                                     dialect=normalize_dialect(dialect),
                                     sample_pct=pct)
 
+    def skew_split_key_conn(connection: str, conf: str,
+                            sample_pct: int = 0, lang: str = "") -> str:
+        """SeaTunnel 分片键体检（按**已保存连接名**连库，密码不经过参数）：
+        实测作业配置里 JDBC/CDC source 的 partition_column 分布（NDV/NULL/
+        top-1），实测候选列给出推荐，并附 sink 端分布键（sharding_key/
+        partition_by/primary_keys）的热点体检。多 source 配置逐一体检。"""
+        from .data_skew.history import default_history
+        from .data_skew.probe import effective_sample_pct
+        from .data_skew.splitkey import (
+            SplitKeyError,
+            render_splitkey_multi,
+            run_split_key_multi,
+            sink_key_section,
+            splitkey_metrics,
+        )
+
+        if not (conf or "").strip():
+            return "配置不能为空 / config must not be empty"
+        executor, err = _executor_for(connection)
+        if err:
+            return err
+        ds = executor.config.ds_type
+        lg = _lang(lang)
+        pct = effective_sample_pct(ds, int(sample_pct or 0))
+        try:
+            results, total = _db(connection, run_split_key_multi, executor,
+                                 conf, ds_type=ds, sample_pct=pct)
+        except SplitKeyError as exc:
+            from .data_skew.i18n import dsk
+            return dsk(lg, exc.key).format(err=exc.arg)
+        except Exception as exc:  # noqa: BLE001
+            _invalidate(connection)
+            return f"体检失败 / split-key check failed: {exc}"
+        history = default_history()
+        previous_by_table = {spec.table: prev for spec, _, _ in results
+                             if (prev := history.last_splitkey(spec.table))}
+        for spec, configured, candidates in results:
+            history.log_splitkey(
+                spec.table, spec.partition_column,
+                configured.verdict(spec.tasks) if configured else "none",
+                candidates=len(candidates), source="mcp",
+                **splitkey_metrics(configured))
+        md = render_splitkey_multi(results, lg, sample_pct=pct, total=total,
+                                   previous_by_table=previous_by_table)
+        try:
+            snk = _db(connection, sink_key_section, executor, conf,
+                      ds_type=ds, sample_pct=pct, lang=lg)
+        except Exception:  # noqa: BLE001 — additive check stays best-effort
+            snk = ""
+        return md + ("\n" + snk if snk else "")
+
     def compare_query_results(connection: str, original_sql: str,
                               optimized_sql: str, lang: str = "") -> str:
         """一致性实测：在同一连接上运行两版 SQL（各自仅允许单条 SELECT/WITH）
@@ -594,6 +645,7 @@ def build_tool_functions(
         compare_row_count=compare_row_count,
         compare_schema=compare_schema,
         skew_verify=skew_verify,
+        skew_split_key_conn=skew_split_key_conn,
         compare_query_results=compare_query_results,
         compare_checksum=compare_checksum,
     )
