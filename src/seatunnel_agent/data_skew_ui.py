@@ -42,6 +42,7 @@ from .data_skew.splitkey import (
     pick_best_key,
     render_splitkey_multi,
     run_split_key_multi,
+    splitkey_metrics,
 )
 from .text2sql.executor.base import (
     DIALECT_NAMES,
@@ -414,7 +415,8 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             history.log_splitkey(
                 spec.table, spec.partition_column,
                 configured.verdict(spec.tasks) if configured else "none",
-                candidates=len(candidates), source="ui")
+                candidates=len(candidates), source="ui",
+                **splitkey_metrics(configured))
         return (_append_section(report_cur, section, _SPK_HEAD_RE),
                 _restored_status(lang, conn),
                 _patched_conf_update(conf_text, results, total))

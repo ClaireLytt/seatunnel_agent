@@ -179,6 +179,28 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "Edit each source per the report instead."
         ),
         "spk_apply_dl": "⬇️ Download patched config",
+        "spk_recheck_drift": (
+            "🔁 Re-check vs last run ({ts}): the key still measures fine, "
+            "but its top-1 share drifted {prev}% → {cur}% ({delta} pp) — "
+            "watch this table before it tips over."
+        ),
+        "spk_batch_section": "## SeaTunnel Split-Key Patrol (directory batch)",
+        "spk_batch_counts": (
+            "{files} config files scanned — {sources} sources measured, "
+            "**{bad} skewed keys**, {none} without a split key, "
+            "{errors} unparsable files."
+        ),
+        "spk_batch_col_file": "Config",
+        "spk_batch_col_table": "Source table",
+        "spk_batch_col_key": "Split key",
+        "spk_batch_col_best": "Suggested key",
+        "spk_batch_no_key": "⚠️ no split key — single-threaded read",
+        "spk_batch_keep": "(keep)",
+        "spk_batch_hint": (
+            "Run `seatunnel-agent skew-splitkey <file>` on a flagged config "
+            "for the full per-column report, and `--apply` to write the "
+            "suggested key back."
+        ),
         "spk_multi_note": (
             "The config declares {n} sources — each is checked below."
         ),
@@ -450,6 +472,25 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "（文本级修改可能改错位置），请按报告逐个手动修改。"
         ),
         "spk_apply_dl": "⬇️ 下载修改后配置",
+        "spk_recheck_drift": (
+            "🔁 复测对比：上次体检（{ts}）判定仍正常，但 top-1 占比从 "
+            "{prev}% 漂移到 {cur}%（{delta} pp）——建议关注该表，防止恶化。"
+        ),
+        "spk_batch_section": "## SeaTunnel 分片键巡检（目录批量）",
+        "spk_batch_counts": (
+            "扫描 {files} 个配置——实测 {sources} 个 source，"
+            "**{bad} 个键倾斜**，{none} 个未配置分片键，{errors} 个解析失败。"
+        ),
+        "spk_batch_col_file": "配置",
+        "spk_batch_col_table": "source 表",
+        "spk_batch_col_key": "分片键",
+        "spk_batch_col_best": "建议键",
+        "spk_batch_no_key": "⚠️ 未配置分片键——单线程读取",
+        "spk_batch_keep": "（保持现配置）",
+        "spk_batch_hint": (
+            "对被标记的配置运行 `seatunnel-agent skew-splitkey <文件>` "
+            "查看完整逐列报告，`--apply` 可把建议键写回。"
+        ),
         "spk_multi_note": "配置声明了 {n} 个 source，以下逐一体检。",
         "spk_multi_truncated": (
             "配置声明了 {n} 个 source，本次仅体检前 {shown} 个（单次上限）。"

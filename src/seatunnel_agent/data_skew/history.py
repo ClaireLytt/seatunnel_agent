@@ -111,15 +111,28 @@ class SkewHistory:
         verdict: str,          # good | suspect | bad | low_ndv | null | none
         candidates: int = 0,
         source: str = "ui",
+        top1_pct: float | None = None,
+        ndv: int | None = None,
+        null_pct: float | None = None,
     ) -> None:
         """A SeaTunnel split-key check record (mode='splitkey'). The counts
         encode the configured key's verdict so the history table's marks
-        stay meaningful: bad-ish → high, suspect/unconfigured → medium."""
+        stay meaningful: bad-ish → high, suspect/unconfigured → medium.
+        The measured metrics (top1/ndv/null of the configured key), when
+        given, feed the trend view and the re-check drift line."""
         counts = {"high": 0, "medium": 0, "low": 0}
         if verdict in ("bad", "low_ndv", "null"):
             counts["high"] = 1
         elif verdict in ("suspect", "none"):
             counts["medium"] = 1
+        sk: dict = {"table": table, "partition_column": partition_column,
+                    "key_verdict": verdict, "candidates": candidates}
+        if top1_pct is not None:
+            sk["top1_pct"] = round(float(top1_pct), 2)
+        if ndv is not None:
+            sk["ndv"] = int(ndv)
+        if null_pct is not None:
+            sk["null_pct"] = round(float(null_pct), 2)
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "source": source,
@@ -128,8 +141,7 @@ class SkewHistory:
             "counts": counts,
             "verdict": ("high" if counts["high"]
                         else "medium" if counts["medium"] else "clean"),
-            "splitkey": {"table": table, "partition_column": partition_column,
-                         "key_verdict": verdict, "candidates": candidates},
+            "splitkey": sk,
             "sql": f"-- splitkey: {table} partition_column={partition_column or '(none)'}",
         }
         line = json.dumps(record, ensure_ascii=False) + "\n"
@@ -188,6 +200,27 @@ class SkewHistory:
             if (rec.get("splitkey") or {}).get("table") == table:
                 return rec
         return None
+
+    def splitkey_trend(self, table: str, n: int = 10) -> list[dict]:
+        """The last *n* splitkey records for *table*, oldest first — the
+        per-table patrol trend (verdict + measured top1)."""
+        if not table:
+            return []
+        hits = [rec for rec in self.recent(500)
+                if rec.get("mode") == "splitkey"
+                and (rec.get("splitkey") or {}).get("table") == table]
+        return list(reversed(hits[:n]))
+
+    def splitkey_tables(self, n: int = 500) -> list[str]:
+        """Tables with at least one splitkey record, most recent first."""
+        seen: list[str] = []
+        for rec in self.recent(n):
+            if rec.get("mode") != "splitkey":
+                continue
+            t = str((rec.get("splitkey") or {}).get("table") or "")
+            if t and t not in seen:
+                seen.append(t)
+        return seen
 
     def recent(self, n: int = 20) -> list[dict]:
         """Latest *n* records, newest first.  [] on any problem."""

@@ -140,6 +140,7 @@ def build_tool_functions(
             SplitKeyError,
             render_splitkey_multi,
             run_split_key_multi,
+            splitkey_metrics,
         )
 
         conf = (conf or "").strip()
@@ -169,7 +170,8 @@ def build_tool_functions(
             history.log_splitkey(
                 spec.table, spec.partition_column,
                 configured.verdict(spec.tasks) if configured else "none",
-                candidates=len(candidates), source="mcp")
+                candidates=len(candidates), source="mcp",
+                **splitkey_metrics(configured))
         return render_splitkey_multi(results, lg, sample_pct=pct, total=total,
                                      previous_by_table=previous_by_table)
 

@@ -89,6 +89,12 @@ seatunnel-agent skew-splitkey job.conf --ds mysql --fail
 seatunnel-agent skew-splitkey job.conf --ds mysql --apply
 seatunnel-agent skew-splitkey job.conf --ds mysql
 
+# 目录巡检：递归扫描 *.conf/*.config/*.hocon/*.json，逐个体检出汇总表
+seatunnel-agent skew-splitkey configs/ --ds mysql --fail
+
+# 巡检 + 告警：发现倾斜键/解析失败时把摘要 POST 到 webhook（健康时静默）
+seatunnel-agent skew-splitkey configs/ --ds mysql --webhook https://oapi.dingtalk.com/robot/send?access_token=xxx
+
 # 运行时诊断：离线 event log（文件 / .gz / 滚动目录）
 seatunnel-agent skew-runtime /path/to/eventlog --lang zh -o rt.md
 
@@ -103,7 +109,29 @@ seatunnel-agent skew-stats -n 50
 
 - `--db` 缺省时读 `.env` 中该 `--ds` 数据源的连接配置；
 - `--sample 10` 按 10% 表采样估算（仅 Hive/Spark/PG 生效，其余引擎自动忽略）；
-- 多 source 配置可正常体检（逐个出报告），但 `--apply` 会拒绝并提示手动修改。
+- 多 source 配置可正常体检（逐个出报告），但 `--apply` 会拒绝并提示手动修改；
+- 目录模式同样拒绝 `--apply`（巡检后对被标记的文件逐个应用）。
+
+### 定时巡检（cron）
+
+`--fail` + `--webhook` 让巡检可以直接挂 cron / CI：健康时静默、异常时告警。
+每次体检都会把配置键的**实测 top-1 / NDV / NULL** 写进历史
+（`logs/data_skew.jsonl`），所以巡检自带两层信号：
+
+1. **判定翻转**：复测对比行报告「已解决 / 仍未解决 / 出现退化」；
+2. **漂移预警**：判定还没变坏、但 top-1 占比较上次上涨 ≥ 10 个百分点时，
+   报告出现「漂移」提醒——在倾斜恶化前介入。
+
+```cron
+# 每天 06:30 巡检同步作业目录，异常推钉钉群
+30 6 * * * seatunnel-agent skew-splitkey /etl/seatunnel/configs --ds mysql \
+  --webhook https://oapi.dingtalk.com/robot/send?access_token=xxx >> /var/log/skew_patrol.log 2>&1
+```
+
+`seatunnel-agent skew-stats` 会展示每张表的巡检趋势（最近判定 + top-1 序列，
+如 `top1 8% → 12% → 25%`），用于回看倾斜如何演变。webhook 载荷为
+`{"source": "seatunnel-agent", "kind": "splitkey_patrol", "counts": {...}, "text": <汇总表 Markdown>}`，
+钉钉/企微/Slack 风格的 incoming webhook 均可直接消费。
 
 ## MCP 工具
 

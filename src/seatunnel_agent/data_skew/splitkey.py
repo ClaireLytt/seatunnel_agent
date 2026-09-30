@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .i18n import dsk, normalize_lang
 from .probe import (
@@ -361,10 +361,17 @@ def _stat_row(s: SplitStat, tasks: int, lang: str) -> str:
             f"{_pct(s.null_ratio)} | {top1} | {verdict} |")
 
 
-def _recheck_line(previous: dict, cur_verdict: str, lang: str) -> str:
+# a hot-share jump this big (percentage points) is reported even while the
+# verdict is still fine — the patrol's early-warning signal
+DRIFT_PP = 10.0
+
+
+def _recheck_line(previous: dict, cur_verdict: str, lang: str,
+                  cur_top1: float | None = None) -> str:
     """One-line before/after comparison against the last splitkey check of
     the same table (from history) — the loop-closing 'did the fix land?'
-    signal. Quiet when both checks are fine."""
+    signal. Quiet when both checks are fine, unless the measured top-1
+    share drifted by >= DRIFT_PP points (early warning)."""
     sk = previous.get("splitkey") or {}
     pv = str(sk.get("key_verdict") or "none")
     pk = str(sk.get("partition_column") or "") or "(none)"
@@ -372,11 +379,27 @@ def _recheck_line(previous: dict, cur_verdict: str, lang: str) -> str:
     prev_ok = pv in _GOOD_VERDICTS
     cur_ok = cur_verdict in _GOOD_VERDICTS
     if prev_ok and cur_ok:
+        prev_top1 = sk.get("top1_pct")
+        if (cur_top1 is not None and prev_top1 is not None
+                and cur_top1 - float(prev_top1) >= DRIFT_PP):
+            return dsk(lang, "spk_recheck_drift").format(
+                ts=ts, prev=f"{float(prev_top1):.1f}", cur=f"{cur_top1:.1f}",
+                delta=f"{cur_top1 - float(prev_top1):+.1f}")
         return ""
     key = ("spk_recheck_improved" if cur_ok
            else "spk_recheck_regressed" if prev_ok
            else "spk_recheck_still_bad")
     return dsk(lang, key).format(ts=ts, pk=pk, pv=pv, cv=cur_verdict)
+
+
+def splitkey_metrics(configured: SplitStat | None) -> dict:
+    """log_splitkey kwargs for the configured key's measured metrics
+    (empty when nothing usable was measured)."""
+    if configured is None or configured.error or not configured.total:
+        return {}
+    return {"top1_pct": configured.top1_ratio * 100,
+            "ndv": configured.ndv,
+            "null_pct": configured.null_ratio * 100}
 
 
 def render_splitkey_section(
@@ -420,7 +443,9 @@ def render_splitkey_section(
 
     if previous is not None:
         cur_v = configured.verdict(tasks) if configured is not None else "none"
-        line = _recheck_line(previous, cur_v, lang)
+        cur_top1 = (configured.top1_ratio * 100
+                    if configured is not None and configured.total else None)
+        line = _recheck_line(previous, cur_v, lang, cur_top1=cur_top1)
         if line:
             parts += [line, ""]
 
@@ -622,3 +647,139 @@ def check_split_key(
         executor, conf_text, ds_type=ds_type, sample_pct=sample_pct)
     return render_splitkey_multi(results, lang, sample_pct=sample_pct,
                                  total=total)
+
+
+# ---------------------------------------------------------------------------
+# Batch mode (directory of job configs — the scheduled-patrol entry)
+# ---------------------------------------------------------------------------
+
+CONF_GLOBS = ("*.conf", "*.config", "*.hocon", "*.json")
+
+
+@dataclass
+class BatchFileResult:
+    """One config file's check in a batch run."""
+    path: str
+    results: list = field(default_factory=list)  # (spec, configured, candidates)
+    total: int = 0
+    error_key: str = ""   # SplitKeyError key when the file failed to parse
+    error_arg: str = ""
+
+    def worst_verdict(self) -> str:
+        """'bad' > 'none' > 'suspect' > 'good' across this file's sources
+        ('error' when the file itself failed)."""
+        if self.error_key:
+            return "error"
+        rank = {"bad": 0, "low_ndv": 0, "null": 0, "none": 1,
+                "suspect": 2, "good": 3}
+        worst, worst_r = "good", 4
+        for spec, configured, _ in self.results:
+            v = configured.verdict(spec.tasks) if configured else "none"
+            r = rank.get(v, 1)
+            if r < worst_r:
+                worst, worst_r = v, r
+        return worst
+
+
+def scan_config_files(directory: str, recursive: bool = True) -> list:
+    """SeaTunnel-ish config files under *directory*, sorted, de-duplicated."""
+    from pathlib import Path
+
+    root = Path(directory)
+    seen: dict[str, object] = {}
+    for pattern in CONF_GLOBS:
+        it = root.rglob(pattern) if recursive else root.glob(pattern)
+        for p in it:
+            if p.is_file():
+                seen[str(p)] = p
+    return [seen[k] for k in sorted(seen)]
+
+
+def run_split_key_batch(
+    executor,
+    files: list,
+    ds_type: str = "",
+    sample_pct: int = 0,
+    max_sources: int = MAX_SOURCES,
+) -> list[BatchFileResult]:
+    """Check every config file; per-file failures stay local to their row."""
+    out: list[BatchFileResult] = []
+    for f in files:
+        from pathlib import Path
+
+        path = Path(f)
+        item = BatchFileResult(path=str(path))
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            item.results, item.total = run_split_key_multi(
+                executor, text, ds_type=ds_type, sample_pct=sample_pct,
+                max_sources=max_sources)
+        except SplitKeyError as exc:
+            item.error_key, item.error_arg = exc.key, exc.arg
+        except Exception as exc:  # noqa: BLE001 — one broken file stays local
+            item.error_key, item.error_arg = "spk_parse_fail", str(exc)
+        out.append(item)
+    return out
+
+
+_BAD_VERDICTS = ("bad", "low_ndv", "null")
+
+
+def batch_counts(items: list[BatchFileResult]) -> dict:
+    """{'files', 'sources', 'bad', 'none', 'errors'} across a batch run."""
+    sources = bad = none = 0
+    errors = sum(1 for it in items if it.error_key)
+    for it in items:
+        for spec, configured, _ in it.results:
+            sources += 1
+            v = configured.verdict(spec.tasks) if configured else "none"
+            if v in _BAD_VERDICTS:
+                bad += 1
+            elif v == "none":
+                none += 1
+    return {"files": len(items), "sources": sources, "bad": bad,
+            "none": none, "errors": errors}
+
+
+def render_splitkey_batch(items: list[BatchFileResult], lang: str,
+                          sample_pct: int = 0) -> str:
+    """One summary table for a directory patrol — a row per source, an
+    error row per unparsable file, counts up front."""
+    from pathlib import Path
+
+    lang = normalize_lang(lang)
+    c = batch_counts(items)
+    parts = [dsk(lang, "spk_batch_section"), "",
+             dsk(lang, "spk_batch_counts").format(**c), ""]
+    if sample_pct:
+        parts += [dsk(lang, "spk_sampled_note").format(pct=sample_pct), ""]
+
+    header = (f"| {dsk(lang, 'spk_batch_col_file')} | "
+              f"{dsk(lang, 'spk_batch_col_table')} | "
+              f"{dsk(lang, 'spk_batch_col_key')} | "
+              f"{dsk(lang, 'spk_col_verdict')} | "
+              f"{dsk(lang, 'spk_batch_col_best')} |")
+    parts += [header, "|---|---|---|---|---|"]
+    for it in items:
+        name = Path(it.path).name
+        if it.error_key:
+            err = dsk(lang, it.error_key).format(err=it.error_arg)
+            err = err.replace("|", "\\|").replace("\n", " ")
+            err = err if len(err) <= 70 else err[:69] + "…"
+            parts.append(f"| `{name}` | - | - | {err} | - |")
+            continue
+        for spec, configured, candidates in it.results:
+            v = configured.verdict(spec.tasks) if configured else "none"
+            verdict = (dsk(lang, f"spk_verdict_{v}") if v != "none"
+                       else dsk(lang, "spk_batch_no_key"))
+            best = pick_best_key(spec, configured, candidates)
+            best_cell = "-"
+            if best is not None and best.column != spec.partition_column:
+                best_cell = f"`{best.column}`"
+            elif best is not None:
+                best_cell = dsk(lang, "spk_batch_keep")
+            key = f"`{spec.partition_column}`" if spec.partition_column else "-"
+            parts.append(f"| `{name}` | `{spec.table}` | {key} | "
+                         f"{verdict} | {best_cell} |")
+    parts += ["", dsk(lang, "spk_batch_hint"), ""]
+    return "\n".join(parts)

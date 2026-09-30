@@ -2434,3 +2434,188 @@ def test_mcp_runtime_tools(monkeypatch, tmp_path):
     assert "读取失败" in fns["skew_runtime_eventlog"](str(tmp_path / "nope"))
     # history variant validates its inputs the same way
     assert "History Server" in fns["skew_runtime_history"]("", "")
+
+
+# ---------------------------------------------------------------------------
+# split-key: directory patrol (batch mode) + metric trend / drift
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
+    _recheck_line,
+    batch_counts,
+    render_splitkey_batch,
+    run_split_key_batch,
+    scan_config_files,
+    splitkey_metrics,
+)
+
+
+def _patrol_dir(tmp_path):
+    """configs/: skewed key, good key, no key, one unparsable file, one
+    non-config file that must be ignored."""
+    d = tmp_path / "configs"
+    (d / "nested").mkdir(parents=True)
+    (d / "a_skewed.conf").write_text(
+        'env { parallelism = 2 }\n'
+        'source { Jdbc { table_name = "orders", partition_column = "region" } }\n'
+        'sink { Console {} }\n', encoding="utf-8")
+    (d / "nested" / "b_good.config").write_text(
+        'env { parallelism = 2 }\n'
+        'source { Jdbc { table_name = "orders", partition_column = "id" } }\n'
+        'sink { Console {} }\n', encoding="utf-8")
+    (d / "c_nokey.conf").write_text(
+        'source { Jdbc { table_name = "users" } }\nsink { Console {} }\n',
+        encoding="utf-8")
+    (d / "d_broken.conf").write_text("source {{{ not hocon", encoding="utf-8")
+    (d / "readme.txt").write_text("not a config", encoding="utf-8")
+    return d
+
+
+def test_scan_config_files(tmp_path):
+    d = _patrol_dir(tmp_path)
+    names = [p.name for p in scan_config_files(str(d))]
+    assert names == ["a_skewed.conf", "c_nokey.conf", "d_broken.conf",
+                     "b_good.config"]  # sorted by path; txt ignored
+
+
+def test_run_split_key_batch_and_render(tmp_path):
+    from seatunnel_agent.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+
+    db = _make_two_table_db(tmp_path)
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+    d = _patrol_dir(tmp_path)
+    items = run_split_key_batch(ex, scan_config_files(str(d)),
+                                ds_type="sqlite")
+    c = batch_counts(items)
+    assert c == {"files": 4, "sources": 3, "bad": 1, "none": 1, "errors": 1}
+    by_name = {item.path.split("\\")[-1].split("/")[-1]: item
+               for item in items}
+    assert by_name["a_skewed.conf"].worst_verdict() in ("bad", "low_ndv")
+    assert by_name["b_good.config"].worst_verdict() == "good"
+    assert by_name["c_nokey.conf"].worst_verdict() == "none"
+    assert by_name["d_broken.conf"].worst_verdict() == "error"
+
+    md = render_splitkey_batch(items, "zh")
+    assert "## SeaTunnel 分片键巡检" in md
+    assert "1 个键倾斜" in md and "1 个解析失败" in md
+    assert "`a_skewed.conf`" in md and "`id`" in md  # suggested key
+    assert "未配置分片键" in md
+    en = render_splitkey_batch(items, "en")
+    assert "## SeaTunnel Split-Key Patrol" in en
+    assert "1 skewed keys" in en
+
+
+def test_cli_skew_splitkey_dir_patrol(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.data_skew import notify
+    from seatunnel_agent.data_skew.history import default_history
+    from seatunnel_agent.text2sql.executor import base as exec_base
+
+    db = _make_two_table_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    posted: list[tuple[str, dict]] = []
+    monkeypatch.setattr(notify, "post_webhook",
+                        lambda url, payload: (posted.append((url, payload))
+                                              or (True, "200")))
+    d = _patrol_dir(tmp_path)
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
+                              "--webhook", "http://hook.local/x"])
+    assert res.exit_code == 0, res.output
+    assert "分片键巡检" in res.output
+    # the webhook fired with the counts and the summary markdown
+    assert posted and posted[0][0] == "http://hook.local/x"
+    payload = posted[0][1]
+    assert payload["kind"] == "splitkey_patrol"
+    assert payload["counts"]["bad"] == 1 and payload["counts"]["errors"] == 1
+    assert "巡检" in payload["text"]
+    # history got one record per measured source, with metrics
+    recs = [r for r in default_history().recent(10)
+            if r.get("mode") == "splitkey"]
+    assert len(recs) == 3
+    skewed = [r for r in recs
+              if (r["splitkey"].get("partition_column") == "region")]
+    assert skewed and skewed[0]["splitkey"]["top1_pct"] == 80.0
+
+    # CI gate + --apply refusal in dir mode
+    gated = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
+                                "--fail"])
+    assert gated.exit_code == 1
+    assert "巡检未通过" in gated.output
+    refused = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
+                                  "--apply"])
+    assert refused.exit_code != 0
+    assert "仅支持单个配置文件" in refused.output
+
+    # empty dir → clear error
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    res2 = runner.invoke(cli, ["skew-splitkey", str(empty), "--ds", "sqlite"])
+    assert res2.exit_code != 0
+    assert "未找到" in res2.output
+
+
+def test_history_metrics_trend_and_tables(tmp_path):
+    from seatunnel_agent.data_skew.history import SkewHistory
+
+    h = SkewHistory(tmp_path)
+    h.log_splitkey("shop.orders", "region", "good",
+                   top1_pct=8.0, ndv=200, null_pct=0.0)
+    h.log_splitkey("shop.orders", "region", "good",
+                   top1_pct=25.0, ndv=190, null_pct=0.1)
+    h.log_splitkey("shop.users", "uid", "good", top1_pct=1.0)
+
+    rec = h.recent(1)[0]
+    assert rec["splitkey"]["top1_pct"] == 1.0
+    trend = h.splitkey_trend("shop.orders")
+    assert [r["splitkey"]["top1_pct"] for r in trend] == [8.0, 25.0]  # oldest first
+    assert h.splitkey_tables() == ["shop.users", "shop.orders"]
+
+
+def test_recheck_drift_line():
+    prev = {"timestamp": "2026-09-30T08:00:00+00:00",
+            "splitkey": {"table": "orders", "partition_column": "id",
+                         "key_verdict": "good", "top1_pct": 8.0}}
+    # both verdicts fine but top1 jumped 8% → 25%: drift warning
+    line = _recheck_line(prev, "good", "zh", cur_top1=25.0)
+    assert "漂移" in line and "8.0%" in line and "25.0%" in line
+    assert "+17.0" in line
+    # small move stays quiet
+    assert _recheck_line(prev, "good", "zh", cur_top1=12.0) == ""
+    # no stored metric → quiet (backward compatible with old records)
+    old = {"timestamp": "t", "splitkey": {"key_verdict": "good"}}
+    assert _recheck_line(old, "good", "zh", cur_top1=90.0) == ""
+    en = _recheck_line(prev, "good", "en", cur_top1=25.0)
+    assert "drifted" in en
+
+
+def test_cli_skew_stats_splitkey_trend(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+    from seatunnel_agent.data_skew.history import default_history
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    h = default_history()
+    h.log_splitkey("shop.orders", "region", "bad", top1_pct=80.0)
+    h.log_splitkey("shop.orders", "id", "good", top1_pct=2.0)
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-stats"])
+    assert res.exit_code == 0, res.output
+    assert "分片键巡检" in res.output
+    assert "shop.orders" in res.output
+    assert "80%" in res.output and "2%" in res.output

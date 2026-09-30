@@ -1328,9 +1328,31 @@ def skew_stats(recent: int) -> None:
     if llm_runs:
         console.print(f"[bold]LLM 改写[/bold] {llm_runs} 次,产出优化 SQL {optimized} 次")
 
+    # ── split-key patrol trend: latest verdict + top-1 history per table ──
+    h = default_history()
+    tables = h.splitkey_tables()
+    if tables:
+        console.print("\n[bold]分片键巡检（每表最近趋势）[/bold]")
+        v_marks = {"good": "✅", "suspect": "⚠️", "bad": "⛔",
+                   "low_ndv": "⛔", "null": "⛔", "none": "⚠️"}
+        for t in tables[:20]:
+            trend = h.splitkey_trend(t, n=8)
+            latest = (trend[-1].get("splitkey") or {}) if trend else {}
+            v = str(latest.get("key_verdict") or "none")
+            top1s = [
+                f"{sk.get('top1_pct'):.0f}%"
+                for rec in trend
+                if (sk := rec.get("splitkey") or {}).get("top1_pct") is not None
+            ]
+            trail = (" · top1 " + " → ".join(top1s)) if top1s else ""
+            console.print(
+                f"  {v_marks.get(v, '')} {t}  key="
+                f"{latest.get('partition_column') or '(none)'}  {v}"
+                f"  ×{len(trend)} 次{trail}")
+
 
 @cli.command(name="skew-splitkey")
-@click.argument("conf_path", type=click.Path(exists=True, dir_okay=False))
+@click.argument("conf_path", type=click.Path(exists=True))
 @click.option("--ds", "ds_type",
               type=click.Choice(["hive", "sparksql", "mysql", "postgresql",
                                  "sqlite", "clickhouse", "doris"]),
@@ -1348,6 +1370,8 @@ def skew_stats(recent: int) -> None:
               help="已配置的 partition_column 实测倾斜/低基数/NULL 过多时退出码 1（CI 门禁）")
 @click.option("--apply", "apply_flag", is_flag=True,
               help="把实测推荐的分片键写回配置文件（原文件备份为 .bak），随后重新体检即完成闭环")
+@click.option("--webhook", "webhook_url", type=str, default=None,
+              help="发现倾斜键/解析失败时把巡检摘要 POST 到该 webhook（目录模式常配 cron 使用）")
 def skew_splitkey(
     conf_path: str,
     ds_type: str,
@@ -1359,10 +1383,12 @@ def skew_splitkey(
     output: str | None,
     fail_flag: bool,
     apply_flag: bool,
+    webhook_url: str | None,
 ) -> None:
     """SeaTunnel 分片键体检 — 连库实测作业配置的 partition_column 分布。
 
-    CONF_PATH: SeaTunnel 作业配置文件（HOCON）。"""
+    CONF_PATH: SeaTunnel 作业配置文件（HOCON），或一个配置目录——目录模式
+    递归扫描 *.conf/*.config/*.hocon/*.json 逐个体检并输出巡检汇总表。"""
     import re as _re
     from pathlib import Path
 
@@ -1372,17 +1398,20 @@ def skew_splitkey(
     from .data_skew.splitkey import (
         SplitKeyError,
         apply_split_key,
+        batch_counts,
         pick_best_key,
+        render_splitkey_batch,
         render_splitkey_multi,
+        run_split_key_batch,
         run_split_key_multi,
+        scan_config_files,
+        splitkey_metrics,
     )
     from .text2sql.executor.base import (
         DatabaseConfig,
         config_from_env,
         create_executor,
     )
-
-    conf_text = Path(conf_path).read_text(encoding="utf-8", errors="replace")
 
     if db:
         m = _re.fullmatch(r"([\w.\-]+):(\d+)/([\w.\-]+)", db.strip())
@@ -1402,14 +1431,62 @@ def skew_splitkey(
     pct = effective_sample_pct(ds_type, sample)
     try:
         executor = create_executor(cfg)
+    except Exception as exc:  # noqa: BLE001 — connection failures
+        raise click.ClickException(f"连接失败: {exc}")
+    history = default_history()
+
+    def _notify(md_text: str, counts: dict) -> None:
+        """POST the patrol summary when the webhook is set and something
+        is wrong (a healthy patrol stays silent)."""
+        if not webhook_url or not (counts.get("bad") or counts.get("errors")):
+            return
+        from .data_skew.notify import post_webhook
+        ok, msg = post_webhook(webhook_url, {
+            "source": "seatunnel-agent", "kind": "splitkey_patrol",
+            "counts": counts, "text": md_text})
+        console.print(f"[dim]webhook: {'ok' if ok else 'failed'} ({msg})[/dim]")
+
+    conf_dir = Path(conf_path)
+    if conf_dir.is_dir():
+        # ── directory patrol: every config, one summary table ──
+        if apply_flag:
+            raise click.UsageError(
+                "--apply 仅支持单个配置文件——目录巡检后请逐个文件应用")
+        files = scan_config_files(str(conf_dir))
+        if not files:
+            raise click.ClickException(
+                "目录下未找到 *.conf/*.config/*.hocon/*.json 配置文件")
+        items = run_split_key_batch(executor, files, ds_type=ds_type,
+                                    sample_pct=pct)
+        for it in items:
+            for spec, configured, candidates in it.results:
+                history.log_splitkey(
+                    spec.table, spec.partition_column,
+                    configured.verdict(spec.tasks) if configured else "none",
+                    candidates=len(candidates), source="cli",
+                    **splitkey_metrics(configured))
+        md = render_splitkey_batch(items, lang, sample_pct=pct)
+        console.print(md)
+        if output:
+            Path(output).write_text(md, encoding="utf-8")
+            console.print(f"[dim]报告已保存: {output}[/dim]")
+        c = batch_counts(items)
+        _notify(md, c)
+        if fail_flag and (c["bad"] or c["errors"]):
+            console.print(f"\n[red]{c['bad']} 个倾斜键 / {c['errors']} 个"
+                          f"解析失败，巡检未通过。[/red]")
+            sys.exit(1)
+        return
+
+    conf_text = conf_dir.read_text(encoding="utf-8", errors="replace")
+    try:
         results, total = run_split_key_multi(
             executor, conf_text, ds_type=ds_type, sample_pct=pct)
     except SplitKeyError as exc:
         raise click.ClickException(_dsk(lang, exc.key).format(err=exc.arg))
-    except Exception as exc:  # noqa: BLE001 — connection/query failures
+    except Exception as exc:  # noqa: BLE001 — query failures
         raise click.ClickException(f"体检失败: {exc}")
 
-    history = default_history()
     # previous checks of the same tables BEFORE logging this run — feeds
     # each source's re-check comparison line (did the last fix land?)
     previous_by_table = {spec.table: prev for spec, _, _ in results
@@ -1420,7 +1497,8 @@ def skew_splitkey(
         verdicts.append(key_verdict)
         history.log_splitkey(
             spec.table, spec.partition_column, key_verdict,
-            candidates=len(candidates), source="cli")
+            candidates=len(candidates), source="cli",
+            **splitkey_metrics(configured))
 
     md = render_splitkey_multi(results, lang, sample_pct=pct, total=total,
                                previous_by_table=previous_by_table)
@@ -1428,6 +1506,8 @@ def skew_splitkey(
     if output:
         Path(output).write_text(md, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+    _notify(md, {"bad": sum(1 for v in verdicts
+                            if v in ("bad", "low_ndv", "null")), "errors": 0})
 
     if apply_flag:
         if total > 1:
