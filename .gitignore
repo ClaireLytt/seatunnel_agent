@@ -36,6 +36,8 @@ Thumbs.db
 
 # SeaTunnel logs and backups
 *.log
+# but keep the log-inspection demo fixtures
+!examples/logs_demo/*.log
 *.bak
 $SEATUNNEL_HOME/
 
