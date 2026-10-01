@@ -1,0 +1,82 @@
+# PII 组 · 敏感数据扫描页 (/pii)。纯确定性（规则 × 字段血缘），不连接数据库；
+# 演示数据 examples/pii_demo: DDL 中文注释 + 未脱敏/已脱敏两条扩散链。
+
+- id: PII1
+  title: 扫描演示目录出高风险命中
+  tags: [smoke, sqlite]
+  page: /pii
+  steps:
+    - fill: {SQL 目录: examples/pii_demo}
+    - click: 扫描目录
+    - wait_result: {}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: 敏感数据扫描}
+    - text_contains: {in: 结果区, text: bank_card_no}
+    - text_contains: {in: 结果区, text: 未脱敏}
+
+- id: PII2
+  title: 粘贴 SQL 识别列名+注释命中
+  tags: [smoke, sqlite]
+  page: /pii
+  steps:
+    - open_accordion: {target: 扫描粘贴的 SQL}
+    - fill: {SQL 输入: "CREATE TABLE t (phone STRING COMMENT '手机号');"}
+    - click: 扫描 SQL
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 手机号}
+    - text_contains: {in: 结果区, text: 列名+注释匹配}
+
+- id: PII3
+  title: 已脱敏扩散标注且不升级
+  tags: [full, sqlite]
+  page: /pii
+  steps:
+    - open_accordion: {target: 扫描粘贴的 SQL}
+    - fill:
+        SQL 输入: |-
+          CREATE TABLE ods.u (email STRING COMMENT '邮箱');
+          INSERT OVERWRITE TABLE dwd.u SELECT md5(email) AS email_x FROM ods.u;
+    - click: 扫描 SQL
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 已脱敏}
+    - text_not_contains: {in: 结果区, text: 严重度已升级}
+
+- id: PII4
+  title: 目录不存在给出警告不崩溃
+  tags: [full, sqlite]
+  page: /pii
+  steps:
+    - fill: {SQL 目录: no_such_dir_pii}
+    - click: 扫描目录
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 不是有效目录}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: PII5
+  title: 干净 SQL 报告无命中
+  tags: [full, sqlite]
+  page: /pii
+  steps:
+    - open_accordion: {target: 扫描粘贴的 SQL}
+    - fill: {SQL 输入: "CREATE TABLE t (order_id BIGINT, amount DOUBLE);"}
+    - click: 扫描 SQL
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 未命中}
+
+- id: PII6
+  title: 英文界面扫描链路
+  tags: [full, sqlite]
+  lang: en
+  page: /pii
+  steps:
+    - fill: {SQL directory: examples/pii_demo}
+    - click: Scan directory
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: PII / Sensitive Column Scan}
+    - text_contains: {in: 结果区, text: UNMASKED}
