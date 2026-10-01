@@ -139,6 +139,25 @@ def test_diff_no_rename_when_type_differs():
     assert kinds == {"column_removed", "column_added"}
 
 
+def test_diff_no_rename_for_unrelated_commentless_columns():
+    # two empty comments are no evidence of a rename: dropping user_pwd must
+    # stay a breaking column_removed, not a risk-level "rename" to nickname
+    old = "CREATE TABLE t (a INT, user_pwd STRING);"
+    new = "CREATE TABLE t (a INT, nickname STRING);"
+    report = diff_scripts(old, new)
+    kinds = {f.kind for f in report.findings}
+    assert kinds == {"column_removed", "column_added"}
+    removed = next(f for f in report.findings if f.kind == "column_removed")
+    assert removed.severity == "breaking"
+
+
+def test_diff_rename_by_name_similarity_without_comments():
+    report = diff_scripts("CREATE TABLE t (uid BIGINT);",
+                          "CREATE TABLE t (user_id BIGINT);")
+    (f,) = report.findings
+    assert f.kind == "column_renamed"
+
+
 def test_diff_partition_change_not_double_reported():
     old = "CREATE TABLE t (id INT) PARTITIONED BY (dt STRING);"
     new = "CREATE TABLE t (id INT) PARTITIONED BY (dt STRING, hour STRING);"
@@ -258,3 +277,19 @@ def test_api_diff_requires_input(api_client):
     r = api_client.post("/api/schemadrift/diff", json={})
     assert r.status_code == 400
     assert api_client.get("/api/schemadrift/health").json()["status"] == "ok"
+
+
+def test_api_diff_rejects_half_filled_input(api_client):
+    # one script diffed against an implicit empty one would report every
+    # table as removed — reject instead
+    r = api_client.post("/api/schemadrift/diff", json={"old_sql": OLD})
+    assert r.status_code == 400
+    assert "BOTH" in r.json()["detail"]
+
+
+def test_api_diff_rejects_mixed_input(api_client):
+    r = api_client.post("/api/schemadrift/diff", json={
+        "old_sql": OLD, "new_sql": NEW,
+        "old_path": str(DEMO / "old"), "new_path": str(DEMO / "new")})
+    assert r.status_code == 400
+    assert "not both" in r.json()["detail"]

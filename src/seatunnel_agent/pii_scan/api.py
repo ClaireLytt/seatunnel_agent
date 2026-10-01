@@ -11,7 +11,6 @@ Endpoints (all deterministic — no LLM, no database, nothing executed):
 
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -19,6 +18,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import check_path_allowed
 from .i18n import normalize_lang
 from .report import render_markdown, report_to_dict
 from .rules import DEFAULT_RULES
@@ -27,30 +27,9 @@ from .scanner import scan_dir, scan_sql_text
 router = APIRouter(prefix="/api/pii", tags=["pii_scan"])
 
 
-def _allowed_roots() -> list[Path]:
-    raw = os.getenv("PII_API_ALLOWED_DIRS", "")
-    roots = [Path(p).resolve() for p in raw.split(os.pathsep) if p.strip()]
-    return roots or [Path.cwd().resolve()]
-
-
 def _check_dir_allowed(raw_dir: str) -> None:
     """API 是网络入口，目录参数必须限制在白名单内，防任意目录扫描。"""
-    try:
-        target = Path(raw_dir).resolve()
-    except (OSError, ValueError):
-        raise HTTPException(status_code=400, detail=f"无效目录: {raw_dir}")
-    if not any(
-        target == root or target.is_relative_to(root)
-        for root in _allowed_roots()
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"目录 {raw_dir} 不在允许范围内。"
-                "默认仅允许当前工作目录，可通过环境变量 "
-                "PII_API_ALLOWED_DIRS 配置（多个目录用系统路径分隔符分隔）"
-            ),
-        )
+    check_path_allowed(raw_dir, "PII_API_ALLOWED_DIRS")
 
 
 class PiiScanRequest(BaseModel):

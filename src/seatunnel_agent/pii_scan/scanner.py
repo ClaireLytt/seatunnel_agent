@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-from ..data_lineage.graph import LineageGraph, norm_table
+from ..data_lineage.graph import LineageGraph
 from ..data_lineage.loaders import from_sql_files
 from .rules import DEFAULT_RULES, PiiRule, expression_is_masked
 
@@ -141,51 +141,20 @@ class PiiReport:
 
 def collect_columns_from_ddl(sql_text: str, dialect: str = "hive",
                              ) -> tuple[list[ColumnRef], list[str]]:
-    """Columns (name/type/comment) from every CREATE TABLE in *sql_text*."""
-    import sqlglot
-    from sqlglot import exp
+    """Columns (name/type/comment) from every CREATE TABLE in *sql_text*.
 
-    from ..data_lineage.sqlglot_lineage import resolve_sqlglot_dialect
+    Thin adapter over ``schema_drift.differ.parse_schema_script`` — one
+    sqlglot DDL walker for the whole suite."""
+    from ..schema_drift.differ import parse_schema_script
 
-    read = resolve_sqlglot_dialect(dialect)
-    refs: list[ColumnRef] = []
-    warnings: list[str] = []
-    try:
-        statements = sqlglot.parse(sql_text, read=read)
-    except sqlglot.errors.ParseError as exc:
-        return [], [f"DDL 解析失败: {exc}"]
-    for tree in statements:
-        if not isinstance(tree, exp.Create):
-            continue
-        if (tree.args.get("kind") or "").upper() != "TABLE":
-            continue
-        table_expr = tree.find(exp.Table)
-        if table_expr is None:
-            continue
-        parts = [p for p in (table_expr.catalog, table_expr.db,
-                             table_expr.name) if p]
-        table = norm_table(".".join(parts))
-        part_cols: set[str] = set()
-        prop = tree.find(exp.PartitionedByProperty)
-        if prop is not None:
-            part_cols = {cd.name.lower() for cd in
-                         prop.find_all(exp.ColumnDef)}
-        for cd in tree.find_all(exp.ColumnDef):
-            if not cd.name:
-                continue
-            kind = cd.args.get("kind")
-            try:
-                col_type = kind.sql(dialect=read) if kind is not None else ""
-            except Exception:  # noqa: BLE001 — type rendering is best-effort
-                col_type = str(kind or "")
-            comment = ""
-            for c in cd.args.get("constraints") or []:
-                if isinstance(c.kind, exp.CommentColumnConstraint):
-                    comment = c.kind.this.name
-            refs.append(ColumnRef(
-                table=table, column=cd.name.lower(), col_type=col_type,
-                comment=comment, origin="ddl",
-                is_partition=cd.name.lower() in part_cols))
+    tables, warnings = parse_schema_script(sql_text, dialect)
+    refs = [
+        ColumnRef(table=schema.name, column=col.name,
+                  col_type=col.col_type, comment=col.comment,
+                  origin="ddl", is_partition=col.is_partition)
+        for schema in tables.values()
+        for col in schema.columns.values()
+    ]
     return refs, warnings
 
 

@@ -10,7 +10,6 @@ Endpoints (deterministic — no LLM, no database, nothing executed):
 
 from __future__ import annotations
 
-import os
 import time
 from pathlib import Path
 from typing import Any
@@ -18,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import check_path_allowed
 from .differ import diff_paths, diff_scripts
 from .i18n import normalize_lang
 from .report import render_markdown, report_to_dict
@@ -25,30 +25,9 @@ from .report import render_markdown, report_to_dict
 router = APIRouter(prefix="/api/schemadrift", tags=["schema_drift"])
 
 
-def _allowed_roots() -> list[Path]:
-    raw = os.getenv("SCHEMADRIFT_API_ALLOWED_DIRS", "")
-    roots = [Path(p).resolve() for p in raw.split(os.pathsep) if p.strip()]
-    return roots or [Path.cwd().resolve()]
-
-
 def _check_path_allowed(raw_path: str) -> None:
     """API 是网络入口，路径参数必须限制在白名单内，防任意目录读取。"""
-    try:
-        target = Path(raw_path).resolve()
-    except (OSError, ValueError):
-        raise HTTPException(status_code=400, detail=f"无效路径: {raw_path}")
-    if not any(
-        target == root or target.is_relative_to(root)
-        for root in _allowed_roots()
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"路径 {raw_path} 不在允许范围内。"
-                "默认仅允许当前工作目录，可通过环境变量 "
-                "SCHEMADRIFT_API_ALLOWED_DIRS 配置（多个目录用系统路径分隔符分隔）"
-            ),
-        )
+    check_path_allowed(raw_path, "SCHEMADRIFT_API_ALLOWED_DIRS", noun="路径")
 
 
 class DriftRequest(BaseModel):
@@ -71,12 +50,24 @@ class DriftResponse(BaseModel):
 def diff(req: DriftRequest) -> DriftResponse:
     start = time.time()
     lang = normalize_lang(req.lang)
-    inline = (req.old_sql or "").strip() or (req.new_sql or "").strip()
-    paths = (req.old_path or "").strip() and (req.new_path or "").strip()
-    if inline:
-        result = diff_scripts(req.old_sql or "", req.new_sql or "",
-                              dialect=req.dialect)
-    elif paths:
+    has_old_sql = bool((req.old_sql or "").strip())
+    has_new_sql = bool((req.new_sql or "").strip())
+    has_old_path = bool((req.old_path or "").strip())
+    has_new_path = bool((req.new_path or "").strip())
+    # Reject half-filled or mixed input: diffing one script against an
+    # implicit empty one reports every table as removed — a plausible-looking
+    # but meaningless result from a caller mistake.
+    if has_old_sql != has_new_sql or has_old_path != has_new_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide BOTH old_sql and new_sql, or BOTH old_path and new_path")
+    if has_old_sql and has_old_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide either inline SQL or paths, not both")
+    if has_old_sql:
+        result = diff_scripts(req.old_sql, req.new_sql, dialect=req.dialect)
+    elif has_old_path:
         for raw in (req.old_path.strip(), req.new_path.strip()):
             _check_path_allowed(raw)
             if not Path(raw).exists():

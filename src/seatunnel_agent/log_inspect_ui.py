@@ -127,7 +127,10 @@ def render_log_inspect_page(app: gr.Blocks) -> None:
         lang = normalize_lang(lang)
         if not (text or "").strip():
             return _t(lang, "empty_text"), None, ""
-        report = scan_text(text, include_warn=include_warn)
+        try:
+            report = scan_text(text, include_warn=include_warn)
+        except Exception as exc:  # noqa: BLE001 — scan must never crash the page
+            return f"⚠️ {type(exc).__name__}: {exc}", None, ""
         return render_markdown(report, lang, top=int(top)), report, ""
 
     def do_advice(report, lang: str):

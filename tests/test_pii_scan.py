@@ -55,9 +55,30 @@ def test_default_rule_catalog_categories():
     ("", False),
     ("CONCAT(a, b)", False),
     ("md5sum", False),  # not a call of a masking function
+    # reversible encodings are NOT masking — a decodable copy is still a leak
+    ("to_base64(u.phone)", False),
+    ("base64(u.phone)", False),
+    ("hex(u.id_card_no)", False),
+    ("translate(p, '0123456789', '**********')", False),
 ])
 def test_expression_is_masked(expr, masked):
     assert expression_is_masked(expr) is masked
+
+
+def test_reversible_encoding_spread_counts_as_unmasked():
+    report = scan_sql_text(
+        "CREATE TABLE ods.u (phone STRING COMMENT '手机号');\n"
+        "INSERT OVERWRITE TABLE dwd.u SELECT to_base64(phone) AS p64 FROM ods.u;")
+    f = next(x for x in report.findings
+             if (x.table, x.column) == ("ods.u", "phone"))
+    assert len(f.unmasked_edges) == 1
+
+
+def test_ip_addr_classified_as_ip_not_address():
+    report = scan_sql_text("CREATE TABLE t (ip_addr STRING);")
+    (f,) = report.findings
+    assert f.category == "ip_address"
+    assert f.severity == "low"
 
 
 def test_load_extra_rules(tmp_path):

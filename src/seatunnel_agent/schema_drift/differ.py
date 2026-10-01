@@ -218,10 +218,17 @@ def _diff_table(old: TableSchema, new: TableSchema) -> list[DriftFinding]:
     added = [c for c in new.columns if c not in old.columns
              and not new.columns[c].is_partition]
 
-    # collapse an obvious rename: one removed + one added, same type+comment
+    # collapse an obvious rename: one removed + one added with the same type,
+    # backed by a matching non-empty comment OR similar names — two empty
+    # comments are no evidence, and must not hide a breaking column removal
     if len(removed) == 1 and len(added) == 1:
+        import difflib
+
         oc, nc = old.columns[removed[0]], new.columns[added[0]]
-        if oc.col_type == nc.col_type and oc.comment == nc.comment:
+        comment_match = bool(oc.comment) and oc.comment == nc.comment
+        name_similar = difflib.SequenceMatcher(
+            None, oc.name, nc.name).ratio() >= 0.6
+        if oc.col_type == nc.col_type and (comment_match or name_similar):
             findings.append(DriftFinding(
                 kind="column_renamed", severity="risk", table=t,
                 column=oc.name, old=oc.name, new=nc.name))

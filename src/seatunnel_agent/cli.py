@@ -1269,7 +1269,7 @@ def skew(
             head = f"# 📄 {label}\n\n" if len(results) > 1 else ""
             parts.append(head + md)
         text_out = "\n\n---\n\n".join(parts)
-        console.print(text_out)
+        console.print(text_out, markup=False)
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
@@ -1410,14 +1410,14 @@ def pii(
         print(text_out)
     else:
         text_out = render_markdown(report, lang)
-        console.print(text_out)
+        console.print(text_out, markup=False)
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
 
     if fail_on:
-        threshold = {"low": 1, "medium": 2, "high": 3}[fail_on]
         rank = {"low": 1, "medium": 2, "high": 3}
+        threshold = rank[fail_on]
         worst = max((rank[f.severity] for f in report.findings), default=0)
         if worst >= threshold:
             msg = f"存在 {fail_on} 及以上级别的敏感列风险，检查未通过。"
@@ -1483,7 +1483,7 @@ def loginspect(
         print(text_out)
     else:
         text_out = render_markdown(report, lang, top=top)
-        console.print(text_out)
+        console.print(text_out, markup=False)
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
@@ -1537,7 +1537,7 @@ def schemadiff(
         print(text_out)
     else:
         text_out = render_markdown(report, lang)
-        console.print(text_out)
+        console.print(text_out, markup=False)
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
@@ -1614,7 +1614,7 @@ def testgen(
         print(text_out)
     else:
         text_out = render_markdown(result, lang)
-        console.print(text_out)
+        console.print(text_out, markup=False)
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")

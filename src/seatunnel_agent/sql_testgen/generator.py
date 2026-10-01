@@ -190,7 +190,11 @@ def _analyze(tree, dialect: str) -> tuple[
             a, b = resolve(left), resolve(right)
             if a and b and a[0] in tables and b[0] in tables and a != b:
                 joins.append((a, b))
-        elif isinstance(left, exp.Column) and isinstance(right, exp.Literal):
+            continue
+        # literal on either side: WHERE t.a = 5 and WHERE 5 = t.a
+        if isinstance(right, exp.Column) and isinstance(left, exp.Literal):
+            left, right = right, left
+        if isinstance(left, exp.Column) and isinstance(right, exp.Literal):
             target = resolve(left)
             if target and target[0] in tables:
                 ensure(target).required_values.append(
@@ -341,7 +345,13 @@ def _generate_rows(table: TableData, rows: int) -> None:
         row: list[Any] = []
         for spec in table.columns:
             if spec.join_group >= 0:
-                row.append(_group_value(spec, i))
+                # literal-constrained pool: the shared literal on all but the
+                # miss row (same i-based decision on every table, so the join
+                # still matches row-for-row)
+                if spec.required_values and not (i == n - 1 and n >= 3):
+                    row.append(spec.required_values[0])
+                else:
+                    row.append(_group_value(spec, i))
             elif spec.required_values and i == n - 1 and n >= 3:
                 row.append(_miss_value(spec))
             elif i == n - 2 and n >= 4 and not spec.required_values:
@@ -380,10 +390,17 @@ def generate(sql: str, ddl: str = "", rows: int = DEFAULT_ROWS,
     except sqlglot.errors.ParseError as exc:
         result.warnings.append(f"查询解析失败: {exc}")
         return result
-    # INSERT ... SELECT: generate data for the SELECT's sources only
+    # INSERT ... SELECT: generate data for the SELECT's sources only.
+    # Hive's WITH ... INSERT hangs the CTEs on the Insert node — transplant
+    # them onto the select, or every CTE reads as a physical table.
     if isinstance(tree, exp.Insert) and tree.expression is not None:
         target = tree.this.find(exp.Table) if tree.this is not None else None
-        tree = tree.expression
+        select = tree.expression
+        for with_key in ("with_", "with"):
+            if tree.args.get(with_key) is not None:
+                select.set(with_key, tree.args[with_key])
+                break
+        tree = select
         result.notes.append(
             "INSERT 语句：目标表 "
             + (_table_key(target) if target is not None else "?")
@@ -398,12 +415,6 @@ def generate(sql: str, ddl: str = "", rows: int = DEFAULT_ROWS,
     if (ddl or "").strip():
         _apply_ddl(tables, ddl, dialect, result.notes, result.warnings)
 
-    # infer remaining types
-    for columns in tables.values():
-        for spec in columns.values():
-            if spec.source != "ddl":
-                spec.col_type = _infer_type(spec)
-
     # union-find the equi-join groups into shared value pools
     parent: dict[tuple[str, str], tuple[str, str]] = {}
 
@@ -417,6 +428,7 @@ def generate(sql: str, ddl: str = "", rows: int = DEFAULT_ROWS,
     for a, b in joins:
         parent[find(a)] = find(b)
     group_ids: dict[tuple[str, str], int] = {}
+    group_specs: dict[int, list[ColumnSpec]] = {}
     for a, b in joins:
         for key in (a, b):
             root = find(key)
@@ -426,6 +438,24 @@ def generate(sql: str, ddl: str = "", rows: int = DEFAULT_ROWS,
             spec = tables[table].get(col)
             if spec is not None:
                 spec.join_group = group_ids[root]
+                group_specs.setdefault(spec.join_group, []).append(spec)
+
+    # a WHERE literal on any member constrains the whole pool: propagate it
+    # so `JOIN ON a.id = b.id WHERE a.id = 5` puts 5 on BOTH sides and the
+    # query actually returns rows
+    for members in group_specs.values():
+        required = next((list(s.required_values) for s in members
+                         if s.required_values), None)
+        if required:
+            for s in members:
+                s.required_values = required
+
+    # infer remaining types (after required-value propagation, so both join
+    # sides infer the same type from a shared literal)
+    for columns in tables.values():
+        for spec in columns.values():
+            if spec.source != "ddl":
+                spec.col_type = _infer_type(spec)
 
     for name in sorted(tables):
         columns = tables[name]

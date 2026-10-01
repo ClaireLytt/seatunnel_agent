@@ -99,6 +99,37 @@ def test_extract_ignores_info_and_respects_include_warn():
     assert [e.level for e in errors_only] == ["error"]
 
 
+def test_skipped_warn_trace_is_not_a_phantom_error():
+    # errors-only mode must swallow the WARN's own stack trace instead of
+    # re-detecting it as a bare-trace ERROR event
+    text = ("2024-01-01 00:00:01 WARN [t] com.foo.Bar - retry failed\n"
+            "java.io.UncheckedIOException: wrapper\n"
+            "\tat com.foo.Bar.baz(Bar.java:10)\n"
+            "Caused by: java.net.SocketTimeoutException: timeout\n"
+            "\tat com.foo.Net.read(Net.java:5)\n")
+    events, _ = extract_events(text, include_warn=False)
+    assert events == []
+    with_warn, _ = extract_events(text)
+    assert [e.level for e in with_warn] == ["warn"]
+    assert with_warn[0].exception == "java.net.SocketTimeoutException"
+
+
+def test_info_line_mentioning_error_is_not_an_event():
+    events, _ = extract_events(
+        "2024-01-01 00:00:00 INFO Task state changed from RUNNING to ERROR\n")
+    assert events == []
+
+
+def test_oversized_file_truncation_warns(tmp_path, monkeypatch):
+    from seatunnel_agent.log_inspect import clusterer
+
+    monkeypatch.setattr(clusterer, "MAX_FILE_BYTES", 100)
+    log = tmp_path / "big.log"
+    log.write_text("2024-01-01 00:00:00 ERROR boom\n" * 50, encoding="utf-8")
+    report = clusterer.scan_files([log])
+    assert any("上限" in w for w in report.warnings)
+
+
 # ─────────────────────────── clustering ───────────────────────────
 
 def test_cluster_same_root_cause_across_files():

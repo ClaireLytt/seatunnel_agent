@@ -52,7 +52,14 @@ def _to_sqlite_query(sql: str, dialect: str) -> str:
     read = resolve_sqlglot_dialect(dialect)
     tree = sqlglot.parse_one(sql, read=read)
     if isinstance(tree, exp.Insert) and tree.expression is not None:
-        tree = tree.expression          # validate the SELECT part only
+        # validate the SELECT part only; Hive WITH ... INSERT keeps the CTEs
+        # on the Insert node, so carry them over or they read as tables
+        select = tree.expression
+        for with_key in ("with_", "with"):
+            if tree.args.get(with_key) is not None:
+                select.set(with_key, tree.args[with_key])
+                break
+        tree = select
     cte_names = {c.alias_or_name.lower() for c in tree.find_all(exp.CTE)}
     for t in tree.find_all(exp.Table):
         if t.name.lower() in cte_names and not t.db:

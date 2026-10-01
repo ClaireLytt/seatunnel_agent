@@ -123,6 +123,39 @@ def test_insert_select_targets_sources_only():
     assert any("INSERT" in n for n in result.notes)
 
 
+def test_with_insert_keeps_cte_transparent():
+    # Hive WITH ... INSERT hangs the CTEs on the Insert node; the unwrap must
+    # carry them over or 'base' reads as a physical table
+    result = generate(
+        "WITH base AS (SELECT user_id FROM ods.u) "
+        "INSERT INTO ads.t SELECT user_id FROM base")
+    assert {t.name for t in result.tables} == {"ods.u"}
+    v = validate_with_sqlite(result)
+    assert v.status == "ok" and v.row_count > 0
+
+
+def test_join_key_with_literal_satisfies_both():
+    # a column that is both a join key and literal-constrained must carry the
+    # literal on BOTH sides, or the query returns 0 rows
+    result = generate(
+        "SELECT a.id, b.v FROM t1 a JOIN t2 b ON a.id = b.id WHERE a.id = 5")
+    for name in ("t1", "t2"):
+        table = _table(result, name)
+        ids = [r[_col_idx(table, "id")] for r in table.rows]
+        assert ids.count(5) >= 3, (name, ids)
+    v = validate_with_sqlite(result)
+    assert v.status == "ok" and v.row_count > 0
+
+
+def test_reversed_literal_is_recorded():
+    result = generate("SELECT a FROM t WHERE 5 = t.a")
+    (table,) = result.tables
+    a_vals = [r[_col_idx(table, "a")] for r in table.rows]
+    assert 5 in a_vals
+    v = validate_with_sqlite(result)
+    assert v.status == "ok" and v.row_count > 0
+
+
 def test_parse_error_is_warning():
     result = generate("SELECT FROM WHERE")
     assert not result.tables

@@ -24,6 +24,9 @@ import re
 
 _TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?")
 _LEVEL_RE = re.compile(r"\b(FATAL|ERROR|WARN(?:ING)?)\b")
+# an INFO/DEBUG/TRACE token BEFORE the ERROR/WARN hit means the line's level
+# is informational and merely mentions the word (e.g. "state changed to ERROR")
+_CALM_RE = re.compile(r"\b(INFO|DEBUG|TRACE)\b")
 # java.lang.FooException[: message] — standalone trace head or Caused by
 _EXC_RE = re.compile(
     r"(?:Caused by:\s*)?([\w$.]+(?:Exception|Error|Throwable))(?::\s*(.*))?$")
@@ -185,10 +188,12 @@ def extract_events(text: str, file_label: str = "<text>",
             continue
         level_m = _LEVEL_RE.search(stripped)
         if level_m:
+            calm_m = _CALM_RE.search(stripped)
+            if calm_m and calm_m.start() < level_m.start():
+                close()        # an INFO line that mentions "ERROR" in text
+                continue
             close()
             level = "warn" if level_m.group(1).startswith("WARN") else "error"
-            if level == "warn" and not include_warn:
-                continue
             ts_m = _TS_RE.search(stripped)
             message = _AFTER_LEVEL_RE.sub(
                 "", stripped[level_m.end():]).strip() or stripped
@@ -219,6 +224,10 @@ def extract_events(text: str, file_label: str = "<text>",
             continue
         close()
     close()
+    # filter AFTER extraction, so a skipped WARN keeps its stack trace glued
+    # to itself instead of re-surfacing as a phantom bare-trace ERROR event
+    if not include_warn:
+        events = [e for e in events if e.level != "warn"]
     return events, n_lines
 
 
@@ -271,10 +280,16 @@ def scan_files(paths: Iterable[Path] | Iterable[str],
     for path in paths:
         try:
             with open(path, encoding="utf-8", errors="replace") as fh:
-                text = fh.read(MAX_FILE_BYTES)
+                # text mode: the cap counts characters (≈ bytes for logs)
+                text = fh.read(MAX_FILE_BYTES + 1)
         except OSError as exc:
             report.warnings.append(f"无法读取 {path}: {exc}")
             continue
+        if len(text) > MAX_FILE_BYTES:
+            text = text[:MAX_FILE_BYTES]
+            report.warnings.append(
+                f"{path}: 超过单文件扫描上限，仅统计前 "
+                f"{MAX_FILE_BYTES // (1024 * 1024)}MB — 计数可能偏低")
         events, n_lines = extract_events(
             text, file_label=str(path), include_warn=include_warn)
         all_events.extend(events)

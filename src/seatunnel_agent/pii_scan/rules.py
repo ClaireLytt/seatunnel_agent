@@ -29,13 +29,15 @@ class PiiRule:
 
 
 # Expression is considered masked when it calls one of these before landing
-# downstream (hash/encrypt/redact families + truncation).
+# downstream (hash/encrypt/redact families + lossy truncation). Reversible
+# encodings (hex / base64 / translate) deliberately do NOT count — a
+# decodable copy of the value is still a leak.
 MASKING_FUNCS = frozenset({
     "md5", "sha", "sha1", "sha2", "sha256", "hash", "crc32", "murmur_hash",
     "mask", "mask_hash", "mask_first_n", "mask_last_n",
     "mask_show_first_n", "mask_show_last_n",
-    "aes_encrypt", "encrypt", "hex", "to_base64", "base64",
-    "regexp_replace", "overlay", "translate",
+    "aes_encrypt", "encrypt",
+    "regexp_replace", "overlay",
     "substr", "substring",
 })
 
@@ -86,7 +88,9 @@ DEFAULT_RULES: tuple[PiiRule, ...] = (
     ),
     PiiRule(
         category="address", severity="medium",
-        name_patterns=(r"(^|_)(addr|address|home_?addr(ess)?"
+        # (?<!ip_) keeps ip_addr / client_ip_address with the low-severity
+        # ip_address rule instead of being inflated to a home address
+        name_patterns=(r"(^|_)(?<!ip_)(addr|address|home_?addr(ess)?"
                        r"|ship(ping)?_?addr(ess)?)(_|$)",),
         comment_keywords=("地址", "住址"),
     ),
