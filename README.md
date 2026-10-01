@@ -50,6 +50,10 @@
 - **SQL Code Review**: Static review of Hive/Spark/Flink/MaxCompute SQL — no execution needed. A deterministic linter (GROUP BY completeness, cartesian joins, `= NULL`, partition filters, division-by-zero, complexity scoring, …) plus an LLM semantic pass over a 15-item checklist, producing a fixed-format CR report (严重问题/潜在风险/优化建议/检查统计/总体评价) with table- and column-level lineage. Available as `seatunnel-agent review`, REST `POST /api/sql_review/review`, a Gradio UI page (`/sqlreview`, with history trend chart), or offline via `--static-only`. Multi-statement scripts are split and reviewed per statement with correct line numbers. Batch review a directory (`--dir`), changed files vs a git base (`--diff`), or positional paths (pre-commit style); gate CI with `--fail-on critical|risk|suggestion`; customize rules via `.sqlreview.yaml` (partition columns, disabled checks, severity overrides, custom regex rules); suppress findings inline (`-- sqlreview-disable[-next-line|-file][: category]`) or via a baseline file (`--baseline` / `--update-baseline` — only new findings fail CI); emit machine-readable output with `--format json|sarif` (SARIF uploads to GitHub Code Scanning — see `examples/ci/` and the bundled pre-commit hook in `.pre-commit-hooks.yaml`); pull live schemas with `--db host:port/database`; auto-generate fixed SQL with `--fix`; inspect review history with `review-stats`
 - **Change Impact Analysis**: SQL diff × lineage — compare two SQL trees (or a git baseline) and report the release blast radius with severity levels (breaking removals / metric drift / additions); CLI `seatunnel-agent impact` with a `--fail-on` CI gate, REST `POST /api/lineage/impact`, and a Web UI at `/impact`; fully deterministic, no DB and no LLM
 - **SQL Dialect Translation**: Deterministic hive/spark/doris/starrocks translation (sqlglot) with a structured incompatibility report (parse errors, unsupported syntax, unknown UDFs, storage clauses, write-side hints) — CLI `seatunnel-agent transpile`, REST `/api/transpile/`, Web UI `/transpile`; batch a directory with a mirrored output tree, gate CI with `--fail-on error|warn`, optional clearly-marked LLM advice; no DB connection, the SQL is never executed
+- **PII / Sensitive Column Scan**: Naming rules × column lineage — match column names and Chinese/English comments against a sensitive-data rule catalog (phone, national ID, bank card, email, address, salary, ...), then follow column-level lineage downstream and flag **unmasked propagation** (direct copies escalate severity; `md5()`/`mask()`/`substr()` chains count as masked); custom rules via YAML — CLI `seatunnel-agent pii` with `--fail-on high|medium|low`, REST `/api/pii/`, Web UI `/pii`, demo data `examples/pii_demo/`; deterministic, no DB, no LLM
+- **Batch Log Inspection**: Exception clustering over a log directory — ERROR/WARN events (with full Java stack traces) are normalized (numbers/paths/addresses/ids masked) and clustered by **root cause** (last `Caused by:` × message template × top frame), collapsing noisy logs into Top-N distinct problems with counts, affected files and first/last timestamps — CLI `seatunnel-agent loginspect` with `--fail-on error|warn`, REST `/api/loginspect/`, Web UI `/loginspect` (optional llm-generated advice), demo data `examples/logs_demo/`
+- **Schema Drift Check**: Diff two DDL snapshots (files, directories or pasted scripts) and grade every structural change — breaking (removed tables/columns, incompatible type changes, partition layout changes), risk (widening types, possible renames), info (additions, comment changes) — CLI `seatunnel-agent schemadiff` with `--fail-on breaking|risk|info`, REST `/api/schemadrift/`, Web UI `/schemadrift`, demo data `examples/schema_drift_demo/`; sibling of `/impact` (SQL logic changes vs table structure changes)
+- **SQL Test Data Generator**: Join-aware datasets that actually exercise a query — equi-join columns share value pools so joins match, WHERE literals are satisfied (plus one deliberate miss row), boundary rows (NULL/zero/empty) mixed in, column types from DDL or inferred from usage; optional end-to-end validation on in-memory SQLite (stdlib, zero deps) — CLI `seatunnel-agent testgen` (writes CSV + CREATE + INSERT files with `--out`), REST `/api/testgen/`, Web UI `/testgen`, demo data `examples/testgen_demo/`
 
 ### Quick Start
 
@@ -655,6 +659,87 @@ seatunnel-agent skew-stats                                           # history &
 seatunnel-agent skew-mcp                                             # MCP server (stdio)
 ```
 
+### PII / Sensitive Column Scan Agent
+
+Naming rules × column lineage: a built-in rule catalog (phone, national ID,
+bank card, email, person name, address, salary, birthday, license plate,
+IP, ...) matches column names **and comments** (Chinese keywords included)
+from `CREATE TABLE` statements and lineage column edges. Every hit is then
+pushed through column-level lineage: the report shows where the value
+spreads downstream and whether each propagation edge is masked
+(`md5`/`sha2`/`mask`/`substr`/... count as masked, direct copies do not) —
+an unmasked spread escalates the severity one level. Already-hashed columns
+(`phone_md5`) are demoted to low. Custom rules append via YAML. Web UI at
+`/pii`, REST under `/api/pii/` (directory-whitelisted via
+`PII_API_ALLOWED_DIRS`), demo data `examples/pii_demo/`; fully
+deterministic — no DB, no LLM:
+
+```bash
+seatunnel-agent pii --dir warehouse_sql/                             # scan a directory
+seatunnel-agent pii --sql "CREATE TABLE t (phone STRING COMMENT '手机号');"
+seatunnel-agent pii --dir sql/ --rules my_rules.yaml --lang en       # custom rules
+seatunnel-agent pii --dir sql/ -F json --fail-on high                # CI gate
+```
+
+### Batch Log Inspection Agent
+
+Exception clustering over a log directory: ERROR/WARN lines and full Java
+stack traces become events, volatile tokens (numbers, paths, addresses,
+ids) are masked, and events cluster by **root cause** — the last
+`Caused by:` exception × message template × top stack frame — so the same
+failure from different jobs/files lands in one cluster with counts, first/
+last timestamps and a representative sample. Web UI at `/loginspect` (with
+optional `llm-generated` root-cause advice), REST under `/api/loginspect/`
+(whitelisted via `LOGINSPECT_API_ALLOWED_DIRS`), demo data
+`examples/logs_demo/`:
+
+```bash
+seatunnel-agent loginspect --dir logs/                               # cluster a directory
+seatunnel-agent loginspect --dir logs/ --no-warn --top 5             # errors only, top 5
+seatunnel-agent loginspect -f seatunnel.log --lang en                # single file
+seatunnel-agent loginspect --dir logs/ -F json --fail-on error       # CI gate
+```
+
+### Schema Drift Check Agent
+
+Diff two schema snapshots (CREATE TABLE scripts — files, directories or
+pasted DDL) and grade every change: **breaking** (removed tables/columns,
+incompatible type changes, partition layout changes), **risk** (widening
+type changes like INT→BIGINT / DECIMAL(10,2)→DECIMAL(16,2), possible
+renames — same type and comment), **info** (added tables/columns, comment
+changes). Sibling of the Change Impact agent: `/impact` covers SQL logic
+changes, this covers table structure. Web UI at `/schemadrift`, REST under
+`/api/schemadrift/` (whitelisted via `SCHEMADRIFT_API_ALLOWED_DIRS`), demo
+data `examples/schema_drift_demo/`:
+
+```bash
+seatunnel-agent schemadiff --old ddl_v1/ --new ddl_v2/               # two directories
+seatunnel-agent schemadiff --old old.sql --new new.sql --lang en     # two files
+seatunnel-agent schemadiff --old v1/ --new v2/ -F json --fail-on breaking  # CI gate
+```
+
+### SQL Test Data Generator Agent
+
+Generates minimal per-table datasets that actually exercise a query:
+equi-join columns share one value pool (joins are guaranteed to match,
+including through single-source CTEs), WHERE literals (`dt = '...'`,
+`status IN (...)`, BETWEEN) are satisfied by most rows — plus one
+deliberate miss row so filters are provably selective — and boundary rows
+(NULL / zero / empty string) are mixed in. Column types come from the
+optional DDL, otherwise inferred from literals, usage and naming. The
+generated data + query can be validated end-to-end on in-memory SQLite
+(stdlib — zero dependencies); engine-specific functions that don't
+translate are reported as inconclusive, never as failures. Web UI at
+`/testgen`, REST under `/api/testgen/` (inline only — the API never writes
+files), demo data `examples/testgen_demo/`:
+
+```bash
+seatunnel-agent testgen -f query.sql --ddl ddl.sql --out testdata/   # CSV + CREATE + INSERT
+seatunnel-agent testgen --sql "SELECT a FROM t WHERE dt='2024-01-01'" --rows 10
+seatunnel-agent testgen -f query.sql -F json --no-validate           # machine-readable
+seatunnel-agent testgen -f query.sql --fail-on error                 # CI gate (parse/validation)
+```
+
 ### MCP Toolbox (`seatunnel-agent mcp`)
 
 One stdio MCP server that hands the whole agent suite to any MCP client
@@ -749,6 +834,10 @@ MIT
 - **SQL Code Review**：对 Hive/Spark/Flink/MaxCompute SQL 做纯静态审查，无需运行即可发现问题 —— 确定性 Linter（GROUP BY 完整性、笛卡尔积、`= NULL`、分区过滤、除零保护、复杂度评分等）+ LLM 按 15 项检查清单做语义审查，输出固定格式 CR 报告（严重问题/潜在风险/优化建议/检查统计/总体评价）并附表级与列级血缘。支持 `seatunnel-agent review` 命令、REST `POST /api/sql_review/review`、Gradio UI 页面（`/sqlreview`，含历史趋势图），以及无需 API Key 的 `--static-only` 模式。多语句脚本自动按语句拆分审查并映射正确行号。支持目录批量审查（`--dir`）、git 变更文件审查（`--diff`）、位置参数传文件（pre-commit 风格）、CI 门禁（`--fail-on critical|risk|suggestion`）、`.sqlreview.yaml` 规则配置（自定义分区列/关闭检查/调整严重度/自定义正则规则）、行内忽略注释（`-- sqlreview-disable[-next-line|-file][: 类别]`）、基线文件（`--baseline` / `--update-baseline`，只对新问题报错）、机器可读输出（`--format json|sarif`，SARIF 可上传 GitHub Code Scanning，模板见 `examples/ci/` 与 `.pre-commit-hooks.yaml`）、数据库直连拉取表结构（`--db host:port/database`）、LLM 自动生成修复 SQL（`--fix`）与审查历史统计（`review-stats`）
 - **变更影响分析**：SQL 变更 × 血缘——对比两份 SQL 目录（或 git 基线）输出上线影响面：破坏性移除 / 口径漂移 / 纯新增三级严重度 + 下游波及深度；CLI `seatunnel-agent impact`（`--fail-on` CI 门禁）、REST `POST /api/lineage/impact`、Web 页面 `/impact`；纯确定性,不连数据库、不调用 LLM
 - **SQL 方言翻译**：hive/spark/doris/starrocks 确定性互转（sqlglot）+ 结构化不兼容点清单（解析失败、不支持语法、未知 UDF、存储子句、写侧提示）—— CLI `seatunnel-agent transpile`、REST `/api/transpile/`、Web 页面 `/transpile`；支持目录批量镜像输出、CI 门禁 `--fail-on error|warn`、可选且明确标注的 LLM 建议；不连接数据库、不执行 SQL
+- **敏感数据扫描 (PII)**：命名规则 × 字段血缘 —— 用敏感数据规则库匹配列名与中英文注释（手机号、身份证、银行卡、邮箱、地址、工资等），再沿列级血缘追踪下游，标出**未脱敏扩散**（直接复制会升级严重度；`md5()`/`mask()`/`substr()` 链路视为已脱敏）；支持 YAML 自定义规则 —— CLI `seatunnel-agent pii`（`--fail-on high|medium|low`）、REST `/api/pii/`、Web 页面 `/pii`、演示数据 `examples/pii_demo/`；纯确定性，不连数据库、不调用 LLM
+- **批量日志巡检**：日志目录异常聚类 —— ERROR/WARN 事件（含完整 Java 堆栈）归一化（数字/路径/地址/ID 打码）后按**根因**聚类（最后一个 `Caused by:` × 消息模板 × 栈顶帧），把嘈杂日志收敛成 Top-N 个不同的问题，附次数、涉及文件与首末时间 —— CLI `seatunnel-agent loginspect`（`--fail-on error|warn`）、REST `/api/loginspect/`、Web 页面 `/loginspect`（可选 llm-generated 建议）、演示数据 `examples/logs_demo/`
+- **Schema 漂移检查**：对比两份 DDL 快照（文件/目录/粘贴脚本），每处结构变更分级 —— 破坏（删表删列、不兼容类型变更、分区布局变更）、风险（类型拓宽、疑似改名）、提示（新增、注释变更）—— CLI `seatunnel-agent schemadiff`（`--fail-on breaking|risk|info`）、REST `/api/schemadrift/`、Web 页面 `/schemadrift`、演示数据 `examples/schema_drift_demo/`；与 `/impact` 互补（SQL 逻辑变更 vs 表结构变更）
+- **SQL 测试数据生成**：关联感知造数，让查询真正跑通 —— 等值关联列共享取值池（JOIN 必然命中）、WHERE 字面量被满足（并混入一行故意不命中）、混入边界行（NULL/零值/空串），列类型来自 DDL 或按用法推断；可选在内存 SQLite 上做端到端验证（标准库，零依赖）—— CLI `seatunnel-agent testgen`（`--out` 写出 CSV + CREATE + INSERT）、REST `/api/testgen/`、Web 页面 `/testgen`、演示数据 `examples/testgen_demo/`
 
 ### 快速开始
 
@@ -1336,6 +1425,75 @@ seatunnel-agent skew -D sql/ --fail-on high                          # 目录级
 seatunnel-agent skew -f etl.sql --llm -o report.md                   # + LLM 改写
 seatunnel-agent skew-stats                                           # history & aggregates
 seatunnel-agent skew-mcp                                             # MCP server (stdio)
+```
+
+### 敏感数据扫描 Agent (PII)
+
+命名规则 × 字段血缘：内置规则库（手机号、身份证、银行卡、邮箱、姓名、
+地址、工资、生日、车牌、IP 等）同时匹配 `CREATE TABLE` 的**列名与中文
+注释**，以及血缘列边中出现的列。每个命中再沿列级血缘下探：报告给出敏感
+值扩散到了哪些下游表列、每条传播边是否脱敏（`md5`/`sha2`/`mask`/
+`substr` 等视为已脱敏，直接复制视为未脱敏）——存在未脱敏扩散时严重度
+升一级；已经哈希过的列（`phone_md5`）自动降为低风险。支持 YAML 追加
+自定义规则。Web 页面 `/pii`，REST `/api/pii/`（目录白名单
+`PII_API_ALLOWED_DIRS`），演示数据 `examples/pii_demo/`；纯确定性——
+不连数据库、不调用 LLM：
+
+```bash
+seatunnel-agent pii --dir warehouse_sql/                             # 扫描目录
+seatunnel-agent pii --sql "CREATE TABLE t (phone STRING COMMENT '手机号');"
+seatunnel-agent pii --dir sql/ --rules my_rules.yaml --lang en       # 自定义规则
+seatunnel-agent pii --dir sql/ -F json --fail-on high                # CI 门禁
+```
+
+### 批量日志巡检 Agent
+
+日志目录异常聚类：ERROR/WARN 行与完整 Java 堆栈组装成事件，归一化易变
+片段（数字/路径/地址/ID）后按**根因**聚类——最后一个 `Caused by:` 异常 ×
+消息模板 × 栈顶帧——同一故障在不同任务/文件中的反复出现归入同一簇，
+附次数、首末时间与代表样本。Web 页面 `/loginspect`（可选 `llm-generated`
+根因建议），REST `/api/loginspect/`（目录白名单
+`LOGINSPECT_API_ALLOWED_DIRS`），演示数据 `examples/logs_demo/`：
+
+```bash
+seatunnel-agent loginspect --dir logs/                               # 聚类整个目录
+seatunnel-agent loginspect --dir logs/ --no-warn --top 5             # 只看 error,前 5 簇
+seatunnel-agent loginspect -f seatunnel.log --lang en                # 单文件
+seatunnel-agent loginspect --dir logs/ -F json --fail-on error       # CI 门禁
+```
+
+### Schema 漂移检查 Agent
+
+对比两份 Schema 快照（CREATE TABLE 脚本——文件/目录/粘贴 DDL），每处
+变更分级：**破坏**（删表删列、不兼容类型变更、分区布局变更）、**风险**
+（拓宽类型变更如 INT→BIGINT / DECIMAL(10,2)→DECIMAL(16,2)、疑似改名——
+类型与注释一致）、**提示**（新增表列、注释变更）。与变更影响分析互补：
+`/impact` 管 SQL 逻辑变更，这里管表结构变更。Web 页面 `/schemadrift`，
+REST `/api/schemadrift/`（路径白名单 `SCHEMADRIFT_API_ALLOWED_DIRS`），
+演示数据 `examples/schema_drift_demo/`：
+
+```bash
+seatunnel-agent schemadiff --old ddl_v1/ --new ddl_v2/               # 两个目录
+seatunnel-agent schemadiff --old old.sql --new new.sql --lang en     # 两个文件
+seatunnel-agent schemadiff --old v1/ --new v2/ -F json --fail-on breaking  # CI 门禁
+```
+
+### SQL 测试数据生成 Agent
+
+为查询生成最小可用的逐表测试数据集：等值关联列共享取值池（JOIN 必然
+命中，单源 CTE 也能穿透）、WHERE 字面量（`dt = '...'`、`status IN
+(...)`、BETWEEN）被大多数行满足——并混入一行故意不命中，证明过滤条件
+真实生效——再混入边界行（NULL/零值/空串）。列类型优先取自 DDL，否则按
+字面量、用法与命名推断。生成的数据 + 查询可在内存 SQLite 上做端到端
+验证（标准库，零依赖）；无法翻译的引擎特有函数报告为"结果不确定"，
+绝不误报失败。Web 页面 `/testgen`，REST `/api/testgen/`（仅内联，API
+不写文件），演示数据 `examples/testgen_demo/`：
+
+```bash
+seatunnel-agent testgen -f query.sql --ddl ddl.sql --out testdata/   # CSV + CREATE + INSERT
+seatunnel-agent testgen --sql "SELECT a FROM t WHERE dt='2024-01-01'" --rows 10
+seatunnel-agent testgen -f query.sql -F json --no-validate           # 机器可读输出
+seatunnel-agent testgen -f query.sql --fail-on error                 # CI 门禁（解析/验证）
 ```
 
 ### MCP 工具箱（`seatunnel-agent mcp`）
