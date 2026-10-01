@@ -1,0 +1,74 @@
+# TGN 组 · SQL 测试数据生成页 (/testgen)。纯确定性（关联感知造数 + SQLite 验证），
+# 不依赖外部数据库；演示 SQL 预填在输入框（两表 JOIN + 分区过滤 + IN）。
+
+- id: TGN1
+  title: 预填 JOIN 查询生成并通过 SQLite 验证
+  tags: [smoke, sqlite]
+  page: /testgen
+  steps:
+    - click: 生成测试数据
+    - wait_result: {}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: SQL 测试数据生成}
+    - text_contains: {in: 结果区, text: 查询执行成功}
+    - text_contains: {in: 结果区, text: dwd.order_pay}
+
+- id: TGN2
+  title: WHERE 字面量出现在生成数据里
+  tags: [smoke, sqlite]
+  page: /testgen
+  steps:
+    - click: 生成测试数据
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: "2024-01-01"}
+    - text_contains: {in: 结果区, text: PAID}
+
+- id: TGN3
+  title: 提供 DDL 后类型来自 DDL
+  tags: [full, sqlite]
+  page: /testgen
+  steps:
+    - fill: {查询 SQL: "SELECT user_id FROM dwd.user_info WHERE dt = '2024-01-01'"}
+    - fill: {"DDL（可选）": "CREATE TABLE dwd.user_info (user_id BIGINT COMMENT '用户ID') PARTITIONED BY (dt STRING);"}
+    - click: 生成测试数据
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 来自 DDL 2}
+
+- id: TGN4
+  title: 非法 SQL 报警告不崩溃
+  tags: [full, sqlite]
+  page: /testgen
+  steps:
+    - fill: {查询 SQL: "SELECT FROM WHERE"}
+    - click: 生成测试数据
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 查询解析失败}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: TGN5
+  title: 关闭验证后不显示 SQLite 结果
+  tags: [full, sqlite]
+  page: /testgen
+  steps:
+    - check: {target: SQLite 验证, on: false}
+    - click: 生成测试数据
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: SQL 测试数据生成}
+    - text_not_contains: {in: 结果区, text: 查询执行成功}
+
+- id: TGN6
+  title: 英文界面生成链路
+  tags: [full, sqlite]
+  lang: en
+  page: /testgen
+  steps:
+    - click: Generate
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: SQL Test Data Generator}
+    - text_contains: {in: 结果区, text: query executed OK}
