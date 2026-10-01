@@ -1,0 +1,87 @@
+# SDF 组 · Schema 漂移检查页 (/schemadrift)。纯确定性（DDL 对比），不连接数据库；
+# 演示数据 examples/schema_drift_demo: old/new = 破坏 3 / 风险 2 / 提示 4。
+
+- id: SDF1
+  title: 对比演示目录出分级变更
+  tags: [smoke, sqlite]
+  page: /schemadrift
+  steps:
+    - open_accordion: {target: 对比两个目录}
+    - fill: {旧目录 / 文件: examples/schema_drift_demo/old}
+    - fill: {新目录 / 文件: examples/schema_drift_demo/new}
+    - click: 对比目录
+    - wait_result: {}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: Schema 漂移检查}
+    - text_contains: {in: 结果区, text: 破坏性变更}
+    - text_contains: {in: 结果区, text: 分区布局变更}
+
+- id: SDF2
+  title: 粘贴 DDL 识别删列与拓宽
+  tags: [smoke, sqlite]
+  page: /schemadrift
+  steps:
+    - fill:
+        旧版 DDL: "CREATE TABLE t (id BIGINT, phone STRING, age INT);"
+        新版 DDL: "CREATE TABLE t (id BIGINT, age BIGINT);"
+    - click: 对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 列被删除}
+    - text_contains: {in: 结果区, text: INT → BIGINT}
+
+- id: SDF3
+  title: 相同 DDL 报告无漂移
+  tags: [full, sqlite]
+  page: /schemadrift
+  steps:
+    - fill:
+        旧版 DDL: "CREATE TABLE t (id BIGINT);"
+        新版 DDL: "CREATE TABLE t (id BIGINT);"
+    - click: 对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 未发现 Schema 漂移}
+
+- id: SDF4
+  title: 疑似改名识别为风险
+  tags: [full, sqlite]
+  page: /schemadrift
+  steps:
+    - fill:
+        旧版 DDL: "CREATE TABLE t (uid BIGINT COMMENT 'x');"
+        新版 DDL: "CREATE TABLE t (user_id BIGINT COMMENT 'x');"
+    - click: 对比
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 疑似改名}
+    - text_not_contains: {in: 结果区, text: 列被删除}
+
+- id: SDF5
+  title: 路径不存在给出警告不崩溃
+  tags: [full, sqlite]
+  page: /schemadrift
+  steps:
+    - open_accordion: {target: 对比两个目录}
+    - fill: {旧目录 / 文件: no_such_dir_sdf}
+    - click: 对比目录
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 路径不存在}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: SDF6
+  title: 英文界面对比链路
+  tags: [full, sqlite]
+  lang: en
+  page: /schemadrift
+  steps:
+    - fill:
+        Old DDL: "CREATE TABLE t (id BIGINT, phone STRING);"
+        New DDL: "CREATE TABLE t (id BIGINT);"
+    - click: Compare
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: Schema Drift Check}
+    - text_contains: {in: 结果区, text: column removed}
