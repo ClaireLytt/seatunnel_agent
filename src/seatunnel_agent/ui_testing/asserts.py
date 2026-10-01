@@ -179,13 +179,24 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
         try:
             dc.page.set_viewport_size({"width": width, "height": orig["height"]})
             dc.page.wait_for_timeout(400)
+            # Driving bottom-of-sidebar controls leaves window/container
+            # scroll behind (seen on scroll-page layouts: the row top sat a
+            # few px above the viewport, elementFromPoint returned null and
+            # read as "covered"). Reset VERTICAL scroll only and clamp the
+            # probe point into the viewport — horizontal scroll/geometry is
+            # untouched, so the flex-wrap-outside-.st-main regression this
+            # assert exists for cannot be masked.
             info = loc.evaluate(
                 "el => {"
+                " for (let n = el; n; n = n.parentElement) {"
+                "   if (n.scrollTop) n.scrollTop = 0; }"
+                " window.scrollTo(window.scrollX, 0);"
                 " const main = el.closest('.st-main') || el.parentElement;"
                 " const r = el.getBoundingClientRect();"
                 " const m = main.getBoundingClientRect();"
                 " const x = Math.min(Math.max(r.left + 8, m.left + 2), m.right - 2);"
-                " const y = Math.max(r.top + 8, m.top + 2);"
+                " const y = Math.min(Math.max(r.top + 8, m.top + 2, 2),"
+                "                    window.innerHeight - 2, r.bottom - 2);"
                 " const hit = document.elementFromPoint(x, y);"
                 " return { left: r.left, width: r.width, height: r.height,"
                 "          mLeft: m.left, mRight: m.right,"
