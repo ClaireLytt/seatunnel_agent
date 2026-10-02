@@ -2833,5 +2833,82 @@ def depcheck(
         sys.exit(1)
 
 
+@cli.command()
+@click.argument("logs", nargs=-1, type=click.Path(exists=True, dir_okay=False))
+@click.option("--runs", "runs_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="运行元数据 JSON 文件(flaky/时长分析)")
+@click.option("--gh", "gh_repo", default=None,
+              help="用 gh api 拉取 owner/repo 最近运行元数据(需 gh 登录)")
+@click.option("--limit", default=30, show_default=True,
+              type=click.IntRange(1, 100), help="--gh 拉取的运行数量")
+@click.option("--top", default=10, show_default=True,
+              type=click.IntRange(1, 50), help="根因聚类 Top-N")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["flaky"]), default=None,
+              help="CI gate: flaky=发现同一提交又过又挂的工作流时退出 1")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def ciinspect(
+    logs: tuple[str, ...],
+    runs_file: str | None,
+    gh_repo: str | None,
+    limit: int,
+    top: int,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """CI 日志诊断 — 失败日志根因聚类 + flaky 识别 + 时长漂移。
+
+    LOGS: 失败作业日志文件(gh run view --log-failed 的输出即可)。"""
+    import json as _json
+    from pathlib import Path
+
+    from .ci_inspect import analyze, collect_gh_runs, render_markdown
+
+    runs_text = None
+    if runs_file:
+        runs_text = Path(runs_file).read_text(encoding="utf-8")
+    elif gh_repo:
+        try:
+            runs_text = collect_gh_runs(gh_repo, limit)
+        except RuntimeError as exc:
+            console.print(f"[red]gh 拉取失败: {exc}[/red]")
+            sys.exit(2)
+    if not logs and not runs_text:
+        raise click.UsageError("Provide log files, --runs or --gh")
+
+    log_map = {Path(p).name: Path(p).read_text(encoding="utf-8",
+                                               errors="replace")
+               for p in logs}
+    try:
+        report = analyze(logs=log_map, runs_text=runs_text, top=top)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    if fmt == "json":
+        text_out = _json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on == "flaky" and report.runs.flaky:
+        msg = "发现 flaky 工作流(同一提交又过又挂),检查未通过。"
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()

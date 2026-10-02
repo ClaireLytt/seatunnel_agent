@@ -1383,6 +1383,10 @@ def create_ui() -> gr.Blocks:
         from .dep_check_ui import render_dep_check_page
         render_dep_check_page(app)
 
+    with app.route("CI Log Triage", "/ciinspect"):
+        from .ci_inspect_ui import render_ci_inspect_page
+        render_ci_inspect_page(app)
+
     return app
 
 
@@ -3089,6 +3093,7 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .secret_scan.api import router as secretscan_api_router
         from .release_notes.api import router as release_api_router
         from .dep_check.api import router as depcheck_api_router
+        from .ci_inspect.api import router as ciinspect_api_router
         from .pii_scan.api import router as pii_api_router
         from .prompt_lab.api import router as promptlab_api_router
         from .schema_drift.api import router as schemadrift_api_router
@@ -3119,6 +3124,7 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
             secretscan_api_router,
             release_api_router,
             depcheck_api_router,
+            ciinspect_api_router,
         ):
             fastapi_app.include_router(router)
 
