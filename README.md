@@ -54,6 +54,10 @@
 - **Batch Log Inspection**: Exception clustering over a log directory — ERROR/WARN events (with full Java stack traces) are normalized (numbers/paths/addresses/ids masked) and clustered by **root cause** (last `Caused by:` × message template × top frame), collapsing noisy logs into Top-N distinct problems with counts, affected files and first/last timestamps — CLI `seatunnel-agent loginspect` with `--fail-on error|warn`, REST `/api/loginspect/`, Web UI `/loginspect` (optional llm-generated advice), demo data `examples/logs_demo/`
 - **Schema Drift Check**: Diff two DDL snapshots (files, directories or pasted scripts) and grade every structural change — breaking (removed tables/columns, incompatible type changes, partition layout changes), risk (widening types, possible renames), info (additions, comment changes) — CLI `seatunnel-agent schemadiff` with `--fail-on breaking|risk|info`, REST `/api/schemadrift/`, Web UI `/schemadrift`, demo data `examples/schema_drift_demo/`; sibling of `/impact` (SQL logic changes vs table structure changes)
 - **SQL Test Data Generator**: Join-aware datasets that actually exercise a query — equi-join columns share value pools so joins match, WHERE literals are satisfied (plus one deliberate miss row), boundary rows (NULL/zero/empty) mixed in, column types from DDL or inferred from usage; optional end-to-end validation on in-memory SQLite (stdlib, zero deps) — CLI `seatunnel-agent testgen` (writes CSV + CREATE + INSERT files with `--out`), REST `/api/testgen/`, Web UI `/testgen`, demo data `examples/testgen_demo/`
+- **SeaTunnel Config Deep Lint**: Param-level lint of HOCON configs against the built-in connector docs — unknown connectors/params with did-you-mean suggestions, missing required params, value-type & enum checks, source/sink role violations, CDC-vs-job.mode and parallelism sanity — CLI `seatunnel-agent conflint` with `--fail-on error|warn`, REST `/api/conflint/`, Web UI `/conflint`, demo data `examples/conflint_demo/`; parsed, never executed
+- **Scheduling DAG Health Check**: Build the job DAG from SQL/SeaTunnel lineage and report what breaks a scheduler — dependency cycles, mid-layer tables nobody produces (broken upstream) or consumes (dead jobs) — plus constructive output: topological execution batches and the critical path — CLI `seatunnel-agent dagcheck` with `--fail-on error|warn`, REST `/api/dagcheck/`, Web UI `/dagcheck`, demo data `examples/dagcheck_demo/`
+- **Metric Consistency Check**: Same-named output columns defined differently across jobs (the top reason two reports disagree) — expressions canonicalized before comparing (aliases/qualifiers stripped, COUNT(1)≡COUNT(*)): different formulas = high, copies from different source columns = medium — CLI `seatunnel-agent metricdiff` with `--fail-on high|medium`, REST `/api/metricdiff/`, Web UI `/metricdiff`, demo data `examples/metricdiff_demo/`
+- **SQL Formatter**: Deterministic sqlglot pretty-print with a black-style workflow — `--fail-on change` as the CI check, `--write` to apply, statements that do not parse are kept verbatim so formatting never destroys content; bare `SELECT *` flagged — CLI `seatunnel-agent sqlfmt`, REST `/api/sqlfmt/`, Web UI `/sqlfmt`, demo data `examples/sqlfmt_demo/`
 
 ### Quick Start
 
@@ -740,6 +744,78 @@ seatunnel-agent testgen -f query.sql -F json --no-validate           # machine-r
 seatunnel-agent testgen -f query.sql --fail-on error                 # CI gate (parse/validation)
 ```
 
+### SeaTunnel Config Deep Lint Agent
+
+The built-in `validate` stops at HOCON syntax and section presence; this
+agent lints every parameter against the built-in connector docs (19
+connectors): unknown connectors/params get did-you-mean suggestions
+(`quary` → `query`, `Consloe` → `Console`), required params are enforced,
+values are type- and enum-checked, strictly-source/sink connectors used in
+the wrong section are errors, and the env block is sanity-checked (CDC
+source + `job.mode = BATCH`, non-positive parallelism). Web UI at
+`/conflint`, REST under `/api/conflint/` (whitelisted via
+`CONFLINT_API_ALLOWED_DIRS`), demo data `examples/conflint_demo/`:
+
+```bash
+seatunnel-agent conflint -f job.conf                                # one file
+seatunnel-agent conflint --dir configs/ --fail-on error             # CI gate
+seatunnel-agent conflint -c 'source { Consloe {} } sink { Console {} }'
+seatunnel-agent conflint --dir configs/ -F json -o lint.json        # machine-readable
+```
+
+### Scheduling DAG Health Check Agent
+
+Builds the job DAG from SQL lineage (optionally merged with SeaTunnel
+configs) and reports what breaks a scheduler: dependency cycles
+(unschedulable), mid-layer tables no job produces (broken upstream),
+mid-layer tables nothing consumes (dead jobs), isolated tables — plus
+constructive output: topological execution batches (what can run in
+parallel, wave by wave) and the critical path bounding end-to-end latency.
+Web UI at `/dagcheck`, REST under `/api/dagcheck/` (whitelisted via
+`DAGCHECK_API_ALLOWED_DIRS`), demo data `examples/dagcheck_demo/`:
+
+```bash
+seatunnel-agent dagcheck -d warehouse_sql/                          # analyze a tree
+seatunnel-agent dagcheck -d sql/ --seatunnel-dir confs/ --lang en   # merge config lineage
+seatunnel-agent dagcheck -d sql/ -F json --fail-on error            # CI gate on cycles
+```
+
+### Metric Consistency Check Agent
+
+Scans column-level lineage for output columns that share one name but are
+DEFINED differently across jobs — the number-one cause of "two reports
+disagree". Expressions are canonicalized before comparing (aliases and
+table qualifiers stripped, `COUNT(1)` ≡ `COUNT(*)`), so formatting
+differences never flag; different formulas are **high**
+(`gmv = sum(amount)` vs `sum(amount - refund)`), plain copies from
+different source columns are **medium** (`contact ← phone` vs `← email`).
+Web UI at `/metricdiff`, REST under `/api/metricdiff/` (whitelisted via
+`METRICDIFF_API_ALLOWED_DIRS`), demo data `examples/metricdiff_demo/`:
+
+```bash
+seatunnel-agent metricdiff -d warehouse_sql/                        # scan a tree
+seatunnel-agent metricdiff -d sql/ --fail-on high                   # CI gate
+seatunnel-agent metricdiff -d sql/ -F json --lang en                # machine-readable
+```
+
+### SQL Formatter Agent
+
+Deterministic sqlglot pretty-printing with a black-style workflow:
+`--fail-on change` is the CI check (exit 1 when any file would be
+reformatted), `--write` applies in place, and a statement that does not
+parse is kept VERBATIM and reported — formatting never destroys content
+(files with parse failures are never written). Bare `SELECT *` gets a
+style note. Complements SQL Review: that agent judges semantics, this one
+makes every script look the same. Web UI at `/sqlfmt` (check-only), REST
+under `/api/sqlfmt/` (inline only), demo data `examples/sqlfmt_demo/`:
+
+```bash
+seatunnel-agent sqlfmt -s "select a,b from t where dt='2024-01-01'" # inline
+seatunnel-agent sqlfmt sql/ --fail-on change                        # CI check (black --check style)
+seatunnel-agent sqlfmt sql/ --write                                 # apply in place
+seatunnel-agent sqlfmt -d sql/ -F json                              # machine-readable
+```
+
 ### MCP Toolbox (`seatunnel-agent mcp`)
 
 One stdio MCP server that hands the whole agent suite to any MCP client
@@ -838,6 +914,10 @@ MIT
 - **批量日志巡检**：日志目录异常聚类 —— ERROR/WARN 事件（含完整 Java 堆栈）归一化（数字/路径/地址/ID 打码）后按**根因**聚类（最后一个 `Caused by:` × 消息模板 × 栈顶帧），把嘈杂日志收敛成 Top-N 个不同的问题，附次数、涉及文件与首末时间 —— CLI `seatunnel-agent loginspect`（`--fail-on error|warn`）、REST `/api/loginspect/`、Web 页面 `/loginspect`（可选 llm-generated 建议）、演示数据 `examples/logs_demo/`
 - **Schema 漂移检查**：对比两份 DDL 快照（文件/目录/粘贴脚本），每处结构变更分级 —— 破坏（删表删列、不兼容类型变更、分区布局变更）、风险（类型拓宽、疑似改名）、提示（新增、注释变更）—— CLI `seatunnel-agent schemadiff`（`--fail-on breaking|risk|info`）、REST `/api/schemadrift/`、Web 页面 `/schemadrift`、演示数据 `examples/schema_drift_demo/`；与 `/impact` 互补（SQL 逻辑变更 vs 表结构变更）
 - **SQL 测试数据生成**：关联感知造数，让查询真正跑通 —— 等值关联列共享取值池（JOIN 必然命中）、WHERE 字面量被满足（并混入一行故意不命中）、混入边界行（NULL/零值/空串），列类型来自 DDL 或按用法推断；可选在内存 SQLite 上做端到端验证（标准库，零依赖）—— CLI `seatunnel-agent testgen`（`--out` 写出 CSV + CREATE + INSERT）、REST `/api/testgen/`、Web 页面 `/testgen`、演示数据 `examples/testgen_demo/`
+- **SeaTunnel 配置深度检查**：对照内置连接器文档做 HOCON 参数级 lint —— 未知连接器/参数带「是不是想写」建议、缺失必填参数、类型与枚举校验、source/sink 角色用反、CDC 与 job.mode 冲突、parallelism 合法性 —— CLI `seatunnel-agent conflint`（`--fail-on error|warn`）、REST `/api/conflint/`、Web 页面 `/conflint`、演示数据 `examples/conflint_demo/`；只解析不执行
+- **调度 DAG 体检**：从 SQL/SeaTunnel 血缘构建作业 DAG，报告会卡住调度器的问题 —— 依赖成环、没人产出的中间层表（上游断链）、没人消费的中间层表（死作业）—— 并给出建设性输出：拓扑执行分批与关键路径 —— CLI `seatunnel-agent dagcheck`（`--fail-on error|warn`）、REST `/api/dagcheck/`、Web 页面 `/dagcheck`、演示数据 `examples/dagcheck_demo/`
+- **指标口径一致性检查**：找出不同作业里同名但定义不同的输出列（「两张报表数对不上」的头号原因）—— 表达式先归一化再比较（去别名/去表前缀、COUNT(1)≡COUNT(*)）：公式不同=高、取自不同来源列=中 —— CLI `seatunnel-agent metricdiff`（`--fail-on high|medium`）、REST `/api/metricdiff/`、Web 页面 `/metricdiff`、演示数据 `examples/metricdiff_demo/`
+- **SQL 格式化**：基于 sqlglot 的确定性排版，black 式工作流 —— `--fail-on change` 做 CI 检查、`--write` 写回、解析失败的语句原样保留（格式化永不破坏内容）、裸 `SELECT *` 给风格提示 —— CLI `seatunnel-agent sqlfmt`、REST `/api/sqlfmt/`、Web 页面 `/sqlfmt`、演示数据 `examples/sqlfmt_demo/`
 
 ### 快速开始
 
@@ -1494,6 +1574,70 @@ seatunnel-agent testgen -f query.sql --ddl ddl.sql --out testdata/   # CSV + CRE
 seatunnel-agent testgen --sql "SELECT a FROM t WHERE dt='2024-01-01'" --rows 10
 seatunnel-agent testgen -f query.sql -F json --no-validate           # 机器可读输出
 seatunnel-agent testgen -f query.sql --fail-on error                 # CI 门禁（解析/验证）
+```
+
+### SeaTunnel 配置深度检查 Agent
+
+内置的 `validate` 只查 HOCON 语法和配置段是否存在；这个 agent 对照内置
+连接器文档（19 个连接器）逐参数检查：未知连接器/参数带「是不是想写」
+建议（`quary` → `query`、`Consloe` → `Console`）、必填参数强制校验、
+取值做类型与枚举检查、只能做 source/sink 的连接器用错段算错误，env 段
+做合法性检查（CDC 源 + `job.mode = BATCH`、非正 parallelism）。Web 页面
+`/conflint`，REST `/api/conflint/`（白名单 `CONFLINT_API_ALLOWED_DIRS`），
+演示数据 `examples/conflint_demo/`：
+
+```bash
+seatunnel-agent conflint -f job.conf                                # 单文件
+seatunnel-agent conflint --dir configs/ --fail-on error             # CI 门禁
+seatunnel-agent conflint -c 'source { Consloe {} } sink { Console {} }'
+seatunnel-agent conflint --dir configs/ -F json -o lint.json        # 机器可读
+```
+
+### 调度 DAG 体检 Agent
+
+从 SQL 血缘（可选合并 SeaTunnel 配置血缘）构建作业 DAG，报告会卡住
+调度器的问题：依赖成环（无法调度）、没人产出的中间层表（上游断链）、
+没人消费的中间层表（死作业）、孤立表 —— 并给出建设性输出：拓扑执行
+分批（哪些表能并行、分几波跑）和决定端到端时延的关键路径。Web 页面
+`/dagcheck`，REST `/api/dagcheck/`（白名单 `DAGCHECK_API_ALLOWED_DIRS`），
+演示数据 `examples/dagcheck_demo/`：
+
+```bash
+seatunnel-agent dagcheck -d warehouse_sql/                          # 分析整个目录
+seatunnel-agent dagcheck -d sql/ --seatunnel-dir confs/ --lang en   # 合并配置血缘
+seatunnel-agent dagcheck -d sql/ -F json --fail-on error            # 环检测 CI 门禁
+```
+
+### 指标口径一致性检查 Agent
+
+扫描列级血缘，找出同名但在不同作业里**定义不同**的输出列 ——「两张报表
+数对不上」的头号原因。表达式先归一化再比较（去别名/去表前缀、
+`COUNT(1)` ≡ `COUNT(*)`），排版差异不会误报；公式不同是**高**风险
+（`gmv = sum(amount)` vs `sum(amount - refund)`），同名复制自不同来源列
+是**中**风险（`contact ← phone` vs `← email`）。Web 页面 `/metricdiff`，
+REST `/api/metricdiff/`（白名单 `METRICDIFF_API_ALLOWED_DIRS`），演示
+数据 `examples/metricdiff_demo/`：
+
+```bash
+seatunnel-agent metricdiff -d warehouse_sql/                        # 扫描整个目录
+seatunnel-agent metricdiff -d sql/ --fail-on high                   # CI 门禁
+seatunnel-agent metricdiff -d sql/ -F json --lang en                # 机器可读
+```
+
+### SQL 格式化 Agent
+
+基于 sqlglot 的确定性排版，black 式工作流：`--fail-on change` 做 CI
+检查（有文件需要重排就退 1）、`--write` 原地写回、解析失败的语句**原样
+保留**并报告 —— 格式化永不破坏内容（有解析失败的文件绝不写回）。裸
+`SELECT *` 给风格提示。与 SQL Review 互补：那边管语义质量，这边让所有
+脚本长一个样。Web 页面 `/sqlfmt`（只检查不写文件），REST
+`/api/sqlfmt/`（仅内联），演示数据 `examples/sqlfmt_demo/`：
+
+```bash
+seatunnel-agent sqlfmt -s "select a,b from t where dt='2024-01-01'" # 内联
+seatunnel-agent sqlfmt sql/ --fail-on change                        # CI 检查（black --check 式）
+seatunnel-agent sqlfmt sql/ --write                                 # 原地写回
+seatunnel-agent sqlfmt -d sql/ -F json                              # 机器可读
 ```
 
 ### MCP 工具箱（`seatunnel-agent mcp`）

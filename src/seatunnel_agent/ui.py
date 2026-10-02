@@ -919,6 +919,30 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Join-aware datasets that exercise a query, validated on in-memory SQLite" data-zh="关联感知造数，让查询真正跑通 — 内存 SQLite 一键验证">Join-aware datasets that exercise a query, validated on in-memory SQLite</div>
       <div class="st-hub-enter" style="color:#ca8a04;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/conflint">
+      <div class="st-hub-logo" style="background:#ea580c;">🧰</div>
+      <div class="st-hub-card-title" data-en="Config Lint" data-zh="配置深度检查">Config Lint</div>
+      <div class="st-hub-card-desc" data-en="Param-level lint of SeaTunnel configs vs the built-in connector docs — typos get did-you-mean" data-zh="对照内置连接器文档做参数级检查 — 拼错参数给「是不是想写」建议">Param-level lint of SeaTunnel configs vs the built-in connector docs — typos get did-you-mean</div>
+      <div class="st-hub-enter" style="color:#ea580c;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/dagcheck">
+      <div class="st-hub-logo" style="background:#0f766e;">🗓️</div>
+      <div class="st-hub-card-title" data-en="DAG Check" data-zh="调度 DAG 体检">DAG Check</div>
+      <div class="st-hub-card-desc" data-en="Cycles, broken upstream, dead jobs — plus execution batches and the critical path" data-zh="环/断链/死作业检测 — 并给出执行分批与关键路径">Cycles, broken upstream, dead jobs — plus execution batches and the critical path</div>
+      <div class="st-hub-enter" style="color:#0f766e;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/metricdiff">
+      <div class="st-hub-logo" style="background:#9333ea;">📏</div>
+      <div class="st-hub-card-title" data-en="Metric Diff" data-zh="指标口径一致性">Metric Diff</div>
+      <div class="st-hub-card-desc" data-en="Same-named metrics defined differently across jobs — why two reports disagree" data-zh="同名指标在不同作业里定义不同 — 「两张报表数对不上」的头号原因">Same-named metrics defined differently across jobs — why two reports disagree</div>
+      <div class="st-hub-enter" style="color:#9333ea;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/sqlfmt">
+      <div class="st-hub-logo" style="background:#4f46e5;">🪄</div>
+      <div class="st-hub-card-title" data-en="SQL Formatter" data-zh="SQL 格式化">SQL Formatter</div>
+      <div class="st-hub-card-desc" data-en="Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim" data-zh="确定性排版，black 式 --check / --write — 解析失败原样保留">Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim</div>
+      <div class="st-hub-enter" style="color:#4f46e5;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <div class="st-hub-card st-hub-card-soon">
       <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
       <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
@@ -1137,6 +1161,22 @@ def create_ui() -> gr.Blocks:
     with app.route("Test Data", "/testgen"):
         from .sql_testgen_ui import render_sql_testgen_page
         render_sql_testgen_page(app)
+
+    with app.route("Config Lint", "/conflint"):
+        from .config_lint_ui import render_config_lint_page
+        render_config_lint_page(app)
+
+    with app.route("DAG Check", "/dagcheck"):
+        from .dag_check_ui import render_dag_check_page
+        render_dag_check_page(app)
+
+    with app.route("Metric Diff", "/metricdiff"):
+        from .metric_diff_ui import render_metric_diff_page
+        render_metric_diff_page(app)
+
+    with app.route("SQL Format", "/sqlfmt"):
+        from .sql_fmt_ui import render_sql_fmt_page
+        render_sql_fmt_page(app)
 
     with app.route("MCP Toolbox", "/mcp"):
         render_mcp_page(app)
@@ -2765,6 +2805,10 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .log_inspect.api import router as loginspect_api_router
         from .schema_drift.api import router as schemadrift_api_router
         from .sql_testgen.api import router as testgen_api_router
+        from .config_lint.api import router as conflint_api_router
+        from .dag_check.api import router as dagcheck_api_router
+        from .metric_diff.api import router as metricdiff_api_router
+        from .sql_fmt.api import router as sqlfmt_api_router
         fastapi_app = app.app
         fastapi_app.include_router(t2s_api_router)
         fastapi_app.include_router(sql_review_api_router)
@@ -2775,6 +2819,10 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         fastapi_app.include_router(loginspect_api_router)
         fastapi_app.include_router(schemadrift_api_router)
         fastapi_app.include_router(testgen_api_router)
+        fastapi_app.include_router(conflint_api_router)
+        fastapi_app.include_router(dagcheck_api_router)
+        fastapi_app.include_router(metricdiff_api_router)
+        fastapi_app.include_router(sqlfmt_api_router)
 
     app.launch(
         server_name=host,

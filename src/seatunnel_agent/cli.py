@@ -1635,6 +1635,285 @@ def testgen(
             sys.exit(1)
 
 
+@cli.command()
+@click.option("--config", "-c", "config_text", type=str, default=None,
+              help="直接检查一段 HOCON 配置")
+@click.option("--file", "-f", "conf_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="检查单个 .conf 文件")
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="配置目录（递归扫描 *.conf）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["error", "warn"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def conflint(
+    config_text: str | None,
+    conf_file: str | None,
+    directory: str | None,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """SeaTunnel 配置深度检查 — 参数级 lint，未知参数带「是不是想写」建议。"""
+    import json as _json
+    from pathlib import Path
+
+    from .config_lint import (
+        lint_dir, lint_file, lint_text,
+        render_batch_markdown, render_markdown, result_to_dict,
+    )
+
+    if not config_text and not conf_file and not directory:
+        raise click.UsageError("Provide --config / --file / --dir")
+
+    if directory:
+        results = lint_dir(directory)
+        md = render_batch_markdown(results, lang)
+    elif conf_file:
+        results = [lint_file(conf_file)]
+        md = render_markdown(results[0], lang)
+    else:
+        results = [lint_text(config_text)]
+        md = render_markdown(results[0], lang)
+
+    if fmt == "json":
+        text_out = _json.dumps([result_to_dict(r, lang) for r in results],
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = md
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        rank = {"info": 1, "warn": 2, "error": 3}
+        threshold = rank[fail_on]
+        worst = max((rank[f.severity] for r in results for f in r.findings),
+                    default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的配置问题，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command()
+@click.option("--sql-dir", "-d", type=click.Path(exists=True, file_okay=False),
+              required=True, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False),
+              default=None, help="可选：合并 SeaTunnel 配置目录的 source→sink 血缘")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["error", "warn"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def dagcheck(
+    sql_dir: str,
+    seatunnel_dir: str | None,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """调度 DAG 体检 — 环/断链/死作业检测 + 执行分批与关键路径。"""
+    import json as _json
+    from pathlib import Path
+
+    from .dag_check import check_sql_dir, render_markdown, report_to_dict
+
+    report = check_sql_dir(sql_dir, dialect=dialect,
+                           seatunnel_dir=seatunnel_dir)
+
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        rank = {"info": 1, "warn": 2, "error": 3}
+        threshold = rank[fail_on]
+        worst = max((rank[f.severity] for f in report.findings), default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的调度隐患，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command()
+@click.option("--sql-dir", "-d", type=click.Path(exists=True, file_okay=False),
+              required=True, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium"]),
+              default=None, help="CI gate: exit 1 when conflicts at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def metricdiff(
+    sql_dir: str,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """指标口径一致性检查 — 同名输出列在不同作业里的定义冲突。"""
+    import json as _json
+    from pathlib import Path
+
+    from .metric_diff import check_sql_dir, render_markdown, report_to_dict
+
+    report = check_sql_dir(sql_dir, dialect=dialect)
+
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        rank = {"medium": 1, "high": 2}
+        threshold = rank[fail_on]
+        worst = max((rank[c.severity] for c in report.conflicts), default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的口径冲突，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command()
+@click.argument("paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--sql", "-s", type=str, default=None, help="直接格式化一段 SQL")
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--write", "-w", "do_write", is_flag=True,
+              help="将格式化结果写回文件（解析失败的文件绝不写）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["error", "change"]),
+              default=None,
+              help="CI gate: error=解析失败; change=有文件需要格式化（black --check 式）")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def sqlfmt(
+    paths: tuple[str, ...],
+    sql: str | None,
+    directory: str | None,
+    dialect: str,
+    do_write: bool,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """SQL 格式化 — sqlglot 确定性排版，--write 写回，--fail-on change 做 CI 门禁。
+
+    PATHS: optional *.sql files or directories (as passed by pre-commit)."""
+    import json as _json
+    from pathlib import Path
+
+    from .sql_fmt import (
+        FmtFileResult, fmt_dir, format_text,
+        render_batch_markdown, render_markdown, result_to_dict,
+    )
+    from .sql_fmt.formatter import collect_sql_files
+
+    if not sql and not directory and not paths:
+        raise click.UsageError("Provide --sql / --dir or positional paths")
+
+    file_results: list[FmtFileResult] = []
+    inline_result = None
+    if sql:
+        inline_result = format_text(sql, dialect=dialect)
+    if directory:
+        file_results.extend(fmt_dir(directory, dialect=dialect,
+                                    write=do_write))
+    for raw in paths:
+        p = Path(raw)
+        targets = collect_sql_files(p) if p.is_dir() else [p]
+        for f in targets:
+            text = f.read_text(encoding="utf-8", errors="replace")
+            result = format_text(text, dialect=dialect, name=str(f))
+            written = False
+            if do_write and result.changed and not result.failed:
+                f.write_text(result.formatted, encoding="utf-8")
+                written = True
+            file_results.append(FmtFileResult(
+                path=str(f), result=result, written=written))
+
+    if fmt == "json":
+        payload: list = []
+        if inline_result is not None:
+            payload.append(result_to_dict(inline_result))
+        payload.extend(r.to_dict() for r in file_results)
+        text_out = _json.dumps(payload, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        parts = []
+        if inline_result is not None:
+            parts.append(render_markdown(inline_result, lang))
+        if file_results:
+            parts.append(render_batch_markdown(file_results, lang))
+        text_out = "\n\n---\n\n".join(parts)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        failed = (inline_result.failed if inline_result else 0) \
+            + sum(r.result.failed for r in file_results)
+        changed = (1 if inline_result is not None and inline_result.changed
+                   else 0) \
+            + sum(1 for r in file_results
+                  if r.result.changed and not r.written)
+        hit = failed > 0 or (fail_on == "change" and changed > 0)
+        if hit:
+            msg = ("存在解析失败的 SQL，检查未通过。" if fail_on == "error"
+                   or changed == 0
+                   else "存在需要格式化的 SQL，检查未通过。")
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
 @cli.command(name="mcp")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Default report language")
