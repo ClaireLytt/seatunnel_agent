@@ -809,20 +809,86 @@ def _hub_health_html() -> str:
     return f'<div class="st-hub-health">{llm}{sep}{hive}{sep}{ut}</div>'
 
 
-def _build_hub_html() -> str:
-    tmpl = '''<div class="st-hub" id="st-hub">
-  <div class="st-hub-lang-row">
+_HUB_LANG_ROW = '''<div class="st-hub-lang-row">
     <select id="st-hub-lang" onchange="var l=this.value;document.cookie='st-lang='+l+';path=/;max-age=31536000';document.body.dataset.stLang=l;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.textContent=e.getAttribute('data-'+l)});">
       <option value="en" selected>English</option>
       <option value="zh">中文</option>
     </select>
-  </div>
-  <div class="st-hub-header">
-    <div class="st-hub-title" data-en="SeaTunnel Agent Platform" data-zh="SeaTunnel Agent 工作台">SeaTunnel Agent Platform</div>
-    <div class="st-hub-subtitle" data-en="AI Agent Workspace · Choose an agent to start" data-zh="AI Agent 工作台 · 选择一个能力开始">AI Agent Workspace · Choose an agent to start</div>
-    <!--STATUS-->
-  </div>
-  <div class="st-hub-grid">
+  </div>'''
+
+_HUB_BACK_LINK = ('<a class="st-hub-back" href="/" data-en="← Platform home" '
+                  'data-zh="← 返回首页">← Platform home</a>')
+
+
+def _hub_shell(header: str, body: str, back: bool = False) -> str:
+    """Shared scaffold for the hub pages (`/`, `/data`, `/ai`): lang select +
+    header block + body, all inside #st-hub so the data-en/zh swap JS works."""
+    back_html = f"\n  {_HUB_BACK_LINK}" if back else ""
+    return (f'<div class="st-hub" id="st-hub">{back_html}\n  {_HUB_LANG_ROW}\n'
+            f'  <div class="st-hub-header">\n{header}\n  </div>\n'
+            f'{body}\n</div>')
+
+
+def _build_landing_html() -> str:
+    """Root `/` — choose a workspace: Data Agents or AI Platform."""
+    header = '''    <div class="st-hub-title" data-en="SeaTunnel Agent Platform" data-zh="SeaTunnel Agent 工作台">SeaTunnel Agent Platform</div>
+    <div class="st-hub-subtitle" data-en="AI Agent Workspace · Choose a workspace to start" data-zh="AI Agent 工作台 · 选择一个工作区开始">AI Agent Workspace · Choose a workspace to start</div>
+    <!--STATUS-->'''
+    body = '''  <div class="st-hub-grid">
+    <a class="st-hub-card st-hub-section-card" href="/data">
+      <div class="st-hub-logo" style="background:#f76707;">DA</div>
+      <div class="st-hub-card-title" data-en="Data Agents" data-zh="数据 Agent 工作区">Data Agents</div>
+      <div class="st-hub-card-desc" data-en="20 agents for data work — pipeline builder, Text2SQL, SQL review / lineage / quality, scheduling &amp; more" data-zh="20 个数据能力 — 管道构建、Text2SQL、SQL 审查 / 血缘 / 质量、调度体检等">20 agents for data work — pipeline builder, Text2SQL, SQL review / lineage / quality, scheduling &amp; more</div>
+      <div class="st-hub-enter" style="color:#f76707;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card st-hub-section-card" href="/ai">
+      <div class="st-hub-logo" style="background:#7c3aed;">AI</div>
+      <div class="st-hub-card-title" data-en="AI Platform" data-zh="AI 平台">AI Platform</div>
+      <div class="st-hub-card-desc" data-en="LLM engineering — agent orchestrator, LLM eval, prompt lab, cost observability" data-zh="LLM 工程 — 智能编排、LLM 评测、Prompt 实验室、成本观测">LLM engineering — agent orchestrator, LLM eval, prompt lab, cost observability</div>
+      <div class="st-hub-enter" style="color:#7c3aed;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+  </div>'''
+    return _hub_shell(header, body).replace("<!--STATUS-->", _hub_health_html())
+
+
+def _build_ai_hub_html() -> str:
+    """`/ai` — the AI Platform workspace: four LLM-engineering modules."""
+    header = '''    <div class="st-hub-title" data-en="AI Platform" data-zh="AI 平台">AI Platform</div>
+    <div class="st-hub-subtitle" data-en="LLM engineering workspace · orchestrate, evaluate, experiment, observe" data-zh="LLM 工程工作台 · 编排、评测、实验、观测">LLM engineering workspace · orchestrate, evaluate, experiment, observe</div>'''
+    body = '''  <div class="st-hub-grid">
+    <a class="st-hub-card" href="/orchestrator">
+      <div class="st-hub-logo" style="background:#7c3aed;">AI</div>
+      <div class="st-hub-card-title" data-en="Agent Orchestrator" data-zh="智能编排">Agent Orchestrator</div>
+      <div class="st-hub-card-desc" data-en="One chat entry for the whole platform — LLM routes your request to the right agents and chains steps" data-zh="全平台统一对话入口 — LLM 自动路由到合适的 agent 并串联多步">One chat entry for the whole platform — LLM routes your request to the right agents and chains steps</div>
+      <div class="st-hub-enter" style="color:#7c3aed;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/llmeval">
+      <div class="st-hub-logo" style="background:#0ea5e9;">EV</div>
+      <div class="st-hub-card-title" data-en="LLM Eval" data-zh="LLM 评测">LLM Eval</div>
+      <div class="st-hub-card-desc" data-en="Golden suites for the LLM features — automated scoring, regression gate, score trends" data-zh="LLM 功能黄金用例集 — 自动打分、回归门禁、分数趋势">Golden suites for the LLM features — automated scoring, regression gate, score trends</div>
+      <div class="st-hub-enter" style="color:#0ea5e9;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/promptlab">
+      <div class="st-hub-logo" style="background:#16a34a;">PL</div>
+      <div class="st-hub-card-title" data-en="Prompt Lab" data-zh="Prompt 实验室">Prompt Lab</div>
+      <div class="st-hub-card-desc" data-en="Run one prompt across provider profiles side-by-side — outputs, tokens, latency, diff" data-zh="同一 Prompt 多个模型档案并排对比 — 输出、token、耗时与差异">Run one prompt across provider profiles side-by-side — outputs, tokens, latency, diff</div>
+      <div class="st-hub-enter" style="color:#16a34a;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/llmcost">
+      <div class="st-hub-logo" style="background:#f59e0b;">$</div>
+      <div class="st-hub-card-title" data-en="LLM Cost" data-zh="LLM 成本观测">LLM Cost</div>
+      <div class="st-hub-card-desc" data-en="Cost &amp; usage dashboard over the LLM call log — pricing table, per-model/day charts, anomaly flags" data-zh="基于调用日志的成本用量看板 — 价格表、按模型/按天图表、异常标记">Cost &amp; usage dashboard over the LLM call log — pricing table, per-model/day charts, anomaly flags</div>
+      <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+  </div>'''
+    return _hub_shell(header, body, back=True)
+
+
+def _build_data_hub_html() -> str:
+    """`/data` — the Data Agents workspace: the full agent card grid."""
+    header = '''    <div class="st-hub-title" data-en="Data Agents" data-zh="数据 Agent 工作区">Data Agents</div>
+    <div class="st-hub-subtitle" data-en="Data engineering workspace · Choose an agent to start" data-zh="数据工程工作台 · 选择一个能力开始">Data engineering workspace · Choose an agent to start</div>'''
+    body = '''  <div class="st-hub-grid">
     <a class="st-hub-card" href="/seatunnel">
       <div class="st-hub-logo" style="background:#f76707;">ST</div>
       <div class="st-hub-card-title" data-en="SeaTunnel Pipeline Builder" data-zh="SeaTunnel Pipeline Builder · 数据管道构建">SeaTunnel Pipeline Builder</div>
@@ -943,14 +1009,32 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim" data-zh="确定性排版，black 式 --check / --write — 解析失败原样保留">Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim</div>
       <div class="st-hub-enter" style="color:#4f46e5;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
-    <div class="st-hub-card st-hub-card-soon">
-      <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
-      <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
-      <div class="st-hub-card-desc" data-en="More agent capabilities coming soon..." data-zh="更多 Agent 能力筹备中...">More agent capabilities coming soon...</div>
-    </div>
-  </div>
-</div>'''
-    return tmpl.replace("<!--STATUS-->", _hub_health_html())
+  </div>'''
+    return _hub_shell(header, body, back=True)
+
+
+# Restore the language chosen in a previous visit — chained after the HTML
+# refresh so the swap runs on the fresh markup, not the stale one.
+_HUB_LANG_RESTORE_JS = """
+() => {
+    const m = document.cookie.match(/(?:^|; )st-lang=(zh|en)/);
+    const l = m ? m[1] : 'en';
+    document.body.dataset.stLang = l;
+    const sel = document.getElementById('st-hub-lang');
+    if (sel && sel.value !== l) {
+        sel.value = l;
+        sel.dispatchEvent(new Event('change'));
+    }
+}
+"""
+
+
+def _mount_hub(app: gr.Blocks, builder) -> None:
+    """Render a hub page inside the current route: static HTML recomputed on
+    every visit (the health strip / card set change without a restart), then
+    the saved language preference is re-applied."""
+    hub_html = gr.HTML(builder())
+    app.load(fn=builder, outputs=[hub_html]).then(fn=None, js=_HUB_LANG_RESTORE_JS)
 
 
 # Drag-to-resize for the left sidebar: restores the saved width, appends a
@@ -1076,24 +1160,14 @@ def create_ui() -> gr.Blocks:
         fill_height=True,
         fill_width=True,
     ) as app:
-        hub_html = gr.HTML(_build_hub_html())
+        _mount_hub(app, _build_landing_html)
         app.load(fn=None, js=_hide_sub_nav_js)
-        # Recompute the health strip on every visit (LLM/Hive config and the
-        # last UI-test run change without a restart), THEN restore the
-        # language chosen in a previous visit — chained so the swap runs on
-        # the fresh HTML, not the stale one.
-        app.load(fn=_build_hub_html, outputs=[hub_html]).then(fn=None, js="""
-        () => {
-            const m = document.cookie.match(/(?:^|; )st-lang=(zh|en)/);
-            const l = m ? m[1] : 'en';
-            document.body.dataset.stLang = l;
-            const sel = document.getElementById('st-hub-lang');
-            if (sel && sel.value !== l) {
-                sel.value = l;
-                sel.dispatchEvent(new Event('change'));
-            }
-        }
-        """)
+
+    with app.route("Data Agents", "/data"):
+        _mount_hub(app, _build_data_hub_html)
+
+    with app.route("AI Platform", "/ai"):
+        _mount_hub(app, _build_ai_hub_html)
 
     with app.route("SeaTunnel", "/seatunnel"):
         _render_seatunnel_page(app)
@@ -2133,12 +2207,6 @@ a.st-hub-bad:hover { text-decoration: underline; }
     box-shadow: 0 8px 24px rgba(0,0,0,.08);
     border-color: #d1d5db;
 }
-.st-hub-card-soon {
-    cursor: default;
-    border-style: dashed;
-    opacity: .8;
-}
-.st-hub-card-soon:hover { transform: none; box-shadow: none; }
 .st-hub-logo {
     width: 44px;
     height: 44px;
@@ -2174,6 +2242,27 @@ a.st-hub-bad:hover { text-decoration: underline; }
     font-size: 11px;
     font-weight: 600;
 }
+.st-hub-section-card {
+    width: 320px;
+    padding: 28px 24px;
+}
+.st-hub-section-card .st-hub-logo {
+    width: 52px;
+    height: 52px;
+    font-size: 17px;
+}
+.st-hub-section-card .st-hub-card-title { font-size: 16px; }
+.st-hub-section-card .st-hub-card-desc { font-size: 12px; }
+.st-hub-back {
+    position: absolute;
+    top: 16px;
+    left: 24px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    text-decoration: none !important;
+}
+.st-hub-back:hover { color: #f76707; }
 /* ══════════════════════════════════════════
    Chatbot — fill remaining height exactly
    ══════════════════════════════════════════ */
