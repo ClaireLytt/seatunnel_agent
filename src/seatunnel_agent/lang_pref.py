@@ -25,15 +25,23 @@ STAMP_JS = """
     document.body.dataset.stLang = lang;
 
     const AI_PAGES = ['/orchestrator', '/llmeval', '/promptlab', '/llmcost'];
+    const DEVOPS_PAGES = ['/secretscan', '/ciinspect', '/depcheck', '/release'];
     // engineering tools live on the landing page itself — 🏠 already returns
     const ENG_PAGES = ['/loginspect', '/uitest', '/mcp', '/settings'];
     const path = window.location.pathname.replace(/\\/+$/, '') || '/';
     if (path === '/' || path === '/data' || path === '/ai'
-        || ENG_PAGES.includes(path)) return;
-    const isAi = AI_PAGES.includes(path);
-    const target = isAi ? '/ai' : '/data';
-    const label = isAi ? (lang === 'zh' ? 'AI 平台' : 'AI Platform')
-                       : (lang === 'zh' ? '数据 Agent' : 'Data Agents');
+        || path === '/devops' || ENG_PAGES.includes(path)) return;
+    let target, label;
+    if (AI_PAGES.includes(path)) {
+        target = '/ai';
+        label = lang === 'zh' ? 'AI 平台' : 'AI Platform';
+    } else if (DEVOPS_PAGES.includes(path)) {
+        target = '/devops';
+        label = lang === 'zh' ? 'DevOps' : 'DevOps';
+    } else {
+        target = '/data';
+        label = lang === 'zh' ? '数据 Agent' : 'Data Agents';
+    }
     let tries = 0;
     const timer = setInterval(() => {
         tries += 1;

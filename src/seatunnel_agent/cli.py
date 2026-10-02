@@ -2645,5 +2645,67 @@ def orchestrate(
         console.print(f"[dim]报告已保存: {output}[/dim]")
 
 
+@cli.command()
+@click.argument("paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--text", "-t", default=None, help="直接扫描一段文本")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
+              default=None,
+              help="CI gate: 达到该严重度及以上的发现时退出 1")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def secretscan(
+    paths: tuple[str, ...],
+    text: str | None,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """敏感凭证扫描 — 云厂商 token / 私钥 / 明文密码 / 高熵串,预览脱敏。
+
+    PATHS: 文件或目录(pre-commit 风格);.secretscan.yaml 可配置豁免,
+    单行加 secretscan:ignore 跳过。"""
+    import json as _json
+    from pathlib import Path
+
+    from .secret_scan import (
+        ScanResult, check_fail, render_markdown, scan_paths, scan_text,
+    )
+
+    if not text and not paths:
+        raise click.UsageError("Provide --text or positional paths")
+
+    if text:
+        result = ScanResult(findings=scan_text(text), files_scanned=1)
+    else:
+        try:
+            result = scan_paths(list(paths))
+        except ValueError as exc:  # malformed .secretscan.yaml
+            console.print(f"[red]{exc}[/red]")
+            sys.exit(2)
+
+    if fmt == "json":
+        text_out = _json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on and check_fail(result, fail_on):
+        msg = f"存在 {fail_on} 及以上严重度的疑似凭证,检查未通过。"
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()

@@ -834,7 +834,7 @@ def _build_landing_html() -> str:
     header = '''    <div class="st-hub-title" data-en="SeaTunnel Agent Platform" data-zh="SeaTunnel Agent 工作台">SeaTunnel Agent Platform</div>
     <div class="st-hub-subtitle" data-en="AI Agent Workspace · Choose a workspace to start" data-zh="AI Agent 工作台 · 选择一个工作区开始">AI Agent Workspace · Choose a workspace to start</div>
     <!--STATUS-->'''
-    body = '''  <div class="st-hub-grid">
+    body = '''  <div class="st-hub-grid st-hub-grid-4">
     <a class="st-hub-card st-hub-section-card" href="/data">
       <div class="st-hub-logo" style="background:#f76707;">DA</div>
       <div class="st-hub-card-title" data-en="Data Agents" data-zh="数据 Agent 工作区">Data Agents</div>
@@ -846,6 +846,12 @@ def _build_landing_html() -> str:
       <div class="st-hub-card-title" data-en="AI Platform" data-zh="AI 平台">AI Platform</div>
       <div class="st-hub-card-desc" data-en="LLM engineering — agent orchestrator, LLM eval, prompt lab, cost observability" data-zh="LLM 工程 — 智能编排、LLM 评测、Prompt 实验室、成本观测">LLM engineering — agent orchestrator, LLM eval, prompt lab, cost observability</div>
       <div class="st-hub-enter" style="color:#7c3aed;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card st-hub-section-card" href="/devops">
+      <div class="st-hub-logo" style="background:#0d9488;">DO</div>
+      <div class="st-hub-card-title" data-en="DevOps" data-zh="DevOps 工作区">DevOps</div>
+      <div class="st-hub-card-desc" data-en="Engineering hygiene — secret scan, CI log triage, dependency health, release notes" data-zh="工程卫生 — 凭证扫描、CI 日志诊断、依赖体检、发布助手">Engineering hygiene — secret scan, CI log triage, dependency health, release notes</div>
+      <div class="st-hub-enter" style="color:#0d9488;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
   </div>'''
     # cross-cutting engineering tools live right on the landing page
@@ -1050,6 +1056,39 @@ _DATA_CARDS_HTML = '''
     </a>'''
 
 
+def _build_devops_hub_html() -> str:
+    """`/devops` — engineering-hygiene workspace: four deterministic tools."""
+    header = '''    <div class="st-hub-title" data-en="DevOps" data-zh="DevOps 工作区">DevOps</div>
+    <div class="st-hub-subtitle" data-en="Engineering hygiene · scan, triage, audit, release" data-zh="工程卫生工作台 · 扫描、诊断、体检、发布">Engineering hygiene · scan, triage, audit, release</div>'''
+    body = '''  <div class="st-hub-grid st-hub-grid-4">
+    <a class="st-hub-card" href="/secretscan">
+      <div class="st-hub-logo" style="background:#dc2626;">🔑</div>
+      <div class="st-hub-card-title" data-en="Secret Scan" data-zh="敏感凭证扫描">Secret Scan</div>
+      <div class="st-hub-card-desc" data-en="Provider tokens, private keys, password assignments &amp; high-entropy strings — masked previews, CI gate" data-zh="云厂商 token、私钥、明文密码与高熵串 — 预览脱敏,可做 CI 门禁">Provider tokens, private keys, password assignments &amp; high-entropy strings — masked previews, CI gate</div>
+      <div class="st-hub-enter" style="color:#dc2626;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/ciinspect">
+      <div class="st-hub-logo" style="background:#2563eb;">CI</div>
+      <div class="st-hub-card-title" data-en="CI Log Triage" data-zh="CI 日志诊断">CI Log Triage</div>
+      <div class="st-hub-card-desc" data-en="Cluster failed-job logs into root causes, spot flaky jobs and duration drift across runs" data-zh="失败日志聚类出根因,识别 flaky 作业与时长漂移">Cluster failed-job logs into root causes, spot flaky jobs and duration drift across runs</div>
+      <div class="st-hub-enter" style="color:#2563eb;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/depcheck">
+      <div class="st-hub-logo" style="background:#0d9488;">📦</div>
+      <div class="st-hub-card-title" data-en="Dependency Health" data-zh="依赖体检">Dependency Health</div>
+      <div class="st-hub-card-desc" data-en="Declared vs installed, unpinned specs, duplicate pins and a license inventory — offline" data-zh="声明 vs 实装、未钉版本、重复/冲突与 License 清单 — 全离线">Declared vs installed, unpinned specs, duplicate pins and a license inventory — offline</div>
+      <div class="st-hub-enter" style="color:#0d9488;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/release">
+      <div class="st-hub-logo" style="background:#ca8a04;">🚀</div>
+      <div class="st-hub-card-title" data-en="Release Notes" data-zh="发布助手">Release Notes</div>
+      <div class="st-hub-card-desc" data-en="Grouped changelog from conventional commits + semver bump suggestion; optional LLM polish" data-zh="按 conventional commits 分组生成 changelog + 语义化版本建议;可选 LLM 润色">Grouped changelog from conventional commits + semver bump suggestion; optional LLM polish</div>
+      <div class="st-hub-enter" style="color:#ca8a04;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+  </div>'''
+    return _hub_shell(header, body, back=True)
+
+
 def _card_blocks() -> dict[str, str]:
     """href → card HTML block, extracted from the single literal above."""
     return {href: block for block, href in re.findall(
@@ -1227,6 +1266,9 @@ def create_ui() -> gr.Blocks:
     with app.route("AI Platform", "/ai"):
         _mount_hub(app, _build_ai_hub_html)
 
+    with app.route("DevOps", "/devops"):
+        _mount_hub(app, _build_devops_hub_html)
+
     with app.route("SeaTunnel", "/seatunnel"):
         _render_seatunnel_page(app)
         app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
@@ -1328,6 +1370,10 @@ def create_ui() -> gr.Blocks:
     with app.route("Orchestrator", "/orchestrator"):
         from .orchestrator_ui import render_orchestrator_page
         render_orchestrator_page(app)
+
+    with app.route("Secret Scan", "/secretscan"):
+        from .secret_scan_ui import render_secret_scan_page
+        render_secret_scan_page(app)
 
     return app
 
@@ -3032,6 +3078,7 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .log_inspect.api import router as loginspect_api_router
         from .metric_diff.api import router as metricdiff_api_router
         from .orchestrator.api import router as orchestrator_api_router
+        from .secret_scan.api import router as secretscan_api_router
         from .pii_scan.api import router as pii_api_router
         from .prompt_lab.api import router as promptlab_api_router
         from .schema_drift.api import router as schemadrift_api_router
@@ -3059,6 +3106,7 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
             promptlab_api_router,
             llmeval_api_router,
             orchestrator_api_router,
+            secretscan_api_router,
         ):
             fastapi_app.include_router(router)
 
