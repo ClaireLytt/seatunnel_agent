@@ -14,11 +14,41 @@ import gradio as gr
 
 COOKIE = "st-lang"
 
-# app.load(fn=None, js=STAMP_JS): stamp the body for the UI test agent.
+# app.load(fn=None, js=STAMP_JS): stamp the body for the UI test agent, and
+# inject the workspace back-button next to the page's 🏠 (AI Platform pages
+# go back to /ai, data agent pages to /data; the hub pages themselves have
+# their own "← Platform home" link instead).
 STAMP_JS = """
 () => {
     const m = document.cookie.match(/(?:^|; )st-lang=(zh|en)/);
-    document.body.dataset.stLang = m ? m[1] : 'en';
+    const lang = m ? m[1] : 'en';
+    document.body.dataset.stLang = lang;
+
+    const AI_PAGES = ['/orchestrator', '/llmeval', '/promptlab', '/llmcost'];
+    const path = window.location.pathname.replace(/\\/+$/, '') || '/';
+    if (path === '/' || path === '/data' || path === '/ai') return;
+    const isAi = AI_PAGES.includes(path);
+    const target = isAi ? '/ai' : '/data';
+    const label = isAi ? (lang === 'zh' ? 'AI 平台' : 'AI Platform')
+                       : (lang === 'zh' ? '数据 Agent' : 'Data Agents');
+    let tries = 0;
+    const timer = setInterval(() => {
+        tries += 1;
+        if (document.getElementById('st-ws-btn') || tries > 40) {
+            clearInterval(timer);
+            return;
+        }
+        const home = document.querySelector('.st-home-btn');
+        if (!home) return;  // page without a home button: keep polling, then give up
+        const btn = document.createElement('button');
+        btn.id = 'st-ws-btn';
+        btn.className = 'st-ws-btn';
+        btn.textContent = '\\u21a9 ' + label;
+        btn.title = target;
+        btn.onclick = () => { window.location.href = target; };
+        home.parentElement.insertBefore(btn, home);
+        clearInterval(timer);
+    }, 250);
 }
 """
 

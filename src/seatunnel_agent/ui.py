@@ -2731,6 +2731,26 @@ a.st-hub-bad:hover { text-decoration: underline; }
     border-color: #f76707 !important;
     background: #fff7ed !important;
 }
+/* workspace back-button injected by lang_pref.STAMP_JS next to the 🏠 */
+.st-ws-btn {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+    color: #374151;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    background: #f9fafb;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+    align-self: center;
+    margin-right: 6px;
+}
+.st-ws-btn:hover {
+    border-color: #f76707;
+    color: #f76707;
+    background: #fff7ed;
+}
 
 
 /* ── History / Favorites page ── */

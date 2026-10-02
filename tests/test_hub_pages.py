@@ -65,6 +65,23 @@ class TestDataHub:
         assert "st-hub-card-soon" not in _build_data_hub_html()
 
 
+class TestWorkspaceBackButton:
+    """STAMP_JS (loaded by every page) injects the ↩ workspace button."""
+
+    def test_mapping_in_stamp_js(self):
+        from seatunnel_agent.lang_pref import STAMP_JS
+        for route in _AI_ROUTES:
+            assert f"'{route}'" in STAMP_JS, route
+        assert "'/ai'" in STAMP_JS and "'/data'" in STAMP_JS
+        assert "st-ws-btn" in STAMP_JS
+        # hub pages must NOT get the button (they have their own back link)
+        assert "path === '/' || path === '/data' || path === '/ai'" in STAMP_JS
+
+    def test_css_present(self):
+        from seatunnel_agent.ui import _CUSTOM_CSS
+        assert ".st-ws-btn" in _CUSTOM_CSS
+
+
 class TestAiHub:
     def test_four_module_cards(self):
         html = _build_ai_hub_html()
