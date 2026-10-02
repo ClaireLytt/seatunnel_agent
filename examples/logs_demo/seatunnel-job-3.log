@@ -1,0 +1,15 @@
+2024-03-02 02:30:00,101 INFO  [main] org.apache.seatunnel.core.starter.SeaTunnel - Starting job kafka_to_hive_3
+2024-03-02 02:30:03,220 ERROR [main] org.apache.seatunnel.core.starter.command.Command - Job bootstrap failed
+java.lang.ClassNotFoundException: com.mysql.cj.jdbc.Driver
+	at java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:445)
+	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:592)
+	at org.apache.seatunnel.connectors.jdbc.config.JdbcDriverLoader.load(JdbcDriverLoader.java:41)
+2024-03-02 02:35:00,040 ERROR [task-1] org.apache.seatunnel.connectors.jdbc.JdbcSource - Connect failed
+java.sql.SQLNonTransientConnectionException: Could not connect to address=(host=10.9.8.7)(port=3306): Connection refused
+	at org.mariadb.jdbc.internal.util.exceptions.ExceptionFactory.createException(ExceptionFactory.java:73)
+	at org.apache.seatunnel.connectors.jdbc.source.JdbcSourceReader.open(JdbcSourceReader.java:88)
+Caused by: java.net.ConnectException: Connection refused: connect
+	at java.base/sun.nio.ch.Net.pollConnect(Native Method)
+	... 12 more
+2024-03-02 02:36:10,550 WARN  [task-2] org.apache.seatunnel.engine.server.CheckpointCoordinator - Checkpoint 17 timed out after 60000 ms, will retry
+2024-03-02 02:40:00,000 INFO  [main] org.apache.seatunnel.core.starter.SeaTunnel - Job cancelled by user

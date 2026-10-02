@@ -1,0 +1,88 @@
+# LGI 组 · 批量日志巡检页 (/loginspect)。纯确定性（异常聚类），不连接数据库；
+# 演示数据 examples/logs_demo: 3 文件 = error 簇 3（跨文件 ConnectException）/ warn 簇 3。
+
+- id: LGI1
+  title: 巡检演示目录出异常簇
+  tags: [smoke, sqlite]
+  page: /loginspect
+  steps:
+    - fill: {日志目录: examples/logs_demo}
+    - click: 巡检目录
+    - wait_result: {}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: 批量日志巡检}
+    - text_contains: {in: 结果区, text: java.net.ConnectException}
+    - text_contains: {in: 结果区, text: OutOfMemoryError}
+
+- id: LGI2
+  title: 粘贴堆栈按根因聚类
+  tags: [smoke, sqlite]
+  page: /loginspect
+  steps:
+    - open_accordion: {target: 巡检粘贴的日志}
+    - fill:
+        日志文本: |-
+          2024-03-01 08:00:05 ERROR [t] com.foo.Src - Connect failed
+          java.sql.SQLNonTransientConnectionException: Could not connect
+          	at com.foo.Reader.open(Reader.java:88)
+          Caused by: java.net.ConnectException: Connection refused: connect
+          	at sun.nio.ch.Net.pollConnect(Native Method)
+    - click: 巡检文本
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: java.net.ConnectException}
+    - text_contains: {in: 结果区, text: 栈顶帧}
+
+- id: LGI3
+  title: 排除 WARN 后簇数减少
+  tags: [full, sqlite]
+  page: /loginspect
+  setup:
+    - fill: {日志目录: examples/logs_demo}
+    - click: 巡检目录
+    - wait_result: {}
+  steps:
+    - check: {target: 包含 WARN 事件, on: false}
+    - click: 巡检目录
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: warn 0}
+    - text_not_contains: {in: 结果区, text: Stream load slow}
+
+- id: LGI4
+  title: 目录不存在给出警告不崩溃
+  tags: [full, sqlite]
+  page: /loginspect
+  steps:
+    - fill: {日志目录: no_such_dir_lgi}
+    - click: 巡检目录
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 不是有效目录}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: LGI5
+  title: 干净日志报告无事件
+  tags: [full, sqlite]
+  page: /loginspect
+  steps:
+    - open_accordion: {target: 巡检粘贴的日志}
+    - fill: {日志文本: "2024-01-01 00:00:00 INFO all good"}
+    - click: 巡检文本
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 干净}
+
+- id: LGI6
+  title: 英文界面巡检链路
+  tags: [full, sqlite]
+  lang: en
+  page: /loginspect
+  steps:
+    - fill: {Log directory: examples/logs_demo}
+    - click: Inspect directory
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: Batch Log Inspection}
+    - text_contains: {in: 结果区, text: Top clusters}

@@ -1,0 +1,13 @@
+2024-03-01 09:12:00,010 INFO  [main] org.apache.seatunnel.core.starter.SeaTunnel - Starting job hive_to_doris_7
+2024-03-01 09:12:08,500 ERROR [task-3] org.apache.seatunnel.engine.server.TaskExecutionService - Task crashed
+java.lang.OutOfMemoryError: Java heap space
+	at java.base/java.util.Arrays.copyOf(Arrays.java:3482)
+	at org.apache.seatunnel.connectors.hive.source.HiveSourceReader.readBatch(HiveSourceReader.java:214)
+	at org.apache.seatunnel.engine.server.task.SourceSplitEnumeratorTask.run(SourceSplitEnumeratorTask.java:132)
+2024-03-01 09:13:44,712 ERROR [task-5] org.apache.seatunnel.engine.server.TaskExecutionService - Task crashed
+java.lang.OutOfMemoryError: Java heap space
+	at java.base/java.util.Arrays.copyOf(Arrays.java:3482)
+	at org.apache.seatunnel.connectors.hive.source.HiveSourceReader.readBatch(HiveSourceReader.java:214)
+2024-03-01 09:14:02,003 WARN  [task-6] org.apache.seatunnel.connectors.doris.sink.DorisSinkWriter - Stream load slow: txn 44121 took 30841 ms
+2024-03-01 09:15:09,377 WARN  [task-6] org.apache.seatunnel.connectors.doris.sink.DorisSinkWriter - Stream load slow: txn 44388 took 42110 ms
+2024-03-01 09:20:00,000 INFO  [main] org.apache.seatunnel.core.starter.SeaTunnel - Job failed after 2 attempts

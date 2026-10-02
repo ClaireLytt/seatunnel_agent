@@ -895,6 +895,30 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Configure the LLM API (provider, key, model, base URL) from the browser — no .env editing" data-zh="在界面上配置 LLM API（提供商 / Key / 模型 / Base URL），无需修改本地 .env">Configure the LLM API (provider, key, model, base URL) from the browser — no .env editing</div>
       <div class="st-hub-enter" style="color:#64748b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/pii">
+      <div class="st-hub-logo" style="background:#dc2626;">🔒</div>
+      <div class="st-hub-card-title" data-en="PII Scan" data-zh="敏感数据扫描 PII">PII Scan</div>
+      <div class="st-hub-card-desc" data-en="Naming rules × column lineage — find sensitive columns and flag unmasked downstream spread" data-zh="命名规则 × 字段血缘 — 识别敏感列并标出未脱敏的下游扩散">Naming rules × column lineage — find sensitive columns and flag unmasked downstream spread</div>
+      <div class="st-hub-enter" style="color:#dc2626;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/loginspect">
+      <div class="st-hub-logo" style="background:#7c3aed;">🧾</div>
+      <div class="st-hub-card-title" data-en="Log Inspection" data-zh="批量日志巡检">Log Inspection</div>
+      <div class="st-hub-card-desc" data-en="Exception clustering over a log directory — collapse noisy logs into Top-N root causes" data-zh="日志目录异常聚类 — 把嘈杂日志收敛成 Top-N 个根因">Exception clustering over a log directory — collapse noisy logs into Top-N root causes</div>
+      <div class="st-hub-enter" style="color:#7c3aed;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/schemadrift">
+      <div class="st-hub-logo" style="background:#2563eb;">🧬</div>
+      <div class="st-hub-card-title" data-en="Schema Drift" data-zh="Schema 漂移检查">Schema Drift</div>
+      <div class="st-hub-card-desc" data-en="Diff two DDL snapshots — breaking / risk / info severity for every structural change" data-zh="对比两份 DDL 快照 — 每处结构变更按破坏 / 风险 / 提示分级">Diff two DDL snapshots — breaking / risk / info severity for every structural change</div>
+      <div class="st-hub-enter" style="color:#2563eb;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/testgen">
+      <div class="st-hub-logo" style="background:#ca8a04;">🧪</div>
+      <div class="st-hub-card-title" data-en="Test Data Generator" data-zh="SQL 测试数据生成">Test Data Generator</div>
+      <div class="st-hub-card-desc" data-en="Join-aware datasets that exercise a query, validated on in-memory SQLite" data-zh="关联感知造数，让查询真正跑通 — 内存 SQLite 一键验证">Join-aware datasets that exercise a query, validated on in-memory SQLite</div>
+      <div class="st-hub-enter" style="color:#ca8a04;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <div class="st-hub-card st-hub-card-soon">
       <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
       <div class="st-hub-card-title" style="color:#9ca3af;" data-en="More Agents" data-zh="更多 Agent">More Agents</div>
@@ -1097,6 +1121,22 @@ def create_ui() -> gr.Blocks:
 
     with app.route("Data Skew", "/dataskew"):
         render_data_skew_page(app)
+
+    with app.route("PII Scan", "/pii"):
+        from .pii_ui import render_pii_page
+        render_pii_page(app)
+
+    with app.route("Log Inspect", "/loginspect"):
+        from .log_inspect_ui import render_log_inspect_page
+        render_log_inspect_page(app)
+
+    with app.route("Schema Drift", "/schemadrift"):
+        from .schema_drift_ui import render_schema_drift_page
+        render_schema_drift_page(app)
+
+    with app.route("Test Data", "/testgen"):
+        from .sql_testgen_ui import render_sql_testgen_page
+        render_sql_testgen_page(app)
 
     with app.route("MCP Toolbox", "/mcp"):
         render_mcp_page(app)
@@ -2721,12 +2761,20 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .data_lineage.api import router as lineage_api_router
         from .sql_transpile.api import router as transpile_api_router
         from .data_skew.api import router as skew_api_router
+        from .pii_scan.api import router as pii_api_router
+        from .log_inspect.api import router as loginspect_api_router
+        from .schema_drift.api import router as schemadrift_api_router
+        from .sql_testgen.api import router as testgen_api_router
         fastapi_app = app.app
         fastapi_app.include_router(t2s_api_router)
         fastapi_app.include_router(sql_review_api_router)
         fastapi_app.include_router(lineage_api_router)
         fastapi_app.include_router(transpile_api_router)
         fastapi_app.include_router(skew_api_router)
+        fastapi_app.include_router(pii_api_router)
+        fastapi_app.include_router(loginspect_api_router)
+        fastapi_app.include_router(schemadrift_api_router)
+        fastapi_app.include_router(testgen_api_router)
 
     app.launch(
         server_name=host,
