@@ -12,6 +12,7 @@ import gradio as gr
 
 from .llm_cost import merged_prices, override_path, render_markdown, summarize_cost
 from .llm_cost.i18n import normalize_lang
+from .utils import cjk_font_family
 
 _DAY_CHOICES = [7, 14, 30, 90]
 
@@ -71,7 +72,9 @@ def _cost_figure(summary: dict, lang: str):
                color=palette[i % len(palette)])
         bottom = [b + v for b, v in zip(bottom, vals)]
     ax.set_ylabel("USD")
-    ax.set_title(_t(lang, "chart_cost"))
+    fam = cjk_font_family()
+    ax.set_title(_t(lang, "chart_cost"),
+                 **({"fontfamily": fam} if fam else {}))
     ax.legend(fontsize=7)
     for lbl in ax.get_xticklabels():
         lbl.set_rotation(30)
@@ -95,7 +98,9 @@ def _tokens_figure(summary: dict, lang: str):
     ax.bar(models, inp, color="#0ea5e9", label="input")
     ax.bar(models, out, bottom=inp, color="#f59e0b", label="output")
     ax.set_ylabel("tokens")
-    ax.set_title(_t(lang, "chart_tokens"))
+    fam = cjk_font_family()
+    ax.set_title(_t(lang, "chart_tokens"),
+                 **({"fontfamily": fam} if fam else {}))
     ax.legend(fontsize=8)
     for lbl in ax.get_xticklabels():
         lbl.set_rotation(20)

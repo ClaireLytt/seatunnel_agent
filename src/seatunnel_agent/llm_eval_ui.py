@@ -77,7 +77,10 @@ def _trend_figure(runs: list[dict]):
                 label=suite, color=palette[i % len(palette)])
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("score")
-    ax.legend(fontsize=8)
+    from .utils import cjk_font_family
+    fam = cjk_font_family()  # suite names in the legend may be Chinese
+    ax.legend(fontsize=8, **({"prop": {"family": fam, "size": 8}}
+                             if fam else {}))
     for lbl in ax.get_xticklabels():
         lbl.set_rotation(30)
         lbl.set_ha("right")

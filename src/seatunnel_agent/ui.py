@@ -2731,13 +2731,15 @@ a.st-hub-bad:hover { text-decoration: underline; }
     border-color: #f76707 !important;
     background: #fff7ed !important;
 }
-/* workspace back-button injected by lang_pref.STAMP_JS next to the 🏠 */
+/* workspace back-button injected by lang_pref.STAMP_JS next to the 🏠 —
+   deliberately smaller and quieter than the page content around it */
 .st-ws-btn {
-    height: 28px;
-    padding: 0 10px;
-    font-size: 12px;
-    color: #374151;
-    border-radius: 6px;
+    height: 20px !important;
+    line-height: 18px !important;
+    padding: 0 6px !important;
+    font-size: 10px !important;
+    color: #6b7280;
+    border-radius: 5px;
     border: 1px solid #e5e7eb;
     background: #f9fafb;
     cursor: pointer;
@@ -2745,6 +2747,10 @@ a.st-hub-bad:hover { text-decoration: underline; }
     flex-shrink: 0;
     align-self: center;
     margin-right: 6px;
+    min-width: 0 !important;
+    width: fit-content !important;
+    max-width: fit-content !important;
+    flex: 0 0 auto !important;
 }
 .st-ws-btn:hover {
     border-color: #f76707;
