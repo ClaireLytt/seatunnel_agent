@@ -55,7 +55,9 @@ class Suite:
     cases: list[Case] = field(default_factory=list)
 
 
-def parse_suite(text: str, source: str = "<inline>") -> Suite:
+# NB: no angle brackets in the default source — the error text is shown in
+# markdown components, where "<inline>" would be swallowed as an HTML tag.
+def parse_suite(text: str, source: str = "(inline)") -> Suite:
     try:
         import yaml
     except ImportError:  # pragma: no cover - pyyaml ships with [all]/[dev]
