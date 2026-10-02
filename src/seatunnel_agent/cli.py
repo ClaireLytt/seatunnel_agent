@@ -2501,5 +2501,74 @@ def promptlab(
         sys.exit(1)
 
 
+@cli.command()
+@click.argument("suite_file", type=click.Path(exists=True, dir_okay=False))
+@click.option("--judge", is_flag=True,
+              help="同时运行 judge 评分(仅参考,不进入门禁)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["fail", "regression"]),
+              default=None,
+              help="CI gate: fail=有 case 未通过; regression=相比上次运行回归")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def llmeval(
+    suite_file: str,
+    judge: bool,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """LLM 评测 — 对平台 LLM 功能跑黄金用例集,自动打分 + 回归门禁。
+
+    SUITE_FILE: YAML 套件(见 examples/llmeval_demo/)。确定性检查决定
+    通过与否;--judge 的 LLM 评分仅作参考。"""
+    import json as _json
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .llm_eval import RunLogger, compare, load_suite, render_markdown, run_suite
+
+    load_dotenv()
+    settings_store.apply_to_env()
+
+    try:
+        suite = load_suite(suite_file)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    result = run_suite(suite, judge=judge)
+    regression = compare(result, RunLogger().previous_run(suite.name))
+
+    if fmt == "json":
+        payload = {"result": result.to_dict(), "regression": regression}
+        text_out = _json.dumps(payload, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang, regression)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        hit = (bool(result.failed_cases) if fail_on == "fail"
+               else regression["regressed"])
+        if hit:
+            msg = ("存在未通过的 case,检查未通过。" if fail_on == "fail"
+                   else "相比上次运行存在回归,检查未通过。")
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()
