@@ -854,8 +854,9 @@ def _build_landing_html() -> str:
 def _build_ai_hub_html() -> str:
     """`/ai` — the AI Platform workspace: four LLM-engineering modules."""
     header = '''    <div class="st-hub-title" data-en="AI Platform" data-zh="AI 平台">AI Platform</div>
-    <div class="st-hub-subtitle" data-en="LLM engineering workspace · orchestrate, evaluate, experiment, observe" data-zh="LLM 工程工作台 · 编排、评测、实验、观测">LLM engineering workspace · orchestrate, evaluate, experiment, observe</div>'''
-    body = '''  <div class="st-hub-grid">
+    <div class="st-hub-subtitle" data-en="LLM engineering workspace · orchestrate, evaluate, experiment, observe" data-zh="LLM 工程工作台 · 编排、评测、实验、观测">LLM engineering workspace · orchestrate, evaluate, experiment, observe</div>
+    <!--STATUS-->'''
+    body = '''  <div class="st-hub-grid st-hub-grid-4">
     <a class="st-hub-card" href="/orchestrator">
       <div class="st-hub-logo" style="background:#7c3aed;">AI</div>
       <div class="st-hub-card-title" data-en="Agent Orchestrator" data-zh="智能编排">Agent Orchestrator</div>
@@ -881,7 +882,10 @@ def _build_ai_hub_html() -> str:
       <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
   </div>'''
-    return _hub_shell(header, body, back=True)
+    # the AI workspace depends on the LLM config more than anything else —
+    # show the same health strip the landing page has
+    return _hub_shell(header, body, back=True).replace(
+        "<!--STATUS-->", _hub_health_html())
 
 
 def _build_data_hub_html() -> str:
@@ -2262,6 +2266,8 @@ a.st-hub-bad:hover { text-decoration: underline; }
     width: 320px;
     padding: 28px 24px;
 }
+.st-hub-grid-4 { max-width: 1200px; }  /* four cards on one row */
+.st-dim-hint, .st-dim-hint p { font-size: 11px !important; color: #9ca3af !important; }
 .st-hub-section-card .st-hub-logo {
     width: 52px;
     height: 52px;

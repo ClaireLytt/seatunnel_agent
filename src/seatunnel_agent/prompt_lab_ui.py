@@ -33,6 +33,11 @@ _I18N = {
         "system_label": "System prompt (optional)",
         "system_ph": "Defaults to a plain assistant persona",
         "profiles_label": "Profiles",
+        "profiles_hint": "No saved profiles yet? Save one per provider on "
+                         "the [Settings](/settings) page, then reload this "
+                         "page.",
+        "report_ph": "▶ Results appear here after a run — per-profile "
+                     "outputs with tokens and latency, ready to diff.",
         "parallel_label": "Run in parallel",
         "run_btn": "Run matrix",
         "diff_acc": "Diff two profiles",
@@ -56,6 +61,10 @@ _I18N = {
         "system_label": "System Prompt(可选)",
         "system_ph": "默认使用通用助手人设",
         "profiles_label": "模型档案",
+        "profiles_hint": "还没有档案?在 [设置](/settings) 页按 provider "
+                         "各存一份档案,回来刷新本页即可多选对比。",
+        "report_ph": "▶ 运行后在此显示结果 — 各档案的输出、token 与耗时,"
+                     "可随后两两对比差异。",
         "parallel_label": "并行执行",
         "run_btn": "运行对比",
         "diff_acc": "对比两个档案的输出",
@@ -126,12 +135,15 @@ def render_prompt_lab_page(app: gr.Blocks) -> None:
                 profiles_cg = gr.CheckboxGroup(
                     choices=_profile_choices(), value=[ACTIVE],
                     label=t("profiles_label"))
+                profiles_hint_md = gr.Markdown(
+                    t("profiles_hint"), elem_classes=["st-dim-hint"],
+                    visible=len(_profile_choices()) <= 1)
                 parallel_cb = gr.Checkbox(label=t("parallel_label"),
                                           value=True)
                 run_btn = gr.Button(t("run_btn"), variant="primary")
 
             with gr.Column(scale=5, elem_classes=["st-fmt-main"]):
-                report_md = gr.Markdown("")
+                report_md = gr.Markdown(t("report_ph"))
                 with gr.Accordion(t("diff_acc"), open=False) as diff_acc:
                     with gr.Row():
                         diff_a_dd = gr.Dropdown(choices=[], label=t("diff_a"))
@@ -176,6 +188,7 @@ def render_prompt_lab_page(app: gr.Blocks) -> None:
 
     def switch_lang(choice: str):
         lang = "zh" if choice == "中文" else "en"
+        choices = _profile_choices()
         return (
             lang,
             gr.update(value=_t(lang, "title")),
@@ -183,8 +196,9 @@ def render_prompt_lab_page(app: gr.Blocks) -> None:
                       placeholder=_t(lang, "prompt_ph")),
             gr.update(label=_t(lang, "system_label"),
                       placeholder=_t(lang, "system_ph")),
-            gr.update(label=_t(lang, "profiles_label"),
-                      choices=_profile_choices()),
+            gr.update(label=_t(lang, "profiles_label"), choices=choices),
+            gr.update(value=_t(lang, "profiles_hint"),
+                      visible=len(choices) <= 1),
             gr.update(label=_t(lang, "parallel_label")),
             gr.update(value=_t(lang, "run_btn")),
             gr.update(label=_t(lang, "diff_acc")),
@@ -208,13 +222,17 @@ def render_prompt_lab_page(app: gr.Blocks) -> None:
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 
-    def _on_load(request: gr.Request):
+    def _on_load(current_report: str, request: gr.Request):
         lang, *updates = switch_lang(choice_from_request(request))
-        return (lang, *updates, _history_md(lang))
+        placeholders = {_t("zh", "report_ph"), _t("en", "report_ph"), ""}
+        rep_upd = (gr.update(value=_t(lang, "report_ph"))
+                   if (current_report or "").strip() in placeholders
+                   else gr.update())
+        return (lang, *updates, _history_md(lang), rep_upd)
 
     app.load(
-        _on_load, inputs=None,
+        _on_load, inputs=[report_md],
         outputs=[lang_state, title_md, prompt_box, system_box, profiles_cg,
-                 parallel_cb, run_btn, diff_acc, diff_a_dd, diff_b_dd,
-                 diff_btn, hist_acc, hist_btn, hist_md],
+                 profiles_hint_md, parallel_cb, run_btn, diff_acc, diff_a_dd,
+                 diff_b_dd, diff_btn, hist_acc, hist_btn, hist_md, report_md],
     )

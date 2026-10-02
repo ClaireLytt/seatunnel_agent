@@ -28,6 +28,11 @@ _I18N = {
         "suite_label": "Suite (YAML)",
         "suite_ph": "suite: my-golden\ncases:\n  - id: t1\n    agent: raw_prompt\n    ...",
         "demo_btn": "Load demo suite",
+        "validate_btn": "Validate suite (no LLM)",
+        "valid_ok": "✅ Suite is valid: {n} cases · agents: {agents}",
+        "report_ph": "▶ Results appear here after a run — per-case scores, "
+                     "failed checks, and the regression verdict vs the "
+                     "previous run.",
         "judge_label": "Run judge checks (advisory)",
         "run_btn": "Run suite",
         "trend_acc": "Score trend",
@@ -44,6 +49,10 @@ _I18N = {
         "suite_label": "评测套件(YAML)",
         "suite_ph": "suite: my-golden\ncases:\n  - id: t1\n    agent: raw_prompt\n    ...",
         "demo_btn": "载入示例套件",
+        "validate_btn": "校验套件(不调 LLM)",
+        "valid_ok": "✅ 套件合法:{n} 个 case · agent:{agents}",
+        "report_ph": "▶ 运行后在此显示结果 — 每个 case 的得分、未通过的"
+                     "检查,以及与上次运行的回归对比。",
         "judge_label": "运行 judge 评分(仅参考)",
         "run_btn": "运行套件",
         "trend_acc": "分数趋势",
@@ -110,12 +119,12 @@ def render_llm_eval_page(app: gr.Blocks) -> None:
                                        placeholder=t("suite_ph"), lines=16)
                 with gr.Row():
                     demo_btn = gr.Button(t("demo_btn"), size="sm")
-                    judge_cb = gr.Checkbox(label=t("judge_label"),
-                                           value=False)
+                    validate_btn = gr.Button(t("validate_btn"), size="sm")
+                judge_cb = gr.Checkbox(label=t("judge_label"), value=False)
                 run_btn = gr.Button(t("run_btn"), variant="primary")
 
             with gr.Column(scale=5, elem_classes=["st-fmt-main"]):
-                report_md = gr.Markdown("")
+                report_md = gr.Markdown(t("report_ph"))
                 with gr.Accordion(t("trend_acc"), open=False) as trend_acc:
                     trend_plot = gr.Plot(visible=False)
                     trend_btn = gr.Button(t("trend_btn"), size="sm")
@@ -127,6 +136,18 @@ def render_llm_eval_page(app: gr.Blocks) -> None:
             return _DEMO_SUITE.read_text(encoding="utf-8")
         except OSError:
             return "suite: demo\ncases: []\n"
+
+    def do_validate(suite_yaml: str, lang: str):
+        """Parse-only feedback loop — never calls the LLM."""
+        lang = normalize_lang(lang)
+        if not (suite_yaml or "").strip():
+            return _t(lang, "empty_suite")
+        try:
+            suite = parse_suite(suite_yaml)
+        except Exception as exc:  # noqa: BLE001
+            return f"⚠️ {type(exc).__name__}: {exc}"
+        agents = ", ".join(sorted({c.agent for c in suite.cases}))
+        return _t(lang, "valid_ok").format(n=len(suite.cases), agents=agents)
 
     def do_run(suite_yaml: str, judge: bool, lang: str):
         lang = normalize_lang(lang)
@@ -161,6 +182,7 @@ def render_llm_eval_page(app: gr.Blocks) -> None:
             gr.update(label=_t(lang, "suite_label"),
                       placeholder=_t(lang, "suite_ph")),
             gr.update(value=_t(lang, "demo_btn")),
+            gr.update(value=_t(lang, "validate_btn")),
             gr.update(label=_t(lang, "judge_label")),
             gr.update(value=_t(lang, "run_btn")),
             gr.update(label=_t(lang, "trend_acc")),
@@ -168,6 +190,8 @@ def render_llm_eval_page(app: gr.Blocks) -> None:
         )
 
     demo_btn.click(do_load_demo, outputs=[suite_box])
+    validate_btn.click(do_validate, inputs=[suite_box, lang_state],
+                       outputs=[report_md])
     run_btn.click(do_run, inputs=[suite_box, judge_cb, lang_state],
                   outputs=[report_md])
     trend_btn.click(do_trend, inputs=[lang_state], outputs=[trend_plot])
@@ -176,11 +200,18 @@ def render_llm_eval_page(app: gr.Blocks) -> None:
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 
-    def _lang_on_load(request: gr.Request):
-        return switch_lang(choice_from_request(request))
+    def _lang_on_load(current_report: str, request: gr.Request):
+        lang_tuple = switch_lang(choice_from_request(request))
+        # swap the result placeholder only while it IS the placeholder —
+        # never wipe a report the user just generated
+        placeholders = {_t("zh", "report_ph"), _t("en", "report_ph"), ""}
+        rep_upd = (gr.update(value=_t(lang_tuple[0], "report_ph"))
+                   if (current_report or "").strip() in placeholders
+                   else gr.update())
+        return (*lang_tuple, rep_upd)
 
     app.load(
-        _lang_on_load, inputs=None,
-        outputs=[lang_state, title_md, suite_box, demo_btn, judge_cb,
-                 run_btn, trend_acc, trend_btn],
+        _lang_on_load, inputs=[report_md],
+        outputs=[lang_state, title_md, suite_box, demo_btn, validate_btn,
+                 judge_cb, run_btn, trend_acc, trend_btn, report_md],
     )
