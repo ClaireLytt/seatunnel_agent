@@ -838,7 +838,7 @@ def _build_landing_html() -> str:
     <a class="st-hub-card st-hub-section-card" href="/data">
       <div class="st-hub-logo" style="background:#f76707;">DA</div>
       <div class="st-hub-card-title" data-en="Data Agents" data-zh="数据 Agent 工作区">Data Agents</div>
-      <div class="st-hub-card-desc" data-en="20 agents for data work — pipeline builder, Text2SQL, SQL review / lineage / quality, scheduling &amp; more" data-zh="20 个数据能力 — 管道构建、Text2SQL、SQL 审查 / 血缘 / 质量、调度体检等">20 agents for data work — pipeline builder, Text2SQL, SQL review / lineage / quality, scheduling &amp; more</div>
+      <div class="st-hub-card-desc" data-en="16 agents for data work — pipeline builder, Text2SQL, SQL review / lineage / quality, scheduling &amp; more" data-zh="16 个数据能力 — 管道构建、Text2SQL、SQL 审查 / 血缘 / 质量、调度体检等">16 agents for data work — pipeline builder, Text2SQL, SQL review / lineage / quality, scheduling &amp; more</div>
       <div class="st-hub-enter" style="color:#f76707;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
     <a class="st-hub-card st-hub-section-card" href="/ai">
@@ -848,6 +848,12 @@ def _build_landing_html() -> str:
       <div class="st-hub-enter" style="color:#7c3aed;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
   </div>'''
+    # cross-cutting engineering tools live right on the landing page
+    eng_cards = "".join(_card_blocks()[h] for h in _ENG_TOOLS)
+    body += (
+        '\n  <div class="st-hub-section-title st-hub-landing-sec" '
+        'data-en="Engineering Tools" data-zh="工程工具">Engineering Tools</div>'
+        f'\n  <div class="st-hub-grid st-hub-grid-4">{eng_cards}</div>')
     return _hub_shell(header, body).replace("<!--STATUS-->", _hub_health_html())
 
 
@@ -888,7 +894,9 @@ def _build_ai_hub_html() -> str:
         "<!--STATUS-->", _hub_health_html())
 
 
-# The 20 data-agent cards, grouped into sections on the /data hub.
+# Data-agent cards grouped into sections on the /data hub; the engineering
+# tools are cross-cutting (settings, MCP, UI tests, log inspection) and live
+# on the landing page instead.
 _DATA_GROUPS: list[tuple[str, str, list[str]]] = [
     ("Build & Pipelines", "构建与接入",
      ["/seatunnel", "/text2sql", "/datacompare", "/migrate", "/conflint"]),
@@ -897,9 +905,8 @@ _DATA_GROUPS: list[tuple[str, str, list[str]]] = [
     ("Lineage & Governance", "血缘与治理",
      ["/lineage", "/impact", "/schemadrift", "/metricdiff", "/pii",
       "/dagcheck"]),
-    ("Engineering Tools", "工程工具",
-     ["/loginspect", "/uitest", "/mcp", "/settings"]),
 ]
+_ENG_TOOLS = ["/loginspect", "/uitest", "/mcp", "/settings"]
 
 # instant client-side filter over card titles/descriptions (both languages);
 # section titles with no visible card hide themselves
@@ -919,11 +926,8 @@ _HUB_FILTER_ROW = (
     's.style.display=any?\'\':\'none\'});"></div>')
 
 
-def _build_data_hub_html() -> str:
-    """`/data` — the Data Agents workspace, grouped sections + filter."""
-    header = '''    <div class="st-hub-title" data-en="Data Agents" data-zh="数据 Agent 工作区">Data Agents</div>
-    <div class="st-hub-subtitle" data-en="Data engineering workspace · Choose an agent to start" data-zh="数据工程工作台 · 选择一个能力开始">Data engineering workspace · Choose an agent to start</div>'''
-    cards = '''
+# All 20 agent cards in one literal; the builders pick blocks by href.
+_DATA_CARDS_HTML = '''
     <a class="st-hub-card" href="/seatunnel">
       <div class="st-hub-logo" style="background:#f76707;">ST</div>
       <div class="st-hub-card-title" data-en="SeaTunnel Pipeline Builder" data-zh="SeaTunnel Pipeline Builder · 数据管道构建">SeaTunnel Pipeline Builder</div>
@@ -1044,11 +1048,20 @@ def _build_data_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim" data-zh="确定性排版，black 式 --check / --write — 解析失败原样保留">Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim</div>
       <div class="st-hub-enter" style="color:#4f46e5;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>'''
-    # regroup the flat card list into titled sections (cards stay a single
-    # literal above — only the assembly knows about groups)
-    blocks = re.findall(
-        r'(<a class="st-hub-card" href="(/[^"]+)">.*?</a>)', cards, re.S)
-    by_href = {href: block for block, href in blocks}
+
+
+def _card_blocks() -> dict[str, str]:
+    """href → card HTML block, extracted from the single literal above."""
+    return {href: block for block, href in re.findall(
+        r'(<a class="st-hub-card" href="(/[^"]+)">.*?</a>)',
+        _DATA_CARDS_HTML, re.S)}
+
+
+def _build_data_hub_html() -> str:
+    """`/data` — the Data Agents workspace, grouped sections + filter."""
+    header = '''    <div class="st-hub-title" data-en="Data Agents" data-zh="数据 Agent 工作区">Data Agents</div>
+    <div class="st-hub-subtitle" data-en="Data engineering workspace · Choose an agent to start" data-zh="数据工程工作台 · 选择一个能力开始">Data engineering workspace · Choose an agent to start</div>'''
+    by_href = _card_blocks()
     parts = [_HUB_FILTER_ROW]
     for en, zh, hrefs in _DATA_GROUPS:
         parts.append(f'<div class="st-hub-section-title" data-en="{en}" '
@@ -2320,6 +2333,7 @@ a.st-hub-bad:hover { text-decoration: underline; }
     text-align: left;
 }
 .st-hub-filter-row { margin-bottom: 4px; }
+.st-hub-landing-sec { text-align: center; margin-top: 30px; }
 #st-hub-filter {
     width: 260px;
     height: 30px;

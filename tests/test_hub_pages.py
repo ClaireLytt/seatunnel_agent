@@ -15,10 +15,13 @@ from seatunnel_agent.ui import (
 # Every route that must stay reachable from the Data Agents grid.
 _DATA_ROUTES = [
     "/seatunnel", "/text2sql", "/datacompare", "/dataskew", "/sqlreview",
-    "/lineage", "/impact", "/migrate", "/transpile", "/uitest", "/mcp",
-    "/settings", "/pii", "/loginspect", "/schemadrift", "/testgen",
+    "/lineage", "/impact", "/migrate", "/transpile",
+    "/pii", "/schemadrift", "/testgen",
     "/conflint", "/dagcheck", "/metricdiff", "/sqlfmt",
 ]
+
+# Cross-cutting engineering tools live on the landing page.
+_ENG_ROUTES = ["/loginspect", "/uitest", "/mcp", "/settings"]
 
 _AI_ROUTES = ["/orchestrator", "/llmeval", "/promptlab", "/llmcost"]
 
@@ -41,12 +44,19 @@ class TestLanding:
         assert "<!--STATUS-->" not in html
         assert "st-hub-health" in html
 
-    def test_no_agent_cards_on_landing(self):
-        # Only the two section cards — no per-agent cards. (The health strip
-        # may legitimately link to /settings, so match the card markup.)
+    def test_no_data_or_ai_cards_on_landing(self):
+        # The two section cards + the engineering tools — no other agent
+        # cards. (The health strip may legitimately link to /settings, so
+        # match the card markup.)
         html = _build_landing_html()
         for route in _DATA_ROUTES + _AI_ROUTES:
             assert f'class="st-hub-card" href="{route}"' not in html
+
+    def test_engineering_tools_on_landing(self):
+        html = _build_landing_html()
+        for route in _ENG_ROUTES:
+            assert f'class="st-hub-card" href="{route}"' in html, route
+        assert 'data-zh="工程工具"' in html
 
 
 class TestDataHub:
@@ -66,13 +76,16 @@ class TestDataHub:
 
     def test_grouped_sections_and_filter(self):
         html = _build_data_hub_html()
-        # four titled sections (the class also appears once inside the
+        # three titled sections (the class also appears once inside the
         # filter's inline JS, hence the attribute-level assertions)
-        for zh in ("构建与接入", "SQL 质量与审查", "血缘与治理", "工程工具"):
+        for zh in ("构建与接入", "SQL 质量与审查", "血缘与治理"):
             assert f'data-zh="{zh}"' in html, zh
         assert 'id="st-hub-filter"' in html
         # every card is inside exactly one section grid
-        assert html.count('class="st-hub-grid"') == 4
+        assert html.count('class="st-hub-grid"') == 3
+        # the engineering tools moved to the landing page
+        for route in _ENG_ROUTES:
+            assert f'href="{route}"' not in html, route
 
 
 class TestWorkspaceBackButton:
@@ -84,8 +97,11 @@ class TestWorkspaceBackButton:
             assert f"'{route}'" in STAMP_JS, route
         assert "'/ai'" in STAMP_JS and "'/data'" in STAMP_JS
         assert "st-ws-btn" in STAMP_JS
-        # hub pages must NOT get the button (they have their own back link)
+        # hub pages must NOT get the button (they have their own back link),
+        # nor the engineering tools that live on the landing page itself
         assert "path === '/' || path === '/data' || path === '/ai'" in STAMP_JS
+        for route in _ENG_ROUTES:
+            assert f"'{route}'" in STAMP_JS, route
 
     def test_css_present(self):
         from seatunnel_agent.ui import _CUSTOM_CSS
