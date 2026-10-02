@@ -83,7 +83,7 @@ class Orchestrator:
         self.messages.append({"role": "user", "content": request})
         result = OrchestratorResult(reply="")
 
-        for turn in range(self.max_steps):
+        for _turn in range(self.max_steps):
             resp = self.client.chat(self.system_prompt, self.messages)
             self.messages.append(self.client.append_assistant(
                 resp.raw_content))
