@@ -2570,5 +2570,75 @@ def llmeval(
             sys.exit(1)
 
 
+@cli.command()
+@click.argument("request")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Reply language")
+@click.option("--max-steps", default=5, show_default=True,
+              type=click.IntRange(1, 10), help="工具调用轮数上限")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def orchestrate(
+    request: str,
+    lang: str,
+    max_steps: int,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """智能编排 — 一句话需求,LLM 自动路由到合适的 agent 并串联多步。
+
+    REQUEST: 自然语言需求(SQL/配置/DDL 直接写在里面)。未配置 LLM 时
+    退化为关键词推荐(只建议不执行,退出码 0);LLM 调用失败退出 1。"""
+    import json as _json
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .config import load_settings
+    from .orchestrator import (
+        Orchestrator, build_catalog, render_markdown, render_suggestions,
+        suggest,
+    )
+
+    load_dotenv()
+    settings_store.apply_to_env()
+
+    try:
+        settings = load_settings()
+    except RuntimeError:
+        catalog = build_catalog(default_lang=lang)
+        text_out = render_suggestions(suggest(request, catalog), lang)
+        if fmt == "json":
+            payload = {"reply": text_out, "steps": [],
+                       "suggested_only": True}
+            text_out = _json.dumps(payload, ensure_ascii=False, indent=2)
+            print(text_out)
+        else:
+            console.print(text_out, markup=False)
+        if output:
+            Path(output).write_text(text_out, encoding="utf-8")
+        return
+
+    try:
+        result = Orchestrator(settings, lang=lang,
+                              max_steps=max_steps).run(request)
+    except Exception as exc:  # noqa: BLE001 — LLM/provider errors
+        console.print(f"[red]编排失败: {type(exc).__name__}: {exc}[/red]")
+        sys.exit(1)
+
+    if fmt == "json":
+        text_out = _json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+
 if __name__ == "__main__":
     cli()

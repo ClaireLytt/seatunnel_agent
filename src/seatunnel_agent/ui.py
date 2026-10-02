@@ -1267,6 +1267,10 @@ def create_ui() -> gr.Blocks:
         from .llm_eval_ui import render_llm_eval_page
         render_llm_eval_page(app)
 
+    with app.route("Orchestrator", "/orchestrator"):
+        from .orchestrator_ui import render_orchestrator_page
+        render_orchestrator_page(app)
+
     return app
 
 
@@ -2913,6 +2917,7 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .llm_cost.api import router as llmcost_api_router
         from .prompt_lab.api import router as promptlab_api_router
         from .llm_eval.api import router as llmeval_api_router
+        from .orchestrator.api import router as orchestrator_api_router
         fastapi_app = app.app
         fastapi_app.include_router(t2s_api_router)
         fastapi_app.include_router(sql_review_api_router)
@@ -2930,6 +2935,7 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         fastapi_app.include_router(llmcost_api_router)
         fastapi_app.include_router(promptlab_api_router)
         fastapi_app.include_router(llmeval_api_router)
+        fastapi_app.include_router(orchestrator_api_router)
 
     app.launch(
         server_name=host,

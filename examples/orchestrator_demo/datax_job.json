@@ -1,0 +1,28 @@
+{
+  "job": {
+    "setting": {"speed": {"channel": 3}},
+    "content": [{
+      "reader": {
+        "name": "mysqlreader",
+        "parameter": {
+          "username": "root",
+          "password": "******",
+          "column": ["id", "name", "city"],
+          "connection": [{
+            "table": ["users"],
+            "jdbcUrl": ["jdbc:mysql://127.0.0.1:3306/demo"]
+          }]
+        }
+      },
+      "writer": {
+        "name": "hdfswriter",
+        "parameter": {
+          "defaultFS": "hdfs://nn:8020",
+          "path": "/warehouse/demo/users",
+          "fileType": "orc",
+          "fieldDelimiter": "\t"
+        }
+      }
+    }]
+  }
+}
