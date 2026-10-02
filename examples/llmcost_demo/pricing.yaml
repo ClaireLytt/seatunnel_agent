@@ -1,0 +1,10 @@
+# Pricing override example — USD per 1M tokens, longest prefix wins.
+# Copy to ~/.seatunnel-agent/pricing.yaml (or point SEATUNNEL_PRICING_PATH /
+# `seatunnel-agent llmcost --pricing <file>` at it).
+prices:
+  - model: my-private-llm      # add a price for an in-house model
+    input: 0.50
+    output: 1.50
+  - model: deepseek-chat       # override a builtin price
+    input: 0.14
+    output: 0.28

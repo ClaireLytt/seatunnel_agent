@@ -2375,5 +2375,71 @@ def settings(clear_: bool, usage_: bool) -> None:
         f"API_KEY      = {settings_store.mask_secret(key) or '(未设置)'}")
 
 
+@cli.command()
+@click.option("--days", default=30, show_default=True,
+              type=click.IntRange(1, 36500), help="统计时间窗(天)")
+@click.option("--budget", type=float, default=None,
+              help="预算上限(USD),配合 --fail-on budget")
+@click.option("--usage-path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="用量日志路径(默认 logs/llm_usage.jsonl)")
+@click.option("--pricing", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="价格覆盖 YAML(默认 ~/.seatunnel-agent/pricing.yaml)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["budget"]), default=None,
+              help="CI gate: budget=时间窗内成本超过 --budget 时退出 1")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def llmcost(
+    days: int,
+    budget: float | None,
+    usage_path: str | None,
+    pricing: str | None,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """LLM 成本观测 — 按模型/按天/按 agent 汇总调用成本,异常日标记。
+
+    读取全平台 LLM 调用日志并按近似价格表计价(可用 YAML 覆盖);
+    不调用 LLM、不连数据库。"""
+    import json as _json
+    from pathlib import Path
+
+    from .llm_cost import check_budget, render_markdown, summarize_cost
+
+    if fail_on == "budget" and budget is None:
+        raise click.UsageError("--fail-on budget 需要同时提供 --budget")
+
+    try:
+        summary = summarize_cost(days, usage_file=usage_path,
+                                 pricing_override=pricing)
+    except ValueError as exc:  # malformed pricing override
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    if fmt == "json":
+        text_out = _json.dumps(summary, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(summary, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on == "budget" and check_budget(summary, budget):
+        msg = (f"成本 ${summary['total']['cost_usd']} 超过预算 ${budget},"
+               "检查未通过。")
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()
