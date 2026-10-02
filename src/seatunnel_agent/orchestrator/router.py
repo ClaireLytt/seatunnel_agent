@@ -37,6 +37,16 @@ class Suggestion:
     score: int
 
 
+def _hit(word: str, text: str) -> bool:
+    """ASCII keywords match on word boundaries ("cr" must not fire inside
+    "create"/"script"); CJK keywords match as substrings (no spaces in zh)."""
+    import re
+    if re.fullmatch(r"[a-z0-9 ]+", word):
+        return re.search(rf"(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])",
+                         text) is not None
+    return word in text
+
+
 def suggest(request: str, catalog: dict[str, AgentSpec],
             top: int = 3) -> list[Suggestion]:
     """Top-N agents whose keywords appear in *request* (case-insensitive)."""
@@ -46,7 +56,7 @@ def suggest(request: str, catalog: dict[str, AgentSpec],
         spec = catalog.get(tool)
         if spec is None:
             continue
-        score = sum(1 for w in words if w in text)
+        score = sum(1 for w in words if _hit(w, text))
         if score:
             scored.append(Suggestion(tool=tool, description=spec.description,
                                      page=spec.page, score=score))

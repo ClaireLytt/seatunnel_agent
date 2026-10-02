@@ -71,7 +71,7 @@ def test_llm_descriptions_are_additive(monkeypatch):
                       "garbage line without separator")
 
     class FakeClient:
-        def __init__(self, settings): pass
+        def __init__(self, settings, **kw): pass
         def chat(self, *a, **kw): return FakeResp()
 
     monkeypatch.setattr("seatunnel_agent.llm.LLMClient", FakeClient)

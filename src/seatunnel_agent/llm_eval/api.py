@@ -46,11 +46,12 @@ def run(req: RunRequest) -> RunResponse:
         suite = parse_suite(req.suite_yaml)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    baseline = RunLogger().last_run(suite.name)  # BEFORE run_suite logs its own
     try:
         result = run_suite(suite, judge=req.judge)
     except RuntimeError as exc:  # e.g. API key not configured
         raise HTTPException(status_code=503, detail=str(exc))
-    regression = compare(result, RunLogger().previous_run(suite.name))
+    regression = compare(result, baseline)
     return RunResponse(
         result=result.to_dict(),
         regression=regression,

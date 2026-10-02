@@ -105,8 +105,8 @@ def run_suite(suite: Suite,
               ) -> SuiteResult:
     """Run every case; per-case errors are captured, never raised."""
     if client_factory is None:
-        from ..llm import LLMClient
-        client_factory = LLMClient
+        from .. import llm  # resolved at call time so tests can monkeypatch
+        client_factory = lambda s: llm.LLMClient(s, agent="llm_eval")  # noqa: E731
     if settings is None:
         from ..config import load_settings
         settings = load_settings()

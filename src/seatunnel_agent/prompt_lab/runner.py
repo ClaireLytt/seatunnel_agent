@@ -125,8 +125,8 @@ def run_matrix(prompt: str,
     system = (system or "").strip() or _DEFAULT_SYSTEM
     profiles = profiles or [ACTIVE]
     if client_factory is None:
-        from ..llm import LLMClient
-        client_factory = LLMClient
+        from .. import llm  # resolved at call time so tests can monkeypatch
+        client_factory = lambda s: llm.LLMClient(s, agent="prompt_lab")  # noqa: E731
 
     def job(p: str) -> CellResult:
         return _run_cell(p, prompt, system, client_factory)

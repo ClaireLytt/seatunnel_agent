@@ -73,9 +73,9 @@ def parse_suite(text: str, source: str = "(inline)") -> Suite:
     cases: list[Case] = []
     seen: set[str] = set()
     for i, item in enumerate(raw["cases"]):
-        cid = str((item or {}).get("id") or f"case-{i}")
         if not isinstance(item, dict):
             raise ValueError(f"{source}: cases[{i}] 必须是对象")
+        cid = str(item.get("id") or f"case-{i}")
         if cid in seen:
             raise ValueError(f"{source}: case id 重复: {cid}")
         seen.add(cid)

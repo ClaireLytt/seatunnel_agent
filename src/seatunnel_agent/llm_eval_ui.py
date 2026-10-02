@@ -134,9 +134,9 @@ def render_llm_eval_page(app: gr.Blocks) -> None:
             return _t(lang, "empty_suite")
         try:
             suite = parse_suite(suite_yaml)
+            baseline = RunLogger().last_run(suite.name)  # before run_suite logs
             result = run_suite(suite, judge=judge)
-            regression = compare(result,
-                                 RunLogger().previous_run(suite.name))
+            regression = compare(result, baseline)
             return render_markdown(result, lang, regression)
         except Exception as exc:  # noqa: BLE001 — never crash the page
             return f"⚠️ {type(exc).__name__}: {exc}"

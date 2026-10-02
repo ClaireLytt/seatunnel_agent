@@ -175,6 +175,20 @@ class TestEngine:
         assert result.reply == "partial summary"
         assert len(result.steps) == 3
 
+    def test_forced_summary_with_tool_use_keeps_history_valid(self):
+        # the model ignores the stop order at the step limit: its tool calls
+        # must still get tool_results, and the reply must not be empty
+        client = ScriptedClient([
+            _tool("sql_fmt", {"sql": "select 1"}, "c0"),
+            _tool("sql_fmt", {"sql": "select 1"}, "c1"),  # forced-summary turn
+        ])
+        orch = Orchestrator(SETTINGS, client=client, max_steps=1)
+        result = orch.run("loop")
+        assert result.truncated
+        assert result.reply  # bilingual fallback, never empty
+        answered = {tr["tool_use_id"] for tr in client.tool_results}
+        assert {"c0", "c1"} <= answered  # every tool_use has a tool_result
+
     def test_plain_answer_no_tools(self):
         client = ScriptedClient([_text("lineage is …")])
         result = Orchestrator(SETTINGS, client=client).run("什么是血缘?")
@@ -204,6 +218,13 @@ class TestRouter:
 
     def test_suggest_no_match(self):
         assert suggest("hello world", build_catalog()) == []
+
+    def test_ascii_keywords_respect_word_boundaries(self):
+        # "cr" must not fire inside "create"/"script"
+        catalog = build_catalog()
+        hits = suggest("create table users (id int)", catalog)
+        assert all(h.tool != "sql_review" for h in hits)
+        assert any(h.tool == "sql_review" for h in suggest("帮我做个 CR", catalog))
 
     def test_render_suggestions_bilingual(self):
         catalog = build_catalog()
@@ -244,7 +265,7 @@ class TestCli:
     def test_with_fake_llm(self, monkeypatch):
         monkeypatch.setenv("API_KEY", "sk-test")
 
-        def fake_client(settings, tools=None):
+        def fake_client(settings, tools=None, **kw):
             return ScriptedClient([
                 _tool("sql_fmt", {"sql": "select 1"}),
                 _text("all done"),
@@ -292,7 +313,7 @@ class TestApi:
     def test_run_with_fake_llm(self, monkeypatch):
         monkeypatch.setenv("API_KEY", "sk-test")
 
-        def fake_client(settings, tools=None):
+        def fake_client(settings, tools=None, **kw):
             return ScriptedClient([
                 _tool("sql_fmt", {"sql": "select 1"}),
                 _text("finished"),
@@ -305,6 +326,24 @@ class TestApi:
         assert data["reply"] == "finished"
         assert data["steps"][0]["tool"] == "sql_fmt"
         assert data["suggested_only"] is False
+
+    def test_provider_failure_maps_to_503(self, monkeypatch):
+        monkeypatch.setenv("API_KEY", "sk-test")
+
+        def broken_client(settings, tools=None, **kw):
+            class Boom:
+                def chat(self, *a, **k):
+                    raise RuntimeError("auth failed")
+                def append_assistant(self, raw):
+                    return {"role": "assistant", "content": raw}
+                def build_tool_result_message(self, trs):
+                    return {"role": "user", "content": trs}
+            return Boom()
+        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", broken_client)
+        resp = self._client().post("/api/orchestrator/run",
+                                   json={"request": "hi"})
+        assert resp.status_code == 503
+        assert "auth failed" in resp.json()["detail"]
 
     def test_health(self):
         resp = self._client().get("/api/orchestrator/health")

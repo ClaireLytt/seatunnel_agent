@@ -72,15 +72,15 @@ def summarize_cost(days: int = 30,
             rec = json.loads(line)
             ts = datetime.strptime(rec["ts"], "%Y-%m-%dT%H:%M:%SZ").replace(
                 tzinfo=timezone.utc)
+            inp = int(rec.get("input", 0) or 0)
+            out = int(rec.get("output", 0) or 0)
         except (ValueError, KeyError, TypeError):
-            continue
+            continue  # one malformed line must not kill the whole summary
         if ts < cutoff:
             continue
         model = str(rec.get("model", "?"))
         agent = str(rec.get("agent") or "unattributed")
         day = ts.strftime("%Y-%m-%d")
-        inp = int(rec.get("input", 0) or 0)
-        out = int(rec.get("output", 0) or 0)
         cost = cost_usd(model, inp, out, prices)
         if cost is None:
             unpriced.add(model)

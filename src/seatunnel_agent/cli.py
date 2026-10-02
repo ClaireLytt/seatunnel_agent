@@ -2543,8 +2543,13 @@ def llmeval(
         console.print(f"[red]{exc}[/red]")
         sys.exit(2)
 
-    result = run_suite(suite, judge=judge)
-    regression = compare(result, RunLogger().previous_run(suite.name))
+    baseline = RunLogger().last_run(suite.name)  # BEFORE run_suite logs its own
+    try:
+        result = run_suite(suite, judge=judge)
+    except RuntimeError as exc:  # no API key configured etc.
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+    regression = compare(result, baseline)
 
     if fmt == "json":
         payload = {"result": result.to_dict(), "regression": regression}

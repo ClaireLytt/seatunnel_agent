@@ -65,7 +65,8 @@ class Orchestrator:
         if client is None:
             from ..llm import LLMClient
             client = LLMClient(settings,
-                               tools=tool_definitions(self.catalog))
+                               tools=tool_definitions(self.catalog),
+                               agent="orchestrator")
         self.client = client
         self.system_prompt = build_system_prompt(self.catalog, self.lang)
         self.messages: list[dict[str, Any]] = []
@@ -118,7 +119,24 @@ class Orchestrator:
             resp = self.client.chat(self.system_prompt, self.messages)
             self.messages.append(self.client.append_assistant(
                 resp.raw_content))
-            result.reply = resp.reply_text or ""
+            if resp.wants_tool_use:
+                # The model ignored the stop order: every tool_use in the
+                # history still needs a tool_result, or the NEXT turn of this
+                # multi-turn session is rejected by the provider (400).
+                cancelled = [{
+                    "type": "tool_result",
+                    "tool_use_id": tc.id,
+                    "content": "cancelled: step limit reached",
+                } for tc in resp.tool_calls]
+                result_msg = self.client.build_tool_result_message(cancelled)
+                if isinstance(result_msg, list):
+                    self.messages.extend(result_msg)
+                else:
+                    self.messages.append(result_msg)
+            result.reply = resp.reply_text or (
+                "已达步数上限,基于已有结果无法继续;请精简需求后重试。"
+                if self.lang == "zh" else
+                "Step limit reached — please narrow the request and retry.")
 
         result.elapsed_ms = int((time.time() - start) * 1000)
         return result

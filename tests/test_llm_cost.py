@@ -98,6 +98,18 @@ class TestAggregate:
         assert over["unpriced_models"] == []  # my-private-llm now priced
         assert over["total"]["cost_usd"] != base["total"]["cost_usd"]
 
+    def test_malformed_line_skipped_not_fatal(self, tmp_path):
+        log = tmp_path / "usage.jsonl"
+        log.write_text(
+            '{"ts": "2026-09-20T10:00:00Z", "provider": "openai", '
+            '"model": "deepseek-chat", "input": "1,234", "output": 5}\n'
+            '{"ts": "2026-09-20T11:00:00Z", "provider": "openai", '
+            '"model": "deepseek-chat", "input": 100, "output": 50}\n',
+            encoding="utf-8")
+        s = summarize_cost(36500, usage_file=log)
+        assert s["total"]["calls"] == 1  # bad line skipped, good one counted
+        assert s["total"]["input"] == 100
+
     def test_missing_log_is_empty(self, tmp_path):
         s = summarize_cost(30, usage_file=tmp_path / "none.jsonl")
         assert s["total"]["calls"] == 0

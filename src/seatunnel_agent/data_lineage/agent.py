@@ -85,7 +85,7 @@ class LineageAgent:
         on_event: EventCallback | None = None,
     ) -> None:
         self.settings = settings
-        self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
+        self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS, agent="lineage")
         self.config = config or LineageConfig()
         self.runtime = LineageRuntime(
             graph=graph if graph is not None else LineageGraph(),

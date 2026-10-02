@@ -78,11 +78,15 @@ class RunLogger:
             out.append(rec)
         return out[-n:]
 
-    def previous_run(self, suite: str) -> dict[str, Any] | None:
-        """The second-to-last logged run of *suite* (the last one being the
-        run we just appended)."""
+    def last_run(self, suite: str) -> dict[str, Any] | None:
+        """The most recent logged run of *suite*.
+
+        Callers fetch the baseline BEFORE run_suite() (which appends its own
+        run at the end) — never by counting back from the tail afterwards:
+        with LLM_EVAL_LOG=0 the current run is not in the log at all, and a
+        failed best-effort append would silently shift the offset."""
         runs = self.recent(n=1000, suite=suite)
-        return runs[-2] if len(runs) >= 2 else None
+        return runs[-1] if runs else None
 
 
 def compare(current: "SuiteResult",

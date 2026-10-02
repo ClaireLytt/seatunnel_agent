@@ -51,7 +51,7 @@ class FakeClient:
 
 
 def factory(script: dict[str, str] | None = None, default: str = "SELECT 1"):
-    return lambda settings: FakeClient(settings, script, default)
+    return lambda settings, **kw: FakeClient(settings, script, default)
 
 
 _MINI_SUITE = """
@@ -85,6 +85,7 @@ class TestSuiteParsing:
 
     @pytest.mark.parametrize("bad,msg", [
         ("cases: 42", "期望顶层"),
+        ("cases:\n  - hello", "必须是对象"),
         ("cases:\n  - {id: x, agent: nope, input: {p: 1}, expect: [{type: contains, value: y}]}",
          "未知 agent"),
         ("cases:\n  - {id: x, agent: raw_prompt, input: {}, expect: [{type: contains, value: y}]}",
@@ -228,14 +229,16 @@ class TestRegression:
         return log
 
     def test_pass_to_fail_is_regression(self, eval_log):
+        # baseline is fetched BEFORE each run (run_suite appends its own)
         suite = parse_suite(_MINI_SUITE)
+        baseline = RunLogger().last_run("mini")
         good = run_suite(suite, settings=SETTINGS,
                          client_factory=factory({"say hello": "Hello!"}))
-        assert compare(good, RunLogger().previous_run("mini"))[
-            "has_baseline"] is False
+        assert compare(good, baseline)["has_baseline"] is False
+        baseline = RunLogger().last_run("mini")
         bad = run_suite(suite, settings=SETTINGS,
                         client_factory=factory({"say hello": "Hi!"}))
-        verdict = compare(bad, RunLogger().previous_run("mini"))
+        verdict = compare(bad, baseline)
         assert verdict["regressed"] is True
         assert verdict["regressed_cases"] == ["a"]
 
@@ -243,10 +246,26 @@ class TestRegression:
         suite = parse_suite(_MINI_SUITE)
         fac = factory({"say hello": "Hello!"})
         run_suite(suite, settings=SETTINGS, client_factory=fac)
+        baseline = RunLogger().last_run("mini")
         again = run_suite(suite, settings=SETTINGS, client_factory=fac)
-        verdict = compare(again, RunLogger().previous_run("mini"))
+        verdict = compare(again, baseline)
         assert verdict == {"has_baseline": True, "regressed": False,
                            "regressed_cases": [], "score_drop": 0.0}
+
+    def test_baseline_correct_with_logging_disabled(self, eval_log,
+                                                    monkeypatch):
+        # regression gate must work even when THIS run is not logged:
+        # the baseline comes from before the run, never from runs[-2]
+        suite = parse_suite(_MINI_SUITE)
+        run_suite(suite, settings=SETTINGS,
+                  client_factory=factory({"say hello": "Hello!"}))
+        monkeypatch.setenv("LLM_EVAL_LOG", "0")
+        baseline = RunLogger().last_run("mini")
+        bad = run_suite(suite, settings=SETTINGS,
+                        client_factory=factory({"say hello": "Hi!"}))
+        verdict = compare(bad, baseline)
+        assert verdict["regressed"] is True
+        assert verdict["regressed_cases"] == ["a"]
 
 
 class TestReport:
@@ -305,6 +324,19 @@ class TestCli:
         assert r.exit_code == 0, r.output
         payload = json.loads(r.output)
         assert payload["result"]["suite"] == "mini"
+
+    def test_llmeval_no_key_readable_exit_2(self, monkeypatch, tmp_path):
+        for var in ("API_KEY", "ANTHROPIC_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+        monkeypatch.setattr("seatunnel_agent.config.load_dotenv",
+                            lambda *a, **k: None)
+        monkeypatch.setattr("seatunnel_agent.settings_store.apply_to_env",
+                            lambda: None)
+        r = CliRunner().invoke(cli, ["llmeval", self._suite_file(tmp_path)])
+        assert r.exit_code == 2
+        assert "Traceback" not in r.output
+        assert "API_KEY" in r.output
 
     def test_llmeval_bad_suite_exit_2(self, monkeypatch, tmp_path):
         bad = tmp_path / "bad.yaml"

@@ -32,7 +32,8 @@ def _resp(text: str, inp: int = 10, out: int = 5) -> LLMResponse:
 class FakeClient:
     """Reply is derived from the model name so cells are distinguishable."""
 
-    def __init__(self, settings: Settings, fail_for: set[str] = frozenset()):
+    def __init__(self, settings: Settings, fail_for: set[str] = frozenset(),
+                 **_kw):
         self.settings = settings
         self.fail_for = fail_for
 
