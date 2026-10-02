@@ -810,7 +810,7 @@ def _hub_health_html() -> str:
 
 
 _HUB_LANG_ROW = '''<div class="st-hub-lang-row">
-    <select id="st-hub-lang" onchange="var l=this.value;document.cookie='st-lang='+l+';path=/;max-age=31536000';document.body.dataset.stLang=l;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.textContent=e.getAttribute('data-'+l)});">
+    <select id="st-hub-lang" onchange="var l=this.value;document.cookie='st-lang='+l+';path=/;max-age=31536000';document.body.dataset.stLang=l;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.textContent=e.getAttribute('data-'+l)});var f=document.getElementById('st-hub-filter');if(f){f.placeholder=f.getAttribute('data-'+l+'-ph')||f.placeholder;}">
       <option value="en" selected>English</option>
       <option value="zh">中文</option>
     </select>
@@ -888,11 +888,42 @@ def _build_ai_hub_html() -> str:
         "<!--STATUS-->", _hub_health_html())
 
 
+# The 20 data-agent cards, grouped into sections on the /data hub.
+_DATA_GROUPS: list[tuple[str, str, list[str]]] = [
+    ("Build & Pipelines", "构建与接入",
+     ["/seatunnel", "/text2sql", "/datacompare", "/migrate", "/conflint"]),
+    ("SQL Quality & Review", "SQL 质量与审查",
+     ["/sqlreview", "/sqlfmt", "/transpile", "/dataskew", "/testgen"]),
+    ("Lineage & Governance", "血缘与治理",
+     ["/lineage", "/impact", "/schemadrift", "/metricdiff", "/pii",
+      "/dagcheck"]),
+    ("Engineering Tools", "工程工具",
+     ["/loginspect", "/uitest", "/mcp", "/settings"]),
+]
+
+# instant client-side filter over card titles/descriptions (both languages);
+# section titles with no visible card hide themselves
+_HUB_FILTER_ROW = (
+    '<div class="st-hub-filter-row"><input id="st-hub-filter" type="search" '
+    'data-en-ph="Filter agents…" data-zh-ph="过滤能力…" placeholder="Filter agents…" '
+    'oninput="var q=this.value.toLowerCase();'
+    "document.querySelectorAll('#st-hub .st-hub-card').forEach(function(c){"
+    "var t=(c.innerText+' '+Array.from(c.querySelectorAll('[data-zh]')).map("
+    "function(e){return e.getAttribute('data-zh')+' '+e.getAttribute('data-en')})"
+    ".join(' ')).toLowerCase();"
+    "c.style.display=(!q||t.indexOf(q)>=0)?'':'none'});"
+    "document.querySelectorAll('#st-hub .st-hub-section-title').forEach("
+    "function(s){var g=s.nextElementSibling;"
+    "var any=g&&Array.from(g.children).some(function(c){"
+    "return c.style.display!=='none'});"
+    's.style.display=any?\'\':\'none\'});"></div>')
+
+
 def _build_data_hub_html() -> str:
-    """`/data` — the Data Agents workspace: the full agent card grid."""
+    """`/data` — the Data Agents workspace, grouped sections + filter."""
     header = '''    <div class="st-hub-title" data-en="Data Agents" data-zh="数据 Agent 工作区">Data Agents</div>
     <div class="st-hub-subtitle" data-en="Data engineering workspace · Choose an agent to start" data-zh="数据工程工作台 · 选择一个能力开始">Data engineering workspace · Choose an agent to start</div>'''
-    body = '''  <div class="st-hub-grid">
+    cards = '''
     <a class="st-hub-card" href="/seatunnel">
       <div class="st-hub-logo" style="background:#f76707;">ST</div>
       <div class="st-hub-card-title" data-en="SeaTunnel Pipeline Builder" data-zh="SeaTunnel Pipeline Builder · 数据管道构建">SeaTunnel Pipeline Builder</div>
@@ -1012,9 +1043,19 @@ def _build_data_hub_html() -> str:
       <div class="st-hub-card-title" data-en="SQL Formatter" data-zh="SQL 格式化">SQL Formatter</div>
       <div class="st-hub-card-desc" data-en="Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim" data-zh="确定性排版，black 式 --check / --write — 解析失败原样保留">Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim</div>
       <div class="st-hub-enter" style="color:#4f46e5;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-  </div>'''
-    return _hub_shell(header, body, back=True)
+    </a>'''
+    # regroup the flat card list into titled sections (cards stay a single
+    # literal above — only the assembly knows about groups)
+    blocks = re.findall(
+        r'(<a class="st-hub-card" href="(/[^"]+)">.*?</a>)', cards, re.S)
+    by_href = {href: block for block, href in blocks}
+    parts = [_HUB_FILTER_ROW]
+    for en, zh, hrefs in _DATA_GROUPS:
+        parts.append(f'<div class="st-hub-section-title" data-en="{en}" '
+                     f'data-zh="{zh}">{en}</div>')
+        parts.append('<div class="st-hub-grid">'
+                     + "".join(by_href[h] for h in hrefs) + '</div>')
+    return _hub_shell(header, "\n".join(parts), back=True)
 
 
 # Restore the language chosen in a previous visit — chained after the HTML
@@ -2268,6 +2309,28 @@ a.st-hub-bad:hover { text-decoration: underline; }
 }
 .st-hub-grid-4 { max-width: 1200px; }  /* four cards on one row */
 .st-dim-hint, .st-dim-hint p { font-size: 11px !important; color: #9ca3af !important; }
+.st-hub-section-title {
+    width: min(900px, 100%);
+    margin: 18px 0 2px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #9ca3af;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    text-align: left;
+}
+.st-hub-filter-row { margin-bottom: 4px; }
+#st-hub-filter {
+    width: 260px;
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 12px;
+    background: #f9fafb;
+    outline: none;
+}
+#st-hub-filter:focus { border-color: #f76707; }
 .st-hub-section-card .st-hub-logo {
     width: 52px;
     height: 52px;

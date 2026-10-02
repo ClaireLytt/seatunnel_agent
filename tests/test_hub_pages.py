@@ -64,6 +64,16 @@ class TestDataHub:
     def test_placeholder_card_gone(self):
         assert "st-hub-card-soon" not in _build_data_hub_html()
 
+    def test_grouped_sections_and_filter(self):
+        html = _build_data_hub_html()
+        # four titled sections (the class also appears once inside the
+        # filter's inline JS, hence the attribute-level assertions)
+        for zh in ("构建与接入", "SQL 质量与审查", "血缘与治理", "工程工具"):
+            assert f'data-zh="{zh}"' in html, zh
+        assert 'id="st-hub-filter"' in html
+        # every card is inside exactly one section grid
+        assert html.count('class="st-hub-grid"') == 4
+
 
 class TestWorkspaceBackButton:
     """STAMP_JS (loaded by every page) injects the ↩ workspace button."""
