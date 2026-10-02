@@ -2778,5 +2778,60 @@ def relnotes(
         console.print(f"[dim]报告已保存: {output}[/dim]")
 
 
+@cli.command()
+@click.option("--path", "-p", default=".", show_default=True,
+              type=click.Path(exists=True, file_okay=False),
+              help="项目根目录(读 pyproject.toml 与 requirements*.txt)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium"]),
+              default=None,
+              help="CI gate: 达到该严重度及以上的发现时退出 1")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def depcheck(
+    path: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """依赖体检 — 声明 vs 实装、版本钉、License 清单(全离线)。"""
+    import json as _json
+    from pathlib import Path
+
+    from .dep_check import check, check_fail, collect_from_path, render_markdown
+
+    try:
+        reqs = collect_from_path(path)
+    except ValueError as exc:  # malformed pyproject
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+    if not reqs:
+        console.print("[red]该目录下没有 pyproject.toml / requirements*.txt[/red]")
+        sys.exit(2)
+    report = check(reqs)
+
+    if fmt == "json":
+        text_out = _json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on and check_fail(report, fail_on):
+        msg = f"存在 {fail_on} 及以上严重度的依赖问题,检查未通过。"
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()
