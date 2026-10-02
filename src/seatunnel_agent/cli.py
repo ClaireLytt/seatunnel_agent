@@ -2707,5 +2707,76 @@ def secretscan(
         sys.exit(1)
 
 
+@cli.command()
+@click.option("--repo", default=".", show_default=True,
+              type=click.Path(exists=True, file_okay=False),
+              help="git 仓库路径")
+@click.option("--from", "since", default=None,
+              help="起始 ref(默认上一个 tag;无 tag 则全部历史)")
+@click.option("--to", "until", default="HEAD", show_default=True,
+              help="结束 ref")
+@click.option("--log-file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="改读提交记录文件(每行 sha<TAB>subject),不跑 git")
+@click.option("--version", "-V", "current_version", default=None,
+              help="当前版本(默认读 pyproject.toml)")
+@click.option("--polish", is_flag=True, help="LLM 润色(需 API key;失败则回退确定性结果)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def relnotes(
+    repo: str,
+    since: str | None,
+    until: str,
+    log_file: str | None,
+    current_version: str | None,
+    polish: bool,
+    lang: str,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """发布助手 — conventional commits 分组 changelog + 语义化版本建议。
+
+    默认读取 --repo 自上个 tag 以来的提交;--log-file 可离线输入。"""
+    import json as _json
+    from pathlib import Path
+
+    from .release_notes import (
+        build_notes, collect_git_log, current_version_from_pyproject,
+        polish_markdown, render_markdown,
+    )
+
+    if log_file:
+        log_text = Path(log_file).read_text(encoding="utf-8")
+    else:
+        try:
+            log_text = collect_git_log(repo, since=since, until=until)
+        except RuntimeError as exc:
+            console.print(f"[red]git 读取失败: {exc}[/red]")
+            sys.exit(2)
+    if current_version is None:
+        current_version = current_version_from_pyproject(repo)
+
+    notes = build_notes(log_text, current_version)
+    if fmt == "json":
+        text_out = _json.dumps(notes.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(notes, lang)
+        if polish:
+            from dotenv import load_dotenv
+
+            from . import settings_store
+            load_dotenv()
+            settings_store.apply_to_env()
+            text_out = polish_markdown(text_out, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+
 if __name__ == "__main__":
     cli()
