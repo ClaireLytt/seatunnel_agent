@@ -1,0 +1,66 @@
+# DAG 组 · 调度 DAG 体检页 (/dagcheck)。纯确定性（血缘图分析），不执行作业；
+# 演示数据 examples/dagcheck_demo: 环 1 / 断链 1 / 死作业 1 + 四级关键路径。
+
+- id: DAG1
+  title: 体检演示目录出环与断链
+  tags: [smoke, sqlite]
+  page: /dagcheck
+  steps:
+    - fill: {SQL 目录: examples/dagcheck_demo}
+    - click: 体检 DAG
+    - wait_result: {}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: 调度 DAG 体检}
+    - text_contains: {in: 结果区, text: 依赖成环}
+    - text_contains: {in: 结果区, text: dwd.missing_src}
+
+- id: DAG2
+  title: 执行分批与关键路径呈现
+  tags: [smoke, sqlite]
+  page: /dagcheck
+  steps:
+    - fill: {SQL 目录: examples/dagcheck_demo}
+    - click: 体检 DAG
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 执行分批}
+    - text_contains: {in: 结果区, text: 关键路径}
+    - text_contains: {in: 结果区, text: ads.gmv_report}
+
+- id: DAG3
+  title: 环上表列入无法调度
+  tags: [full, sqlite]
+  page: /dagcheck
+  steps:
+    - fill: {SQL 目录: examples/dagcheck_demo}
+    - click: 体检 DAG
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 无法调度}
+    - text_contains: {in: 结果区, text: tmp.a}
+
+- id: DAG4
+  title: 目录不存在给出警告不崩溃
+  tags: [full, sqlite]
+  page: /dagcheck
+  steps:
+    - fill: {SQL 目录: no_such_dir_dag}
+    - click: 体检 DAG
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 不是有效目录}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: DAG5
+  title: 英文界面体检链路
+  tags: [full, sqlite]
+  lang: en
+  page: /dagcheck
+  steps:
+    - fill: {SQL directory: examples/dagcheck_demo}
+    - click: Check DAG
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: DAG Health Check}
+    - text_contains: {in: 结果区, text: Critical path}
