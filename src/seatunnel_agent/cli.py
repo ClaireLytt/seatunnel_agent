@@ -2441,5 +2441,65 @@ def llmcost(
         sys.exit(1)
 
 
+@cli.command()
+@click.argument("prompt")
+@click.option("--profile", "-p", "profiles", multiple=True,
+              help="模型档案名(可重复;默认当前生效配置 \"(active)\")")
+@click.option("--system", "-S", default=None, help="自定义 system prompt")
+@click.option("--parallel", is_flag=True, help="并行调用各档案")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def promptlab(
+    prompt: str,
+    profiles: tuple[str, ...],
+    system: str | None,
+    parallel: bool,
+    lang: str,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """Prompt 实验室 — 同一 Prompt 在多个模型档案上并排对比。
+
+    档案来自 /settings 页保存的 provider profiles;"(active)" 表示当前
+    生效配置。全部档案失败时退出 1。"""
+    import json as _json
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .prompt_lab import ACTIVE, render_matrix_markdown, run_matrix
+
+    load_dotenv()
+    settings_store.apply_to_env()
+
+    names = list(profiles) or [ACTIVE]
+    result = run_matrix(prompt, system=system, profiles=names,
+                        parallel=parallel)
+
+    if fmt == "json":
+        text_out = _json.dumps([c.to_dict() for c in result.cells],
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_matrix_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if result.all_failed:
+        msg = "所有档案调用失败。"
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()
