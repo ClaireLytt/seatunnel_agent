@@ -2900,50 +2900,60 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
                 f"choose another port, or set SEATUNNEL_UI_KILL_PORT=1 to kill it automatically."
             )
 
-    if api:
-        from .text2sql.api import router as t2s_api_router
-        from .sql_review.api import router as sql_review_api_router
-        from .data_lineage.api import router as lineage_api_router
-        from .sql_transpile.api import router as transpile_api_router
-        from .data_skew.api import router as skew_api_router
-        from .pii_scan.api import router as pii_api_router
-        from .log_inspect.api import router as loginspect_api_router
-        from .schema_drift.api import router as schemadrift_api_router
-        from .sql_testgen.api import router as testgen_api_router
-        from .config_lint.api import router as conflint_api_router
-        from .dag_check.api import router as dagcheck_api_router
-        from .metric_diff.api import router as metricdiff_api_router
-        from .sql_fmt.api import router as sqlfmt_api_router
-        from .llm_cost.api import router as llmcost_api_router
-        from .prompt_lab.api import router as promptlab_api_router
-        from .llm_eval.api import router as llmeval_api_router
-        from .orchestrator.api import router as orchestrator_api_router
-        fastapi_app = app.app
-        fastapi_app.include_router(t2s_api_router)
-        fastapi_app.include_router(sql_review_api_router)
-        fastapi_app.include_router(lineage_api_router)
-        fastapi_app.include_router(transpile_api_router)
-        fastapi_app.include_router(skew_api_router)
-        fastapi_app.include_router(pii_api_router)
-        fastapi_app.include_router(loginspect_api_router)
-        fastapi_app.include_router(schemadrift_api_router)
-        fastapi_app.include_router(testgen_api_router)
-        fastapi_app.include_router(conflint_api_router)
-        fastapi_app.include_router(dagcheck_api_router)
-        fastapi_app.include_router(metricdiff_api_router)
-        fastapi_app.include_router(sqlfmt_api_router)
-        fastapi_app.include_router(llmcost_api_router)
-        fastapi_app.include_router(promptlab_api_router)
-        fastapi_app.include_router(llmeval_api_router)
-        fastapi_app.include_router(orchestrator_api_router)
-
+    # NOTE: launch() builds a FRESH FastAPI instance — anything registered on
+    # app.app beforehand is silently discarded (Gradio 6). So launch first
+    # without blocking, mount the routers on the instance actually serving,
+    # then block.
     app.launch(
         server_name=host,
         server_port=port,
         share=share,
         inbrowser=True,
         css=_CUSTOM_CSS,
+        prevent_thread_lock=True,
     )
+
+    if api:
+        from .config_lint.api import router as conflint_api_router
+        from .dag_check.api import router as dagcheck_api_router
+        from .data_lineage.api import router as lineage_api_router
+        from .data_skew.api import router as skew_api_router
+        from .llm_cost.api import router as llmcost_api_router
+        from .llm_eval.api import router as llmeval_api_router
+        from .log_inspect.api import router as loginspect_api_router
+        from .metric_diff.api import router as metricdiff_api_router
+        from .orchestrator.api import router as orchestrator_api_router
+        from .pii_scan.api import router as pii_api_router
+        from .prompt_lab.api import router as promptlab_api_router
+        from .schema_drift.api import router as schemadrift_api_router
+        from .sql_fmt.api import router as sqlfmt_api_router
+        from .sql_review.api import router as sql_review_api_router
+        from .sql_testgen.api import router as testgen_api_router
+        from .sql_transpile.api import router as transpile_api_router
+        from .text2sql.api import router as t2s_api_router
+        fastapi_app = app.app  # the served instance, now that launch() ran
+        for router in (
+            t2s_api_router,
+            sql_review_api_router,
+            lineage_api_router,
+            transpile_api_router,
+            skew_api_router,
+            pii_api_router,
+            loginspect_api_router,
+            schemadrift_api_router,
+            testgen_api_router,
+            conflint_api_router,
+            dagcheck_api_router,
+            metricdiff_api_router,
+            sqlfmt_api_router,
+            llmcost_api_router,
+            promptlab_api_router,
+            llmeval_api_router,
+            orchestrator_api_router,
+        ):
+            fastapi_app.include_router(router)
+
+    app.block_thread()
 
 
 def main() -> None:
