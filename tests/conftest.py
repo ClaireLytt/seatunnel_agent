@@ -14,3 +14,4 @@ def _no_llm_usage_log(monkeypatch):
     monkeypatch.setenv("LLM_USAGE_LOG", "0")
     monkeypatch.setenv("PROMPT_LAB_LOG", "0")
     monkeypatch.setenv("LLM_EVAL_LOG", "0")
+    monkeypatch.setenv("ORCH_CHAT_LOG", "0")

@@ -26,6 +26,12 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "schema_drift": ("漂移", "drift", "ddl", "表结构变更", "schema"),
     "pii_scan": ("敏感", "pii", "脱敏", "手机号", "身份证"),
     "sql_testgen": ("造数", "测试数据", "test data", "testgen", "mock"),
+    "secret_scan": ("凭证", "密钥", "泄漏", "secret", "secrets", "leak",
+                    "leaked", "credential", "credentials", "token",
+                    "api key", "泄密", "密码检查"),
+    "dep_check": ("依赖", "dependency", "requirements", "license", "版本钉"),
+    "release_notes": ("发布", "changelog", "release", "版本号", "release notes"),
+    "ci_triage": ("ci", "流水线", "构建失败", "actions", "flaky", "作业日志"),
 }
 
 

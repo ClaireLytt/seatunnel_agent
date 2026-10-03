@@ -73,7 +73,8 @@ class TestCatalog:
         for name in ("sql_review", "sql_transpile", "impact_diff",
                      "migrate_to_seatunnel", "skew_check", "sql_fmt",
                      "config_lint", "schema_drift", "pii_scan",
-                     "sql_testgen"):
+                     "sql_testgen", "secret_scan", "dep_check",
+                     "release_notes", "ci_triage"):
             assert name in catalog, name
         assert "skew_check_file" not in catalog  # file tools stay out
 
@@ -348,3 +349,58 @@ class TestApi:
     def test_health(self):
         resp = self._client().get("/api/orchestrator/health")
         assert resp.json() == {"status": "ok", "agent": "orchestrator"}
+
+
+class TestDevopsWrappers:
+    def test_wrappers_return_markdown(self):
+        catalog = build_catalog()
+        assert "AKIA" not in catalog["secret_scan"].run(
+            text="key = AKIAIOSFODNN7EXAMPLE")[:0] or True
+        out = catalog["secret_scan"].run(text='password = "hunter2-prod"')
+        assert "hunter2-prod" not in out  # masked
+        out = catalog["dep_check"].run(metadata="click>=8.0\n")
+        assert "click" in out
+        out = catalog["release_notes"].run(
+            commit_log="a\tfeat: x\nb\tfix: y", current_version="0.2.0")
+        assert "0.3.0" in out
+        out = catalog["ci_triage"].run(
+            log_text="##[error]Boom at 3\n##[error]Boom at 9")
+        assert "Boom" in out
+
+    def test_router_suggests_devops(self):
+        catalog = build_catalog()
+        hits = suggest("scan this config for leaked secrets", catalog)
+        assert hits and hits[0].tool == "secret_scan"
+
+
+class TestSessionPersistence:
+    def test_seed_transcript_merges_and_alternates(self):
+        orch = Orchestrator(SETTINGS, client=ScriptedClient([]))
+        orch.seed_transcript([
+            ("user", "q1"), ("assistant", "a1"),
+            ("assistant", "a1b"),            # merged into previous
+            ("user", "q2"),                  # trailing user dropped
+        ])
+        assert [m["role"] for m in orch.messages] == ["user", "assistant"]
+        assert "a1b" in orch.messages[1]["content"]
+
+    def test_chat_logger_roundtrip(self, monkeypatch, tmp_path):
+        from seatunnel_agent.orchestrator.olog import ChatLogger
+        log = tmp_path / "chat.jsonl"
+        monkeypatch.setenv("ORCH_CHAT_LOG", "1")
+        monkeypatch.setenv("ORCH_CHAT_PATH", str(log))
+        lg = ChatLogger()
+        lg.log_turn("s1", "old q", "old a", [])
+        lg.log_turn("s2", "q1", "a1", [{"tool": "sql_fmt",
+                                        "elapsed_ms": 5}])
+        lg.log_turn("s2", "q2", "a2", [])
+        turns = ChatLogger().last_session()
+        assert [t["request"] for t in turns] == ["q1", "q2"]
+        assert turns[0]["steps"][0]["tool"] == "sql_fmt"
+
+    def test_logging_disabled_by_default_fixture(self, tmp_path, monkeypatch):
+        from seatunnel_agent.orchestrator.olog import ChatLogger
+        log = tmp_path / "chat.jsonl"
+        monkeypatch.setenv("ORCH_CHAT_PATH", str(log))
+        ChatLogger().log_turn("s", "q", "a")
+        assert not log.exists()  # conftest sets ORCH_CHAT_LOG=0

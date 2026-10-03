@@ -17,6 +17,7 @@ import threading
 import gradio as gr
 
 from .orchestrator import Orchestrator, build_catalog, render_suggestions, suggest
+from .orchestrator.olog import ChatLogger
 from .orchestrator.report import normalize_lang
 
 _I18N = {
@@ -147,6 +148,30 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
 
     # ── callbacks ──
 
+    def _plain_turns(history: list) -> list[tuple[str, str]]:
+        """Displayed transcript → (role, text) pairs worth re-seeding:
+        tool-step <details> blocks and transient indicators are skipped."""
+        turns = []
+        for m in history or []:
+            content = str(m.get("content", ""))
+            if content.startswith("<details>") or content.startswith("⏳"):
+                continue
+            turns.append((m.get("role", ""), content))
+        return turns
+
+    def _restore_display(lang: str) -> list[dict]:
+        """Most recent persisted session → chatbot messages."""
+        msgs: list[dict] = []
+        for turn in ChatLogger().last_session():
+            msgs.append({"role": "user", "content": turn.get("request", "")})
+            reply = turn.get("reply", "")
+            steps = turn.get("steps") or []
+            if steps:
+                used = ", ".join(f"`{s.get('tool')}`" for s in steps)
+                reply = f"{reply}\n\n<sub>🔧 {used}</sub>"
+            msgs.append({"role": "assistant", "content": reply})
+        return msgs
+
     def _step_msg(step, lang: str) -> dict:
         label = _t(lang, "step_label").format(tool=step.tool,
                                               ms=step.elapsed_ms)
@@ -179,6 +204,11 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
             if orch is None or getattr(orch, "lang", None) != lang:
                 from .config import load_settings
                 orch = Orchestrator(load_settings(), lang=lang)
+                # page refresh lost the instance: rebuild context from the
+                # displayed transcript (everything before this user turn)
+                prior = _plain_turns(history[:-1])
+                if prior:
+                    orch.seed_transcript(prior)
         except Exception as exc:  # noqa: BLE001
             history.append({"role": "assistant",
                             "content": f"⚠️ {type(exc).__name__}: {exc}"})
@@ -213,9 +243,11 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
             history[pending] = {"role": "assistant",
                                 "content": f"⚠️ {outcome['error']}"}
         else:
+            result = outcome["result"]
             history[pending] = {"role": "assistant",
-                                "content": outcome["result"].reply
-                                or "_(empty)_"}
+                                "content": result.reply or "_(empty)_"}
+            ChatLogger().log_turn(orch.session_id, text, result.reply,
+                                  [s.to_dict() for s in result.steps])
         yield history, orch, ""
 
     def do_clear():
@@ -257,7 +289,13 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
     app.load(fn=None, js=STAMP_JS)
 
     def _lang_on_load(request: gr.Request):
-        return switch_lang(choice_from_request(request))
+        lang, title, banner, chat_upd, *rest = switch_lang(
+            choice_from_request(request))
+        restored = _restore_display(lang)
+        if restored:
+            chat_upd = gr.update(placeholder=_t(lang, "chat_ph"),
+                                 value=restored)
+        return (lang, title, banner, chat_upd, *rest)
 
     app.load(
         _lang_on_load, inputs=None,

@@ -70,6 +70,26 @@ class Orchestrator:
         self.client = client
         self.system_prompt = build_system_prompt(self.catalog, self.lang)
         self.messages: list[dict[str, Any]] = []
+        import uuid
+        self.session_id = uuid.uuid4().hex[:12]
+
+    def seed_transcript(self, turns: list[tuple[str, str]]) -> None:
+        """Rebuild context from a persisted plain-text transcript
+        (``[(role, text), …]``).  Consecutive same-role texts are merged so
+        the history stays strictly alternating (Anthropic requires it);
+        tool messages are not restored — the final replies carry what the
+        model needs to stay coherent."""
+        merged: list[dict[str, Any]] = []
+        for role, text in turns:
+            if role not in ("user", "assistant") or not (text or "").strip():
+                continue
+            if merged and merged[-1]["role"] == role:
+                merged[-1]["content"] += "\n\n" + text
+            else:
+                merged.append({"role": role, "content": text})
+        if merged and merged[-1]["role"] == "user":
+            merged.pop()  # history must end on an assistant turn
+        self.messages = merged
 
     # ── public API ──────────────────────────────────────────────────────
 

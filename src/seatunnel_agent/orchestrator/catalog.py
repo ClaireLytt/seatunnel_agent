@@ -36,6 +36,10 @@ _PAGES = {
     "schema_drift": "/schemadrift",
     "pii_scan": "/pii",
     "sql_testgen": "/testgen",
+    "secret_scan": "/secretscan",
+    "dep_check": "/depcheck",
+    "release_notes": "/release",
+    "ci_triage": "/ciinspect",
 }
 
 _TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}
@@ -133,12 +137,61 @@ def _wrap_sql_testgen(sql: str, ddl: str = "", rows: int = 20,
     return render_markdown(result, lang)
 
 
+def _wrap_secret_scan(text: str, lang: str = "zh") -> str:
+    """敏感凭证扫描:云厂商 token / 私钥块 / 明文密码与 API Key 赋值 /
+    DSN 内嵌密码 / 高熵字符串。入参为代码或配置文本,预览自动脱敏。"""
+    from ..secret_scan import ScanResult, render_markdown, scan_text
+    if not (text or "").strip():
+        return "文本不能为空 / text must not be empty"
+    return render_markdown(
+        ScanResult(findings=scan_text(text), files_scanned=1), lang)
+
+
+def _wrap_dep_check(metadata: str, lang: str = "zh") -> str:
+    """依赖体检:对 pyproject.toml 或 requirements.txt 文本做离线检查 ——
+    声明未装、版本违反、未钉版本、重复冲突与 License 清单。"""
+    from ..dep_check import (
+        check, parse_pyproject_text, parse_requirements_text, render_markdown,
+    )
+    if not (metadata or "").strip():
+        return "依赖声明不能为空 / metadata must not be empty"
+    if "[project]" in metadata or "[build-system]" in metadata:
+        reqs = parse_pyproject_text(metadata)
+    else:
+        reqs = parse_requirements_text(metadata)
+    return render_markdown(check(reqs), lang)
+
+
+def _wrap_release_notes(commit_log: str, current_version: str = "",
+                        lang: str = "zh") -> str:
+    """发布助手:按 conventional commits 分组生成 changelog 并给出语义化
+    版本建议。入参为每行 `sha<TAB>subject` 的提交记录文本。"""
+    from ..release_notes import build_notes, render_markdown
+    if not (commit_log or "").strip():
+        return "提交记录不能为空 / commit log must not be empty"
+    return render_markdown(build_notes(commit_log, current_version), lang)
+
+
+def _wrap_ci_triage(log_text: str, job_name: str = "job",
+                    lang: str = "zh") -> str:
+    """CI 日志诊断:把失败作业日志聚类成 Top-N 根因(数字/路径/哈希先
+    掩码再分组)。入参为日志文本(带时间戳前缀也可以)。"""
+    from ..ci_inspect import analyze, render_markdown
+    if not (log_text or "").strip():
+        return "日志不能为空 / log must not be empty"
+    return render_markdown(analyze(logs={job_name: log_text}), lang)
+
+
 _WRAPPERS: dict[str, Callable[..., str]] = {
     "sql_fmt": _wrap_sql_fmt,
     "config_lint": _wrap_config_lint,
     "schema_drift": _wrap_schema_drift,
     "pii_scan": _wrap_pii_scan,
     "sql_testgen": _wrap_sql_testgen,
+    "secret_scan": _wrap_secret_scan,
+    "dep_check": _wrap_dep_check,
+    "release_notes": _wrap_release_notes,
+    "ci_triage": _wrap_ci_triage,
 }
 
 
