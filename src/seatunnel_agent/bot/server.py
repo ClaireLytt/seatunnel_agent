@@ -53,12 +53,19 @@ def default_post_comment(payload: dict[str, Any], body: str) -> None:
 
 
 def default_find_bot_comment(payload: dict[str, Any]) -> str | None:
-    """URL of the existing bot comment (by BOT_MARKER), or None."""
-    url = payload["pull_request"]["comments_url"] + "?per_page=100"
-    comments = json.loads(_gh_request(url))
-    for c in comments:
-        if BOT_MARKER in (c.get("body") or ""):
-            return str(c.get("url") or "") or None
+    """URL of the existing bot comment (by BOT_MARKER), or None.
+
+    Paginated — on a busy PR the bot comment may sit well past the first
+    100 comments, and missing it means stacking duplicates."""
+    base = payload["pull_request"]["comments_url"]
+    for page in range(1, 6):  # up to 500 comments
+        comments = json.loads(_gh_request(
+            f"{base}?per_page=100&page={page}"))
+        for c in comments:
+            if BOT_MARKER in (c.get("body") or ""):
+                return str(c.get("url") or "") or None
+        if len(comments) < 100:
+            break
     return None
 
 
@@ -112,6 +119,13 @@ def create_bot_app(secret: str = "",
                 secret, body, request.headers.get("X-Hub-Signature-256")):
             raise HTTPException(status_code=401, detail="bad signature")
         event = request.headers.get("X-GitHub-Event", "")
+        # the GitHub calls below are blocking urllib — run the whole
+        # processing off the event loop so /health and concurrent
+        # deliveries never stall behind one slow fetch
+        from starlette.concurrency import run_in_threadpool
+        return await run_in_threadpool(_process, event, body)
+
+    def _process(event: str, body: bytes) -> dict[str, Any]:
         if event == "ping":
             return {"status": "pong"}
         if event != "pull_request":

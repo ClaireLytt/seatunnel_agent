@@ -2911,9 +2911,13 @@ def ciinspect(
     if not logs and not runs_text:
         raise click.UsageError("Provide log files, --runs or --gh")
 
-    log_map = {Path(p).name: Path(p).read_text(encoding="utf-8",
-                                               errors="replace")
-               for p in logs}
+    # key by basename for readable reports, but never silently drop a
+    # same-named log from another directory
+    log_map: dict[str, str] = {}
+    for p in logs:
+        name = Path(p).name
+        key = name if name not in log_map else str(p)
+        log_map[key] = Path(p).read_text(encoding="utf-8", errors="replace")
     try:
         report = analyze(logs=log_map, runs_text=runs_text, top=top)
     except ValueError as exc:

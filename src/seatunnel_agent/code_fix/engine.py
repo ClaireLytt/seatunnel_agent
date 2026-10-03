@@ -129,8 +129,10 @@ def fix(path: str | Path,
             truncated=loop.truncated,
             elapsed_ms=int((time.time() - start) * 1000))
     finally:
-        # the worktree is kept on disk for inspection; unregister it from
-        # the repo so it never blocks future worktree commands
+        # the worktree directory is deliberately kept for inspection, so it
+        # stays registered in `git worktree list` until the user deletes the
+        # directory; prune only reclaims registrations of already-deleted
+        # ones from earlier runs
         if worktree_created:
             subprocess.run(["git", "-C", str(repo), "worktree", "prune"],
                            capture_output=True, timeout=30)

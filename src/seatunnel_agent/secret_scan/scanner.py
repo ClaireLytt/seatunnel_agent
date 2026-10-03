@@ -152,8 +152,13 @@ def _ignored(rel: str, config: ScanConfig) -> bool:
                for g in config.ignore_paths)
 
 
-def scan_dir(root: str | Path, config: ScanConfig | None = None) -> ScanResult:
+def scan_dir(root: str | Path, config: ScanConfig | None = None,
+             rel_root: str | Path | None = None) -> ScanResult:
+    """*rel_root* is the directory ``ignore_paths`` globs are relative to
+    (defaults to *root*) — when a subdirectory is scanned with the repo
+    root's config, exemptions keep matching the paths the user wrote."""
     root = Path(root)
+    base = Path(rel_root) if rel_root else root
     config = config if config is not None else load_config(root)
     result = ScanResult()
     for path in sorted(root.rglob("*")):
@@ -161,7 +166,10 @@ def scan_dir(root: str | Path, config: ScanConfig | None = None) -> ScanResult:
             continue
         if any(part in _SKIP_DIRS for part in path.parts):
             continue
-        rel = str(path.relative_to(root))
+        try:
+            rel = str(path.resolve().relative_to(base.resolve()))
+        except ValueError:
+            rel = str(path.relative_to(root))
         if path.name == ".secretscan.yaml" or _ignored(rel, config):
             result.files_skipped += 1
             continue
@@ -197,7 +205,7 @@ def scan_paths(paths: list[str | Path],
     for raw in paths:
         p = Path(raw)
         if p.is_dir():
-            sub = scan_dir(p, config)
+            sub = scan_dir(p, config, rel_root=root)
             result.findings.extend(sub.findings)
             result.files_scanned += sub.files_scanned
             result.files_skipped += sub.files_skipped

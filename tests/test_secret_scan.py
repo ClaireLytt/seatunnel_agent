@@ -218,3 +218,15 @@ class TestScanPathsRules:
         f.write_text('password = "hunter2-prod"', encoding="utf-8")
         result = scan_paths([f], root=tmp_path)
         assert result.findings[0].file == "a.env"
+
+
+    def test_dir_argument_keeps_root_relative_exemptions(self, tmp_path):
+        (tmp_path / ".secretscan.yaml").write_text(
+            "ignore_paths: ['tests/fixtures/*']\n", encoding="utf-8")
+        fix = tmp_path / "tests" / "fixtures"
+        fix.mkdir(parents=True)
+        (fix / "cred.env").write_text("ak = AKIAIOSFODNN7EXAMPLE",
+                                      encoding="utf-8")
+        # scanning the SUBDIR with the repo-root config must still exempt
+        result = scan_paths([tmp_path / "tests"], root=tmp_path)
+        assert result.findings == []

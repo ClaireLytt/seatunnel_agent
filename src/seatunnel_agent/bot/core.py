@@ -91,6 +91,9 @@ def _scan_secrets(files: list[PatchFile]) -> list[BotFinding]:
     return out
 
 
+_LOC_NUM = re.compile(r"(\d+)")
+
+
 def _review_sql(files: list[PatchFile]) -> list[BotFinding]:
     from ..sql_review.agent import static_review_report
     from ..sql_review.linter import normalize_dialect
@@ -106,10 +109,15 @@ def _review_sql(files: list[PatchFile]) -> list[BotFinding]:
         for finding in rep.findings:
             sev = {"critical": "high", "risk": "medium"}.get(
                 finding.severity.value, "low")
+            # locations like "行 6" index the ADDED-lines text; map them
+            # back to real new-file line numbers (multi-hunk safe)
+            line = f.added[0][0] if f.added else 0
+            m = _LOC_NUM.search(finding.location or "")
+            if m and 0 < int(m.group(1)) <= len(f.added):
+                line = f.added[int(m.group(1)) - 1][0]
             out.append(BotFinding(
                 tool="sql_review", severity=sev, path=f.path,
-                line=f.added[0][0] if f.added else 0,
-                message=finding.description))
+                line=line, message=finding.description))
     return out
 
 

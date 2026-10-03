@@ -95,7 +95,14 @@ def parse_requirements_text(text: str,
 
 def parse_pyproject_text(text: str) -> list[Requirement]:
     """[project].dependencies + [project.optional-dependencies] via tomllib."""
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # Python 3.10: tomli via the marker dep
+        try:
+            import tomli as tomllib  # type: ignore[no-redef]
+        except ModuleNotFoundError:
+            raise ValueError(
+                "解析 pyproject 需要 Python 3.11+ 或 pip install tomli")
     try:
         data = tomllib.loads(text or "")
     except tomllib.TOMLDecodeError as exc:

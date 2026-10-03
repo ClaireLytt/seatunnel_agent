@@ -75,7 +75,13 @@ def run_task(goal: str, url: str, settings: Settings,
         from .session import PlaywrightSession
         session = PlaywrightSession(allow_external=allow_external,
                                     headed=headed)
-        session.start(url)
+        try:
+            session.start(url)
+        except Exception:
+            # launch can fail after the driver process started (browsers
+            # not installed is the classic) — never leak it
+            session.close()
+            raise
     try:
         agent = ToolLoopAgent(settings, tools=_build_tools(session),
                               system_prompt=_SYSTEM, agent_name="web_task",

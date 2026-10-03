@@ -204,7 +204,9 @@ def collect_gh_runs(repo: str, limit: int = 30) -> str:
          "--jq", ("[.workflow_runs[] | {workflow: .name, "
                   "conclusion: .conclusion, head_sha: .head_sha, "
                   "run_number: .run_number, duration_s: "
-                  "(((.updated_at | fromdate) - (.run_started_at | fromdate)))}]")],
+                  "(if .run_started_at and .updated_at then "
+                  "((.updated_at | fromdate) - (.run_started_at | fromdate)) "
+                  "else 0 end)}]")],
         capture_output=True, text=True, encoding="utf-8",
         errors="replace", timeout=60)
     if out.returncode != 0:

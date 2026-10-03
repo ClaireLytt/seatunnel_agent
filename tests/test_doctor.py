@@ -119,3 +119,23 @@ class TestCli:
         r = CliRunner().invoke(cli, ["doctor", "LLM 超时"])
         assert r.exit_code == 0, r.output
         assert "一切正常" in r.output
+
+
+class TestLogTailSafety:
+    def test_sensitive_filename_refused(self, tmp_path):
+        f = tmp_path / ".env"
+        f.write_text("API_KEY=sk-real-secret", encoding="utf-8")
+        out = read_log_tail(str(f))
+        assert "refused" in out and "sk-real-secret" not in out
+        for name in ("credentials.txt", "id_rsa", "llm_settings.json"):
+            (tmp_path / name).write_text("x", encoding="utf-8")
+            assert "refused" in read_log_tail(str(tmp_path / name)), name
+
+    def test_secrets_in_ordinary_log_masked(self, tmp_path):
+        f = tmp_path / "app.log"
+        f.write_text('connecting with password = "hunter2-prod"\n'
+                     "ak = AKIAIOSFODNN7EXAMPLE\n", encoding="utf-8")
+        out = read_log_tail(str(f))
+        assert "hunter2-prod" not in out
+        assert "AKIAIOSFODNN7EXAMPLE" not in out
+        assert "masked" in out

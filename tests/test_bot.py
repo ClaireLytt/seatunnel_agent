@@ -190,3 +190,47 @@ class TestWebhook:
     def test_health(self):
         assert self._client().get("/health").json() == {
             "status": "ok", "agent": "bot"}
+
+
+class TestFindBotCommentPagination:
+    def test_marker_found_on_second_page(self, monkeypatch):
+        from seatunnel_agent.bot import server as srv
+        pages = {
+            1: [{"body": "x", "url": "u1"}] * 100,
+            2: [{"body": srv.BOT_MARKER + " hi", "url": "u-bot"}],
+        }
+
+        def fake_request(url, data=None, accept=""):
+            import json as _j
+            page = int(url.split("&page=")[1])
+            return _j.dumps(pages.get(page, [])).encode()
+        monkeypatch.setattr(srv, "_gh_request", fake_request)
+        payload = {"pull_request": {"comments_url": "https://api/c"}}
+        assert srv.default_find_bot_comment(payload) == "u-bot"
+
+    def test_not_found_stops_on_short_page(self, monkeypatch):
+        from seatunnel_agent.bot import server as srv
+        calls = []
+
+        def fake_request(url, data=None, accept=""):
+            calls.append(url)
+            return b"[]"
+        monkeypatch.setattr(srv, "_gh_request", fake_request)
+        payload = {"pull_request": {"comments_url": "https://api/c"}}
+        assert srv.default_find_bot_comment(payload) is None
+        assert len(calls) == 1
+
+
+class TestSqlLineMapping:
+    def test_second_hunk_finding_gets_real_line(self):
+        patch = (
+            "--- a/q.sql\n+++ b/q.sql\n"
+            "@@ -1,1 +1,2 @@\n SELECT 1;\n+-- harmless comment\n"
+            "@@ -50,1 +51,3 @@\n SELECT 2;\n"
+            "+SELECT a.id FROM t1 a, t2 b\n"
+            "+WHERE a.ds = '2026-01-01';\n")
+        findings, _ = review_patch(patch)
+        sql = [f for f in findings if f.tool == "sql_review"]
+        assert sql, findings
+        # the cartesian join sits in the SECOND hunk (new line >= 51)
+        assert any(f.line >= 51 for f in sql), [f.to_dict() for f in sql]

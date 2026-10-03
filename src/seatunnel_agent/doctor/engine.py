@@ -10,6 +10,7 @@ API key it degrades to a deterministic full check-up report.
 from __future__ import annotations
 
 import os
+import re
 import socket
 import sys
 from dataclasses import dataclass, field
@@ -76,8 +77,27 @@ def list_logs(logs_dir: str = "logs") -> str:
     return "\n".join(rows) or "(empty)"
 
 
+# files the doctor must never read: they exist to hold secrets, and the
+# page is reachable from the web UI
+_SENSITIVE_NAME = re.compile(
+    r"\.env|credential|secret|token|apikey|api_key|llm_settings|\.pem|"
+    r"id_rsa|\.p12|\.keystore", re.I)
+
+
+def _redact(line: str) -> str:
+    """Mask anything that looks like a credential before it reaches the
+    model/UI — reuses the secret-scan rule catalog."""
+    from ..secret_scan.rules import RULES
+    for rule in RULES:
+        line = rule.pattern.sub("«masked»", line)
+    return line
+
+
 def read_log_tail(path: str, lines: int = _TAIL_LINES) -> str:
     p = Path(path)
+    if _SENSITIVE_NAME.search(p.name):
+        return (f"(refused: {p.name} looks like a credentials file — "
+                "the doctor only reads logs)")
     if not p.is_file():
         return f"(not a file: {path})"
     try:
@@ -86,7 +106,7 @@ def read_log_tail(path: str, lines: int = _TAIL_LINES) -> str:
     except OSError as exc:
         return f"(read failed: {exc})"
     lines = max(1, min(int(lines), 200))
-    return "\n".join(content[-lines:]) or "(empty)"
+    return "\n".join(_redact(ln) for ln in content[-lines:]) or "(empty)"
 
 
 def build_tools() -> list[ToolSpec]:
