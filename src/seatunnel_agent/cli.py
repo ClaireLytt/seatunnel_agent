@@ -2392,6 +2392,8 @@ def settings(clear_: bool, usage_: bool) -> None:
               default="markdown", help="Report format (json for machines/CI)")
 @click.option("--output", "-o", type=click.Path(), default=None,
               help="Save report to file")
+@click.option("--notify", "do_notify", is_flag=True,
+              help="NOTIFY_WEBHOOK_URL webhook alert on anomaly/over-budget")
 def llmcost(
     days: int,
     budget: float | None,
@@ -2401,6 +2403,7 @@ def llmcost(
     fail_on: str | None,
     fmt: str,
     output: str | None,
+    do_notify: bool,
 ) -> None:
     """LLM 成本观测 — 按模型/按天/按 agent 汇总调用成本,异常日标记。
 
@@ -2430,6 +2433,18 @@ def llmcost(
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if do_notify:
+        from .notify import send as notify_send
+        over = budget is not None and check_budget(summary, budget)
+        if summary["anomalies"] or over:
+            parts = []
+            if over:
+                parts.append(f"over budget: ${summary['total']['cost_usd']}"
+                             f" / ${budget}")
+            parts += [f"anomaly {a['day']}: ${a['cost_usd']}"
+                      for a in summary["anomalies"][:5]]
+            notify_send("LLM cost alert", "; ".join(parts))
 
     if fail_on == "budget" and check_budget(summary, budget):
         msg = (f"成本 ${summary['total']['cost_usd']} 超过预算 ${budget},"
@@ -2514,6 +2529,8 @@ def promptlab(
               default="markdown", help="Report format (json for machines/CI)")
 @click.option("--output", "-o", type=click.Path(), default=None,
               help="Save report to file")
+@click.option("--notify", "do_notify", is_flag=True,
+              help="NOTIFY_WEBHOOK_URL webhook alert on regression/failures")
 def llmeval(
     suite_file: str,
     judge: bool,
@@ -2521,6 +2538,7 @@ def llmeval(
     fail_on: str | None,
     fmt: str,
     output: str | None,
+    do_notify: bool,
 ) -> None:
     """LLM 评测 — 对平台 LLM 功能跑黄金用例集,自动打分 + 回归门禁。
 
@@ -2561,6 +2579,14 @@ def llmeval(
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if do_notify and (result.failed_cases or regression["regressed"]):
+        from .notify import send as notify_send
+        notify_send(
+            f"LLM eval alert: {suite.name}",
+            f"score {result.score:.0%}; failed: "
+            f"{', '.join(result.failed_cases) or '-'}; regressed: "
+            f"{', '.join(regression['regressed_cases']) or '-'}")
 
     if fail_on:
         hit = (bool(result.failed_cases) if fail_on == "fail"
@@ -2851,6 +2877,8 @@ def depcheck(
               default="markdown", help="Report format (json for machines/CI)")
 @click.option("--output", "-o", type=click.Path(), default=None,
               help="Save report to file")
+@click.option("--notify", "do_notify", is_flag=True,
+              help="NOTIFY_WEBHOOK_URL webhook alert on flaky workflows")
 def ciinspect(
     logs: tuple[str, ...],
     runs_file: str | None,
@@ -2861,6 +2889,7 @@ def ciinspect(
     fail_on: str | None,
     fmt: str,
     output: str | None,
+    do_notify: bool,
 ) -> None:
     """CI 日志诊断 — 失败日志根因聚类 + flaky 识别 + 时长漂移。
 
@@ -2900,6 +2929,12 @@ def ciinspect(
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if do_notify and report.runs.flaky:
+        from .notify import send as notify_send
+        notify_send("CI flaky alert",
+                    "; ".join(f"{f['workflow']} @ {f['head_sha']}"
+                              for f in report.runs.flaky[:10]))
 
     if fail_on == "flaky" and report.runs.flaky:
         msg = "发现 flaky 工作流(同一提交又过又挂),检查未通过。"
