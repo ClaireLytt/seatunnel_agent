@@ -3017,5 +3017,73 @@ def docqa(
         console.print(result["markdown"], markup=False)
 
 
+@cli.command()
+@click.argument("path", type=click.Path(exists=True, file_okay=False))
+@click.option("--tests", "-t", default="", help="pytest 选择器(留空跑全部)")
+@click.option("--instruction", "-i", default="", help="给 agent 的补充说明")
+@click.option("--max-steps", default=12, show_default=True,
+              type=click.IntRange(2, 30), help="工具调用步数上限")
+@click.option("--in-place", is_flag=True,
+              help="直接修改目标目录(默认在 git worktree 隔离执行)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def codefix(
+    path: str,
+    tests: str,
+    instruction: str,
+    max_steps: int,
+    in_place: bool,
+    lang: str,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """测试自愈 Agent — 跑测试→读码→打补丁→复跑,直到通过。
+
+    默认在新建 git worktree 中执行,原工作区不动;最终以确定性复跑验收,
+    测试仍不过则退出码 1。"""
+    import json as _json
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .code_fix import fix, render_markdown
+    from .config import load_settings
+
+    load_dotenv()
+    settings_store.apply_to_env()
+    try:
+        settings = load_settings()
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    def on_step(step):
+        mark = "⚠️ " if step.error else ""
+        console.print(f"[dim]🔧 {mark}{step.tool} · {step.elapsed_ms} ms[/dim]")
+
+    try:
+        result = fix(path, settings, tests=tests, instruction=instruction,
+                     max_steps=max_steps, in_place=in_place, on_step=on_step)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    if fmt == "json":
+        text_out = _json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+    if not result.success:
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()
