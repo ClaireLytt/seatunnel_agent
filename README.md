@@ -67,6 +67,12 @@
 - **CI Log Triage** *(DevOps)*: cluster failed-job logs into Top-N root causes (numbers/paths/hashes masked before grouping), plus flaky detection (same commit both passed and failed) and duration drift from runs metadata; `--gh owner/repo` pulls recent runs via the gh CLI — CLI `seatunnel-agent ciinspect --fail-on flaky`, REST `/api/ciinspect/`, Web UI `/ciinspect`, demo `examples/ciinspect_demo/`
 - **Dependency Health** *(DevOps)*: offline check of pyproject/requirements — declared-but-missing or spec-violated installs (high), unpinned/conflicting declarations and copyleft licenses (medium), unknown licenses (info), with a full inventory table — CLI `seatunnel-agent depcheck --fail-on high|medium`, REST `/api/depcheck/`, Web UI `/depcheck`, demo `examples/depcheck_demo/`
 - **Release Notes** *(DevOps)*: conventional-commit changelog grouped by type with breaking-change section and a semver bump suggestion (breaking→major, feat→minor, else patch); optional advisory LLM polish — CLI `seatunnel-agent relnotes` (`--log-file` for offline input), REST `/api/release/`, Web UI `/release`, demo `examples/release_demo/`
+- **Doc Q&A** *(AI Platform)*: offline BM25 retrieval (ASCII words + CJK bigrams) over the built-in connector docs and `docs/*.md`, extractive answers with citations and optional LLM synthesis grounded strictly in the retrieved excerpts — CLI `seatunnel-agent docqa`, REST `/api/docqa/`, Web UI `/docqa`
+- **Code Fix Agent** *(AI Platform)*: a true perceive→act→observe agent — run pytest, read the code, patch (exact-unique replacement), re-run until green, inside a fresh git worktree; success decided by a final deterministic run, the diff is yours to review, nothing is ever committed — CLI `seatunnel-agent codefix` (exit 1 while red), Web UI `/codefix` with streamed steps
+- **Issue Triage Agent** *(AI Platform)*: dedupe against issue history (BM25), locate the module (git grep), check the docs — then whitelisted labels, priority and a draft reply as validated JSON — CLI `seatunnel-agent triage`, REST `/api/triage/`, Web UI `/triage`, demo history `examples/triage_demo/`
+- **Web Task Agent** *(AI Platform)*: goal + URL → a real headless-browser loop (numbered-element snapshot → click/fill → observe), element handles kept server-side and navigation confined to the start origin — CLI `seatunnel-agent webtask`, Web UI `/webtask`
+- **Environment Doctor** *(DevOps)*: describe the symptom — the agent inspects ports, packages, LLM config (masked) and log tails, all read-only, and prescribes fix commands for you to run; deterministic full check-up without a key — CLI `seatunnel-agent doctor`, Web UI `/doctor`
+- **Plugin architecture**: any package shipping a `manifest.py` auto-registers its hub card, page route and REST router — adding a capability no longer touches `ui.py`; shared `agent_core.ToolLoopAgent` gives every true agent the same bounded tool-use loop with injectable clients for offline tests
 
 ### Quick Start
 
@@ -936,6 +942,12 @@ MIT
 - **CI 日志诊断** *(DevOps)*：失败作业日志聚类成 Top-N 根因（聚类前掩掉数字/路径/哈希），运行元数据分析 flaky（同一提交又过又挂）与时长漂移；`--gh owner/repo` 可用 gh CLI 拉取最近运行 —— CLI `seatunnel-agent ciinspect --fail-on flaky`、REST `/api/ciinspect/`、Web 页面 `/ciinspect`、演示数据 `examples/ciinspect_demo/`
 - **依赖体检** *(DevOps)*：离线检查 pyproject/requirements —— 声明未装或版本违反（高危）、未钉版本/重复冲突声明/copyleft License（中危）、License 缺失（提示），附完整依赖清单 —— CLI `seatunnel-agent depcheck --fail-on high|medium`、REST `/api/depcheck/`、Web 页面 `/depcheck`、演示数据 `examples/depcheck_demo/`
 - **发布助手** *(DevOps)*：按 conventional commits 分组生成 changelog（破坏性变更单列）+ 语义化版本建议（breaking→major、feat→minor、否则 patch）；可选 LLM 润色（仅参考，失败回退）—— CLI `seatunnel-agent relnotes`（`--log-file` 离线输入）、REST `/api/release/`、Web 页面 `/release`、演示数据 `examples/release_demo/`
+- **文档问答** *(AI 平台)*：离线 BM25 检索（英文分词 + 中文 bigram）内置连接器文档与 `docs/*.md`，抽取式回答带来源引用，可选仅基于检索片段的 LLM 综合 —— CLI `seatunnel-agent docqa`、REST `/api/docqa/`、Web 页面 `/docqa`
+- **测试自愈 Agent** *(AI 平台)*：真正的感知→行动→观察 agent —— 自己跑 pytest、读码、精确唯一替换打补丁、复跑直到通过；在新建 git worktree 中执行，是否成功由最终确定性复跑裁定，diff 供人工审阅，绝不提交 —— CLI `seatunnel-agent codefix`（未修复退出 1）、Web 页面 `/codefix`（步骤实时流式）
+- **Issue 分诊 Agent** *(AI 平台)*：历史 issue 查重（BM25）、git grep 定位模块、查文档 —— 输出白名单标签、优先级与草拟回复（JSON 校验）—— CLI `seatunnel-agent triage`、REST `/api/triage/`、Web 页面 `/triage`、演示语料 `examples/triage_demo/`
+- **网页操作 Agent** *(AI 平台)*：目标 + URL → 真实无头浏览器循环（编号元素快照 → 点击/填表 → 再观察），元素句柄留在服务端、导航默认限制起始同源 —— CLI `seatunnel-agent webtask`、Web 页面 `/webtask`
+- **环境医生** *(DevOps)*：描述症状 —— agent 只读检查端口、依赖、LLM 配置（脱敏）与日志尾部，开出修复命令由你执行；无 key 时输出确定性全量体检 —— CLI `seatunnel-agent doctor`、Web 页面 `/doctor`
+- **插件化架构**：任何包放一个 `manifest.py` 即自动注册 hub 卡片、页面路由与 REST router —— 新增能力不再改 `ui.py`；共享的 `agent_core.ToolLoopAgent` 为所有真 agent 提供同一套有界 tool-use 循环，client 可注入、全部离线可测
 
 ### 快速开始
 

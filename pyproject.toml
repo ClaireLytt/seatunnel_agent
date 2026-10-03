@@ -112,6 +112,11 @@ files = [
     "src/seatunnel_agent/doc_qa",
     "src/seatunnel_agent/llm_cost",
     "src/seatunnel_agent/bot",
+    "src/seatunnel_agent/agent_core",
+    "src/seatunnel_agent/code_fix",
+    "src/seatunnel_agent/issue_triage",
+    "src/seatunnel_agent/doctor",
+    "src/seatunnel_agent/web_task",
 ]
 ignore_missing_imports = true
 check_untyped_defs = true
