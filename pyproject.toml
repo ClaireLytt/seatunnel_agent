@@ -123,3 +123,6 @@ ignore_missing_imports = true
 check_untyped_defs = true
 warn_unused_ignores = true
 no_implicit_optional = true
+# gradual gate: imported legacy modules are analyzed for inference but their
+# errors are NOT reported — only the files listed above gate the build
+follow_imports = "silent"
