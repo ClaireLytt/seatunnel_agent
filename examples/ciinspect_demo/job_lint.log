@@ -1,0 +1,4 @@
+2026-10-02T15:50:01.0000000Z ##[group]Run ruff check
+2026-10-02T15:50:02.0000000Z ##[error]B007 Loop control variable `turn` not used within loop body
+2026-10-02T15:50:02.1000000Z ConnectionError: Failed to reach pypi.org:443 after 5 retries
+2026-10-02T15:50:03.0000000Z ##[error]Process completed with exit code 1.

@@ -128,9 +128,10 @@ class TestCli:
         assert payload["breaking"][0]["sha"] == "d4e5f6a"
 
     def test_real_repo_smoke(self):
-        # the project repo itself: git log since full history is fine
+        # the project repo itself; no --from ref — CI checkouts are shallow
+        # (depth=1), so HEAD~N may not exist there
         r = CliRunner().invoke(cli, ["relnotes", "--repo", ".",
-                                     "--from", "HEAD~3"])
+                                     "--to", "HEAD"])
         assert r.exit_code == 0, r.output
 
 

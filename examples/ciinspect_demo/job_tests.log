@@ -1,0 +1,8 @@
+2026-10-02T15:57:51.2149012Z ##[group]Run pytest
+2026-10-02T15:57:54.5763331Z tests/test_llm_cost.py::test_summary PASSED
+2026-10-02T15:57:54.5764428Z FAILED tests/test_hub_pages.py::test_filter - AssertionError: expected 3 cards, got 4
+2026-10-02T15:57:54.5765000Z FAILED tests/test_hub_pages.py::test_sections - AssertionError: expected 3 cards, got 5
+2026-10-02T15:57:55.1000000Z Traceback (most recent call last):
+2026-10-02T15:57:55.1000001Z   File "/home/runner/work/app/src/hub.py", line 42, in build
+2026-10-02T15:57:55.1000002Z ConnectionError: Failed to reach pypi.org:443 after 3 retries
+2026-10-02T15:57:56.0000000Z ##[error]Process completed with exit code 1.

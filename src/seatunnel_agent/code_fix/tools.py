@@ -31,13 +31,21 @@ def _resolve(workdir: Path, rel: str) -> Path:
 
 
 def run_pytest(workdir: Path, selector: str = "") -> str:
-    """Run the tests; output = exit code + tail of combined output."""
+    """Run the tests; output = exit code + tail of combined output.
+
+    PYTHONDONTWRITEBYTECODE: the agent's patches often keep a file's SIZE
+    identical (``a * b`` → ``a / b``), and on filesystems with 1s mtime
+    granularity a stale ``__pycache__`` entry would make the re-run execute
+    the OLD code — the fix would look like it didn't work."""
+    import os
     cmd = [sys.executable, "-m", "pytest", "-x", "-q", "--no-header",
            "-p", "no:cacheprovider"]
     if (selector or "").strip():
         cmd.append(selector.strip())
+    env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     proc = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=300)
+                          encoding="utf-8", errors="replace", timeout=300,
+                          env=env)
     out = (proc.stdout or "") + (proc.stderr or "")
     if len(out) > _OUTPUT_TAIL:
         out = "…(truncated)\n" + out[-_OUTPUT_TAIL:]
