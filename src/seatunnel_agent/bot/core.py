@@ -56,6 +56,8 @@ def parse_patch(patch: str) -> list[PatchFile]:
         if line.startswith("+") and not line.startswith("+++"):
             current.added.append((new_no, line[1:]))
             new_no += 1
+        elif line.startswith("\\"):
+            continue  # "\ No newline at end of file" is not a content line
         elif not line.startswith("-"):
             new_no += 1
     return [f for f in files if f.added]

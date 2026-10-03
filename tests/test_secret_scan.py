@@ -191,3 +191,30 @@ class TestApi:
     def test_health(self):
         resp = self._client().get("/api/secretscan/health")
         assert resp.json() == {"status": "ok", "agent": "secret_scan"}
+
+
+class TestScanPathsRules:
+    def test_root_config_exemptions_apply_to_explicit_files(self, tmp_path):
+        """pre-commit passes staged files one by one — the repo-root
+        .secretscan.yaml must still exempt them."""
+        (tmp_path / ".secretscan.yaml").write_text(
+            "ignore_paths: ['fixtures/*']\n", encoding="utf-8")
+        fix = tmp_path / "fixtures"
+        fix.mkdir()
+        f = fix / "sample.env"
+        f.write_text("ak = AKIAIOSFODNN7EXAMPLE", encoding="utf-8")
+        result = scan_paths([f], root=tmp_path)
+        assert result.findings == []
+        assert result.files_skipped == 1
+
+    def test_explicit_file_binary_guard(self, tmp_path):
+        b = tmp_path / "blob.bin"
+        b.write_bytes(b"\x00\x01AKIAIOSFODNN7EXAMPLE")
+        result = scan_paths([b], root=tmp_path)
+        assert result.findings == [] and result.files_skipped == 1
+
+    def test_relative_label_under_root(self, tmp_path):
+        f = tmp_path / "a.env"
+        f.write_text('password = "hunter2-prod"', encoding="utf-8")
+        result = scan_paths([f], root=tmp_path)
+        assert result.findings[0].file == "a.env"

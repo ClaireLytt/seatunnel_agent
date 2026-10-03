@@ -14,6 +14,18 @@ import gradio as gr
 
 COOKIE = "st-lang"
 
+def _routes_js(workspace: str, fallback: list[str]) -> str:
+    """Workspace page routes as a JS array literal — generated from the
+    plugin registry so the back-button mapping can't drift when a plugin
+    is added (the /docqa button once pointed at /data for exactly that)."""
+    try:
+        from .registry import discover
+        routes = [m.route for m in discover() if m.workspace == workspace]
+    except Exception:  # noqa: BLE001 — a broken plugin must not kill pages
+        routes = fallback
+    return "[" + ", ".join(f"'{r}'" for r in routes) + "]"
+
+
 # app.load(fn=None, js=STAMP_JS): stamp the body for the UI test agent, and
 # inject the workspace back-button next to the page's 🏠 (AI Platform pages
 # go back to /ai, data agent pages to /data; the hub pages themselves have
@@ -24,8 +36,8 @@ STAMP_JS = """
     const lang = m ? m[1] : 'en';
     document.body.dataset.stLang = lang;
 
-    const AI_PAGES = ['/orchestrator', '/llmeval', '/promptlab', '/llmcost'];
-    const DEVOPS_PAGES = ['/secretscan', '/ciinspect', '/depcheck', '/release'];
+    const AI_PAGES = __AI_PAGES__;
+    const DEVOPS_PAGES = __DEVOPS_PAGES__;
     // engineering tools live on the landing page itself — 🏠 already returns
     const ENG_PAGES = ['/loginspect', '/uitest', '/mcp', '/settings'];
     const path = window.location.pathname.replace(/\\/+$/, '') || '/';
@@ -62,6 +74,14 @@ STAMP_JS = """
     }, 250);
 }
 """
+
+STAMP_JS = STAMP_JS.replace(
+    "__AI_PAGES__", _routes_js("ai", ["/orchestrator", "/llmeval",
+                                      "/promptlab", "/llmcost", "/docqa"]),
+).replace(
+    "__DEVOPS_PAGES__", _routes_js("devops", ["/secretscan", "/ciinspect",
+                                              "/depcheck", "/release"]),
+)
 
 # Shared 🏠 button behavior (top-right of every page).
 HOME_JS = "() => { window.location.href = '/'; }"

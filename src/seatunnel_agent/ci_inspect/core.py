@@ -163,8 +163,13 @@ def analyze_runs(runs: list[dict[str, Any]]) -> RunsInsight:
         for sha in sorted(s for s, c in by_sha.items()
                           if {"success", "failure"} <= c):
             insight.flaky.append({"workflow": wf, "head_sha": sha})
-        # duration drift: latest vs median of its predecessors
+        # duration drift: latest vs median of its predecessors.
+        # gh api returns runs NEWEST-first — order by run_number when the
+        # data carries it, else trust the input order (demo files are
+        # oldest-first).
         timed = [r for r in rows if r["duration_s"] > 0]
+        if timed and all(r.get("run_number") is not None for r in timed):
+            timed.sort(key=lambda r: r["run_number"])
         if len(timed) >= _MIN_HISTORY + 1:
             latest, history = timed[-1], timed[:-1]
             base = median(r["duration_s"] for r in history)

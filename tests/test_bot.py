@@ -91,12 +91,16 @@ class TestWebhook:
         assert not verify_signature("s3cret", body, "sha256=deadbeef")
         assert not verify_signature("s3cret", body, None)
 
-    def _client(self, secret="", patch=_PATCH, posted=None):
+    def _client(self, secret="", patch=_PATCH, posted=None,
+                existing_url=None, updated=None):
         app = create_bot_app(
             secret=secret,
             fetch_diff=lambda payload: patch,
             post_comment=lambda payload, body: (
                 posted if posted is not None else []).append(body),
+            find_bot_comment=lambda payload: existing_url,
+            update_comment=lambda url, body: (
+                updated if updated is not None else []).append((url, body)),
         )
         return TestClient(app)
 
@@ -143,11 +147,42 @@ class TestWebhook:
             "X-GitHub-Event": "pull_request"})
         assert resp.json()["status"] == "ignored"
 
+    def test_existing_comment_updated_not_duplicated(self):
+        posted, updated = [], []
+        client = self._client(posted=posted, updated=updated,
+                              existing_url="https://api.github.com/c/1")
+        resp = client.post("/webhook", json=_payload(), headers={
+            "X-GitHub-Event": "pull_request"})
+        assert resp.json()["commented"] is True
+        assert posted == []                      # no second comment
+        assert updated and updated[0][0].endswith("/c/1")
+        assert BOT_MARKER in updated[0][1]
+
+    def test_resolved_note_when_findings_clear(self):
+        posted, updated = [], []
+        clean = ("--- a/x\n+++ b/x\n@@ -1 +1,2 @@\n a\n+ok\n")
+        client = self._client(patch=clean, posted=posted, updated=updated,
+                              existing_url="https://api.github.com/c/1")
+        resp = client.post("/webhook", json=_payload(), headers={
+            "X-GitHub-Event": "pull_request"})
+        assert resp.json()["commented"] is False
+        assert posted == []
+        assert updated and "✅" in updated[0][1]
+
+    def test_no_newline_marker_keeps_line_numbers(self):
+        patch = ("--- a/x.txt\n+++ b/x.txt\n@@ -1,2 +1,3 @@\n line1\n"
+                 "-old\n\\ No newline at end of file\n"
+                 "+new2\n+new3\n")
+        files = parse_patch(patch)
+        assert files[0].added == [(2, "new2"), (3, "new3")]
+
     def test_fetch_failure_502(self):
         def boom(payload):
             raise RuntimeError("no network")
         app = create_bot_app(fetch_diff=boom,
-                             post_comment=lambda p, b: None)
+                             post_comment=lambda p, b: None,
+                             find_bot_comment=lambda p: None,
+                             update_comment=lambda u, b: None)
         resp = TestClient(app).post("/webhook", json=_payload(), headers={
             "X-GitHub-Event": "pull_request"})
         assert resp.status_code == 502

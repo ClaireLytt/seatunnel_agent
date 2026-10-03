@@ -181,3 +181,26 @@ class TestApi:
     def test_health(self):
         resp = self._client().get("/api/ciinspect/health")
         assert resp.json() == {"status": "ok", "agent": "ci_inspect"}
+
+
+class TestRunOrdering:
+    def test_drift_detected_with_newest_first_input(self):
+        """gh api returns runs newest-first; run_number must drive the order
+        or a latest-run spike is compared as 'history' and missed."""
+        runs = parse_runs(json.dumps([
+            {"workflow": "w", "conclusion": "success", "head_sha": f"s{i}",
+             "run_number": n, "duration_s": d}
+            for i, (n, d) in enumerate([(5, 120), (4, 40), (3, 42),
+                                        (2, 38), (1, 41)])
+        ]))  # newest (run 5, spiked) first
+        insight = analyze_runs(runs)
+        assert insight.drift and insight.drift[0]["latest_s"] == 120.0
+
+    def test_old_slow_run_not_falsely_flagged(self):
+        runs = parse_runs(json.dumps([
+            {"workflow": "w", "conclusion": "success", "head_sha": f"s{i}",
+             "run_number": n, "duration_s": d}
+            for i, (n, d) in enumerate([(5, 40), (4, 41), (3, 39),
+                                        (2, 42), (1, 120)])
+        ]))  # oldest run was slow; latest runs are fine
+        assert analyze_runs(runs).drift == []

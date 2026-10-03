@@ -117,6 +117,9 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
 
     lang_state = gr.State(lang0)
     orch_state = gr.State(None)  # per-session Orchestrator (multi-turn)
+    sid_state = gr.State(None)   # restored session id — continuation turns
+                                 # must keep logging under the SAME session,
+                                 # or the next refresh only restores the tail
 
     # marker: body:has(.st-scroll-page) re-enables page scrolling
     gr.HTML('<div class="st-scroll-page" style="display:none"></div>')
@@ -159,10 +162,12 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
             turns.append((m.get("role", ""), content))
         return turns
 
-    def _restore_display(lang: str) -> list[dict]:
-        """Most recent persisted session → chatbot messages."""
+    def _restore_display(lang: str) -> tuple[list[dict], str | None]:
+        """Most recent persisted session → (chatbot messages, session id)."""
         msgs: list[dict] = []
+        sid: str | None = None
         for turn in ChatLogger().last_session():
+            sid = turn.get("session") or sid
             msgs.append({"role": "user", "content": turn.get("request", "")})
             reply = turn.get("reply", "")
             steps = turn.get("steps") or []
@@ -170,7 +175,7 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
                 used = ", ".join(f"`{s.get('tool')}`" for s in steps)
                 reply = f"{reply}\n\n<sub>🔧 {used}</sub>"
             msgs.append({"role": "assistant", "content": reply})
-        return msgs
+        return msgs, sid
 
     def _step_msg(step, lang: str) -> dict:
         label = _t(lang, "step_label").format(tool=step.tool,
@@ -181,7 +186,7 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
                 "content": f"<details><summary>{label}</summary>\n\n"
                            f"{body}\n\n</details>"}
 
-    def do_send(text: str, history: list, orch, lang: str):
+    def do_send(text: str, history: list, orch, restored_sid, lang: str):
         """Generator: steps stream into the chat as the engine executes."""
         lang = normalize_lang(lang)
         history = list(history or [])
@@ -209,6 +214,10 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
                 prior = _plain_turns(history[:-1])
                 if prior:
                     orch.seed_transcript(prior)
+                    if restored_sid:
+                        # keep logging under the restored session so the
+                        # next refresh still sees the WHOLE conversation
+                        orch.session_id = restored_sid
         except Exception as exc:  # noqa: BLE001
             history.append({"role": "assistant",
                             "content": f"⚠️ {type(exc).__name__}: {exc}"})
@@ -251,7 +260,8 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
         yield history, orch, ""
 
     def do_clear():
-        return [], None
+        ChatLogger().mark_cleared()  # a cleared chat must STAY cleared
+        return [], None, None
 
     def switch_lang(choice: str):
         lang = "zh" if choice == "中文" else "en"
@@ -272,12 +282,14 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
         )
 
     send_btn.click(do_send,
-                   inputs=[input_box, chatbot, orch_state, lang_state],
+                   inputs=[input_box, chatbot, orch_state, sid_state,
+                           lang_state],
                    outputs=[chatbot, orch_state, input_box])
     input_box.submit(do_send,
-                     inputs=[input_box, chatbot, orch_state, lang_state],
+                     inputs=[input_box, chatbot, orch_state, sid_state,
+                             lang_state],
                      outputs=[chatbot, orch_state, input_box])
-    clear_btn.click(do_clear, outputs=[chatbot, orch_state])
+    clear_btn.click(do_clear, outputs=[chatbot, orch_state, sid_state])
     for btn, key in ((ex_review_btn, "ex_review_text"),
                      (ex_chain_btn, "ex_chain_text"),
                      (ex_pii_btn, "ex_pii_text")):
@@ -291,15 +303,15 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
     def _lang_on_load(request: gr.Request):
         lang, title, banner, chat_upd, *rest = switch_lang(
             choice_from_request(request))
-        restored = _restore_display(lang)
+        restored, sid = _restore_display(lang)
         if restored:
             chat_upd = gr.update(placeholder=_t(lang, "chat_ph"),
                                  value=restored)
-        return (lang, title, banner, chat_upd, *rest)
+        return (lang, title, banner, chat_upd, *rest, sid)
 
     app.load(
         _lang_on_load, inputs=None,
         outputs=[lang_state, title_md, banner_md, chatbot, input_box,
                  send_btn, clear_btn, ex_review_btn, ex_chain_btn,
-                 ex_pii_btn, agents_acc, agents_md],
+                 ex_pii_btn, agents_acc, agents_md, sid_state],
     )

@@ -404,3 +404,16 @@ class TestSessionPersistence:
         monkeypatch.setenv("ORCH_CHAT_PATH", str(log))
         ChatLogger().log_turn("s", "q", "a")
         assert not log.exists()  # conftest sets ORCH_CHAT_LOG=0
+
+
+class TestSessionContinuity:
+    def test_cleared_marker_persists(self, monkeypatch, tmp_path):
+        from seatunnel_agent.orchestrator.olog import ChatLogger
+        monkeypatch.setenv("ORCH_CHAT_LOG", "1")
+        monkeypatch.setenv("ORCH_CHAT_PATH", str(tmp_path / "c.jsonl"))
+        lg = ChatLogger()
+        lg.log_turn("s1", "q1", "a1")
+        lg.mark_cleared()
+        assert ChatLogger().last_session() == []
+        lg.log_turn("s2", "q2", "a2")  # a new session after clearing
+        assert [t["request"] for t in ChatLogger().last_session()] == ["q2"]

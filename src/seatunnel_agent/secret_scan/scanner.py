@@ -181,8 +181,18 @@ def scan_dir(root: str | Path, config: ScanConfig | None = None) -> ScanResult:
 
 
 def scan_paths(paths: list[str | Path],
-               config: ScanConfig | None = None) -> ScanResult:
-    """Scan a mix of files and directories (pre-commit style)."""
+               config: ScanConfig | None = None,
+               root: str | Path | None = None) -> ScanResult:
+    """Scan a mix of files and directories (pre-commit style).
+
+    Explicit files honor the SAME rules as a directory walk: the
+    ``.secretscan.yaml`` at *root* (default: the current directory — which
+    is the repo root under pre-commit), its ``ignore_paths`` globs, and the
+    size/binary guards.  Without this, every exemption silently stopped
+    applying the moment pre-commit passed staged files one by one."""
+    root = Path(root) if root else Path.cwd()
+    if config is None:
+        config = load_config(root)
     result = ScanResult()
     for raw in paths:
         p = Path(raw)
@@ -191,15 +201,26 @@ def scan_paths(paths: list[str | Path],
             result.findings.extend(sub.findings)
             result.files_scanned += sub.files_scanned
             result.files_skipped += sub.files_skipped
-        elif p.is_file():
-            cfg = config if config is not None else load_config(p.parent)
-            try:
-                text = p.read_text(encoding="utf-8", errors="replace")
-            except OSError:
+            continue
+        if not p.is_file():
+            continue
+        try:
+            rel = str(p.resolve().relative_to(root.resolve()))
+        except ValueError:
+            rel = str(p)
+        if p.name == ".secretscan.yaml" or _ignored(rel, config):
+            result.files_skipped += 1
+            continue
+        try:
+            if p.stat().st_size > _MAX_FILE_BYTES or _is_binary(p):
                 result.files_skipped += 1
                 continue
-            result.files_scanned += 1
-            result.findings.extend(scan_text(text, str(p), cfg))
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            result.files_skipped += 1
+            continue
+        result.files_scanned += 1
+        result.findings.extend(scan_text(text, rel, config))
     result.findings.sort(key=lambda f: (_SEV_ORDER[f.severity],
                                         f.file, f.line))
     return result
