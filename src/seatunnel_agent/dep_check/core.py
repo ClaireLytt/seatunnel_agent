@@ -123,7 +123,9 @@ def installed_lookup(name: str) -> tuple[str, str] | None:
         dist = metadata.distribution(name)
     except metadata.PackageNotFoundError:
         return None
-    meta = dist.metadata
+    # runtime object is an email.Message (has .get/.get_all); the
+    # PackageMetadata protocol in typeshed is narrower
+    meta: Any = dist.metadata
     lic = (meta.get("License-Expression") or "").strip()
     if not lic or len(lic) > 60:
         lic = (meta.get("License") or "").strip()

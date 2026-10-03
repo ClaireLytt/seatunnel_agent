@@ -10,7 +10,9 @@ def normalize_lang(lang: str | None) -> str:
     return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
-_I18N = {
+from typing import Any
+
+_I18N: dict[str, dict[str, Any]] = {
     "en": {
         "title": "## Dependency Health",
         "stats": ("packages {packages} · findings **{total}** "

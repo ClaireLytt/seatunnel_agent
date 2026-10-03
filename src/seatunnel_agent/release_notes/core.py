@@ -113,10 +113,13 @@ def next_semver(current: str, bump: str) -> str:
     """0.2.0 + minor → 0.3.0; tolerant of a leading 'v' and short versions."""
     raw = (current or "").strip().lstrip("vV")
     parts = raw.split(".") if raw else []
-    try:
-        nums = [int(re.match(r"\d+", p).group()) for p in parts[:3]]
-    except (AttributeError, ValueError):
-        nums = []
+    nums: list[int] = []
+    for p in parts[:3]:
+        m = re.match(r"\d+", p)
+        if m is None:
+            nums = []
+            break
+        nums.append(int(m.group()))
     while len(nums) < 3:
         nums.append(0)
     major, minor, patch = nums

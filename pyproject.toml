@@ -55,6 +55,7 @@ dev = [
     "pytest-mock",
     "pytest-cov",
     "pytest-xdist>=3.5",
+    "mypy>=1.8",
     "anthropic>=0.40.0",
     "openai>=1.0",
     "gradio>=6.0",
@@ -94,3 +95,25 @@ markers = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.mypy]
+# Gradual typing: only the newest, self-contained packages are checked;
+# grow this list as modules get annotated. Keep settings lenient enough
+# that the gate catches real type bugs without demanding full annotation.
+python_version = "3.11"
+files = [
+    "src/seatunnel_agent/registry.py",
+    "src/seatunnel_agent/notify.py",
+    "src/seatunnel_agent/llm_usage.py",
+    "src/seatunnel_agent/secret_scan",
+    "src/seatunnel_agent/dep_check",
+    "src/seatunnel_agent/release_notes",
+    "src/seatunnel_agent/ci_inspect",
+    "src/seatunnel_agent/doc_qa",
+    "src/seatunnel_agent/llm_cost",
+    "src/seatunnel_agent/bot",
+]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+no_implicit_optional = true

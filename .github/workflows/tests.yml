@@ -30,7 +30,7 @@ jobs:
         run: >
           python -m pytest tests/ -q
           --cov=seatunnel_agent --cov-report=term-missing:skip-covered
-          --cov-fail-under=60
+          --cov-fail-under=63
 
       # The unit suite runs without the mcp package by design; this step
       # guards the SDK-compat shim (mcp 2.x renamed FastMCP -> MCPServer)
