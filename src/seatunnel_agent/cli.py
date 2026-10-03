@@ -2978,5 +2978,44 @@ def bot(port: int, host: str, secret_env: str) -> None:
     uvicorn.run(create_bot_app(secret=secret), host=host, port=port)
 
 
+@cli.command()
+@click.argument("question")
+@click.option("--docs", default="docs", show_default=True,
+              help="额外索引的 markdown 文档目录(连接器文档始终内置)")
+@click.option("-k", "top_k", default=4, show_default=True,
+              type=click.IntRange(1, 10), help="检索片段数")
+@click.option("--llm", "use_llm", is_flag=True,
+              help="LLM 综合作答(需 API key;失败回退检索片段)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Answer language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Output format")
+def docqa(
+    question: str,
+    docs: str,
+    top_k: int,
+    use_llm: bool,
+    lang: str,
+    fmt: str,
+) -> None:
+    """文档问答 — 离线 BM25 检索 SeaTunnel 连接器与项目文档,带来源引用。"""
+    import json as _json
+
+    from .doc_qa import answer, get_index
+
+    if use_llm:
+        from dotenv import load_dotenv
+
+        from . import settings_store
+        load_dotenv()
+        settings_store.apply_to_env()
+    result = answer(question, get_index(docs), k=top_k, lang=lang,
+                    use_llm=use_llm)
+    if fmt == "json":
+        print(_json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        console.print(result["markdown"], markup=False)
+
+
 if __name__ == "__main__":
     cli()
