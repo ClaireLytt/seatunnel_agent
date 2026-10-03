@@ -3085,5 +3085,60 @@ def codefix(
         sys.exit(1)
 
 
+@cli.command()
+@click.option("--title", "-t", required=True, help="Issue 标题")
+@click.option("--body", "-b", default="", help="Issue 正文")
+@click.option("--issues-file", type=click.Path(exists=True, dir_okay=False),
+              default=None,
+              help="历史 issue JSONL(查重语料;默认内置 demo)")
+@click.option("--repo", default=".", show_default=True,
+              type=click.Path(exists=True, file_okay=False),
+              help="代码检索用的仓库路径")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format")
+def triage_cmd(
+    title: str,
+    body: str,
+    issues_file: str | None,
+    repo: str,
+    lang: str,
+    fmt: str,
+) -> None:
+    """Issue 分诊 Agent — 查重、定位、打标签并草拟回复(需 API key)。"""
+    import json as _json
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .config import load_settings
+    from .issue_triage import load_issues, render_markdown, triage
+
+    load_dotenv()
+    settings_store.apply_to_env()
+    try:
+        settings = load_settings()
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    if issues_file is None:
+        demo = Path("examples/triage_demo/issues.jsonl")
+        issues = load_issues(demo) if demo.is_file() else []
+    else:
+        issues = load_issues(issues_file)
+    result = triage(title, body, settings, issues=issues, repo_dir=repo)
+    if fmt == "json":
+        print(_json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        console.print(render_markdown(result, lang), markup=False)
+
+
+# click command name without the _cmd suffix
+triage_cmd.name = "triage"
+
+
 if __name__ == "__main__":
     cli()

@@ -1,0 +1,4 @@
+{"number": 12, "title": "UI fails to start on port 7860", "state": "closed", "labels": ["bug"], "body": "Address already in use when launching the web UI."}
+{"number": 23, "title": "sqlfmt destroys SQL when parse fails", "state": "closed", "labels": ["bug"], "body": "Statements that do not parse were dropped from output."}
+{"number": 31, "title": "Add Doris dialect to transpile", "state": "closed", "labels": ["enhancement"], "body": "Please support hive -> doris translation."}
+{"number": 40, "title": "How to configure Jdbc sink batch size?", "state": "closed", "labels": ["question"], "body": "Where do I set batch_size for the Jdbc sink?"}
