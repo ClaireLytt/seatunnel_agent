@@ -12,3 +12,6 @@ def _no_llm_usage_log(monkeypatch):
     test_llm_usage re-enables recording by deleting the var and pointing
     LLM_USAGE_PATH at a tmp file."""
     monkeypatch.setenv("LLM_USAGE_LOG", "0")
+    monkeypatch.setenv("PROMPT_LAB_LOG", "0")
+    monkeypatch.setenv("LLM_EVAL_LOG", "0")
+    monkeypatch.setenv("ORCH_CHAT_LOG", "0")

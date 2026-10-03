@@ -1,0 +1,132 @@
+# AIP 组 · AI Platform 工作区:/ai hub 与四个模块页的确定性冒烟用例。
+# 全部不调用真实 LLM:只走 hub 卡片、本地汇总(llmcost)、demo 载入与
+# 解析错误路径(llmeval)、空输入校验(promptlab)、agent 清单(orchestrator)。
+
+- id: AIP1
+  title: AI 平台 hub 四张卡片齐全
+  tags: [smoke, sqlite]
+  page: /ai
+  steps:
+    - wait: 1000
+      note: 纯断言用例,等 cookie 语言切换完成
+  expect:
+    - text_contains: {in: 页面, text: 智能编排}
+    - text_contains: {in: 页面, text: LLM 评测}
+    - text_contains: {in: 页面, text: Prompt 实验室}
+    - text_contains: {in: 页面, text: LLM 成本观测}
+    - text_contains: {in: 页面, text: 返回首页}
+
+# ── LLM 成本观测 /llmcost(纯本地聚合,无 LLM)──────────────────────────
+
+- id: COST1
+  title: 成本页加载即出汇总报告
+  tags: [smoke, sqlite]
+  page: /llmcost
+  steps:
+    - wait: 1500
+      note: 页面 on-load 自动刷新汇总
+  expect:
+    - text_contains: {in: 页面, text: LLM 成本}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: COST2
+  title: 价格表面板含内置价目
+  tags: [smoke, sqlite]
+  page: /llmcost
+  steps:
+    - wait: 1500
+      note: 等待回调完成(确定性输出,无加载信号)
+    - open_accordion: {target: 价格表}
+  expect:
+    - text_contains: {in: 页面, text: deepseek-chat}
+    - text_contains: {in: 页面, text: 模型前缀}
+
+- id: COST3
+  title: 切换时间窗重新计算
+  tags: [full, sqlite]
+  page: /llmcost
+  steps:
+    - wait: 1500
+      note: 等待回调完成(确定性输出,无加载信号)
+    - select: {of: 时间窗(天), value: "7"}
+    - wait: 1500
+      note: 等待回调完成(确定性输出,无加载信号)
+  expect:
+    - text_contains: {in: 页面, text: 近 7 天}
+
+# ── Prompt 实验室 /promptlab(只走输入校验,不触发真实调用)──────────────
+
+- id: PLAB1
+  title: 空 Prompt 给出提示而非调用
+  tags: [smoke, sqlite]
+  page: /promptlab
+  steps:
+    - click: 运行对比
+    - wait: 800
+      note: 等待回调完成(确定性输出,无加载信号)
+  expect:
+    - text_contains: {in: 结果区, text: 请先输入 Prompt}
+
+- id: PLAB2
+  title: 实验历史面板可刷新不崩溃
+  tags: [full, sqlite]
+  page: /promptlab
+  steps:
+    - open_accordion: {target: 实验历史}
+    - click: 刷新历史
+    - wait: 800
+      note: 等待回调完成(确定性输出,无加载信号)
+  expect:
+    - text_not_contains: {in: 页面, text: Traceback}
+
+# ── LLM 评测 /llmeval(demo 载入与解析错误路径,无 LLM)──────────────────
+
+- id: EVAL1
+  title: 载入示例套件填充编辑框
+  tags: [smoke, sqlite]
+  page: /llmeval
+  steps:
+    - click: 载入示例套件
+    - wait: 800
+      note: 等待回调完成(确定性输出,无加载信号)
+  expect:
+    - value_contains: {of: 评测套件(YAML), value: text2sql-golden}
+
+- id: EVAL2
+  title: 非法套件给出可读解析错误
+  tags: [smoke, sqlite]
+  page: /llmeval
+  steps:
+    - fill: {评测套件(YAML): "cases: 42"}
+    - click: 运行套件
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 期望顶层}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: EVAL3
+  title: 空套件提示先粘贴
+  tags: [full, sqlite]
+  page: /llmeval
+  steps:
+    - click: 运行套件
+    - wait: 800
+      note: 等待回调完成(确定性输出,无加载信号)
+  expect:
+    - text_contains: {in: 结果区, text: 请先粘贴}
+
+# ── 智能编排 /orchestrator(只看页面与 agent 清单,不发消息)──────────────
+
+- id: ORCH1
+  title: 编排页 agent 清单齐全
+  tags: [smoke, sqlite]
+  page: /orchestrator
+  steps:
+    - open_accordion: {target: 可路由的 agent}
+    - wait: 800
+      note: 等待回调完成(确定性输出,无加载信号)
+  expect:
+    - text_contains: {in: 页面, text: sql_review}
+    - text_contains: {in: 页面, text: sql_fmt}
+    - text_contains: {in: 页面, text: /sqlreview}
+    - text_not_contains: {in: 页面, text: Traceback}

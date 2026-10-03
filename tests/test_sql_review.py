@@ -1035,7 +1035,7 @@ class _FakeLLM:
 def test_generate_fix_extracts_sql_block(monkeypatch):
     monkeypatch.setattr(
         fixer_mod, "LLMClient",
-        lambda settings: _FakeLLM("before\n```sql\nselect id from t\n```\nafter"))
+        lambda settings, **kw: _FakeLLM("before\n```sql\nselect id from t\n```\nafter"))
     out = fixer_mod.generate_fix(None, "select * from t", "hive", "report")
     assert out == "select id from t"
 
@@ -1043,7 +1043,7 @@ def test_generate_fix_extracts_sql_block(monkeypatch):
 def test_generate_fix_accepts_bare_sql(monkeypatch):
     monkeypatch.setattr(
         fixer_mod, "LLMClient",
-        lambda settings: _FakeLLM("SELECT id FROM t WHERE pt='1'"))
+        lambda settings, **kw: _FakeLLM("SELECT id FROM t WHERE pt='1'"))
     out = fixer_mod.generate_fix(None, "select * from t", "hive", "report")
     assert out.startswith("SELECT id")
 
@@ -1051,7 +1051,7 @@ def test_generate_fix_accepts_bare_sql(monkeypatch):
 def test_generate_fix_no_sql_raises(monkeypatch):
     monkeypatch.setattr(
         fixer_mod, "LLMClient",
-        lambda settings: _FakeLLM("I cannot help with that."))
+        lambda settings, **kw: _FakeLLM("I cannot help with that."))
     with pytest.raises(RuntimeError, match="修复"):
         fixer_mod.generate_fix(None, "select * from t", "hive", "report")
 
@@ -1786,7 +1786,7 @@ def _make_agent(monkeypatch, reply, lang="zh"):
         holder["agent"].runtime.last_report = "## CR 报告\n\n(rendered)"
 
     fake = _AgentFakeLLM(reply, hook=hook)
-    monkeypatch.setattr(agent_mod, "LLMClient", lambda s, tools=None: fake)
+    monkeypatch.setattr(agent_mod, "LLMClient", lambda s, tools=None, **kw: fake)
     ag = agent_mod.SQLReviewAgent(None, dialect="hive", lang=lang)
     holder["agent"] = ag
     return ag
@@ -1878,7 +1878,7 @@ def test_api_fix_endpoint(monkeypatch, api_client):
     monkeypatch.setattr(api_mod, "load_settings", lambda: None)
     monkeypatch.setattr(
         fixer_mod, "LLMClient",
-        lambda settings: _FakeLLM("```sql\nselect id from t\n```"))
+        lambda settings, **kw: _FakeLLM("```sql\nselect id from t\n```"))
     r = api_client.post("/api/sql_review/fix", json={
         "sql": "select * from t", "dialect": "hive",
     })
@@ -1893,7 +1893,7 @@ def test_api_fix_with_given_report(monkeypatch, api_client):
     monkeypatch.setattr(api_mod, "load_settings", lambda: None)
     monkeypatch.setattr(
         fixer_mod, "LLMClient",
-        lambda settings: _FakeLLM("```sql\nselect 2\n```"))
+        lambda settings, **kw: _FakeLLM("```sql\nselect 2\n```"))
     r = api_client.post("/api/sql_review/fix", json={
         "sql": "select 1", "report": "my custom report",
     })
@@ -2833,7 +2833,7 @@ def _make_caching_agent(monkeypatch, calls, holder):
         ag.runtime.last_report = "## CR 报告\n\ncached body"
 
     fake = _AgentFakeLLM("## CR 报告\n\ncached body", hook=hook)
-    monkeypatch.setattr(agent_mod, "LLMClient", lambda s, tools=None: fake)
+    monkeypatch.setattr(agent_mod, "LLMClient", lambda s, tools=None, **kw: fake)
     return agent_mod
 
 

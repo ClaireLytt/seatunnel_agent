@@ -1635,6 +1635,285 @@ def testgen(
             sys.exit(1)
 
 
+@cli.command()
+@click.option("--config", "-c", "config_text", type=str, default=None,
+              help="直接检查一段 HOCON 配置")
+@click.option("--file", "-f", "conf_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="检查单个 .conf 文件")
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="配置目录（递归扫描 *.conf）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["error", "warn"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def conflint(
+    config_text: str | None,
+    conf_file: str | None,
+    directory: str | None,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """SeaTunnel 配置深度检查 — 参数级 lint，未知参数带「是不是想写」建议。"""
+    import json as _json
+    from pathlib import Path
+
+    from .config_lint import (
+        lint_dir, lint_file, lint_text,
+        render_batch_markdown, render_markdown, result_to_dict,
+    )
+
+    if not config_text and not conf_file and not directory:
+        raise click.UsageError("Provide --config / --file / --dir")
+
+    if directory:
+        results = lint_dir(directory)
+        md = render_batch_markdown(results, lang)
+    elif conf_file:
+        results = [lint_file(conf_file)]
+        md = render_markdown(results[0], lang)
+    else:
+        results = [lint_text(config_text)]
+        md = render_markdown(results[0], lang)
+
+    if fmt == "json":
+        text_out = _json.dumps([result_to_dict(r, lang) for r in results],
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = md
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        rank = {"info": 1, "warn": 2, "error": 3}
+        threshold = rank[fail_on]
+        worst = max((rank[f.severity] for r in results for f in r.findings),
+                    default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的配置问题，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command()
+@click.option("--sql-dir", "-d", type=click.Path(exists=True, file_okay=False),
+              required=True, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False),
+              default=None, help="可选：合并 SeaTunnel 配置目录的 source→sink 血缘")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["error", "warn"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def dagcheck(
+    sql_dir: str,
+    seatunnel_dir: str | None,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """调度 DAG 体检 — 环/断链/死作业检测 + 执行分批与关键路径。"""
+    import json as _json
+    from pathlib import Path
+
+    from .dag_check import check_sql_dir, render_markdown, report_to_dict
+
+    report = check_sql_dir(sql_dir, dialect=dialect,
+                           seatunnel_dir=seatunnel_dir)
+
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        rank = {"info": 1, "warn": 2, "error": 3}
+        threshold = rank[fail_on]
+        worst = max((rank[f.severity] for f in report.findings), default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的调度隐患，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command()
+@click.option("--sql-dir", "-d", type=click.Path(exists=True, file_okay=False),
+              required=True, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium"]),
+              default=None, help="CI gate: exit 1 when conflicts at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def metricdiff(
+    sql_dir: str,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """指标口径一致性检查 — 同名输出列在不同作业里的定义冲突。"""
+    import json as _json
+    from pathlib import Path
+
+    from .metric_diff import check_sql_dir, render_markdown, report_to_dict
+
+    report = check_sql_dir(sql_dir, dialect=dialect)
+
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        rank = {"medium": 1, "high": 2}
+        threshold = rank[fail_on]
+        worst = max((rank[c.severity] for c in report.conflicts), default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的口径冲突，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command()
+@click.argument("paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--sql", "-s", type=str, default=None, help="直接格式化一段 SQL")
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--write", "-w", "do_write", is_flag=True,
+              help="将格式化结果写回文件（解析失败的文件绝不写）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["error", "change"]),
+              default=None,
+              help="CI gate: error=解析失败; change=有文件需要格式化（black --check 式）")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def sqlfmt(
+    paths: tuple[str, ...],
+    sql: str | None,
+    directory: str | None,
+    dialect: str,
+    do_write: bool,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """SQL 格式化 — sqlglot 确定性排版，--write 写回，--fail-on change 做 CI 门禁。
+
+    PATHS: optional *.sql files or directories (as passed by pre-commit)."""
+    import json as _json
+    from pathlib import Path
+
+    from .sql_fmt import (
+        FmtFileResult, fmt_dir, format_text,
+        render_batch_markdown, render_markdown, result_to_dict,
+    )
+    from .sql_fmt.formatter import collect_sql_files
+
+    if not sql and not directory and not paths:
+        raise click.UsageError("Provide --sql / --dir or positional paths")
+
+    file_results: list[FmtFileResult] = []
+    inline_result = None
+    if sql:
+        inline_result = format_text(sql, dialect=dialect)
+    if directory:
+        file_results.extend(fmt_dir(directory, dialect=dialect,
+                                    write=do_write))
+    for raw in paths:
+        p = Path(raw)
+        targets = collect_sql_files(p) if p.is_dir() else [p]
+        for f in targets:
+            text = f.read_text(encoding="utf-8", errors="replace")
+            result = format_text(text, dialect=dialect, name=str(f))
+            written = False
+            if do_write and result.changed and not result.failed:
+                f.write_text(result.formatted, encoding="utf-8")
+                written = True
+            file_results.append(FmtFileResult(
+                path=str(f), result=result, written=written))
+
+    if fmt == "json":
+        payload: list = []
+        if inline_result is not None:
+            payload.append(result_to_dict(inline_result))
+        payload.extend(r.to_dict() for r in file_results)
+        text_out = _json.dumps(payload, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        parts = []
+        if inline_result is not None:
+            parts.append(render_markdown(inline_result, lang))
+        if file_results:
+            parts.append(render_batch_markdown(file_results, lang))
+        text_out = "\n\n---\n\n".join(parts)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        failed = (inline_result.failed if inline_result else 0) \
+            + sum(r.result.failed for r in file_results)
+        changed = (1 if inline_result is not None and inline_result.changed
+                   else 0) \
+            + sum(1 for r in file_results
+                  if r.result.changed and not r.written)
+        hit = failed > 0 or (fail_on == "change" and changed > 0)
+        if hit:
+            msg = ("存在解析失败的 SQL，检查未通过。" if fail_on == "error"
+                   or changed == 0
+                   else "存在需要格式化的 SQL，检查未通过。")
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
 @cli.command(name="mcp")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Default report language")
@@ -2094,6 +2373,856 @@ def settings(clear_: bool, usage_: bool) -> None:
     console.print(f"LLM_BASE_URL = {os.getenv('LLM_BASE_URL', '') or '(未设置)'}")
     console.print(
         f"API_KEY      = {settings_store.mask_secret(key) or '(未设置)'}")
+
+
+@cli.command()
+@click.option("--days", default=30, show_default=True,
+              type=click.IntRange(1, 36500), help="统计时间窗(天)")
+@click.option("--budget", type=float, default=None,
+              help="预算上限(USD),配合 --fail-on budget")
+@click.option("--usage-path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="用量日志路径(默认 logs/llm_usage.jsonl)")
+@click.option("--pricing", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="价格覆盖 YAML(默认 ~/.seatunnel-agent/pricing.yaml)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["budget"]), default=None,
+              help="CI gate: budget=时间窗内成本超过 --budget 时退出 1")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+@click.option("--notify", "do_notify", is_flag=True,
+              help="NOTIFY_WEBHOOK_URL webhook alert on anomaly/over-budget")
+def llmcost(
+    days: int,
+    budget: float | None,
+    usage_path: str | None,
+    pricing: str | None,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+    do_notify: bool,
+) -> None:
+    """LLM 成本观测 — 按模型/按天/按 agent 汇总调用成本,异常日标记。
+
+    读取全平台 LLM 调用日志并按近似价格表计价(可用 YAML 覆盖);
+    不调用 LLM、不连数据库。"""
+    import json as _json
+    from pathlib import Path
+
+    from .llm_cost import check_budget, render_markdown, summarize_cost
+
+    if fail_on == "budget" and budget is None:
+        raise click.UsageError("--fail-on budget 需要同时提供 --budget")
+
+    try:
+        summary = summarize_cost(days, usage_file=usage_path,
+                                 pricing_override=pricing)
+    except ValueError as exc:  # malformed pricing override
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    if fmt == "json":
+        text_out = _json.dumps(summary, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(summary, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if do_notify:
+        from .notify import send as notify_send
+        over = budget is not None and check_budget(summary, budget)
+        if summary["anomalies"] or over:
+            parts = []
+            if over:
+                parts.append(f"over budget: ${summary['total']['cost_usd']}"
+                             f" / ${budget}")
+            parts += [f"anomaly {a['day']}: ${a['cost_usd']}"
+                      for a in summary["anomalies"][:5]]
+            notify_send("LLM cost alert", "; ".join(parts))
+
+    if fail_on == "budget" and check_budget(summary, budget):
+        msg = (f"成本 ${summary['total']['cost_usd']} 超过预算 ${budget},"
+               "检查未通过。")
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("prompt")
+@click.option("--profile", "-p", "profiles", multiple=True,
+              help="模型档案名(可重复;默认当前生效配置 \"(active)\")")
+@click.option("--system", "-S", default=None, help="自定义 system prompt")
+@click.option("--parallel", is_flag=True, help="并行调用各档案")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def promptlab(
+    prompt: str,
+    profiles: tuple[str, ...],
+    system: str | None,
+    parallel: bool,
+    lang: str,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """Prompt 实验室 — 同一 Prompt 在多个模型档案上并排对比。
+
+    档案来自 /settings 页保存的 provider profiles;"(active)" 表示当前
+    生效配置。全部档案失败时退出 1。"""
+    import json as _json
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .prompt_lab import ACTIVE, render_matrix_markdown, run_matrix
+
+    load_dotenv()
+    settings_store.apply_to_env()
+
+    names = list(profiles) or [ACTIVE]
+    result = run_matrix(prompt, system=system, profiles=names,
+                        parallel=parallel)
+
+    if fmt == "json":
+        text_out = _json.dumps([c.to_dict() for c in result.cells],
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_matrix_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if result.all_failed:
+        msg = "所有档案调用失败。"
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("suite_file", type=click.Path(exists=True, dir_okay=False))
+@click.option("--judge", is_flag=True,
+              help="同时运行 judge 评分(仅参考,不进入门禁)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["fail", "regression"]),
+              default=None,
+              help="CI gate: fail=有 case 未通过; regression=相比上次运行回归")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+@click.option("--notify", "do_notify", is_flag=True,
+              help="NOTIFY_WEBHOOK_URL webhook alert on regression/failures")
+def llmeval(
+    suite_file: str,
+    judge: bool,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+    do_notify: bool,
+) -> None:
+    """LLM 评测 — 对平台 LLM 功能跑黄金用例集,自动打分 + 回归门禁。
+
+    SUITE_FILE: YAML 套件(见 examples/llmeval_demo/)。确定性检查决定
+    通过与否;--judge 的 LLM 评分仅作参考。"""
+    import json as _json
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .llm_eval import RunLogger, compare, load_suite, render_markdown, run_suite
+
+    load_dotenv()
+    settings_store.apply_to_env()
+
+    try:
+        suite = load_suite(suite_file)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    baseline = RunLogger().last_run(suite.name)  # BEFORE run_suite logs its own
+    try:
+        result = run_suite(suite, judge=judge)
+    except RuntimeError as exc:  # no API key configured etc.
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+    regression = compare(result, baseline)
+
+    if fmt == "json":
+        payload = {"result": result.to_dict(), "regression": regression}
+        text_out = _json.dumps(payload, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang, regression)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if do_notify and (result.failed_cases or regression["regressed"]):
+        from .notify import send as notify_send
+        notify_send(
+            f"LLM eval alert: {suite.name}",
+            f"score {result.score:.0%}; failed: "
+            f"{', '.join(result.failed_cases) or '-'}; regressed: "
+            f"{', '.join(regression['regressed_cases']) or '-'}")
+
+    if fail_on:
+        hit = (bool(result.failed_cases) if fail_on == "fail"
+               else regression["regressed"])
+        if hit:
+            msg = ("存在未通过的 case,检查未通过。" if fail_on == "fail"
+                   else "相比上次运行存在回归,检查未通过。")
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command()
+@click.argument("request")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Reply language")
+@click.option("--max-steps", default=5, show_default=True,
+              type=click.IntRange(1, 10), help="工具调用轮数上限")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def orchestrate(
+    request: str,
+    lang: str,
+    max_steps: int,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """智能编排 — 一句话需求,LLM 自动路由到合适的 agent 并串联多步。
+
+    REQUEST: 自然语言需求(SQL/配置/DDL 直接写在里面)。未配置 LLM 时
+    退化为关键词推荐(只建议不执行,退出码 0);LLM 调用失败退出 1。"""
+    import json as _json
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .config import load_settings
+    from .orchestrator import (
+        Orchestrator, build_catalog, render_markdown, render_suggestions,
+        suggest,
+    )
+
+    load_dotenv()
+    settings_store.apply_to_env()
+
+    try:
+        settings = load_settings()
+    except RuntimeError:
+        catalog = build_catalog(default_lang=lang)
+        text_out = render_suggestions(suggest(request, catalog), lang)
+        if fmt == "json":
+            payload = {"reply": text_out, "steps": [],
+                       "suggested_only": True}
+            text_out = _json.dumps(payload, ensure_ascii=False, indent=2)
+            print(text_out)
+        else:
+            console.print(text_out, markup=False)
+        if output:
+            Path(output).write_text(text_out, encoding="utf-8")
+        return
+
+    try:
+        result = Orchestrator(settings, lang=lang,
+                              max_steps=max_steps).run(request)
+    except Exception as exc:  # noqa: BLE001 — LLM/provider errors
+        console.print(f"[red]编排失败: {type(exc).__name__}: {exc}[/red]")
+        sys.exit(1)
+
+    if fmt == "json":
+        text_out = _json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+
+@cli.command()
+@click.argument("paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--text", "-t", default=None, help="直接扫描一段文本")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
+              default=None,
+              help="CI gate: 达到该严重度及以上的发现时退出 1")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def secretscan(
+    paths: tuple[str, ...],
+    text: str | None,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """敏感凭证扫描 — 云厂商 token / 私钥 / 明文密码 / 高熵串,预览脱敏。
+
+    PATHS: 文件或目录(pre-commit 风格);.secretscan.yaml 可配置豁免,
+    单行加 secretscan:ignore 跳过。"""
+    import json as _json
+    from pathlib import Path
+
+    from .secret_scan import (
+        ScanResult, check_fail, render_markdown, scan_paths, scan_text,
+    )
+
+    if not text and not paths:
+        raise click.UsageError("Provide --text or positional paths")
+
+    if text:
+        result = ScanResult(findings=scan_text(text), files_scanned=1)
+    else:
+        try:
+            result = scan_paths(list(paths))
+        except ValueError as exc:  # malformed .secretscan.yaml
+            console.print(f"[red]{exc}[/red]")
+            sys.exit(2)
+
+    if fmt == "json":
+        text_out = _json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on and check_fail(result, fail_on):
+        msg = f"存在 {fail_on} 及以上严重度的疑似凭证,检查未通过。"
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--repo", default=".", show_default=True,
+              type=click.Path(exists=True, file_okay=False),
+              help="git 仓库路径")
+@click.option("--from", "since", default=None,
+              help="起始 ref(默认上一个 tag;无 tag 则全部历史)")
+@click.option("--to", "until", default="HEAD", show_default=True,
+              help="结束 ref")
+@click.option("--log-file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="改读提交记录文件(每行 sha<TAB>subject),不跑 git")
+@click.option("--version", "-V", "current_version", default=None,
+              help="当前版本(默认读 pyproject.toml)")
+@click.option("--polish", is_flag=True, help="LLM 润色(需 API key;失败则回退确定性结果)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def relnotes(
+    repo: str,
+    since: str | None,
+    until: str,
+    log_file: str | None,
+    current_version: str | None,
+    polish: bool,
+    lang: str,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """发布助手 — conventional commits 分组 changelog + 语义化版本建议。
+
+    默认读取 --repo 自上个 tag 以来的提交;--log-file 可离线输入。"""
+    import json as _json
+    from pathlib import Path
+
+    from .release_notes import (
+        build_notes, collect_git_log, current_version_from_pyproject,
+        polish_markdown, render_markdown,
+    )
+
+    if log_file:
+        log_text = Path(log_file).read_text(encoding="utf-8")
+    else:
+        try:
+            log_text = collect_git_log(repo, since=since, until=until)
+        except RuntimeError as exc:
+            console.print(f"[red]git 读取失败: {exc}[/red]")
+            sys.exit(2)
+    if current_version is None:
+        current_version = current_version_from_pyproject(repo)
+
+    notes = build_notes(log_text, current_version)
+    if fmt == "json":
+        text_out = _json.dumps(notes.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(notes, lang)
+        if polish:
+            from dotenv import load_dotenv
+
+            from . import settings_store
+            load_dotenv()
+            settings_store.apply_to_env()
+            text_out = polish_markdown(text_out, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+
+@cli.command()
+@click.option("--path", "-p", default=".", show_default=True,
+              type=click.Path(exists=True, file_okay=False),
+              help="项目根目录(读 pyproject.toml 与 requirements*.txt)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium"]),
+              default=None,
+              help="CI gate: 达到该严重度及以上的发现时退出 1")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def depcheck(
+    path: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """依赖体检 — 声明 vs 实装、版本钉、License 清单(全离线)。"""
+    import json as _json
+    from pathlib import Path
+
+    from .dep_check import check, check_fail, collect_from_path, render_markdown
+
+    try:
+        reqs = collect_from_path(path)
+    except ValueError as exc:  # malformed pyproject
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+    if not reqs:
+        console.print("[red]该目录下没有 pyproject.toml / requirements*.txt[/red]")
+        sys.exit(2)
+    report = check(reqs)
+
+    if fmt == "json":
+        text_out = _json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on and check_fail(report, fail_on):
+        msg = f"存在 {fail_on} 及以上严重度的依赖问题,检查未通过。"
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("logs", nargs=-1, type=click.Path(exists=True, dir_okay=False))
+@click.option("--runs", "runs_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="运行元数据 JSON 文件(flaky/时长分析)")
+@click.option("--gh", "gh_repo", default=None,
+              help="用 gh api 拉取 owner/repo 最近运行元数据(需 gh 登录)")
+@click.option("--limit", default=30, show_default=True,
+              type=click.IntRange(1, 100), help="--gh 拉取的运行数量")
+@click.option("--top", default=10, show_default=True,
+              type=click.IntRange(1, 50), help="根因聚类 Top-N")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["flaky"]), default=None,
+              help="CI gate: flaky=发现同一提交又过又挂的工作流时退出 1")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+@click.option("--notify", "do_notify", is_flag=True,
+              help="NOTIFY_WEBHOOK_URL webhook alert on flaky workflows")
+def ciinspect(
+    logs: tuple[str, ...],
+    runs_file: str | None,
+    gh_repo: str | None,
+    limit: int,
+    top: int,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+    do_notify: bool,
+) -> None:
+    """CI 日志诊断 — 失败日志根因聚类 + flaky 识别 + 时长漂移。
+
+    LOGS: 失败作业日志文件(gh run view --log-failed 的输出即可)。"""
+    import json as _json
+    from pathlib import Path
+
+    from .ci_inspect import analyze, collect_gh_runs, render_markdown
+
+    runs_text = None
+    if runs_file:
+        runs_text = Path(runs_file).read_text(encoding="utf-8")
+    elif gh_repo:
+        try:
+            runs_text = collect_gh_runs(gh_repo, limit)
+        except RuntimeError as exc:
+            console.print(f"[red]gh 拉取失败: {exc}[/red]")
+            sys.exit(2)
+    if not logs and not runs_text:
+        raise click.UsageError("Provide log files, --runs or --gh")
+
+    # key by basename for readable reports, but never silently drop a
+    # same-named log from another directory
+    log_map: dict[str, str] = {}
+    for p in logs:
+        name = Path(p).name
+        key = name if name not in log_map else str(p)
+        log_map[key] = Path(p).read_text(encoding="utf-8", errors="replace")
+    try:
+        report = analyze(logs=log_map, runs_text=runs_text, top=top)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    if fmt == "json":
+        text_out = _json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if do_notify and report.runs.flaky:
+        from .notify import send as notify_send
+        notify_send("CI flaky alert",
+                    "; ".join(f"{f['workflow']} @ {f['head_sha']}"
+                              for f in report.runs.flaky[:10]))
+
+    if fail_on == "flaky" and report.runs.flaky:
+        msg = "发现 flaky 工作流(同一提交又过又挂),检查未通过。"
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--port", "-p", default=9000, show_default=True, type=int,
+              help="Webhook 服务端口")
+@click.option("--host", "-h", default="127.0.0.1", show_default=True,
+              help="绑定地址(公网回调需 0.0.0.0 或反代)")
+@click.option("--secret-env", default="WEBHOOK_SECRET", show_default=True,
+              help="读取 webhook secret 的环境变量名(未设置则不校验签名)")
+def bot(port: int, host: str, secret_env: str) -> None:
+    """GitHub Bot — PR opened/updated 时自动跑凭证扫描 + SQL 静态审查并回贴评论。
+
+    需要:仓库 webhook 指向 http://<host>:<port>/webhook(事件选 Pull
+    requests),GITHUB_TOKEN 环境变量用于拉 diff 与发评论。"""
+    import os as _os
+
+    try:
+        import uvicorn
+    except ImportError:
+        console.print("[red]需要 uvicorn(随 gradio 安装):pip install uvicorn[/red]")
+        sys.exit(1)
+
+    from .bot import create_bot_app
+
+    secret = _os.getenv(secret_env, "")
+    if not secret:
+        console.print(f"[yellow]警告: 环境变量 {secret_env} 未设置,"
+                      "将不校验 webhook 签名(仅限内网测试)[/yellow]")
+    if not _os.getenv("GITHUB_TOKEN"):
+        console.print("[yellow]警告: GITHUB_TOKEN 未设置,"
+                      "私有仓库拉 diff / 发评论会失败[/yellow]")
+    console.print(f"[green]Bot webhook: http://{host}:{port}/webhook[/green]")
+    uvicorn.run(create_bot_app(secret=secret), host=host, port=port)
+
+
+@cli.command()
+@click.argument("question")
+@click.option("--docs", default="docs", show_default=True,
+              help="额外索引的 markdown 文档目录(连接器文档始终内置)")
+@click.option("-k", "top_k", default=4, show_default=True,
+              type=click.IntRange(1, 10), help="检索片段数")
+@click.option("--llm", "use_llm", is_flag=True,
+              help="LLM 综合作答(需 API key;失败回退检索片段)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Answer language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Output format")
+def docqa(
+    question: str,
+    docs: str,
+    top_k: int,
+    use_llm: bool,
+    lang: str,
+    fmt: str,
+) -> None:
+    """文档问答 — 离线 BM25 检索 SeaTunnel 连接器与项目文档,带来源引用。"""
+    import json as _json
+
+    from .doc_qa import answer, get_index
+
+    if use_llm:
+        from dotenv import load_dotenv
+
+        from . import settings_store
+        load_dotenv()
+        settings_store.apply_to_env()
+    result = answer(question, get_index(docs), k=top_k, lang=lang,
+                    use_llm=use_llm)
+    if fmt == "json":
+        print(_json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        console.print(result["markdown"], markup=False)
+
+
+@cli.command()
+@click.argument("path", type=click.Path(exists=True, file_okay=False))
+@click.option("--tests", "-t", default="", help="pytest 选择器(留空跑全部)")
+@click.option("--instruction", "-i", default="", help="给 agent 的补充说明")
+@click.option("--max-steps", default=12, show_default=True,
+              type=click.IntRange(2, 30), help="工具调用步数上限")
+@click.option("--in-place", is_flag=True,
+              help="直接修改目标目录(默认在 git worktree 隔离执行)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
+def codefix(
+    path: str,
+    tests: str,
+    instruction: str,
+    max_steps: int,
+    in_place: bool,
+    lang: str,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """测试自愈 Agent — 跑测试→读码→打补丁→复跑,直到通过。
+
+    默认在新建 git worktree 中执行,原工作区不动;最终以确定性复跑验收,
+    测试仍不过则退出码 1。"""
+    import json as _json
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .code_fix import fix, render_markdown
+    from .config import load_settings
+
+    load_dotenv()
+    settings_store.apply_to_env()
+    try:
+        settings = load_settings()
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    def on_step(step):
+        mark = "⚠️ " if step.error else ""
+        console.print(f"[dim]🔧 {mark}{step.tool} · {step.elapsed_ms} ms[/dim]")
+
+    try:
+        result = fix(path, settings, tests=tests, instruction=instruction,
+                     max_steps=max_steps, in_place=in_place, on_step=on_step)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    if fmt == "json":
+        text_out = _json.dumps(result.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+    if not result.success:
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--title", "-t", required=True, help="Issue 标题")
+@click.option("--body", "-b", default="", help="Issue 正文")
+@click.option("--issues-file", type=click.Path(exists=True, dir_okay=False),
+              default=None,
+              help="历史 issue JSONL(查重语料;默认内置 demo)")
+@click.option("--repo", default=".", show_default=True,
+              type=click.Path(exists=True, file_okay=False),
+              help="代码检索用的仓库路径")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format")
+def triage_cmd(
+    title: str,
+    body: str,
+    issues_file: str | None,
+    repo: str,
+    lang: str,
+    fmt: str,
+) -> None:
+    """Issue 分诊 Agent — 查重、定位、打标签并草拟回复(需 API key)。"""
+    import json as _json
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .config import load_settings
+    from .issue_triage import load_issues, render_markdown, triage
+
+    load_dotenv()
+    settings_store.apply_to_env()
+    try:
+        settings = load_settings()
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    if issues_file is None:
+        demo = Path("examples/triage_demo/issues.jsonl")
+        issues = load_issues(demo) if demo.is_file() else []
+    else:
+        issues = load_issues(issues_file)
+    result = triage(title, body, settings, issues=issues, repo_dir=repo)
+    if fmt == "json":
+        print(_json.dumps(result.to_dict(), ensure_ascii=False, indent=2))
+    else:
+        console.print(render_markdown(result, lang), markup=False)
+
+
+# click command name without the _cmd suffix
+triage_cmd.name = "triage"
+
+
+@cli.command()
+@click.argument("complaint", required=False, default="")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+def doctor(complaint: str, lang: str) -> None:
+    """环境医生 — 描述症状,agent 只读检查端口/依赖/配置/日志并开出修复命令。
+
+    不带参数或未配置 API key 时输出确定性全量体检。"""
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .config import load_settings
+    from .doctor import diagnose
+
+    load_dotenv()
+    settings_store.apply_to_env()
+    settings = None
+    if complaint.strip():
+        try:
+            settings = load_settings()
+        except RuntimeError:
+            settings = None
+
+    def on_step(step):
+        console.print(f"[dim]🔧 {step.tool} · {step.elapsed_ms} ms[/dim]")
+
+    result = diagnose(complaint or "checkup", settings=settings, lang=lang,
+                      on_step=on_step)
+    console.print(result.reply, markup=False)
+
+
+@cli.command()
+@click.argument("goal")
+@click.option("--url", "-u", default="http://127.0.0.1:7860/",
+              show_default=True, help="起始 URL")
+@click.option("--max-steps", default=15, show_default=True,
+              type=click.IntRange(2, 30), help="步数上限")
+@click.option("--headed", is_flag=True, help="有头浏览器(调试观察)")
+@click.option("--allow-external", is_flag=True,
+              help="允许跳出起始同源(默认禁止)")
+def webtask(
+    goal: str,
+    url: str,
+    max_steps: int,
+    headed: bool,
+    allow_external: bool,
+) -> None:
+    """网页操作 Agent — 目标 + URL,真实浏览器里快照/点击/填表直到完成。
+
+    未达成以 FAILED 结束并退出码 1;需 API key 与 playwright。"""
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .config import load_settings
+    from .web_task import run_task
+
+    load_dotenv()
+    settings_store.apply_to_env()
+    try:
+        settings = load_settings()
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    def on_step(step):
+        mark = "⚠️ " if step.error else ""
+        console.print(f"[dim]🖱️ {mark}{step.tool} {step.input} "
+                      f"· {step.elapsed_ms} ms[/dim]")
+
+    try:
+        result = run_task(goal, url, settings, max_steps=max_steps,
+                          headed=headed, allow_external=allow_external,
+                          on_step=on_step)
+    except Exception as exc:  # noqa: BLE001 — playwright missing etc.
+        console.print(f"[red]{type(exc).__name__}: {exc}[/red]")
+        sys.exit(2)
+    console.print(result.reply, markup=False)
+    if not result.success:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

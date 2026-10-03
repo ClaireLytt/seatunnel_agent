@@ -138,7 +138,7 @@ def add_llm_descriptions(
         f"upstream={', '.join(e['upstreams'][:5]) or '-'})"
         for e in entries
     )
-    llm = LLMClient(settings)
+    llm = LLMClient(settings, agent="lineage")
     resp = llm.chat(
         _DESCRIBE_PROMPT.format(language="Chinese" if zh else "English"),
         [{"role": "user", "content": summary}],

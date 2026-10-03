@@ -1,0 +1,80 @@
+# FMT 组 · SQL 格式化页 (/sqlfmt)。纯确定性（sqlglot 排版），页面只检查不写文件；
+# 演示数据 examples/sqlfmt_demo: 1 个乱排版文件（含裸 SELECT *）。
+
+- id: FMT1
+  title: 格式化乱排版 SQL
+  tags: [smoke, sqlite]
+  page: /sqlfmt
+  steps:
+    - fill: {SQL 输入: "select a,b from t1 join t2 on t1.k=t2.k where dt='2024-01-01'"}
+    - click: 格式化
+    - wait_result: {}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: SQL 格式化}
+    - text_contains: {in: 结果区, text: 格式化结果}
+    - text_contains: {in: 结果区, text: SELECT}
+
+- id: FMT2
+  title: 已规范 SQL 报告无需改动
+  tags: [smoke, sqlite]
+  page: /sqlfmt
+  steps:
+    - fill:
+        SQL 输入: |-
+          SELECT
+            a
+          FROM t;
+    - click: 格式化
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 无需改动}
+
+- id: FMT3
+  title: 裸 SELECT * 给出风格提示
+  tags: [full, sqlite]
+  page: /sqlfmt
+  steps:
+    - fill: {SQL 输入: "select * from t"}
+    - click: 格式化
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 裸 SELECT *}
+
+- id: FMT4
+  title: 解析失败原样保留不崩溃
+  tags: [full, sqlite]
+  page: /sqlfmt
+  steps:
+    - fill: {SQL 输入: "SELECT FROM WHERE;"}
+    - click: 格式化
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 解析失败}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: FMT5
+  title: 目录检查统计需格式化文件
+  tags: [full, sqlite]
+  page: /sqlfmt
+  steps:
+    - open_accordion: {target: 检查目录}
+    - fill: {SQL 目录: examples/sqlfmt_demo}
+    - click: 检查目录
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 需格式化 1}
+    - text_contains: {in: 结果区, text: messy.sql}
+
+- id: FMT6
+  title: 英文界面格式化链路
+  tags: [full, sqlite]
+  lang: en
+  page: /sqlfmt
+  steps:
+    - fill: {SQL input: "select a,b from t where dt='2024-01-01'"}
+    - click: Format
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: SQL Formatter}
+    - text_contains: {in: 结果区, text: Formatted SQL}

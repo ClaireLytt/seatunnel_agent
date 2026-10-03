@@ -27,8 +27,13 @@ def usage_path() -> Path:
     return Path(os.getenv("LLM_USAGE_PATH") or "logs/llm_usage.jsonl")
 
 
-def record(provider: str, model: str, usage: dict[str, Any] | None) -> None:
-    """Append one call's usage; must never raise into the LLM call path."""
+def record(provider: str, model: str, usage: dict[str, Any] | None,
+           agent: str | None = None) -> None:
+    """Append one call's usage; must never raise into the LLM call path.
+
+    *agent* optionally attributes the call to a feature (``text2sql``,
+    ``sql_review``, …) for per-agent cost roll-ups; omitted calls land in
+    the "unattributed" bucket."""
     if os.getenv("LLM_USAGE_LOG", "1") == "0":
         return
     try:
@@ -37,13 +42,16 @@ def record(provider: str, model: str, usage: dict[str, Any] | None) -> None:
         # forms too (this mismatch once logged every real call as 0 tokens)
         inp = usage.get("input_tokens", usage.get("input", 0)) or 0
         out = usage.get("output_tokens", usage.get("output", 0)) or 0
-        line = json.dumps({
+        rec: dict[str, Any] = {
             "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "provider": provider,
             "model": model,
             "input": int(inp),
             "output": int(out),
-        }, ensure_ascii=False)
+        }
+        if agent:
+            rec["agent"] = agent
+        line = json.dumps(rec, ensure_ascii=False)
         path = usage_path()
         with _lock:
             path.parent.mkdir(parents=True, exist_ok=True)

@@ -76,7 +76,7 @@ class SQLReviewAgent:
         use_cache: bool = True,
     ) -> None:
         self.settings = settings
-        self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
+        self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS, agent="sql_review")
         self.dialect = normalize_dialect(dialect)
         self.store = store
         self.config = config

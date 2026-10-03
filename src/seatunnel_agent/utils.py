@@ -52,3 +52,25 @@ def resolve_log_path(path: str, seatunnel_home: str) -> str:
             return found
         raise FileNotFoundError(f"No log files found in {path}")
     return path
+
+
+def cjk_font_family() -> str | None:
+    """Name of an installed CJK-capable font for matplotlib text, or None.
+
+    Matplotlib's default DejaVu Sans has no CJK glyphs, so Chinese chart
+    titles/legends render as empty boxes unless a CJK font is set
+    explicitly on those text elements."""
+    try:
+        from matplotlib import font_manager
+    except ImportError:
+        return None
+    try:
+        names = {f.name for f in font_manager.fontManager.ttflist}
+    except Exception:  # noqa: BLE001 - a font cache problem must not break charts
+        return None
+    for cand in ("Microsoft YaHei", "SimHei", "PingFang SC",
+                 "Hiragino Sans GB", "Noto Sans CJK SC",
+                 "Source Han Sans SC", "WenQuanYi Micro Hei"):
+        if cand in names:
+            return cand
+    return None

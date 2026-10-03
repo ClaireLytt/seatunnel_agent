@@ -1,0 +1,5 @@
+# Demo requirements with deliberate issues for the dependency checker.
+click>=8.1            # fine: pinned and installed
+rich                  # medium: unpinned
+click>=99.0           # medium: conflicts with the pin above; high: violated
+totally-absent-pkg==1.0   # high: declared but not installed

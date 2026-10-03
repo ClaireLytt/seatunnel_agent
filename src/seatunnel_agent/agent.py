@@ -28,7 +28,7 @@ class SeaTunnelAgent:
         on_event: EventCallback | None = None,
     ) -> None:
         self.settings = settings
-        self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
+        self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS, agent="seatunnel")
         self.messages: list[dict[str, Any]] = []
         self.retry_count = 0
         self.console = Console()
