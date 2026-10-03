@@ -864,36 +864,14 @@ def _build_landing_html() -> str:
 
 
 def _build_ai_hub_html() -> str:
-    """`/ai` — the AI Platform workspace: four LLM-engineering modules."""
+    """`/ai` — the AI Platform workspace; cards come from plugin manifests."""
+    from .registry import card_html, workspace_manifests
     header = '''    <div class="st-hub-title" data-en="AI Platform" data-zh="AI 平台">AI Platform</div>
     <div class="st-hub-subtitle" data-en="LLM engineering workspace · orchestrate, evaluate, experiment, observe" data-zh="LLM 工程工作台 · 编排、评测、实验、观测">LLM engineering workspace · orchestrate, evaluate, experiment, observe</div>
     <!--STATUS-->'''
-    body = '''  <div class="st-hub-grid st-hub-grid-4">
-    <a class="st-hub-card" href="/orchestrator">
-      <div class="st-hub-logo" style="background:#7c3aed;">AI</div>
-      <div class="st-hub-card-title" data-en="Agent Orchestrator" data-zh="智能编排">Agent Orchestrator</div>
-      <div class="st-hub-card-desc" data-en="One chat entry for the whole platform — LLM routes your request to the right agents and chains steps" data-zh="全平台统一对话入口 — LLM 自动路由到合适的 agent 并串联多步">One chat entry for the whole platform — LLM routes your request to the right agents and chains steps</div>
-      <div class="st-hub-enter" style="color:#7c3aed;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/llmeval">
-      <div class="st-hub-logo" style="background:#0ea5e9;">EV</div>
-      <div class="st-hub-card-title" data-en="LLM Eval" data-zh="LLM 评测">LLM Eval</div>
-      <div class="st-hub-card-desc" data-en="Golden suites for the LLM features — automated scoring, regression gate, score trends" data-zh="LLM 功能黄金用例集 — 自动打分、回归门禁、分数趋势">Golden suites for the LLM features — automated scoring, regression gate, score trends</div>
-      <div class="st-hub-enter" style="color:#0ea5e9;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/promptlab">
-      <div class="st-hub-logo" style="background:#16a34a;">PL</div>
-      <div class="st-hub-card-title" data-en="Prompt Lab" data-zh="Prompt 实验室">Prompt Lab</div>
-      <div class="st-hub-card-desc" data-en="Run one prompt across provider profiles side-by-side — outputs, tokens, latency, diff" data-zh="同一 Prompt 多个模型档案并排对比 — 输出、token、耗时与差异">Run one prompt across provider profiles side-by-side — outputs, tokens, latency, diff</div>
-      <div class="st-hub-enter" style="color:#16a34a;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/llmcost">
-      <div class="st-hub-logo" style="background:#f59e0b;">$</div>
-      <div class="st-hub-card-title" data-en="LLM Cost" data-zh="LLM 成本观测">LLM Cost</div>
-      <div class="st-hub-card-desc" data-en="Cost &amp; usage dashboard over the LLM call log — pricing table, per-model/day charts, anomaly flags" data-zh="基于调用日志的成本用量看板 — 价格表、按模型/按天图表、异常标记">Cost &amp; usage dashboard over the LLM call log — pricing table, per-model/day charts, anomaly flags</div>
-      <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-  </div>'''
+    cards = "\n".join(card_html(m) for m in workspace_manifests("ai"))
+    body = ('  <div class="st-hub-grid st-hub-grid-4">\n'
+            + cards + '\n  </div>')
     # the AI workspace depends on the LLM config more than anything else —
     # show the same health strip the landing page has
     return _hub_shell(header, body, back=True).replace(
@@ -1057,35 +1035,13 @@ _DATA_CARDS_HTML = '''
 
 
 def _build_devops_hub_html() -> str:
-    """`/devops` — engineering-hygiene workspace: four deterministic tools."""
+    """`/devops` — engineering-hygiene workspace; cards from manifests."""
+    from .registry import card_html, workspace_manifests
     header = '''    <div class="st-hub-title" data-en="DevOps" data-zh="DevOps 工作区">DevOps</div>
     <div class="st-hub-subtitle" data-en="Engineering hygiene · scan, triage, audit, release" data-zh="工程卫生工作台 · 扫描、诊断、体检、发布">Engineering hygiene · scan, triage, audit, release</div>'''
-    body = '''  <div class="st-hub-grid st-hub-grid-4">
-    <a class="st-hub-card" href="/secretscan">
-      <div class="st-hub-logo" style="background:#dc2626;">🔑</div>
-      <div class="st-hub-card-title" data-en="Secret Scan" data-zh="敏感凭证扫描">Secret Scan</div>
-      <div class="st-hub-card-desc" data-en="Provider tokens, private keys, password assignments &amp; high-entropy strings — masked previews, CI gate" data-zh="云厂商 token、私钥、明文密码与高熵串 — 预览脱敏,可做 CI 门禁">Provider tokens, private keys, password assignments &amp; high-entropy strings — masked previews, CI gate</div>
-      <div class="st-hub-enter" style="color:#dc2626;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/ciinspect">
-      <div class="st-hub-logo" style="background:#2563eb;">CI</div>
-      <div class="st-hub-card-title" data-en="CI Log Triage" data-zh="CI 日志诊断">CI Log Triage</div>
-      <div class="st-hub-card-desc" data-en="Cluster failed-job logs into root causes, spot flaky jobs and duration drift across runs" data-zh="失败日志聚类出根因,识别 flaky 作业与时长漂移">Cluster failed-job logs into root causes, spot flaky jobs and duration drift across runs</div>
-      <div class="st-hub-enter" style="color:#2563eb;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/depcheck">
-      <div class="st-hub-logo" style="background:#0d9488;">📦</div>
-      <div class="st-hub-card-title" data-en="Dependency Health" data-zh="依赖体检">Dependency Health</div>
-      <div class="st-hub-card-desc" data-en="Declared vs installed, unpinned specs, duplicate pins and a license inventory — offline" data-zh="声明 vs 实装、未钉版本、重复/冲突与 License 清单 — 全离线">Declared vs installed, unpinned specs, duplicate pins and a license inventory — offline</div>
-      <div class="st-hub-enter" style="color:#0d9488;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/release">
-      <div class="st-hub-logo" style="background:#ca8a04;">🚀</div>
-      <div class="st-hub-card-title" data-en="Release Notes" data-zh="发布助手">Release Notes</div>
-      <div class="st-hub-card-desc" data-en="Grouped changelog from conventional commits + semver bump suggestion; optional LLM polish" data-zh="按 conventional commits 分组生成 changelog + 语义化版本建议;可选 LLM 润色">Grouped changelog from conventional commits + semver bump suggestion; optional LLM polish</div>
-      <div class="st-hub-enter" style="color:#ca8a04;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-  </div>'''
+    cards = "\n".join(card_html(m) for m in workspace_manifests("devops"))
+    body = ('  <div class="st-hub-grid st-hub-grid-4">\n'
+            + cards + '\n  </div>')
     return _hub_shell(header, body, back=True)
 
 
@@ -1355,37 +1311,11 @@ def create_ui() -> gr.Blocks:
     with app.route("MCP Toolbox", "/mcp"):
         render_mcp_page(app)
 
-    with app.route("LLM Cost", "/llmcost"):
-        from .llm_cost_ui import render_llm_cost_page
-        render_llm_cost_page(app)
-
-    with app.route("Prompt Lab", "/promptlab"):
-        from .prompt_lab_ui import render_prompt_lab_page
-        render_prompt_lab_page(app)
-
-    with app.route("LLM Eval", "/llmeval"):
-        from .llm_eval_ui import render_llm_eval_page
-        render_llm_eval_page(app)
-
-    with app.route("Orchestrator", "/orchestrator"):
-        from .orchestrator_ui import render_orchestrator_page
-        render_orchestrator_page(app)
-
-    with app.route("Secret Scan", "/secretscan"):
-        from .secret_scan_ui import render_secret_scan_page
-        render_secret_scan_page(app)
-
-    with app.route("Release Notes", "/release"):
-        from .release_notes_ui import render_release_notes_page
-        render_release_notes_page(app)
-
-    with app.route("Dependency Health", "/depcheck"):
-        from .dep_check_ui import render_dep_check_page
-        render_dep_check_page(app)
-
-    with app.route("CI Log Triage", "/ciinspect"):
-        from .ci_inspect_ui import render_ci_inspect_page
-        render_ci_inspect_page(app)
+    # plugin pages: every seatunnel_agent.<pkg>.manifest registers itself
+    from .registry import discover, resolve
+    for mf in discover():
+        with app.route(mf.page_title, mf.route):
+            resolve(mf.render)(app)
 
     return app
 
@@ -3085,17 +3015,9 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .dag_check.api import router as dagcheck_api_router
         from .data_lineage.api import router as lineage_api_router
         from .data_skew.api import router as skew_api_router
-        from .llm_cost.api import router as llmcost_api_router
-        from .llm_eval.api import router as llmeval_api_router
         from .log_inspect.api import router as loginspect_api_router
         from .metric_diff.api import router as metricdiff_api_router
-        from .orchestrator.api import router as orchestrator_api_router
-        from .secret_scan.api import router as secretscan_api_router
-        from .release_notes.api import router as release_api_router
-        from .dep_check.api import router as depcheck_api_router
-        from .ci_inspect.api import router as ciinspect_api_router
         from .pii_scan.api import router as pii_api_router
-        from .prompt_lab.api import router as promptlab_api_router
         from .schema_drift.api import router as schemadrift_api_router
         from .sql_fmt.api import router as sqlfmt_api_router
         from .sql_review.api import router as sql_review_api_router
@@ -3117,16 +3039,13 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
             dagcheck_api_router,
             metricdiff_api_router,
             sqlfmt_api_router,
-            llmcost_api_router,
-            promptlab_api_router,
-            llmeval_api_router,
-            orchestrator_api_router,
-            secretscan_api_router,
-            release_api_router,
-            depcheck_api_router,
-            ciinspect_api_router,
         ):
             fastapi_app.include_router(router)
+        # plugin routers come from the manifests (see seatunnel_agent.registry)
+        from .registry import discover, resolve
+        for mf in discover():
+            if mf.api:
+                fastapi_app.include_router(resolve(mf.api))
 
     app.block_thread()
 
