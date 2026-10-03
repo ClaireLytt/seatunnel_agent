@@ -73,13 +73,7 @@ def _tool(name, inp, cid="c1"):
 
 
 class TestTools:
-    def test_path_escape_blocked(self, tmp_path):
-        make_project(tmp_path, git=False)
-        tools = {t.name: t for t in build_tools(tmp_path)}
-        out = tools["read_file"].run(path="../outside.txt")
-        assert False, out  # pragma: no cover — replaced below
-
-    # the loop wraps tool exceptions; test the raw guard directly instead
+    # the loop wraps tool exceptions; test the raw guard directly
     def test_path_guard_raises(self, tmp_path):
         from seatunnel_agent.code_fix.tools import _resolve
         make_project(tmp_path, git=False)
@@ -103,10 +97,6 @@ class TestTools:
         assert tools["run_tests"].run().startswith("[EXIT")
         tools["apply_patch"].run(path="app.py", old="a * b", new="a / b")
         assert tools["run_tests"].run().startswith("[GREEN]")
-
-
-# remove the placeholder that must not run
-del TestTools.test_path_escape_blocked
 
 
 class TestLoopSkeleton:

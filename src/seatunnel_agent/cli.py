@@ -3171,5 +3171,55 @@ def doctor(complaint: str, lang: str) -> None:
     console.print(result.reply, markup=False)
 
 
+@cli.command()
+@click.argument("goal")
+@click.option("--url", "-u", default="http://127.0.0.1:7860/",
+              show_default=True, help="起始 URL")
+@click.option("--max-steps", default=15, show_default=True,
+              type=click.IntRange(2, 30), help="步数上限")
+@click.option("--headed", is_flag=True, help="有头浏览器(调试观察)")
+@click.option("--allow-external", is_flag=True,
+              help="允许跳出起始同源(默认禁止)")
+def webtask(
+    goal: str,
+    url: str,
+    max_steps: int,
+    headed: bool,
+    allow_external: bool,
+) -> None:
+    """网页操作 Agent — 目标 + URL,真实浏览器里快照/点击/填表直到完成。
+
+    未达成以 FAILED 结束并退出码 1;需 API key 与 playwright。"""
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .config import load_settings
+    from .web_task import run_task
+
+    load_dotenv()
+    settings_store.apply_to_env()
+    try:
+        settings = load_settings()
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        sys.exit(2)
+
+    def on_step(step):
+        mark = "⚠️ " if step.error else ""
+        console.print(f"[dim]🖱️ {mark}{step.tool} {step.input} "
+                      f"· {step.elapsed_ms} ms[/dim]")
+
+    try:
+        result = run_task(goal, url, settings, max_steps=max_steps,
+                          headed=headed, allow_external=allow_external,
+                          on_step=on_step)
+    except Exception as exc:  # noqa: BLE001 — playwright missing etc.
+        console.print(f"[red]{type(exc).__name__}: {exc}[/red]")
+        sys.exit(2)
+    console.print(result.reply, markup=False)
+    if not result.success:
+        sys.exit(1)
+
+
 if __name__ == "__main__":
     cli()
