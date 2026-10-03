@@ -3140,5 +3140,36 @@ def triage_cmd(
 triage_cmd.name = "triage"
 
 
+@cli.command()
+@click.argument("complaint", required=False, default="")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+def doctor(complaint: str, lang: str) -> None:
+    """环境医生 — 描述症状,agent 只读检查端口/依赖/配置/日志并开出修复命令。
+
+    不带参数或未配置 API key 时输出确定性全量体检。"""
+    from dotenv import load_dotenv
+
+    from . import settings_store
+    from .config import load_settings
+    from .doctor import diagnose
+
+    load_dotenv()
+    settings_store.apply_to_env()
+    settings = None
+    if complaint.strip():
+        try:
+            settings = load_settings()
+        except RuntimeError:
+            settings = None
+
+    def on_step(step):
+        console.print(f"[dim]🔧 {step.tool} · {step.elapsed_ms} ms[/dim]")
+
+    result = diagnose(complaint or "checkup", settings=settings, lang=lang,
+                      on_step=on_step)
+    console.print(result.reply, markup=False)
+
+
 if __name__ == "__main__":
     cli()
