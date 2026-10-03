@@ -2910,5 +2910,38 @@ def ciinspect(
         sys.exit(1)
 
 
+@cli.command()
+@click.option("--port", "-p", default=9000, show_default=True, type=int,
+              help="Webhook 服务端口")
+@click.option("--host", "-h", default="127.0.0.1", show_default=True,
+              help="绑定地址(公网回调需 0.0.0.0 或反代)")
+@click.option("--secret-env", default="WEBHOOK_SECRET", show_default=True,
+              help="读取 webhook secret 的环境变量名(未设置则不校验签名)")
+def bot(port: int, host: str, secret_env: str) -> None:
+    """GitHub Bot — PR opened/updated 时自动跑凭证扫描 + SQL 静态审查并回贴评论。
+
+    需要:仓库 webhook 指向 http://<host>:<port>/webhook(事件选 Pull
+    requests),GITHUB_TOKEN 环境变量用于拉 diff 与发评论。"""
+    import os as _os
+
+    try:
+        import uvicorn
+    except ImportError:
+        console.print("[red]需要 uvicorn(随 gradio 安装):pip install uvicorn[/red]")
+        sys.exit(1)
+
+    from .bot import create_bot_app
+
+    secret = _os.getenv(secret_env, "")
+    if not secret:
+        console.print(f"[yellow]警告: 环境变量 {secret_env} 未设置,"
+                      "将不校验 webhook 签名(仅限内网测试)[/yellow]")
+    if not _os.getenv("GITHUB_TOKEN"):
+        console.print("[yellow]警告: GITHUB_TOKEN 未设置,"
+                      "私有仓库拉 diff / 发评论会失败[/yellow]")
+    console.print(f"[green]Bot webhook: http://{host}:{port}/webhook[/green]")
+    uvicorn.run(create_bot_app(secret=secret), host=host, port=port)
+
+
 if __name__ == "__main__":
     cli()
