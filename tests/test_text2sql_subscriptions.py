@@ -566,3 +566,126 @@ def test_cli_t2s_cron_once(tmp_path, monkeypatch) -> None:
     r = CliRunner().invoke(cli, ["t2s-cron", "--once"])
     assert r.exit_code == 0, r.output
     assert "0 个订阅" in r.output
+
+
+def test_metric_watch_ratio_metric(tmp_path) -> None:
+    """v2 unlock: metric_watch works on ratio metrics (e.g. refund rate)."""
+    schema_store = SchemaStore(parse_ddl(
+        "CREATE TABLE sales(amount double, refund double, dt string, "
+        "channel string) COMMENT 's';"
+    ))
+    metric_store, errors = MetricStore.from_text(
+        """
+metrics:
+  - name: gmv
+    display_name: GMV
+    table: sales
+    expression: SUM(amount)
+    time_column: dt
+    dimensions: [channel]
+  - name: refund_amount
+    display_name: Refunds
+    table: sales
+    expression: SUM(refund)
+    time_column: dt
+    dimensions: [channel]
+  - name: refund_rate
+    display_name: Refund rate
+    type: ratio
+    numerator: refund_amount
+    denominator: gmv
+""",
+        schema_store,
+    )
+    assert not errors, errors
+
+    db = tmp_path / "ratio.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE sales(amount REAL, refund REAL, dt TEXT, channel TEXT)")
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?)", [
+        (100.0, 10.0, "2026-03-01", "app"),
+        (50.0, 5.0, "2026-03-01", "web"),   # 03-01 rate = 15/150 = 0.10
+        (100.0, 25.0, "2026-03-02", "app"),
+        (60.0, 7.0, "2026-03-02", "web"),   # 03-02 rate = 32/160 = 0.20
+    ])
+    conn.commit()
+    conn.close()
+
+    pushes: list[tuple] = []
+
+    def fake_push(url, title, body, ok=True, **kw):
+        pushes.append((title, body, ok))
+        return True, "ok"
+
+    sub = {
+        "id": "w2", "name": "退款率异动", "cron": "0 9 * * *",
+        "source_type": "metric_watch", "metric": "refund_rate",
+        "dimensions": [], "threshold_pct": 50.0, "watch_mode": "dod",
+        "ds_type": "sqlite", "connection": "", "database": str(db),
+        "webhook_url": "https://example/hook", "enabled": True,
+    }
+    outcome = run_subscription(
+        sub, schema_store, metric_store,
+        today=date(2026, 3, 3), push_fn=fake_push,
+    )
+    assert outcome["status"] == "alerted", outcome
+    assert outcome["curr"] == pytest.approx(0.20)
+    assert outcome["prev"] == pytest.approx(0.10)
+    assert outcome["change_rate_pct"] == pytest.approx(100.0)
+    # per-dim deltas are labeled as changes, not additive contributions
+    assert pushes and "各维度变化" in pushes[0][1]
+
+
+def test_metric_watch_ratio_null_is_no_data(tmp_path) -> None:
+    """A NULL ratio (denominator 0 / no rows) is undefined, not a -100% drop."""
+    schema_store = SchemaStore(parse_ddl(
+        "CREATE TABLE sales(amount double, refund double, dt string) "
+        "COMMENT 's';"
+    ))
+    metric_store, errors = MetricStore.from_text(
+        """
+metrics:
+  - name: gmv
+    display_name: GMV
+    table: sales
+    expression: SUM(amount)
+    time_column: dt
+  - name: refund_amount
+    display_name: Refunds
+    table: sales
+    expression: SUM(refund)
+    time_column: dt
+  - name: refund_rate
+    display_name: Refund rate
+    type: ratio
+    numerator: refund_amount
+    denominator: gmv
+""",
+        schema_store,
+    )
+    assert not errors, errors
+    db = tmp_path / "null_ratio.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE sales(amount REAL, refund REAL, dt TEXT)")
+    # 03-01 has data; 03-02 (yesterday) has none -> ratio undefined
+    conn.execute("INSERT INTO sales VALUES (100.0, 10.0, '2026-03-01')")
+    conn.commit()
+    conn.close()
+
+    pushes: list = []
+    outcome = run_subscription(
+        {
+            "id": "w3", "name": "退款率异动", "cron": "0 9 * * *",
+            "source_type": "metric_watch", "metric": "refund_rate",
+            "dimensions": [], "threshold_pct": 10.0, "watch_mode": "dod",
+            "ds_type": "sqlite", "connection": "", "database": str(db),
+            "webhook_url": "https://example/hook", "enabled": True,
+        },
+        schema_store, metric_store,
+        today=date(2026, 3, 3),
+        push_fn=lambda *a, **k: (pushes.append(a), (True, "ok"))[1],
+    )
+    assert outcome["status"] == "no_data", outcome
+    assert outcome["curr"] is None
+    assert pushes == []  # no false alert card

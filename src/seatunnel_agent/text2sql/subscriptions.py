@@ -671,14 +671,12 @@ def _run_metric_watch(
     metric = metric_store.get(sub.get("metric", ""))
     if metric is None:
         raise MetricError(f"指标 '{sub.get('metric')}' 未定义")
-    if metric.is_ratio:
-        raise MetricError("metric_watch v1 只支持加法型指标")
 
     yesterday = today - timedelta(days=1)
     ref = yesterday - timedelta(days=7 if sub.get("watch_mode") == "wow" else 1)
     ds_type = sub.get("ds_type", "hive")
 
-    def _total(day: date) -> float:
+    def _total(day: date) -> float | None:
         sql = build_metric_sql(
             metric, metric_store, schema_store,
             time_range=TimeRange(start=day, end=day),
@@ -688,10 +686,22 @@ def _run_metric_watch(
             raise MetricError("SQL rejected: " + "; ".join(validation.errors))
         result = executor.run(enforce_limit(sql, dialect=ds_type), max_rows=10)
         if not result.rows or result.rows[0][-1] is None:
-            return 0.0
+            # additive: no rows means 0; a NULL ratio (denominator 0 or no
+            # data) is UNDEFINED, not 0 — coercing it would fire a false
+            # "-100%" alert
+            return None if metric.is_ratio else 0.0
         return float(result.rows[0][-1])
 
     curr, prev = _total(yesterday), _total(ref)
+    if curr is None or prev is None:
+        return {
+            "status": "no_data", "error": "", "sql": "",
+            "curr": curr, "prev": prev, "delta": None,
+            "change_rate_pct": None,
+            "threshold_pct": float(sub.get("threshold_pct", 10.0)),
+            "curr_day": yesterday.isoformat(), "ref_day": ref.isoformat(),
+            "note": "比率在该日无定义（分母为 0 或无数据），跳过告警",
+        }
     delta = curr - prev
     rate = (delta / abs(prev)) if prev else None
     threshold = float(sub.get("threshold_pct", 10.0))
@@ -709,9 +719,18 @@ def _run_metric_watch(
     if not triggered:
         return outcome  # silence by design — no card below the threshold
 
-    # top contributors on the first allowed dimension (best-effort)
+    # top contributors on the first allowed dimension (best-effort).
+    # Ratio metrics have no dimensions of their own: fall back to the
+    # numerator∩denominator intersection build_metric_sql would accept.
+    allowed_dims = list(metric.dimensions)
+    if metric.is_ratio and not allowed_dims:
+        num = metric_store.get(metric.numerator)
+        den = metric_store.get(metric.denominator)
+        if num is not None and den is not None:
+            den_set = {d.lower() for d in den.dimensions}
+            allowed_dims = [d for d in num.dimensions if d.lower() in den_set]
     top_lines = ""
-    dim = (sub.get("dimensions") or list(metric.dimensions)[:1] or [None])[0]
+    dim = (sub.get("dimensions") or allowed_dims[:1] or [None])[0]
     if dim:
         try:
             def _by_dim(day: date) -> dict[str, float]:
@@ -744,7 +763,9 @@ def _run_metric_watch(
 
     rate_txt = f"{rate * 100:+.2f}%" if rate is not None else "N/A(基期为0)"
     unit = f" {metric.unit}" if metric.unit else ""
-    contributor_block = f"\n主要贡献 ({dim}):{top_lines}" if top_lines else ""
+    # per-dim deltas of a ratio are informative but not additive contributions
+    label = "各维度变化" if metric.is_ratio else "主要贡献"
+    contributor_block = f"\n{label} ({dim}):{top_lines}" if top_lines else ""
     body = (
         f"**{metric.display_name}** 异动告警（阈值 ±{threshold:g}%）\n"
         f"{ref.isoformat()}: {prev:,.2f}{unit} → "
