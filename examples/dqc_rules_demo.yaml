@@ -1,0 +1,20 @@
+# DQC 规则示例 —— 针对自带的 sqlite 演示库（先跑一次 UI 测试或
+# python -m seatunnel_agent.ui_testing 会生成 config/uitest_demo.db）:
+#   seatunnel-agent dqc run -r examples/dqc_rules_demo.yaml \
+#       --ds-type sqlite --database config/uitest_demo.db
+version: 1
+rules:
+  - table: dc_test_orders_a
+    checks:
+      - type: row_count
+        min: 1
+        max_change_pct: 50
+      - type: null_rate
+        column: amount
+        max_pct: 20
+      - type: unique
+        columns: [id]
+  - table: dc_test_metrics_a
+    checks:
+      - type: row_count
+        min: 1

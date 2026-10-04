@@ -32,6 +32,15 @@ jobs:
           --cov=seatunnel_agent --cov-report=term-missing:skip-covered
           --cov-fail-under=60
 
+      # Retrieval regression gate (PRD §5.3): hybrid must never rank worse
+      # than keyword-only on the labeled bench set.
+      - name: Retrieval bench gate (hybrid >= keyword)
+        run: >
+          seatunnel-agent t2s-bench
+          --ddl tests/fixtures/t2s_bench_schema.sql
+          --bench tests/fixtures/t2s_retrieval_bench.jsonl
+          --gate
+
       # The unit suite runs without the mcp package by design; this step
       # guards the SDK-compat shim (mcp 2.x renamed FastMCP -> MCPServer)
       # by booting the real server on the current SDK and listing tools.
