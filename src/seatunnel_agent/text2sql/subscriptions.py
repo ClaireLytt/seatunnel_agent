@@ -34,7 +34,13 @@ from typing import Any, Callable
 from .executor import DatabaseConfig, config_from_env, create_executor
 from .attribution import NULL_LABEL
 from .favorites import FavoritesStore, apply_params
-from .metrics import MetricError, MetricStore, build_metric_sql, load_metric_store
+from .metrics import (
+    MetricError,
+    MetricStore,
+    build_metric_sql,
+    load_metric_store,
+    ratio_sides,
+)
 from .partition import TimeRange, pt_value
 from .schema import SchemaStore
 from .validator import enforce_limit, validate_sql
@@ -676,15 +682,19 @@ def _run_metric_watch(
     ref = yesterday - timedelta(days=7 if sub.get("watch_mode") == "wow" else 1)
     ds_type = sub.get("ds_type", "hive")
 
-    def _total(day: date) -> float | None:
+    def _run_day_sql(day: date, max_rows: int, dimensions=None):
+        """build -> validate -> LIMIT -> execute, one day's metric SQL."""
         sql = build_metric_sql(
-            metric, metric_store, schema_store,
+            metric, metric_store, schema_store, dimensions=dimensions,
             time_range=TimeRange(start=day, end=day),
         )
         validation = validate_sql(sql, schema_store)
         if not validation.ok:
             raise MetricError("SQL rejected: " + "; ".join(validation.errors))
-        result = executor.run(enforce_limit(sql, dialect=ds_type), max_rows=10)
+        return executor.run(enforce_limit(sql, dialect=ds_type), max_rows=max_rows)
+
+    def _total(day: date) -> float | None:
+        result = _run_day_sql(day, max_rows=10)
         if not result.rows or result.rows[0][-1] is None:
             # additive: no rows means 0; a NULL ratio (denominator 0 or no
             # data) is UNDEFINED, not 0 — coercing it would fire a false
@@ -724,9 +734,11 @@ def _run_metric_watch(
     # numerator∩denominator intersection build_metric_sql would accept.
     allowed_dims = list(metric.dimensions)
     if metric.is_ratio and not allowed_dims:
-        num = metric_store.get(metric.numerator)
-        den = metric_store.get(metric.denominator)
-        if num is not None and den is not None:
+        try:
+            num, den = ratio_sides(metric, metric_store)
+        except MetricError:
+            pass  # breakdown is best-effort; the totals already alerted
+        else:
             den_set = {d.lower() for d in den.dimensions}
             allowed_dims = [d for d in num.dimensions if d.lower() in den_set]
     top_lines = ""
@@ -734,12 +746,7 @@ def _run_metric_watch(
     if dim:
         try:
             def _by_dim(day: date) -> dict[str, float]:
-                sql = build_metric_sql(
-                    metric, metric_store, schema_store, dimensions=[dim],
-                    time_range=TimeRange(start=day, end=day),
-                )
-                result = executor.run(
-                    enforce_limit(sql, dialect=ds_type), max_rows=1000)
+                result = _run_day_sql(day, max_rows=1000, dimensions=[dim])
                 return {
                     (NULL_LABEL if r[0] is None else str(r[0])):
                         float(r[-1]) if r[-1] is not None else 0.0

@@ -684,6 +684,18 @@ def _indent(sql: str, prefix: str = "  ") -> str:
     return "\n".join(prefix + line for line in sql.splitlines())
 
 
+def ratio_sides(metric: MetricDef, store: MetricStore) -> tuple[MetricDef, MetricDef]:
+    """Resolve a ratio metric's numerator/denominator definitions, raising
+    :class:`MetricError` when either is missing or itself a ratio."""
+    num = store.get(metric.numerator)
+    den = store.get(metric.denominator)
+    if num is None or den is None or num.is_ratio or den.is_ratio:
+        raise MetricError(
+            f"ratio 指标 '{metric.name}' 的分子/分母定义无效"
+        )
+    return num, den
+
+
 def build_metric_sql(
     metric: MetricDef,
     store: MetricStore,
@@ -724,12 +736,7 @@ def build_metric_sql(
             extra_filters,
         )
 
-    num = store.get(metric.numerator)
-    den = store.get(metric.denominator)
-    if num is None or den is None or num.is_ratio or den.is_ratio:
-        raise MetricError(
-            f"ratio 指标 '{metric.name}' 的分子/分母定义无效"
-        )
+    num, den = ratio_sides(metric, store)
     allowed = {d.lower() for d in num.dimensions} & {
         d.lower() for d in den.dimensions
     }
@@ -788,44 +795,27 @@ def build_metric_series_sql(
     used by the forecast tool. Raises :class:`MetricError` when the metric
     (or either side of a ratio) has no ``time_column``.
     """
-    if not metric.is_ratio:
-        if not metric.time_column:
+    def _inner(m: MetricDef) -> str:
+        """Additive daily series: one row per time-column value."""
+        if not m.time_column:
             raise MetricError(
-                f"metric '{metric.name}' has no time_column; "
+                f"metric '{m.name}' has no time_column; "
                 "a daily series cannot be built"
             )
-        table = schema_store.get(metric.table)
-        if table is None:
-            raise MetricError(f"table '{metric.table}' is not whitelisted")
-        day = dim_output_name(metric.time_column)
-        sql = _build_additive_sql(
-            metric, table, schema_store, [metric.time_column], time_range,
-            None, [],
-        )
-        return sql + f"\nORDER BY {day}"
-
-    num = store.get(metric.numerator)
-    den = store.get(metric.denominator)
-    if num is None or den is None or num.is_ratio or den.is_ratio:
-        raise MetricError(
-            f"ratio metric '{metric.name}' has invalid numerator/denominator"
-        )
-    for side in (num, den):
-        if not side.time_column:
-            raise MetricError(
-                f"metric '{side.name}' has no time_column; "
-                f"a daily series of '{metric.name}' cannot be built"
-            )
-    n_day = dim_output_name(num.time_column)
-    d_day = dim_output_name(den.time_column)
-
-    def _inner(m: MetricDef) -> str:
         table = schema_store.get(m.table)
         if table is None:
             raise MetricError(f"table '{m.table}' is not whitelisted")
         return _build_additive_sql(
             m, table, schema_store, [m.time_column], time_range, None, [],
         )
+
+    if not metric.is_ratio:
+        return _inner(metric) + f"\nORDER BY {dim_output_name(metric.time_column)}"
+
+    num, den = ratio_sides(metric, store)
+    num_sql, den_sql = _inner(num), _inner(den)  # validates time columns
+    n_day = dim_output_name(num.time_column)
+    d_day = dim_output_name(den.time_column)
 
     # COALESCE the numerator: a LEFT JOIN miss (day with denominator rows
     # but no numerator rows) is a true rate of 0, not an undefined day —
@@ -837,10 +827,10 @@ def build_metric_series_sql(
     return "\n".join([
         f"SELECT den.{d_day} AS {d_day}, {ratio_expr}",
         "FROM (",
-        _indent(_inner(den)),
+        _indent(den_sql),
         ") den",
         "LEFT JOIN (",
-        _indent(_inner(num)),
+        _indent(num_sql),
         f") num ON num.{n_day} = den.{d_day}",
         f"ORDER BY den.{d_day}",
     ])
