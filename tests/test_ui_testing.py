@@ -342,7 +342,9 @@ class TestCoverage:
         if cov is None:
             pytest.skip("checklist html not present")
         counts = cov.counts()
-        assert len(cov.rows) == 75
+        # 75 original items + C7/G4/G5/Q6 backfilled for the chunked-verify,
+        # double-click-guard and report-search features
+        assert len(cov.rows) == 80
         assert counts["runner"] == 3            # P0-1/2/3
         assert counts["auto"] >= 55             # PRD acceptance threshold
         assert counts["missing"] <= 8
@@ -771,3 +773,13 @@ class TestDskLabelSync:
         zh, en = LABELS["倾斜分析"][:2]
         assert zh == sr("zh", "sr_skew_btn")
         assert en == sr("en", "sr_skew_btn")
+
+
+def test_expand_assert_remaps_yaml_on_key():
+    """YAML 1.1 parses bare `on:` as boolean True — the assert expander must
+    map it back, or `on: false` checks silently invert (caught by review:
+    C7's mid-run disabled check degenerated to expecting enabled)."""
+    from seatunnel_agent.ui_testing.loader import _expand_assert
+    a = _expand_assert({"enabled": {"target": "x", True: False}}, "ctx")
+    assert a.args.get("on") is False
+    assert True not in a.args

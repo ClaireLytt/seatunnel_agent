@@ -27,6 +27,7 @@ CASES_DIR = Path(__file__).parent / "cases"
 USER_CASES_DIR = Path("config") / "uitest_cases"
 
 KNOWN_ACTIONS = frozenset({
+    "assert",
     "goto", "click", "fill", "clear", "press", "select_ds", "select",
     "select_index", "dropdown_type", "check", "slide", "open_accordion", "wait_status_ok",
     "wait_status_error", "wait_result", "wait_text", "wait", "screenshot", "set_language",
@@ -35,8 +36,12 @@ KNOWN_ACTIONS = frozenset({
 
 KNOWN_ASSERTS = frozenset({
     "text_contains", "text_not_contains", "value_is", "value_contains", "options_are",
-    "options_count", "status_ok", "status_error", "visible", "hidden",
-    "checked", "scrollable", "ai_judge",
+    "options_count", "options_not_contains", "status_ok", "status_error",
+    "visible", "hidden",
+    "checked", "enabled", "perf_budget", "scrollable", "result_in_view",
+    "result_stable",
+    "visual_baseline",
+    "ai_judge",
     "download_ok", "popup_contains", "sidebar_width",
 })
 
@@ -145,6 +150,12 @@ def _expand_assert(raw: Any, ctx: str) -> Assertion:
         note = str(raw.get("note", ""))
     else:
         raise CaseLoadError(f"{ctx}: assertion must be a mapping, got {raw!r}")
+
+    # YAML 1.1 parses a bare `on:` key as boolean True — map it back (the
+    # step expander does the same; without this, `enabled`/`checked`
+    # asserts with `on: false` silently checked the opposite state)
+    if True in args:
+        args["on"] = args.pop(True)
 
     if kind not in KNOWN_ASSERTS:
         raise CaseLoadError(f"{ctx}: unknown assertion {kind!r} "

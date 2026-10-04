@@ -75,6 +75,35 @@ class SkewHistory:
         except OSError:
             pass  # history is best-effort; never break the analysis
 
+    def log_verify(
+        self,
+        sql: str,
+        targets: int,
+        confirmed: int,
+        source: str = "ui",
+    ) -> None:
+        """A live-probe verification record (mode='verify'): which SQLs had
+        their skew measured, and whether it was confirmed."""
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "source": source,
+            "mode": "verify",
+            "dialect": "",
+            "counts": {"high": 0, "medium": 0, "low": 0},
+            "verdict": "high" if confirmed else "clean",
+            "probes": {"targets": targets, "confirmed": confirmed},
+            "sql": (sql or "")[:_MAX_SQL_CHARS],
+        }
+        line = json.dumps(record, ensure_ascii=False) + "\n"
+        try:
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            with self._lock:
+                self._rotate_if_needed()
+                with open(self.log_file, "a", encoding="utf-8") as f:
+                    f.write(line)
+        except OSError:
+            pass  # history is best-effort; never break the analysis
+
     def recent(self, n: int = 20) -> list[dict]:
         """Latest *n* records, newest first.  [] on any problem."""
         try:

@@ -11,6 +11,7 @@
     - click: 变更影响分析
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: dws.gmv_daily}
     - text_contains: {in: 结果区, text: ads.gmv_report}
     - text_contains: {in: 结果区, text: 字段口径变更}

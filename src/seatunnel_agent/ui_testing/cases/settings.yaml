@@ -127,7 +127,10 @@
       note: 本地文件写入,短等待即可
   expect:
     - text_contains: {in: 页面, text: 已删除连接}
-    - text_contains: {in: 页面, text: 暂无已保存的连接}
+    # 顺序无关的契约:被删的连接从下拉选项里消失。不能断言"库为空"
+    # (dc 页/倾斜页用例共享同一 store),也不能断言 host:port 消失
+    # (dsk-conn 同样用 127.0.0.1:3306)。
+    - options_not_contains: {of: 选择连接, value: t-conn}
 
 - id: SET5
   title: 设置页有滚动条

@@ -9,6 +9,7 @@
     - click: 结构对比
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: 表结构完全一致}
 
 - id: C2
@@ -33,6 +34,7 @@
     - click: 行数对比
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: "10"}
     - text_contains: {in: 结果区, text: "9"}
     - text_contains: {in: 结果区, text: "+1"}
@@ -60,6 +62,7 @@
     - click: 样本数据
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: "350"}
     - text_contains: {in: 结果区, text: refund}
     - ai_judge: >-
@@ -76,9 +79,12 @@
     - click: 全部对比
     - wait_result: {timeout_ms: 90000}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: 对比摘要}
     - text_contains: {in: 结果区, text: 行数对比}
     - text_not_contains: {in: 结果区, text: Traceback}
+    - perf_budget: {ms: 60000}
+    - visual_baseline: {name: c6_compare_all}
 
 - id: D1
   title: 聚合对比标记 SUM/MAX 不一致
@@ -89,6 +95,7 @@
     - click: 聚合对比
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: "2122.49"}
     - text_contains: {in: 结果区, text: "3493.69"}
 
@@ -198,3 +205,24 @@
   expect:
     - text_not_contains: {in: 结果区, text: Traceback}
     - text_contains: {in: 结果区, text: 样本}
+
+# 防连点(trigger_mode="once"):运行中双击不得触发第二次执行。功能性
+# 契约——第一次结果渲染后 15s 内结果区不得重绘(重复运行约 12s 完成,
+# 会带着不同的"耗时"重绘)。曾试过运行期禁用按钮做视觉反馈,但该更新
+# 在多页路由下到不了前端,C7 因此改为验证行为而非样式。
+- id: C7
+  title: 全部对比双击只执行一次
+  tags: [full, sqlite]
+  timeout_s: 200
+  setup:
+    - use: select_orders
+  steps:
+    - click: 全部对比
+    - wait: 1000
+      note: 确保首次运行已在执行中,第二次点击才构成"运行中双击"
+    - click: 全部对比
+      note: 运行中的第二次点击,trigger_mode=once 应将其丢弃
+    - wait_result: {timeout_ms: 90000}
+  expect:
+    - text_contains: {in: 结果区, text: 对比摘要}
+    - result_stable: {ms: 15000}

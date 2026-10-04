@@ -40,3 +40,17 @@ jobs:
           --ddl tests/fixtures/t2s_bench_schema.sql
           --bench tests/fixtures/t2s_retrieval_bench.jsonl
           --gate
+
+      # The unit suite runs without the mcp package by design; this step
+      # guards the SDK-compat shim (mcp 2.x renamed FastMCP -> MCPServer)
+      # by booting the real server on the current SDK and listing tools.
+      - name: MCP server boot smoke (current mcp SDK)
+        run: |
+          pip install "mcp>=1.2"
+          python -c "
+          import anyio
+          from seatunnel_agent.mcp_toolbox import create_mcp_server
+          tools = anyio.run(create_mcp_server().list_tools)
+          assert len(tools) >= 15, [t.name for t in tools]
+          print('mcp boot ok:', len(tools), 'tools')
+          "

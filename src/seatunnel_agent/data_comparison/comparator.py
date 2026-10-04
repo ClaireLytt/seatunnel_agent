@@ -287,6 +287,7 @@ class CompareReport:
     checksum: ChecksumResult | None = None
     partition: PartitionResult | None = None
     custom_agg: CustomAggResult | None = None
+    chunked: Any | None = None  # ChunkedResult (import cycle: see .chunked)
     elapsed_ms: int = 0
 
     def to_dict(self) -> dict:
@@ -366,6 +367,13 @@ class CompareReport:
         partition = _ri(d.get("partition"), PartitionCompareItem, PartitionResult)
         custom_agg = _ri(d.get("custom_agg"), CustomAggItem, CustomAggResult)
 
+        chunked = None
+        if d.get("chunked"):
+            from .chunked import ChunkedResult, ChunkMismatch
+            cd = dict(d["chunked"])
+            mism = [ChunkMismatch(**m) for m in cd.pop("mismatched", [])]
+            chunked = ChunkedResult(**cd, mismatched=mism)
+
         sample = None
         if d.get("sample"):
             from ..text2sql.differ import ResultDiff
@@ -392,6 +400,7 @@ class CompareReport:
             checksum=checksum,
             partition=partition,
             custom_agg=custom_agg,
+            chunked=chunked,
             elapsed_ms=d.get("elapsed_ms", 0),
         )
 
@@ -547,15 +556,64 @@ def build_aggregate_sql(table_name: str, columns: list[str], where: str = "",
 _METRIC_OFFSETS = {"sum": 0, "avg": 1, "min": 2, "max": 3, "null_count": 4}
 
 
+# Cross-source normalization rules for loose value equality. Migrations
+# between engines produce "false diffs" from rendering, not data: trailing
+# whitespace in CHAR columns, '2024-01-01T00:00:00' vs '2024-01-01 00:00:00'
+# vs a bare date, NULL vs '' on engines that conflate them. Each rule can be
+# switched via environment variables (documented defaults chosen for the
+# common Hive↔MySQL case).
+_NORM_TRIM = os.getenv("DC_NORM_TRIM", "1") != "0"
+_NORM_TIMESTAMPS = os.getenv("DC_NORM_TIMESTAMPS", "1") != "0"
+_NORM_NULL_EQ_EMPTY = os.getenv("DC_NORM_NULL_EQ_EMPTY", "0") == "1"
+
+_TS_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})"                 # date
+    r"(?:[T ](\d{2}:\d{2})(?::(\d{2}))?"    # optional time
+    r"(?:\.(\d+))?"                         # optional fraction
+    r"(Z|[+-]\d{2}:?\d{2})?)?$"             # optional zone suffix
+)
+
+
+def _canon_timestamp(s: str) -> str | None:
+    """Canonical 'YYYY-MM-DD HH:MM:SS.frac[zone]' for ISO-ish datetimes.
+
+    A bare date equals midnight; 'T' and ' ' separators, missing seconds and
+    trailing fractional zeros are normalized away. The zone suffix is KEPT
+    (normalized: 'Z' == '+00:00' == '+0000'), so '10:30:00+08:00' never
+    equals '10:30:00Z' — those are instants eight hours apart. Returns None
+    when the string is not datetime-shaped."""
+    m = _TS_RE.match(s)
+    if not m:
+        return None
+    date, hm, sec, frac, zone = m.groups()
+    frac = (frac or "").rstrip("0")
+    z = (zone or "").replace(":", "")
+    if z in ("+0000", "-0000"):
+        z = "Z"
+    return (f"{date} {hm or '00:00'}:{sec or '00'}"
+            + (f".{frac}" if frac else "") + z)
+
+
 def _close_enough(a: Any, b: Any, tolerance: float = 1e-6) -> bool:
     if a is None and b is None:
         return True
     if a is None or b is None:
+        if _NORM_NULL_EQ_EMPTY and (a in (None, "") and b in (None, "")):
+            return True
         return False
     try:
         fa, fb = float(a), float(b)
     except (TypeError, ValueError):
-        return str(a) == str(b)
+        sa, sb = str(a), str(b)
+        if _NORM_TRIM:
+            sa, sb = sa.strip(), sb.strip()
+        if sa == sb:
+            return True
+        if _NORM_TIMESTAMPS:
+            ca, cb = _canon_timestamp(sa), _canon_timestamp(sb)
+            if ca is not None and ca == cb:
+                return True
+        return False
     if math.isnan(fa) and math.isnan(fb):
         return True
     if math.isnan(fa) or math.isnan(fb):
@@ -831,11 +889,15 @@ def check_aggregate_threshold(result: AggregateResult, threshold: ThresholdConfi
 # ---------------------------------------------------------------------------
 
 def parse_column_mapping(raw: str) -> ColumnMapping:
-    """Parse 'col_a:col_b, name:full_name' into {col_a: col_b}."""
+    """Parse 'col_a:col_b, name:full_name' into {col_a: col_b}.
+
+    Pairs may be separated by commas or newlines — users pasting one
+    mapping per line used to have everything after the first colon
+    swallowed into a single bogus value."""
     mapping: ColumnMapping = {}
     if not raw.strip():
         return mapping
-    for pair in raw.split(","):
+    for pair in re.split(r"[,\n]", raw):
         pair = pair.strip()
         if ":" not in pair:
             continue
@@ -1028,11 +1090,18 @@ def build_trend_data(
         return []
 
     entries: list[dict[str, Any]] = []
-    for fpath in sorted(reports_dir.glob("compare_*.json")):
+
+    def _file_ts(p: Path) -> str:
+        # filenames are compare_[<ta>_vs_<tb>_]YYYYmmdd_HHMMSS.json — the
+        # timestamp is always the trailing token, table names are optional
+        m = re.search(r"(\d{8}_\d{6})$", p.stem)
+        return m.group(1) if m else p.stem.replace("compare_", "")
+
+    for fpath in sorted(reports_dir.glob("compare_*.json"), key=_file_ts):
         try:
             with open(fpath, "r", encoding="utf-8") as f:
                 d = json.load(f)
-            ts = fpath.stem.replace("compare_", "")
+            ts = _file_ts(fpath)
             report = CompareReport.from_dict(d)
             if report.row_count:
                 entries.append({

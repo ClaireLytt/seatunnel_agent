@@ -10,6 +10,7 @@
     - click: 生成同步配置
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: source}
     - text_contains: {in: 结果区, text: sink}
 
@@ -26,6 +27,7 @@
     - click: 生成差异 SQL
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: INSERT INTO}
     - text_contains: {in: 结果区, text: UPDATE}
 
@@ -45,6 +47,7 @@
     - wait: 2500
       note: 趋势图渲染到 gr.Plot,结果区无变化信号
   expect:
+    - result_in_view: {}
     - text_not_contains: {in: 页面, text: Traceback}
 
 - id: S2
@@ -229,3 +232,34 @@
     - hidden: {target: 端口, side: A}
     - status_ok: {side: A}
     - text_contains: {in: 状态, side: A, text: "10"}
+
+# 重置选项:一键取消所有已选功能 —— 之前只能逐个手动清空十几个输入框。
+- id: R3
+  title: 重置选项一键清空全部对比选项
+  tags: [smoke, sqlite]
+  setup:
+    - use: select_orders
+    - fill: {WHERE 条件: "id > 1"}
+    - fill: {阈值: "5%"}
+    - fill: {主键列: id}
+    - open_accordion: 数据倾斜
+    - fill: {倾斜分析列: region}
+    - open_accordion: 校验和
+    - fill: {校验和: amount}
+    - open_accordion: 自定义 SQL
+    - fill: {SQL (A): "SELECT 1"}
+    - open_accordion: 模板
+    - fill: {模板名称: tmp-x}
+  steps:
+    - click: 重置选项
+    - wait: 600
+      note: 批量更新渲染一拍
+  expect:
+    - value_is: {of: WHERE 条件, value: ""}
+    - value_is: {of: 阈值, value: ""}
+    - value_is: {of: 主键列, value: ""}
+    - value_is: {of: 倾斜分析列, value: ""}
+    - value_is: {of: 校验和, value: ""}
+    - value_is: {of: SQL (A), value: ""}
+    - value_is: {of: 模板名称, value: ""}
+    - checked: {target: 启用脱敏, on: true}

@@ -676,6 +676,82 @@ class TestHiveSchemaFetch:
         assert schema.partition_columns[0].name == "pt"
         mock_cursor.close.assert_called_once()
 
+    def test_describe_table_skips_detailed_metadata(self):
+        """Owner:/OwnerType:/CreateTime: rows after '# Detailed Table
+        Information' must not be parsed as columns (they used to leak into
+        generated SQL and break Hive with 'Invalid column OwnerType:')."""
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
+        config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
+        executor = HiveExecutor(config)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            ("# col_name", "data_type", "comment"),
+            ("id", "bigint", ""),
+            ("amount", "decimal(10,2)", ""),
+            ("", "", ""),
+            ("# Detailed Table Information", "", ""),
+            ("Database:", "testdb", ""),
+            ("Owner:", "hive", ""),
+            ("OwnerType:", "USER", ""),
+            ("CreateTime:", "Mon Sep 28 10:00:00 CST 2026", ""),
+            ("LastAccessTime:", "UNKNOWN", ""),
+            ("Retention:", "0", ""),
+            ("Location:", "hdfs://nn:8020/warehouse/orders", ""),
+            ("Table Type:", "MANAGED_TABLE", ""),
+            ("Comment:", "order fact table", ""),
+            ("Table Parameters:", "", ""),
+            ("", "numFiles", "1"),
+            ("", "transient_lastDdlTime", "1790000000"),
+            ("", "", ""),
+            ("# Storage Information", "", ""),
+            ("SerDe Library:", "org.apache.hadoop.hive.ql.io.orc.OrcSerde", ""),
+            ("InputFormat:", "org.apache.hadoop.hive.ql.io.orc.OrcInputFormat", ""),
+            ("Compressed:", "No", ""),
+            ("Num Buckets:", "-1", ""),
+            ("Bucket Columns:", "[]", ""),
+            ("Sort Columns:", "[]", ""),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        with patch.object(executor, "_connect", return_value=mock_conn):
+            schema = executor.describe_table("orders")
+        assert [c.name for c in schema.columns] == ["id", "amount"]
+        assert schema.partition_columns == []
+        assert schema.comment == "order fact table"
+
+    def test_describe_partitioned_table_with_detailed_section(self):
+        """Partition columns still parse, and every section after
+        '# Detailed Table Information' (Storage Information, Constraints)
+        stays out of the column list."""
+        from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
+        config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
+        executor = HiveExecutor(config)
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [
+            ("# col_name", "data_type", "comment"),
+            ("id", "bigint", ""),
+            ("", "", ""),
+            ("# Partition Information", "", ""),
+            ("# col_name", "data_type", "comment"),
+            ("dt", "string", "partition date"),
+            ("", "", ""),
+            ("# Detailed Table Information", "", ""),
+            ("Owner:", "hive", ""),
+            ("OwnerType:", "USER", ""),
+            ("", "", ""),
+            ("# Storage Information", "", ""),
+            ("SerDe Library:", "org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe", ""),
+            ("", "", ""),
+            ("# Constraints", "", ""),
+            ("Constraint Name:", "pk_123", ""),
+        ]
+        mock_conn = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        with patch.object(executor, "_connect", return_value=mock_conn):
+            schema = executor.describe_table("orders_part")
+        assert [c.name for c in schema.columns] == ["id"]
+        assert [c.name for c in schema.partition_columns] == ["dt"]
+
     def test_from_db(self):
         from seatunnel_agent.text2sql.executor import HiveExecutor, DatabaseConfig
         from seatunnel_agent.text2sql.schema import SchemaStore, TableSchema, ColumnSchema

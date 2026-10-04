@@ -12,6 +12,7 @@
     - click: 翻译
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: JSON_EXTRACT}
     - text_contains: {in: 结果区, text: 全自动 1}
 

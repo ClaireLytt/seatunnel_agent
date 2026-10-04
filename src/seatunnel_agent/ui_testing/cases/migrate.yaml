@@ -10,6 +10,7 @@
     - click: 迁移
     - wait_result: {}
   expect:
+    - result_in_view: {}
     - text_contains: {in: 结果区, text: select a, b from t1}
     - text_contains: {in: 结果区, text: Console}
     - text_contains: {in: 结果区, text: parallelism = 2}

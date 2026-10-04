@@ -1269,7 +1269,7 @@ def skew(
             head = f"# 📄 {label}\n\n" if len(results) > 1 else ""
             parts.append(head + md)
         text_out = "\n\n---\n\n".join(parts)
-        console.print(text_out)
+        console.print(text_out, markup=False)
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
@@ -1447,6 +1447,347 @@ def t2s_mcp(ddl: str | None, metrics_file: str | None, ds_type: str,
         server = create_mcp_server(
             ddl_path=ddl or "", metrics_path=metrics_file or "",
             ds_type=ds_type, allow_execute=allow_execute, database=database,
+        )
+    except RuntimeError as exc:
+        raise click.ClickException(str(exc))
+    server.run()
+
+
+@cli.command()
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--sql", type=str, default=None, help="直接扫描一段 SQL")
+@click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="扫描单个 SQL 文件")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--rules", "rules_path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="自定义规则 YAML（追加到内置规则）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def pii(
+    directory: str | None,
+    sql: str | None,
+    sql_file: str | None,
+    dialect: str,
+    rules_path: str | None,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """敏感数据扫描 — 命名规则 × 字段血缘，静态识别 PII 列及未脱敏扩散。"""
+    import json as _json
+    from pathlib import Path
+
+    from .pii_scan import (
+        DEFAULT_RULES, load_extra_rules, render_markdown, report_to_dict,
+        scan_dir, scan_files, scan_sql_text,
+    )
+
+    if not directory and not sql and not sql_file:
+        raise click.UsageError("Provide --dir / --sql / --file")
+
+    rules = list(DEFAULT_RULES)
+    if rules_path:
+        try:
+            rules += load_extra_rules(rules_path)
+        except ValueError as exc:
+            raise click.ClickException(str(exc))
+
+    try:
+        if directory:
+            report = scan_dir(directory, dialect=dialect, rules=rules)
+        elif sql_file:
+            report = scan_files([Path(sql_file)], dialect=dialect,
+                                rules=rules, root=sql_file)
+        else:
+            report = scan_sql_text(sql, dialect=dialect, rules=rules)
+    except (OSError, UnicodeDecodeError) as exc:
+        console.print(f"[red]扫描失败:[/red] {exc}")
+        sys.exit(1)
+
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        rank = {"low": 1, "medium": 2, "high": 3}
+        threshold = rank[fail_on]
+        worst = max((rank[f.severity] for f in report.findings), default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的敏感列风险，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command()
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="日志目录（递归扫描）")
+@click.option("--file", "-f", "log_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="巡检单个日志文件")
+@click.option("--pattern", "-p", "patterns", multiple=True,
+              help="文件通配符，可多次指定（默认 *.log / *.log.* / *.out / *.err）")
+@click.option("--no-warn", is_flag=True, help="只聚类 ERROR/FATAL，忽略 WARN")
+@click.option("--top", "-n", type=int, default=10, show_default=True,
+              help="报告中展示的 Top 簇数")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["error", "warn"]),
+              default=None, help="CI gate: exit 1 when clusters at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def loginspect(
+    directory: str | None,
+    log_file: str | None,
+    patterns: tuple[str, ...],
+    no_warn: bool,
+    top: int,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """批量日志巡检 — 对日志目录做异常聚类，收敛成 Top-N 个根因。"""
+    import json as _json
+    from pathlib import Path
+
+    from .log_inspect import (
+        render_markdown, report_to_dict, scan_dir, scan_files,
+    )
+    from .log_inspect.clusterer import DEFAULT_PATTERNS
+
+    if not directory and not log_file:
+        raise click.UsageError("Provide --dir or --file")
+
+    include_warn = not no_warn
+    if directory:
+        report = scan_dir(directory,
+                          patterns=tuple(patterns) or DEFAULT_PATTERNS,
+                          include_warn=include_warn)
+    else:
+        report = scan_files([Path(log_file)], include_warn=include_warn,
+                            root=log_file)
+
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, top=top),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang, top=top)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        c = report.counts()
+        hit = c["error"] > 0 or (fail_on == "warn" and c["warn"] > 0)
+        if hit:
+            msg = f"存在 {fail_on} 及以上级别的日志异常簇，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command(name="schemadiff")
+@click.option("--old", "old_path", type=click.Path(exists=True), required=True,
+              help="旧版 DDL：文件或目录（递归 *.sql）")
+@click.option("--new", "new_path", type=click.Path(exists=True), required=True,
+              help="新版 DDL：文件或目录（递归 *.sql）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["breaking", "risk", "info"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def schemadiff(
+    old_path: str,
+    new_path: str,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """Schema 漂移检查 — 对比两份 DDL 快照，按破坏/风险/提示分级报告变更。"""
+    import json as _json
+    from pathlib import Path
+
+    from .schema_drift import diff_paths, render_markdown, report_to_dict
+
+    report = diff_paths(old_path, new_path, dialect=dialect)
+
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        rank = {"info": 1, "risk": 2, "breaking": 3}
+        threshold = rank[fail_on]
+        worst = max((rank[f.severity] for f in report.findings), default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的 Schema 变更，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command()
+@click.option("--sql", type=str, default=None, help="需要造数的查询 SQL")
+@click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="从文件读取查询 SQL")
+@click.option("--ddl", "ddl_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="CREATE TABLE 脚本（提供精确列类型）")
+@click.option("--rows", "-n", type=click.IntRange(1, 100), default=5,
+              show_default=True, help="每表生成行数")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--out", "out_dir", type=click.Path(file_okay=False), default=None,
+              help="写出 CSV + create_tables.sql + inserts.sql 的目录")
+@click.option("--validate/--no-validate", "do_validate", default=True,
+              show_default=True, help="在内存 SQLite 上执行数据+查询验证")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["error"]), default=None,
+              help="CI gate: exit 1 when parsing fails or SQLite validation errors")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def testgen(
+    sql: str | None,
+    sql_file: str | None,
+    ddl_file: str | None,
+    rows: int,
+    dialect: str,
+    out_dir: str | None,
+    do_validate: bool,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """SQL 测试数据生成 — 关联感知造数 + 可选 SQLite 链路验证。"""
+    import json as _json
+    from pathlib import Path
+
+    from .sql_testgen import (
+        generate, render_markdown, result_to_dict, validate_with_sqlite,
+        write_outputs,
+    )
+
+    if not sql and not sql_file:
+        raise click.UsageError("Provide --sql or --file")
+    if sql_file:
+        sql = Path(sql_file).read_text(encoding="utf-8")
+    ddl = Path(ddl_file).read_text(encoding="utf-8") if ddl_file else ""
+
+    result = generate(sql, ddl=ddl, rows=rows, dialect=dialect)
+    if do_validate and result.tables:
+        result.validation = validate_with_sqlite(result)
+
+    if fmt == "json":
+        text_out = _json.dumps(result_to_dict(result),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+    if out_dir and result.tables:
+        written = write_outputs(result, out_dir)
+        console.print(f"[dim]已写出 {len(written)} 个文件到 {out_dir}[/dim]")
+
+    if fail_on == "error":
+        failed = bool(result.warnings) or (
+            result.validation is not None
+            and result.validation.status in ("transpile_error", "exec_error"))
+        if failed:
+            msg = "测试数据生成或验证失败，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@cli.command(name="mcp")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Default report language")
+@click.option("--sql-dir", type=click.Path(exists=True, file_okay=False), default=None,
+              help="启用血缘工具：从目录下的 *.sql 构建血缘图（递归）")
+@click.option("--sql-dialect", type=click.Choice(
+                  ["hive", "spark", "flink", "maxcompute", "mysql",
+                   "postgresql", "clickhouse", "doris", "starrocks", "sqlite"]),
+              default="hive", show_default=True,
+              help="解析 --sql-dir 脚本用的 SQL 方言")
+@click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False), default=None,
+              help="启用血缘工具：从 SeaTunnel 配置目录构建 source→sink 血缘")
+@click.option("--hive", "use_hive", is_flag=True,
+              help="启用血缘工具：从 Hive 元数据血缘表构建（需 .env 配置）")
+@click.option("--meta-table", type=str, default=None,
+              help="血缘元数据表名（默认 zz.dwm_meta_table_lineage_df）")
+@click.option("--partition", type=str, default=None,
+              help="指定 pt 分区（默认自动取最新分区）")
+@click.option("--connections", type=str, default=None,
+              help="数据库工具可用的连接名白名单（逗号分隔；默认全部已保存连接）")
+@click.option("--no-db", "no_db", is_flag=True,
+              help="纯静态模式：只暴露 6 个静态分析工具，不加载任何数据库工具")
+def mcp_toolbox_cmd(
+    lang: str,
+    sql_dir: str | None,
+    sql_dialect: str,
+    seatunnel_dir: str | None,
+    use_hive: bool,
+    meta_table: str | None,
+    partition: str | None,
+    connections: str | None,
+    no_db: bool,
+) -> None:
+    """统一 MCP 工具箱（stdio）：SQL 审查/方言翻译/倾斜分析/变更影响/配置迁移
+    + 已保存连接上的表结构浏览、只读查询与跨库比对。全部确定性实现，不调用
+    LLM。血缘工具在给出 --sql-dir / --seatunnel-dir / --hive 之一时加载。"""
+    from .mcp_toolbox import create_mcp_server
+
+    allow = ([n.strip() for n in connections.split(",") if n.strip()]
+             if connections else None)
+    try:
+        server = create_mcp_server(
+            default_lang=lang, sql_dir=sql_dir, seatunnel_dir=seatunnel_dir,
+            use_hive=use_hive, meta_table=meta_table, partition=partition,
+            sql_dialect=sql_dialect, connections=allow, include_db=not no_db,
         )
     except RuntimeError as exc:
         raise click.ClickException(str(exc))
@@ -2021,6 +2362,55 @@ def t2s_examples_rm(example_id: str, examples_file: str | None) -> None:
         console.print(f"[green]已删除 {example_id}[/green]")
     else:
         raise click.ClickException(f"示例 '{example_id}' 不存在")
+
+
+@cli.command(name="mcp-stats")
+@click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
+def mcp_stats(recent: int) -> None:
+    """MCP 工具箱调用审计与统计 (logs/mcp_toolbox.jsonl)。"""
+    import json as _json
+    from collections import Counter, defaultdict
+
+    from .mcp_toolbox import _audit_file
+
+    path = _audit_file()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        console.print("[yellow]还没有 MCP 工具调用记录。[/yellow]")
+        return
+    records = []
+    for line in lines:
+        try:
+            records.append(_json.loads(line))
+        except ValueError:
+            continue
+    if not records:
+        console.print("[yellow]还没有 MCP 工具调用记录。[/yellow]")
+        return
+    console.print("[bold]最近调用[/bold]")
+    for r in records[-recent:]:
+        mark = "✅" if r.get("ok") else "⛔"
+        console.print(
+            f"  {r.get('timestamp', '')}  {mark} {r.get('tool', ''):<24} "
+            f"{r.get('elapsed_ms', 0):>6} ms  {str(r.get('args', ''))[:60]}")
+    by_tool: dict[str, list] = defaultdict(list)
+    for r in records:
+        by_tool[r.get("tool", "?")].append(r)
+    ok_total = sum(1 for r in records if r.get("ok"))
+    console.print(
+        f"\n[bold]汇总[/bold] 共 {len(records)} 次调用 · 成功 {ok_total} · "
+        f"失败 {len(records) - ok_total}")
+    rows = sorted(by_tool.items(), key=lambda kv: -len(kv[1]))
+    for tool, rs in rows:
+        ok = sum(1 for r in rs if r.get("ok"))
+        avg = sum(int(r.get("elapsed_ms", 0)) for r in rs) // max(len(rs), 1)
+        console.print(f"  {tool:<26} {len(rs):>4} 次 · 成功率 "
+                      f"{100 * ok // max(len(rs), 1):>3}% · 平均 {avg} ms")
+    fails = Counter(r.get("tool", "?") for r in records if not r.get("ok"))
+    if fails:
+        top = " · ".join(f"{t}×{c}" for t, c in fails.most_common(5))
+        console.print(f"[bold]失败集中在[/bold] {top}")
 
 
 # ------------------------------------------------------------------

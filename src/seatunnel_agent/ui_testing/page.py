@@ -142,6 +142,8 @@ LABELS: dict[str, tuple[str, ...]] = {
     "倾斜分析":   ("→ 倾斜分析", "→ Skew Analysis"),
     "已保存连接": ("已保存连接", "Saved connection"),
     "读取已保存连接": ("读取已保存连接", "Load saved connections"),
+    # ── MCP Toolbox page (/mcp) ──
+    "刷新审计":   ("刷新", "Refresh"),
     "分析历史":   ("分析历史（最近 20 条）", "Analysis history (last 20)"),
     "选择记录":   ("选择记录", "Pick a record"),
     "历史刷新":   ("刷新", "Refresh"),
@@ -247,6 +249,7 @@ class DCPage:
         "/migrate": ".st-mig-side",
         "/settings": ".st-set-page",
         "/dataskew": "#dsk-sql-box textarea",
+        "/mcp": ".st-mcp-tools",
     }
 
     def goto(self, path: str = "/datacompare") -> None:
@@ -579,6 +582,11 @@ class DCPage:
         loc = self.page.locator(".st-mig-main")
         if loc.count():
             return loc.first
+        for cls in (".st-pii-main", ".st-lgi-main", ".st-sdf-main",
+                    ".st-tgn-main"):
+            loc = self.page.locator(cls)
+            if loc.count():
+                return loc.first
         loc = self.page.locator(".dsk-report-card")
         if loc.count():
             return loc.first

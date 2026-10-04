@@ -70,3 +70,69 @@ jobs:
           path: runs/
           retention-days: 30
           if-no-files-found: ignore
+
+  # Real-Hive end-to-end (HV1/HV2 + A1): the only automation that exercises
+  # DESCRIBE FORMATTED parsing, dialect SQL (CONV/MD5/CHR chunk hashing) and
+  # the full compare pipeline against an actual HiveServer2 — the class of
+  # bug that sqlite-backed cases can never see (OwnerType: metadata leak,
+  # control characters rejected by the XML-serialized MR job conf).
+  ui-hive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      API_KEY: ci-dummy
+      HIVE_HOST: 127.0.0.1
+      HIVE_PORT: "10000"
+      HIVE_DATABASE: default
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,uitest,sqlreview,hive]"
+          python -m playwright install --with-deps chromium
+
+      - name: Start HiveServer2 (docker)
+        run: >
+          docker run -d --name hs2 -p 10000:10000
+          -e SERVICE_NAME=hiveserver2
+          -e SERVICE_OPTS=-Dtez.counters.max=4096
+          apache/hive:4.0.0
+
+      - name: Wait for HiveServer2
+        run: |
+          python - <<'PY'
+          import time
+          from pyhive import hive
+          for i in range(60):
+              try:
+                  hive.Connection(host="127.0.0.1", port=10000).close()
+                  print("HiveServer2 is up")
+                  break
+              except Exception as exc:
+                  print(f"waiting ({i}): {exc}")
+                  time.sleep(5)
+          else:
+              raise SystemExit("HiveServer2 did not come up in 300s")
+          PY
+
+      - name: Seed dc_test_* tables
+        run: python scripts/seed_hive.py --host 127.0.0.1 --port 10000 --database default
+
+      - name: Run hive suite
+        run: python -m seatunnel_agent.ui_testing run --suite hive --no-llm
+
+      - name: Upload reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-hive-reports
+          path: runs/
+          retention-days: 14
+          if-no-files-found: ignore

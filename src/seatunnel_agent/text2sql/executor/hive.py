@@ -107,14 +107,19 @@ class HiveExecutor(DatabaseExecutor):
                 if col_name.startswith("# Partition"):
                     section = "partition"
                     continue
-                if col_name.startswith("# Detailed") or col_name.startswith("# col_name"):
+                if col_name.startswith("# Detailed"):
+                    # Everything from here on is table metadata (Owner:,
+                    # OwnerType:, CreateTime:, Location:, Table Type:, ...),
+                    # not columns — stop collecting, only pick the comment.
+                    section = "detail"
+                    continue
+                if col_name.startswith("# col_name"):
+                    continue
+                if section == "detail":
+                    if col_name == "Comment:":
+                        comment = dtype
                     continue
                 if col_name == "" and dtype == "":
-                    continue
-                if col_name == "Table:" or col_name.startswith("Database:"):
-                    continue
-                if col_name == "Comment:":
-                    comment = dtype
                     continue
                 if not col_name or not dtype or col_name.startswith("#"):
                     continue

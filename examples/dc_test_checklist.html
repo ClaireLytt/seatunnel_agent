@@ -293,6 +293,7 @@ const SECTIONS = [
  {id:"C4", t:"行数对比（一致）", s:"A/B 分别选 <code>dc_test_same_a</code>/<code>dc_test_same_b</code> 点「行数对比」。", e:"5 = 5，Match（绿色）。"},
  {id:"C5", t:"样本数据", s:"orders 对点「样本数据」。", e:"两侧样本并排，差异单元格高亮（id=3 的 amount、id=5 的 status）。"},
  {id:"C6", t:"全部对比", s:"orders 对点「全部对比」。", e:"结构/行数/样本/聚合等卡片全部渲染，无报错。"},
+{id:"C7", t:"全部对比防连点", s:"orders 对点「全部对比」，1 秒内再点一次。", e:"第二次点击被忽略，只执行一次（结果渲染后 15s 内不重绘）。"},
 ]},
 {id:"D", title:"聚合与阈值", items:[
  {id:"D1", t:"聚合对比", s:"orders 对点「聚合对比」。",
@@ -319,6 +320,8 @@ const SECTIONS = [
 {id:"G", title:"校验和", items:[
  {id:"G1", t:"校验和不匹配", s:"orders 对，校验列填 <code>amount,status</code> 点「校验和对比」。", e:"出现「不匹配」分段（差异行所在段标红）。"},
  {id:"G2", t:"校验和全匹配", s:"same 对，校验列填 <code>name,score</code>。", e:"「所有分段均匹配」。"},
+{id:"G4", t:"分块校验", s:"orders 对，主键列填 <code>id</code>，点「分块校验」。", e:"定位到缺失行（仅 A 侧存在 9,10）与修改行（内容不同 3,5）。"},
+{id:"G5", t:"分块校验×列映射", s:"schema 对，主键列 <code>id</code>，字段映射 <code>name:user_name</code>，校验列 <code>name</code>，点「分块校验」。", e:"重命名列参与校验，正常出结果无报错。"},
 ]},
 {id:"H", title:"分区比对", items:[
  {id:"H1", t:"分区差异", s:"A 选 <code>dc_test_part_a</code>、B 选 <code>dc_test_part_b</code>，分区列填 <code>dt</code>，点「对比分区」。",
@@ -370,11 +373,13 @@ const SECTIONS = [
  {id:"Q3", t:"保存 / 加载报告", s:"点「保存报告」；再从「加载报告」下拉选中刚保存的。", e:"提示「报告已保存」；加载后回显该报告内容。"},
  {id:"Q4", t:"查看报告", s:"点「查看报告」。", e:"新窗口打开独立报告页（可打印排版）。"},
  {id:"Q5", t:"报告对比", s:"改 WHERE 再跑并保存第二份报告；报告对比中选旧/新两份。", e:"显示行数 delta 等差异项。"},
+{id:"Q6", t:"报告命名与搜索加载", s:"行数对比后保存报告；在「加载报告」下拉输入 <code>orders</code> 搜索并选中。", e:"文件名含表名；不点 ↻ 即有选项；选中后历史报告渲染。"},
 ]},
 {id:"R", title:"同步配置与差异 SQL", items:[
  {id:"R1", t:"生成同步配置", s:"orders 对（可带列映射）点「生成同步配置」。",
   e:"输出 SeaTunnel HOCON；source/sink 与两侧连接一致；SQL transform 中列映射使用反引号。"},
  {id:"R2", t:"生成差异 SQL", s:"主键 <code>id</code>，点「生成差异 SQL」。", e:"输出可复制的差异定位 SQL，语法与 Hive 兼容。"},
+{id:"R3", t:"重置选项", s:"填入 WHERE/阈值/主键/倾斜列/校验和等选项后点「重置选项」。", e:"全部选项恢复默认(输入清空、采样回 TOP N、脱敏保持开),连接与选表不受影响。"},
 ]},
 {id:"S", title:"趋势 · 告警 · 定时 · Webhook", items:[
  {id:"S1", t:"趋势图", s:"对 orders 连续跑 ≥2 次「行数对比」后点「趋势」。", e:"趋势图渲染（首次运行前提示无历史数据属正常）。"},

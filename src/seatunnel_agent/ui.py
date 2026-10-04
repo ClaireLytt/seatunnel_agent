@@ -883,11 +883,41 @@ def _build_hub_html() -> str:
       <div class="st-hub-card-desc" data-en="Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports" data-zh="真实浏览器驱动的页面自动回归 — YAML 用例、LLM 模糊断言、HTML 报告">Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports</div>
       <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
+    <a class="st-hub-card" href="/mcp">
+      <div class="st-hub-logo" style="background:#6366f1;">MCP</div>
+      <div class="st-hub-card-title" data-en="MCP Toolbox" data-zh="MCP 工具箱">MCP Toolbox</div>
+      <div class="st-hub-card-desc" data-en="The whole suite as one MCP server for Claude Code / Desktop — tools, client setup &amp; call audit" data-zh="整套 agent 一个 MCP server 交给 Claude Code / Desktop —— 工具清单、接入配置与调用审计">The whole suite as one MCP server for Claude Code / Desktop — tools, client setup &amp; call audit</div>
+      <div class="st-hub-enter" style="color:#6366f1;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
     <a class="st-hub-card" href="/settings">
       <div class="st-hub-logo" style="background:#64748b;">⚙</div>
       <div class="st-hub-card-title" data-en="Settings" data-zh="设置">Settings</div>
       <div class="st-hub-card-desc" data-en="Configure the LLM API (provider, key, model, base URL) from the browser — no .env editing" data-zh="在界面上配置 LLM API（提供商 / Key / 模型 / Base URL），无需修改本地 .env">Configure the LLM API (provider, key, model, base URL) from the browser — no .env editing</div>
       <div class="st-hub-enter" style="color:#64748b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/pii">
+      <div class="st-hub-logo" style="background:#dc2626;">🔒</div>
+      <div class="st-hub-card-title" data-en="PII Scan" data-zh="敏感数据扫描 PII">PII Scan</div>
+      <div class="st-hub-card-desc" data-en="Naming rules × column lineage — find sensitive columns and flag unmasked downstream spread" data-zh="命名规则 × 字段血缘 — 识别敏感列并标出未脱敏的下游扩散">Naming rules × column lineage — find sensitive columns and flag unmasked downstream spread</div>
+      <div class="st-hub-enter" style="color:#dc2626;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/loginspect">
+      <div class="st-hub-logo" style="background:#7c3aed;">🧾</div>
+      <div class="st-hub-card-title" data-en="Log Inspection" data-zh="批量日志巡检">Log Inspection</div>
+      <div class="st-hub-card-desc" data-en="Exception clustering over a log directory — collapse noisy logs into Top-N root causes" data-zh="日志目录异常聚类 — 把嘈杂日志收敛成 Top-N 个根因">Exception clustering over a log directory — collapse noisy logs into Top-N root causes</div>
+      <div class="st-hub-enter" style="color:#7c3aed;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/schemadrift">
+      <div class="st-hub-logo" style="background:#2563eb;">🧬</div>
+      <div class="st-hub-card-title" data-en="Schema Drift" data-zh="Schema 漂移检查">Schema Drift</div>
+      <div class="st-hub-card-desc" data-en="Diff two DDL snapshots — breaking / risk / info severity for every structural change" data-zh="对比两份 DDL 快照 — 每处结构变更按破坏 / 风险 / 提示分级">Diff two DDL snapshots — breaking / risk / info severity for every structural change</div>
+      <div class="st-hub-enter" style="color:#2563eb;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+    </a>
+    <a class="st-hub-card" href="/testgen">
+      <div class="st-hub-logo" style="background:#ca8a04;">🧪</div>
+      <div class="st-hub-card-title" data-en="Test Data Generator" data-zh="SQL 测试数据生成">Test Data Generator</div>
+      <div class="st-hub-card-desc" data-en="Join-aware datasets that exercise a query, validated on in-memory SQLite" data-zh="关联感知造数，让查询真正跑通 — 内存 SQLite 一键验证">Join-aware datasets that exercise a query, validated on in-memory SQLite</div>
+      <div class="st-hub-enter" style="color:#ca8a04;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
     <div class="st-hub-card st-hub-card-soon">
       <div class="st-hub-logo" style="background:#e5e7eb;color:#9ca3af;">+</div>
@@ -981,6 +1011,7 @@ def create_ui() -> gr.Blocks:
     from .data_comparison_ui import render_data_comparison_page
     from .sql_review_ui import render_sql_review_page
     from .data_skew_ui import render_data_skew_page
+    from .mcp_toolbox_ui import render_mcp_page
 
     _hide_sub_nav_js = """
     () => {
@@ -1090,6 +1121,25 @@ def create_ui() -> gr.Blocks:
 
     with app.route("Data Skew", "/dataskew"):
         render_data_skew_page(app)
+
+    with app.route("PII Scan", "/pii"):
+        from .pii_ui import render_pii_page
+        render_pii_page(app)
+
+    with app.route("Log Inspect", "/loginspect"):
+        from .log_inspect_ui import render_log_inspect_page
+        render_log_inspect_page(app)
+
+    with app.route("Schema Drift", "/schemadrift"):
+        from .schema_drift_ui import render_schema_drift_page
+        render_schema_drift_page(app)
+
+    with app.route("Test Data", "/testgen"):
+        from .sql_testgen_ui import render_sql_testgen_page
+        render_sql_testgen_page(app)
+
+    with app.route("MCP Toolbox", "/mcp"):
+        render_mcp_page(app)
 
     return app
 
@@ -1746,8 +1796,14 @@ body:has(.st-scroll-page) .dsk-input-col {
 .dsk-report-card tbody tr:nth-child(even) td { background: #fafafa !important; }
 
 /* Data Comparison keeps the fixed sidebar+main layout, so the page itself
-   cannot scroll — let the main result panel scroll internally instead. */
-body:has(.st-dc-page) .st-main {
+   cannot scroll — let the main result panel scroll internally instead.
+   The .st-main class is repeated to outrank Gradio's auto-prefixed copy of
+   the base .st-main rule (.gradio-container-X .contain .st-main, four
+   classes): Gradio duplicates custom CSS under that prefix, and the
+   prefixed `body:has(...)` variant can never match (body is not inside
+   .contain), so without the repetition this override silently loses and
+   the result panel gets no scrollbar. */
+body:has(.st-dc-page) .st-main.st-main.st-main.st-main {
     overflow-y: auto !important;
     overflow-x: hidden !important;
 }
@@ -1862,7 +1918,12 @@ body:has(.st-dc-page) .st-main {
     min-width: 640px !important;
 }
 
-/* Right main content: fill remaining width, flex column to pin input at bottom */
+/* Right main content: fill remaining width, flex column to pin input at bottom.
+   flex-wrap MUST be nowrap: Gradio columns default to wrap, and in a
+   fixed-height column container any child taller than the viewport gets
+   wrapped into a second column to the RIGHT — outside the container, then
+   clipped by overflow:hidden. Symptom: tall results (e.g. Compare All)
+   render into the DOM but are completely invisible. */
 .st-main {
     flex: 1 1 0 !important;
     min-width: 0 !important;
@@ -1872,6 +1933,7 @@ body:has(.st-dc-page) .st-main {
     padding: 0 !important;
     display: flex !important;
     flex-direction: column !important;
+    flex-wrap: nowrap !important;
 }
 /* Hide Gradio's native sidebar if accidentally present */
 .gradio-sidebar { display: none !important; }
@@ -2702,6 +2764,10 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .data_lineage.api import router as lineage_api_router
         from .sql_transpile.api import router as transpile_api_router
         from .data_skew.api import router as skew_api_router
+        from .pii_scan.api import router as pii_api_router
+        from .log_inspect.api import router as loginspect_api_router
+        from .schema_drift.api import router as schemadrift_api_router
+        from .sql_testgen.api import router as testgen_api_router
         fastapi_app = app.app
         # SEATUNNEL_API_KEY (optional) gates every /api route via X-API-Key.
         auth = [Depends(require_api_key)]
@@ -2710,6 +2776,10 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         fastapi_app.include_router(lineage_api_router, dependencies=auth)
         fastapi_app.include_router(transpile_api_router, dependencies=auth)
         fastapi_app.include_router(skew_api_router, dependencies=auth)
+        fastapi_app.include_router(pii_api_router, dependencies=auth)
+        fastapi_app.include_router(loginspect_api_router, dependencies=auth)
+        fastapi_app.include_router(schemadrift_api_router, dependencies=auth)
+        fastapi_app.include_router(testgen_api_router, dependencies=auth)
 
     app.launch(
         server_name=host,

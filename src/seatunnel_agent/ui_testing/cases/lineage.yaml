@@ -11,6 +11,7 @@
     - wait: 2500
       note: 构图结果写在侧栏 markdown,结果区无变化信号
   expect:
+    - result_in_view: {}
     - text_contains: {in: 页面, text: 血缘图已构建}
     - text_contains: {in: 页面, text: 7 表}
 

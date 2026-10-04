@@ -115,8 +115,34 @@ def _esc_html(s: str) -> str:
             .replace(">", "&gt;").replace('"', "&quot;"))
 
 
+_ERR_ESSENCE_RES = (
+    # HiveServer2 thrift blobs: the one useful sentence hides in errorMessage=
+    re.compile(r"errorMessage=[\"'](.+?)[\"']\)?,?\s*(?:operationHandle|$)", re.S),
+    # driver exceptions that lead with the interesting line
+    re.compile(r"((?:Parse|Semantic|Operational|Programming)(?:Exception|Error)[^\n]{0,200})"),
+)
+
+
 def _error_html(lang: str, exc: Exception) -> str:
-    return f'<div style="color:#dc2626;">❌ {dc(lang, "dc_error")}: {_esc_html(str(exc))}</div>'
+    """Error card: lead with the one sentence that matters, collapse the
+    raw exception behind <details> — a full TExecuteStatementResp thrift
+    dump was unreadable (three separate user reports)."""
+    raw = str(exc)
+    essence = ""
+    for pat in _ERR_ESSENCE_RES:
+        m = pat.search(raw)
+        if m:
+            essence = m.group(1).strip()
+            break
+    head = essence if essence and essence != raw.strip() else raw
+    html = (f'<div style="color:#dc2626;font-weight:600;">'
+            f'❌ {dc(lang, "dc_error")}: {_esc_html(head[:500])}</div>')
+    if essence and essence != raw.strip():
+        html += (f'<details style="margin-top:6px;"><summary style="color:#6b7280;'
+                 f'font-size:12px;cursor:pointer;">{_esc_html(type(exc).__name__)}'
+                 f' — raw</summary><pre style="white-space:pre-wrap;font-size:11px;'
+                 f'color:#6b7280;">{_esc_html(raw[:4000])}</pre></details>')
+    return html
 
 
 _log = logging.getLogger(__name__)
@@ -228,9 +254,15 @@ def _with_validation(holder, holder_lock, fn):
         table_b = args[1] if len(args) > 1 else ""
         if not table_a or not table_b:
             return dc(lang_val, "dc_select_tables")
+        t0 = time.perf_counter()
         try:
-            return fn(*args)
+            result = fn(*args)
+            _log.info("%s ok: tables=%r/%r elapsed=%dms", fn.__name__,
+                      table_a, table_b, int((time.perf_counter() - t0) * 1000))
+            return result
         except Exception as e:
+            _log.exception("%s failed: tables=%r/%r elapsed=%dms", fn.__name__,
+                           table_a, table_b, int((time.perf_counter() - t0) * 1000))
             return _error_html(lang_val, e)
     return wrapper
 
@@ -333,6 +365,93 @@ def build_count_card(
         f'{t("dc_count_a")}: <b>{result.count_a:,}</b> &nbsp; '
         f'{t("dc_count_b")}: <b>{result.count_b:,}</b> &nbsp; '
         f'{badge}</div>'
+    )
+
+
+def build_sql_result_card(diff, lang: str = "en", columns=None) -> str:
+    """Card for custom-SQL result comparison.
+
+    diff_results is key-less, so a changed row surfaces as one removed (A)
+    plus one added (B) — unreadable for the aggregate-reconciliation SQL
+    this feature exists for. Pair removed/added rows by their FIRST column
+    (the natural group key) and render matched pairs as `A → B` per cell;
+    genuinely unmatched rows stay in only-A / only-B sections."""
+    t = lambda k: dc(lang, k)
+    cols = list(columns or [])
+
+    def _v(x) -> str:
+        # tame float repr noise (108.19999999999999 -> 108.2) while keeping
+        # deliberate long fractions (3000.1000001) visible
+        if isinstance(x, float):
+            return f"{x:.12g}"
+        return str(x)
+
+    removed = [tuple(r) for r in diff.removed_rows]
+    added = [tuple(r) for r in diff.added_rows]
+
+    by_key_b: dict = {}
+    for r in added:
+        by_key_b.setdefault(r[0] if r else None, []).append(r)
+    pairs, only_a = [], []
+    for r in removed:
+        k = r[0] if r else None
+        if by_key_b.get(k):
+            pairs.append((r, by_key_b[k].pop(0)))
+        else:
+            only_a.append(r)
+    only_b = [r for rows in by_key_b.values() for r in rows]
+
+    if not pairs and not only_a and not only_b:
+        badge = (f'<span style="color:#16a34a;font-weight:600;">'
+                 f'✅ {t("dc_sqlres_match")}</span>')
+        body = (f'<div style="color:#6b7280;font-size:12px;">'
+                f'{diff.old_count} = {diff.new_count} rows</div>')
+    else:
+        badge = (f'<span style="color:#dc2626;font-weight:600;">'
+                 f'{t("dc_sqlres_summary").format(changed=len(pairs), only_a=len(only_a), only_b=len(only_b))}</span>')
+        th, td = _TH, _TD
+        header = "".join(f"<th {th}>{_esc_html(str(c))}</th>" for c in cols)
+        body = ""
+        if pairs:
+            rows_html = ""
+            for ra, rb in pairs[:50]:
+                cells = ""
+                for i in range(max(len(ra), len(rb))):
+                    va = ra[i] if i < len(ra) else None
+                    vb = rb[i] if i < len(rb) else None
+                    if i == 0 or str(va) == str(vb):
+                        cells += f"<td {td}>{_esc_html(_v(va))}</td>"
+                    else:
+                        cells += (f'<td {td}><span style="color:#6b7280;">'
+                                  f'{_esc_html(_v(va))}</span> → '
+                                  f'<b style="color:#dc2626;">{_esc_html(_v(vb))}</b></td>')
+                rows_html += f'<tr style="background:#fef2f2;">{cells}</tr>'
+            body += (f'<div style="margin-top:6px;"><b style="color:#4f46e5;">'
+                     f'{t("dc_sqlres_changed")} ({len(pairs)})</b>'
+                     f'<table style="width:100%;border-collapse:collapse;margin-top:4px;">'
+                     f'<tr>{header}</tr>{rows_html}</table></div>')
+
+        def _plain(title, rows, color):
+            if not rows:
+                return ""
+            rows_html = "".join(
+                "<tr>" + "".join(f"<td {td}>{_esc_html(_v(v))}</td>" for v in r) + "</tr>"
+                for r in rows[:50])
+            return (f'<div style="margin-top:8px;"><b style="color:{color};">'
+                    f'{title} ({len(rows)})</b>'
+                    f'<table style="width:100%;border-collapse:collapse;margin-top:4px;">'
+                    f'<tr>{header}</tr>{rows_html}</table></div>')
+
+        body += _plain(t("dc_sqlres_only_a"), only_a, "#dc2626")
+        body += _plain(t("dc_sqlres_only_b"), only_b, "#d97706")
+
+    if any(re.fullmatch(r"_c\d+", str(c)) for c in cols):
+        body += (f'<div style="color:#d97706;font-size:12px;margin-top:8px;">'
+                 f'💡 {t("dc_sqlres_alias_hint")}</div>')
+
+    return _details_card(
+        f'<span style="color:#0891b2;">{t("dc_sqlres_title")} — {badge}</span>',
+        body,
     )
 
 
@@ -840,6 +959,62 @@ def build_checksum_card(result, lang: str = "en") -> str:
     )
 
 
+def build_chunked_card(result, lang: str = "en") -> str:
+    """Build HTML card for chunked (blocked) verification."""
+    t = lambda k: dc(lang, k)
+    summary = t("dc_chunked_summary").format(
+        chunks=result.chunk_count, mismatched=len(result.mismatched),
+        ta=result.total_a, tb=result.total_b)
+    if result.match:
+        badge = (f'<span style="color:#16a34a;font-weight:600;">'
+                 f'✅ {t("dc_chunked_all_match")}</span>')
+    else:
+        badge = (f'<span style="color:#dc2626;font-weight:600;">'
+                 f'{len(result.mismatched)} {t("dc_checksum_mismatch")}</span>')
+
+    body = f'<div style="color:#6b7280;font-size:12px;">{_esc_html(summary)}</div>'
+    if result.note:
+        body += (f'<div style="color:#d97706;font-size:12px;margin-top:4px;">'
+                 f'{_esc_html(result.note)}</div>')
+
+    def _keys(label: str, keys: list, color: str) -> str:
+        if not keys:
+            return ""
+        shown = ", ".join(_esc_html(str(k)) for k in keys[:50])
+        more = f" … (+{len(keys) - 50})" if len(keys) > 50 else ""
+        return (f'<div style="margin-top:6px;"><b style="color:{color};">'
+                f'{label} ({len(keys)})</b>: '
+                f'<span style="font-family:monospace;font-size:12px;">'
+                f'{shown}{more}</span></div>')
+
+    body += _keys(t("dc_chunked_only_a"), result.only_a, "#dc2626")
+    body += _keys(t("dc_chunked_only_b"), result.only_b, "#d97706")
+    body += _keys(t("dc_chunked_changed"), result.changed, "#4f46e5")
+    if result.drill_truncated:
+        body += (f'<div style="color:#d97706;font-size:12px;margin-top:6px;">'
+                 f'⚠️ {t("dc_chunked_truncated")}</div>')
+
+    if result.mismatched:
+        th, td = _TH, _TD
+        rows_html = ""
+        for cm in result.mismatched[:50]:
+            rows_html += (
+                f'<tr style="background:#fef2f2;">'
+                f'<td {td}>{cm.chunk_id}</td>'
+                f'<td {td}>[{cm.pk_lo:g}, {cm.pk_hi:g})</td>'
+                f'<td {td}>{cm.count_a}</td><td {td}>{cm.count_b}</td></tr>')
+        body += (
+            f'<table style="width:100%;border-collapse:collapse;margin-top:8px;">'
+            f'<tr><th {th}>Chunk</th><th {th}>PK Range</th>'
+            f'<th {th}>Rows A</th><th {th}>Rows B</th></tr>'
+            f'{rows_html}</table>')
+
+    return _details_card(
+        f'<span style="color:#0891b2;">{t("dc_chunked_result")} — {badge}</span>',
+        body,
+    )
+
+
 def build_partition_card(result, lang: str = "en") -> str:
     """Build HTML card for partition-level comparison."""
     t = lambda k: dc(lang, k)
@@ -1072,6 +1247,8 @@ def build_standalone_report(report: CompareReport, lang: str = "en") -> str:
         cards.append(build_partition_card(report.partition, lang))
     if report.custom_agg is not None:
         cards.append(build_custom_agg_card(report.custom_agg, lang))
+    if report.chunked is not None:
+        cards.append(build_chunked_card(report.chunked, lang))
     if report.batch_counts is not None:
         cards.append(build_batch_count_card(report.batch_counts, lang))
 
@@ -1842,6 +2019,65 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     _compare_checksum = _with_validation(holder, holder_lock, _compare_checksum_fn)
 
+    # ── Chunked (blocked) verification for large tables ──
+
+    def _chunked_inner(table_a, table_b, lang_val, where_val="",
+                       key_cols_str="", checksum_cols_str="",
+                       col_mapping_str=""):
+        from .data_comparison.chunked import compare_chunked
+        ex_a, ex_b = _snap_executors()
+        key_cols = [k.strip() for k in (key_cols_str or "").split(",") if k.strip()]
+        if not key_cols:
+            return None, (
+                '<div style="padding:10px;color:#d97706;background:#fffbeb;'
+                'border-radius:8px;margin-bottom:8px;">'
+                f'{dc(lang_val, "dc_chunked_need_pk")}</div>')
+        pk = key_cols[0]
+        mapping = parse_column_mapping(col_mapping_str) if col_mapping_str else {}
+        cols = [c.strip() for c in (checksum_cols_str or "").split(",") if c.strip()]
+        if not cols:
+            desc_a, desc_b = run_parallel(
+                lambda: ex_a.describe_table(table_a),
+                lambda: ex_b.describe_table(table_b),
+            )
+            names_a = {c.name.lower(): c.name for c in desc_a.columns}
+            names_b = {c.name.lower() for c in desc_b.columns}
+            cols = [names_a[k] for k in names_a
+                    if k != pk.lower()
+                    and mapping.get(names_a[k], names_a[k]).lower() in names_b]
+        cols_b = [mapping.get(c, c) for c in cols]
+        pk_b = mapping.get(pk, pk)
+        if not cols:
+            # no shared non-pk columns: hash the pk itself on each side
+            cols, cols_b = [pk], [pk_b]
+
+        def _run_a(sql, n):
+            return ex_a.run(sql, max_rows=n).rows
+
+        def _run_b(sql, n):
+            return ex_b.run(sql, max_rows=n).rows
+
+        result = compare_chunked(
+            _run_a, _run_b, table_a, table_b, pk, cols,
+            ex_a.config.ds_type, ex_b.config.ds_type, where=where_val or "",
+            columns_b=cols_b, pk_column_b=pk_b)
+        return result, build_chunked_card(result, lang_val)
+
+    def _compare_chunked_fn(table_a, table_b, lang_val, where_val,
+                            key_cols_str="", checksum_cols_str="",
+                            col_mapping_str=""):
+        ok, msg = _validate_where(where_val, lang_val)
+        if not ok:
+            return msg
+        result, html = _chunked_inner(table_a, table_b, lang_val, where_val,
+                                      key_cols_str, checksum_cols_str,
+                                      col_mapping_str)
+        if result is not None:
+            _store_partial("chunked", result)
+        return html
+
+    _compare_chunked_btn_fn = _with_validation(holder, holder_lock, _compare_chunked_fn)
+
     # ── Partition comparison (DD) ──
 
     def _partition_inner(table_a, table_b, lang_val, where_val="", partition_col=""):
@@ -1929,7 +2165,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             )
             diff = diff_results(ra.columns, ra.rows, rb.columns, rb.rows)
             cols = ra.columns or rb.columns
-            return build_sample_diff_card(diff, lang_val, columns=cols)
+            return build_sql_result_card(diff, lang_val, columns=cols)
         except Exception as e:
             return _error_html(lang_val, e)
 
@@ -1941,10 +2177,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                      skew_cols_str="", stratified_col="",
                      checksum_cols_str="", partition_col="", custom_agg_str="",
                      progress=gr.Progress()):
+        _log.info("compare_all start: tables=%r/%r lang=%r", table_a, table_b, lang_val)
         with holder_lock:
             if holder.get("executor_a") is None or holder.get("executor_b") is None:
+                _log.info("compare_all early-return: executors not connected")
                 return dc(lang_val, "dc_connect_both")
         if not table_a or not table_b:
+            _log.info("compare_all early-return: tables not selected")
             return dc(lang_val, "dc_select_tables")
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
@@ -1960,6 +2199,15 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
         try:
             t0 = time.perf_counter()
+            stage_ms: list[tuple[str, int]] = []
+            _stage_t = t0
+
+            def _mark(name: str) -> None:
+                nonlocal _stage_t
+                now = time.perf_counter()
+                stage_ms.append((name, int((now - _stage_t) * 1000)))
+                _stage_t = now
+
             ex_a, ex_b = _snap_executors()
 
             _safe_progress(0.1, dc(lang_val, "dc_running"))
@@ -1968,24 +2216,30 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 lambda: ex_b.describe_table(table_b),
             )
 
+            _mark("describe")
             _safe_progress(0.25, dc(lang_val, "dc_running"))
             schema_result, schema_html = _schema_inner(table_a, table_b, lang_val, where_val, desc_a, desc_b)
 
+            _mark("schema")
             _safe_progress(0.4, dc(lang_val, "dc_running"))
             count_result, _ = _count_inner(table_a, table_b, lang_val, where_val)
             count_html = build_count_card(count_result, lang_val, threshold)
 
+            _mark("count")
             _safe_progress(0.55, dc(lang_val, "dc_running"))
             sample_result, sample_html = _sample_inner(
                 table_a, table_b, lang_val, where_val, key_cols_str,
                 strategy, col_mapping_str, masking_on, stratified_col)
 
+            _mark("sample")
             _safe_progress(0.7, dc(lang_val, "dc_running"))
             agg_result, agg_html = _agg_inner(table_a, table_b, lang_val, where_val, desc_a, desc_b)
 
+            _mark("aggregate")
             _safe_progress(0.8, dc(lang_val, "dc_running"))
             profile_result, profile_html = _profile_inner(table_a, table_b, lang_val, where_val)
 
+            _mark("profile")
             skew_result = None
             skew_html = ""
             if skew_cols_str and skew_cols_str.strip():
@@ -2073,11 +2327,16 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
             _safe_progress(1.0, "Done")
             summary_html = build_summary_card(report, lang_val)
-            return (summary_html + schema_html + count_html + sample_html
+            html = (summary_html + schema_html + count_html + sample_html
                     + agg_html + profile_html + skew_html
                     + checksum_html + partition_html + custom_agg_html)
+            _log.info("compare_all done: tables=%r/%r elapsed=%dms html=%d chars stages=%s",
+                      table_a, table_b, elapsed, len(html),
+                      " ".join(f"{n}={ms}ms" for n, ms in stage_ms))
+            return html
 
         except Exception as e:
+            _log.exception("compare_all failed: tables=%r/%r", table_a, table_b)
             if webhook_url and webhook_url.strip():
                 threading.Thread(
                     target=_send_webhook,
@@ -2132,28 +2391,43 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Report persistence (E) ──
 
-    def _save_report(lang_val):
+    def _save_report(table_a, table_b, lang_val):
         with holder_lock:
             report = holder.get("last_report")
         if not report:
-            return dc(lang_val, "dc_error")
+            return dc(lang_val, "dc_error"), gr.update()
         try:
             _REPORTS_DIR.mkdir(parents=True, exist_ok=True)
             ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-            fpath = _REPORTS_DIR / f"compare_{ts}.json"
+
+            def _safe(name: str) -> str:
+                return re.sub(r"[^0-9A-Za-z_\-一-鿿]", "_",
+                              str(name or ""))[:40]
+
+            # table names in the filename so the load dropdown is findable
+            # ("compare_20260929_*.json 一堆数字不知道谁是谁")
+            pair = (f"{_safe(table_a)}_vs_{_safe(table_b)}_"
+                    if table_a and table_b else "")
+            fpath = _REPORTS_DIR / f"compare_{pair}{ts}.json"
             data = report.to_dict()
             with open(fpath, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            return f'✅ {dc(lang_val, "dc_saved")} — {fpath.name}'
+            # refresh the load dropdown so the new file is pickable at once
+            return (f'✅ {dc(lang_val, "dc_saved")} — {fpath.name}',
+                    _list_reports())
         except Exception as e:
-            return f'❌ {dc(lang_val, "dc_error")}: {_esc_html(str(e))}'
+            return f'❌ {dc(lang_val, "dc_error")}: {_esc_html(str(e))}', gr.update()
 
     def _list_reports():
+        # never touch `value`: setting it (even to None) fires load_dd's
+        # .change, whose handler overwrites the result panel — saving a
+        # report used to wipe the comparison the user had just rendered
         if not _REPORTS_DIR.is_dir():
-            return gr.update(choices=[], value=None)
-        files = sorted(_REPORTS_DIR.glob("compare_*.json"), reverse=True)
+            return gr.update(choices=[])
+        files = sorted(_REPORTS_DIR.glob("compare_*.json"),
+                       key=lambda f: f.stat().st_mtime, reverse=True)
         names = [f.name for f in files[:_MAX_REPORT_FILES]]
-        return gr.update(choices=names, value=None)
+        return gr.update(choices=names)
 
     def _load_report(filename, lang_val):
         if not filename:
@@ -2187,6 +2461,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 parts.append(build_partition_card(report.partition, lang_val))
             if report.custom_agg is not None:
                 parts.append(build_custom_agg_card(report.custom_agg, lang_val))
+            if report.chunked is not None:
+                parts.append(build_chunked_card(report.chunked, lang_val))
             if report.keyed_diff is not None:
                 parts.append(build_keyed_diff_card(report.keyed_diff, lang_val))
             if report.batch_counts is not None:
@@ -2995,6 +3271,12 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             # Feature G — Data masking
             masking_checkbox = gr.Checkbox(label=t("dc_masking_enabled"), value=True)
 
+            # One-click undo for every optional compare feature: clearing a
+            # dozen textboxes by hand to get back to a plain compare was the
+            # only way to "deselect" features before.
+            reset_options_btn = gr.Button(t("dc_reset_options"), size="sm",
+                                          elem_classes=["st-connect-btn"])
+
             # Feature A — Incremental comparison
             with gr.Accordion(t("dc_incremental"), open=False) as incremental_accordion:
                 watermark_col_input = gr.Textbox(
@@ -3036,6 +3318,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                     elem_classes=["st-sidebar-control"])
                 checksum_btn = gr.Button(
                     t("dc_checksum_analyze"), size="sm",
+                    elem_classes=["st-connect-btn"])
+                # chunked verification (uses Key Columns as the numeric PK)
+                chunked_btn = gr.Button(
+                    t("dc_chunked_btn"), size="sm",
                     elem_classes=["st-connect-btn"])
 
             with gr.Accordion(t("dc_partition"), open=False) as partition_accordion:
@@ -3152,8 +3438,10 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
                 # Report diff (Phase 5A)
                 with gr.Row():
                     report_old_dd = gr.Dropdown(choices=[], label=t("dc_report_old"),
+                                                 filterable=True,
                                                  elem_classes=["st-sidebar-control"])
                     report_new_dd = gr.Dropdown(choices=[], label=t("dc_report_new"),
+                                                 filterable=True,
                                                  elem_classes=["st-sidebar-control"])
                 report_diff_btn = gr.Button(t("dc_report_compare"), size="sm",
                                              elem_classes=["st-connect-btn"])
@@ -3199,6 +3487,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             with gr.Row():
                 save_btn = gr.Button(t("dc_save_report"), size="sm", elem_classes=["st-connect-btn"])
                 load_dd = gr.Dropdown(choices=[], label=t("dc_load_report"),
+                                       filterable=True,
                                        elem_classes=["st-sidebar-control"])
                 load_btn = gr.Button("↻", size="sm", elem_classes=["st-connect-btn"])
 
@@ -3240,6 +3529,57 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     )
 
     # Strategy change — show/hide stratified column input
+    def _reset_options():
+        """Restore every optional compare feature to its default — the
+        one-click way to deselect features (connections and table picks
+        stay untouched)."""
+        return (
+            gr.update(value=""),                    # where_input
+            gr.update(value=""),                    # threshold_input
+            gr.update(value=""),                    # key_input
+            gr.update(value=""),                    # mapping_input
+            gr.update(value="TOP N"),               # sample_strategy
+            gr.update(value="", visible=False),     # stratified_col_input
+            gr.update(value=True),                  # masking_checkbox
+            gr.update(value=""),                    # watermark_col_input
+            gr.update(value=""),                    # watermark_val_input
+            gr.update(value=""),                    # quality_rules_input
+            gr.update(value=""),                    # skew_cols_input
+            gr.update(value=""),                    # checksum_cols_input
+            gr.update(value=""),                    # partition_col_input
+            gr.update(value=""),                    # custom_agg_input
+            gr.update(value=""),                    # webhook_url_input
+            gr.update(value=False),                 # webhook_on_fail
+            gr.update(value=""),                    # alert_rules_input
+            gr.update(value=""),                    # sql_a_input
+            gr.update(value=""),                    # sql_b_input
+            gr.update(value=""),                    # template_name_input
+            gr.update(value=""),                    # preset_name_input
+            gr.update(value=""),                    # preset_env_input
+            gr.update(value="15"),                  # schedule_interval
+            gr.update(value=""),                    # lineage_sql_input
+            gr.update(value=""),                    # env_input_a
+            gr.update(value=""),                    # env_input_b
+            gr.update(value=""),                    # env_table_input
+        )
+
+    # NOTE: dropdowns that carry .change handlers (加载报告/模板/预设/批量模板)
+    # are deliberately NOT reset — programmatic value changes would fire
+    # their handlers (the load_dd result-wipe bug all over again).
+    reset_options_btn.click(
+        fn=_reset_options,
+        outputs=[where_input, threshold_input, key_input, mapping_input,
+                 sample_strategy, stratified_col_input, masking_checkbox,
+                 watermark_col_input, watermark_val_input,
+                 quality_rules_input, skew_cols_input, checksum_cols_input,
+                 partition_col_input, custom_agg_input,
+                 webhook_url_input, webhook_on_fail, alert_rules_input,
+                 sql_a_input, sql_b_input, template_name_input,
+                 preset_name_input, preset_env_input, schedule_interval,
+                 lineage_sql_input, env_input_a, env_input_b,
+                 env_table_input],
+    )
+
     sample_strategy.change(
         fn=lambda s: gr.update(visible=(s == "STRATIFIED")),
         inputs=[sample_strategy],
@@ -3260,7 +3600,13 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     agg_btn.click(fn=_compare_agg,
                   inputs=[table_a, table_b, lang_state, where_input],
                   outputs=[result_html])
-    all_btn.click(fn=_compare_all,
+    # Compare All runs for ~20s on real warehouses; trigger_mode="once"
+    # drops clicks while the event chain is pending, so an impatient
+    # double-click cannot queue a duplicate run (observed in the wild: the
+    # second run re-hit the DBs for nothing and repainted the result area).
+    # A visual interactive=False chain was tried and reverted: the update
+    # provably never reaches the button on multipage routes.
+    all_btn.click(fn=_compare_all, trigger_mode="once",
                   inputs=[table_a, table_b, lang_state, where_input, key_input,
                           threshold_input, sample_strategy, mapping_input,
                           masking_checkbox, webhook_url_input, webhook_on_fail,
@@ -3279,13 +3625,19 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     checksum_btn.click(fn=_compare_checksum,
                        inputs=[table_a, table_b, lang_state, where_input, checksum_cols_input],
                        outputs=[result_html])
+    chunked_btn.click(fn=_compare_chunked_btn_fn,
+                      inputs=[table_a, table_b, lang_state, where_input,
+                              key_input, checksum_cols_input, mapping_input],
+                      outputs=[result_html])
     partition_btn.click(fn=_compare_partition,
                         inputs=[table_a, table_b, lang_state, where_input, partition_col_input],
                         outputs=[result_html])
     custom_agg_btn.click(fn=_compare_custom_agg,
                          inputs=[table_a, table_b, lang_state, where_input, custom_agg_input],
                          outputs=[result_html])
-    batch_full_btn.click(fn=_batch_full,
+    # Same double-click guard as Compare All: batch full compare walks every
+    # common table pair and is the slowest action on the page.
+    batch_full_btn.click(fn=_batch_full, trigger_mode="once",
                          inputs=[lang_state, where_input, threshold_input],
                          outputs=[result_html])
 
@@ -3378,7 +3730,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     def _refresh_report_dds():
         if not _REPORTS_DIR.is_dir():
             return gr.update(choices=[]), gr.update(choices=[])
-        files = sorted(_REPORTS_DIR.glob("compare_*.json"), reverse=True)
+        files = sorted(_REPORTS_DIR.glob("compare_*.json"),
+                       key=lambda f: f.stat().st_mtime, reverse=True)
         names = [f.name for f in files[:_MAX_REPORT_FILES]]
         return gr.update(choices=names), gr.update(choices=names)
 
@@ -3458,7 +3811,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     )
 
     # E — Report persistence
-    save_btn.click(fn=_save_report, inputs=[lang_state], outputs=[save_status])
+    save_btn.click(fn=_save_report, inputs=[table_a, table_b, lang_state],
+                   outputs=[save_status, load_dd])
     load_btn.click(fn=_list_reports, inputs=[], outputs=[load_dd])
     load_dd.change(fn=_load_report, inputs=[load_dd, lang_state], outputs=[result_html])
 
@@ -3547,6 +3901,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(value=t_fn("dc_trend_chart")),                    # trend_btn
             # Round 5 components
             gr.update(label=t_fn("dc_masking_enabled")),                # masking_checkbox
+            gr.update(value=t_fn("dc_reset_options")),                  # reset_options_btn
             gr.update(label=t_fn("dc_incremental")),                    # incremental_accordion
             gr.update(label=t_fn("dc_watermark_col"),
                       placeholder=t_fn("dc_watermark_hint")),           # watermark_col_input
@@ -3583,6 +3938,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             gr.update(label=t_fn("dc_checksum"),
                       placeholder=t_fn("dc_checksum_columns_hint")),    # checksum_cols_input
             gr.update(value=t_fn("dc_checksum_analyze")),               # checksum_btn
+            gr.update(value=t_fn("dc_chunked_btn")),                    # chunked_btn
             gr.update(label=t_fn("dc_partition")),                      # partition_accordion
             gr.update(label=t_fn("dc_partition_col"),
                       placeholder=t_fn("dc_partition_col_hint")),       # partition_col_input
@@ -3612,6 +3968,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         from .lang_pref import STAMP_JS as _STAMP_JS
         from .lang_pref import choice_from_request as _choice
         app.load(fn=None, js=_STAMP_JS)
+        # saved-report dropdown: choices are baked empty at build time —
+        # populate on page load so the user never needs the ↻ button first
+        app.load(fn=_list_reports, inputs=[], outputs=[load_dd])
 
         def _lang_on_load(a, b, request: gr.Request):
             return _switch_lang(_choice(request), a, b)
@@ -3641,7 +4000,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             schedule_start_btn, schedule_stop_btn,
             trend_accordion, alert_rules_input, trend_btn,
             # Round 5
-            masking_checkbox,
+            masking_checkbox, reset_options_btn,
             incremental_accordion, watermark_col_input, watermark_val_input, incremental_btn,
             quality_accordion, quality_rules_input, quality_btn,
             gen_diff_sql_btn,
@@ -3652,7 +4011,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             # Round 6 — skew
             skew_accordion, skew_cols_input, skew_btn,
             # Round 7 — checksum, partition, custom agg
-            checksum_accordion, checksum_cols_input, checksum_btn,
+            checksum_accordion, checksum_cols_input, checksum_btn, chunked_btn,
             partition_accordion, partition_col_input, partition_btn,
             custom_agg_accordion, custom_agg_input, custom_agg_btn,
             # Round 8 — stratified sampling

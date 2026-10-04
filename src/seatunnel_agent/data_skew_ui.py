@@ -271,6 +271,10 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                 results, lang, dialect=normalize_dialect(dialect), sample_pct=pct)
         except Exception as exc:  # noqa: BLE001 — surface in the UI
             return gr.update(), _err_md(exc, lang)
+        history.log_verify(
+            sql, targets=len(extract_probe_targets(sql)),
+            confirmed=sum(1 for r in results if r.verdict == "confirmed"),
+            source="ui")
         return (_append_section(report_cur, section, _PROBE_HEAD_RE),
                 _restored_status(lang, conn))
 
