@@ -775,3 +775,72 @@ def build_metric_sql(
         _indent(num_sql),
         ") num ON " + on_items,
     ])
+
+
+def build_metric_series_sql(
+    metric: MetricDef,
+    store: MetricStore,
+    schema_store: SchemaStore,
+    time_range: TimeRange,
+) -> str:
+    """Expand a metric into a DAILY SERIES SQL (one row per time-column
+    value, ordered ascending). Pure function like :func:`build_metric_sql`;
+    used by the forecast tool. Raises :class:`MetricError` when the metric
+    (or either side of a ratio) has no ``time_column``.
+    """
+    if not metric.is_ratio:
+        if not metric.time_column:
+            raise MetricError(
+                f"metric '{metric.name}' has no time_column; "
+                "a daily series cannot be built"
+            )
+        table = schema_store.get(metric.table)
+        if table is None:
+            raise MetricError(f"table '{metric.table}' is not whitelisted")
+        day = dim_output_name(metric.time_column)
+        sql = _build_additive_sql(
+            metric, table, schema_store, [metric.time_column], time_range,
+            None, [],
+        )
+        return sql + f"\nORDER BY {day}"
+
+    num = store.get(metric.numerator)
+    den = store.get(metric.denominator)
+    if num is None or den is None or num.is_ratio or den.is_ratio:
+        raise MetricError(
+            f"ratio metric '{metric.name}' has invalid numerator/denominator"
+        )
+    for side in (num, den):
+        if not side.time_column:
+            raise MetricError(
+                f"metric '{side.name}' has no time_column; "
+                f"a daily series of '{metric.name}' cannot be built"
+            )
+    n_day = dim_output_name(num.time_column)
+    d_day = dim_output_name(den.time_column)
+
+    def _inner(m: MetricDef) -> str:
+        table = schema_store.get(m.table)
+        if table is None:
+            raise MetricError(f"table '{m.table}' is not whitelisted")
+        return _build_additive_sql(
+            m, table, schema_store, [m.time_column], time_range, None, [],
+        )
+
+    # COALESCE the numerator: a LEFT JOIN miss (day with denominator rows
+    # but no numerator rows) is a true rate of 0, not an undefined day —
+    # only a NULL denominator leaves the ratio NULL.
+    ratio_expr = (
+        f"COALESCE(num.{num.name}, 0) * 1.0 "
+        f"/ NULLIF(den.{den.name}, 0) AS {metric.name}"
+    )
+    return "\n".join([
+        f"SELECT den.{d_day} AS {d_day}, {ratio_expr}",
+        "FROM (",
+        _indent(_inner(den)),
+        ") den",
+        "LEFT JOIN (",
+        _indent(_inner(num)),
+        f") num ON num.{n_day} = den.{d_day}",
+        f"ORDER BY den.{d_day}",
+    ])

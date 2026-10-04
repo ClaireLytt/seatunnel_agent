@@ -94,6 +94,22 @@ additive 指标可声明 `joins`，把维表列作为下钻维度：
 - 结果自动渲染瀑布图（涨绿跌红）；`export_report` 可落盘 Markdown 报告
 - 查询预算 2 + 2×维度数条 SQL；下钻达到行数上限时显式报错防静默不完整
 
+## 指标预测
+
+"预测下周 GMV / 未来 7 天订单量会怎样" 走 `forecast_metric` 工具，
+与归因同一哲学——**数学确定性、LLM 只负责叙述**：
+
+1. 语义层生成口径一致的**日序列 SQL**（`build_metric_series_sql`，
+   纯函数，比率指标自动按天 JOIN 分子/分母）；
+2. 确定性模型拟合：OLS 线性趋势 + 星期加法季节性（历史 ≥ 2 整周时启用），
+   缺失日加法指标补 0、比率指标前向填充；
+3. 输出逐日点预测 + 95% 区间（残差 σ 自检拟合质量），提示词强制模型
+   以"估计值"口吻呈现，禁止自行外推数字。
+
+参数：`horizon_days`（默认 7，上限 30）、`history_days`（默认 28，
+14–180）、`end_date`（默认昨天）。成本 1 条 SQL；审计落 qlog
+（`kind=forecast`）。
+
 ## 混合表/指标检索
 
 三通道融合：原关键词打分 × BM25（snake_case 拆分 + 中文 bigram，零依赖）×
@@ -148,6 +164,8 @@ seatunnel-agent t2s-sub add --name GMV日报 --cron "0 9 * * *" \
     --metric gmv -d channel --webhook https://open.feishu.cn/...
 
 # 异动监控:变动超 ±8% 才推告警(含 Top3 贡献成员),否则静默
+# 比率指标(如退款率)同样支持;卡片中维度拆解标注为"各维度变化";
+# 比率无定义时(分母为0/无数据)记 no_data 跳过,不发假告警
 seatunnel-agent t2s-sub add --name GMV异动 --cron "30 8 * * *" \
     --metric gmv --watch --threshold 8 --watch-mode dod --webhook ...
 

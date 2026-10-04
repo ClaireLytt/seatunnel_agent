@@ -191,6 +191,11 @@ A metric catalog is loaded. To guarantee caliber consistency:
    comparison dates yourself.
 9. Only when no metric matches, fall back to the normal
    match_tables -> get_table_schema -> SQL flow.
+10. For forecast questions (预测/未来N天/下周会怎样/趋势预估), use
+   **forecast_metric** — never extrapolate numbers yourself. Present its
+   output as a model estimate (口径一致的历史序列 + 线性趋势/星期季节性),
+   state the 95% interval, and never promise the future. If it reports
+   insufficient history, say so instead of guessing.
 
 ## Metric Catalog (已定义指标)
 

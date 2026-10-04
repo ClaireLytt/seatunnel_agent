@@ -23,7 +23,14 @@ from .executor import (
 )
 from .exporter import export_csv
 from .matcher import match_tables
-from .metrics import MetricError, MetricStore, build_metric_sql, parse_time_range
+from .metrics import (
+    MetricError,
+    MetricStore,
+    build_metric_sql,
+    build_metric_series_sql,
+    parse_date,
+    parse_time_range,
+)
 from .partition import classify_table, has_partition_filter
 from .qlog import QueryLogger
 from .schema import SchemaStore
@@ -408,6 +415,52 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "forecast_metric",
+        "description": (
+            "Forecast a defined metric's next N days (预测/未来趋势: 预测下周"
+            "GMV / 未来7天订单量会怎样). Builds the metric's caliber-consistent "
+            "daily series via the semantic layer, then fits a deterministic "
+            "LLM-free model (OLS linear trend + weekday seasonality once the "
+            "history covers two full weeks) and returns per-day point "
+            "forecasts with a 95% interval. Works for ratio metrics too. "
+            "Costs 1 SQL query. Present the numbers as a model estimate, "
+            "never as a guarantee; mention the interval width when σ is "
+            "large relative to the forecast."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "description": "Metric name as returned by match_metrics",
+                },
+                "horizon_days": {
+                    "type": "integer",
+                    "description": "Days to forecast ahead (default 7, max 30)",
+                },
+                "history_days": {
+                    "type": "integer",
+                    "description": (
+                        "History window length used to fit the model "
+                        "(default 28, min 14, max 180)"
+                    ),
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": (
+                        "Last history day, YYYY-MM-DD or yyyyMMdd "
+                        "(default: yesterday)"
+                    ),
+                },
+                "user_query": {
+                    "type": "string",
+                    "description": "The user's original question (for the audit log)",
+                },
+            },
+            "required": ["metric"],
+        },
+    },
+    {
         "name": "get_result_page",
         "description": (
             "Return a specific page of the most recent query result. "
@@ -687,6 +740,121 @@ def _tool_build_metric_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str
         "metric": _metric_payload(metric),
         "sql": sql,
         "note": "Run this SQL with execute_sql. Do not edit the aggregation.",
+    }
+
+
+def _tool_forecast_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    from datetime import date, timedelta
+
+    from .forecast import forecast_series
+    from .partition import TimeRange
+
+    if rt.metrics is None or len(rt.metrics) == 0:
+        return {"error": "No metric definitions loaded (metrics.yaml)"}
+    name = str(inp.get("metric", "")).strip()
+    metric = rt.metrics.get(name)
+    if metric is None:
+        known = ", ".join(m.name for m in rt.metrics.metrics)
+        return {"error": f"Metric '{name}' is not defined. Known metrics: {known}"}
+
+    try:
+        horizon = max(1, min(int(inp.get("horizon_days") or 7), 30))
+        history = max(14, min(int(inp.get("history_days") or 28), 180))
+    except (TypeError, ValueError):
+        return {"error": "horizon_days / history_days must be integers"}
+
+    try:
+        end_raw = str(inp.get("end_date", "") or "").strip()
+        end = parse_date(end_raw) if end_raw else date.today() - timedelta(days=1)
+        start = end - timedelta(days=history - 1)
+        sql = build_metric_series_sql(
+            metric, rt.metrics, rt.store, TimeRange(start=start, end=end),
+        )
+    except MetricError as exc:
+        return {"error": str(exc)}
+
+    validation = validate_sql(sql, rt.store)
+    if not validation.ok:
+        return {"error": "SQL rejected: " + "; ".join(validation.errors), "sql": sql}
+    final_sql = enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type)
+    try:
+        result = rt.executor.run(final_sql, max_rows=rt.default_limit)
+    except Exception as exc:
+        return {"error": _sanitize_db_error(str(exc)), "sql": sql}
+    if result.truncated or result.row_count >= rt.default_limit:
+        # the ascending ORDER BY + LIMIT would silently keep the OLDEST
+        # rows and forecast from stale history — refuse instead
+        return {
+            "error": (
+                f"日序列达到 {rt.default_limit} 行上限，最近的历史会被截断。"
+                "请减小 history_days，或确认 time_column 是日粒度。"
+            ),
+            "sql": sql,
+        }
+
+    def _day(raw: Any) -> Any:
+        s = str(raw).strip()
+        try:
+            return parse_date(s)
+        except MetricError:
+            return parse_date(s[:10])  # 'YYYY-MM-DD HH:MM:SS' timestamps
+
+    try:
+        # aggregate to day grain: a sub-day time_column yields several rows
+        # per day — partial sums of an additive metric are summed; partial
+        # ratios cannot be recombined, so refuse
+        daily: dict[Any, float | None] = {}
+        for r in result.rows:
+            if r[0] is None:
+                continue
+            d = _day(r[0])
+            v = None if r[-1] is None else float(r[-1])
+            if d in daily:
+                if metric.is_ratio:
+                    return {
+                        "error": (
+                            "time_column 粒度细于天，比率指标无法按日重新聚合，"
+                            "请为比率的分子/分母使用日粒度时间列"
+                        ),
+                        "sql": sql,
+                    }
+                if v is not None:
+                    daily[d] = (daily[d] or 0.0) + v
+            else:
+                daily[d] = v
+        points = sorted(daily.items())
+    except (MetricError, TypeError, ValueError) as exc:
+        return {"error": f"cannot parse the daily series: {exc}", "sql": sql}
+
+    try:
+        fc = forecast_series(
+            points, horizon=horizon,
+            fill="ffill" if metric.is_ratio else "zero",
+        )
+    except ValueError as exc:
+        return {
+            "error": f"历史数据不足，无法预测: {exc}",
+            "hint": "增大 history_days 或确认该时间范围内有数据",
+            "sql": sql,
+        }
+
+    rt.logger.log(
+        user_query=str(inp.get("user_query", "")),
+        generated_sql=final_sql, status="success",
+        matched_tables=validation.tables,
+        exec_time_ms=result.elapsed_ms, row_count=result.row_count,
+        extra={"source": rt.source, "metric": name, "kind": "forecast"},
+    )
+    return {
+        "success": True,
+        "metric": name,
+        "display_name": metric.display_name,
+        "unit": metric.unit,
+        "sql": sql,
+        "history_tail": [
+            {"day": d.isoformat(), "value": v} for d, v in points[-14:]
+        ],
+        **fc,
     }
 
 
@@ -1490,6 +1658,7 @@ _TOOL_HANDLERS = {
     "match_metrics": _tool_match_metrics,
     "build_metric_sql": _tool_build_metric_sql,
     "run_attribution": _tool_run_attribution,
+    "forecast_metric": _tool_forecast_metric,
     "trace_metric": _tool_trace_metric,
     "review_sql": _tool_review_sql,
     "skew_check": _tool_skew_check,
