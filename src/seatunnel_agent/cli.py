@@ -1427,6 +1427,48 @@ def t2s_index_values(ddl: str | None, ds_type: str, database: str,
     )
 
 
+@cli.command(name="t2s-search")
+@click.argument("query")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
+@click.option("--metrics", "metrics_file", type=click.Path(exists=True), default=None,
+              help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--top", "-n", type=int, default=5, show_default=True, help="每类返回条数")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="输出格式")
+def t2s_search(query: str, ddl: str | None, metrics_file: str | None,
+               top: int, fmt: str) -> None:
+    """数据目录检索：一句话同时搜表/指标/取值（复用混合检索与值索引，免 LLM）。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    import os as _os
+    from pathlib import Path
+
+    from .text2sql.catalog import render_catalog_markdown, search_catalog
+    from .text2sql.metrics import load_metric_store
+    from .text2sql.retrieval import schema_hash
+    from .text2sql.schema import SchemaStore
+    from .text2sql.values import ValueIndex
+
+    ddl_path = ddl or _os.getenv("SCHEMA_DDL_PATH", "config/schema_ddl.sql")
+    if not Path(ddl_path).is_file():
+        raise click.ClickException(f"DDL 文件不存在: {ddl_path}")
+    store = SchemaStore.from_file(ddl_path)
+    metric_store, errors = load_metric_store(store, path=metrics_file)
+    for e in errors[:3]:
+        console.print(f"[yellow]指标定义警告: {e}[/yellow]")
+    value_index = ValueIndex.load(schema_hash(store))  # None when not built
+
+    result = search_catalog(
+        query, store, metric_store=metric_store,
+        value_index=value_index, top_n=top,
+    )
+    if fmt == "json":
+        console.print(_json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        console.print(render_catalog_markdown(result))
+
+
 @cli.command(name="t2s-mcp")
 @click.option("--ddl", type=click.Path(exists=True), default=None,
               help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
