@@ -1469,6 +1469,90 @@ def t2s_search(query: str, ddl: str | None, metrics_file: str | None,
         console.print(render_catalog_markdown(result))
 
 
+@cli.command(name="t2s-rootcause")
+@click.option("--metric", required=True, help="指标名（metrics.yaml 中定义）")
+@click.option("--curr-start", required=True, help="当前期开始 YYYY-MM-DD / yyyyMMdd")
+@click.option("--curr-end", default="", help="当前期结束（默认同开始）")
+@click.option("--compare", "compare_mode", type=click.Choice(["mom", "wow", "yoy"]),
+              default="wow", show_default=True,
+              help="对比期推导：mom=环比等长前期 wow=上周同期 yoy=去年同期")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
+@click.option("--metrics", "metrics_file", type=click.Path(exists=True), default=None,
+              help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--ds-type", default="hive", show_default=True)
+@click.option("--connection", default="", help="连接预设名")
+@click.option("--database", default="", help="sqlite 数据库路径（仅 sqlite）")
+@click.option("--lineage-dir", default=None,
+              help="数仓 SQL 目录（上游血缘；默认 T2S_LINEAGE_SQL_DIR）")
+@click.option("--log-dir", default="", help="任务日志目录（错误簇关联）")
+@click.option("--depth", type=int, default=3, show_default=True, help="血缘追溯深度")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="输出格式")
+@click.option("--output", "-o", type=click.Path(), default=None, help="保存报告到文件")
+def t2s_rootcause(metric: str, curr_start: str, curr_end: str, compare_mode: str,
+                  ddl: str | None, metrics_file: str | None, ds_type: str,
+                  connection: str, database: str, lineage_dir: str | None,
+                  log_dir: str, depth: int, fmt: str, output: str | None) -> None:
+    """异动根因联动：归因(哪里变) × 血缘(上游谁) × 日志(出了什么错) 一份报告。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    import os as _os
+    from pathlib import Path
+
+    from .text2sql.metrics import (
+        MetricError, load_metric_store, parse_time_range,
+    )
+    from .text2sql.rootcause import render_root_cause_markdown, run_root_cause
+    from .text2sql.schema import SchemaStore
+    from .text2sql.subscriptions import resolve_db_config
+    from .text2sql.tools import Text2SQLRuntime, _attribution_execute, _derive_prev_range
+
+    ddl_path = ddl or _os.getenv("SCHEMA_DDL_PATH", "config/schema_ddl.sql")
+    if not Path(ddl_path).is_file():
+        raise click.ClickException(f"DDL 文件不存在: {ddl_path}")
+    store = SchemaStore.from_file(ddl_path)
+    metric_store, errors = load_metric_store(store, path=metrics_file)
+    for e in errors[:3]:
+        console.print(f"[yellow]指标定义警告: {e}[/yellow]")
+    m = metric_store.get(metric)
+    if m is None:
+        known = ", ".join(x.name for x in metric_store.metrics) or "(无)"
+        raise click.ClickException(f"指标 '{metric}' 未定义。已知指标: {known}")
+
+    db_config = resolve_db_config({
+        "ds_type": ds_type, "connection": connection, "database": database,
+    })
+    if db_config is None:
+        raise click.ClickException("无法解析数据库连接（连接名/环境变量）")
+    rt = Text2SQLRuntime(store=store, metrics=metric_store,
+                         ds_type=ds_type, db_config=db_config, source="cli")
+
+    try:
+        curr = parse_time_range(curr_start, curr_end)
+        prev = _derive_prev_range(curr, compare_mode)
+        report = run_root_cause(
+            m, metric_store, store,
+            _attribution_execute(rt, f"[rootcause] {metric}", metric),
+            curr, prev,
+            lineage_sql_dir=(lineage_dir
+                             or _os.getenv("T2S_LINEAGE_SQL_DIR", "").strip()),
+            log_dir=log_dir, depth=depth,
+        )
+    except MetricError as exc:
+        raise click.ClickException(str(exc))
+
+    if fmt == "json":
+        text_out = _json.dumps(report, ensure_ascii=False, indent=2, default=str)
+        print(text_out)
+    else:
+        text_out = render_root_cause_markdown(report)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+
 @cli.command(name="t2s-health")
 @click.option("--ddl", type=click.Path(exists=True), default=None,
               help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
