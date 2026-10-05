@@ -1901,16 +1901,21 @@ def t2s_sub_list() -> None:
               help="异动阈值百分比（仅 --watch）")
 @click.option("--watch-mode", type=click.Choice(["dod", "wow"]), default="dod",
               show_default=True, help="参照期：dod=前一天, wow=上周同日（仅 --watch）")
+@click.option("--table", default="",
+              help="SLA 分区监控的表名（与 --metric/--favorite 互斥）")
+@click.option("--lag", "lag_days", type=int, default=1, show_default=True,
+              help="SLA 容忍滞后天数：最新分区最迟 T-N（仅 --table）")
 def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
                 dims: tuple[str, ...], lookback: int, params: tuple[str, ...],
                 ds_type: str, connection: str, database: str, webhook: str,
-                watch: bool, threshold: float, watch_mode: str) -> None:
-    """新建订阅（--metric 定时推数 / --metric --watch 异动告警 / --favorite 收藏推数）。"""
+                watch: bool, threshold: float, watch_mode: str,
+                table: str, lag_days: int) -> None:
+    """新建订阅（--metric 推数 / --metric --watch 异动告警 / --favorite 收藏推数 / --table 分区SLA告警）。"""
     _ensure_utf8_stdio()
     from .text2sql.subscriptions import SubscriptionStore
 
-    if bool(metric) == bool(favorite_id):
-        raise click.UsageError("--metric 与 --favorite 必须二选一")
+    if sum(map(bool, (metric, favorite_id, table))) != 1:
+        raise click.UsageError("--metric / --favorite / --table 必须三选一")
     if watch and not metric:
         raise click.UsageError("--watch 只能与 --metric 搭配")
     param_map: dict[str, str] = {}
@@ -1919,7 +1924,9 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
             raise click.UsageError(f"--param 格式应为 key=value: {p}")
         k, v = p.split("=", 1)
         param_map[k.strip()] = v
-    if watch:
+    if table:
+        source_type = "partition_watch"
+    elif watch:
         source_type = "metric_watch"
     else:
         source_type = "metric" if metric else "favorite"
@@ -1931,7 +1938,7 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
             favorite_id=favorite_id, params=param_map,
             threshold_pct=threshold, watch_mode=watch_mode,
             ds_type=ds_type, connection=connection, database=database,
-            webhook_url=webhook,
+            webhook_url=webhook, table=table, lag_days=lag_days,
         )
     except ValueError as exc:
         raise click.ClickException(str(exc))
