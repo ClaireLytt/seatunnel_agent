@@ -1469,6 +1469,62 @@ def t2s_search(query: str, ddl: str | None, metrics_file: str | None,
         console.print(render_catalog_markdown(result))
 
 
+@cli.command(name="t2s-health")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
+@click.option("--qlog-dir", type=click.Path(file_okay=False), default="logs",
+              show_default=True, help="查询审计日志目录（热度来源）")
+@click.option("--lineage-dir", default=None,
+              help="数仓 SQL 目录（血缘覆盖与僵尸表检测；默认 T2S_LINEAGE_SQL_DIR）")
+@click.option("--stale-days", type=int, default=90, show_default=True,
+              help="分区表超过 N 天未查询则建议生命周期治理")
+@click.option("--top", "-n", type=int, default=20, show_default=True,
+              help="排行榜显示条数（低分在前）")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="输出格式")
+@click.option("--output", "-o", type=click.Path(), default=None, help="保存报告到文件")
+def t2s_health(ddl: str | None, qlog_dir: str, lineage_dir: str | None,
+               stale_days: int, top: int, fmt: str, output: str | None) -> None:
+    """数据资产健康分：热度×文档×血缘打分 + 僵尸表/生命周期/PII 治理建议。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    import os as _os
+    from pathlib import Path
+
+    from .text2sql.health import render_health_markdown, score_tables
+    from .text2sql.qlog import QueryLogger
+    from .text2sql.schema import SchemaStore
+
+    ddl_path = ddl or _os.getenv("SCHEMA_DDL_PATH", "config/schema_ddl.sql")
+    if not Path(ddl_path).is_file():
+        raise click.ClickException(f"DDL 文件不存在: {ddl_path}")
+    store = SchemaStore.from_file(ddl_path)
+    records = QueryLogger(log_dir=qlog_dir).recent(n=100000)
+
+    graph = None
+    sql_dir = lineage_dir or _os.getenv("T2S_LINEAGE_SQL_DIR", "").strip()
+    if sql_dir:
+        from .data_lineage.loaders import build_graph
+
+        graph, warnings = build_graph(sql_dir=sql_dir)
+        for w in warnings[:3]:
+            console.print(f"[yellow]血缘警告: {w}[/yellow]")
+    else:
+        console.print("[dim]未提供血缘目录：跳过血缘分项与僵尸表检测[/dim]")
+
+    report = score_tables(store, records, lineage_graph=graph,
+                          stale_days=stale_days)
+    if fmt == "json":
+        text_out = _json.dumps(report, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_health_markdown(report, top=top)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+
 @cli.command(name="t2s-mcp")
 @click.option("--ddl", type=click.Path(exists=True), default=None,
               help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
