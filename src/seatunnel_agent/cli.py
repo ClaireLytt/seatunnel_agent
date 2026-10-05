@@ -1664,6 +1664,8 @@ def loginspect(
 @click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
               default="markdown", help="Report format (json for machines/CI)")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+@click.option("--emit-ddl", "emit_ddl", type=click.Path(), default=None,
+              help="生成迁移 ALTER 脚本到该路径（破坏性变更只注释,不自动执行）")
 def schemadiff(
     old_path: str,
     new_path: str,
@@ -1672,6 +1674,7 @@ def schemadiff(
     fail_on: str | None,
     fmt: str,
     output: str | None,
+    emit_ddl: str | None,
 ) -> None:
     """Schema 漂移检查 — 对比两份 DDL 快照，按破坏/风险/提示分级报告变更。"""
     import json as _json
@@ -1691,6 +1694,17 @@ def schemadiff(
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if emit_ddl:
+        from .schema_drift import generate_migration, load_schemas, render_migration_sql
+
+        new_schemas, _ = load_schemas(new_path, dialect=dialect)
+        plan = generate_migration(report, new_schemas)
+        Path(emit_ddl).write_text(render_migration_sql(plan), encoding="utf-8")
+        console.print(
+            f"[green]迁移脚本已生成: {emit_ddl} "
+            f"(自动 {plan.auto_count} 条 / 人工确认 {plan.manual_count} 条)[/green]"
+        )
 
     if fail_on:
         rank = {"info": 1, "risk": 2, "breaking": 3}
