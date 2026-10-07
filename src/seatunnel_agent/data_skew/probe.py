@@ -483,8 +483,54 @@ def render_probe_section(
         templates = render_rewrite_templates(results, lang)
         if templates:
             parts += ["", templates]
+        advice = render_storage_advice(results, lang)
+        if advice:
+            parts += ["", advice]
     parts.append("")
     return "\n".join(parts)
+
+
+def render_storage_advice(results: list[ProbeResult], lang: str) -> str:
+    """Storage/modeling-layer advice for the confirmed-skew columns.
+
+    Rewrites fix one script; a hot key that is also a partition / bucket /
+    sync-split key skews every downstream job, so confirmed columns get a
+    per-column note: don't use it as a distribution key, prefer a
+    high-cardinality uniform key, and roll up the hot dimension instead."""
+    lang = normalize_lang(lang)
+    zh = lang == "zh"
+    lines: list[str] = []
+    for r in results:
+        if r.verdict != "confirmed" or len(lines) >= 4:
+            continue
+        t = r.target
+        if r.top1_ratio >= HOT_KEY_CONFIRMED:
+            hot_v = _safe_value(r.top[0][0]) if r.top else "?"
+            lines.append(
+                f"- `{t.table}.{t.column}` top1≈{_pct(r.top1_ratio)}（热值 `'{hot_v}'`）："
+                "不宜作为分区键 / 分桶键 / 同步分片键（partition_column）——"
+                "建议改用高基数均匀键（ID 类）；下游频繁按该维度 GROUP BY/JOIN 时，"
+                "考虑预聚合上卷，不再直接扫明细热 key"
+                if zh else
+                f"- `{t.table}.{t.column}` top1≈{_pct(r.top1_ratio)} (hot value `'{hot_v}'`): "
+                "unsuitable as a partition / bucket / sync-split key (partition_column) — "
+                "prefer a high-cardinality uniform key (ID-like); if downstream jobs "
+                "GROUP BY/JOIN this dimension often, pre-aggregate a rollup instead of "
+                "rescanning the hot detail keys"
+            )
+        elif r.null_ratio >= NULL_CONFIRMED:
+            lines.append(
+                f"- `{t.table}.{t.column}` NULL 占比 {_pct(r.null_ratio)}："
+                "作分区/分片键会把 NULL 行集中到同一分区——上游先补默认值，"
+                "或该列不作分布键"
+                if zh else
+                f"- `{t.table}.{t.column}` NULL ratio {_pct(r.null_ratio)}: "
+                "as a partition/split key all NULL rows funnel into one partition — "
+                "backfill a default upstream, or keep this column out of distribution keys"
+            )
+    if not lines:
+        return ""
+    return dsk(lang, "prb_storage_head") + "\n\n" + "\n".join(lines)
 
 
 def _salt_n(r: ProbeResult) -> int:

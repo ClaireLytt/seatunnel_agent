@@ -74,6 +74,7 @@ from .data_comparison.comparator import (
     compare_profiles,
     compare_schemas,
     compare_skew,
+    skew_side_verdict,
     detect_sensitive_columns,
     diff_by_key,
     find_common_tables,
@@ -213,6 +214,16 @@ def _build_webhook_summary(report: CompareReport) -> dict:
             for it in report.aggregate.items[:_SUMMARY_MAX_ITEMS]
             if not it.match
         ][:_SUMMARY_MAX_ITEMS]
+    if report.skew is not None and report.skew.items:
+        verdict, v_cols = skew_side_verdict(report.skew)
+        summary["skew"] = {
+            "verdict": verdict,
+            "columns": v_cols[:_SUMMARY_MAX_ITEMS],
+            "top1_max": max(max(it.top1_pct_a, it.top1_pct_b)
+                            for it in report.skew.items),
+            "gini_max": max(max(it.gini_a, it.gini_b)
+                            for it in report.skew.items),
+        }
     return summary
 
 
@@ -869,8 +880,13 @@ def build_profile_card(result: ProfileResult, lang: str = "en") -> str:
     )
 
 
-def build_skew_card(result: SkewResult, lang: str = "en") -> str:
-    """Build HTML card for data skew analysis."""
+def build_skew_card(result: SkewResult, lang: str = "en",
+                    conn_b=None) -> str:
+    """Build HTML card for data skew analysis.
+
+    *conn_b* is side B's ``DatabaseConfig`` (or None, e.g. when rendering a
+    saved report): with it, the goto-dataskew button also hands the
+    connection over via a short-lived cookie — no password travels."""
     t = lambda k: dc(lang, k)
     esc = _esc_html
     if not result.items:
@@ -880,6 +896,64 @@ def build_skew_card(result: SkewResult, lang: str = "en") -> str:
         )
     th = _TH
     td = _TD
+
+    # Side-vs-side qualification: sync-pipeline symptom vs business fact
+    verdict, v_cols = skew_side_verdict(result)
+    verdict_html = ""
+    if verdict != "ok":
+        style = ("color:#dc2626;background:#fef2f2;" if verdict == "mismatch"
+                 else "color:#b45309;background:#fffbeb;")
+        key = ("dc_skew_verdict_mismatch" if verdict == "mismatch"
+               else "dc_skew_verdict_both")
+        cols = ", ".join(f"<b>{esc(c)}</b>" for c in v_cols[:5])
+        goto_html = ""
+        if verdict == "both_skewed" and v_cols:
+            # Hand a hot-key GROUP BY over to /dataskew via the same
+            # localStorage bridge the SQL-review page uses: the group key
+            # becomes a probe target there, so 验证倾斜 measures it and the
+            # rewrite templates / engine params come pre-filled.
+            col = v_cols[0]
+            handoff_sql = (
+                f"-- from Data Comparison: `{result.table_b}`.`{col}` skewed "
+                f"on both sides\n"
+                f"SELECT {col}, COUNT(*) AS cnt\n"
+                f"FROM {result.table_b}\n"
+                f"GROUP BY {col}\n"
+                f"ORDER BY cnt DESC\nLIMIT 100;"
+            )
+            conn_js = ""
+            if conn_b is not None:
+                # side B connection minus the password, as a 3-minute
+                # cookie the /dataskew page reads on load (gr.Request)
+                payload = json.dumps({
+                    "ds_type": str(getattr(conn_b, "ds_type", "") or ""),
+                    "host": str(getattr(conn_b, "host", "") or ""),
+                    "port": str(getattr(conn_b, "port", "") or ""),
+                    "database": str(getattr(conn_b, "database", "") or ""),
+                    "username": str(getattr(conn_b, "username", "") or ""),
+                }, ensure_ascii=False)
+                conn_js = (
+                    "document.cookie = 'st_dataskew_conn=' + "
+                    "encodeURIComponent(" + json.dumps(payload)
+                    + ") + '; path=/; max-age=180';"
+                )
+            onclick = esc(
+                "localStorage.setItem('st_dataskew_sql', "
+                + json.dumps(handoff_sql, ensure_ascii=False)
+                + "); " + conn_js + " window.open('/dataskew', '_blank');"
+            )
+            goto_html = (
+                f' <button onclick="{onclick}" style="margin-left:8px;'
+                'padding:1px 8px;font-size:11px;color:#0d9488;'
+                'background:#f0fdfa;border:1px solid #99f6e4;'
+                'border-radius:4px;cursor:pointer;">'
+                + t("dc_skew_goto_dataskew") + "</button>"
+            )
+        verdict_html = (
+            f'<div style="{style}border-radius:6px;padding:6px 10px;'
+            f'margin-top:8px;font-size:12px;">'
+            + t(key).format(cols=cols) + goto_html + "</div>"
+        )
 
     items_html = ""
     for item in result.items:
@@ -909,6 +983,7 @@ def build_skew_card(result: SkewResult, lang: str = "en") -> str:
         'background:#f8fafc;margin-bottom:8px;">'
         f'<summary style="font-weight:600;font-size:13px;color:#0d9488;cursor:pointer;">'
         f'{t("dc_skew_result")} — {result.total_a:,} / {result.total_b:,} rows</summary>'
+        f'{verdict_html}'
         f'<table style="width:100%;border-collapse:collapse;margin-top:8px;">'
         f'<tr><th {th}>{t("dc_skew_column")}</th>'
         f'<th {th}>{t("dc_skew_gini")} A</th><th {th}>{t("dc_skew_gini")} B</th>'
@@ -1966,7 +2041,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             total_a=total_a, total_b=total_b,
             items=items,
         )
-        return result, build_skew_card(result, lang_val)
+        return result, build_skew_card(result, lang_val,
+                                       conn_b=ex_b.config)
 
     def _compare_skew_fn(table_a, table_b, lang_val, where_val, skew_cols_str):
         ok, msg = _validate_where(where_val, lang_val)
@@ -2732,7 +2808,11 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             return dc(lang_val, "dc_trend_no_data"), gr.update(visible=False)
         try:
             plt = _get_matplotlib()
-            fig, axes = plt.subplots(3, 1, figsize=(8, 9), sharex=True)
+            # A 4th subplot for skew drift, only when any report measured skew
+            has_skew = any(e.get("skew_top1") is not None for e in entries)
+            n_plots = 4 if has_skew else 3
+            fig, axes = plt.subplots(n_plots, 1,
+                                     figsize=(8, 3 * n_plots), sharex=True)
             timestamps = [e["timestamp"] for e in entries]
             x = range(len(timestamps))
 
@@ -2755,9 +2835,25 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             schema_changes = [e.get("schema_changes", 0) for e in entries]
             axes[2].bar(x, schema_changes, color="#ef4444", alpha=0.8)
             axes[2].set_ylabel(dc(lang_val, "dc_trend_schema"))
-            axes[2].set_xticks(list(x))
-            axes[2].set_xticklabels(timestamps, rotation=45, ha="right", fontsize=8)
             axes[2].grid(True, alpha=0.3)
+
+            # Subplot 4: Skew Top-1 % (distribution drift; gaps where the
+            # report carried no skew analysis)
+            if has_skew:
+                top1s = [e.get("skew_top1") for e in entries]
+                axes[3].plot(x, [v if v is not None else float("nan")
+                                 for v in top1s],
+                             marker="o", color="#8b5cf6",
+                             linewidth=2, markersize=5)
+                axes[3].set_ylabel(dc(lang_val, "dc_trend_skew"))
+                axes[3].set_ylim(0, 100)
+                axes[3].axhline(y=50, color="#dc2626", linestyle="--",
+                                linewidth=0.8)
+                axes[3].grid(True, alpha=0.3)
+
+            last = axes[n_plots - 1]
+            last.set_xticks(list(x))
+            last.set_xticklabels(timestamps, rotation=45, ha="right", fontsize=8)
 
             fig.set_facecolor("#fafafa")
             fig.tight_layout()

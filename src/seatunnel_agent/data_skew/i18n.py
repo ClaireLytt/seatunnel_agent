@@ -103,6 +103,178 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_sampled_note": "(estimated from a {pct}% table sample)",
         "prb_engine_params": "**Suggested engine settings (based on measured skew)**",
         "prb_rewrite_head": "**Rewrite templates (from measured values — fill in the column lists)**",
+        "prb_storage_head": "**Storage / modeling-layer advice (based on measured skew)**",
+        # --- SeaTunnel split-key check ---
+        "spk_accordion": "SeaTunnel split-key check (paste a job config)",
+        "spk_conf_placeholder": (
+            "Paste the SeaTunnel job config (HOCON) — the JDBC source's "
+            "partition_column will be measured against the connected database…"
+        ),
+        "spk_btn": "Check split key",
+        "spk_need_conn": "⚠️ Connect a data source first (the split key is measured on real data).",
+        "spk_empty_conf": "❌ Paste a SeaTunnel job config first.",
+        "spk_parse_fail": "❌ Could not parse the config: {err}",
+        "spk_no_source": "❌ No source block with a table/query was found in the config.",
+        "spk_no_table": (
+            "❌ Could not resolve a base table from the source block "
+            "(complex query — set table_path or simplify the query)."
+        ),
+        "spk_section": "## SeaTunnel Split-Key Check (measured)",
+        "spk_configured": "Configured `partition_column`",
+        "spk_none_configured": (
+            "No `partition_column` configured — the source reads single-threaded; "
+            "pick a uniform column below to enable parallel reads."
+        ),
+        "spk_col_column": "Column",
+        "spk_col_rows": "Rows",
+        "spk_col_ndv": "NDV",
+        "spk_col_null": "NULL ratio",
+        "spk_col_top1": "Top-1 share",
+        "spk_col_verdict": "Verdict",
+        "spk_verdict_good": "✅ uniform — good split key",
+        "spk_verdict_suspect": "⚠️ mildly skewed — usable, watch task balance",
+        "spk_verdict_bad": "⛔ skewed — one task will read most of the data",
+        "spk_verdict_low_ndv": "⛔ NDV too low for the configured parallelism",
+        "spk_verdict_null": "⛔ NULL-heavy — NULL rows funnel into one split",
+        "spk_verdict_error": "probe failed",
+        "spk_candidates": "**Candidate split columns (measured, best first)**",
+        "spk_no_candidates": (
+            "No numeric/date candidate columns could be measured on this table."
+        ),
+        "spk_snippet_head": "**Suggested source config**",
+        "spk_sampled_note": "(estimated from a {pct}% table sample)",
+        "spk_sink_note": (
+            "The same column choice applies to the sink side: a skewed "
+            "Doris/ClickHouse bucket key materializes this skew into storage."
+        ),
+        "spk_recheck_improved": (
+            "🔁 Re-check vs last run ({ts}, key=`{pk}`, verdict {pv}) → now "
+            "{cv} — ✅ the split-key issue is resolved, loop closed."
+        ),
+        "spk_recheck_regressed": (
+            "🔁 Re-check vs last run ({ts}, key=`{pk}`, verdict {pv}) → now "
+            "{cv} — ⚠️ regression: the key measured fine before, check for "
+            "data drift."
+        ),
+        "spk_recheck_still_bad": (
+            "🔁 Re-check vs last run ({ts}, key=`{pk}`, verdict {pv}) → now "
+            "{cv} — ⚠️ still unresolved: switch partition_column to a ranked "
+            "candidate and re-check."
+        ),
+        "spk_apply_fail": (
+            "❌ Could not anchor the edit in the config text — nothing was "
+            "changed."
+        ),
+        "spk_apply_done": (
+            "✅ Split key written back to the config: {opt} = \"{col}\" "
+            "(original backed up as {bak}). Re-run the check to verify."
+        ),
+        "spk_apply_none": (
+            "ℹ️ Nothing to write back: no usable (good/suspect) key was "
+            "measured, or the configured key is already the best choice."
+        ),
+        "spk_apply_multi": (
+            "❌ The config has {n} sources — write-back only supports "
+            "single-source configs (a text edit could hit the wrong source). "
+            "Edit each source per the report instead."
+        ),
+        "spk_apply_dl": "⬇️ Download patched config",
+        "spk_recheck_drift": (
+            "🔁 Re-check vs last run ({ts}): the key still measures fine, "
+            "but its top-1 share drifted {prev}% → {cur}% ({delta} pp) — "
+            "watch this table before it tips over."
+        ),
+        "spk_batch_section": "## SeaTunnel Split-Key Patrol (directory batch)",
+        "spk_batch_counts": (
+            "{files} config files scanned — {sources} sources measured, "
+            "**{bad} skewed keys**, {none} without a split key, "
+            "{errors} unparsable files."
+        ),
+        "spk_batch_col_file": "Config",
+        "spk_batch_col_table": "Source table",
+        "spk_batch_col_key": "Split key",
+        "spk_batch_col_best": "Suggested key",
+        "spk_batch_no_key": "⚠️ no split key — single-threaded read",
+        "spk_batch_keep": "(keep)",
+        "spk_batch_hint": (
+            "Run `seatunnel-agent skew-splitkey <file>` on a flagged config "
+            "for the full per-column report, and `--apply` to write the "
+            "suggested key back."
+        ),
+        "snk_section": "### Sink-Side Key Check (measured)",
+        "snk_intro": (
+            "Sink distribution keys measured on the source table `{table}` "
+            "— the rows a sink writes are the rows this source reads."
+        ),
+        "snk_line": "sink {sink}, option `{opt}`:",
+        "snk_verdict_good": "✅ uniform — safe distribution key",
+        "snk_verdict_suspect": "⚠️ mildly hot — watch write balance",
+        "snk_verdict_bad": (
+            "⛔ hot key — writes pile onto one bucket/shard/partition"
+        ),
+        "snk_verdict_null": "⛔ NULL-heavy — NULL rows land in one bucket",
+        "snk_hot_note": (
+            "A hot sink key materializes the skew into the target's storage "
+            "(one bucket/partition keeps growing) — pick a more uniform "
+            "column or a composite key."
+        ),
+        "spk_multi_note": (
+            "The config declares {n} sources — each is checked below."
+        ),
+        "spk_multi_truncated": (
+            "The config declares {n} sources — the first {shown} are "
+            "checked below (per-check cap)."
+        ),
+        # --- runtime diagnosis (Spark task metrics) ---
+        "rt_accordion": "Runtime diagnosis (Spark event log / History Server)",
+        "rt_upload_btn": "Analyze event log file",
+        "rt_url": "History Server URL",
+        "rt_app": "Application ID",
+        "rt_btn": "Fetch & diagnose",
+        "rt_running": "Analyzing Spark task metrics…",
+        "rt_need_url": "❌ Provide both the History Server URL and an application ID.",
+        "rt_read_fail": "❌ Could not read the event log: {err}",
+        "rt_http_fail": "❌ History Server request failed: {err}",
+        "rt_no_stages": "❌ No completed stages with task metrics were found.",
+        "rt_section": "## Runtime Skew Diagnosis (Spark task metrics)",
+        "rt_source": "Source: `{src}`",
+        "rt_counts": (
+            "{stages} stages measured — **{confirmed} confirmed skewed**, "
+            "{suspect} suspect."
+        ),
+        "rt_col_tasks": "Tasks",
+        "rt_col_dur": "Duration p50 → max",
+        "rt_col_dur_ratio": "Ratio",
+        "rt_col_shuf": "Shuffle read p50 → max",
+        "rt_col_shuf_ratio": "Ratio",
+        "rt_col_verdict": "Verdict",
+        "rt_verdict_confirmed": "⛔ straggler — skewed stage",
+        "rt_verdict_suspect": "⚠️ long tail — watch this stage",
+        "rt_verdict_ok": "✅ balanced",
+        "rt_more_stages": "*…and {n} more balanced stages.*",
+        "rt_sql_map_head": "**Skewed stages mapped to SQL (from the event log)**",
+        "rt_sql_map": "- Stage {sid} ← `{sql}`",
+        "rt_advice_head": (
+            "**Suggested first response (AQE skew handling)** — then paste "
+            "the mapped SQL above into the static analysis / live probe to "
+            "find the skewed key:"
+        ),
+        "rt_advice_next": (
+            "AQE only mitigates shuffle-side skew; a skewed GROUP BY / JOIN "
+            "key still needs the SQL-level fix from the report above."
+        ),
+        "rt_all_ok": (
+            "✅ Task durations and shuffle reads are balanced across every "
+            "measured stage — no runtime skew signal."
+        ),
+        "dsk_conn_handoff": (
+            "🔗 Connection handed over from Data Comparison side B "
+            "({ds} {host}:{port}/{db}) — enter the password and click Connect."
+        ),
+        "dsk_conn_handoff_unsupported": (
+            "⚠️ The data source handed over from Data Comparison ({t}) does "
+            "not support live probing here — pick a supported type manually."
+        ),
         # --- consistency measurement ---
         "cst_btn": "Measure Consistency (runs both SQLs)",
         "cst_running": "Running the original and the optimized SQL for comparison…",
@@ -252,6 +424,156 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_sampled_note": "（按 {pct}% 表采样估算）",
         "prb_engine_params": "**建议引擎参数（基于实测倾斜）**",
         "prb_rewrite_head": "**改写模板（按实测值生成——列清单需自行补全）**",
+        "prb_storage_head": "**存储/建模层建议（基于实测倾斜）**",
+        # --- SeaTunnel split-key check ---
+        "spk_accordion": "SeaTunnel 分片键体检（粘贴作业配置）",
+        "spk_conf_placeholder": (
+            "粘贴 SeaTunnel 作业配置（HOCON）——将连库实测 JDBC source 的 "
+            "partition_column 分布是否均匀…"
+        ),
+        "spk_btn": "体检分片键",
+        "spk_need_conn": "⚠️ 请先连接数据源（分片键需在真实数据上实测）。",
+        "spk_empty_conf": "❌ 请先粘贴 SeaTunnel 作业配置。",
+        "spk_parse_fail": "❌ 配置解析失败：{err}",
+        "spk_no_source": "❌ 配置中未找到带 table/query 的 source 块。",
+        "spk_no_table": "❌ 无法从 source 块解析出基表（查询较复杂——请配置 table_path 或简化 query）。",
+        "spk_section": "## SeaTunnel 分片键体检（实测）",
+        "spk_configured": "已配置的 `partition_column`",
+        "spk_none_configured": (
+            "未配置 `partition_column`——source 将单线程读取；"
+            "可从下方候选列中选择均匀键开启并行读。"
+        ),
+        "spk_col_column": "列",
+        "spk_col_rows": "总行数",
+        "spk_col_ndv": "NDV（基数）",
+        "spk_col_null": "NULL 占比",
+        "spk_col_top1": "Top-1 占比",
+        "spk_col_verdict": "判定",
+        "spk_verdict_good": "✅ 分布均匀——适合作分片键",
+        "spk_verdict_suspect": "⚠️ 轻度倾斜——可用，注意 task 均衡",
+        "spk_verdict_bad": "⛔ 倾斜——单个 task 将读取大部分数据",
+        "spk_verdict_low_ndv": "⛔ 基数过低，撑不起配置的并行度",
+        "spk_verdict_null": "⛔ NULL 过多——NULL 行会集中到同一分片",
+        "spk_verdict_error": "探查失败",
+        "spk_candidates": "**候选分片列（实测，优先级从高到低）**",
+        "spk_no_candidates": "该表未能实测到数值/日期类候选列。",
+        "spk_snippet_head": "**建议的 source 配置**",
+        "spk_sampled_note": "（按 {pct}% 表采样估算）",
+        "spk_sink_note": (
+            "写入端同理：Doris/ClickHouse 的分桶键若用该倾斜列，"
+            "倾斜会物化到目标端存储。"
+        ),
+        "spk_recheck_improved": (
+            "🔁 复测对比：上次体检（{ts}，key=`{pk}`，判定 {pv}）→ 本次判定 "
+            "{cv} —— ✅ 分片键问题已解决，闭环完成。"
+        ),
+        "spk_recheck_regressed": (
+            "🔁 复测对比：上次体检（{ts}，key=`{pk}`，判定 {pv}）→ 本次判定 "
+            "{cv} —— ⚠️ 出现退化：该键此前实测正常，请排查数据分布变化。"
+        ),
+        "spk_recheck_still_bad": (
+            "🔁 复测对比：上次体检（{ts}，key=`{pk}`，判定 {pv}）→ 本次判定 "
+            "{cv} —— ⚠️ 仍未解决：请按候选列修改 partition_column 后再次体检。"
+        ),
+        "spk_apply_fail": "❌ 无法在配置文本中定位写入点，未做任何修改。",
+        "spk_apply_done": (
+            "✅ 已把分片键写回配置：{opt} = \"{col}\"（原文件备份为 {bak}）。"
+            "请重新体检验证。"
+        ),
+        "spk_apply_none": (
+            "ℹ️ 没有可写回的推荐分片键：未实测到 good/suspect 的键，"
+            "或现配置已是最优。"
+        ),
+        "spk_apply_multi": (
+            "❌ 配置包含 {n} 个 source——写回仅支持单 source 配置"
+            "（文本级修改可能改错位置），请按报告逐个手动修改。"
+        ),
+        "spk_apply_dl": "⬇️ 下载修改后配置",
+        "spk_recheck_drift": (
+            "🔁 复测对比：上次体检（{ts}）判定仍正常，但 top-1 占比从 "
+            "{prev}% 漂移到 {cur}%（{delta} pp）——建议关注该表，防止恶化。"
+        ),
+        "spk_batch_section": "## SeaTunnel 分片键巡检（目录批量）",
+        "spk_batch_counts": (
+            "扫描 {files} 个配置——实测 {sources} 个 source，"
+            "**{bad} 个键倾斜**，{none} 个未配置分片键，{errors} 个解析失败。"
+        ),
+        "spk_batch_col_file": "配置",
+        "spk_batch_col_table": "source 表",
+        "spk_batch_col_key": "分片键",
+        "spk_batch_col_best": "建议键",
+        "spk_batch_no_key": "⚠️ 未配置分片键——单线程读取",
+        "spk_batch_keep": "（保持现配置）",
+        "spk_batch_hint": (
+            "对被标记的配置运行 `seatunnel-agent skew-splitkey <文件>` "
+            "查看完整逐列报告，`--apply` 可把建议键写回。"
+        ),
+        "snk_section": "### Sink 端键体检（实测）",
+        "snk_intro": (
+            "sink 的分布键在源表 `{table}` 上实测——sink 写出的数据就是该 "
+            "source 读入的数据。"
+        ),
+        "snk_line": "sink {sink}，选项 `{opt}`：",
+        "snk_verdict_good": "✅ 均匀——可放心作分布键",
+        "snk_verdict_suspect": "⚠️ 轻度热点——关注写入均衡",
+        "snk_verdict_bad": "⛔ 热点键——写入会集中到同一分桶/分片/分区",
+        "snk_verdict_null": "⛔ NULL 过多——NULL 行会落入同一分桶",
+        "snk_hot_note": (
+            "热点 sink 键会把倾斜物化到目标端存储（某个分桶/分区持续膨胀）"
+            "——建议换更均匀的列或使用组合键。"
+        ),
+        "spk_multi_note": "配置声明了 {n} 个 source，以下逐一体检。",
+        "spk_multi_truncated": (
+            "配置声明了 {n} 个 source，本次仅体检前 {shown} 个（单次上限）。"
+        ),
+        # --- runtime diagnosis (Spark task metrics) ---
+        "rt_accordion": "运行时诊断（Spark event log / History Server）",
+        "rt_upload_btn": "分析 event log 文件",
+        "rt_url": "History Server 地址",
+        "rt_app": "Application ID",
+        "rt_btn": "拉取并诊断",
+        "rt_running": "正在分析 Spark 任务指标…",
+        "rt_need_url": "❌ 请同时填写 History Server 地址和 Application ID。",
+        "rt_read_fail": "❌ event log 读取失败：{err}",
+        "rt_http_fail": "❌ History Server 请求失败：{err}",
+        "rt_no_stages": "❌ 未找到带任务指标的已完成 stage。",
+        "rt_section": "## 运行时倾斜诊断（Spark 任务实测）",
+        "rt_source": "来源：`{src}`",
+        "rt_counts": (
+            "共实测 {stages} 个 stage —— **{confirmed} 个确认倾斜**，"
+            "{suspect} 个疑似。"
+        ),
+        "rt_col_tasks": "任务数",
+        "rt_col_dur": "时长 p50 → max",
+        "rt_col_dur_ratio": "倍数",
+        "rt_col_shuf": "shuffle 读 p50 → max",
+        "rt_col_shuf_ratio": "倍数",
+        "rt_col_verdict": "判定",
+        "rt_verdict_confirmed": "⛔ 拖尾任务——确认倾斜",
+        "rt_verdict_suspect": "⚠️ 长尾——建议关注",
+        "rt_verdict_ok": "✅ 均衡",
+        "rt_more_stages": "*……其余 {n} 个 stage 均衡。*",
+        "rt_sql_map_head": "**倾斜 stage 对应的 SQL（来自 event log）**",
+        "rt_sql_map": "- Stage {sid} ← `{sql}`",
+        "rt_advice_head": (
+            "**建议的第一响应（AQE 倾斜处理）**——随后把上面映射到的 SQL "
+            "粘到静态分析 / 连库探查里定位倾斜键："
+        ),
+        "rt_advice_next": (
+            "AQE 只能缓解 shuffle 侧倾斜；GROUP BY / JOIN 键本身倾斜仍需"
+            "按上方报告做 SQL 级修复。"
+        ),
+        "rt_all_ok": (
+            "✅ 各 stage 的任务时长与 shuffle 读均衡——未发现运行时倾斜信号。"
+        ),
+        "dsk_conn_handoff": (
+            "🔗 已带入数据比对页 B 侧连接（{ds} {host}:{port}/{db}）——"
+            "请补密码后点连接。"
+        ),
+        "dsk_conn_handoff_unsupported": (
+            "⚠️ 数据比对页带入的数据源类型（{t}）不支持在此实测——"
+            "请手动选择支持的类型。"
+        ),
         # --- consistency measurement ---
         "cst_btn": "一致性实测（运行两版 SQL）",
         "cst_running": "正在运行原 SQL 与优化后 SQL 进行对比…",

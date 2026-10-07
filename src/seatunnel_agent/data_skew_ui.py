@@ -30,6 +30,21 @@ from .data_skew.probe import (
     render_probe_section,
     run_probes,
 )
+from .data_skew.runtime import (
+    RuntimeSkewError,
+    analyze_history_server,
+    parse_eventlog,
+    render_runtime_section,
+)
+from .data_skew.splitkey import (
+    SplitKeyError,
+    apply_split_key,
+    pick_best_key,
+    render_splitkey_multi,
+    run_split_key_multi,
+    sink_key_section,
+    splitkey_metrics,
+)
 from .text2sql.executor.base import (
     DIALECT_NAMES,
     DS_DEFAULTS,
@@ -79,7 +94,36 @@ def _head_re(*heads: str) -> re.Pattern[str]:
 
 _PROBE_HEAD_RE = _head_re(dsk("zh", "prb_section"), dsk("en", "prb_section"))
 _CST_HEAD_RE = _head_re(dsk("zh", "cst_section"), dsk("en", "cst_section"))
+_SPK_HEAD_RE = _head_re(dsk("zh", "spk_section"), dsk("en", "spk_section"))
+_RT_HEAD_RE = _head_re(dsk("zh", "rt_section"), dsk("en", "rt_section"))
 _NEXT_H2_RE = re.compile(r"(?m)^[ \t]{0,3}#{1,2}\s")
+
+# Cookie the Data Comparison page sets alongside the SQL handoff so the
+# user lands here with side B's connection pre-filled (no password).
+CONN_HANDOFF_COOKIE = "st_dataskew_conn"
+
+
+def parse_conn_handoff(raw: str | None) -> dict | None:
+    """Decode the ``st_dataskew_conn`` cookie into a connection dict, or
+    None when absent/garbled. Pure so it is unit-testable."""
+    import json
+    from urllib.parse import unquote
+
+    if not raw:
+        return None
+    try:
+        data = json.loads(unquote(raw))
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return {
+        "ds_type": str(data.get("ds_type") or "").lower(),
+        "host": str(data.get("host") or ""),
+        "port": str(data.get("port") or ""),
+        "database": str(data.get("database") or ""),
+        "username": str(data.get("username") or ""),
+    }
 
 
 def _remove_section(report: str, head_re: re.Pattern[str]) -> str:
@@ -155,6 +199,34 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                     cst_btn = gr.Button(t0("cst_btn"), size="sm",
                                         variant="secondary")
                 conn_status = gr.Markdown(t0("dsk_conn_status_none"))
+            with gr.Accordion(t0("spk_accordion"), open=False) as spk_acc:
+                spk_conf_tb = gr.Textbox(
+                    label="SeaTunnel config", lines=8, max_lines=8,
+                    placeholder=t0("spk_conf_placeholder"),
+                    show_label=False,
+                )
+                with gr.Row():
+                    spk_btn = gr.Button(t0("spk_btn"), size="sm",
+                                        variant="secondary")
+                    spk_upload_btn = gr.UploadButton(
+                        t0("dsk_upload_btn"), size="sm", scale=0, min_width=140,
+                        file_types=[".conf", ".hocon", ".config", ".json", ".txt"])
+                # appears after a check that measured a better split key:
+                # the pasted config with the key already written in
+                spk_apply_dl_btn = gr.DownloadButton(
+                    t0("spk_apply_dl"), visible=False, size="sm")
+            with gr.Accordion(t0("rt_accordion"), open=False) as rt_acc:
+                with gr.Row():
+                    rt_url_tb = gr.Textbox(
+                        label=t0("rt_url"), placeholder="http://host:18080")
+                    rt_app_tb = gr.Textbox(
+                        label=t0("rt_app"), placeholder="application_…")
+                with gr.Row():
+                    rt_btn = gr.Button(t0("rt_btn"), size="sm",
+                                       variant="secondary")
+                    # event logs often have no extension — accept any file
+                    rt_upload_btn = gr.UploadButton(
+                        t0("rt_upload_btn"), size="sm", scale=0, min_width=170)
             with gr.Accordion(t0("dsk_history_accordion"),
                               open=False) as hist_acc:
                 with gr.Row():
@@ -294,6 +366,105 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             return gr.update(), _err_md(exc, lang)
         return (_append_section(report_cur, section, _CST_HEAD_RE),
                 _restored_status(lang, conn))
+
+    def _patched_conf_update(conf_text: str, results, total: int):
+        """DownloadButton update: the pasted config with the measured best
+        key written in — only for single-source configs where the best key
+        differs from the configured one (mirrors the CLI --apply guard)."""
+        hide = gr.update(visible=False)
+        if total != 1:
+            return hide
+        spec, configured, candidates = results[0]
+        best = pick_best_key(spec, configured, candidates)
+        if best is None or best.column == spec.partition_column:
+            return hide
+        try:
+            patched = apply_split_key(
+                conf_text, spec, best.column,
+                partition_num=max(spec.partition_num, spec.tasks))
+        except SplitKeyError:
+            return hide
+        return gr.update(visible=True,
+                         value=_tmp_file("seatunnel_patched.conf", patched))
+
+    def do_splitkey(conf_text: str, report_cur: str, sample: int,
+                    lang: str, conn: dict | None):
+        hide = gr.update(visible=False)
+        if not conn or conn.get("executor") is None:
+            return gr.update(), dsk(lang, "spk_need_conn"), hide
+        conf_text = (conf_text or "").strip()
+        if not conf_text:
+            return gr.update(), dsk(lang, "spk_empty_conf"), hide
+        pct = effective_sample_pct(conn["ds_type"], int(sample or 0))
+        try:
+            results, total = run_split_key_multi(
+                conn["executor"], conf_text,
+                ds_type=conn["ds_type"], sample_pct=pct)
+            # last checks of the same tables (fetched before logging this
+            # run) render as the re-check comparison lines
+            previous_by_table = {
+                spec.table: prev for spec, _, _ in results
+                if (prev := history.last_splitkey(spec.table))}
+            section = render_splitkey_multi(
+                results, lang, sample_pct=pct, total=total,
+                previous_by_table=previous_by_table)
+            # sink-side keys (sharding/partition/primary): additive check
+            snk = sink_key_section(conn["executor"], conf_text,
+                                   ds_type=conn["ds_type"], sample_pct=pct,
+                                   lang=lang)
+            if snk:
+                section = section + "\n" + snk
+        except SplitKeyError as exc:
+            return gr.update(), dsk(lang, exc.key).format(err=exc.arg), hide
+        except Exception as exc:  # noqa: BLE001 — surface in the UI
+            return gr.update(), _err_md(exc, lang), hide
+        for spec, configured, candidates in results:
+            history.log_splitkey(
+                spec.table, spec.partition_column,
+                configured.verdict(spec.tasks) if configured else "none",
+                candidates=len(candidates), source="ui",
+                **splitkey_metrics(configured))
+        return (_append_section(report_cur, section, _SPK_HEAD_RE),
+                _restored_status(lang, conn),
+                _patched_conf_update(conf_text, results, total))
+
+    def _runtime_report(stages, label: str, report_cur: str, lang: str,
+                        conn: dict | None):
+        confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
+        suspect = sum(1 for s in stages if s.verdict() == "suspect")
+        history.log_runtime(label, len(stages), confirmed, suspect,
+                            source="ui")
+        section = render_runtime_section(stages, lang, source_label=label)
+        return (_append_section(report_cur, section, _RT_HEAD_RE),
+                _restored_status(lang, conn))
+
+    def do_runtime_file(path, report_cur: str, lang: str, conn: dict | None):
+        if isinstance(path, (list, tuple)):
+            path = path[0] if path else None
+        if not path:
+            return gr.update(), _restored_status(lang, conn)
+        try:
+            stages, label = parse_eventlog(str(path))
+        except RuntimeSkewError as exc:
+            return gr.update(), dsk(lang, exc.key).format(err=exc.arg)
+        except Exception as exc:  # noqa: BLE001 — surface in the UI
+            return gr.update(), _err_md(exc, lang)
+        # the uploaded temp name is meaningless — label with the app name
+        # from the log when it has one
+        label = label if not str(label).startswith("tmp") else "event log"
+        return _runtime_report(stages, label, report_cur, lang, conn)
+
+    def do_runtime_history(url: str, app_id: str, report_cur: str,
+                           lang: str, conn: dict | None):
+        if not (url or "").strip() or not (app_id or "").strip():
+            return gr.update(), dsk(lang, "rt_need_url")
+        try:
+            stages, label = analyze_history_server(url, app_id)
+        except RuntimeSkewError as exc:
+            return gr.update(), dsk(lang, exc.key).format(err=exc.arg)
+        except Exception as exc:  # noqa: BLE001 — surface in the UI
+            return gr.update(), _err_md(exc, lang)
+        return _runtime_report(stages, label, report_cur, lang, conn)
 
     def _probe_for_llm(sql: str, lang: str, dialect: str, sample: int,
                        conn: dict | None) -> tuple[str, str]:
@@ -542,6 +713,46 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         outputs=[report_md, conn_status],
     )
 
+    spk_btn.click(
+        lambda lang: gr.update(value=f"⏳ {dsk(lang, 'dsk_verify_running')}"),
+        inputs=[lang_state],
+        outputs=[conn_status],
+    ).then(
+        do_splitkey,
+        inputs=[spk_conf_tb, report_md, sample_dd, lang_state, conn_state],
+        outputs=[report_md, conn_status, spk_apply_dl_btn],
+    )
+
+    rt_btn.click(
+        lambda lang: gr.update(value=f"⏳ {dsk(lang, 'rt_running')}"),
+        inputs=[lang_state],
+        outputs=[conn_status],
+    ).then(
+        do_runtime_history,
+        inputs=[rt_url_tb, rt_app_tb, report_md, lang_state, conn_state],
+        outputs=[report_md, conn_status],
+    )
+
+    rt_upload_btn.upload(
+        do_runtime_file,
+        inputs=[rt_upload_btn, report_md, lang_state, conn_state],
+        outputs=[report_md, conn_status],
+    )
+
+    def do_conf_upload(path):
+        if isinstance(path, (list, tuple)):
+            path = path[0] if path else None
+        if not path:
+            return gr.update()
+        try:
+            text = Path(str(path)).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return gr.update()
+        return gr.update(value=text[:200_000])
+
+    spk_upload_btn.upload(do_conf_upload, inputs=[spk_upload_btn],
+                          outputs=[spk_conf_tb])
+
     # Language switch — the returned tuple must stay positionally aligned
     # with the outputs list below.
     def _placeholder_update(current: str, key: str, lg: str):
@@ -583,6 +794,16 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             _placeholder_update(conn_cur, "dsk_conn_status_none", lg),  # conn_status
             # UploadButton: value is the uploaded FILE — the text is `label`
             gr.update(label=t("dsk_upload_btn")),                  # upload_btn
+            gr.update(label=t("spk_accordion")),                   # spk_acc
+            gr.update(placeholder=t("spk_conf_placeholder")),      # spk_conf_tb
+            gr.update(value=t("spk_btn")),                         # spk_btn
+            gr.update(label=t("dsk_upload_btn")),                  # spk_upload_btn
+            gr.update(label=t("spk_apply_dl")),                    # spk_apply_dl_btn
+            gr.update(label=t("rt_accordion")),                    # rt_acc
+            gr.update(label=t("rt_url")),                          # rt_url_tb
+            gr.update(label=t("rt_app")),                          # rt_app_tb
+            gr.update(value=t("rt_btn")),                          # rt_btn
+            gr.update(label=t("rt_upload_btn")),                   # rt_upload_btn
             gr.update(label=t("dsk_history_accordion")),           # hist_acc
             gr.update(label=t("dsk_history_pick")),                # hist_dd
             gr.update(value=t("dsk_history_refresh")),             # hist_refresh_btn
@@ -608,7 +829,10 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             conn_acc, preset_dd, preset_load_btn,
             ds_dd, sample_dd, host_tb, port_tb, db_tb, user_tb, pwd_tb,
             connect_btn, verify_btn, cst_btn, conn_status,
-            upload_btn, hist_acc, hist_dd, hist_refresh_btn, hist_load_btn,
+            upload_btn, spk_acc, spk_conf_tb, spk_btn, spk_upload_btn,
+            spk_apply_dl_btn,
+            rt_acc, rt_url_tb, rt_app_tb, rt_btn, rt_upload_btn,
+            hist_acc, hist_dd, hist_refresh_btn, hist_load_btn,
             hist_md,
         ],
     )
@@ -628,3 +852,37 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                 t.dispatchEvent(new Event('input', {bubbles: true}));
             }
         }, 600)""")
+
+    # Connection handed over from Data Comparison (short-lived cookie set by
+    # the skew card's goto button; no password travels): pre-fill the form
+    # and open the accordion, the user adds the password and connects.
+    def _conn_handoff_on_load(request: gr.Request):
+        noop = tuple(gr.update() for _ in range(7))
+        data = parse_conn_handoff(
+            (request.cookies or {}).get(CONN_HANDOFF_COOKIE))
+        if data is None:
+            return noop
+        from .lang_pref import choice_from_request
+        lg = choice_from_request(request)
+        if data["ds_type"] not in _PROBE_DS:
+            return (*tuple(gr.update() for _ in range(6)),
+                    dsk(lg, "dsk_conn_handoff_unsupported").format(
+                        t=data["ds_type"] or "?"))
+        return (
+            gr.update(open=True),                    # conn_acc
+            gr.update(value=data["ds_type"]),        # ds_dd
+            gr.update(value=data["host"]),           # host_tb
+            gr.update(value=data["port"]),           # port_tb
+            gr.update(value=data["database"]),       # db_tb
+            gr.update(value=data["username"]),       # user_tb
+            dsk(lg, "dsk_conn_handoff").format(
+                ds=data["ds_type"], host=data["host"],
+                port=data["port"], db=data["database"]),  # conn_status
+        )
+
+    app.load(
+        _conn_handoff_on_load,
+        inputs=None,
+        outputs=[conn_acc, ds_dd, host_tb, port_tb, db_tb, user_tb,
+                 conn_status],
+    )
