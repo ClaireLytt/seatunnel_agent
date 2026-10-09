@@ -182,7 +182,7 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
 @click.option("--port", "-p", type=int, default=7860, help="Port for the web UI")
 @click.option("--host", "-h", type=str, default="127.0.0.1", help="Host to bind (0.0.0.0 for LAN access)")
 @click.option("--share", is_flag=True, help="Create a public Gradio link")
-@click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/, /api/skew/)")
+@click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/, /api/skew/, /api/cost/, /api/reconcile/)")
 def ui(port: int, host: str, share: bool, api: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     try:
@@ -2366,6 +2366,190 @@ def govern(sql_dir: str, qlog: str | None, days: int,
         from pathlib import Path as _P
         _P(output).write_text(text, encoding="utf-8")
         console.print(f"[green]报告已写入 {output}[/green]")
+
+
+@cli.command(name="cost")
+@click.option("--qlog", type=click.Path(exists=True), default=None,
+              help="查询审计日志（默认 logs/text2sql_queries.jsonl）")
+@click.option("--days", type=int, default=30, show_default=True,
+              help="分析窗口天数")
+@click.option("--top", "top_n", type=int, default=10, show_default=True,
+              help="每节展示的条数")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言（昂贵模式扫描用）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="报告写入文件")
+def cost(qlog: str | None, days: int, top_n: int, dialect: str,
+         lang: str, fmt: str, output: str | None) -> None:
+    """查询成本顾问：审计日志 → Top 烧钱查询/按表成本/缺分区过滤（只建议不动手）。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    from pathlib import Path as _P
+
+    from .cost_advisor import analyze_cost, render_markdown, report_to_dict
+
+    report = analyze_cost(qlog, days=days, top_n=top_n, dialect=dialect)
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        _P(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+
+@cli.command(name="syncgen")
+@click.option("--ddl", "ddl_path", type=click.Path(exists=True), default=None,
+              help="离线 DDL 文件或目录（与 --db 互斥）")
+@click.option("--db", "database", default=None,
+              help="在线 introspect 的 MySQL 库名（凭据走 MYSQL_* 环境变量）")
+@click.option("--sink-type", type=click.Choice(["console", "doris",
+              "starrocks", "hive"]), default="console", show_default=True,
+              help="目标端类型（console 不生成建表 DDL）")
+@click.option("--out", "out_dir", type=click.Path(), default=None,
+              help="输出目录（configs/ + ddl/ + manifest）")
+@click.option("--include", default=None, help="表名 include 正则")
+@click.option("--exclude", default=None, help="表名 exclude 正则")
+@click.option("--pii/--no-pii", default=False,
+              help="对 PII 列注入脱敏 transform")
+@click.option("--pii-rules", type=click.Path(exists=True), default=None,
+              help="自定义 PII 规则 YAML（追加到内置规则）")
+@click.option("--pii-strategy", type=click.Choice(["md5", "mask"]),
+              default="md5", show_default=True, help="脱敏策略")
+@click.option("--parallelism", type=int, default=2, show_default=True,
+              help="生成配置的 env.parallelism")
+@click.option("--dry-run", is_flag=True, help="只打印 manifest，不写文件")
+@click.option("--fail-on", type=click.Choice(["unmapped", "pii"]),
+              default=None,
+              help="CI gate: unmapped=存在未映射类型; pii=发现 PII 列但未开 --pii")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="manifest 报告另存文件")
+def syncgen(ddl_path: str | None, database: str | None, sink_type: str,
+            out_dir: str | None, include: str | None, exclude: str | None,
+            pii: bool, pii_rules: str | None, pii_strategy: str,
+            parallelism: int, dry_run: bool, fail_on: str | None,
+            lang: str, fmt: str, output: str | None) -> None:
+    """全库同步生成器：introspect 源库/解析 DDL → 批量生成同步配置+建表语句。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    import sys as _sys
+    from pathlib import Path as _P
+
+    from .sync_gen import (SyncPlan, generate_sync, render_markdown,
+                           report_to_dict, write_outputs)
+
+    if bool(ddl_path) == bool(database):
+        console.print("[red]--ddl 与 --db 必须二选一[/red]")
+        _sys.exit(2)
+    if not dry_run and not out_dir:
+        console.print("[red]需要 --out 输出目录（或用 --dry-run 只看 manifest）[/red]")
+        _sys.exit(2)
+
+    plan = SyncPlan(
+        source_mode="live" if database else "ddl",
+        ddl_path=ddl_path, database=database, sink_type=sink_type,
+        include=include, exclude=exclude, pii=pii,
+        pii_rules_path=pii_rules, pii_strategy=pii_strategy,
+        parallelism=parallelism)
+    try:
+        result = generate_sync(plan)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        _sys.exit(2)
+
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(result, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        _P(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+    if not dry_run:
+        written = write_outputs(result, out_dir)
+        console.print(f"[dim]已生成 {len(written)} 个文件 → {out_dir}[/dim]")
+
+    if fail_on == "unmapped" and result.unmapped_count:
+        console.print(f"[red]CI gate: {result.unmapped_count} 个未映射类型[/red]")
+        _sys.exit(1)
+    if fail_on == "pii" and result.pii_columns and not pii:
+        console.print(
+            f"[red]CI gate: 发现 {result.pii_columns} 个 PII 列但未开 --pii[/red]")
+        _sys.exit(1)
+
+
+@cli.command(name="reconcile")
+@click.option("--sql-a", "sql_a", default=None, help="第一条 SQL（内联）")
+@click.option("--sql-b", "sql_b", default=None, help="第二条 SQL（内联）")
+@click.option("--file-a", "file_a", type=click.Path(exists=True), default=None,
+              help="第一条 SQL 文件")
+@click.option("--file-b", "file_b", type=click.Path(exists=True), default=None,
+              help="第二条 SQL 文件")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["critical", "risk", "info"]),
+              default=None,
+              help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="报告写入文件")
+def reconcile(sql_a: str | None, sql_b: str | None, file_a: str | None,
+              file_b: str | None, dialect: str, lang: str,
+              fail_on: str | None, fmt: str, output: str | None) -> None:
+    """SQL 口径对账：AST 级对比两条 SQL，解释两个报表数字为何对不上。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    from pathlib import Path as _P
+
+    from .sql_reconcile import reconcile_sql, render_markdown, report_to_dict
+
+    text_a = sql_a or (_P(file_a).read_text(encoding="utf-8") if file_a else "")
+    text_b = sql_b or (_P(file_b).read_text(encoding="utf-8") if file_b else "")
+    if not text_a.strip() or not text_b.strip():
+        console.print("[red]请提供两条 SQL：--sql-a/--sql-b 或 --file-a/--file-b[/red]")
+        sys.exit(2)
+
+    report = reconcile_sql(text_a, text_b, dialect=dialect)
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        _P(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if report.parse_error:
+        sys.exit(2)
+    if fail_on:
+        rank = {"info": 1, "risk": 2, "critical": 3}
+        threshold = rank[fail_on]
+        worst = max((rank[f.severity] for f in report.findings), default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的口径差异，对账未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
 
 
 def _load_metrics_for_cli(metrics_file: str | None, ddl: str | None):
