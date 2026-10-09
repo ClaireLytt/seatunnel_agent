@@ -21,7 +21,8 @@ from typing import Any, Iterable
 
 from ..data_lineage.graph import LineageGraph
 from ..data_lineage.loaders import from_sql_files
-from .rules import DEFAULT_RULES, PiiRule, expression_is_masked
+from .rules import (DEFAULT_RULES, PiiRule, expression_is_masked,
+                    match_column)
 
 _SEV_RANK = {"low": 1, "medium": 2, "high": 3}
 _RANK_SEV = {v: k for k, v in _SEV_RANK.items()}
@@ -186,41 +187,7 @@ def _merge_columns(ddl: Iterable[ColumnRef],
 def _match_rules(ref: ColumnRef, rules: Iterable[PiiRule],
                  ) -> tuple[PiiRule, str, str, str] | None:
     """Best (rule, confidence, matched_by, evidence) for one column."""
-    best: tuple[int, int, PiiRule, str, str, str] | None = None
-    name = ref.column.lower()
-    comment = ref.comment or ""
-    for rule in rules:
-        strong, weak = rule.compiled()
-
-        def _hit_text(patterns: list) -> str:
-            for p in patterns:
-                m = p.search(name)
-                if m:
-                    return m.group(0).strip("_") or name
-            return ""
-
-        matched_name = _hit_text(strong)
-        matched_weak = "" if matched_name else _hit_text(weak)
-        matched_kw = next(
-            (k for k in rule.comment_keywords if k and k in comment), "")
-        if not (matched_name or matched_weak or matched_kw):
-            continue
-        if matched_name and matched_kw:
-            matched_by, evidence, conf = ("name+comment",
-                                          f"{matched_name} + {matched_kw}",
-                                          "high")
-        elif matched_name:
-            matched_by, evidence, conf = "name", matched_name, "high"
-        elif matched_kw:
-            matched_by, evidence, conf = "comment", matched_kw, "high"
-        else:
-            matched_by, evidence, conf = "name", matched_weak, "low"
-        score = (_SEV_RANK[rule.severity], 1 if conf == "high" else 0)
-        if best is None or score > (best[0], best[1]):
-            best = (*score, rule, conf, matched_by, evidence)
-    if best is None:
-        return None
-    return best[2], best[3], best[4], best[5]
+    return match_column(ref.column, ref.comment or "", rules)
 
 
 def _spread(graph: LineageGraph, table: str, column: str,

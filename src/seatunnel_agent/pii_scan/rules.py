@@ -12,6 +12,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Iterable
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,52 @@ DEFAULT_RULES: tuple[PiiRule, ...] = (
 )
 
 _SEVERITIES = ("high", "medium", "low")
+_SEV_RANK = {"low": 1, "medium": 2, "high": 3}
+
+
+def match_column(name: str, comment: str,
+                 rules: "Iterable[PiiRule]",
+                 ) -> tuple[PiiRule, str, str, str] | None:
+    """Best ``(rule, confidence, matched_by, evidence)`` for one column.
+
+    Shared by the lineage scanner and sync_gen's masking injection —
+    one source of truth for "does this column look like PII".
+    """
+    best: tuple[int, int, PiiRule, str, str, str] | None = None
+    name = (name or "").lower()
+    comment = comment or ""
+    for rule in rules:
+        strong, weak = rule.compiled()
+
+        def _hit_text(patterns: list) -> str:
+            for p in patterns:
+                m = p.search(name)
+                if m:
+                    return m.group(0).strip("_") or name
+            return ""
+
+        matched_name = _hit_text(strong)
+        matched_weak = "" if matched_name else _hit_text(weak)
+        matched_kw = next(
+            (k for k in rule.comment_keywords if k and k in comment), "")
+        if not (matched_name or matched_weak or matched_kw):
+            continue
+        if matched_name and matched_kw:
+            matched_by, evidence, conf = ("name+comment",
+                                          f"{matched_name} + {matched_kw}",
+                                          "high")
+        elif matched_name:
+            matched_by, evidence, conf = "name", matched_name, "high"
+        elif matched_kw:
+            matched_by, evidence, conf = "comment", matched_kw, "high"
+        else:
+            matched_by, evidence, conf = "name", matched_weak, "low"
+        score = (_SEV_RANK[rule.severity], 1 if conf == "high" else 0)
+        if best is None or score > (best[0], best[1]):
+            best = (*score, rule, conf, matched_by, evidence)
+    if best is None:
+        return None
+    return best[2], best[3], best[4], best[5]
 
 
 def load_extra_rules(path: str | Path) -> list[PiiRule]:

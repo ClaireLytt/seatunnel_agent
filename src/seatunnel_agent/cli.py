@@ -182,7 +182,7 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
 @click.option("--port", "-p", type=int, default=7860, help="Port for the web UI")
 @click.option("--host", "-h", type=str, default="127.0.0.1", help="Host to bind (0.0.0.0 for LAN access)")
 @click.option("--share", is_flag=True, help="Create a public Gradio link")
-@click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/, /api/skew/)")
+@click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/, /api/skew/, /api/cost/, /api/reconcile/)")
 def ui(port: int, host: str, share: bool, api: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     try:
@@ -1427,6 +1427,188 @@ def t2s_index_values(ddl: str | None, ds_type: str, database: str,
     )
 
 
+@cli.command(name="t2s-search")
+@click.argument("query")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
+@click.option("--metrics", "metrics_file", type=click.Path(exists=True), default=None,
+              help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--top", "-n", type=int, default=5, show_default=True, help="每类返回条数")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="输出格式")
+def t2s_search(query: str, ddl: str | None, metrics_file: str | None,
+               top: int, fmt: str) -> None:
+    """数据目录检索：一句话同时搜表/指标/取值（复用混合检索与值索引，免 LLM）。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    import os as _os
+    from pathlib import Path
+
+    from .text2sql.catalog import render_catalog_markdown, search_catalog
+    from .text2sql.metrics import load_metric_store
+    from .text2sql.retrieval import schema_hash
+    from .text2sql.schema import SchemaStore
+    from .text2sql.values import ValueIndex
+
+    ddl_path = ddl or _os.getenv("SCHEMA_DDL_PATH", "config/schema_ddl.sql")
+    if not Path(ddl_path).is_file():
+        raise click.ClickException(f"DDL 文件不存在: {ddl_path}")
+    store = SchemaStore.from_file(ddl_path)
+    metric_store, errors = load_metric_store(store, path=metrics_file)
+    for e in errors[:3]:
+        console.print(f"[yellow]指标定义警告: {e}[/yellow]")
+    value_index = ValueIndex.load(schema_hash(store))  # None when not built
+
+    result = search_catalog(
+        query, store, metric_store=metric_store,
+        value_index=value_index, top_n=top,
+    )
+    if fmt == "json":
+        console.print(_json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        console.print(render_catalog_markdown(result))
+
+
+@cli.command(name="t2s-rootcause")
+@click.option("--metric", required=True, help="指标名（metrics.yaml 中定义）")
+@click.option("--curr-start", required=True, help="当前期开始 YYYY-MM-DD / yyyyMMdd")
+@click.option("--curr-end", default="", help="当前期结束（默认同开始）")
+@click.option("--compare", "compare_mode", type=click.Choice(["mom", "wow", "yoy"]),
+              default="wow", show_default=True,
+              help="对比期推导：mom=环比等长前期 wow=上周同期 yoy=去年同期")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
+@click.option("--metrics", "metrics_file", type=click.Path(exists=True), default=None,
+              help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--ds-type", default="hive", show_default=True)
+@click.option("--connection", default="", help="连接预设名")
+@click.option("--database", default="", help="sqlite 数据库路径（仅 sqlite）")
+@click.option("--lineage-dir", default=None,
+              help="数仓 SQL 目录（上游血缘；默认 T2S_LINEAGE_SQL_DIR）")
+@click.option("--log-dir", default="", help="任务日志目录（错误簇关联）")
+@click.option("--depth", type=int, default=3, show_default=True, help="血缘追溯深度")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="输出格式")
+@click.option("--output", "-o", type=click.Path(), default=None, help="保存报告到文件")
+def t2s_rootcause(metric: str, curr_start: str, curr_end: str, compare_mode: str,
+                  ddl: str | None, metrics_file: str | None, ds_type: str,
+                  connection: str, database: str, lineage_dir: str | None,
+                  log_dir: str, depth: int, fmt: str, output: str | None) -> None:
+    """异动根因联动：归因(哪里变) × 血缘(上游谁) × 日志(出了什么错) 一份报告。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    import os as _os
+    from pathlib import Path
+
+    from .text2sql.metrics import (
+        MetricError, load_metric_store, parse_time_range,
+    )
+    from .text2sql.rootcause import render_root_cause_markdown, run_root_cause
+    from .text2sql.schema import SchemaStore
+    from .text2sql.subscriptions import resolve_db_config
+    from .text2sql.tools import Text2SQLRuntime, _attribution_execute, _derive_prev_range
+
+    ddl_path = ddl or _os.getenv("SCHEMA_DDL_PATH", "config/schema_ddl.sql")
+    if not Path(ddl_path).is_file():
+        raise click.ClickException(f"DDL 文件不存在: {ddl_path}")
+    store = SchemaStore.from_file(ddl_path)
+    metric_store, errors = load_metric_store(store, path=metrics_file)
+    for e in errors[:3]:
+        console.print(f"[yellow]指标定义警告: {e}[/yellow]")
+    m = metric_store.get(metric)
+    if m is None:
+        known = ", ".join(x.name for x in metric_store.metrics) or "(无)"
+        raise click.ClickException(f"指标 '{metric}' 未定义。已知指标: {known}")
+
+    db_config = resolve_db_config({
+        "ds_type": ds_type, "connection": connection, "database": database,
+    })
+    if db_config is None:
+        raise click.ClickException("无法解析数据库连接（连接名/环境变量）")
+    rt = Text2SQLRuntime(store=store, metrics=metric_store,
+                         ds_type=ds_type, db_config=db_config, source="cli")
+
+    try:
+        curr = parse_time_range(curr_start, curr_end)
+        prev = _derive_prev_range(curr, compare_mode)
+        report = run_root_cause(
+            m, metric_store, store,
+            _attribution_execute(rt, f"[rootcause] {metric}", metric),
+            curr, prev,
+            lineage_sql_dir=(lineage_dir
+                             or _os.getenv("T2S_LINEAGE_SQL_DIR", "").strip()),
+            log_dir=log_dir, depth=depth,
+        )
+    except MetricError as exc:
+        raise click.ClickException(str(exc))
+
+    if fmt == "json":
+        text_out = _json.dumps(report, ensure_ascii=False, indent=2, default=str)
+        print(text_out)
+    else:
+        text_out = render_root_cause_markdown(report)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+
+@cli.command(name="t2s-health")
+@click.option("--ddl", type=click.Path(exists=True), default=None,
+              help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
+@click.option("--qlog-dir", type=click.Path(file_okay=False), default="logs",
+              show_default=True, help="查询审计日志目录（热度来源）")
+@click.option("--lineage-dir", default=None,
+              help="数仓 SQL 目录（血缘覆盖与僵尸表检测；默认 T2S_LINEAGE_SQL_DIR）")
+@click.option("--stale-days", type=int, default=90, show_default=True,
+              help="分区表超过 N 天未查询则建议生命周期治理")
+@click.option("--top", "-n", type=int, default=20, show_default=True,
+              help="排行榜显示条数（低分在前）")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="输出格式")
+@click.option("--output", "-o", type=click.Path(), default=None, help="保存报告到文件")
+def t2s_health(ddl: str | None, qlog_dir: str, lineage_dir: str | None,
+               stale_days: int, top: int, fmt: str, output: str | None) -> None:
+    """数据资产健康分：热度×文档×血缘打分 + 僵尸表/生命周期/PII 治理建议。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    import os as _os
+    from pathlib import Path
+
+    from .text2sql.health import render_health_markdown, score_tables
+    from .text2sql.qlog import QueryLogger
+    from .text2sql.schema import SchemaStore
+
+    ddl_path = ddl or _os.getenv("SCHEMA_DDL_PATH", "config/schema_ddl.sql")
+    if not Path(ddl_path).is_file():
+        raise click.ClickException(f"DDL 文件不存在: {ddl_path}")
+    store = SchemaStore.from_file(ddl_path)
+    records = QueryLogger(log_dir=qlog_dir).recent(n=100000)
+
+    graph = None
+    sql_dir = lineage_dir or _os.getenv("T2S_LINEAGE_SQL_DIR", "").strip()
+    if sql_dir:
+        from .data_lineage.loaders import build_graph
+
+        graph, warnings = build_graph(sql_dir=sql_dir)
+        for w in warnings[:3]:
+            console.print(f"[yellow]血缘警告: {w}[/yellow]")
+    else:
+        console.print("[dim]未提供血缘目录：跳过血缘分项与僵尸表检测[/dim]")
+
+    report = score_tables(store, records, lineage_graph=graph,
+                          stale_days=stale_days)
+    if fmt == "json":
+        text_out = _json.dumps(report, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_health_markdown(report, top=top)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+
 @cli.command(name="t2s-mcp")
 @click.option("--ddl", type=click.Path(exists=True), default=None,
               help="schema DDL 文件（默认 SCHEMA_DDL_PATH / config/schema_ddl.sql）")
@@ -1622,6 +1804,8 @@ def loginspect(
 @click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
               default="markdown", help="Report format (json for machines/CI)")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+@click.option("--emit-ddl", "emit_ddl", type=click.Path(), default=None,
+              help="生成迁移 ALTER 脚本到该路径（破坏性变更只注释,不自动执行）")
 def schemadiff(
     old_path: str,
     new_path: str,
@@ -1630,6 +1814,7 @@ def schemadiff(
     fail_on: str | None,
     fmt: str,
     output: str | None,
+    emit_ddl: str | None,
 ) -> None:
     """Schema 漂移检查 — 对比两份 DDL 快照，按破坏/风险/提示分级报告变更。"""
     import json as _json
@@ -1649,6 +1834,17 @@ def schemadiff(
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if emit_ddl:
+        from .schema_drift import generate_migration, load_schemas, render_migration_sql
+
+        new_schemas, _ = load_schemas(new_path, dialect=dialect)
+        plan = generate_migration(report, new_schemas)
+        Path(emit_ddl).write_text(render_migration_sql(plan), encoding="utf-8")
+        console.print(
+            f"[green]迁移脚本已生成: {emit_ddl} "
+            f"(自动 {plan.auto_count} 条 / 人工确认 {plan.manual_count} 条)[/green]"
+        )
 
     if fail_on:
         rank = {"info": 1, "risk": 2, "breaking": 3}
@@ -1845,16 +2041,21 @@ def t2s_sub_list() -> None:
               help="异动阈值百分比（仅 --watch）")
 @click.option("--watch-mode", type=click.Choice(["dod", "wow"]), default="dod",
               show_default=True, help="参照期：dod=前一天, wow=上周同日（仅 --watch）")
+@click.option("--table", default="",
+              help="SLA 分区监控的表名（与 --metric/--favorite 互斥）")
+@click.option("--lag", "lag_days", type=int, default=1, show_default=True,
+              help="SLA 容忍滞后天数：最新分区最迟 T-N（仅 --table）")
 def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
                 dims: tuple[str, ...], lookback: int, params: tuple[str, ...],
                 ds_type: str, connection: str, database: str, webhook: str,
-                watch: bool, threshold: float, watch_mode: str) -> None:
-    """新建订阅（--metric 定时推数 / --metric --watch 异动告警 / --favorite 收藏推数）。"""
+                watch: bool, threshold: float, watch_mode: str,
+                table: str, lag_days: int) -> None:
+    """新建订阅（--metric 推数 / --metric --watch 异动告警 / --favorite 收藏推数 / --table 分区SLA告警）。"""
     _ensure_utf8_stdio()
     from .text2sql.subscriptions import SubscriptionStore
 
-    if bool(metric) == bool(favorite_id):
-        raise click.UsageError("--metric 与 --favorite 必须二选一")
+    if sum(map(bool, (metric, favorite_id, table))) != 1:
+        raise click.UsageError("--metric / --favorite / --table 必须三选一")
     if watch and not metric:
         raise click.UsageError("--watch 只能与 --metric 搭配")
     param_map: dict[str, str] = {}
@@ -1863,7 +2064,9 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
             raise click.UsageError(f"--param 格式应为 key=value: {p}")
         k, v = p.split("=", 1)
         param_map[k.strip()] = v
-    if watch:
+    if table:
+        source_type = "partition_watch"
+    elif watch:
         source_type = "metric_watch"
     else:
         source_type = "metric" if metric else "favorite"
@@ -1875,7 +2078,7 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
             favorite_id=favorite_id, params=param_map,
             threshold_pct=threshold, watch_mode=watch_mode,
             ds_type=ds_type, connection=connection, database=database,
-            webhook_url=webhook,
+            webhook_url=webhook, table=table, lag_days=lag_days,
         )
     except ValueError as exc:
         raise click.ClickException(str(exc))
@@ -2163,6 +2366,190 @@ def govern(sql_dir: str, qlog: str | None, days: int,
         from pathlib import Path as _P
         _P(output).write_text(text, encoding="utf-8")
         console.print(f"[green]报告已写入 {output}[/green]")
+
+
+@cli.command(name="cost")
+@click.option("--qlog", type=click.Path(exists=True), default=None,
+              help="查询审计日志（默认 logs/text2sql_queries.jsonl）")
+@click.option("--days", type=int, default=30, show_default=True,
+              help="分析窗口天数")
+@click.option("--top", "top_n", type=int, default=10, show_default=True,
+              help="每节展示的条数")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言（昂贵模式扫描用）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="报告写入文件")
+def cost(qlog: str | None, days: int, top_n: int, dialect: str,
+         lang: str, fmt: str, output: str | None) -> None:
+    """查询成本顾问：审计日志 → Top 烧钱查询/按表成本/缺分区过滤（只建议不动手）。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    from pathlib import Path as _P
+
+    from .cost_advisor import analyze_cost, render_markdown, report_to_dict
+
+    report = analyze_cost(qlog, days=days, top_n=top_n, dialect=dialect)
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        _P(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+
+@cli.command(name="syncgen")
+@click.option("--ddl", "ddl_path", type=click.Path(exists=True), default=None,
+              help="离线 DDL 文件或目录（与 --db 互斥）")
+@click.option("--db", "database", default=None,
+              help="在线 introspect 的 MySQL 库名（凭据走 MYSQL_* 环境变量）")
+@click.option("--sink-type", type=click.Choice(["console", "doris",
+              "starrocks", "hive"]), default="console", show_default=True,
+              help="目标端类型（console 不生成建表 DDL）")
+@click.option("--out", "out_dir", type=click.Path(), default=None,
+              help="输出目录（configs/ + ddl/ + manifest）")
+@click.option("--include", default=None, help="表名 include 正则")
+@click.option("--exclude", default=None, help="表名 exclude 正则")
+@click.option("--pii/--no-pii", default=False,
+              help="对 PII 列注入脱敏 transform")
+@click.option("--pii-rules", type=click.Path(exists=True), default=None,
+              help="自定义 PII 规则 YAML（追加到内置规则）")
+@click.option("--pii-strategy", type=click.Choice(["md5", "mask"]),
+              default="md5", show_default=True, help="脱敏策略")
+@click.option("--parallelism", type=int, default=2, show_default=True,
+              help="生成配置的 env.parallelism")
+@click.option("--dry-run", is_flag=True, help="只打印 manifest，不写文件")
+@click.option("--fail-on", type=click.Choice(["unmapped", "pii"]),
+              default=None,
+              help="CI gate: unmapped=存在未映射类型; pii=发现 PII 列但未开 --pii")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="manifest 报告另存文件")
+def syncgen(ddl_path: str | None, database: str | None, sink_type: str,
+            out_dir: str | None, include: str | None, exclude: str | None,
+            pii: bool, pii_rules: str | None, pii_strategy: str,
+            parallelism: int, dry_run: bool, fail_on: str | None,
+            lang: str, fmt: str, output: str | None) -> None:
+    """全库同步生成器：introspect 源库/解析 DDL → 批量生成同步配置+建表语句。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    import sys as _sys
+    from pathlib import Path as _P
+
+    from .sync_gen import (SyncPlan, generate_sync, render_markdown,
+                           report_to_dict, write_outputs)
+
+    if bool(ddl_path) == bool(database):
+        console.print("[red]--ddl 与 --db 必须二选一[/red]")
+        _sys.exit(2)
+    if not dry_run and not out_dir:
+        console.print("[red]需要 --out 输出目录（或用 --dry-run 只看 manifest）[/red]")
+        _sys.exit(2)
+
+    plan = SyncPlan(
+        source_mode="live" if database else "ddl",
+        ddl_path=ddl_path, database=database, sink_type=sink_type,
+        include=include, exclude=exclude, pii=pii,
+        pii_rules_path=pii_rules, pii_strategy=pii_strategy,
+        parallelism=parallelism)
+    try:
+        result = generate_sync(plan)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        _sys.exit(2)
+
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(result, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        _P(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+    if not dry_run:
+        written = write_outputs(result, out_dir)
+        console.print(f"[dim]已生成 {len(written)} 个文件 → {out_dir}[/dim]")
+
+    if fail_on == "unmapped" and result.unmapped_count:
+        console.print(f"[red]CI gate: {result.unmapped_count} 个未映射类型[/red]")
+        _sys.exit(1)
+    if fail_on == "pii" and result.pii_columns and not pii:
+        console.print(
+            f"[red]CI gate: 发现 {result.pii_columns} 个 PII 列但未开 --pii[/red]")
+        _sys.exit(1)
+
+
+@cli.command(name="reconcile")
+@click.option("--sql-a", "sql_a", default=None, help="第一条 SQL（内联）")
+@click.option("--sql-b", "sql_b", default=None, help="第二条 SQL（内联）")
+@click.option("--file-a", "file_a", type=click.Path(exists=True), default=None,
+              help="第一条 SQL 文件")
+@click.option("--file-b", "file_b", type=click.Path(exists=True), default=None,
+              help="第二条 SQL 文件")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["critical", "risk", "info"]),
+              default=None,
+              help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="报告写入文件")
+def reconcile(sql_a: str | None, sql_b: str | None, file_a: str | None,
+              file_b: str | None, dialect: str, lang: str,
+              fail_on: str | None, fmt: str, output: str | None) -> None:
+    """SQL 口径对账：AST 级对比两条 SQL，解释两个报表数字为何对不上。"""
+    _ensure_utf8_stdio()
+    import json as _json
+    from pathlib import Path as _P
+
+    from .sql_reconcile import reconcile_sql, render_markdown, report_to_dict
+
+    text_a = sql_a or (_P(file_a).read_text(encoding="utf-8") if file_a else "")
+    text_b = sql_b or (_P(file_b).read_text(encoding="utf-8") if file_b else "")
+    if not text_a.strip() or not text_b.strip():
+        console.print("[red]请提供两条 SQL：--sql-a/--sql-b 或 --file-a/--file-b[/red]")
+        sys.exit(2)
+
+    report = reconcile_sql(text_a, text_b, dialect=dialect)
+    if fmt == "json":
+        text_out = _json.dumps(report_to_dict(report, lang),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        _P(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if report.parse_error:
+        sys.exit(2)
+    if fail_on:
+        rank = {"info": 1, "risk": 2, "critical": 3}
+        threshold = rank[fail_on]
+        worst = max((rank[f.severity] for f in report.findings), default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的口径差异，对账未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
 
 
 def _load_metrics_for_cli(metrics_file: str | None, ddl: str | None):

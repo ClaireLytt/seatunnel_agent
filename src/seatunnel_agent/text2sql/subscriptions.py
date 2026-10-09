@@ -34,7 +34,13 @@ from typing import Any, Callable
 from .executor import DatabaseConfig, config_from_env, create_executor
 from .attribution import NULL_LABEL
 from .favorites import FavoritesStore, apply_params
-from .metrics import MetricError, MetricStore, build_metric_sql, load_metric_store
+from .metrics import (
+    MetricError,
+    MetricStore,
+    build_metric_sql,
+    load_metric_store,
+    ratio_sides,
+)
 from .partition import TimeRange, pt_value
 from .schema import SchemaStore
 from .validator import enforce_limit, validate_sql
@@ -44,7 +50,7 @@ logger = logging.getLogger(__name__)
 _MAX_SUBSCRIPTIONS = 100
 _CARD_MAX_ROWS = 10
 
-SOURCE_TYPES = ("metric", "favorite", "metric_watch")
+SOURCE_TYPES = ("metric", "favorite", "metric_watch", "partition_watch")
 
 #: metric_watch comparison modes: dod = 昨天 vs 前天, wow = 昨天 vs 上周同日
 WATCH_MODES = ("dod", "wow")
@@ -205,6 +211,8 @@ class SubscriptionStore:
         database: str = "",
         webhook_url: str = "",
         lang: str = "zh",
+        table: str = "",
+        lag_days: int = 1,
     ) -> dict[str, Any]:
         if not name.strip():
             raise ValueError("订阅名称不能为空")
@@ -219,6 +227,10 @@ class SubscriptionStore:
             raise ValueError("threshold_pct 必须 > 0")
         if source_type == "favorite" and not favorite_id.strip():
             raise ValueError("favorite 订阅必须给出收藏 ID")
+        if source_type == "partition_watch" and not table.strip():
+            raise ValueError("partition_watch 订阅必须给出表名")
+        if lag_days < 0:
+            raise ValueError("lag_days 必须 >= 0")
         if lookback_days < 1:
             raise ValueError("lookback_days 必须 >= 1")
         entry: dict[str, Any] = {
@@ -238,6 +250,8 @@ class SubscriptionStore:
             "database": database.strip(),
             "webhook_url": webhook_url.strip(),
             "lang": lang,
+            "table": table.strip(),
+            "lag_days": int(lag_days),
             "enabled": True,
             "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "last_run_at": "",
@@ -676,15 +690,19 @@ def _run_metric_watch(
     ref = yesterday - timedelta(days=7 if sub.get("watch_mode") == "wow" else 1)
     ds_type = sub.get("ds_type", "hive")
 
-    def _total(day: date) -> float | None:
+    def _run_day_sql(day: date, max_rows: int, dimensions=None):
+        """build -> validate -> LIMIT -> execute, one day's metric SQL."""
         sql = build_metric_sql(
-            metric, metric_store, schema_store,
+            metric, metric_store, schema_store, dimensions=dimensions,
             time_range=TimeRange(start=day, end=day),
         )
         validation = validate_sql(sql, schema_store)
         if not validation.ok:
             raise MetricError("SQL rejected: " + "; ".join(validation.errors))
-        result = executor.run(enforce_limit(sql, dialect=ds_type), max_rows=10)
+        return executor.run(enforce_limit(sql, dialect=ds_type), max_rows=max_rows)
+
+    def _total(day: date) -> float | None:
+        result = _run_day_sql(day, max_rows=10)
         if not result.rows or result.rows[0][-1] is None:
             # additive: no rows means 0; a NULL ratio (denominator 0 or no
             # data) is UNDEFINED, not 0 — coercing it would fire a false
@@ -724,9 +742,11 @@ def _run_metric_watch(
     # numerator∩denominator intersection build_metric_sql would accept.
     allowed_dims = list(metric.dimensions)
     if metric.is_ratio and not allowed_dims:
-        num = metric_store.get(metric.numerator)
-        den = metric_store.get(metric.denominator)
-        if num is not None and den is not None:
+        try:
+            num, den = ratio_sides(metric, metric_store)
+        except MetricError:
+            pass  # breakdown is best-effort; the totals already alerted
+        else:
             den_set = {d.lower() for d in den.dimensions}
             allowed_dims = [d for d in num.dimensions if d.lower() in den_set]
     top_lines = ""
@@ -734,12 +754,7 @@ def _run_metric_watch(
     if dim:
         try:
             def _by_dim(day: date) -> dict[str, float]:
-                sql = build_metric_sql(
-                    metric, metric_store, schema_store, dimensions=[dim],
-                    time_range=TimeRange(start=day, end=day),
-                )
-                result = executor.run(
-                    enforce_limit(sql, dialect=ds_type), max_rows=1000)
+                result = _run_day_sql(day, max_rows=1000, dimensions=[dim])
                 return {
                     (NULL_LABEL if r[0] is None else str(r[0])):
                         float(r[-1]) if r[-1] is not None else 0.0
@@ -780,6 +795,73 @@ def _run_metric_watch(
     return outcome
 
 
+def _run_partition_watch(
+    sub: dict[str, Any],
+    schema_store: SchemaStore,
+    executor,
+    today: date,
+    push_fn: Callable[..., tuple[bool, str]],
+) -> dict[str, Any]:
+    """SLA freshness watch: the table's max partition must be no older than
+    ``today - lag_days``. Pushes an alert card ONLY when the partition is
+    late or missing; silent when fresh. Deterministic, LLM-free."""
+    from .metrics import parse_date
+
+    from .executor import PARTITION_ENGINES
+
+    name = sub.get("name", "?")
+    webhook = (sub.get("webhook_url") or "").strip()
+    table = (sub.get("table") or "").strip()
+    if schema_store.get(table) is None:
+        raise MetricError(f"表 '{table}' 不在 schema 白名单中")
+    if (sub.get("ds_type") or "hive") not in PARTITION_ENGINES:
+        raise MetricError(
+            f"partition_watch 只支持分区引擎（{', '.join(sorted(PARTITION_ENGINES))}）"
+        )
+    lag = max(0, int(sub.get("lag_days", 1)))
+    expected = today - timedelta(days=lag)
+
+    max_pt = executor.get_max_partition(table, refresh=True)
+    pt_day: date | None = None
+    if max_pt:
+        try:
+            pt_day = parse_date(str(max_pt))
+        except MetricError:
+            raise MetricError(
+                f"分区值 '{max_pt}' 不是日期格式，partition_watch 只支持"
+                "日期型分区（yyyyMMdd / YYYY-MM-DD）"
+            )
+
+    late = pt_day is None or pt_day < expected
+    outcome: dict[str, Any] = {
+        "status": "alerted" if late else "no_change",
+        "error": "",
+        "sql": "",
+        "table": table,
+        "expected_partition": expected.isoformat(),
+        "max_partition": pt_day.isoformat() if pt_day else None,
+        "lag_days": lag,
+        "late_days": (expected - pt_day).days if (late and pt_day) else None,
+    }
+    if not late:
+        return outcome  # fresh: silence by design
+
+    if pt_day is None:
+        detail = "该表当前没有任何分区"
+    else:
+        detail = f"最新分区 {pt_day.isoformat()}，落后 {outcome['late_days']} 天"
+    body = (
+        f"**{table}** 数据延迟告警（SLA: 最迟 T-{lag}）\n"
+        f"期望分区 >= {expected.isoformat()}\n{detail}"
+    )
+    if webhook:
+        pushed, msg = push_fn(webhook, f"⏰ {name}", body, ok=False)
+        if not pushed:
+            outcome["status"] = "push_failed"
+            outcome["error"] = msg
+    return outcome
+
+
 def run_subscription(
     sub: dict[str, Any],
     schema_store: SchemaStore | None = None,
@@ -808,6 +890,15 @@ def run_subscription(
             schema_store = SchemaStore.from_file(ddl)
         if metric_store is None:
             metric_store, _errors = load_metric_store(schema_store)
+
+        if sub.get("source_type") == "partition_watch":
+            db_config = resolve_db_config(sub)
+            if db_config is None:
+                return _fail("无法解析数据库连接（检查连接预设名或环境变量配置）")
+            return _run_partition_watch(
+                sub, schema_store, create_executor(db_config),
+                today or date.today(), push_fn,
+            )
 
         if sub.get("source_type") == "metric_watch":
             db_config = resolve_db_config(sub)

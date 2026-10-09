@@ -1,0 +1,8 @@
+# 自定义 PII 规则示例：追加到内置规则目录（不替换内置规则）
+rules:
+  - category: wechat
+    severity: medium
+    name_patterns:
+      - "(^|_)(wechat|weixin|wx)(_?(id|no|openid))?(_|$)"
+    comment_keywords:
+      - "微信"

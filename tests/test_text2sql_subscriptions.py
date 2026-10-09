@@ -689,3 +689,88 @@ metrics:
     assert outcome["status"] == "no_data", outcome
     assert outcome["curr"] is None
     assert pushes == []  # no false alert card
+
+
+# ----------------------------------------------------------------------
+# partition_watch (SLA freshness subscription)
+# ----------------------------------------------------------------------
+
+
+class _FakePtExecutor:
+    def __init__(self, max_pt):
+        self._max_pt = max_pt
+
+    def get_max_partition(self, table, refresh=False):
+        return self._max_pt
+
+
+def _pt_sub(**over) -> dict:
+    sub = {
+        "id": "p1", "name": "orders SLA", "cron": "0 9 * * *",
+        "source_type": "partition_watch", "table": "sales",
+        "lag_days": 1, "ds_type": "hive", "connection": "",
+        "database": "default", "webhook_url": "https://example/hook",
+        "enabled": True,
+    }
+    sub.update(over)
+    return sub
+
+
+def _run_pt_watch(monkeypatch, stores, max_pt, **over):
+    import seatunnel_agent.text2sql.subscriptions as subs
+
+    schema_store, metric_store = stores
+    pushes: list[tuple] = []
+
+    def fake_push(url, title, body, ok=True, **kw):
+        pushes.append((title, body, ok))
+        return True, "ok"
+
+    monkeypatch.setattr(subs, "resolve_db_config", lambda sub: object())
+    monkeypatch.setattr(
+        subs, "create_executor", lambda cfg: _FakePtExecutor(max_pt))
+    outcome = subs.run_subscription(
+        _pt_sub(**over), schema_store, metric_store,
+        today=date(2026, 3, 10), push_fn=fake_push,
+    )
+    return outcome, pushes
+
+
+def test_partition_watch_fresh_is_silent(monkeypatch, stores) -> None:
+    outcome, pushes = _run_pt_watch(monkeypatch, stores, "2026-03-09")
+    assert outcome["status"] == "no_change", outcome
+    assert pushes == []
+
+
+def test_partition_watch_late_alerts(monkeypatch, stores) -> None:
+    outcome, pushes = _run_pt_watch(monkeypatch, stores, "20260307")
+    assert outcome["status"] == "alerted", outcome
+    assert outcome["late_days"] == 2
+    assert pushes and pushes[0][2] is False
+    assert "落后 2 天" in pushes[0][1]
+
+
+def test_partition_watch_missing_partition(monkeypatch, stores) -> None:
+    outcome, pushes = _run_pt_watch(monkeypatch, stores, None)
+    assert outcome["status"] == "alerted"
+    assert outcome["max_partition"] is None
+    assert pushes and "没有任何分区" in pushes[0][1]
+
+
+def test_partition_watch_guards(monkeypatch, stores, tmp_path) -> None:
+    # non-partition engine refused
+    outcome, _ = _run_pt_watch(monkeypatch, stores, "2026-03-09", ds_type="sqlite")
+    assert outcome["status"] == "error" and "分区引擎" in outcome["error"]
+    # non-date partition value refused
+    outcome, _ = _run_pt_watch(monkeypatch, stores, "region=east")
+    assert outcome["status"] == "error" and "日期格式" in outcome["error"]
+    # unknown table refused
+    outcome, _ = _run_pt_watch(monkeypatch, stores, "2026-03-09", table="nope")
+    assert outcome["status"] == "error" and "白名单" in outcome["error"]
+    # store validation
+    store = SubscriptionStore(tmp_path / "subs.json")
+    with pytest.raises(ValueError, match="表名"):
+        store.add(name="x", cron="0 9 * * *", source_type="partition_watch")
+    entry = store.add(name="x", cron="0 9 * * *",
+                      source_type="partition_watch", table="sales", lag_days=2)
+    assert entry["table"] == "sales" and entry["lag_days"] == 2

@@ -1138,6 +1138,18 @@ def create_ui() -> gr.Blocks:
         from .sql_testgen_ui import render_sql_testgen_page
         render_sql_testgen_page(app)
 
+    with app.route("Cost", "/cost"):
+        from .cost_advisor_ui import render_cost_advisor_page
+        render_cost_advisor_page(app)
+
+    with app.route("Reconcile", "/reconcile"):
+        from .sql_reconcile_ui import render_sql_reconcile_page
+        render_sql_reconcile_page(app)
+
+    with app.route("SyncGen", "/syncgen"):
+        from .sync_gen_ui import render_sync_gen_page
+        render_sync_gen_page(app)
+
     with app.route("MCP Toolbox", "/mcp"):
         render_mcp_page(app)
 
@@ -2768,6 +2780,9 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .log_inspect.api import router as loginspect_api_router
         from .schema_drift.api import router as schemadrift_api_router
         from .sql_testgen.api import router as testgen_api_router
+        from .cost_advisor.api import router as cost_api_router
+        from .sql_reconcile.api import router as reconcile_api_router
+        from .sync_gen.api import router as syncgen_api_router
         fastapi_app = app.app
         # SEATUNNEL_API_KEY (optional) gates every /api route via X-API-Key.
         auth = [Depends(require_api_key)]
@@ -2780,6 +2795,9 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         fastapi_app.include_router(loginspect_api_router, dependencies=auth)
         fastapi_app.include_router(schemadrift_api_router, dependencies=auth)
         fastapi_app.include_router(testgen_api_router, dependencies=auth)
+        fastapi_app.include_router(cost_api_router, dependencies=auth)
+        fastapi_app.include_router(reconcile_api_router, dependencies=auth)
+        fastapi_app.include_router(syncgen_api_router, dependencies=auth)
 
     app.launch(
         server_name=host,

@@ -25,6 +25,12 @@ from .differ import (
     load_schemas,
     parse_schema_script,
 )
+from .migrate import (
+    MigrationPlan,
+    MigrationStatement,
+    generate_migration,
+    render_migration_sql,
+)
 from .report import render_markdown, report_to_dict
 
 __all__ = [
@@ -32,12 +38,16 @@ __all__ = [
     "DriftFinding",
     "DriftReport",
     "TableSchema",
+    "MigrationPlan",
+    "MigrationStatement",
     "classify_type_change",
     "diff_paths",
     "diff_schemas",
     "diff_scripts",
     "load_schemas",
     "parse_schema_script",
+    "generate_migration",
+    "render_migration_sql",
     "render_markdown",
     "report_to_dict",
 ]

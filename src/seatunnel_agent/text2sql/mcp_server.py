@@ -339,9 +339,11 @@ def build_tool_functions(
             try:
                 if m.is_ratio:
                     from .attribution import ratio_factor_split
+                    from .metrics import ratio_sides
 
-                    num_res = _attribute_raw(metric_store.get(m.numerator))
-                    den_res = _attribute_raw(metric_store.get(m.denominator))
+                    num, den = ratio_sides(m, metric_store)
+                    num_res = _attribute_raw(num)
+                    den_res = _attribute_raw(den)
                     out = {
                         "metric": m.name, "type": "ratio",
                         "numerator": attribution_to_dict(num_res),

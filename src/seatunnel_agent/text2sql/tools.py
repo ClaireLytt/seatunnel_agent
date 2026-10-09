@@ -29,6 +29,7 @@ from .metrics import (
     build_metric_sql,
     build_metric_series_sql,
     parse_date,
+    ratio_sides,
     parse_time_range,
 )
 from .partition import classify_table, has_partition_filter
@@ -710,14 +711,28 @@ def _tool_match_metrics(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, A
     }
 
 
-def _tool_build_metric_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+def _resolve_metric(
+    inp: dict[str, Any], rt: Text2SQLRuntime
+) -> tuple[Any, dict[str, Any] | None]:
+    """Shared head of every metric-taking tool handler: the metric store
+    must be loaded and the requested name defined. Returns (metric, None)
+    on success, (None, error_payload) otherwise."""
     if rt.metrics is None or len(rt.metrics) == 0:
-        return {"error": "No metric definitions loaded (metrics.yaml)"}
+        return None, {"error": "No metric definitions loaded (metrics.yaml)"}
     name = str(inp.get("metric", "")).strip()
     metric = rt.metrics.get(name)
     if metric is None:
         known = ", ".join(m.name for m in rt.metrics.metrics)
-        return {"error": f"Metric '{name}' is not defined. Known metrics: {known}"}
+        return None, {
+            "error": f"Metric '{name}' is not defined. Known metrics: {known}"
+        }
+    return metric, None
+
+
+def _tool_build_metric_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    metric, err = _resolve_metric(inp, rt)
+    if err is not None:
+        return err
 
     try:
         time_range = parse_time_range(
@@ -749,13 +764,10 @@ def _tool_forecast_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
     from .forecast import forecast_series
     from .partition import TimeRange
 
-    if rt.metrics is None or len(rt.metrics) == 0:
-        return {"error": "No metric definitions loaded (metrics.yaml)"}
-    name = str(inp.get("metric", "")).strip()
-    metric = rt.metrics.get(name)
-    if metric is None:
-        known = ", ".join(m.name for m in rt.metrics.metrics)
-        return {"error": f"Metric '{name}' is not defined. Known metrics: {known}"}
+    metric, err = _resolve_metric(inp, rt)
+    if err is not None:
+        return err
+    name = metric.name
 
     try:
         horizon = max(1, min(int(inp.get("horizon_days") or 7), 30))
@@ -1001,20 +1013,13 @@ def _maybe_export_report(
 def _tool_run_attribution(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
     from .attribution import attribution_to_dict
 
-    if rt.metrics is None or len(rt.metrics) == 0:
-        return {"error": "No metric definitions loaded (metrics.yaml)"}
-    name = str(inp.get("metric", "")).strip()
-    metric = rt.metrics.get(name)
-    if metric is None:
-        known = ", ".join(m.name for m in rt.metrics.metrics)
-        return {"error": f"Metric '{name}' is not defined. Known metrics: {known}"}
+    metric, err = _resolve_metric(inp, rt)
+    if err is not None:
+        return err
 
     try:
         if metric.is_ratio:
-            num = rt.metrics.get(metric.numerator)
-            den = rt.metrics.get(metric.denominator)
-            if num is None or den is None:
-                return {"error": f"ratio 指标 '{name}' 的分子/分母定义无效"}
+            num, den = ratio_sides(metric, rt.metrics)
             num_res = _run_one_attribution(inp, rt, num)
             den_res = _run_one_attribution(inp, rt, den)
             _publish_breakdown(rt, num_res)
@@ -1327,13 +1332,9 @@ def _tool_trace_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, An
     """Metric provenance: caliber level + lineage upstream chain."""
     import os
 
-    if rt.metrics is None or len(rt.metrics) == 0:
-        return {"error": "No metric definitions loaded (metrics.yaml)"}
-    name = str(inp.get("metric", "")).strip()
-    metric = rt.metrics.get(name)
-    if metric is None:
-        known = ", ".join(m.name for m in rt.metrics.metrics)
-        return {"error": f"Metric '{name}' is not defined. Known metrics: {known}"}
+    metric, err = _resolve_metric(inp, rt)
+    if err is not None:
+        return err
     depth = max(1, min(int(inp.get("depth", 3) or 3), 10))
 
     # caliber level (always available)
