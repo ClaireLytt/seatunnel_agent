@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SeaTunnel Pipeline Agent</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: dark-first data console — one emerald thread runs from hero prompt to footer; 4/6-based spacing rhythm */
+:root{
+  --bg:#0b1210;            /* deep green-black ground */
+  --panel:#121b17;
+  --line:#24332c;
+  --fg:#e8f0ec;
+  --muted:#8fa49a;
+  --accent:#2fd48b;        /* Oz emerald */
+  --accent-dim:#1a7a52;
+  --amber:#e0a93e;         /* hue 44 secondary */
+  --r:12px;                /* one radius everywhere */
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --display:'Bricolage Grotesque','IBM Plex Sans',system-ui,sans-serif;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#f4f7f5;--panel:#ffffff;--line:#d7e0db;--fg:#15201b;--muted:#5a6f66;
+    --accent:#0e8f58;--accent-dim:#0e8f58;--amber:#9a6e12;color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#f4f7f5;--panel:#ffffff;--line:#d7e0db;--fg:#15201b;--muted:#5a6f66;
+  --accent:#0e8f58;--accent-dim:#0e8f58;--amber:#9a6e12;color-scheme:light;
+}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);line-height:1.6;margin:0}
+.wrap{max-width:1060px;margin:0 auto;padding-block:0 64px;padding-inline:20px}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;line-height:1.15;margin:0}
+.eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+/* nav */
+nav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-block:20px;flex-wrap:wrap}
+.logo{font-family:var(--mono);font-weight:500;font-size:15px}
+.logo b{color:var(--accent);font-weight:500}
+nav .links{display:flex;gap:20px;font-size:14px;color:var(--muted);flex-wrap:wrap}
+nav .links a{color:var(--muted)}
+/* hero */
+.hero{padding-block:56px 48px;display:grid;gap:36px;grid-template-columns:1.1fr .9fr;align-items:center}
+.hero h1{font-size:clamp(34px,5vw,54px);font-weight:800}
+.hero h1 .em{color:var(--accent)}
+.hero p.lede{color:var(--muted);font-size:17px;max-width:46ch;margin:16px 0 0}
+.hero .zh{font-size:14px;color:var(--muted);margin-top:8px}
+.cta-row{display:flex;gap:12px;margin-top:32px;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:46px;padding:0 26px;border-radius:9px;font-weight:600;font-size:15px;border:1px solid transparent;transition:filter .15s,border-color .15s,background .15s}
+.btn:hover{text-decoration:none}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn.primary{background:var(--accent);color:#07130d}
+.btn.primary:hover{filter:brightness(1.1)}
+.btn.ghost{border-color:var(--line);color:var(--fg);background:var(--panel)}
+.btn.ghost:hover{border-color:var(--accent-dim)}
+/* terminal card */
+.term{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;font-family:var(--mono);font-size:13px;min-width:0}
+.term .bar{display:flex;gap:6px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line);color:var(--muted);font-size:12px}
+.term .dot{width:9px;height:9px;border-radius:50%;background:var(--line)}
+.term .dot.g{background:var(--accent)}
+.term pre{margin:0;padding:16px;overflow-x:auto;line-height:1.7}
+.term .p{color:var(--accent)}
+.term .c{color:var(--muted)}
+.term .a{color:var(--amber)}
+.cursor{display:inline-block;width:8px;height:14px;background:var(--accent);vertical-align:-2px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (prefers-reduced-motion: reduce){.cursor{animation:none}}
+/* stats strip */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;margin-top:16px}
+.stats div{background:var(--panel);padding:18px 22px}
+.stats .n{font-family:var(--mono);font-size:24px;color:var(--accent);font-variant-numeric:tabular-nums}
+.stats .l{font-size:12px;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-top:4px}
+/* sections — one shared rhythm */
+section{padding-block:72px 0}
+section h2{font-size:clamp(24px,3.4vw,32px);font-weight:600;margin:10px 0 12px}
+section>p.sub,section .sub{color:var(--muted);font-size:15px;max-width:62ch;margin:0 0 32px}
+/* one card component, shared by every section */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px;min-width:0;display:flex;flex-direction:column;gap:8px;transition:border-color .15s}
+.card:hover{border-color:var(--accent-dim)}
+.card h3{font-size:16px;font-weight:600;margin:0}
+.card p{font-size:14px;color:var(--muted);margin:0}
+.card .tag{font-family:var(--mono);font-size:11px;color:var(--amber);letter-spacing:.08em;text-transform:uppercase}
+/* chat bi showcase — same cards, stacked */
+.bi{display:grid;grid-template-columns:.9fr 1.1fr;gap:16px;align-items:start}
+.bi .list{display:grid;gap:16px;min-width:0}
+.sqlk{color:var(--amber)}
+/* flow — same card, numbered tag */
+.flow{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+@media (max-width:860px){.flow{grid-template-columns:1fr 1fr}}
+@media (max-width:520px){.flow{grid-template-columns:1fr}}
+code{font-family:var(--mono);font-size:.92em;color:var(--amber)}
+/* footer */
+footer{border-top:1px solid var(--line);margin-top:88px;padding-block:28px 8px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;color:var(--muted);font-size:13px}
+footer .mono{font-family:var(--mono);font-size:12px}
+@media (max-width:860px){
+  .hero{grid-template-columns:1fr}
+  .grid{grid-template-columns:1fr 1fr}
+  .bi{grid-template-columns:1fr}
+  .stats{grid-template-columns:1fr 1fr}
+}
+@media (max-width:520px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<nav>
+  <div class="logo"><b>$</b> seatunnel-agent</div>
+  <div class="links">
+    <a href="#chatbi">Chat BI</a><a href="#pipeline">Pipelines</a><a href="#govern">Governance</a>
+    <a href="https://seatunnel.apache.org/">Apache SeaTunnel</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <div>
+    <div class="eyebrow">Pipeline Builder · Text2SQL · SQL Review</div>
+    <h1>Describe the data task.<br>The agent <span class="em">ships the pipeline</span>.</h1>
+    <p class="lede">An AI agent for Apache SeaTunnel: natural language in — working HOCON configs, executed Hive SQL, root-cause diagnoses and CR reports out. When a job fails, it reads the log, patches the config, and retries on its own.</p>
+    <p class="zh">用一句话描述数据任务，Agent 生成配置、执行查询、诊断错误并自动修复。</p>
+    <div class="cta-row">
+      <a class="btn primary" href="#chatbi">Explore Chat BI</a>
+      <a class="btn ghost" href="#pipeline">See the workflow</a>
+    </div>
+  </div>
+  <div class="term">
+    <div class="bar"><span class="dot g"></span><span class="dot"></span><span class="dot"></span>&nbsp;chat · session #44</div>
+    <pre><span class="p">you ›</span> 上周 GMV 为什么跌了？
+<span class="c">· matched metric</span> <span class="a">gmv</span> <span class="c">(semantic layer, deterministic SQL)</span>
+<span class="c">· attribution: channel=app  −6.6%  ████████</span>
+<span class="c">              region=east   −4.4%  █████</span>
+<span class="c">· residual 0.0% — contributions sum exactly</span>
+<span class="p">agent ›</span> GMV fell 11.0% WoW; app channel drove 60%
+        of the drop. Full waterfall report exported.
+<span class="p">you ›</span> <span class="cursor"></span></pre>
+  </div>
+</div>
+
+<div class="stats">
+  <div><div class="n">100+</div><div class="l">SeaTunnel connectors</div></div>
+  <div><div class="n">56</div><div class="l">retrieval benchmark Qs</div></div>
+  <div><div class="n">15</div><div class="l">SQL review checklist items</div></div>
+  <div><div class="n">0</div><div class="l">LLM-improvised metric SQL</div></div>
+</div>
+
+<section id="chatbi">
+  <div class="eyebrow">Chat BI</div>
+  <h2>Ask in plain language. Get governed SQL.</h2>
+  <p class="sub">Text2SQL with guardrails: a metric semantic layer keeps calibers whitelisted and byte-identical, attribution analysis decomposes "why did it drop" into per-dimension contributions that sum exactly, and every query passes SELECT-only safety validation before it touches Hive.</p>
+  <div class="bi">
+    <div class="list">
+      <div class="card"><span class="tag">semantic layer</span><h3>Deterministic metric SQL</h3><p>Metric questions expand from <code>metrics.yaml</code>, never improvised — additive and ratio metrics, caliber Q&amp;A without execution.</p></div>
+      <div class="card"><span class="tag">attribution</span><h3>"Why did it drop?"</h3><p>mom/wow/yoy decomposition with waterfall charts; per-dimension contributions sum exactly to the total change.</p></div>
+      <div class="card"><span class="tag">retrieval</span><h3>Hybrid matching</h3><p>Keyword × BM25 × optional embeddings over tables and metrics, gated by a 56-question regression benchmark.</p></div>
+      <div class="card"><span class="tag">subscriptions</span><h3>Alerts that stay quiet</h3><p>Cron + Feishu cards; threshold anomaly watch alerts with top contributors and stays silent otherwise. <code>t2s-mcp</code> exposes it all to Claude Code and Cursor.</p></div>
+    </div>
+    <div class="term">
+      <div class="bar"><span class="dot g"></span><span class="dot"></span><span class="dot"></span>&nbsp;generated SQL · safety-validated</div>
+      <pre><span class="c">-- metric: gmv · caliber v3 · partition-filtered</span>
+<span class="sqlk">SELECT</span> dt, <span class="sqlk">SUM</span>(pay_amount) <span class="sqlk">AS</span> gmv
+<span class="sqlk">FROM</span> dws_trade_pay_df
+<span class="sqlk">WHERE</span> dt <span class="sqlk">BETWEEN</span> '2026-09-28' <span class="sqlk">AND</span> '2026-10-04'
+<span class="sqlk">GROUP BY</span> dt
+<span class="sqlk">LIMIT</span> 1000;
+<span class="c">✓ SELECT-only  ✓ table whitelist  ✓ partition filter
+✓ LIMIT enforced  → results.csv (UTF-8 BOM)</span></pre>
+    </div>
+  </div>
+</section>
+
+<section id="pipeline">
+  <div class="eyebrow">Pipelines</div>
+  <h2>From a sentence to a running job</h2>
+  <p class="sub">"Sync MySQL users to StarRocks" becomes a validated HOCON config. The agent tests connectivity first, runs the job, parses metrics, and when something breaks, it diagnoses the log and fixes the config itself.</p>
+  <div class="grid">
+    <div class="card"><span class="tag">generate</span><h3>NL → HOCON config</h3><p>12 built-in templates (MySQL-CDC, Kafka, StarRocks, ClickHouse…) and documented parameters for 19 connectors keep the agent from hallucinating options.</p></div>
+    <div class="card"><span class="tag">run</span><h3>Auto-diagnose &amp; retry</h3><p>On failure the agent reads the SeaTunnel log, clusters the root cause, patches the config, and reruns — structured metrics on every pass.</p></div>
+    <div class="card"><span class="tag">track</span><h3>Versioned configs</h3><p>Every write is a timestamped version. Browse history, diff any two versions, restore or delete safely, and compare changes in the UI.</p></div>
+  </div>
+</section>
+
+<section id="govern">
+  <div class="eyebrow">Governance</div>
+  <h2>Safety nets on every query</h2>
+  <p class="sub">A deterministic toolchain that never needs a database connection: paste SQL in chat, or gate it in CI.</p>
+  <div class="grid">
+    <div class="card"><span class="tag">review</span><h3>SQL Code Review</h3><p>Deterministic linter + LLM semantic pass over 15 checks — GROUP BY completeness, cartesian joins, partition filters — with SARIF output for GitHub Code Scanning.</p></div>
+    <div class="card"><span class="tag">lineage</span><h3>Impact &amp; drift</h3><p>SQL diff × lineage reports the release blast radius; schema drift grades every DDL change breaking / risk / info. Both gate CI with <code>--fail-on</code>.</p></div>
+    <div class="card"><span class="tag">protect</span><h3>PII propagation scan</h3><p>Sensitive columns traced downstream through column-level lineage — unmasked copies escalate severity; md5/mask chains count as masked.</p></div>
+    <div class="card"><span class="tag">quality</span><h3>DQC gates</h3><p>YAML rules compiled to deterministic aggregates: row counts, null rates, uniqueness, enum domains — with run-history baselines and Feishu alerts.</p></div>
+    <div class="card"><span class="tag">translate</span><h3>Dialect transpile</h3><p>Hive ⇄ Spark ⇄ Doris ⇄ StarRocks with a structured incompatibility report. The SQL is never executed.</p></div>
+    <div class="card"><span class="tag">advise</span><h3>Governance advisor</h3><p>Lineage × query audit logs surface decommission candidates, hot tables and partition-filter offenders — recommendations only, never touches a table.</p></div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="eyebrow">How it works</div>
+  <h2>One loop: generate, run, diagnose, fix</h2>
+  <p class="sub">Every pipeline request moves through the same closed loop. The agent never guesses twice at the same failure — logs are clustered by root cause, and each fix is a versioned config diff you can inspect.</p>
+  <div class="flow">
+    <div class="card"><span class="tag">01 · understand</span><h3>Understand</h3><p>Schema-aware matching — keyword + CJK n-gram scoring over table names, columns and Chinese comments; partition suffixes (_di/_df/_hf) classified automatically.</p></div>
+    <div class="card"><span class="tag">02 · generate</span><h3>Generate</h3><p>HOCON config from templates and documented connector parameters, or deterministic SQL from the metric semantic layer. Connectivity tested first.</p></div>
+    <div class="card"><span class="tag">03 · execute</span><h3>Execute</h3><p>Job output parsed into structured metrics: rows read/written, bytes, duration, status. Every query logged as JSONL.</p></div>
+    <div class="card"><span class="tag">04 · repair</span><h3>Repair</h3><p>On failure: read the log, cluster the exception by root cause, patch the config, retry. Every fix is a versioned diff.</p></div>
+  </div>
+</section>
+
+<section id="eval">
+  <div class="eyebrow">Trust, measured</div>
+  <h2>Benchmarked, gated, reproducible</h2>
+  <p class="sub">Accuracy is not a vibe here. Retrieval, SQL generation and review quality each have their own regression gate, runnable in CI.</p>
+  <div class="grid">
+    <div class="card"><span class="tag">t2s-bench</span><h3>Retrieval gate</h3><p>A 56-question benchmark over table and metric retrieval; <code>--gate</code> fails the build when recall regresses.</p></div>
+    <div class="card"><span class="tag">t2s-eval</span><h3>End-to-end accuracy</h3><p>Question → agent → result set, compared against golden SQL. Multi-model comparable, so you can swap LLMs and see what actually changes.</p></div>
+    <div class="card"><span class="tag">metrics validate</span><h3>Caliber CI gate</h3><p>The semantic layer is linted like code: broken metric definitions fail CI before anyone gets a wrong number.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Get started</div>
+  <h2>Three commands to a first query</h2>
+  <div class="term">
+    <div class="bar"><span class="dot g"></span><span class="dot"></span><span class="dot"></span>&nbsp;shell</div>
+    <pre><span class="p">$</span> pip install -e .
+<span class="p">$</span> seatunnel-agent chat          <span class="c"># or: demo mode, no API key needed</span>
+<span class="p">$</span> seatunnel-agent review my_etl.sql --fail-on critical</pre>
+  </div>
+  <p class="sub" style="margin:20px 0 0">Works with Claude, GPT-4o, DeepSeek, Kimi, Qwen, GLM, and any OpenAI-compatible API. Bilingual UI, English and 中文.</p>
+</section>
+
+<footer>
+  <div>SeaTunnel Pipeline Builder Agent · built on <a href="https://seatunnel.apache.org/">Apache SeaTunnel</a></div>
+  <div class="mono">metrics.yaml → SQL, byte-identical, every time</div>
+</footer>
+</div>
+
+</body>
+</html>
