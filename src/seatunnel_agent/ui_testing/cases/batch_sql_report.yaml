@@ -41,6 +41,7 @@
     - wait_result: {}
   expect:
     - result_in_view: {}
+    - text_contains: {in: 结果区, text: SQL 结果对比}
     - text_contains: {in: 结果区, text: electronics}
     - ai_judge: >-
         SQL 结果对比中 books(2 与 1)、electronics(3 与 4)、

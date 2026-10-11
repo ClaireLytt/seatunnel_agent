@@ -1,4 +1,8 @@
-"""SQLite executor for local demo / testing — no external DB required."""
+"""SQLite executor for local demo / testing — no external DB required.
+
+Introspected tables carry an empty ``database`` (SQLite has no schema
+prefix), so ``full_name`` is the bare table name — anything else would make
+generated SQL fail both the whitelist check and SQLite itself."""
 
 from __future__ import annotations
 
@@ -44,8 +48,11 @@ class SQLiteExecutor(DatabaseExecutor):
             ColumnSchema(name=r[1], dtype=r[2] or "TEXT", comment="")
             for r in cursor.fetchall()
         ]
+        # database must stay empty: SQLite has no schema prefix, and using
+        # the file path here would poison full_name ("config/x.db.orders"),
+        # making every generated SQL fail the whitelist check.
         return TableSchema(
-            database=self.config.database,
+            database="",
             name=table_name,
             comment="",
             columns=columns,

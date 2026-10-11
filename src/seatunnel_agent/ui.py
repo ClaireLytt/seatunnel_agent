@@ -3011,6 +3011,9 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     )
 
     if api:
+        from fastapi import Depends
+
+        from .api_auth import require_api_key
         from .config_lint.api import router as conflint_api_router
         from .dag_check.api import router as dagcheck_api_router
         from .data_lineage.api import router as lineage_api_router
@@ -3025,6 +3028,8 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from .sql_transpile.api import router as transpile_api_router
         from .text2sql.api import router as t2s_api_router
         fastapi_app = app.app  # the served instance, now that launch() ran
+        # SEATUNNEL_API_KEY (optional) gates every /api route via X-API-Key.
+        auth = [Depends(require_api_key)]
         for router in (
             t2s_api_router,
             sql_review_api_router,
@@ -3040,12 +3045,12 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
             metricdiff_api_router,
             sqlfmt_api_router,
         ):
-            fastapi_app.include_router(router)
+            fastapi_app.include_router(router, dependencies=auth)
         # plugin routers come from the manifests (see seatunnel_agent.registry)
         from .registry import discover, resolve
         for mf in discover():
             if mf.api:
-                fastapi_app.include_router(resolve(mf.api))
+                fastapi_app.include_router(resolve(mf.api), dependencies=auth)
 
     app.block_thread()
 

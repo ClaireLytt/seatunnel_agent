@@ -379,6 +379,7 @@ const SECTIONS = [
  {id:"R1", t:"生成同步配置", s:"orders 对（可带列映射）点「生成同步配置」。",
   e:"输出 SeaTunnel HOCON；source/sink 与两侧连接一致；SQL transform 中列映射使用反引号。"},
  {id:"R2", t:"生成差异 SQL", s:"主键 <code>id</code>，点「生成差异 SQL」。", e:"输出可复制的差异定位 SQL，语法与 Hive 兼容。"},
+{id:"R3", t:"重置选项", s:"填入 WHERE/阈值/主键/倾斜列/校验和等选项后点「重置选项」。", e:"全部选项恢复默认(输入清空、采样回 TOP N、脱敏保持开),连接与选表不受影响。"},
 ]},
 {id:"S", title:"趋势 · 告警 · 定时 · Webhook", items:[
  {id:"S1", t:"趋势图", s:"对 orders 连续跑 ≥2 次「行数对比」后点「趋势」。", e:"趋势图渲染（首次运行前提示无历史数据属正常）。"},

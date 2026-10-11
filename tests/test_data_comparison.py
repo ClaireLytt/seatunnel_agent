@@ -4404,3 +4404,190 @@ class TestValueNormalization:
     def test_equivalent_zone_spellings_equal(self):
         assert _close_enough("2024-01-01 10:30:00Z", "2024-01-01T10:30:00+00:00")
         assert _close_enough("2024-01-01 10:30:00+0800", "2024-01-01T10:30:00+08:00")
+
+
+# ---------------------------------------------------------------------------
+# Skew qualification verdict + skew drift in trends
+# ---------------------------------------------------------------------------
+
+from seatunnel_agent.data_comparison.comparator import skew_side_verdict
+
+
+class TestSkewSideVerdict:
+    def _result(self, items):
+        return SkewResult("a", "b", total_a=100, total_b=100, items=items)
+
+    def test_mismatch_on_top1_gap(self):
+        item = SkewItem(column="region", gini_a=0.7, gini_b=0.65,
+                        top1_pct_a=80.0, top1_pct_b=25.0)
+        verdict, cols = skew_side_verdict(self._result([item]))
+        assert verdict == "mismatch"
+        assert cols == ["region"]
+
+    def test_mismatch_on_gini_gap(self):
+        item = SkewItem(column="k", gini_a=0.75, gini_b=0.4,
+                        top1_pct_a=30.0, top1_pct_b=28.0)
+        verdict, cols = skew_side_verdict(self._result([item]))
+        assert verdict == "mismatch"
+
+    def test_both_skewed_business_fact(self):
+        item = SkewItem(column="region", gini_a=0.8, gini_b=0.78,
+                        top1_pct_a=70.0, top1_pct_b=68.0)
+        verdict, cols = skew_side_verdict(self._result([item]))
+        assert verdict == "both_skewed"
+        assert cols == ["region"]
+
+    def test_uniform_ok(self):
+        item = SkewItem(column="id", gini_a=0.1, gini_b=0.12,
+                        top1_pct_a=2.0, top1_pct_b=2.1)
+        verdict, cols = skew_side_verdict(self._result([item]))
+        assert verdict == "ok"
+        assert cols == []
+
+    def test_mismatch_wins_over_both(self):
+        drift = SkewItem(column="region", top1_pct_a=80.0, top1_pct_b=25.0)
+        fact = SkewItem(column="cat", gini_a=0.8, gini_b=0.79,
+                        top1_pct_a=60.0, top1_pct_b=58.0)
+        verdict, cols = skew_side_verdict(self._result([fact, drift]))
+        assert verdict == "mismatch"
+        assert cols == ["region"]
+
+    def test_empty_sides_ok(self):
+        assert skew_side_verdict(SkewResult("a", "b")) == ("ok", [])
+        item = SkewItem(column="k", top1_pct_a=80.0, top1_pct_b=10.0)
+        empty = SkewResult("a", "b", total_a=0, total_b=100, items=[item])
+        assert skew_side_verdict(empty) == ("ok", [])
+
+
+class TestSkewTrend:
+    def _write_report(self, d, ts, top1_b=None, gini_b=0.0):
+        skew = None
+        if top1_b is not None:
+            skew = SkewResult("t1", "t2", total_a=100, total_b=100, items=[
+                SkewItem(column="region", gini_a=0.3, gini_b=gini_b,
+                         top1_pct_a=20.0, top1_pct_b=top1_b),
+            ])
+        report = CompareReport(
+            row_count=RowCountResult("t1", 100, "t2", 100, 0, 0.0),
+            skew=skew,
+        )
+        p = Path(d) / f"compare_{ts}.json"
+        p.write_text(json.dumps(report.to_dict()), encoding="utf-8")
+
+    def test_skew_fields_and_jump(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_report(d, "20240101_120000", top1_b=30.0, gini_b=0.4)
+            self._write_report(d, "20240102_120000", top1_b=75.0, gini_b=0.8)
+            entries = build_trend_data(Path(d))
+            assert len(entries) == 2
+            assert entries[0]["skew_top1"] == 30.0
+            assert entries[0]["skew_top1_jump"] is None  # nothing before it
+            assert entries[1]["skew_top1"] == 75.0
+            assert entries[1]["skew_top1_jump"] == 45.0
+            assert entries[1]["skew_gini"] == 0.8
+            assert round(entries[1]["skew_gini_jump"], 4) == 0.4
+
+    def test_reports_without_skew_leave_gaps(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_report(d, "20240101_120000", top1_b=30.0)
+            self._write_report(d, "20240102_120000")  # no skew analysis
+            self._write_report(d, "20240103_120000", top1_b=40.0)
+            entries = build_trend_data(Path(d))
+            assert entries[1]["skew_top1"] is None
+            assert entries[1]["skew_top1_jump"] is None
+            # jump bridges the gap to the last report WITH skew data
+            assert entries[2]["skew_top1_jump"] == 10.0
+
+    def test_alert_rule_on_skew_top1(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_report(d, "20240101_120000", top1_b=60.0)
+            self._write_report(d, "20240102_120000", top1_b=70.0)
+            entries = build_trend_data(Path(d))
+            rules = parse_alert_rules("skew_top1>50:2")
+            alerts = check_trend_alerts(entries, rules)
+            assert len(alerts) == 1
+            assert alerts[0].triggered
+            assert alerts[0].current_value == 70.0
+
+    def test_alert_rule_on_skew_jump(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._write_report(d, "20240101_120000", top1_b=20.0)
+            self._write_report(d, "20240102_120000", top1_b=55.0)
+            entries = build_trend_data(Path(d))
+            alerts = check_trend_alerts(
+                entries, parse_alert_rules("skew_top1_jump>10:1"))
+            assert alerts[0].triggered
+            quiet = check_trend_alerts(
+                entries, parse_alert_rules("skew_top1_jump>40:1"))
+            assert not quiet[0].triggered
+
+
+class TestSkewCardHandoff:
+    """The both-skewed verdict offers a one-click handoff to /dataskew."""
+
+    def _card(self, item):
+        from seatunnel_agent.data_comparison_ui import build_skew_card
+        res = SkewResult("ta", "tb", total_a=100, total_b=100, items=[item])
+        return build_skew_card(res, "zh")
+
+    def test_both_skewed_has_goto_button(self):
+        item = SkewItem(column="region", gini_a=0.8, gini_b=0.78,
+                        top1_pct_a=70.0, top1_pct_b=68.0)
+        html = self._card(item)
+        assert "st_dataskew_sql" in html
+        assert "去数据倾斜页分析" in html
+        assert "GROUP BY region" in html      # handoff SQL targets the hot key
+        assert "FROM tb" in html              # ... on the B-side table
+        assert "window.open('/dataskew'" in html
+
+    def test_mismatch_has_no_button(self):
+        item = SkewItem(column="region", top1_pct_a=80.0, top1_pct_b=25.0)
+        html = self._card(item)
+        assert "两侧分布不一致" in html
+        assert "st_dataskew_sql" not in html
+
+    def test_uniform_has_no_verdict(self):
+        item = SkewItem(column="id", gini_a=0.1, gini_b=0.1,
+                        top1_pct_a=2.0, top1_pct_b=2.0)
+        html = self._card(item)
+        assert "st_dataskew_sql" not in html
+        assert "两侧" not in html
+
+    def test_goto_button_carries_connection(self):
+        """With side B's config the button also hands the connection over
+        via a short-lived cookie — minus the password."""
+        from seatunnel_agent.data_comparison_ui import build_skew_card
+        from seatunnel_agent.text2sql.executor.base import DatabaseConfig
+
+        item = SkewItem(column="region", gini_a=0.8, gini_b=0.78,
+                        top1_pct_a=70.0, top1_pct_b=68.0)
+        res = SkewResult("ta", "tb", total_a=100, total_b=100, items=[item])
+        cfg = DatabaseConfig(ds_type="mysql", host="db-b", port=3306,
+                             database="shop", username="ro",
+                             password="s3cret")
+        html = build_skew_card(res, "zh", conn_b=cfg)
+        assert "st_dataskew_conn" in html
+        assert "db-b" in html and "shop" in html
+        assert "s3cret" not in html          # password never travels
+        assert "max-age=180" in html         # short-lived
+        # without a connection the card renders as before
+        html2 = build_skew_card(res, "zh")
+        assert "st_dataskew_conn" not in html2
+        assert "st_dataskew_sql" in html2
+
+    def test_parse_conn_handoff_roundtrip(self):
+        import json as _json
+        from urllib.parse import quote
+
+        from seatunnel_agent.data_skew_ui import parse_conn_handoff
+
+        raw = quote(_json.dumps({
+            "ds_type": "MySQL", "host": "db-b", "port": 3306,
+            "database": "shop", "username": "ro"}))
+        assert parse_conn_handoff(raw) == {
+            "ds_type": "mysql", "host": "db-b", "port": "3306",
+            "database": "shop", "username": "ro"}
+        assert parse_conn_handoff(None) is None
+        assert parse_conn_handoff("") is None
+        assert parse_conn_handoff("not-json") is None
+        assert parse_conn_handoff(quote("[1, 2]")) is None

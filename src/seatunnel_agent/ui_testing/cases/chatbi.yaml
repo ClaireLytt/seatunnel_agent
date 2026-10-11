@@ -1,0 +1,79 @@
+# CBI 组 · Chat BI 语义层与订阅面板(/text2sql 侧栏)。
+# 指标目录来自 env.py 注入的 uitest_metrics.yaml(定义在 dc_test_orders_a 上,
+# T2S_METRICS_PATH);订阅存储隔离到本轮 runs/<ts>/(T2S_SUBSCRIPTIONS_PATH),
+# 不触碰仓库的 config/。用例保持英文界面(组件 aria-label 以 en 构建)。
+
+- id: CBI1
+  title: 指标目录面板 · 连接后加载指标并点选出口径卡片
+  tags: [smoke, sqlite]
+  page: /text2sql
+  lang: en
+  steps:
+    - select_ds: {value: SQLite}
+    - fill: {数据库: config/uitest_demo.db}
+    - click: 连接
+    - wait_status_ok: {side: A}
+    - select_index: {of: 📐 Metrics, index: 0}
+    - wait: 600
+      note: 口径卡片渲染 + 建议问题填充
+  expect:
+    - status_ok: {side: A}
+    - text_contains: {in: 状态, text: "2 metrics"}
+    - text_contains: {in: 页面, text: UI 测试专用口径}
+    - text_contains: {in: 页面, text: SUM(amount)}
+
+- id: CBI2
+  title: 订阅面板 · 创建指标订阅并立即执行成功
+  tags: [smoke, sqlite]
+  page: /text2sql
+  lang: en
+  steps:
+    - select_ds: {value: SQLite}
+    - fill: {数据库: config/uitest_demo.db}
+    - click: 连接
+    - wait_status_ok: {side: A}
+    - open_accordion: 🔔 Subscriptions
+    - fill: {"Subscription name...": UI冒烟订阅}
+    - fill: {"cron: min hour dom mon dow": 0 9 * * *}
+    - fill: {"Metric name (e.g. sales_amount)": order_amount}
+    - click: ＋ Create
+    - wait_text: {text: Subscription created, in: body}
+    - select_index: {of: 🔔 Subscriptions, index: 0}
+    - click: ▶ Run now
+    - wait_text: {text: "Executed", in: body, timeout_ms: 20000}
+  expect:
+    - text_contains: {in: 页面, text: UI冒烟订阅}
+    - text_contains: {in: 页面, text: Executed}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: CBI3
+  title: 订阅面板 · 必填校验与非法 cron 给出明确错误
+  tags: [full, sqlite]
+  page: /text2sql
+  lang: en
+  steps:
+    - open_accordion: 🔔 Subscriptions
+    - click: ＋ Create
+    - wait_text: {text: required, in: body}
+    - fill: {"Subscription name...": 坏订阅}
+    - fill: {"cron: min hour dom mon dow": garbage}
+    - fill: {"Metric name (e.g. sales_amount)": order_amount}
+    - click: ＋ Create
+    - wait: 800
+      note: 校验错误渲染
+  expect:
+    - text_contains: {in: 页面, text: cron}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: CBI4
+  title: 指标目录 · 未配置指标的数据源不显示指标计数 (静默降级)
+  tags: [full, sqlite]
+  page: /text2sql
+  lang: en
+  steps:
+    - set_language: 中文
+    - wait: 600
+      note: i18n 重渲染
+  expect:
+    - text_contains: {in: 页面, text: 指标目录}
+    - text_not_contains: {in: 页面, text: Traceback}

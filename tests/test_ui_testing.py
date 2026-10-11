@@ -344,7 +344,7 @@ class TestCoverage:
         counts = cov.counts()
         # 75 original items + C7/G4/G5/Q6 backfilled for the chunked-verify,
         # double-click-guard and report-search features
-        assert len(cov.rows) == 79
+        assert len(cov.rows) == 80
         assert counts["runner"] == 3            # P0-1/2/3
         assert counts["auto"] >= 55             # PRD acceptance threshold
         assert counts["missing"] <= 8

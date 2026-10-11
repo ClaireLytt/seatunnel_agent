@@ -5,6 +5,9 @@
 > SR 组用例额外覆盖 SQL Review 页(`/sqlreview`,纯静态审查路径);
 > LIN 组覆盖数据血缘页(`/lineage`,演示数据 `examples/lineage_demo`);
 > T2S/HIS/FAV/SCH 组覆盖 Text2SQL 侧栏与历史/收藏/Schema 浏览器辅助页;
+> CBI 组覆盖 Chat BI 语义层面板(指标目录 + 订阅;指标口径由 env.py 以
+> `T2S_METRICS_PATH` 注入 dc_test 表专用定义,订阅存储用
+> `T2S_SUBSCRIPTIONS_PATH` 隔离到本轮 `runs/<ts>/`,不污染仓库 config/);
 > TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`);
 > IMP 组覆盖变更影响分析页(`/impact`,目录/粘贴/上下文三种模式,演示数据 `examples/impact_demo`);
 > MIG 组覆盖配置迁移页(`/migrate`,演示数据 `examples/migrate_demo`);
