@@ -85,6 +85,11 @@ class Settings:
         return self.api_key
 
 
+def llm_ready() -> bool:
+    """True when an LLM API key is configured — same sources as load_settings."""
+    return bool(os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", ""))
+
+
 def load_settings() -> Settings:
     load_dotenv()
 

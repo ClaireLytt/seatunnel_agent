@@ -19,6 +19,7 @@ import gradio as gr
 from .orchestrator import Orchestrator, build_catalog, render_suggestions, suggest
 from .orchestrator.olog import ChatLogger
 from .orchestrator.report import normalize_lang
+from .config import llm_ready as _llm_ready
 
 _I18N = {
     "en": {
@@ -103,12 +104,6 @@ def _agents_md(lang: str) -> str:
         page = f"[`{spec.page}`]({spec.page})" if spec.page else "—"
         rows.append(f"| `{spec.name}` | {page} | {spec.description[:110]} |")
     return "\n".join(rows)
-
-
-def _llm_ready() -> bool:
-    import os
-    return bool(os.getenv("API_KEY", "")
-                or os.getenv("ANTHROPIC_API_KEY", ""))
 
 
 def render_orchestrator_page(app: gr.Blocks) -> None:

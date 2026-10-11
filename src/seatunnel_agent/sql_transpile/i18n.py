@@ -10,6 +10,8 @@ language-free.
 
 from __future__ import annotations
 
+from ..utils import normalize_lang
+
 TP_I18N: dict[str, dict[str, str]] = {
     "en": {
         # --- report chrome ---
@@ -86,10 +88,6 @@ TP_I18N: dict[str, dict[str, str]] = {
         "fix_storage_clause": "先用目标 DDL 建模，再迁移 INSERT 语句",
     },
 }
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
 def tp(lang: str, key: str) -> str:

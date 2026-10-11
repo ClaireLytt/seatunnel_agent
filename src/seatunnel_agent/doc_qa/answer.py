@@ -12,9 +12,7 @@ from typing import Any, Callable
 
 from .core import BM25Index, Chunk
 
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
+from ..utils import normalize_lang
 
 
 _I18N = {

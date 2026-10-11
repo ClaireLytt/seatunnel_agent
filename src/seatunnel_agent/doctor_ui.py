@@ -6,10 +6,8 @@ from __future__ import annotations
 import gradio as gr
 
 from .doctor import diagnose
-
-
-def _norm(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
+from .utils import normalize_lang as _norm
+from .config import llm_ready as _llm_ready
 
 
 _I18N = {
@@ -44,11 +42,6 @@ _I18N = {
 
 def _t(lang: str, key: str) -> str:
     return _I18N[_norm(lang)].get(key, key)
-
-
-def _llm_ready() -> bool:
-    import os
-    return bool(os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", ""))
 
 
 def render_doctor_page(app: gr.Blocks) -> None:

@@ -11,6 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .catalog import AgentSpec
+from ..utils import normalize_lang
 
 # keyword → tool name, scored by hit count (zh + en keywords per tool)
 _KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -72,7 +73,7 @@ def suggest(request: str, catalog: dict[str, AgentSpec],
 
 def render_suggestions(suggestions: list[Suggestion],
                        lang: str = "zh") -> str:
-    zh = not (lang or "").lower().startswith("en")
+    zh = normalize_lang(lang) == "zh"
     if not suggestions:
         return ("未配置 LLM,且没有匹配到合适的 agent —— 可在 /settings 配置"
                 " API key 后使用智能编排。" if zh else

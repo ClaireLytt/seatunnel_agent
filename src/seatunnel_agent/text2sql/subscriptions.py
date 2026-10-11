@@ -23,7 +23,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import tempfile
 import threading
 import uuid
 from dataclasses import dataclass
@@ -31,6 +30,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from ..utils import read_json_list, write_json_atomic
 from .executor import DatabaseConfig, config_from_env, create_executor
 from .attribution import NULL_LABEL
 from .favorites import FavoritesStore, apply_params
@@ -155,27 +155,10 @@ class SubscriptionStore:
         self._lock = threading.Lock()
 
     def _read(self) -> list[dict[str, Any]]:
-        if not self.path.is_file():
-            return []
-        try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return []
+        return read_json_list(self.path)
 
     def _write(self, data: list[dict[str, Any]]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        content = json.dumps(data, ensure_ascii=False, indent=2)
-        fd, tmp = tempfile.mkstemp(dir=str(self.path.parent), suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(content)
-            os.replace(tmp, str(self.path))
-        except BaseException:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        write_json_atomic(self.path, data)
 
     def list(self) -> list[dict[str, Any]]:
         with self._lock:

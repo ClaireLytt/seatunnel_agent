@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from ..utils import normalize_lang
+
 CFL_I18N: dict[str, dict[str, str]] = {
     "en": {
         "rpt_title": "SeaTunnel Config Lint",
@@ -61,10 +63,6 @@ CFL_I18N: dict[str, dict[str, str]] = {
         "sugg_tail": " — 是不是想写 `{s}`？",
     },
 }
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
 def tp(lang: str, key: str) -> str:

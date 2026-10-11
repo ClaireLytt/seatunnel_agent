@@ -13,6 +13,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 from .graph import LineageGraph
+from ..utils import normalize_lang
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..config import Settings
@@ -77,7 +78,7 @@ def build_dictionary(graph: LineageGraph) -> list[dict[str, Any]]:
 def render_dictionary_markdown(
     entries: list[dict[str, Any]], lang: str = "zh",
 ) -> str:
-    zh = not (lang or "").lower().startswith("en")
+    zh = normalize_lang(lang) == "zh"
     title = "# 数据字典" if zh else "# Data Dictionary"
     lines = [title, ""]
     lines.append(("共 {n} 表 · 按分层排序 · 由血缘图生成，未连接数据库"
@@ -131,7 +132,7 @@ def add_llm_descriptions(
     deterministic entries are never otherwise modified."""
     from ..llm import LLMClient
 
-    zh = not (lang or "").lower().startswith("en")
+    zh = normalize_lang(lang) == "zh"
     summary = "\n".join(
         f"- {e['table']} (layer={e['layer'] or '?'}; "
         f"columns={', '.join(list(e['columns'])[:12]) or '?'}; "

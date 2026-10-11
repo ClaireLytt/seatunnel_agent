@@ -17,14 +17,14 @@ prompt) so they adapt per question. Storage style/limits mirror
 
 from __future__ import annotations
 
-import json
 import os
-import tempfile
 import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from ..utils import read_json_list, write_json_atomic
 
 _MAX_EXAMPLES = 500
 _MAX_SQL_CHARS = 4000
@@ -42,33 +42,12 @@ class ExampleStore:
     # -- persistence ---------------------------------------------------
 
     def _read(self) -> list[dict[str, Any]]:
-        if not self.path.is_file():
-            return []
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return []
-        if not isinstance(data, list):
-            return []
         # The file is hand-editable — drop malformed entries instead of
         # letting them crash retrieval/augmentation later.
-        return [it for it in data if isinstance(it, dict)]
+        return [it for it in read_json_list(self.path) if isinstance(it, dict)]
 
     def _write(self, items: list[dict[str, Any]]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(
-            dir=str(self.path.parent), suffix=".tmp", prefix=self.path.name,
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(items, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, self.path)
-        except OSError:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        write_json_atomic(self.path, items)
 
     # -- CRUD ----------------------------------------------------------
 

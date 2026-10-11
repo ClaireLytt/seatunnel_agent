@@ -10,6 +10,7 @@ import gradio as gr
 
 from .code_fix import fix, render_markdown
 from .code_fix.report import normalize_lang
+from .config import llm_ready as _llm_ready
 
 _I18N = {
     "en": {
@@ -53,11 +54,6 @@ _I18N = {
 
 def _t(lang: str, key: str) -> str:
     return _I18N[normalize_lang(lang)].get(key, key)
-
-
-def _llm_ready() -> bool:
-    import os
-    return bool(os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", ""))
 
 
 def render_code_fix_page(app: gr.Blocks) -> None:

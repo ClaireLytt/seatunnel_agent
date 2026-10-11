@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from ..utils import normalize_lang
+
 TGN_I18N: dict[str, dict[str, str]] = {
     "en": {
         "rpt_title": "SQL Test Data Generator",
@@ -54,10 +56,6 @@ TGN_I18N: dict[str, dict[str, str]] = {
             "查询会跑到真实路径。SQLite 验证为尽力而为：引擎特有函数可能无法翻译。"),
     },
 }
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
 def tp(lang: str, key: str) -> str:

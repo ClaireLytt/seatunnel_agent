@@ -5,16 +5,16 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
-import json
 import os
 import secrets
-import tempfile
 import threading
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from ..utils import read_json_list, write_json_atomic
 
 try:
     from cryptography.fernet import Fernet, InvalidToken
@@ -144,28 +144,10 @@ class ConnectionPresetsStore:
         self._lock = threading.Lock()
 
     def _read(self) -> list[dict[str, Any]]:
-        if not self.path.is_file():
-            return []
-        try:
-            return json.loads(self.path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return []
+        return read_json_list(self.path)
 
     def _write(self, data: list[dict[str, Any]]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(
-            dir=str(self.path.parent), suffix=".tmp",
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, str(self.path))
-        except BaseException:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        write_json_atomic(self.path, data)
 
     def _migrate_legacy(self, data: list[dict[str, Any]]) -> None:
         """Re-encrypt legacy (b64/plaintext) passwords in place and persist."""

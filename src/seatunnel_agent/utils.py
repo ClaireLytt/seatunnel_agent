@@ -3,8 +3,44 @@ from __future__ import annotations
 import json
 import os
 import platform
+import tempfile
 from pathlib import Path
 from typing import Any
+
+
+def normalize_lang(lang: str | None) -> str:
+    """Normalize any language hint to the two supported codes: en / zh."""
+    return "en" if (lang or "").strip().lower().startswith("en") else "zh"
+
+
+def read_json_list(path: Path) -> list[Any]:
+    """Read a JSON file expected to hold a list; missing/corrupt/non-list → []."""
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return []
+    return data if isinstance(data, list) else []
+
+
+def write_json_atomic(path: Path, data: Any) -> None:
+    """Write JSON atomically: tempfile in the target's directory + os.replace,
+    so readers never observe a half-written file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(
+        dir=str(path.parent), suffix=".tmp", prefix=path.name,
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, str(path))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def truncate(text: str, max_chars: int = 3000) -> str:

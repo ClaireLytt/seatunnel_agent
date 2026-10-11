@@ -9,6 +9,7 @@ import gradio as gr
 
 from .issue_triage import load_issues, render_markdown, triage
 from .issue_triage.report import normalize_lang
+from .config import llm_ready as _llm_ready
 
 _DEMO = (Path(__file__).resolve().parents[2] / "examples" / "triage_demo"
          / "issues.jsonl")
@@ -46,11 +47,6 @@ _I18N = {
 
 def _t(lang: str, key: str) -> str:
     return _I18N[normalize_lang(lang)].get(key, key)
-
-
-def _llm_ready() -> bool:
-    import os
-    return bool(os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", ""))
 
 
 def render_issue_triage_page(app: gr.Blocks) -> None:

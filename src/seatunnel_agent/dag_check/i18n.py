@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from ..utils import normalize_lang
+
 DAG_I18N: dict[str, dict[str, str]] = {
     "en": {
         "rpt_title": "Scheduling DAG Health Check",
@@ -45,10 +47,6 @@ DAG_I18N: dict[str, dict[str, str]] = {
         "msg_isolated": "完全没有血缘边的表",
     },
 }
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
 def tp(lang: str, key: str) -> str:

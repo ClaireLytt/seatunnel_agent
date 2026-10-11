@@ -19,6 +19,7 @@ from typing import Any
 
 from ..agent_core import Step, ToolLoopAgent, ToolSpec
 from ..config import Settings
+from ..utils import normalize_lang
 
 _KEY_PACKAGES = ("gradio", "fastapi", "sqlglot", "matplotlib", "anthropic",
                  "openai", "pyyaml", "playwright", "click", "pyhocon")
@@ -144,7 +145,7 @@ class DoctorResult:
 
 
 def _checkup_markdown(lang: str = "zh") -> str:
-    zh = not (lang or "").lower().startswith("en")
+    zh = normalize_lang(lang) == "zh"
     title = "## 环境体检(确定性)" if zh else "## Environment check-up (deterministic)"
     note = ("> 未配置 LLM — 以下是全量检查结果;配置 API key 后可用自然语言"
             "描述症状做针对性诊断。" if zh else

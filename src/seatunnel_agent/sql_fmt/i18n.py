@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from ..utils import normalize_lang
+
 FMT_I18N: dict[str, dict[str, str]] = {
     "en": {
         "rpt_title": "SQL Formatter",
@@ -39,10 +41,6 @@ FMT_I18N: dict[str, dict[str, str]] = {
             "格式化永不破坏内容。"),
     },
 }
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
 def tp(lang: str, key: str) -> str:

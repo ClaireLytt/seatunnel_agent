@@ -5,9 +5,7 @@ from __future__ import annotations
 
 from .engine import TriageResult
 
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
+from ..utils import normalize_lang
 
 
 _I18N = {

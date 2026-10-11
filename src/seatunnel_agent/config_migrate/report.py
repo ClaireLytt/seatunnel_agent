@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from .migrator import BatchResult, Issue, MigrateResult
+from ..utils import normalize_lang
 
 _MSG = {
     "zh": {
@@ -64,10 +65,6 @@ _MSG = {
 _MARK = {"error": "❌", "warn": "⚠️", "info": "ℹ️"}
 
 
-def _lang(lang: str) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
-
-
 def _issue_line(issue: Issue, lang: str) -> str:
     tmpl = _MSG[lang].get(issue.kind, issue.kind)
     try:
@@ -78,7 +75,7 @@ def _issue_line(issue: Issue, lang: str) -> str:
 
 
 def render_migrate_markdown(res: MigrateResult, lang: str = "zh") -> str:
-    lang = _lang(lang)
+    lang = normalize_lang(lang)
     t = _MSG[lang]
     lines = [t["title"], ""]
     head = f"`{res.source_path}` ({res.source_kind}"
@@ -98,7 +95,7 @@ def render_migrate_markdown(res: MigrateResult, lang: str = "zh") -> str:
 
 
 def render_batch_markdown(batch: BatchResult, lang: str = "zh") -> str:
-    lang = _lang(lang)
+    lang = normalize_lang(lang)
     t = _MSG[lang]
     lines = [t["title"], ""]
     for r in batch.results:

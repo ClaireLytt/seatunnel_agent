@@ -17,6 +17,7 @@ from typing import Any, Callable
 from ..config import Settings
 from .catalog import AgentSpec, build_catalog, tool_definitions
 from .prompts import build_system_prompt
+from ..utils import normalize_lang
 
 _MAX_RESULT_CHARS = 20000  # keep one tool's markdown from flooding the context
 
@@ -58,7 +59,7 @@ class Orchestrator:
                  client: Any = None,
                  catalog: dict[str, AgentSpec] | None = None) -> None:
         self.settings = settings
-        self.lang = "en" if (lang or "").lower().startswith("en") else "zh"
+        self.lang = normalize_lang(lang)
         self.max_steps = max(1, max_steps)
         self.catalog = catalog if catalog is not None else build_catalog(
             default_lang=self.lang)

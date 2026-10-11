@@ -6,11 +6,9 @@ from __future__ import annotations
 from .core import DepReport
 
 
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
-
-
 from typing import Any
+
+from ..utils import normalize_lang
 
 _I18N: dict[str, dict[str, Any]] = {
     "en": {

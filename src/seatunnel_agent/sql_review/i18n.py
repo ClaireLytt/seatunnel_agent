@@ -8,6 +8,8 @@ language of the linter findings).
 
 from __future__ import annotations
 
+from ..utils import normalize_lang as normalize_lang  # re-export
+
 # English labels for report.CHECK_CATALOG (keys must stay in sync).
 CHECK_CATALOG_EN: dict[str, str] = {
     "syntax": "SQL syntax validity (dialect parse)",
@@ -404,10 +406,6 @@ def finding_texts(finding, lang: str) -> tuple[str, str, str]:
             except (KeyError, IndexError):
                 pass
     return finding.description, finding.impact, finding.suggestion
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").strip().lower().startswith("en") else "zh"
 
 
 def sr(lang: str, key: str) -> str:

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from ..utils import normalize_lang
+
 MDF_I18N: dict[str, dict[str, str]] = {
     "en": {
         "rpt_title": "Metric Consistency Check",
@@ -39,10 +41,6 @@ MDF_I18N: dict[str, dict[str, str]] = {
         "msg_source_conflict": "同名字段取自不同来源列",
     },
 }
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
 def tp(lang: str, key: str) -> str:

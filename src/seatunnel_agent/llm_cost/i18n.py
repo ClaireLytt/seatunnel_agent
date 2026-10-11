@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from ..utils import normalize_lang
+
 COST_I18N: dict[str, dict[str, str]] = {
     "en": {
         "rpt_title": "LLM Cost",
@@ -39,10 +41,6 @@ COST_I18N: dict[str, dict[str, str]] = {
                            "不是账单。"),
     },
 }
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
 def tp(lang: str, key: str) -> str:

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 
+from ..utils import normalize_lang
+
 _logger = logging.getLogger(__name__)
 
 DSK_I18N: dict[str, dict[str, str]] = {
@@ -630,11 +632,6 @@ DSK_I18N: dict[str, dict[str, str]] = {
 }
 
 
-def normalize_lang(lang: str | None) -> str:
-    l = (lang or "zh").strip().lower()
-    if l.startswith("en"):
-        return "en"
-    return "zh"
 
 
 def dsk(lang: str, key: str) -> str:
