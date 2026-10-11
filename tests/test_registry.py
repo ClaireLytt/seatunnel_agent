@@ -67,4 +67,7 @@ class TestCardHtml:
         assert 'href="/x"' in html
         assert "A &amp; B" in html           # escaped
         assert 'data-zh="甲"' in html
-        assert "st-hub-enter" in html
+        # no "Enter →" footer — the whole card is the link
+        assert "st-hub-enter" not in html
+        # unknown route → two-letter monogram fallback inside the logo tile
+        assert 'class="st-hub-logo">X</div>' in html

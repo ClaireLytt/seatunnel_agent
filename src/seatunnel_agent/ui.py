@@ -776,41 +776,41 @@ def _hub_health_html() -> str:
     key = os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
     if key:
         model = _html.escape(os.getenv("MODEL_NAME", "claude-opus-5"))
-        src = ('<span data-en="UI settings" data-zh="界面设置">UI settings</span>'
-               if settings_store.has_saved() else ".env")
-        llm = (f'<span class="st-hub-ok">✓ LLM</span> <code>{model}</code> '
-               f'<span class="st-hub-dim">({src})</span>')
+        src = "UI settings" if settings_store.has_saved() else ".env"
+        llm = (f'<span class="st-hub-ok" title="configured via {src}">'
+               f'<span class="st-dot st-dot-ok"></span>LLM'
+               f'<code>{model}</code></span>')
     else:
-        llm = ('<a href="/settings" class="st-hub-bad">✗ LLM '
+        llm = ('<a href="/settings" class="st-hub-bad">'
+               '<span class="st-dot st-dot-bad"></span>LLM '
                '<span data-en="not configured — open Settings" '
                'data-zh="未配置,点此设置">not configured — open Settings</span></a>')
     hive_host = os.getenv("HIVE_HOST", "")
-    hive = (f'<span class="st-hub-ok">✓ Hive</span> '
-            f'<span class="st-hub-dim">{_html.escape(hive_host)}</span>'
+    hive = (f'<span class="st-hub-ok" title="{_html.escape(hive_host)}">'
+            '<span class="st-dot st-dot-ok"></span>Hive: '
+            '<span data-en="connected" data-zh="已连接">connected</span></span>'
             if hive_host else
-            '<span class="st-hub-dim">○ Hive <span data-en="not set" '
-            'data-zh="未配置">not set</span></span>')
-    ut = '<span class="st-hub-dim">○ UI tests —</span>'
+            '<span class="st-hub-dim"><span class="st-dot st-dot-off"></span>'
+            'Hive: <span data-en="not set" data-zh="未配置">not set</span></span>')
+    # agent count beats a developer-facing test tally on a landing page
     try:
-        from .ui_testing.rundiff import load_history
-        recs = load_history(last=1)
-        if recs:
-            verdicts = recs[-1].get("verdicts", {})
-            bad = sum(1 for v in verdicts.values() if v in ("FAIL", "ERROR"))
-            good = sum(1 for v in verdicts.values() if v == "PASS")
-            cls = "st-hub-ok" if bad == 0 else "st-hub-bad"
-            mark = "✓" if bad == 0 else "✗"
-            day = str(recs[-1].get("ts", ""))[:8]
-            ut = (f'<span class="{cls}">{mark} UI tests</span> {good}✓ {bad}✗ '
-                  f'<span class="st-hub-dim">{day}</span>')
+        from .registry import discover
+        n = len(_card_blocks()) + len(discover())
+        agents = (f'<span class="st-hub-ok"><span class="st-dot st-dot-ok">'
+                  f'</span>{n} <span data-en="agents ready" '
+                  f'data-zh="个能力就绪">agents ready</span></span>')
     except Exception:  # noqa: BLE001 — the strip must never break the hub
-        pass
-    sep = '<span class="st-hub-dim"> · </span>'
-    return f'<div class="st-hub-health">{llm}{sep}{hive}{sep}{ut}</div>'
+        agents = ""
+    import datetime as _dt
+    today = _dt.date.today().strftime("%A, %B %d, %Y").upper()
+    date_seg = f'<span class="st-hub-dim">{today}</span>'
+    segs = "".join(f'<span class="st-hub-seg">{s}</span>'
+                   for s in (date_seg, llm, hive, agents) if s)
+    return f'<div class="st-hub-health">{segs}</div>'
 
 
 _HUB_LANG_ROW = '''<div class="st-hub-lang-row">
-    <select id="st-hub-lang" onchange="var l=this.value;document.cookie='st-lang='+l+';path=/;max-age=31536000';document.body.dataset.stLang=l;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.textContent=e.getAttribute('data-'+l)});var f=document.getElementById('st-hub-filter');if(f){f.placeholder=f.getAttribute('data-'+l+'-ph')||f.placeholder;}">
+    <select id="st-hub-lang" onchange="var l=this.value;document.cookie='st-lang='+l+';path=/;max-age=31536000';document.body.dataset.stLang=l;document.querySelectorAll('#st-hub [data-'+l+']').forEach(function(e){e.innerHTML=e.getAttribute('data-'+l)});var f=document.getElementById('st-hub-filter');if(f){f.placeholder=f.getAttribute('data-'+l+'-ph')||f.placeholder;}">
       <option value="en" selected>English</option>
       <option value="zh">中文</option>
     </select>
@@ -821,52 +821,68 @@ _HUB_BACK_LINK = ('<a class="st-hub-back" href="/" data-en="← Platform home" '
 
 
 def _hub_shell(header: str, body: str, back: bool = False) -> str:
-    """Shared scaffold for the hub pages (`/`, `/data`, `/ai`): lang select +
-    header block + body, all inside #st-hub so the data-en/zh swap JS works."""
-    back_html = f"\n  {_HUB_BACK_LINK}" if back else ""
-    return (f'<div class="st-hub" id="st-hub">{back_html}\n  {_HUB_LANG_ROW}\n'
+    """Shared scaffold for the hub pages (`/`, `/data`, `/ai`): a 48px top bar
+    (brand / back link + lang select) + header block + body, all inside
+    #st-hub so the data-en/zh swap JS works."""
+    try:
+        from importlib.metadata import version
+        ver = f'<span class="st-hub-ver">v{version("seatunnel-agent")}</span>'
+    except Exception:  # noqa: BLE001 — version tag is cosmetic
+        ver = ""
+    left = _HUB_BACK_LINK if back else (
+        f'<div class="st-hub-brand">SeaTunnel Agent{ver}</div>')
+    from .registry import _icon_svg
+    gear = (f'<a class="st-hub-gear" href="/settings" '
+            f'title="Settings">{_icon_svg("settings") or "⚙"}</a>')
+    topbar = (f'<div class="st-hub-topbar">{left}'
+              f'<div class="st-hub-topbar-right">{gear}{_HUB_LANG_ROW}'
+              f'</div></div>')
+    footer = (f'<div class="st-hub-footer"><span>SeaTunnel Agent · '
+              f'<a href="{_DOCS_URL}" target="_blank" rel="noopener">docs ↗</a>'
+              '</span><span class="st-hub-mark">№ 33 agents</span></div>')
+    return (f'<div class="st-hub" id="st-hub">\n  {topbar}\n'
             f'  <div class="st-hub-header">\n{header}\n  </div>\n'
-            f'{body}\n</div>')
+            f'{body}\n  {footer}\n</div>')
 
 
 def _build_landing_html() -> str:
     """Root `/` — choose a workspace: Data Agents or AI Platform."""
-    header = '''    <div class="st-hub-title" data-en="SeaTunnel Agent Platform" data-zh="SeaTunnel Agent 工作台">SeaTunnel Agent Platform</div>
-    <div class="st-hub-subtitle" data-en="AI Agent Workspace · Choose a workspace to start" data-zh="AI Agent 工作台 · 选择一个工作区开始">AI Agent Workspace · Choose a workspace to start</div>
+    header = '''    <div class="st-hub-title" data-en='<span class="st-red">S</span>eaTunnel Agent Platform' data-zh='<span class="st-red">S</span>eaTunnel Agent 工作台'><span class="st-red">S</span>eaTunnel Agent Platform</div>
+    <div class="st-hub-subtitle" data-en="Choose a workspace to start" data-zh="选择一个工作区开始">Choose a workspace to start</div>
     <!--STATUS-->'''
-    body = '''  <div class="st-hub-grid st-hub-grid-4">
-    <a class="st-hub-card st-hub-section-card" href="/data">
+    body = '''  <div class="st-hub-section-title st-hub-landing-sec" data-en="Workspaces" data-zh="工作区">Workspaces</div>
+  <div class="st-hub-grid">
+    <a class="st-hub-card" href="/data">
       <div class="st-hub-logo" style="background:#f76707;">DA</div>
       <div class="st-hub-card-title" data-en="Data Agents" data-zh="数据 Agent 工作区">Data Agents</div>
-      <div class="st-hub-card-desc" data-en="16 agents for data work — pipeline builder, Text2SQL, SQL review / lineage / quality, scheduling &amp; more" data-zh="16 个数据能力 — 管道构建、Text2SQL、SQL 审查 / 血缘 / 质量、调度体检等">16 agents for data work — pipeline builder, Text2SQL, SQL review / lineage / quality, scheduling &amp; more</div>
-      <div class="st-hub-enter" style="color:#f76707;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+      <div class="st-hub-card-desc" data-en="Build &amp; govern data pipelines — Text2SQL, SQL review, lineage" data-zh="构建与治理数据管道 — Text2SQL、SQL 审查、血缘">Build &amp; govern data pipelines — Text2SQL, SQL review, lineage</div>
     </a>
-    <a class="st-hub-card st-hub-section-card" href="/ai">
+    <a class="st-hub-card" href="/ai">
       <div class="st-hub-logo" style="background:#7c3aed;">AI</div>
       <div class="st-hub-card-title" data-en="AI Platform" data-zh="AI 平台">AI Platform</div>
-      <div class="st-hub-card-desc" data-en="LLM engineering — agent orchestrator, LLM eval, prompt lab, cost observability" data-zh="LLM 工程 — 智能编排、LLM 评测、Prompt 实验室、成本观测">LLM engineering — agent orchestrator, LLM eval, prompt lab, cost observability</div>
-      <div class="st-hub-enter" style="color:#7c3aed;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+      <div class="st-hub-card-desc" data-en="Engineer the LLM layer — orchestration, eval, prompt lab, cost" data-zh="打磨 LLM 工程 — 编排、评测、Prompt 实验、成本">Engineer the LLM layer — orchestration, eval, prompt lab, cost</div>
     </a>
-    <a class="st-hub-card st-hub-section-card" href="/devops">
+    <a class="st-hub-card" href="/devops">
       <div class="st-hub-logo" style="background:#0d9488;">DO</div>
       <div class="st-hub-card-title" data-en="DevOps" data-zh="DevOps 工作区">DevOps</div>
-      <div class="st-hub-card-desc" data-en="Engineering hygiene — secret scan, CI log triage, dependency health, release notes" data-zh="工程卫生 — 凭证扫描、CI 日志诊断、依赖体检、发布助手">Engineering hygiene — secret scan, CI log triage, dependency health, release notes</div>
-      <div class="st-hub-enter" style="color:#0d9488;" data-en="Enter →" data-zh="进入 →">Enter →</div>
+      <div class="st-hub-card-desc" data-en="Keep engineering healthy — secret scan, CI triage, dependencies" data-zh="守护工程健康 — 凭证扫描、CI 诊断、依赖体检">Keep engineering healthy — secret scan, CI triage, dependencies</div>
     </a>
   </div>'''
     # cross-cutting engineering tools live right on the landing page
+    # (Settings is global config, not a workspace — it lives in the top bar)
     eng_cards = "".join(_card_blocks()[h] for h in _ENG_TOOLS)
     body += (
         '\n  <div class="st-hub-section-title st-hub-landing-sec" '
         'data-en="Engineering Tools" data-zh="工程工具">Engineering Tools</div>'
-        f'\n  <div class="st-hub-grid st-hub-grid-4">{eng_cards}</div>')
-    return _hub_shell(header, body).replace("<!--STATUS-->", _hub_health_html())
+        f'\n  <div class="st-hub-grid">{eng_cards}</div>')
+    return _hub_shell(header, _swap_logos(body)).replace(
+        "<!--STATUS-->", _hub_health_html())
 
 
 def _build_ai_hub_html() -> str:
     """`/ai` — the AI Platform workspace; cards come from plugin manifests."""
     from .registry import card_html, workspace_manifests
-    header = '''    <div class="st-hub-title" data-en="AI Platform" data-zh="AI 平台">AI Platform</div>
+    header = '''    <div class="st-hub-title" data-en='<span class="st-red">AI</span> Platform' data-zh='<span class="st-red">AI</span> 平台'><span class="st-red">AI</span> Platform</div>
     <div class="st-hub-subtitle" data-en="LLM engineering workspace · orchestrate, evaluate, experiment, observe" data-zh="LLM 工程工作台 · 编排、评测、实验、观测">LLM engineering workspace · orchestrate, evaluate, experiment, observe</div>
     <!--STATUS-->'''
     cards = "\n".join(card_html(m) for m in workspace_manifests("ai"))
@@ -890,12 +906,26 @@ _DATA_GROUPS: list[tuple[str, str, list[str]]] = [
      ["/lineage", "/impact", "/schemadrift", "/metricdiff", "/pii",
       "/dagcheck"]),
 ]
-_ENG_TOOLS = ["/loginspect", "/uitest", "/mcp", "/settings"]
+_ENG_TOOLS = ["/loginspect", "/uitest", "/mcp"]  # /settings lives in the top bar
 
 # instant client-side filter over card titles/descriptions (both languages);
 # section titles with no visible card hide themselves
+_FILTER_ICO_SVG = ('<svg viewBox="64 64 896 896" focusable="false"><path d="M9'
+                   '09.6 854.5L649.9 594.8C690.2 542.7 712 479 712 412c0-80.2-'
+                   '31.3-155.4-87.9-212.1-56.6-56.7-132-87.9-212.1-87.9s-155.5'
+                   ' 31.3-212.1 87.9C143.2 256.5 112 331.8 112 412c0 80.1 31.3'
+                   ' 155.5 87.9 212.1C256.5 680.8 331.8 712 412 712c67 0 130.6'
+                   '-21.8 182.7-62l259.7 259.6a8.2 8.2 0 0011.6 0l43.6-43.5a8.'
+                   '2 8.2 0 000-11.6zM570.4 570.4C528 612.7 471.8 636 412 636s'
+                   '-116-23.3-158.4-65.6C211.3 528 188 471.8 188 412s23.3-116.'
+                   '1 65.6-158.4C296 211.3 352.2 188 412 188s116.1 23.2 158.4 '
+                   '65.6S636 352.2 636 412s-23.3 116.1-65.6 158.4z"/></svg>')
+
 _HUB_FILTER_ROW = (
-    '<div class="st-hub-filter-row"><input id="st-hub-filter" type="search" '
+    '<div class="st-hub-filter-row"><div class="st-hub-filter-wrap">'
+    f'<span class="st-hub-filter-ico">{_FILTER_ICO_SVG}</span>'
+    '<span class="st-hub-filter-kbd">/</span>'
+    '<input id="st-hub-filter" type="search" '
     'data-en-ph="Filter agents…" data-zh-ph="过滤能力…" placeholder="Filter agents…" '
     'oninput="var q=this.value.toLowerCase();'
     "document.querySelectorAll('#st-hub .st-hub-card').forEach(function(c){"
@@ -907,7 +937,7 @@ _HUB_FILTER_ROW = (
     "function(s){var g=s.nextElementSibling;"
     "var any=g&&Array.from(g.children).some(function(c){"
     "return c.style.display!=='none'});"
-    's.style.display=any?\'\':\'none\'});"></div>')
+    's.style.display=any?\'\':\'none\'});"></div></div>')
 
 
 # All 20 agent cards in one literal; the builders pick blocks by href.
@@ -1034,10 +1064,24 @@ _DATA_CARDS_HTML = '''
     </a>'''
 
 
+def _swap_logos(html: str) -> str:
+    """Replace the legacy colored-monogram logo divs in a card HTML literal
+    with the vendored antd line icons (keyed by the card's href)."""
+    from .registry import logo_html
+    return re.sub(
+        r'(<a class="st-hub-card[^"]*" href="(/[^"]+)">\s*)'
+        r'<div class="st-hub-logo"[^>]*>.*?</div>',
+        lambda m: m.group(1) + logo_html(m.group(2)),
+        html, flags=re.S)
+
+
+_DATA_CARDS_HTML = _swap_logos(_DATA_CARDS_HTML)
+
+
 def _build_devops_hub_html() -> str:
     """`/devops` — engineering-hygiene workspace; cards from manifests."""
     from .registry import card_html, workspace_manifests
-    header = '''    <div class="st-hub-title" data-en="DevOps" data-zh="DevOps 工作区">DevOps</div>
+    header = '''    <div class="st-hub-title" data-en='<span class="st-red">D</span>evOps' data-zh='<span class="st-red">D</span>evOps 工作区'><span class="st-red">D</span>evOps</div>
     <div class="st-hub-subtitle" data-en="Engineering hygiene · scan, triage, audit, release" data-zh="工程卫生工作台 · 扫描、诊断、体检、发布">Engineering hygiene · scan, triage, audit, release</div>'''
     cards = "\n".join(card_html(m) for m in workspace_manifests("devops"))
     body = ('  <div class="st-hub-grid st-hub-grid-4">\n'
@@ -1054,7 +1098,7 @@ def _card_blocks() -> dict[str, str]:
 
 def _build_data_hub_html() -> str:
     """`/data` — the Data Agents workspace, grouped sections + filter."""
-    header = '''    <div class="st-hub-title" data-en="Data Agents" data-zh="数据 Agent 工作区">Data Agents</div>
+    header = '''    <div class="st-hub-title" data-en='<span class="st-red">D</span>ata Agents' data-zh='<span class="st-red">数</span>据 Agent 工作区'><span class="st-red">D</span>ata Agents</div>
     <div class="st-hub-subtitle" data-en="Data engineering workspace · Choose an agent to start" data-zh="数据工程工作台 · 选择一个能力开始">Data engineering workspace · Choose an agent to start</div>'''
     by_href = _card_blocks()
     parts = [_HUB_FILTER_ROW]
@@ -1077,6 +1121,18 @@ _HUB_LANG_RESTORE_JS = """
     if (sel && sel.value !== l) {
         sel.value = l;
         sel.dispatchEvent(new Event('change'));
+    }
+    // "/" focuses the agent filter (the kbd hint on the input promises it)
+    if (!window.__stHubSlash) {
+        window.__stHubSlash = true;
+        document.addEventListener('keydown', (e) => {
+            const f = document.getElementById('st-hub-filter');
+            const t = document.activeElement && document.activeElement.tagName;
+            if (e.key === '/' && f && t !== 'INPUT' && t !== 'TEXTAREA') {
+                e.preventDefault();
+                f.focus();
+            }
+        });
     }
 }
 """
@@ -1776,6 +1832,7 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
 # ------------------------------------------------------------------
 
 _CUSTOM_CSS = """
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@1,700;1,800&display=swap');
 /* ══════════════════════════════════════════
    Global — full viewport, no scroll on body
    ══════════════════════════════════════════ */
@@ -2191,165 +2248,359 @@ body.st-sidebar-dragging {
 }
 
 /* ══════════════════════════
-   Hub landing page
+   Hub landing page — "The Almanac"
+   Newspaper-masthead editorial: cream paper, hairline ink rules,
+   a giant letterspaced serif masthead with a red initial, mono
+   small-caps metadata rows, borderless newspaper columns separated
+   by vertical rules. One accent: deep editorial red.
    ══════════════════════════ */
+body:has(#st-hub), body:has(#st-hub) .gradio-container,
+body:has(#st-hub) main, body:has(#st-hub) .main {
+    background: #f3efe4 !important;
+}
 .st-hub {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 80vh;
-    padding: 24px 16px;
+    min-height: 95vh;
+    padding: 72px 24px 24px;  /* clears the 48px masthead bar */
     position: relative;
+    background: #f3efe4;
+    color: #3c372e;
 }
-.st-hub-lang-row {
+.st-hub-grid, .st-hub-section-title,
+.st-hub-filter-row, .st-hub-footer {
+    width: min(1080px, 100%);
+}
+/* the masthead spans the full content width, centered like a front page */
+.st-hub-header {
+    width: min(1080px, 100%);
+    text-align: center;
+}
+/* 48px top bar: brand / back link on the left, language select on the right */
+.st-hub-topbar {
     position: absolute;
-    top: 16px;
-    right: 24px;
-}
-.st-hub-lang-row select {
-    font-size: 11px;
-    padding: 4px 24px 4px 10px;
-    border-radius: 6px;
-    border: 1px solid #e5e7eb;
-    background: #f9fafb;
-    height: 28px;
-    cursor: pointer;
-    outline: none;
-}
-.st-hub-lang-row select:hover { border-color: #f76707; }
-.st-hub-header { text-align: center; margin-bottom: 36px; }
-.st-hub-health {
-    margin-top: 10px;
-    font-size: 12px;
-    color: #6b7280;
-}
-.st-hub-health code {
-    font-size: 11px;
-    background: #f3f4f6;
-    padding: 1px 6px;
-    border-radius: 4px;
-}
-.st-hub-ok { color: #059669; font-weight: 600; }
-.st-hub-bad { color: #dc2626; font-weight: 600; text-decoration: none; }
-a.st-hub-bad:hover { text-decoration: underline; }
-.st-hub-dim { color: #9ca3af; }
-.st-hub-title {
-    font-size: 26px;
-    font-weight: 800;
-    color: #1f2937;
-    letter-spacing: -0.5px;
-}
-.st-hub-subtitle {
-    font-size: 13px;
-    color: #6b7280;
-    margin-top: 8px;
-}
-.st-hub-grid {
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 48px;
     display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-    justify-content: center;
-    max-width: 900px;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    border-bottom: 1px solid #1a1613;
 }
-.st-hub-card {
+.st-hub-brand {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: #1a1613;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+.st-hub-ver {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 9px;
+    color: #8a8378;
+    margin-left: 10px;
+    letter-spacing: 0.12em;
+}
+.st-hub-topbar-right {
     display: flex;
-    flex-direction: column;
-    width: 250px;
-    padding: 22px 20px;
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 14px;
-    text-decoration: none !important;
-    transition: transform .15s, box-shadow .15s, border-color .15s;
-    cursor: pointer;
+    align-items: center;
+    gap: 14px;
 }
-.st-hub-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(0,0,0,.08);
-    border-color: #d1d5db;
-}
-.st-hub-logo {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    color: #fff;
-    font-size: 15px;
-    font-weight: 800;
+/* top-bar controls: quiet small-caps, red on hover — newsprint chrome */
+.st-hub-gear {
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 14px;
-    letter-spacing: -0.5px;
+    width: 30px;
+    height: 30px;
 }
+.st-hub-gear svg { width: 14px; height: 14px; fill: #1a1613; }
+.st-hub-gear:hover svg { fill: #9e2b25; }
+.st-hub-lang-row select {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 4px 20px 4px 6px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    color: #1a1613;
+    height: 30px;
+    cursor: pointer;
+    outline: none;
+}
+.st-hub-lang-row select:hover { color: #9e2b25; }
+/* masthead block */
+.st-hub-header { margin-bottom: 40px; }
+.st-hub-health {
+    display: inline-flex;
+    align-items: center;
+    margin-top: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6e6757;
+}
+/* gradio prose styles recolor nested spans — force inheritance */
+.st-hub-health span:not(.st-dot) { color: inherit; }
+.st-hub-health .st-hub-ok, .st-hub-health .st-hub-ok span:not(.st-dot) {
+    color: #1a1613;
+}
+.st-hub-seg { display: inline-flex; align-items: center; }
+.st-hub-seg + .st-hub-seg {
+    margin-left: 16px;
+    padding-left: 16px;
+    border-left: 1px solid #c8c0ad;
+}
+.st-hub-health code {
+    font-family: inherit;
+    font-size: 10px;
+    background: transparent;
+    color: #1a1613;
+    padding: 0 0 0 4px;
+}
+/* status markers: 4px typographic squares — ink when fine, red when not */
+.st-dot {
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    border: 1px solid #1a1613;
+    border-radius: 0;
+    margin-right: 6px;
+    flex: none;
+}
+.st-dot-ok  { background: #1a1613; }
+.st-dot-bad { background: #9e2b25; border-color: #9e2b25; }
+.st-dot-off { background: transparent; }
+.st-hub-ok { color: #1a1613; font-weight: 600; }
+.st-hub-bad { color: #9e2b25; font-weight: 700; text-decoration: none; }
+a.st-hub-bad:hover { text-decoration: underline; }
+.st-hub-dim { color: #8a8378; }
+/* the masthead: huge letterspaced serif, red initial, framed by rules */
+.st-hub-title {
+    /* flourished italic display serif; CJK falls through to SimSun */
+    font-family: 'Playfair Display', Didot, 'Bodoni MT', Georgia,
+                 'SimSun', '宋体', serif;
+    /* sized to set the masthead on a single line at the 1080px measure */
+    font-size: clamp(28px, 4.1vw, 56px);
+    font-weight: 800;
+    font-style: italic;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: #1a1613;
+    letter-spacing: 0.1em;
+    line-height: 1.05;
+    border-top: 1px solid #1a1613;
+    padding-top: 18px;
+}
+/* the red letters are explicit spans so multi-letter marks (e.g. "AI")
+   can carry the accent, not just the first glyph */
+.st-hub-title .st-red { color: #9e2b25; }
+.st-hub-subtitle {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.3em;
+    color: #3c372e;
+    margin-top: 14px;
+    padding: 9px 0;
+    border-top: 1px solid #1a1613;
+    border-bottom: 1px solid #1a1613;
+}
+.st-hub-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0 0;
+    align-items: stretch;  /* column rules run the full row height */
+}
+@media (max-width: 860px) {
+    .st-hub-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+/* numbering runs continuously across the whole page (01…NN) */
+.st-hub { counter-reset: hubcard; }
+/* borderless newspaper columns: a heavy rule on top of each entry,
+   hairline rules between columns, no boxes, no shadows */
+.st-hub-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    padding: 14px 18px 18px;
+    background: transparent !important;
+    border: none;
+    border-top: 2px solid #1a1613;
+    border-radius: 0;
+    text-decoration: none !important;
+    transition: background .12s;
+    cursor: pointer;
+    position: relative;
+    counter-increment: hubcard;
+}
+.st-hub-card:nth-child(3n+1) { padding-left: 0; }
+.st-hub-card:not(:nth-child(3n+1)) { border-left: 1px solid #c8c0ad; }
+.st-hub-card:hover { background: #ece7d7 !important; }
+/* folio number, set quietly in the top corner */
+.st-hub-card::after {
+    content: "NO. " counter(hubcard, decimal-leading-zero);
+    position: absolute;
+    top: 16px;
+    right: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: #8a8378;
+    transition: color .12s;
+}
+.st-hub-card:hover::after { color: #9e2b25; }
+/* no inline icons in a newspaper column — the folio corner is enough */
+.st-hub-logo { display: none; }
 .st-hub-card-title {
-    font-size: 14px;
+    font-family: Georgia, 'Times New Roman', 'SimSun', '宋体', serif;
+    font-size: 17px;
     font-weight: 700;
-    color: #1f2937;
-    margin-bottom: 6px;
+    color: #1a1613;
+    letter-spacing: 0;
+    padding-right: 52px;  /* keep clear of the folio number */
 }
+.st-hub-card:hover .st-hub-card-title { color: #9e2b25; }
+/* clickability hint lives on the whole card: arrow appears next to the
+   title on hover instead of a repeated "Enter →" footer */
+.st-hub-card-title::after {
+    content: " →";
+    opacity: 0;
+    color: #9e2b25;
+    transition: opacity .12s;
+}
+.st-hub-card:hover .st-hub-card-title::after { opacity: 1; }
 .st-hub-zh {
     font-size: 11px;
     font-weight: 500;
     color: #9ca3af;
 }
 .st-hub-card-desc {
-    font-size: 11px;
-    color: #6b7280;
-    line-height: 1.6;
-    flex-grow: 1;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-top: 9px;
+    font-family: Georgia, 'Times New Roman', 'SimSun', '宋体', serif;
+    font-size: 12.5px;
+    color: #3c372e;
+    line-height: 20px;
+    min-height: 40px;  /* always two lines — no ragged card bottoms */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
-.st-hub-enter {
-    margin-top: 14px;
-    font-size: 11px;
-    font-weight: 600;
-}
-.st-hub-section-card {
-    width: 320px;
-    padding: 28px 24px;
-}
-.st-hub-grid-4 { max-width: 1200px; }  /* four cards on one row */
+/* the per-card "Enter →" footer is markup noise — hidden everywhere; the
+   whole card is the link and the hover arrow on the title says so */
+.st-hub-enter { display: none; }
 .st-dim-hint, .st-dim-hint p { font-size: 11px !important; color: #9ca3af !important; }
+/* section label: a small-caps kicker above its column block */
 .st-hub-section-title {
-    width: min(900px, 100%);
-    margin: 18px 0 2px;
-    font-size: 12px;
+    margin: 34px 0 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px;
     font-weight: 700;
-    color: #9ca3af;
-    letter-spacing: 1px;
+    letter-spacing: 0.22em;
     text-transform: uppercase;
     text-align: left;
+    color: #9e2b25;
 }
+.st-hub-section-title:first-of-type { margin-top: 10px; }
 .st-hub-filter-row { margin-bottom: 4px; }
-.st-hub-landing-sec { text-align: center; margin-top: 30px; }
+/* colophon: a double rule closes the page, folio mark on the right */
+.st-hub-footer {
+    margin-top: auto;
+    padding-top: 12px;
+    border-top: 3px double #1a1613;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #6e6757;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+.st-hub-footer a { color: #1a1613; text-decoration: none; font-weight: 700; }
+.st-hub-footer a:hover { color: #9e2b25; }
+.st-hub-mark {
+    font-family: Georgia, 'Times New Roman', 'SimSun', '宋体', serif;
+    font-style: italic;
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    color: #9e2b25;
+    user-select: none;
+}
+.st-hub-landing-sec { margin-top: 30px; }  /* left-aligned to the grid edge */
+.st-hub-filter-wrap {
+    position: relative;
+    display: inline-block;
+    width: min(348px, 100%);
+}
+.st-hub-filter-ico {
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    display: flex;
+}
+.st-hub-filter-ico svg { width: 13px; height: 13px; fill: #1a1613; }
+.st-hub-filter-kbd {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px;
+    font-weight: 700;
+    color: #1a1613;
+    padding: 0 5px;
+    background: transparent;
+    border: 1px solid #1a1613;
+}
+/* classified-ad search: an underline, not a box */
 #st-hub-filter {
-    width: 260px;
-    height: 30px;
-    padding: 0 12px;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
+    width: 100%;
+    height: 32px;
+    padding: 0 30px 0 26px;
+    border: none;
+    border-bottom: 2px solid #1a1613;
+    border-radius: 0;
     font-size: 12px;
-    background: #f9fafb;
+    background: transparent;
+    color: #1a1613;
     outline: none;
 }
-#st-hub-filter:focus { border-color: #f76707; }
-.st-hub-section-card .st-hub-logo {
-    width: 52px;
-    height: 52px;
-    font-size: 17px;
+#st-hub-filter::placeholder {
+    color: #8a8378;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 10px;
 }
-.st-hub-section-card .st-hub-card-title { font-size: 16px; }
-.st-hub-section-card .st-hub-card-desc { font-size: 12px; }
+#st-hub-filter:focus { border-bottom-color: #9e2b25; }
 .st-hub-back {
-    position: absolute;
-    top: 16px;
-    left: 24px;
-    font-size: 12px;
-    font-weight: 600;
-    color: #6b7280;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #1a1613;
     text-decoration: none !important;
 }
-.st-hub-back:hover { color: #f76707; }
+.st-hub-back:hover { color: #9e2b25; }
 /* ══════════════════════════════════════════
    Chatbot — fill remaining height exactly
    ══════════════════════════════════════════ */

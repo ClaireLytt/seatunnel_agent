@@ -21,7 +21,7 @@ _DATA_ROUTES = [
 ]
 
 # Cross-cutting engineering tools live on the landing page.
-_ENG_ROUTES = ["/loginspect", "/uitest", "/mcp", "/settings"]
+_ENG_ROUTES = ["/loginspect", "/uitest", "/mcp"]  # /settings is a top-bar gear
 
 _AI_ROUTES = ["/orchestrator", "/llmeval", "/promptlab", "/llmcost"]
 
@@ -62,6 +62,9 @@ class TestLanding:
         for route in _ENG_ROUTES:
             assert f'class="st-hub-card" href="{route}"' in html, route
         assert 'data-zh="工程工具"' in html
+        # Settings is global config, not a workspace — a top-bar gear link
+        assert 'class="st-hub-card" href="/settings"' not in html
+        assert 'class="st-hub-gear" href="/settings"' in html
 
 
 class TestDataHub:
@@ -88,9 +91,10 @@ class TestDataHub:
         assert 'id="st-hub-filter"' in html
         # every card is inside exactly one section grid
         assert html.count('class="st-hub-grid"') == 3
-        # the engineering tools moved to the landing page
-        for route in _ENG_ROUTES:
-            assert f'href="{route}"' not in html, route
+        # the engineering tools moved to the landing page (the top-bar gear
+        # legitimately links to /settings, so match the card markup)
+        for route in _ENG_ROUTES + ["/settings"]:
+            assert f'class="st-hub-card" href="{route}"' not in html, route
 
 
 class TestWorkspaceBackButton:
@@ -119,7 +123,8 @@ class TestDevopsHub:
         html = _build_devops_hub_html()
         for route in _DEVOPS_ROUTES:
             assert f'href="{route}"' in html, route
-        assert 'data-zh="DevOps 工作区"' in html
+        # the title attr is single-quoted now and carries the red-initial span
+        assert 'data-zh=\'<span class="st-red">D</span>evOps 工作区\'' in html
         assert 'class="st-hub-back" href="/"' in html
 
     def test_stamp_js_maps_devops(self):
