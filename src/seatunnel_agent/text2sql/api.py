@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from ..config import load_settings
 from .agent import Text2SQLAgent
 from .executor import DS_TYPES, DatabaseConfig, create_executor
-from .metrics import MetricError, build_metric_sql, load_metric_store
+from .metrics import MetricError, build_metric_sql, load_metric_store, ratio_sides
 from .schema import SchemaStore
 
 router = APIRouter(prefix="/api/text2sql", tags=["text2sql"])
@@ -401,8 +401,7 @@ def metrics_attribution(req: AttributionRequest) -> dict[str, Any]:
         if metric.is_ratio:
             from .attribution import ratio_factor_split
 
-            num = metric_store.get(metric.numerator)
-            den = metric_store.get(metric.denominator)
+            num, den = ratio_sides(metric, metric_store)
             num_res = _attribute_raw(num)
             den_res = _attribute_raw(den)
             out: dict[str, Any] = {
