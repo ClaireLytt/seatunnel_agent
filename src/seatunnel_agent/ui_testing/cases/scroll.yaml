@@ -77,9 +77,9 @@
     - scrollable: {selector: .st-mig-page}
 
 - id: SCR8
-  title: hub landing page scrolls to the last card
+  title: data agents hub scrolls to the last card
   tags: [smoke, sqlite]
-  page: /
+  page: /data
   lang: en
   steps:
     - wait: 500

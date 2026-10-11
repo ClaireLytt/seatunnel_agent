@@ -60,7 +60,7 @@ def generate_advice(
         f"Deterministic translation:\n```sql\n{translated or '-- (none)'}\n```\n\n"
         f"Findings:\n{findings}\n"
     )
-    llm = LLMClient(settings)
+    llm = LLMClient(settings, agent="sql_transpile")
     resp = llm.chat(system, [{"role": "user", "content": user}])
     text = (resp.reply_text or "").strip()
     if not text:

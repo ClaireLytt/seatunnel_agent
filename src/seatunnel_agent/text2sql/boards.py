@@ -10,14 +10,14 @@ replace, bounded size.
 
 from __future__ import annotations
 
-import json
 import os
-import tempfile
 import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from ..utils import read_json_list, write_json_atomic
 
 _MAX_BOARDS = 50
 _MAX_ITEMS = 30
@@ -35,29 +35,10 @@ class BoardStore:
     # -- persistence ---------------------------------------------------
 
     def _read(self) -> list[dict[str, Any]]:
-        if not self.path.is_file():
-            return []
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            return []
-        return data if isinstance(data, list) else []
+        return read_json_list(self.path)
 
     def _write(self, items: list[dict[str, Any]]) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(
-            dir=str(self.path.parent), suffix=".tmp", prefix=self.path.name,
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(items, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, self.path)
-        except OSError:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        write_json_atomic(self.path, items)
 
     # -- boards ----------------------------------------------------------
 

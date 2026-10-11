@@ -1,0 +1,66 @@
+# MDF 组 · 指标口径一致性页 (/metricdiff)。纯确定性（血缘表达式比对），
+# 演示数据 examples/metricdiff_demo: gmv 公式冲突(高) / contact 来源冲突(中)，
+# order_cnt 的 count(1) 与 count(*) 归一化后等价不报。
+
+- id: MDF1
+  title: 检查演示目录出口径冲突
+  tags: [smoke, sqlite]
+  page: /metricdiff
+  steps:
+    - fill: {SQL 目录: examples/metricdiff_demo}
+    - click: 检查口径
+    - wait_result: {}
+  expect:
+    - result_in_view: {}
+    - text_contains: {in: 结果区, text: 指标口径一致性检查}
+    - text_contains: {in: 结果区, text: 计算公式不同}
+    - text_contains: {in: 结果区, text: gmv}
+
+- id: MDF2
+  title: 来源冲突与归一化等价同时呈现
+  tags: [smoke, sqlite]
+  page: /metricdiff
+  steps:
+    - fill: {SQL 目录: examples/metricdiff_demo}
+    - click: 检查口径
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 取自不同来源列}
+    - text_not_contains: {in: 结果区, text: order_cnt}
+
+- id: MDF3
+  title: 冲突定义标注来源文件
+  tags: [full, sqlite]
+  page: /metricdiff
+  steps:
+    - fill: {SQL 目录: examples/metricdiff_demo}
+    - click: 检查口径
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 01_gmv_report_a.sql}
+    - text_contains: {in: 结果区, text: 02_gmv_report_b.sql}
+
+- id: MDF4
+  title: 目录不存在给出警告不崩溃
+  tags: [full, sqlite]
+  page: /metricdiff
+  steps:
+    - fill: {SQL 目录: no_such_dir_mdf}
+    - click: 检查口径
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 不是有效目录}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: MDF5
+  title: 英文界面检查链路
+  tags: [full, sqlite]
+  lang: en
+  page: /metricdiff
+  steps:
+    - fill: {SQL directory: examples/metricdiff_demo}
+    - click: Check metrics
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: Metric Consistency Check}
+    - text_contains: {in: 结果区, text: different formulas}

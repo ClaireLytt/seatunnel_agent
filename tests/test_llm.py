@@ -486,3 +486,45 @@ class TestSupportsThinking:
              pytest.raises(Exception, match="boom"):
             client._call_with_retry(fn, "a")
         assert fn.call_count == llm_mod.DEFAULT_LLM_MAX_RETRIES
+
+
+class TestAgentAttribution:
+    def test_chat_records_agent(self, monkeypatch):
+        """chat() must pass the client's agent name to llm_usage.record —
+        the per-agent cost roll-up depends on it."""
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            client = LLMClient(ANTHROPIC_SETTINGS, agent="text2sql")
+            fake_resp = LLMResponse(
+                wants_tool_use=False, tool_calls=[], thinking_text="",
+                reply_text="hi", raw_content="hi",
+                usage={"input_tokens": 3, "output_tokens": 2})
+            monkeypatch.setattr(client, "_call_with_retry",
+                                lambda fn, *a: fake_resp)
+            recorded = {}
+
+            def fake_record(provider, model, usage, agent=None):
+                recorded.update(provider=provider, agent=agent)
+            monkeypatch.setattr("seatunnel_agent.llm_usage.record",
+                                fake_record)
+            client.chat("sys", [{"role": "user", "content": "x"}])
+        assert recorded["agent"] == "text2sql"
+
+    def test_production_clients_are_attributed(self):
+        """Every feature constructing an LLMClient names itself — otherwise
+        real usage lands in 'unattributed' and the cost table stays empty."""
+        import re
+        from pathlib import Path
+        src = Path(__file__).resolve().parents[1] / "src" / "seatunnel_agent"
+        missing = []
+        for f in src.rglob("*.py"):
+            if f.name == "llm.py":  # the class definition itself
+                continue
+            text = f.read_text(encoding="utf-8")
+            # window scan instead of paren-matching: construction args may
+            # contain nested calls like tools=tool_definitions(...)
+            for m in re.finditer(r"LLMClient\(", text):
+                window = text[m.end():m.end() + 200]
+                if "agent=" not in window:
+                    missing.append(f"{f.name}: {window[:60]!r}")
+        assert not missing, missing

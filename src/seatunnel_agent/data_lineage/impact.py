@@ -29,6 +29,7 @@ from typing import Any
 from .graph import LineageGraph
 from .rlog import LineageLogger as _LineageLoggerBase
 from .snapshot import diff_graphs
+from ..utils import normalize_lang
 
 LEVELS = ("error", "warn", "info")
 
@@ -488,10 +489,6 @@ _IMPACT_I18N = {
 _LEVEL_MARK = {"error": "❌", "warn": "⚠️", "info": "ℹ️"}
 
 
-def _impact_lang(lang: str) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
-
-
 def _headline(c: ChangedTable, t: dict[str, str]) -> str:
     if c.is_removed:
         return t["removed_table"]
@@ -509,7 +506,7 @@ def _headline(c: ChangedTable, t: dict[str, str]) -> str:
 
 
 def render_impact_markdown(result: ImpactResult, lang: str = "zh") -> str:
-    t = _IMPACT_I18N[_impact_lang(lang)]
+    t = _IMPACT_I18N[normalize_lang(lang)]
     lines = [t["title"], "", t["stats"].format(**result.counts()), ""]
     if result.old_warnings or result.new_warnings:
         lines += [t["warnings"].format(old=result.old_warnings,
@@ -551,9 +548,9 @@ def render_impact_comment(result: ImpactResult, lang: str = "zh") -> str:
     """Compact markdown for a PR/MR comment: one status line, one row per
     changed table, details collapsed. Safe for GBK-free CI pipes (the CLI
     reconfigures stdio, but keep this format emoji-light anyway)."""
-    t = _IMPACT_I18N[_impact_lang(lang)]
+    t = _IMPACT_I18N[normalize_lang(lang)]
     c = result.counts()
-    zh = _impact_lang(lang) == "zh"
+    zh = normalize_lang(lang) == "zh"
     head = "**变更影响**" if zh else "**Change Impact**"
     if not result.changed:
         return f"{head} ✅ " + t["no_change"]

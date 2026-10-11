@@ -38,6 +38,7 @@ Thumbs.db
 *.log
 # but keep the log-inspection demo fixtures
 !examples/logs_demo/*.log
+!examples/ciinspect_demo/*.log
 *.bak
 $SEATUNNEL_HOME/
 

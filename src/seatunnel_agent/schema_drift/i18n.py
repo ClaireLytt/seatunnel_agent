@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from ..utils import normalize_lang
+
 SDF_I18N: dict[str, dict[str, str]] = {
     "en": {
         "rpt_title": "Schema Drift Check",
@@ -55,10 +57,6 @@ SDF_I18N: dict[str, dict[str, str]] = {
         "msg_column_renamed": "疑似改名 {old} → {new}（类型与注释一致）",
     },
 }
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
 def tp(lang: str, key: str) -> str:

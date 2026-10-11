@@ -57,7 +57,7 @@ class Text2SQLAgent:
         example_store: Any = None,
     ) -> None:
         self.settings = settings
-        self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS)
+        self.llm = LLMClient(settings, tools=TOOL_DEFINITIONS, agent="text2sql")
         self.runtime = Text2SQLRuntime(
             store=store, metrics=metric_store, ds_type=ds_type, db_config=db_config,
         )

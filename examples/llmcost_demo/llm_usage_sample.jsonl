@@ -1,0 +1,112 @@
+{"ts": "2026-09-18T00:47:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 3053, "output": 1203, "agent": "sql_review"}
+{"ts": "2026-09-18T23:06:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5267, "output": 556}
+{"ts": "2026-09-18T00:05:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 2591, "output": 1152, "agent": "text2sql"}
+{"ts": "2026-09-18T06:45:00Z", "provider": "openai", "model": "qwen-plus", "input": 5264, "output": 1918, "agent": "sql_review"}
+{"ts": "2026-09-18T18:17:00Z", "provider": "openai", "model": "deepseek-chat", "input": 853, "output": 853}
+{"ts": "2026-09-18T08:09:00Z", "provider": "openai", "model": "deepseek-chat", "input": 2563, "output": 1578, "agent": "text2sql"}
+{"ts": "2026-09-18T12:06:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 3740, "output": 1608, "agent": "data_skew"}
+{"ts": "2026-09-18T23:29:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5192, "output": 711}
+{"ts": "2026-09-18T17:18:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5949, "output": 1681, "agent": "sql_review"}
+{"ts": "2026-09-19T01:42:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 2666, "output": 1385, "agent": "text2sql"}
+{"ts": "2026-09-19T03:24:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 3077, "output": 2057, "agent": "data_skew"}
+{"ts": "2026-09-19T11:22:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 2516, "output": 1293, "agent": "text2sql"}
+{"ts": "2026-09-19T20:10:00Z", "provider": "openai", "model": "qwen-plus", "input": 5175, "output": 1202, "agent": "sql_review"}
+{"ts": "2026-09-19T12:17:00Z", "provider": "openai", "model": "deepseek-chat", "input": 5362, "output": 1099, "agent": "data_skew"}
+{"ts": "2026-09-19T07:52:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 1062, "output": 1492}
+{"ts": "2026-09-19T02:13:00Z", "provider": "openai", "model": "deepseek-chat", "input": 5446, "output": 1488, "agent": "sql_review"}
+{"ts": "2026-09-19T15:25:00Z", "provider": "openai", "model": "qwen-plus", "input": 4558, "output": 785, "agent": "data_skew"}
+{"ts": "2026-09-19T07:47:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5398, "output": 2407, "agent": "data_skew"}
+{"ts": "2026-09-20T13:57:00Z", "provider": "openai", "model": "qwen-plus", "input": 5580, "output": 1835, "agent": "data_skew"}
+{"ts": "2026-09-20T04:32:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 4842, "output": 572, "agent": "text2sql"}
+{"ts": "2026-09-20T04:40:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 2110, "output": 1929, "agent": "text2sql"}
+{"ts": "2026-09-20T12:38:00Z", "provider": "openai", "model": "deepseek-chat", "input": 4634, "output": 2367, "agent": "data_skew"}
+{"ts": "2026-09-20T00:43:00Z", "provider": "openai", "model": "qwen-plus", "input": 1738, "output": 2399, "agent": "data_skew"}
+{"ts": "2026-09-20T10:07:00Z", "provider": "openai", "model": "qwen-plus", "input": 3204, "output": 1980, "agent": "sql_review"}
+{"ts": "2026-09-20T00:46:00Z", "provider": "openai", "model": "deepseek-chat", "input": 2957, "output": 2250, "agent": "sql_review"}
+{"ts": "2026-09-20T03:55:00Z", "provider": "openai", "model": "qwen-plus", "input": 5922, "output": 1422, "agent": "sql_review"}
+{"ts": "2026-09-20T11:48:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 2123, "output": 2409, "agent": "text2sql"}
+{"ts": "2026-09-21T15:01:00Z", "provider": "openai", "model": "deepseek-chat", "input": 1716, "output": 1686, "agent": "data_skew"}
+{"ts": "2026-09-21T01:15:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5447, "output": 522, "agent": "text2sql"}
+{"ts": "2026-09-21T15:52:00Z", "provider": "openai", "model": "qwen-plus", "input": 1366, "output": 2381, "agent": "sql_review"}
+{"ts": "2026-09-21T21:30:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5303, "output": 876, "agent": "data_skew"}
+{"ts": "2026-09-21T19:27:00Z", "provider": "openai", "model": "qwen-plus", "input": 2535, "output": 2408, "agent": "sql_review"}
+{"ts": "2026-09-21T09:25:00Z", "provider": "openai", "model": "qwen-plus", "input": 3859, "output": 1994}
+{"ts": "2026-09-21T07:14:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 1324, "output": 1584, "agent": "text2sql"}
+{"ts": "2026-09-21T17:14:00Z", "provider": "openai", "model": "qwen-plus", "input": 5620, "output": 1102, "agent": "text2sql"}
+{"ts": "2026-09-22T20:03:00Z", "provider": "openai", "model": "qwen-plus", "input": 2675, "output": 476, "agent": "text2sql"}
+{"ts": "2026-09-22T02:32:00Z", "provider": "openai", "model": "deepseek-chat", "input": 2749, "output": 1340}
+{"ts": "2026-09-22T17:08:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5477, "output": 2136, "agent": "sql_review"}
+{"ts": "2026-09-22T13:12:00Z", "provider": "openai", "model": "deepseek-chat", "input": 1572, "output": 597}
+{"ts": "2026-09-23T13:29:00Z", "provider": "openai", "model": "deepseek-chat", "input": 1243, "output": 603, "agent": "text2sql"}
+{"ts": "2026-09-23T23:21:00Z", "provider": "openai", "model": "deepseek-chat", "input": 1695, "output": 1218, "agent": "sql_review"}
+{"ts": "2026-09-23T17:28:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 1948, "output": 1928, "agent": "sql_review"}
+{"ts": "2026-09-23T14:15:00Z", "provider": "openai", "model": "deepseek-chat", "input": 1417, "output": 2015, "agent": "text2sql"}
+{"ts": "2026-09-23T20:34:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 920, "output": 582, "agent": "sql_review"}
+{"ts": "2026-09-23T13:31:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 4743, "output": 1075}
+{"ts": "2026-09-24T12:00:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 3998, "output": 1286}
+{"ts": "2026-09-24T13:44:00Z", "provider": "openai", "model": "deepseek-chat", "input": 5352, "output": 2193, "agent": "sql_review"}
+{"ts": "2026-09-24T09:13:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 1279, "output": 2420, "agent": "text2sql"}
+{"ts": "2026-09-24T10:03:00Z", "provider": "openai", "model": "qwen-plus", "input": 1210, "output": 2152, "agent": "sql_review"}
+{"ts": "2026-09-25T02:54:00Z", "provider": "openai", "model": "qwen-plus", "input": 2322, "output": 480, "agent": "text2sql"}
+{"ts": "2026-09-25T07:25:00Z", "provider": "openai", "model": "qwen-plus", "input": 1782, "output": 1208, "agent": "text2sql"}
+{"ts": "2026-09-25T02:26:00Z", "provider": "openai", "model": "qwen-plus", "input": 5581, "output": 2341, "agent": "data_skew"}
+{"ts": "2026-09-25T06:42:00Z", "provider": "openai", "model": "deepseek-chat", "input": 3373, "output": 1177, "agent": "data_skew"}
+{"ts": "2026-09-26T21:41:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 3257, "output": 2072, "agent": "data_skew"}
+{"ts": "2026-09-26T00:29:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5888, "output": 609, "agent": "text2sql"}
+{"ts": "2026-09-26T06:32:00Z", "provider": "openai", "model": "qwen-plus", "input": 2972, "output": 742, "agent": "data_skew"}
+{"ts": "2026-09-26T07:23:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 3134, "output": 846}
+{"ts": "2026-09-26T22:19:00Z", "provider": "openai", "model": "qwen-plus", "input": 5810, "output": 2366, "agent": "text2sql"}
+{"ts": "2026-09-26T17:19:00Z", "provider": "openai", "model": "qwen-plus", "input": 1648, "output": 750, "agent": "data_skew"}
+{"ts": "2026-09-26T03:47:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5332, "output": 836, "agent": "data_skew"}
+{"ts": "2026-09-27T06:45:00Z", "provider": "openai", "model": "qwen-plus", "input": 3608, "output": 1033, "agent": "data_skew"}
+{"ts": "2026-09-27T15:16:00Z", "provider": "openai", "model": "qwen-plus", "input": 1216, "output": 578}
+{"ts": "2026-09-27T01:00:00Z", "provider": "openai", "model": "deepseek-chat", "input": 3532, "output": 735, "agent": "data_skew"}
+{"ts": "2026-09-27T23:28:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5319, "output": 1951, "agent": "text2sql"}
+{"ts": "2026-09-27T02:56:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 2021, "output": 2434, "agent": "text2sql"}
+{"ts": "2026-09-27T18:35:00Z", "provider": "openai", "model": "deepseek-chat", "input": 2013, "output": 1960, "agent": "sql_review"}
+{"ts": "2026-09-28T11:57:00Z", "provider": "openai", "model": "deepseek-chat", "input": 1126, "output": 1665, "agent": "sql_review"}
+{"ts": "2026-09-28T07:42:00Z", "provider": "openai", "model": "qwen-plus", "input": 1642, "output": 1648}
+{"ts": "2026-09-28T23:09:00Z", "provider": "openai", "model": "qwen-plus", "input": 2739, "output": 865, "agent": "sql_review"}
+{"ts": "2026-09-28T00:11:00Z", "provider": "openai", "model": "deepseek-chat", "input": 3521, "output": 1886, "agent": "sql_review"}
+{"ts": "2026-09-29T05:50:00Z", "provider": "openai", "model": "deepseek-chat", "input": 1685, "output": 1766, "agent": "text2sql"}
+{"ts": "2026-09-29T07:12:00Z", "provider": "openai", "model": "deepseek-chat", "input": 4570, "output": 1632, "agent": "data_skew"}
+{"ts": "2026-09-29T07:01:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 2382, "output": 1832, "agent": "data_skew"}
+{"ts": "2026-09-29T02:49:00Z", "provider": "openai", "model": "deepseek-chat", "input": 3086, "output": 1638}
+{"ts": "2026-09-29T17:21:00Z", "provider": "openai", "model": "qwen-plus", "input": 1026, "output": 672, "agent": "data_skew"}
+{"ts": "2026-09-29T18:16:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 1113, "output": 644}
+{"ts": "2026-09-29T23:50:00Z", "provider": "openai", "model": "deepseek-chat", "input": 3369, "output": 1987, "agent": "text2sql"}
+{"ts": "2026-09-29T18:12:00Z", "provider": "openai", "model": "deepseek-chat", "input": 2886, "output": 381}
+{"ts": "2026-09-29T16:59:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5210, "output": 1007, "agent": "data_skew"}
+{"ts": "2026-09-29T02:42:00Z", "provider": "openai", "model": "deepseek-chat", "input": 3504, "output": 1485, "agent": "text2sql"}
+{"ts": "2026-09-29T09:32:00Z", "provider": "openai", "model": "qwen-plus", "input": 3333, "output": 1872, "agent": "data_skew"}
+{"ts": "2026-09-29T22:18:00Z", "provider": "openai", "model": "deepseek-chat", "input": 5341, "output": 721, "agent": "sql_review"}
+{"ts": "2026-09-29T21:24:00Z", "provider": "openai", "model": "deepseek-chat", "input": 2225, "output": 1432}
+{"ts": "2026-09-29T00:19:00Z", "provider": "openai", "model": "qwen-plus", "input": 3150, "output": 1060}
+{"ts": "2026-09-29T19:41:00Z", "provider": "openai", "model": "qwen-plus", "input": 3439, "output": 2104}
+{"ts": "2026-09-29T21:13:00Z", "provider": "openai", "model": "deepseek-chat", "input": 4987, "output": 2138, "agent": "sql_review"}
+{"ts": "2026-09-29T02:18:00Z", "provider": "openai", "model": "qwen-plus", "input": 5022, "output": 1572, "agent": "text2sql"}
+{"ts": "2026-09-29T21:19:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 2640, "output": 1015, "agent": "sql_review"}
+{"ts": "2026-09-29T01:15:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 4692, "output": 498}
+{"ts": "2026-09-29T20:36:00Z", "provider": "openai", "model": "deepseek-chat", "input": 2392, "output": 1772}
+{"ts": "2026-09-29T07:09:00Z", "provider": "openai", "model": "deepseek-chat", "input": 845, "output": 636}
+{"ts": "2026-09-29T05:51:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5043, "output": 2102, "agent": "text2sql"}
+{"ts": "2026-09-29T07:58:00Z", "provider": "openai", "model": "qwen-plus", "input": 1794, "output": 2069, "agent": "sql_review"}
+{"ts": "2026-09-29T21:33:00Z", "provider": "openai", "model": "deepseek-chat", "input": 5378, "output": 1499}
+{"ts": "2026-09-29T23:57:00Z", "provider": "openai", "model": "qwen-plus", "input": 4935, "output": 1947}
+{"ts": "2026-09-29T23:55:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 4688, "output": 2043, "agent": "data_skew"}
+{"ts": "2026-09-29T20:17:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5070, "output": 2184, "agent": "sql_review"}
+{"ts": "2026-09-29T14:04:00Z", "provider": "openai", "model": "deepseek-chat", "input": 3140, "output": 1160, "agent": "data_skew"}
+{"ts": "2026-09-29T10:57:00Z", "provider": "openai", "model": "deepseek-chat", "input": 5224, "output": 530, "agent": "sql_review"}
+{"ts": "2026-09-29T07:24:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 2051, "output": 1076, "agent": "text2sql"}
+{"ts": "2026-09-30T10:34:00Z", "provider": "openai", "model": "deepseek-chat", "input": 4616, "output": 1903, "agent": "text2sql"}
+{"ts": "2026-09-30T13:24:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 5584, "output": 280}
+{"ts": "2026-09-30T00:22:00Z", "provider": "openai", "model": "deepseek-chat", "input": 3246, "output": 1797}
+{"ts": "2026-09-30T23:47:00Z", "provider": "openai", "model": "qwen-plus", "input": 5273, "output": 1103}
+{"ts": "2026-09-30T08:27:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 4778, "output": 318}
+{"ts": "2026-09-30T21:43:00Z", "provider": "openai", "model": "deepseek-chat", "input": 4112, "output": 876}
+{"ts": "2026-09-30T19:34:00Z", "provider": "anthropic", "model": "claude-sonnet-4-5", "input": 1020, "output": 1813, "agent": "text2sql"}
+{"ts": "2026-10-01T13:08:00Z", "provider": "openai", "model": "qwen-plus", "input": 4582, "output": 944, "agent": "text2sql"}
+{"ts": "2026-10-01T12:20:00Z", "provider": "openai", "model": "deepseek-chat", "input": 2533, "output": 2062, "agent": "data_skew"}
+{"ts": "2026-10-01T12:17:00Z", "provider": "openai", "model": "deepseek-chat", "input": 4253, "output": 1233, "agent": "text2sql"}
+{"ts": "2026-10-01T00:47:00Z", "provider": "openai", "model": "deepseek-chat", "input": 5218, "output": 413, "agent": "data_skew"}
+{"ts": "2026-09-28T10:00:00Z", "provider": "openai", "model": "my-private-llm", "input": 5000, "output": 1000}

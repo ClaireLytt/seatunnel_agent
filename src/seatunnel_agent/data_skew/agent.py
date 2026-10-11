@@ -185,7 +185,7 @@ class DataSkewAgent:
     @property
     def llm(self) -> LLMClient:
         if self._llm is None:
-            self._llm = LLMClient(self.settings, tools=[])
+            self._llm = LLMClient(self.settings, tools=[], agent="data_skew")
         return self._llm
 
     # -- static findings as a compact markdown list for the prompt ---------
