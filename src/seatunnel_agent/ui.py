@@ -837,9 +837,14 @@ def _hub_shell(header: str, body: str, back: bool = False) -> str:
     topbar = (f'<div class="st-hub-topbar">{left}'
               f'<div class="st-hub-topbar-right">{gear}{_HUB_LANG_ROW}'
               f'</div></div>')
+    try:  # same count the health strip shows — never let it drift
+        from .registry import discover
+        mark = f'№ {len(_card_blocks()) + len(discover())} agents'
+    except Exception:  # noqa: BLE001 — the colophon is cosmetic
+        mark = "SeaTunnel Agent"
     footer = (f'<div class="st-hub-footer"><span>SeaTunnel Agent · '
               f'<a href="{_DOCS_URL}" target="_blank" rel="noopener">docs ↗</a>'
-              '</span><span class="st-hub-mark">№ 33 agents</span></div>')
+              f'</span><span class="st-hub-mark">{mark}</span></div>')
     return (f'<div class="st-hub" id="st-hub">\n  {topbar}\n'
             f'  <div class="st-hub-header">\n{header}\n  </div>\n'
             f'{body}\n  {footer}\n</div>')
