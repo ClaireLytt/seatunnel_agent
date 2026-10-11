@@ -20,6 +20,8 @@ import html as _html
 import importlib
 import pkgutil
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 WORKSPACES = ("data", "ai", "devops")
@@ -79,17 +81,35 @@ def workspace_manifests(workspace: str) -> list[AgentManifest]:
     return [m for m in discover() if m.workspace == workspace]
 
 
+_ICON_DIR = Path(__file__).parent / "static" / "icons"
+
+
+@lru_cache(maxsize=None)
+def _icon_svg(slug: str) -> str | None:
+    """Vendored Ant Design outlined SVG for a route slug, or None."""
+    path = _ICON_DIR / f"{slug}.svg"
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+
+def logo_html(route: str, fallback: str = "") -> str:
+    """Hub-card icon tile: a single-color antd line icon keyed by route;
+    falls back to a two-letter monogram when no SVG is vendored."""
+    svg = _icon_svg(route.strip("/"))
+    glyph = svg if svg else _html.escape(fallback[:2].upper() or "·")
+    return f'<div class="st-hub-logo">{glyph}</div>'
+
+
 def card_html(mf: AgentManifest) -> str:
     """The standard hub card markup (bilingual via data-en/data-zh)."""
     e = _html.escape
     return (
         f'    <a class="st-hub-card" href="{mf.route}">\n'
-        f'      <div class="st-hub-logo" style="background:{mf.color};">'
-        f'{mf.logo}</div>\n'
+        f'      {logo_html(mf.route, mf.logo)}\n'
         f'      <div class="st-hub-card-title" data-en="{e(mf.title_en)}" '
         f'data-zh="{e(mf.title_zh)}">{e(mf.title_en)}</div>\n'
         f'      <div class="st-hub-card-desc" data-en="{e(mf.desc_en)}" '
         f'data-zh="{e(mf.desc_zh)}">{e(mf.desc_en)}</div>\n'
-        f'      <div class="st-hub-enter" style="color:{mf.color};" '
-        f'data-en="Enter →" data-zh="进入 →">Enter →</div>\n'
         f'    </a>')

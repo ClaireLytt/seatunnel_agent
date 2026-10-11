@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SeaTunnel Pipeline Agent</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+/* Creative seed: xyTfzgT70gphCbktFKt9hvE78NOlMACj2tiAPU0BeuybaPJh5JCojahW
+   xy→graph paper · gph→graph · bkt→buckets · 70+97+82+05=254→indigo ink
+   05→vermilion accent & 5 sections · 97→green success · MAC→system calm */
+:root{
+  --paper:#f7f6f2;          /* warm engineering paper */
+  --ink:#2b2e8c;            /* hue 254 indigo ink */
+  --ink-soft:#5558b8;
+  --grid:rgba(43,46,140,.08);
+  --grid-bold:rgba(43,46,140,.16);
+  --fg:#23253a;
+  --muted:#6b6e85;
+  --card:#ffffff;
+  --line:#dddbd2;
+  --accent:#d4552b;         /* hue 5 vermilion, sparingly */
+  --ok:#2e7d4f;             /* hue ~97 green */
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:'Noto Sans SC',system-ui,sans-serif;
+  --display:'Space Grotesk','Noto Sans SC',system-ui,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#10122b;        /* blueprint inversion */
+    --ink:#9fa3ff;
+    --ink-soft:#7a7ee0;
+    --grid:rgba(159,163,255,.07);
+    --grid-bold:rgba(159,163,255,.14);
+    --fg:#e8e9f5;
+    --muted:#9a9db8;
+    --card:#181a38;
+    --line:#2c2f55;
+    --accent:#ff7d4d;
+    --ok:#5ecb8f;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#10122b;--ink:#9fa3ff;--ink-soft:#7a7ee0;
+  --grid:rgba(159,163,255,.07);--grid-bold:rgba(159,163,255,.14);
+  --fg:#e8e9f5;--muted:#9a9db8;--card:#181a38;--line:#2c2f55;
+  --accent:#ff7d4d;--ok:#5ecb8f;color-scheme:dark;
+}
+*{box-sizing:border-box;margin:0}
+body{
+  font-family:var(--sans);color:var(--fg);
+  background:
+    linear-gradient(var(--grid) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid) 1px,transparent 1px),
+    linear-gradient(var(--grid-bold) 1px,transparent 1px),
+    linear-gradient(90deg,var(--grid-bold) 1px,transparent 1px),
+    var(--paper);
+  background-size:16px 16px,16px 16px,80px 80px,80px 80px;
+  line-height:1.65;
+}
+.wrap{max-width:1020px;margin:0 auto;padding:0 16px}
+.microlabel{
+  font-family:var(--mono);font-size:11px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--ink-soft);
+}
+/* ── 1/5 hero ── */
+header{padding:72px 0 40px}
+.badge{
+  display:inline-block;border:1px solid var(--ink-soft);border-radius:3px;
+  padding:3px 10px;margin-bottom:20px;
+}
+h1{
+  font-family:var(--display);font-weight:700;font-size:clamp(30px,5.4vw,52px);
+  line-height:1.15;color:var(--ink);letter-spacing:-.01em;
+}
+h1 .x{color:var(--accent)}
+.sub{max-width:620px;margin:18px 0 28px;font-size:17px;color:var(--muted)}
+.cta{display:flex;gap:12px;flex-wrap:wrap}
+.btn{
+  font-family:var(--mono);font-size:14px;text-decoration:none;
+  padding:10px 20px;border-radius:3px;border:1.5px solid var(--ink);
+  color:var(--ink);background:transparent;transition:.15s;
+}
+.btn.primary{background:var(--ink);color:var(--paper)}
+.btn:hover{transform:translate(-1px,-1px);box-shadow:3px 3px 0 var(--grid-bold)}
+/* ── pipeline graph (gph) ── */
+.graph{margin:44px 0 0;overflow-x:auto}
+.graph svg{display:block;min-width:640px;width:100%;height:auto}
+.graph text{font-family:var(--mono);font-size:11px;fill:var(--fg)}
+.graph .cap{fill:var(--muted);font-size:10px;letter-spacing:.12em}
+.graph .node{fill:var(--card);stroke:var(--ink);stroke-width:1.5}
+.graph .node.hot{stroke:var(--accent)}
+.graph .edge{stroke:var(--ink-soft);stroke-width:1.5;fill:none}
+.graph .edge.masked{stroke:var(--ok);stroke-dasharray:5 4}
+.graph .dot{fill:var(--ink)}
+/* ── wave divider (W) ── */
+.wave{height:22px;margin:40px 0;background:
+  radial-gradient(circle at 10px -6px,transparent 14px,var(--line) 14px,var(--line) 15px,transparent 16px) repeat-x;
+  background-size:40px 22px;opacity:.7}
+/* ── 2/5 buckets (bkt) ── */
+section{padding:28px 0}
+h2{
+  font-family:var(--display);font-size:24px;color:var(--ink);
+  margin:6px 0 24px;display:flex;align-items:baseline;gap:12px;
+}
+h2 .no{font-family:var(--mono);font-size:13px;color:var(--accent)}
+.buckets{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.bucket{
+  background:var(--card);border:1px solid var(--line);border-radius:3px;
+  border-top:3px solid var(--ink);padding:18px 18px 16px;
+}
+.bucket.hot{border-top-color:var(--accent)}
+.bucket h3{font-size:15.5px;margin-bottom:6px;color:var(--fg)}
+.bucket p{font-size:13.5px;color:var(--muted)}
+.bucket code,.step code{
+  font-family:var(--mono);font-size:12px;color:var(--ink);
+  background:var(--grid);padding:1px 5px;border-radius:2px;
+}
+/* ── 3/5 quickstart ── */
+.term{
+  background:var(--card);border:1px solid var(--line);border-radius:3px;
+  padding:18px 20px;font-family:var(--mono);font-size:13.5px;
+  overflow-x:auto;white-space:pre;line-height:1.9;color:var(--fg);
+}
+.term .c{color:var(--muted)}
+.term .k{color:var(--ink)}
+.term .ok{color:var(--ok)}
+/* ── 4/5 matrix ── */
+table{width:100%;border-collapse:collapse;background:var(--card);
+  border:1px solid var(--line);font-size:13.5px}
+th,td{padding:9px 14px;border-bottom:1px solid var(--line);text-align:left}
+th{font-family:var(--mono);font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-soft)}
+td code{font-family:var(--mono);font-size:12.5px;color:var(--ink)}
+tr:last-child td{border-bottom:none}
+.tablewrap{overflow-x:auto;border-radius:3px}
+/* ── 5/5 footer ── */
+footer{padding:48px 0 56px;color:var(--muted);font-size:13px}
+footer a{color:var(--ink)}
+@media (max-width:560px){
+  header{padding:48px 0 28px}
+  .sub{font-size:15.5px}
+}
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <span class="badge microlabel">graph paper · rev 254</span>
+  <h1>把一句话，<br>画成一条<span class="x">数据管线</span></h1>
+  <p class="sub">SeaTunnel Pipeline Builder Agent —— 自然语言生成同步配置、Chat BI 问数、
+  SQL 评审与血缘、全库接入生成器。确定性规则打底，LLM 只负责叙述。</p>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/ClaireLytt/seatunnel_agent">GitHub →</a>
+    <a class="btn" href="#quickstart">pip install -e ".[all,ui]"</a>
+  </div>
+
+  <div class="graph" aria-label="SeaTunnel 管线示意图：MySQL 源经过 PII 脱敏 transform 写入 StarRocks">
+    <svg viewBox="0 0 880 150" role="img">
+      <text class="cap" x="16" y="20">FIG.01 — SYNCGEN PIPELINE / xy:70,97</text>
+      <!-- edges -->
+      <path class="edge" d="M216 84 H 300"/>
+      <path class="edge masked" d="M470 84 H 574"/>
+      <circle class="dot" cx="258" cy="84" r="3"/>
+      <circle class="dot" cx="522" cy="84" r="3"/>
+      <!-- nodes -->
+      <rect class="node" x="60" y="56" width="156" height="56" rx="3"/>
+      <text x="76" y="80">source · Jdbc</text>
+      <text x="76" y="98" class="cap">mysql://shop.users</text>
+      <rect class="node hot" x="300" y="56" width="170" height="56" rx="3"/>
+      <text x="316" y="80">transform · Sql</text>
+      <text x="316" y="98" class="cap">md5(phone) AS phone</text>
+      <rect class="node" x="574" y="56" width="150" height="56" rx="3"/>
+      <text x="590" y="80">sink · StarRocks</text>
+      <text x="590" y="98" class="cap">ods.users (PK id)</text>
+      <text class="cap" x="736" y="90">✓ 已脱敏</text>
+    </svg>
+  </div>
+</header>
+
+<div class="wrap"><div class="wave" role="presentation"></div></div>
+
+<section class="wrap" id="buckets">
+  <h2><span class="no">02</span>能力桶</h2>
+  <div class="buckets">
+    <div class="bucket hot">
+      <h3>全库同步生成器</h3>
+      <p>introspect 源库或离线 DDL，批量生成每表同步配置 + 目标端建表 +
+      PII 脱敏注入。<code>syncgen --fail-on pii</code> 把"未脱敏任务"挡在 CI。</p>
+    </div>
+    <div class="bucket">
+      <h3>Chat BI 问数</h3>
+      <p>指标语义层口径白名单、确定性归因分解（"为什么跌了"→ 各维度贡献恰好加总）、
+      混合检索 + 56 题基准回归门。</p>
+    </div>
+    <div class="bucket">
+      <h3>SQL 评审 × 血缘</h3>
+      <p>静态 linter + 15 项清单语义评审，表/列级血缘，<code>--diff</code> 只看增量、
+      SARIF 上报 Code Scanning。</p>
+    </div>
+    <div class="bucket">
+      <h3>运维三件套</h3>
+      <p>日志根因聚类、Schema 漂移分级（可生成迁移 ALTER）、分区 SLA 延迟订阅 ——
+      飞书卡片告警，安静时不打扰。</p>
+    </div>
+    <div class="bucket">
+      <h3>成本与口径</h3>
+      <p>审计日志聚出 Top 烧钱查询模板与缺分区过滤 offender；两个报表对不上？
+      <code>reconcile</code> AST 级指出口径差异。</p>
+    </div>
+  </div>
+</section>
+
+<section class="wrap" id="quickstart">
+  <h2><span class="no">03</span>三十秒上手</h2>
+  <div class="term"><span class="c"># 安装（Web UI + 全部 LLM provider）</span>
+<span class="k">pip</span> install -e ".[all,ui]"
+
+<span class="c"># 一键接入一个业务库：DDL 快照 → 同步配置 + 建表 + 脱敏</span>
+<span class="k">seatunnel-agent</span> syncgen --ddl examples/sync_gen_demo/mysql_schema.sql \
+    --sink-type starrocks --pii --out out/shop
+<span class="ok">✓ 4 tables → 10 files · 6/8 PII columns masked</span>
+
+<span class="c"># 没有 API key 也能完整体验</span>
+<span class="k">seatunnel-agent</span> ui --demo</div>
+</section>
+
+<section class="wrap">
+  <h2><span class="no">04</span>入口矩阵</h2>
+  <div class="tablewrap">
+  <table>
+    <tr><th>能力</th><th>CLI</th><th>REST</th><th>Web</th></tr>
+    <tr><td>全库同步生成</td><td><code>syncgen</code></td><td><code>/api/syncgen</code></td><td><code>/syncgen</code></td></tr>
+    <tr><td>Chat BI / Text2SQL</td><td><code>t2s</code> 家族</td><td><code>/api/text2sql</code></td><td><code>/text2sql</code></td></tr>
+    <tr><td>SQL 评审</td><td><code>review</code></td><td><code>/api/sql_review</code></td><td><code>/sqlreview</code></td></tr>
+    <tr><td>成本顾问</td><td><code>cost</code></td><td><code>/api/cost</code></td><td><code>/cost</code></td></tr>
+    <tr><td>口径对账</td><td><code>reconcile</code></td><td><code>/api/reconcile</code></td><td><code>/reconcile</code></td></tr>
+    <tr><td>PII 扫描</td><td><code>pii</code></td><td><code>/api/pii</code></td><td><code>/pii</code></td></tr>
+  </table>
+  </div>
+</section>
+
+<footer class="wrap">
+  <span class="microlabel">05 · EOF</span> —
+  MIT · <a href="https://github.com/ClaireLytt/seatunnel_agent">ClaireLytt/seatunnel_agent</a>
+  · 基于 <a href="https://seatunnel.apache.org/">Apache SeaTunnel</a>
+</footer>
+
+</body>
+</html>
