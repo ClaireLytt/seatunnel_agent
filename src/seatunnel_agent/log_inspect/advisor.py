@@ -43,7 +43,7 @@ def generate_advice(settings: Settings, report: InspectReport,
     system = _SYSTEM_PROMPT.format(
         language="English" if lang == "en" else "Chinese",
         marker=ADVISOR_MARKER)
-    llm = LLMClient(settings)
+    llm = LLMClient(settings, agent="log_inspect")
     resp = llm.chat(system, [{"role": "user", "content": "\n\n".join(blocks)}])
     text = (resp.reply_text or "").strip()
     if not text:

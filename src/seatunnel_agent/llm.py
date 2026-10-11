@@ -87,10 +87,13 @@ class LLMClient:
         self,
         settings: Settings,
         tools: list[dict[str, Any]] | None = None,
+        agent: str | None = None,
     ) -> None:
         self.settings = settings
         self.provider = settings.llm_provider
         self.tools = tools if tools is not None else []
+        # feature name for per-agent usage/cost attribution (llm_usage log)
+        self.agent = agent
 
         if self.provider == "anthropic":
             import anthropic
@@ -128,7 +131,8 @@ class LLMClient:
         resp = self._call_with_retry(fn, *args)
         # One central hook covers every agent's token accounting.
         from .llm_usage import record
-        record(self.provider, self.settings.model_name, resp.usage)
+        record(self.provider, self.settings.model_name, resp.usage,
+               agent=self.agent)
         return resp
 
     def build_tool_result_message(

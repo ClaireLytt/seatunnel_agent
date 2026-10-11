@@ -11,3 +11,8 @@
   entry: seatunnel-agent review --static-only --fail-on critical
   language: python
   files: \.sql$
+- id: secretscan
+  name: Secret Scan
+  description: Leaked-credential scan — provider tokens, private keys, password assignments, high-entropy strings (masked previews)
+  entry: seatunnel-agent secretscan --fail-on high
+  language: python

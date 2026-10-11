@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from ..utils import normalize_lang
+
 LGI_I18N: dict[str, dict[str, str]] = {
     "en": {
         "rpt_title": "Batch Log Inspection",
@@ -52,10 +54,6 @@ LGI_I18N: dict[str, dict[str, str]] = {
             "同一根因的反复出现会归入同一簇。"),
     },
 }
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
 def tp(lang: str, key: str) -> str:

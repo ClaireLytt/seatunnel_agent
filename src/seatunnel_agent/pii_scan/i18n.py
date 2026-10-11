@@ -8,6 +8,8 @@ the deterministic core stays language-free.
 
 from __future__ import annotations
 
+from ..utils import normalize_lang
+
 PII_I18N: dict[str, dict[str, str]] = {
     "en": {
         "rpt_title": "PII / Sensitive Column Scan",
@@ -85,10 +87,6 @@ PII_I18N: dict[str, dict[str, str]] = {
         "cat_ip_address": "IP 地址",
     },
 }
-
-
-def normalize_lang(lang: str | None) -> str:
-    return "en" if (lang or "").lower().startswith("en") else "zh"
 
 
 def tp(lang: str, key: str) -> str:

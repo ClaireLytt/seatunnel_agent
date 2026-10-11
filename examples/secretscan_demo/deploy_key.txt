@@ -1,0 +1,4 @@
+fake deploy key for the demo — not a real key
+-----BEGIN RSA PRIVATE KEY-----
+THIS-IS-NOT-A-REAL-KEY-DEMO-ONLY-0000000000000000
+-----END RSA PRIVATE KEY-----

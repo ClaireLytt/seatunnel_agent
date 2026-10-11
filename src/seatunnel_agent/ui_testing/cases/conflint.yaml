@@ -1,0 +1,87 @@
+# CFL 组 · SeaTunnel 配置深度检查页 (/conflint)。纯确定性（参数级 lint），
+# 只解析不执行；演示数据 examples/conflint_demo: 3 文件 = 通过 1 / 问题 2。
+
+# CFL1 放粘贴用例：冷启动后第一个动作是 fill（框架会等元素就绪），
+# 比第一步就点手风琴稳 —— 目录用例排第二（CFL2）。
+- id: CFL1
+  title: 拼错参数给出是不是想写建议
+  tags: [smoke, sqlite]
+  page: /conflint
+  steps:
+    - fill:
+        配置 (HOCON): |-
+          source { Jdbc { url="u", driver="d", user="u", password="p", quary = "SELECT 1" } }
+          sink { Consloe {} }
+    - click: 检查配置
+    - wait_result: {}
+  expect:
+    - result_in_view: {}
+    # markdown 渲染会把反引号变成 <code>，text_content 中不含反引号
+    - text_contains: {in: 结果区, text: 是不是想写 query}
+    - text_contains: {in: 结果区, text: 是不是想写 Console}
+
+- id: CFL2
+  title: 检查演示目录出分级问题
+  tags: [smoke, sqlite]
+  page: /conflint
+  steps:
+    - open_accordion: {target: 检查整个目录}
+    - fill: {配置目录: examples/conflint_demo}
+    - click: 检查目录
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 配置深度检查}
+    - text_contains: {in: 结果区, text: 文件 3}
+    - text_contains: {in: 结果区, text: CDC 源要求}
+
+- id: CFL3
+  title: 干净配置报告通过
+  tags: [full, sqlite]
+  page: /conflint
+  steps:
+    - fill:
+        配置 (HOCON): |-
+          env { parallelism = 2, job.mode = "BATCH" }
+          source { FakeSource { rows = 10 } }
+          sink { Console {} }
+    - click: 检查配置
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 未发现问题}
+
+- id: CFL4
+  title: 语法错误不崩溃
+  tags: [full, sqlite]
+  page: /conflint
+  steps:
+    - fill: {配置 (HOCON): "env { broken = "}
+    - click: 检查配置
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: HOCON 解析失败}
+    - text_not_contains: {in: 页面, text: Traceback}
+
+- id: CFL5
+  title: 目录不存在给出警告
+  tags: [full, sqlite]
+  page: /conflint
+  steps:
+    - open_accordion: {target: 检查整个目录}
+    - fill: {配置目录: no_such_dir_cfl}
+    - click: 检查目录
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 不是有效目录}
+
+- id: CFL6
+  title: 英文界面检查链路
+  tags: [full, sqlite]
+  lang: en
+  page: /conflint
+  steps:
+    - fill: {"Config (HOCON)": "source { Consloe {} }\nsink { Console {} }"}
+    - click: Lint config
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: Config Lint}
+    - text_contains: {in: 结果区, text: did you mean}

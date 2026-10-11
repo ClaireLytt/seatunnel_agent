@@ -1,0 +1,23 @@
+# Demo config with DELIBERATELY FAKE credentials for the secret scanner.
+# The AWS pair is Amazon's official documentation example.
+database:
+  host: db.internal
+  user: etl
+  password: "s3cr3t-Pa55w0rd"              # medium: password assignment
+  dsn: "mysql://etl:p4ss-w0rd@db.internal:3306/dw"   # medium: DSN password
+
+aws:
+  access_key_id: AKIAIOSFODNN7EXAMPLE      # high: AWS access key (doc example)
+  secret_access_key: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+
+aliyun:
+  access_key: LTAI5tFakeDemoKey01          # high: Aliyun AccessKey (fake)
+
+app:
+  api_key: "sk-demo-9f8e7d6c5b4a3f2e1d0c"  # medium: api key assignment
+  session_seed: "Jk8vQ2xZr5Tn1Wq7Lm4Yp0Bs6Dh3Fg9C"   # low: high entropy
+
+placeholders:                               # all filtered, none reported
+  password: "${DB_PASSWORD}"
+  api_key: "your-key-here"
+  token: "changeme"

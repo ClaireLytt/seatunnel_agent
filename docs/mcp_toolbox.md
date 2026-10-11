@@ -47,6 +47,7 @@
 | `compare_schema(conn_a, conn_b, table_a, table_b?)` | 跨库结构比对：单侧独有列 + 同名列类型差异 |
 | `compare_checksum(conn_a, conn_b, table_a, table_b?, where?)` | 分段校验和比对（同名列交集逐段哈希），结构/行数一致后定位内容差异 |
 | `skew_verify(connection, sql, dialect?, sample_pct?)` | **实测验证倾斜**：只读 GROUP BY 探针测真实键值分布，返回确认/热点值/引擎参数/按实测值生成的改写模板 |
+| `skew_split_key_conn(connection, conf, sample_pct?, lang?)` | SeaTunnel 分片键体检（多 source 逐一实测 + 候选推荐 + sink 端分布键热点体检），凭据留在预设库 |
 | `compare_query_results(connection, sql_a, sql_b)` | 一致性实测：两版 SQL 结果等价性（行数 → 逐行多重集 → 逐列聚合指纹），验证改写/迁移 |
 
 `run_query` 在支持 LIMIT 的引擎上会把查询包成

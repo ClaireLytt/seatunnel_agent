@@ -431,7 +431,7 @@ def render_settings_page(app: gr.Blocks) -> None:
         )
         t0 = time.time()
         try:
-            resp = LLMClient(s).chat(
+            resp = LLMClient(s, agent="settings_test").chat(
                 _t(lang, "testing_sys"), [{"role": "user", "content": "ping"}])
             ms = int((time.time() - t0) * 1000)
             reply = (resp.reply_text or "").strip().replace("\n", " ")[:60]

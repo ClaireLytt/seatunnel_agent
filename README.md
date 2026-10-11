@@ -42,18 +42,40 @@
 - **CLI Enhancements**: `batch` command, `--model`/`--provider` overrides, `--output` flag, `chat --resume`
 - **Demo Mode**: Try the full Agent workflow without an API key
 - **Text2SQL (Chat BI)**: Natural-language data querying — ask a question in Chinese or English, and the agent matches tables, generates safe Hive SQL, executes it, and exports results as CSV
+- **Chat BI Platform** (full guide: [docs/chat_bi_guide.md](docs/chat_bi_guide.md)): a metric **semantic layer** (`config/metrics.yaml` caliber whitelist — metric questions expand into byte-identical SQL deterministically, never LLM-improvised; additive + ratio metrics; caliber Q&A without execution; `metrics validate` CI gate), deterministic **attribution analysis** ("为什么跌了" → per-dimension contribution decomposition that sums exactly to the total change rate, waterfall chart, `compare_mode` mom/wow/yoy, exportable Markdown report), **hybrid retrieval** (keyword × pure-Python BM25 × optional embeddings, for both tables and metrics, with a 56-question benchmark and `t2s-bench --gate` regression gate), **subscriptions** (cron + Feishu cards with optional chart embedding, plus threshold-based **anomaly watch** that alerts with top contributors and stays silent otherwise), a **MCP server** (`t2s-mcp` — deterministic atoms for Claude Code/Cursor; execution and attribution opt-in via `--allow-execute`), **cross-module safety nets** (SQL-Review pre-flight and slow-query skew hints on every execution; `trace_metric` provenance via the lineage graph; paste SQL in chat for review/skew/transpile — the unified conversational entry), optional **API-key auth** (`SEATUNNEL_API_KEY`), and an **end-to-end eval harness** (`t2s-eval` — question→agent→result-set accuracy against golden SQL, multi-model comparable)
 - **Schema-Aware Matching**: Fuzzy table/column matching using keyword + CJK n-gram scoring against table names, column names, and Chinese comments
 - **Partition Intelligence**: Automatic table suffix classification (_di/_hi/_ri = incremental, _df/_hf = full), time range extraction from natural language, and partition clause generation
 - **SQL Safety Validation**: SELECT-only whitelist, forbidden keyword detection, table whitelist enforcement, LIMIT enforcement, stacked query prevention, partition filter enforcement, and column existence validation
 - **CSV Export with CJK Support**: UTF-8 BOM encoding for Excel compatibility, timestamped filenames, custom output paths
 - **Structured Query Logging**: JSONL-formatted logs of every query (user question, generated SQL, status, timing) for observability
 - **SQL Code Review**: Static review of Hive/Spark/Flink/MaxCompute SQL — no execution needed. A deterministic linter (GROUP BY completeness, cartesian joins, `= NULL`, partition filters, division-by-zero, complexity scoring, …) plus an LLM semantic pass over a 15-item checklist, producing a fixed-format CR report (严重问题/潜在风险/优化建议/检查统计/总体评价) with table- and column-level lineage. Available as `seatunnel-agent review`, REST `POST /api/sql_review/review`, a Gradio UI page (`/sqlreview`, with history trend chart), or offline via `--static-only`. Multi-statement scripts are split and reviewed per statement with correct line numbers. Batch review a directory (`--dir`), changed files vs a git base (`--diff`), or positional paths (pre-commit style); gate CI with `--fail-on critical|risk|suggestion`; customize rules via `.sqlreview.yaml` (partition columns, disabled checks, severity overrides, custom regex rules); suppress findings inline (`-- sqlreview-disable[-next-line|-file][: category]`) or via a baseline file (`--baseline` / `--update-baseline` — only new findings fail CI); emit machine-readable output with `--format json|sarif` (SARIF uploads to GitHub Code Scanning — see `examples/ci/` and the bundled pre-commit hook in `.pre-commit-hooks.yaml`); pull live schemas with `--db host:port/database`; auto-generate fixed SQL with `--fix`; inspect review history with `review-stats`
+- **DQC Data Quality Checks**: rule-driven table-level quality gates (row_count min/max + fluctuation vs the last run, null_rate, uniqueness, enum domain) defined in YAML, compiled to deterministic SELECT aggregates through the shared executor stack; run-history baseline for fluctuation, Chinese markdown report, Feishu alert card on violations, and `seatunnel-agent dqc validate|run` with a `--fail-on-violation` CI gate
+- **Governance Advisor**: lineage graph × query-audit-log cross analysis — decommission candidates (no downstream consumers + not queried in the window), hot tables, rejection-prone tables and a missing-partition-filter offender list; recommendations only, never touches a table; `seatunnel-agent govern --sql-dir --qlog --days`
 - **Change Impact Analysis**: SQL diff × lineage — compare two SQL trees (or a git baseline) and report the release blast radius with severity levels (breaking removals / metric drift / additions); CLI `seatunnel-agent impact` with a `--fail-on` CI gate, REST `POST /api/lineage/impact`, and a Web UI at `/impact`; fully deterministic, no DB and no LLM
 - **SQL Dialect Translation**: Deterministic hive/spark/doris/starrocks translation (sqlglot) with a structured incompatibility report (parse errors, unsupported syntax, unknown UDFs, storage clauses, write-side hints) — CLI `seatunnel-agent transpile`, REST `/api/transpile/`, Web UI `/transpile`; batch a directory with a mirrored output tree, gate CI with `--fail-on error|warn`, optional clearly-marked LLM advice; no DB connection, the SQL is never executed
 - **PII / Sensitive Column Scan**: Naming rules × column lineage — match column names and Chinese/English comments against a sensitive-data rule catalog (phone, national ID, bank card, email, address, salary, ...), then follow column-level lineage downstream and flag **unmasked propagation** (direct copies escalate severity; `md5()`/`mask()`/`substr()` chains count as masked); custom rules via YAML — CLI `seatunnel-agent pii` with `--fail-on high|medium|low`, REST `/api/pii/`, Web UI `/pii`, demo data `examples/pii_demo/`; deterministic, no DB, no LLM
 - **Batch Log Inspection**: Exception clustering over a log directory — ERROR/WARN events (with full Java stack traces) are normalized (numbers/paths/addresses/ids masked) and clustered by **root cause** (last `Caused by:` × message template × top frame), collapsing noisy logs into Top-N distinct problems with counts, affected files and first/last timestamps — CLI `seatunnel-agent loginspect` with `--fail-on error|warn`, REST `/api/loginspect/`, Web UI `/loginspect` (optional llm-generated advice), demo data `examples/logs_demo/`
 - **Schema Drift Check**: Diff two DDL snapshots (files, directories or pasted scripts) and grade every structural change — breaking (removed tables/columns, incompatible type changes, partition layout changes), risk (widening types, possible renames), info (additions, comment changes) — CLI `seatunnel-agent schemadiff` with `--fail-on breaking|risk|info`, REST `/api/schemadrift/`, Web UI `/schemadrift`, demo data `examples/schema_drift_demo/`; sibling of `/impact` (SQL logic changes vs table structure changes)
 - **SQL Test Data Generator**: Join-aware datasets that actually exercise a query — equi-join columns share value pools so joins match, WHERE literals are satisfied (plus one deliberate miss row), boundary rows (NULL/zero/empty) mixed in, column types from DDL or inferred from usage; optional end-to-end validation on in-memory SQLite (stdlib, zero deps) — CLI `seatunnel-agent testgen` (writes CSV + CREATE + INSERT files with `--out`), REST `/api/testgen/`, Web UI `/testgen`, demo data `examples/testgen_demo/`
+- **SeaTunnel Config Deep Lint**: Param-level lint of HOCON configs against the built-in connector docs — unknown connectors/params with did-you-mean suggestions, missing required params, value-type & enum checks, source/sink role violations, CDC-vs-job.mode and parallelism sanity — CLI `seatunnel-agent conflint` with `--fail-on error|warn`, REST `/api/conflint/`, Web UI `/conflint`, demo data `examples/conflint_demo/`; parsed, never executed
+- **Scheduling DAG Health Check**: Build the job DAG from SQL/SeaTunnel lineage and report what breaks a scheduler — dependency cycles, mid-layer tables nobody produces (broken upstream) or consumes (dead jobs) — plus constructive output: topological execution batches and the critical path — CLI `seatunnel-agent dagcheck` with `--fail-on error|warn`, REST `/api/dagcheck/`, Web UI `/dagcheck`, demo data `examples/dagcheck_demo/`
+- **Metric Consistency Check**: Same-named output columns defined differently across jobs (the top reason two reports disagree) — expressions canonicalized before comparing (aliases/qualifiers stripped, COUNT(1)≡COUNT(*)): different formulas = high, copies from different source columns = medium — CLI `seatunnel-agent metricdiff` with `--fail-on high|medium`, REST `/api/metricdiff/`, Web UI `/metricdiff`, demo data `examples/metricdiff_demo/`
+- **SQL Formatter**: Deterministic sqlglot pretty-print with a black-style workflow — `--fail-on change` as the CI check, `--write` to apply, statements that do not parse are kept verbatim so formatting never destroys content; bare `SELECT *` flagged — CLI `seatunnel-agent sqlfmt`, REST `/api/sqlfmt/`, Web UI `/sqlfmt`, demo data `examples/sqlfmt_demo/`
+- **Three-workspace hub**: the landing page splits the platform into **Data Agents** (`/data` — the agents above, grouped with an instant filter), an **AI Platform** (`/ai`) and a **DevOps workspace** (`/devops`), with the cross-cutting engineering tools (log inspection, UI testing, MCP toolbox, settings) right on the landing page:
+- **Agent Orchestrator** *(AI Platform)*: one chat entry for the whole platform — the LLM routes a natural-language request to the right deterministic agents (review, transpile, impact, migrate, skew, fmt, lint, drift, PII, testgen) and chains steps in a bounded tool-use loop with per-tool error isolation; without an API key it degrades to keyword suggestions (suggest-only) — CLI `seatunnel-agent orchestrate`, REST `/api/orchestrator/`, chat Web UI `/orchestrator` with collapsible tool steps, samples `examples/orchestrator_demo/`
+- **LLM Eval** *(AI Platform)*: golden YAML suites for the LLM features (text2sql, sql_review, raw prompts) — deterministic checkers (`contains`/`regex`/`equals`/`sql_valid`/`json_valid`) score every case, run history powers `--fail-on regression` (pass→fail flips or score drop >0.01), and the optional LLM judge stays advisory — CLI `seatunnel-agent llmeval`, REST `/api/llmeval/`, Web UI `/llmeval` with a score trend chart, demo suites `examples/llmeval_demo/`
+- **Prompt Lab** *(AI Platform)*: run one prompt across several provider profiles side-by-side (outputs, tokens, latency, unified diff) — each profile becomes a private Settings, never switching the app's active provider, and profile secrets never leave the process — CLI `seatunnel-agent promptlab`, REST `/api/promptlab/`, Web UI `/promptlab`, sample prompts `examples/promptlab_demo/`
+- **LLM Cost Observability** *(AI Platform)*: price the cross-agent LLM usage log against an approximate, YAML-overridable catalog (longest-prefix match) — per-model/day/agent roll-ups, trailing-mean anomaly flags, and a `--fail-on budget` CI gate — CLI `seatunnel-agent llmcost`, REST `/api/llmcost/`, Web UI `/llmcost` with stacked cost charts, demo data `examples/llmcost_demo/`
+- **Secret Scan** *(DevOps)*: leaked-credential scanner — provider tokens (AWS/GitHub/GitLab/Slack/Aliyun), private keys, password/API-key assignments, DSN-embedded passwords and a Shannon-entropy fallback; placeholders filtered, previews always masked, suppression via a line pragma or `.secretscan.yaml` — CLI `seatunnel-agent secretscan --fail-on high|medium|low`, REST `/api/secretscan/`, Web UI `/secretscan`, demo `examples/secretscan_demo/`
+- **CI Log Triage** *(DevOps)*: cluster failed-job logs into Top-N root causes (numbers/paths/hashes masked before grouping), plus flaky detection (same commit both passed and failed) and duration drift from runs metadata; `--gh owner/repo` pulls recent runs via the gh CLI — CLI `seatunnel-agent ciinspect --fail-on flaky`, REST `/api/ciinspect/`, Web UI `/ciinspect`, demo `examples/ciinspect_demo/`
+- **Dependency Health** *(DevOps)*: offline check of pyproject/requirements — declared-but-missing or spec-violated installs (high), unpinned/conflicting declarations and copyleft licenses (medium), unknown licenses (info), with a full inventory table — CLI `seatunnel-agent depcheck --fail-on high|medium`, REST `/api/depcheck/`, Web UI `/depcheck`, demo `examples/depcheck_demo/`
+- **Release Notes** *(DevOps)*: conventional-commit changelog grouped by type with breaking-change section and a semver bump suggestion (breaking→major, feat→minor, else patch); optional advisory LLM polish — CLI `seatunnel-agent relnotes` (`--log-file` for offline input), REST `/api/release/`, Web UI `/release`, demo `examples/release_demo/`
+- **Doc Q&A** *(AI Platform)*: offline BM25 retrieval (ASCII words + CJK bigrams) over the built-in connector docs and `docs/*.md`, extractive answers with citations and optional LLM synthesis grounded strictly in the retrieved excerpts — CLI `seatunnel-agent docqa`, REST `/api/docqa/`, Web UI `/docqa`
+- **Code Fix Agent** *(AI Platform)*: a true perceive→act→observe agent — run pytest, read the code, patch (exact-unique replacement), re-run until green, inside a fresh git worktree; success decided by a final deterministic run, the diff is yours to review, nothing is ever committed — CLI `seatunnel-agent codefix` (exit 1 while red), Web UI `/codefix` with streamed steps
+- **Issue Triage Agent** *(AI Platform)*: dedupe against issue history (BM25), locate the module (git grep), check the docs — then whitelisted labels, priority and a draft reply as validated JSON — CLI `seatunnel-agent triage`, REST `/api/triage/`, Web UI `/triage`, demo history `examples/triage_demo/`
+- **Web Task Agent** *(AI Platform)*: goal + URL → a real headless-browser loop (numbered-element snapshot → click/fill → observe), element handles kept server-side and navigation confined to the start origin — CLI `seatunnel-agent webtask`, Web UI `/webtask`
+- **Environment Doctor** *(DevOps)*: describe the symptom — the agent inspects ports, packages, LLM config (masked) and log tails, all read-only, and prescribes fix commands for you to run; deterministic full check-up without a key — CLI `seatunnel-agent doctor`, Web UI `/doctor`
+- **Plugin architecture**: any package shipping a `manifest.py` auto-registers its hub card, page route and REST router — adding a capability no longer touches `ui.py`; shared `agent_core.ToolLoopAgent` gives every true agent the same bounded tool-use loop with injectable clients for offline tests
 
 ### Quick Start
 
@@ -740,6 +762,78 @@ seatunnel-agent testgen -f query.sql -F json --no-validate           # machine-r
 seatunnel-agent testgen -f query.sql --fail-on error                 # CI gate (parse/validation)
 ```
 
+### SeaTunnel Config Deep Lint Agent
+
+The built-in `validate` stops at HOCON syntax and section presence; this
+agent lints every parameter against the built-in connector docs (19
+connectors): unknown connectors/params get did-you-mean suggestions
+(`quary` → `query`, `Consloe` → `Console`), required params are enforced,
+values are type- and enum-checked, strictly-source/sink connectors used in
+the wrong section are errors, and the env block is sanity-checked (CDC
+source + `job.mode = BATCH`, non-positive parallelism). Web UI at
+`/conflint`, REST under `/api/conflint/` (whitelisted via
+`CONFLINT_API_ALLOWED_DIRS`), demo data `examples/conflint_demo/`:
+
+```bash
+seatunnel-agent conflint -f job.conf                                # one file
+seatunnel-agent conflint --dir configs/ --fail-on error             # CI gate
+seatunnel-agent conflint -c 'source { Consloe {} } sink { Console {} }'
+seatunnel-agent conflint --dir configs/ -F json -o lint.json        # machine-readable
+```
+
+### Scheduling DAG Health Check Agent
+
+Builds the job DAG from SQL lineage (optionally merged with SeaTunnel
+configs) and reports what breaks a scheduler: dependency cycles
+(unschedulable), mid-layer tables no job produces (broken upstream),
+mid-layer tables nothing consumes (dead jobs), isolated tables — plus
+constructive output: topological execution batches (what can run in
+parallel, wave by wave) and the critical path bounding end-to-end latency.
+Web UI at `/dagcheck`, REST under `/api/dagcheck/` (whitelisted via
+`DAGCHECK_API_ALLOWED_DIRS`), demo data `examples/dagcheck_demo/`:
+
+```bash
+seatunnel-agent dagcheck -d warehouse_sql/                          # analyze a tree
+seatunnel-agent dagcheck -d sql/ --seatunnel-dir confs/ --lang en   # merge config lineage
+seatunnel-agent dagcheck -d sql/ -F json --fail-on error            # CI gate on cycles
+```
+
+### Metric Consistency Check Agent
+
+Scans column-level lineage for output columns that share one name but are
+DEFINED differently across jobs — the number-one cause of "two reports
+disagree". Expressions are canonicalized before comparing (aliases and
+table qualifiers stripped, `COUNT(1)` ≡ `COUNT(*)`), so formatting
+differences never flag; different formulas are **high**
+(`gmv = sum(amount)` vs `sum(amount - refund)`), plain copies from
+different source columns are **medium** (`contact ← phone` vs `← email`).
+Web UI at `/metricdiff`, REST under `/api/metricdiff/` (whitelisted via
+`METRICDIFF_API_ALLOWED_DIRS`), demo data `examples/metricdiff_demo/`:
+
+```bash
+seatunnel-agent metricdiff -d warehouse_sql/                        # scan a tree
+seatunnel-agent metricdiff -d sql/ --fail-on high                   # CI gate
+seatunnel-agent metricdiff -d sql/ -F json --lang en                # machine-readable
+```
+
+### SQL Formatter Agent
+
+Deterministic sqlglot pretty-printing with a black-style workflow:
+`--fail-on change` is the CI check (exit 1 when any file would be
+reformatted), `--write` applies in place, and a statement that does not
+parse is kept VERBATIM and reported — formatting never destroys content
+(files with parse failures are never written). Bare `SELECT *` gets a
+style note. Complements SQL Review: that agent judges semantics, this one
+makes every script look the same. Web UI at `/sqlfmt` (check-only), REST
+under `/api/sqlfmt/` (inline only), demo data `examples/sqlfmt_demo/`:
+
+```bash
+seatunnel-agent sqlfmt -s "select a,b from t where dt='2024-01-01'" # inline
+seatunnel-agent sqlfmt sql/ --fail-on change                        # CI check (black --check style)
+seatunnel-agent sqlfmt sql/ --write                                 # apply in place
+seatunnel-agent sqlfmt -d sql/ -F json                              # machine-readable
+```
+
 ### MCP Toolbox (`seatunnel-agent mcp`)
 
 One stdio MCP server that hands the whole agent suite to any MCP client
@@ -826,18 +920,40 @@ MIT
 - **CLI 增强**：`batch` 批量执行、`--model`/`--provider` 运行时覆盖、`--output` 输出到文件、`chat --resume` 恢复会话
 - **演示模式**：无需 API Key 即可体验完整的 Agent 工作流程
 - **Text2SQL (Chat BI)**：自然语言数据查询 —— 用中文或英文提问，Agent 自动匹配表、生成安全的 Hive SQL、执行查询并导出 CSV
+- **Chat BI 平台**（完整指南：[docs/chat_bi_guide.md](docs/chat_bi_guide.md)）：**指标语义层**（`config/metrics.yaml` 口径白名单 —— 指标问题确定性展开为逐字节一致的 SQL，不由 LLM 现场发挥；加法型 + 比率型；不执行 SQL 的口径问答；`metrics validate` CI 门禁）、确定性**归因分析**（"为什么跌了" → 逐维度贡献分解且贡献和恒等于总变动率、瀑布图、`compare_mode` 环比/周同比/同比、可导出 Markdown 报告）、**混合检索**（关键词 × 纯 Python BM25 × 可选向量，表和指标都进索引，56 题评测集 + `t2s-bench --gate` 回归门禁）、**订阅推送**（cron + 飞书卡片可内嵌图表，另有阈值**异动监控**——超阈值才告警并附 Top 贡献成员，低于阈值静默）、**MCP server**（`t2s-mcp` 给 Claude Code/Cursor 确定性原子能力；执行与归因需 `--allow-execute` 显式开启）、**跨模块安全网**（每条执行 SQL 过 Review 预检、慢查询附倾斜建议、`trace_metric` 血缘溯源、对话里贴 SQL 直接审查/倾斜/翻译——统一对话入口）、可选 **API key 鉴权**（`SEATUNNEL_API_KEY`）、**端到端评测**（`t2s-eval` —— 问题→agent→结果集与 golden SQL 逐行对比出准确率，可多模型横比）
 - **Schema 感知匹配**：基于关键词 + CJK n-gram 模糊匹配，支持表名、列名、中文备注的多维度评分排序
 - **分区智能**：自动识别表后缀类型（_di/_hi/_ri = 增量表，_df/_hf = 全量表），从自然语言提取时间范围，生成分区条件
 - **SQL 安全验证**：SELECT 白名单、禁止关键词检测、表白名单强制、LIMIT 强制、堆叠查询防护、分区过滤强制、列存在性校验
 - **CSV 导出（CJK 支持）**：UTF-8 BOM 编码确保 Excel 正确显示中文，带时间戳的文件名，支持自定义路径
 - **结构化查询日志**：JSONL 格式记录每次查询（用户问题、生成 SQL、状态、耗时），便于监控与审计
 - **SQL Code Review**：对 Hive/Spark/Flink/MaxCompute SQL 做纯静态审查，无需运行即可发现问题 —— 确定性 Linter（GROUP BY 完整性、笛卡尔积、`= NULL`、分区过滤、除零保护、复杂度评分等）+ LLM 按 15 项检查清单做语义审查，输出固定格式 CR 报告（严重问题/潜在风险/优化建议/检查统计/总体评价）并附表级与列级血缘。支持 `seatunnel-agent review` 命令、REST `POST /api/sql_review/review`、Gradio UI 页面（`/sqlreview`，含历史趋势图），以及无需 API Key 的 `--static-only` 模式。多语句脚本自动按语句拆分审查并映射正确行号。支持目录批量审查（`--dir`）、git 变更文件审查（`--diff`）、位置参数传文件（pre-commit 风格）、CI 门禁（`--fail-on critical|risk|suggestion`）、`.sqlreview.yaml` 规则配置（自定义分区列/关闭检查/调整严重度/自定义正则规则）、行内忽略注释（`-- sqlreview-disable[-next-line|-file][: 类别]`）、基线文件（`--baseline` / `--update-baseline`，只对新问题报错）、机器可读输出（`--format json|sarif`，SARIF 可上传 GitHub Code Scanning，模板见 `examples/ci/` 与 `.pre-commit-hooks.yaml`）、数据库直连拉取表结构（`--db host:port/database`）、LLM 自动生成修复 SQL（`--fix`）与审查历史统计（`review-stats`）
+- **DQC 数据质量检查**：YAML 规则驱动的表级质量门禁（行数 min/max + 相对上次运行的波动、空值率、唯一性、枚举域），编译为确定性 SELECT 聚合走共享执行器栈；历史基线做波动对比，中文 Markdown 报告，违规推飞书告警卡片；`seatunnel-agent dqc validate|run`，`--fail-on-violation` 可做 CI 门禁
+- **治理建议引擎**：血缘图 × 查询审计日志交叉分析 —— 下线候选（无下游消费 + 窗口内无人查询）、热表 Top、拒绝/失败高发表、缺分区过滤专项清单；只出建议不做任何变更；`seatunnel-agent govern --sql-dir --qlog --days`
 - **变更影响分析**：SQL 变更 × 血缘——对比两份 SQL 目录（或 git 基线）输出上线影响面：破坏性移除 / 口径漂移 / 纯新增三级严重度 + 下游波及深度；CLI `seatunnel-agent impact`（`--fail-on` CI 门禁）、REST `POST /api/lineage/impact`、Web 页面 `/impact`；纯确定性,不连数据库、不调用 LLM
 - **SQL 方言翻译**：hive/spark/doris/starrocks 确定性互转（sqlglot）+ 结构化不兼容点清单（解析失败、不支持语法、未知 UDF、存储子句、写侧提示）—— CLI `seatunnel-agent transpile`、REST `/api/transpile/`、Web 页面 `/transpile`；支持目录批量镜像输出、CI 门禁 `--fail-on error|warn`、可选且明确标注的 LLM 建议；不连接数据库、不执行 SQL
 - **敏感数据扫描 (PII)**：命名规则 × 字段血缘 —— 用敏感数据规则库匹配列名与中英文注释（手机号、身份证、银行卡、邮箱、地址、工资等），再沿列级血缘追踪下游，标出**未脱敏扩散**（直接复制会升级严重度；`md5()`/`mask()`/`substr()` 链路视为已脱敏）；支持 YAML 自定义规则 —— CLI `seatunnel-agent pii`（`--fail-on high|medium|low`）、REST `/api/pii/`、Web 页面 `/pii`、演示数据 `examples/pii_demo/`；纯确定性，不连数据库、不调用 LLM
 - **批量日志巡检**：日志目录异常聚类 —— ERROR/WARN 事件（含完整 Java 堆栈）归一化（数字/路径/地址/ID 打码）后按**根因**聚类（最后一个 `Caused by:` × 消息模板 × 栈顶帧），把嘈杂日志收敛成 Top-N 个不同的问题，附次数、涉及文件与首末时间 —— CLI `seatunnel-agent loginspect`（`--fail-on error|warn`）、REST `/api/loginspect/`、Web 页面 `/loginspect`（可选 llm-generated 建议）、演示数据 `examples/logs_demo/`
 - **Schema 漂移检查**：对比两份 DDL 快照（文件/目录/粘贴脚本），每处结构变更分级 —— 破坏（删表删列、不兼容类型变更、分区布局变更）、风险（类型拓宽、疑似改名）、提示（新增、注释变更）—— CLI `seatunnel-agent schemadiff`（`--fail-on breaking|risk|info`）、REST `/api/schemadrift/`、Web 页面 `/schemadrift`、演示数据 `examples/schema_drift_demo/`；与 `/impact` 互补（SQL 逻辑变更 vs 表结构变更）
 - **SQL 测试数据生成**：关联感知造数，让查询真正跑通 —— 等值关联列共享取值池（JOIN 必然命中）、WHERE 字面量被满足（并混入一行故意不命中）、混入边界行（NULL/零值/空串），列类型来自 DDL 或按用法推断；可选在内存 SQLite 上做端到端验证（标准库，零依赖）—— CLI `seatunnel-agent testgen`（`--out` 写出 CSV + CREATE + INSERT）、REST `/api/testgen/`、Web 页面 `/testgen`、演示数据 `examples/testgen_demo/`
+- **SeaTunnel 配置深度检查**：对照内置连接器文档做 HOCON 参数级 lint —— 未知连接器/参数带「是不是想写」建议、缺失必填参数、类型与枚举校验、source/sink 角色用反、CDC 与 job.mode 冲突、parallelism 合法性 —— CLI `seatunnel-agent conflint`（`--fail-on error|warn`）、REST `/api/conflint/`、Web 页面 `/conflint`、演示数据 `examples/conflint_demo/`；只解析不执行
+- **调度 DAG 体检**：从 SQL/SeaTunnel 血缘构建作业 DAG，报告会卡住调度器的问题 —— 依赖成环、没人产出的中间层表（上游断链）、没人消费的中间层表（死作业）—— 并给出建设性输出：拓扑执行分批与关键路径 —— CLI `seatunnel-agent dagcheck`（`--fail-on error|warn`）、REST `/api/dagcheck/`、Web 页面 `/dagcheck`、演示数据 `examples/dagcheck_demo/`
+- **指标口径一致性检查**：找出不同作业里同名但定义不同的输出列（「两张报表数对不上」的头号原因）—— 表达式先归一化再比较（去别名/去表前缀、COUNT(1)≡COUNT(*)）：公式不同=高、取自不同来源列=中 —— CLI `seatunnel-agent metricdiff`（`--fail-on high|medium`）、REST `/api/metricdiff/`、Web 页面 `/metricdiff`、演示数据 `examples/metricdiff_demo/`
+- **SQL 格式化**：基于 sqlglot 的确定性排版，black 式工作流 —— `--fail-on change` 做 CI 检查、`--write` 写回、解析失败的语句原样保留（格式化永不破坏内容）、裸 `SELECT *` 给风格提示 —— CLI `seatunnel-agent sqlfmt`、REST `/api/sqlfmt/`、Web 页面 `/sqlfmt`、演示数据 `examples/sqlfmt_demo/`
+- **三工作区首页**：首页分为 **Data Agents**（`/data`，上述数据能力，分组展示并带即时过滤）、**AI Platform**（`/ai`）与 **DevOps 工作区**（`/devops`）三个工作区，横跨工作区的工程工具（日志巡检、UI 测试、MCP 工具箱、设置）直接放在首页：
+- **智能编排** *(AI 平台)*：全平台统一对话入口 —— LLM 把自然语言需求自动路由到合适的确定性 agent（审查/翻译/影响/迁移/倾斜/格式化/配置检查/漂移/PII/造数），在有界 tool-use 循环里自动串联多步，单工具报错隔离；未配置 API key 时退化为关键词推荐（只建议不执行）—— CLI `seatunnel-agent orchestrate`、REST `/api/orchestrator/`、对话页 `/orchestrator`（工具步骤可折叠展开）、示例 `examples/orchestrator_demo/`
+- **LLM 评测** *(AI 平台)*：为 LLM 功能（text2sql、sql_review、裸 Prompt）建 YAML 黄金用例集 —— 确定性检查器（`contains`/`regex`/`equals`/`sql_valid`/`json_valid`）自动打分（按 case 加权），运行历史支撑 `--fail-on regression` 回归门禁（case 由过变挂或总分降 >0.01），可选的 LLM judge 仅作参考不进门禁 —— CLI `seatunnel-agent llmeval`、REST `/api/llmeval/`、Web 页面 `/llmeval`（分数趋势图）、示例套件 `examples/llmeval_demo/`
+- **Prompt 实验室** *(AI 平台)*：同一 Prompt 在多个模型档案上并排对比（输出、token、耗时、unified diff）—— 每个档案构造独立 Settings，绝不切换全局配置，档案密钥永不外泄（API 只返回档案名）—— CLI `seatunnel-agent promptlab`、REST `/api/promptlab/`、Web 页面 `/promptlab`、示例 Prompt `examples/promptlab_demo/`
+- **LLM 成本观测** *(AI 平台)*：基于全平台调用日志的成本看板 —— 近似价格表（最长前缀匹配，YAML 可覆盖）按模型/按天/按 agent 汇总，前 7 天均值异常日标记，`--fail-on budget` 预算门禁 —— CLI `seatunnel-agent llmcost`、REST `/api/llmcost/`、Web 页面 `/llmcost`（堆叠成本图）、演示数据 `examples/llmcost_demo/`
+- **敏感凭证扫描** *(DevOps)*：找出代码与配置里的泄漏凭证 —— 云厂商 token（AWS/GitHub/GitLab/Slack/阿里云）、私钥块、明文密码/API Key 赋值、DSN 内嵌密码与高熵字符串；占位符自动过滤，预览永远脱敏，单行 pragma 或 `.secretscan.yaml` 可豁免 —— CLI `seatunnel-agent secretscan --fail-on high|medium|low`、REST `/api/secretscan/`、Web 页面 `/secretscan`、演示数据 `examples/secretscan_demo/`
+- **CI 日志诊断** *(DevOps)*：失败作业日志聚类成 Top-N 根因（聚类前掩掉数字/路径/哈希），运行元数据分析 flaky（同一提交又过又挂）与时长漂移；`--gh owner/repo` 可用 gh CLI 拉取最近运行 —— CLI `seatunnel-agent ciinspect --fail-on flaky`、REST `/api/ciinspect/`、Web 页面 `/ciinspect`、演示数据 `examples/ciinspect_demo/`
+- **依赖体检** *(DevOps)*：离线检查 pyproject/requirements —— 声明未装或版本违反（高危）、未钉版本/重复冲突声明/copyleft License（中危）、License 缺失（提示），附完整依赖清单 —— CLI `seatunnel-agent depcheck --fail-on high|medium`、REST `/api/depcheck/`、Web 页面 `/depcheck`、演示数据 `examples/depcheck_demo/`
+- **发布助手** *(DevOps)*：按 conventional commits 分组生成 changelog（破坏性变更单列）+ 语义化版本建议（breaking→major、feat→minor、否则 patch）；可选 LLM 润色（仅参考，失败回退）—— CLI `seatunnel-agent relnotes`（`--log-file` 离线输入）、REST `/api/release/`、Web 页面 `/release`、演示数据 `examples/release_demo/`
+- **文档问答** *(AI 平台)*：离线 BM25 检索（英文分词 + 中文 bigram）内置连接器文档与 `docs/*.md`，抽取式回答带来源引用，可选仅基于检索片段的 LLM 综合 —— CLI `seatunnel-agent docqa`、REST `/api/docqa/`、Web 页面 `/docqa`
+- **测试自愈 Agent** *(AI 平台)*：真正的感知→行动→观察 agent —— 自己跑 pytest、读码、精确唯一替换打补丁、复跑直到通过；在新建 git worktree 中执行，是否成功由最终确定性复跑裁定，diff 供人工审阅，绝不提交 —— CLI `seatunnel-agent codefix`（未修复退出 1）、Web 页面 `/codefix`（步骤实时流式）
+- **Issue 分诊 Agent** *(AI 平台)*：历史 issue 查重（BM25）、git grep 定位模块、查文档 —— 输出白名单标签、优先级与草拟回复（JSON 校验）—— CLI `seatunnel-agent triage`、REST `/api/triage/`、Web 页面 `/triage`、演示语料 `examples/triage_demo/`
+- **网页操作 Agent** *(AI 平台)*：目标 + URL → 真实无头浏览器循环（编号元素快照 → 点击/填表 → 再观察），元素句柄留在服务端、导航默认限制起始同源 —— CLI `seatunnel-agent webtask`、Web 页面 `/webtask`
+- **环境医生** *(DevOps)*：描述症状 —— agent 只读检查端口、依赖、LLM 配置（脱敏）与日志尾部，开出修复命令由你执行；无 key 时输出确定性全量体检 —— CLI `seatunnel-agent doctor`、Web 页面 `/doctor`
+- **插件化架构**：任何包放一个 `manifest.py` 即自动注册 hub 卡片、页面路由与 REST router —— 新增能力不再改 `ui.py`；共享的 `agent_core.ToolLoopAgent` 为所有真 agent 提供同一套有界 tool-use 循环，client 可注入、全部离线可测
 
 ### 快速开始
 
@@ -1494,6 +1610,70 @@ seatunnel-agent testgen -f query.sql --ddl ddl.sql --out testdata/   # CSV + CRE
 seatunnel-agent testgen --sql "SELECT a FROM t WHERE dt='2024-01-01'" --rows 10
 seatunnel-agent testgen -f query.sql -F json --no-validate           # 机器可读输出
 seatunnel-agent testgen -f query.sql --fail-on error                 # CI 门禁（解析/验证）
+```
+
+### SeaTunnel 配置深度检查 Agent
+
+内置的 `validate` 只查 HOCON 语法和配置段是否存在；这个 agent 对照内置
+连接器文档（19 个连接器）逐参数检查：未知连接器/参数带「是不是想写」
+建议（`quary` → `query`、`Consloe` → `Console`）、必填参数强制校验、
+取值做类型与枚举检查、只能做 source/sink 的连接器用错段算错误，env 段
+做合法性检查（CDC 源 + `job.mode = BATCH`、非正 parallelism）。Web 页面
+`/conflint`，REST `/api/conflint/`（白名单 `CONFLINT_API_ALLOWED_DIRS`），
+演示数据 `examples/conflint_demo/`：
+
+```bash
+seatunnel-agent conflint -f job.conf                                # 单文件
+seatunnel-agent conflint --dir configs/ --fail-on error             # CI 门禁
+seatunnel-agent conflint -c 'source { Consloe {} } sink { Console {} }'
+seatunnel-agent conflint --dir configs/ -F json -o lint.json        # 机器可读
+```
+
+### 调度 DAG 体检 Agent
+
+从 SQL 血缘（可选合并 SeaTunnel 配置血缘）构建作业 DAG，报告会卡住
+调度器的问题：依赖成环（无法调度）、没人产出的中间层表（上游断链）、
+没人消费的中间层表（死作业）、孤立表 —— 并给出建设性输出：拓扑执行
+分批（哪些表能并行、分几波跑）和决定端到端时延的关键路径。Web 页面
+`/dagcheck`，REST `/api/dagcheck/`（白名单 `DAGCHECK_API_ALLOWED_DIRS`），
+演示数据 `examples/dagcheck_demo/`：
+
+```bash
+seatunnel-agent dagcheck -d warehouse_sql/                          # 分析整个目录
+seatunnel-agent dagcheck -d sql/ --seatunnel-dir confs/ --lang en   # 合并配置血缘
+seatunnel-agent dagcheck -d sql/ -F json --fail-on error            # 环检测 CI 门禁
+```
+
+### 指标口径一致性检查 Agent
+
+扫描列级血缘，找出同名但在不同作业里**定义不同**的输出列 ——「两张报表
+数对不上」的头号原因。表达式先归一化再比较（去别名/去表前缀、
+`COUNT(1)` ≡ `COUNT(*)`），排版差异不会误报；公式不同是**高**风险
+（`gmv = sum(amount)` vs `sum(amount - refund)`），同名复制自不同来源列
+是**中**风险（`contact ← phone` vs `← email`）。Web 页面 `/metricdiff`，
+REST `/api/metricdiff/`（白名单 `METRICDIFF_API_ALLOWED_DIRS`），演示
+数据 `examples/metricdiff_demo/`：
+
+```bash
+seatunnel-agent metricdiff -d warehouse_sql/                        # 扫描整个目录
+seatunnel-agent metricdiff -d sql/ --fail-on high                   # CI 门禁
+seatunnel-agent metricdiff -d sql/ -F json --lang en                # 机器可读
+```
+
+### SQL 格式化 Agent
+
+基于 sqlglot 的确定性排版，black 式工作流：`--fail-on change` 做 CI
+检查（有文件需要重排就退 1）、`--write` 原地写回、解析失败的语句**原样
+保留**并报告 —— 格式化永不破坏内容（有解析失败的文件绝不写回）。裸
+`SELECT *` 给风格提示。与 SQL Review 互补：那边管语义质量，这边让所有
+脚本长一个样。Web 页面 `/sqlfmt`（只检查不写文件），REST
+`/api/sqlfmt/`（仅内联），演示数据 `examples/sqlfmt_demo/`：
+
+```bash
+seatunnel-agent sqlfmt -s "select a,b from t where dt='2024-01-01'" # 内联
+seatunnel-agent sqlfmt sql/ --fail-on change                        # CI 检查（black --check 式）
+seatunnel-agent sqlfmt sql/ --write                                 # 原地写回
+seatunnel-agent sqlfmt -d sql/ -F json                              # 机器可读
 ```
 
 ### MCP 工具箱（`seatunnel-agent mcp`）

@@ -10,6 +10,7 @@ drop.
 from __future__ import annotations
 
 import gradio as gr
+from .utils import normalize_lang
 
 _I18N = {
     "en": {
@@ -51,7 +52,7 @@ _I18N = {
 
 
 def _t(lang: str, key: str) -> str:
-    lang = "en" if (lang or "").lower().startswith("en") else "zh"
+    lang = normalize_lang(lang)
     return _I18N[lang].get(key, key)
 
 

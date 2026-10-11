@@ -40,7 +40,7 @@ def generate_fix(
     """
     dialect = normalize_dialect(dialect)
     lang = normalize_lang(lang)
-    llm = LLMClient(settings)
+    llm = LLMClient(settings, agent="sql_review")
     system = _FIX_SYSTEM_PROMPT.format(
         dialect_name=DIALECT_NAMES.get(dialect, "SQL"),
         comment_language="English" if lang == "en" else "Chinese",

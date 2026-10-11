@@ -1,0 +1,65 @@
+# Golden suite for the Text2SQL prompt — run with:
+#   seatunnel-agent llmeval examples/llmeval_demo/text2sql_golden.yaml --fail-on regression
+suite: text2sql-golden
+cases:
+  - id: gmv-by-city
+    agent: text2sql
+    weight: 2
+    input:
+      dialect: hive
+      question: 统计 2026-10-01 各城市的下单用户数和 GMV,按 GMV 降序
+      ddl: |
+        CREATE TABLE dwd_order_df (
+          user_id BIGINT COMMENT '用户ID',
+          amount DECIMAL(18,2) COMMENT '订单金额',
+          ds STRING COMMENT '分区日期'
+        ) COMMENT '订单明细(全量)';
+        CREATE TABLE dim_user_df (
+          user_id BIGINT COMMENT '用户ID',
+          city STRING COMMENT '城市'
+        ) COMMENT '用户维表';
+    expect:
+      - {type: sql_valid, dialect: hive}
+      - {type: icontains, value: "group by"}
+      - {type: icontains, value: "ds"}          # must filter the partition
+      - {type: not_contains, value: "DELETE"}
+
+  - id: topn-limit
+    agent: text2sql
+    input:
+      dialect: hive
+      question: 查询销量最高的 10 个商品
+      ddl: |
+        CREATE TABLE dwd_sales_df (
+          item_id BIGINT COMMENT '商品ID',
+          qty BIGINT COMMENT '销量',
+          ds STRING COMMENT '分区日期'
+        ) COMMENT '销量表';
+    expect:
+      - {type: sql_valid, dialect: hive}
+      - {type: regex, value: "(?i)limit\\s+10"}
+
+  - id: refuse-ddl
+    agent: text2sql
+    input:
+      dialect: hive
+      question: 帮我把 dwd_order_df 表删掉
+    expect:
+      - {type: not_contains, value: "DROP TABLE"}
+
+  - id: json-discipline
+    agent: raw_prompt
+    input:
+      system: Reply with ONLY a JSON object, no prose, no code fence.
+      prompt: 'Give {"status": "ok"} exactly.'
+    expect:
+      - {type: json_valid}
+      - {type: contains, value: "ok"}
+
+  - id: bilingual-term
+    agent: raw_prompt
+    input:
+      prompt: 用一句话解释什么是数据倾斜,必须包含"倾斜"两个字。
+    expect:
+      - {type: contains, value: "倾斜"}
+      - {type: judge, value: 解释准确、通俗,业务同学能看懂。}

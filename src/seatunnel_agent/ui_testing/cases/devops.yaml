@@ -1,0 +1,85 @@
+# DEVO 组 · DevOps 工作区:/devops hub 与四个工具页的确定性冒烟用例。
+# 全部离线确定性:凭证扫描、依赖体检、发布说明、CI 日志聚类都不调 LLM。
+
+- id: DEVO1
+  title: DevOps hub 四张卡片齐全
+  tags: [smoke, sqlite]
+  page: /devops
+  steps:
+    - wait: 1000
+      note: 纯断言用例,等 cookie 语言切换完成
+  expect:
+    - text_contains: {in: 页面, text: 敏感凭证扫描}
+    - text_contains: {in: 页面, text: CI 日志诊断}
+    - text_contains: {in: 页面, text: 依赖体检}
+    - text_contains: {in: 页面, text: 发布助手}
+
+- id: SEC1
+  title: 粘贴文本扫出密码赋值且预览脱敏
+  tags: [smoke, sqlite]
+  page: /secretscan
+  steps:
+    - fill: {待扫描文本: "password = \"hunter2-prod\""}
+    - click: 扫描
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 明文密码赋值}
+    - text_not_contains: {in: 页面, text: hunter2-prod}
+
+- id: SEC2
+  title: 扫描 demo 目录出高危发现
+  tags: [full, sqlite]
+  page: /secretscan
+  steps:
+    - open_accordion: {target: 扫描目录}
+    - click: 扫描目录
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 高危 4}
+    - text_contains: {in: 结果区, text: AWS AccessKey}
+
+- id: DEP1
+  title: 检查本项目出依赖清单
+  tags: [smoke, sqlite]
+  page: /depcheck
+  steps:
+    - click: 检查本项目
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 依赖体检}
+    - text_contains: {in: 结果区, text: 依赖清单}
+    - text_contains: {in: 结果区, text: click}
+
+- id: REL1
+  title: 粘贴提交记录生成分组 changelog
+  tags: [smoke, sqlite]
+  page: /release
+  steps:
+    - fill:
+        提交记录(每行 sha<TAB>subject): |-
+          a1b2c3d	feat(hub): new landing
+          b2c3d4e	fix: broken link
+    - fill: {当前版本(可选): "0.2.0"}
+    - click: 生成发布说明
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: 发布说明}
+    - text_contains: {in: 结果区, text: 0.3.0}
+    - text_contains: {in: 结果区, text: 新功能}
+
+- id: CI1
+  title: 粘贴失败日志聚出根因
+  tags: [smoke, sqlite]
+  page: /ciinspect
+  steps:
+    - fill:
+        失败作业日志: |-
+          ##[error]ConnectionError: reach host:443 after 3 retries
+          ##[error]ConnectionError: reach host:443 after 5 retries
+    - click: 分析
+    - wait_result: {}
+  expect:
+    - text_contains: {in: 结果区, text: CI 日志诊断}
+    - text_contains: {in: 结果区, text: ConnectionError}
+    - text_contains: {in: 结果区, text: 错误事件 2}
+    - text_contains: {in: 结果区, text: 根因聚类}

@@ -331,6 +331,36 @@ def test_connections_allowlist(tools, tmp_path, monkeypatch):
     assert "dev-a" in listing and "prod-x" not in listing
 
 
+def test_skew_split_key_conn(tools, tmp_path):
+    """Split-key check over a NAMED saved connection (issue #21 D): the
+    password stays in the preset store, and the sink-side key sub-section
+    rides along."""
+    db = tmp_path / "spk.db"
+    rows = ",".join(
+        f"({i}, '{'CN' if i <= 80 else 'US'}', {i * 10})" for i in range(1, 101))
+    _make_db(db, "CREATE TABLE orders (id INTEGER, region TEXT, amount INTEGER);"
+                 f"INSERT INTO orders VALUES {rows};")
+    _save_conn("dev-a", db)
+    conf = """
+    env { parallelism = 2 }
+    source { Jdbc { table_name = "orders", partition_column = "region" } }
+    sink { Clickhouse { table = "dw.orders", sharding_key = "region" } }
+    """
+    out = tools["skew_split_key_conn"]("dev-a", conf)
+    assert "SeaTunnel 分片键体检" in out
+    assert 'partition_column = "id"' in out       # skewed region → id promoted
+    assert "Sink 端键体检" in out and "热点键" in out
+
+    # history carries the measured metrics, source=mcp
+    from seatunnel_agent.data_skew.history import default_history
+    rec = [r for r in default_history().recent(5) if r.get("mode") == "splitkey"][0]
+    assert rec["source"] == "mcp" and rec["splitkey"]["top1_pct"] == 80.0
+
+    # validation: unknown connection / empty config are readable errors
+    assert "未找到连接" in tools["skew_split_key_conn"]("nope", conf)
+    assert "不能为空" in tools["skew_split_key_conn"]("dev-a", "")
+
+
 def test_no_db_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("SEATUNNEL_DC_PRESETS_PATH",
                        str(tmp_path / "presets.json"))
@@ -340,7 +370,8 @@ def test_no_db_profile(tmp_path, monkeypatch):
                        str(tmp_path / "audit.jsonl"))
     fns = build_tool_functions(include_db=False)
     assert set(fns) == {"sql_review", "sql_transpile", "skew_check",
-                        "skew_check_file", "impact_diff",
+                        "skew_check_file", "skew_runtime_eventlog",
+                        "skew_runtime_history", "impact_diff",
                         "migrate_to_seatunnel"}
 
 
@@ -421,7 +452,7 @@ def test_mcp_server_resources():
     s2 = create_mcp_server(include_db=False)
     uris2 = {str(r.uri) for r in anyio.run(s2.list_resources)}
     assert "seatunnel://connections" not in uris2
-    assert len(anyio.run(s2.list_tools)) == 6
+    assert len(anyio.run(s2.list_tools)) == 8
 
 
 def test_server_json_manifest_valid():

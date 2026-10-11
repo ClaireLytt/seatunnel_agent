@@ -1,0 +1,40 @@
+# Golden suite for the SQL review prompt — run with:
+#   seatunnel-agent llmeval examples/llmeval_demo/sql_review_golden.yaml --fail-on fail
+suite: sql-review-golden
+cases:
+  - id: catches-cartesian
+    agent: sql_review
+    weight: 2
+    input:
+      dialect: hive
+      lang: zh
+      sql: |
+        SELECT a.id, b.name
+        FROM dwd_order_df a, dim_user_df b
+        WHERE a.ds = '2026-10-01';
+    expect:
+      - {type: icontains, value: "join"}      # must call out the join problem
+      - {type: contains, value: "严重问题"}    # fixed CR report format
+
+  - id: catches-eq-null
+    agent: sql_review
+    input:
+      dialect: hive
+      lang: zh
+      sql: |
+        SELECT id FROM dwd_order_df WHERE ds = '2026-10-01' AND city = NULL;
+    expect:
+      - {type: icontains, value: "null"}
+
+  - id: clean-sql-not-invented
+    agent: sql_review
+    input:
+      dialect: hive
+      lang: zh
+      sql: |
+        SELECT city, COUNT(1) AS cnt
+        FROM dim_user_df
+        GROUP BY city;
+    expect:
+      - {type: not_contains, value: "笛卡尔"}   # no invented cartesian join
+      - {type: contains, value: "总体评价"}

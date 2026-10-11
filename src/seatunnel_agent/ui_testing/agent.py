@@ -78,7 +78,7 @@ class UITestLLM:
     """Shared LLM handle for a whole run — tracks total token spend."""
 
     def __init__(self):
-        self.client = LLMClient(load_settings(), tools=UI_TOOLS)
+        self.client = LLMClient(load_settings(), tools=UI_TOOLS, agent="ui_testing")
         self.tokens_used = 0
 
     def spend(self, usage: dict) -> int:
