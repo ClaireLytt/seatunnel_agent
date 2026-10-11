@@ -35,6 +35,11 @@ except ValueError:
 DEFAULT_CHECKSUM_SEGMENTS = 10
 STR_CAST_LEN = 200
 GINI_SKEW_THRESHOLD = 0.6
+# Side-vs-side qualification thresholds: when A and B disagree by more than
+# this the skew is a sync-pipeline symptom, not a business fact.
+GINI_MISMATCH_THRESHOLD = 0.2
+TOP1_MISMATCH_PP = 20.0        # percentage points of top-1 share
+TOP1_SKEW_THRESHOLD = 50.0     # top-1 share marking a hot key on one side
 
 # Dialects where backslash is an escape character inside string literals.
 _BACKSLASH_ESCAPE_DIALECTS = frozenset(
@@ -1084,7 +1089,10 @@ def build_trend_data(
     """Read saved reports and extract time-series delta data.
 
     Returns a list of dicts with keys: timestamp, table_a, table_b, delta,
-    delta_pct, mismatches, schema_changes.
+    delta_pct, mismatches, schema_changes — plus, when the report carries a
+    skew analysis, ``skew_top1`` / ``skew_gini`` (worst column, either side)
+    and ``skew_top1_jump`` / ``skew_gini_jump`` (change vs the previous
+    report with skew data, for distribution-drift alerting).
     """
     if not reports_dir.is_dir():
         return []
@@ -1104,7 +1112,7 @@ def build_trend_data(
             ts = _file_ts(fpath)
             report = CompareReport.from_dict(d)
             if report.row_count:
-                entries.append({
+                entry: dict[str, Any] = {
                     "timestamp": ts,
                     "table_a": report.row_count.table_a,
                     "table_b": report.row_count.table_b,
@@ -1112,11 +1120,35 @@ def build_trend_data(
                     "delta_pct": report.row_count.delta_pct,
                     "mismatches": report.aggregate.mismatches if report.aggregate else 0,
                     "schema_changes": len(report.schema.items) if report.schema else 0,
-                })
+                    "skew_top1": None,
+                    "skew_gini": None,
+                }
+                if report.skew is not None and report.skew.items:
+                    entry["skew_top1"] = max(
+                        max(it.top1_pct_a, it.top1_pct_b)
+                        for it in report.skew.items)
+                    entry["skew_gini"] = max(
+                        max(it.gini_a, it.gini_b) for it in report.skew.items)
+                entries.append(entry)
         except Exception:
             _log.warning(
                 "Skipping corrupt report: %s", fpath, exc_info=True)
             continue
+
+    # Drift fields: change vs the previous report that had skew data, so a
+    # rule like ``skew_top1_jump>10:1`` fires on a sudden hot-key surge.
+    prev_top1: float | None = None
+    prev_gini: float | None = None
+    for entry in entries:
+        top1, gini = entry["skew_top1"], entry["skew_gini"]
+        entry["skew_top1_jump"] = (
+            round(top1 - prev_top1, 2)
+            if top1 is not None and prev_top1 is not None else None)
+        entry["skew_gini_jump"] = (
+            round(gini - prev_gini, 4)
+            if gini is not None and prev_gini is not None else None)
+        if top1 is not None:
+            prev_top1, prev_gini = top1, gini
     return entries
 
 
@@ -1498,6 +1530,37 @@ def compare_skew(
         ndv_a=len(map_a), ndv_b=len(map_b),
         buckets=buckets,
     )
+
+
+def skew_side_verdict(result: SkewResult) -> tuple[str, list[str]]:
+    """Qualify the measured skew: sync symptom or business fact.
+
+    Returns ``(verdict, columns)`` where verdict is:
+    - ``"mismatch"``: A and B disagree on a column's distribution — when B
+      is synced from A this points at the sync pipeline (split/filter
+      logic), so fix the data before tuning any compute.
+    - ``"both_skewed"``: both sides skew the same way — a business fact
+      (hot customer / default value); protect the downstream compute.
+    - ``"ok"``: nothing notable.
+    Mismatch wins over both_skewed when both are present.
+    """
+    if not result.items or not result.total_a or not result.total_b:
+        return "ok", []
+    mismatch: list[str] = []
+    both: list[str] = []
+    for it in result.items:
+        if (abs(it.gini_a - it.gini_b) > GINI_MISMATCH_THRESHOLD
+                or abs(it.top1_pct_a - it.top1_pct_b) > TOP1_MISMATCH_PP):
+            mismatch.append(it.column)
+        elif ((it.gini_a > GINI_SKEW_THRESHOLD and it.gini_b > GINI_SKEW_THRESHOLD)
+              or (it.top1_pct_a > TOP1_SKEW_THRESHOLD
+                  and it.top1_pct_b > TOP1_SKEW_THRESHOLD)):
+            both.append(it.column)
+    if mismatch:
+        return "mismatch", mismatch
+    if both:
+        return "both_skewed", both
+    return "ok", []
 
 
 # ---------------------------------------------------------------------------
