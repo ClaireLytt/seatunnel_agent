@@ -6,7 +6,8 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from .formatter import FmtFileResult, FmtResult
-from .i18n import normalize_lang, tp
+from .i18n import tp
+from ..utils import normalize_lang
 
 
 def render_markdown(result: FmtResult, lang: str = "zh",

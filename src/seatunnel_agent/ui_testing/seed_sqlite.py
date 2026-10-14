@@ -152,24 +152,6 @@ def seed_sqlite(db_path: str | Path = DEFAULT_DB) -> Path:
     return path
 
 
-def cleanup_sqlite(db_path: str | Path = DEFAULT_DB) -> None:
-    """Drop only the ``dc_test_*`` tables (never touches anything else)."""
-    path = Path(db_path)
-    if not path.is_file():
-        return
-    conn = sqlite3.connect(path)
-    try:
-        cur = conn.cursor()
-        names = [r[0] for r in cur.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-            " AND name LIKE 'dc_test_%'")]
-        for n in names:
-            cur.execute(f"DROP TABLE IF EXISTS {n}")
-        conn.commit()
-    finally:
-        conn.close()
-
-
 if __name__ == "__main__":
     p = seed_sqlite()
     print(f"Seeded {len(SEED)} tables into {p}")

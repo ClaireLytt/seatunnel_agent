@@ -18,7 +18,7 @@ from .sql_transpile import (
     translate,
     transpile_dir,
 )
-from .sql_transpile.i18n import normalize_lang
+from .utils import normalize_lang
 
 _I18N = {
     "en": {

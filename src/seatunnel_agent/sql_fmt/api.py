@@ -18,7 +18,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from .formatter import format_text
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 from .report import render_markdown, result_to_dict
 
 router = APIRouter(prefix="/api/sqlfmt", tags=["sql_fmt"])

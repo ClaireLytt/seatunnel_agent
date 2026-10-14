@@ -8,6 +8,7 @@ whitespace-normalized text, so an already-formatted file stays untouched.
 """
 
 from __future__ import annotations
+from ..utils import collect_sql_files
 
 import difflib
 from dataclasses import dataclass, field
@@ -100,10 +101,6 @@ def format_text(sql: str, dialect: str = "hive",
 
 def _clean_error(exc: Exception) -> str:
     return " ".join(str(exc).split())[:200]
-
-
-def collect_sql_files(directory: str | Path) -> list[Path]:
-    return sorted(p for p in Path(directory).rglob("*.sql") if p.is_file())
 
 
 def fmt_dir(directory: str | Path, dialect: str = "hive",

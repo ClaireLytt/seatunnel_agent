@@ -505,9 +505,6 @@ class DCPage:
         self.page.wait_for_timeout(200)
         return text
 
-    def select_table(self, value: str, side: str = "A") -> None:
-        self.dropdown_select("选择表", value, side)
-
     def set_checkbox(self, name: str, on: bool,
                      side: str | None = None) -> None:
         box = self.checkbox(name, side)

@@ -2991,10 +2991,6 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
 
     # ── Feature D — Templates ──
 
-    def _refresh_templates():
-        names = [d["name"] for d in _TEMPLATES_STORE.list()]
-        return gr.update(choices=names, value=None)
-
     def _save_template(name, table_a, table_b, where_val, key_cols_str,
                        threshold_str, col_mapping_str, strategy, watermark_col,
                        quality_rules_str, webhook_url, notify_on_fail, masking_on, lang_val):

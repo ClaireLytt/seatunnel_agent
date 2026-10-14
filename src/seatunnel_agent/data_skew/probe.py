@@ -18,7 +18,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from .detector import clean_sql, split_statements
-from .i18n import dsk, normalize_lang
+from .i18n import dsk
+from ..utils import normalize_lang
 
 MAX_TARGETS = 8
 TOP_N = 10

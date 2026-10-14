@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from .generator import DEFAULT_ROWS, MAX_ROWS, generate
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 from .report import render_markdown, result_to_dict
 from .validator import validate_with_sqlite
 

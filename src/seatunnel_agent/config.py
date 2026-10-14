@@ -85,15 +85,20 @@ class Settings:
         return self.api_key
 
 
+def env_api_key() -> str:
+    """The configured LLM API key ("" when unset) — single source of truth."""
+    return os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+
+
 def llm_ready() -> bool:
     """True when an LLM API key is configured — same sources as load_settings."""
-    return bool(os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", ""))
+    return bool(env_api_key())
 
 
 def load_settings() -> Settings:
     load_dotenv()
 
-    api_key = os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+    api_key = env_api_key()
     if not api_key:
         raise RuntimeError(
             "API_KEY is not set. "

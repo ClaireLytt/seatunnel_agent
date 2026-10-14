@@ -24,7 +24,8 @@ import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .i18n import dsk, normalize_lang
+from .i18n import dsk
+from ..utils import normalize_lang
 
 # a max/median ratio only counts when the max is worth caring about
 MIN_TASKS = 3
@@ -389,11 +390,4 @@ def render_runtime_section(stages: list[StageSkew], lang: str,
 def check_runtime_eventlog(path: str | Path, lang: str = "zh") -> str:
     """Parse → analyze → render, for an event log file/directory."""
     stages, label = parse_eventlog(path)
-    return render_runtime_section(stages, lang, source_label=label)
-
-
-def check_runtime_history(base_url: str, app_id: str, lang: str = "zh",
-                          fetch=_fetch_json) -> str:
-    """Fetch → analyze → render, for a History Server application."""
-    stages, label = analyze_history_server(base_url, app_id, fetch=fetch)
     return render_runtime_section(stages, lang, source_label=label)

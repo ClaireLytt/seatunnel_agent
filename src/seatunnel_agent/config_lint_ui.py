@@ -16,7 +16,7 @@ from .config_lint import (
     render_batch_markdown,
     render_markdown,
 )
-from .config_lint.i18n import normalize_lang
+from .utils import normalize_lang
 
 _I18N = {
     "en": {

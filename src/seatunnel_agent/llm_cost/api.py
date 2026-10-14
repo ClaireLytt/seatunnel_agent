@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .aggregate import check_budget, summarize_cost
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 from .report import render_markdown
 
 router = APIRouter(prefix="/api/llmcost", tags=["llm_cost"])

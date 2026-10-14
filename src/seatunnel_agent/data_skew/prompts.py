@@ -9,7 +9,7 @@ result set logically identical to the original SQL.
 
 from __future__ import annotations
 
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 
 # 数据倾斜优化规则库（源自任务调优课件，语法级可判定部分）
 RULES_ZH = """\

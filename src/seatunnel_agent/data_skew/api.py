@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from .detector import DIALECTS, _DIALECT_ALIASES
 from .history import default_history
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 
 router = APIRouter(prefix="/api/skew", tags=["data_skew"])
 

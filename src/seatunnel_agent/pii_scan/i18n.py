@@ -8,7 +8,7 @@ the deterministic core stays language-free.
 
 from __future__ import annotations
 
-from ..utils import normalize_lang
+from ..utils import make_lookup, normalize_lang
 
 PII_I18N: dict[str, dict[str, str]] = {
     "en": {
@@ -89,9 +89,7 @@ PII_I18N: dict[str, dict[str, str]] = {
 }
 
 
-def tp(lang: str, key: str) -> str:
-    lang = normalize_lang(lang)
-    return PII_I18N.get(lang, {}).get(key) or PII_I18N["zh"].get(key, key)
+tp = make_lookup(PII_I18N)
 
 
 def category_label(lang: str, category: str) -> str:

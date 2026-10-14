@@ -26,10 +26,6 @@ _PG_SEQ_SCAN_RE = re.compile(r"\bSeq Scan on\s+(\w+)", re.IGNORECASE)
 _SQLITE_SCAN_RE = re.compile(r"^\s*SCAN\s+(?:TABLE\s+)?(\w+)", re.IGNORECASE)
 
 
-def supports_explain(dialect: str) -> bool:
-    return dialect in EXPLAIN_DIALECTS
-
-
 def explain_full_scan_tables(
     sql: str, dialect: str, executor: Any
 ) -> set[str] | None:

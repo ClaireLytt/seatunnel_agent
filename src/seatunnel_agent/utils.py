@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import platform
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -11,6 +10,22 @@ from typing import Any
 def normalize_lang(lang: str | None) -> str:
     """Normalize any language hint to the two supported codes: en / zh."""
     return "en" if (lang or "").strip().lower().startswith("en") else "zh"
+
+
+def collect_sql_files(directory: str | Path) -> list[Path]:
+    """All *.sql files under *directory*, recursively, sorted."""
+    return sorted(p for p in Path(directory).rglob("*.sql") if p.is_file())
+
+
+def make_lookup(i18n: dict[str, dict[str, str]]):
+    """Build a ``tp(lang, key)`` lookup over an EN/ZH string table.
+
+    Falls back to the zh entry, then to the key itself — the shared
+    behaviour of every module-level i18n table in this package."""
+    def tp(lang: str, key: str) -> str:
+        lang = normalize_lang(lang)
+        return i18n.get(lang, {}).get(key) or i18n["zh"].get(key, key)
+    return tp
 
 
 def read_json_list(path: Path) -> list[Any]:
@@ -64,10 +79,6 @@ def safe_json(data: Any) -> str:
         return json.dumps(data, ensure_ascii=False, default=str)
     except (TypeError, ValueError):
         return json.dumps({"error": "Failed to serialize result"})
-
-
-def is_windows() -> bool:
-    return platform.system() == "Windows"
 
 
 def resolve_log_path(path: str, seatunnel_home: str) -> str:

@@ -6,7 +6,8 @@ from __future__ import annotations
 from typing import Any
 
 from .differ import DriftFinding, DriftReport
-from .i18n import finding_message, normalize_lang, tp
+from .i18n import finding_message, tp
+from ..utils import normalize_lang
 
 _LEVEL_MARK = {"breaking": "⛔", "risk": "⚠️", "info": "ℹ️"}
 

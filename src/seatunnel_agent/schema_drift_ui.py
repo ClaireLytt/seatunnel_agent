@@ -11,7 +11,7 @@ from __future__ import annotations
 import gradio as gr
 
 from .schema_drift import diff_paths, diff_scripts, render_markdown
-from .schema_drift.i18n import normalize_lang
+from .utils import normalize_lang
 
 _DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",
              "doris", "starrocks"]

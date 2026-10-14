@@ -11,7 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .i18n import dsk, normalize_lang
+from .i18n import dsk
+from ..utils import normalize_lang
 
 
 class Severity(str, Enum):

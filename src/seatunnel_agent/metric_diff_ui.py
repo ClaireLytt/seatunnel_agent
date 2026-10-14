@@ -11,7 +11,7 @@ from __future__ import annotations
 import gradio as gr
 
 from .metric_diff import check_sql_dir, render_markdown
-from .metric_diff.i18n import normalize_lang
+from .utils import normalize_lang
 
 _DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",
              "doris", "starrocks"]

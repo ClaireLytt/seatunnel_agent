@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 
 from ..api_guard import check_path_allowed
 from .differ import diff_paths, diff_scripts
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 from .report import render_markdown, report_to_dict
 
 router = APIRouter(prefix="/api/schemadrift", tags=["schema_drift"])

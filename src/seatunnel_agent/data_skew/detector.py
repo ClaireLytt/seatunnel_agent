@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 from .report import Severity, SkewFinding
 
 DIALECTS = ("spark", "maxcompute", "hive")

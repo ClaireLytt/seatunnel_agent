@@ -21,6 +21,7 @@ from sqlglot import Dialect
 from sqlglot.errors import ErrorLevel, ParseError
 
 from ..sql_review.linter import split_statements
+from ..utils import collect_sql_files
 from .rules import manual_checks
 
 # Dialect matrix: sources == targets. v1 shipped the first four; the
@@ -290,11 +291,6 @@ class BatchResult:
             "stats": self.counts(), "elapsed_ms": self.elapsed_ms,
             "files": [f.to_dict() for f in self.files],
         }
-
-
-def collect_sql_files(directory: str | Path) -> list[Path]:
-    root = Path(directory)
-    return sorted(p for p in root.rglob("*.sql") if p.is_file())
 
 
 def transpile_dir(

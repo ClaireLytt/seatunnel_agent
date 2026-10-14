@@ -773,7 +773,8 @@ def _hub_health_html() -> str:
 
     Language-swapped by the same data-en/zh mechanism as the rest of the hub."""
     from . import settings_store
-    key = os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+    from .config import env_api_key
+    key = env_api_key()
     if key:
         model = _html.escape(os.getenv("MODEL_NAME", "claude-opus-5"))
         src = "UI settings" if settings_store.has_saved() else ".env"
@@ -1701,9 +1702,6 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
     # ── Action wiring ──
     def _show_stop():
         return gr.update(visible=False), gr.update(visible=True)
-
-    def _show_send():
-        return gr.update(visible=True), gr.update(visible=False)
 
     submit_io = dict(
         fn=_handle_submit,

@@ -68,20 +68,6 @@ class TableSchema:
                     best_len = len(col.comment)
         return best
 
-    def to_ddl_summary(self, max_columns: int = 200) -> str:
-        lines = [f"TABLE {self.full_name}  -- {self.comment}"]
-        lines.append(f"  type: {self.table_type}")
-        for col in self.columns[:max_columns]:
-            lines.append(f"  {col.name} {col.dtype}  -- {col.comment}")
-        if len(self.columns) > max_columns:
-            lines.append(f"  ... ({len(self.columns) - max_columns} more columns)")
-        if self.partition_columns:
-            parts = ", ".join(
-                f"{c.name} {c.dtype} -- {c.comment}" for c in self.partition_columns
-            )
-            lines.append(f"  PARTITIONED BY: {parts}")
-        return "\n".join(lines)
-
 
 _CREATE_RE = re.compile(
     r"CREATE\s+(?:EXTERNAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"

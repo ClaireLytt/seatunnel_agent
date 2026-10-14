@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from ..utils import normalize_lang
+from ..utils import make_lookup
 
 TGN_I18N: dict[str, dict[str, str]] = {
     "en": {
@@ -58,6 +58,4 @@ TGN_I18N: dict[str, dict[str, str]] = {
 }
 
 
-def tp(lang: str, key: str) -> str:
-    lang = normalize_lang(lang)
-    return TGN_I18N.get(lang, {}).get(key) or TGN_I18N["zh"].get(key, key)
+tp = make_lookup(TGN_I18N)

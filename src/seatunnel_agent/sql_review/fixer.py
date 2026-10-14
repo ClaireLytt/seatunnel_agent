@@ -6,7 +6,8 @@ import re
 
 from ..config import Settings
 from ..llm import LLMClient
-from .i18n import normalize_lang, sr
+from .i18n import sr
+from ..utils import normalize_lang
 from .linter import normalize_dialect
 from .prompts import DIALECT_NAMES
 

@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from ..api_guard import check_path_allowed
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 from .linter import lint_dir, lint_text
 from .report import render_batch_markdown, render_markdown, result_to_dict
 

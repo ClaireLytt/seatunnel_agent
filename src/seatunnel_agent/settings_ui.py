@@ -162,7 +162,8 @@ def _t(lang: str, key: str) -> str:
 
 
 def _effective_key() -> str:
-    return os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+    from .config import env_api_key
+    return env_api_key()
 
 
 def _ds_choices() -> list[str]:

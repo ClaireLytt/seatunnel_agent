@@ -11,7 +11,7 @@ from __future__ import annotations
 import gradio as gr
 
 from .sql_testgen import generate, render_markdown, validate_with_sqlite
-from .sql_testgen.i18n import normalize_lang
+from .utils import normalize_lang
 
 _DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",
              "doris", "starrocks"]

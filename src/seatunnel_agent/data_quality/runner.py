@@ -15,7 +15,6 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from ..text2sql.subscriptions import builtin_params
 from .rules import DQCCheck, DQCRule
@@ -252,13 +251,3 @@ def push_failures(results: list[CheckResult], webhook_url: str) -> tuple[bool, s
     return push_feishu(
         webhook_url, "❌ DQC 数据质量告警", "\n".join(body_lines), ok=False,
     )
-
-
-def results_to_dict(results: list[CheckResult]) -> list[dict[str, Any]]:
-    return [
-        {
-            "table": r.table, "check": r.check_type, "status": r.status,
-            "actual": r.actual, "detail": r.detail,
-        }
-        for r in results
-    ]

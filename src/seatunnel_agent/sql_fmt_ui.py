@@ -12,7 +12,7 @@ from __future__ import annotations
 import gradio as gr
 
 from .sql_fmt import fmt_dir, format_text, render_batch_markdown, render_markdown
-from .sql_fmt.i18n import normalize_lang
+from .utils import normalize_lang
 
 _DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",
              "doris", "starrocks"]

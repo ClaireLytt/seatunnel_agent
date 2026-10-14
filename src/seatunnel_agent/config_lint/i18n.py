@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from ..utils import normalize_lang
+from ..utils import make_lookup
 
 CFL_I18N: dict[str, dict[str, str]] = {
     "en": {
@@ -65,9 +65,7 @@ CFL_I18N: dict[str, dict[str, str]] = {
 }
 
 
-def tp(lang: str, key: str) -> str:
-    lang = normalize_lang(lang)
-    return CFL_I18N.get(lang, {}).get(key) or CFL_I18N["zh"].get(key, key)
+tp = make_lookup(CFL_I18N)
 
 
 def finding_message(lang: str, kind: str, params: dict[str, str]) -> str:

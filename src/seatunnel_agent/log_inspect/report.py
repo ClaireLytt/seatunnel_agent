@@ -6,7 +6,8 @@ from __future__ import annotations
 from typing import Any
 
 from .clusterer import InspectReport, LogCluster
-from .i18n import normalize_lang, tp
+from .i18n import tp
+from ..utils import normalize_lang
 
 _LEVEL_MARK = {"error": "⛔", "warn": "⚠️"}
 

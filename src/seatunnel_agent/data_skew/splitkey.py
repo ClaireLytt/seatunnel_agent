@@ -16,7 +16,8 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from .i18n import dsk, normalize_lang
+from .i18n import dsk
+from ..utils import normalize_lang
 from .probe import (
     HOT_KEY_CONFIRMED,
     HOT_KEY_SUSPECT,

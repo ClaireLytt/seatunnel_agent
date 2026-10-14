@@ -22,7 +22,7 @@ from ..text2sql.executor import DatabaseConfig, create_executor
 from ..text2sql.schema import SchemaStore, parse_ddl
 from .agent import SQLReviewAgent
 from .config import ReviewConfig, parse_config_data
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 from .linter import DIALECTS, EXECUTOR_DS_TYPES, is_known_dialect, normalize_dialect
 from .rlog import ReviewLogger
 

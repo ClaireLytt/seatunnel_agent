@@ -20,7 +20,8 @@ from ..llm import LLMClient
 from ..text2sql.schema import SchemaStore
 from ..utils import truncate
 from .config import ReviewConfig
-from .i18n import normalize_lang, sr
+from .i18n import sr
+from ..utils import normalize_lang
 from .lineage import extract_table_lineage
 from .linter import lint_sql, normalize_dialect
 from .prompts import build_review_prompt

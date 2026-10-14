@@ -5,7 +5,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from .i18n import category_label, normalize_lang, tp
+from .i18n import category_label, tp
+from ..utils import normalize_lang
 from .scanner import PiiFinding, PiiReport
 
 _LEVEL_MARK = {"high": "⛔", "medium": "⚠️", "low": "🔵"}

@@ -11,7 +11,7 @@ from __future__ import annotations
 import gradio as gr
 
 from .llm_cost import merged_prices, override_path, render_markdown, summarize_cost
-from .llm_cost.i18n import normalize_lang
+from .utils import normalize_lang
 from .utils import cjk_font_family
 
 _DAY_CHOICES = [7, 14, 30, 90]

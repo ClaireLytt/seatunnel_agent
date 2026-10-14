@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from ..utils import normalize_lang
+from ..utils import make_lookup
 
 FMT_I18N: dict[str, dict[str, str]] = {
     "en": {
@@ -43,6 +43,4 @@ FMT_I18N: dict[str, dict[str, str]] = {
 }
 
 
-def tp(lang: str, key: str) -> str:
-    lang = normalize_lang(lang)
-    return FMT_I18N.get(lang, {}).get(key) or FMT_I18N["zh"].get(key, key)
+tp = make_lookup(FMT_I18N)

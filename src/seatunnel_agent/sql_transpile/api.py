@@ -18,7 +18,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 from .report import batch_to_dict, render_markdown, result_to_dict
 from .transpiler import DIALECTS, translate, transpile_dir
 

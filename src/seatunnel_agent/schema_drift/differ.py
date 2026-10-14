@@ -148,7 +148,7 @@ def parse_schema_script(sql_text: str, dialect: str = "hive",
 def load_schemas(path: str | Path, dialect: str = "hive",
                  ) -> tuple[dict[str, TableSchema], list[str]]:
     """File or directory (recursive *.sql) → merged {table: TableSchema}."""
-    from ..sql_review.runner import collect_sql_files
+    from ..utils import collect_sql_files
 
     p = Path(path)
     files = collect_sql_files(p) if p.is_dir() else [p]

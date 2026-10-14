@@ -58,7 +58,8 @@ def check_env() -> str:
 
 def check_llm_config() -> str:
     from ..settings_store import mask_secret
-    key = os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+    from ..config import env_api_key
+    key = env_api_key()
     return "\n".join([
         f"LLM_PROVIDER = {os.getenv('LLM_PROVIDER', 'anthropic')}",
         f"MODEL_NAME   = {os.getenv('MODEL_NAME', '(default)')}",

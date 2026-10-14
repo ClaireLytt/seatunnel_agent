@@ -303,7 +303,7 @@ def review(
         if sql_file:
             sources.append((sql_file, Path(sql_file).read_text(encoding="utf-8")))
         if paths or directory:
-            from .sql_review.runner import collect_sql_files
+            from .utils import collect_sql_files
         for raw in paths:
             p = Path(raw)
             if p.is_dir():
@@ -1200,7 +1200,7 @@ def skew(
 
     from .data_skew.history import default_history
     from .data_skew.report import Severity, render_report
-    from .sql_review.runner import collect_sql_files
+    from .utils import collect_sql_files
 
     # ── collect analysis targets ──
     sources: list[tuple[str, str]] = []
@@ -2237,7 +2237,7 @@ def sqlfmt(
         FmtFileResult, fmt_dir, format_text,
         render_batch_markdown, render_markdown, result_to_dict,
     )
-    from .sql_fmt.formatter import collect_sql_files
+    from .utils import collect_sql_files
 
     if not sql and not directory and not paths:
         raise click.UsageError("Provide --sql / --dir or positional paths")
@@ -3322,7 +3322,8 @@ def settings(clear_: bool, usage_: bool) -> None:
         return
     src = ("界面设置（覆盖 .env） — " + str(settings_store.store_path())
            if settings_store.has_saved() else ".env / 环境变量")
-    key = os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")
+    from .config import env_api_key
+    key = env_api_key()
     console.print(f"来源: {src}")
     console.print(f"LLM_PROVIDER = {os.getenv('LLM_PROVIDER', 'anthropic')}")
     console.print(f"MODEL_NAME   = {os.getenv('MODEL_NAME', 'claude-opus-5')}")

@@ -300,7 +300,7 @@ def scan_files(paths: list[Path] | list[str], dialect: str = "hive",
 
 def scan_dir(directory: str | Path, dialect: str = "hive",
              rules: Iterable[PiiRule] | None = None) -> PiiReport:
-    from ..sql_review.runner import collect_sql_files
+    from ..utils import collect_sql_files
 
     files = collect_sql_files(directory)
     if not files:

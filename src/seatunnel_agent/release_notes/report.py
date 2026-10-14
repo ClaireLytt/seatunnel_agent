@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Callable
 
 from .core import GROUPS, ReleaseNotes
 
@@ -89,7 +89,3 @@ def polish_markdown(markdown: str, lang: str = "zh",
         warn = _I18N[lang]["polish_failed"].format(
             err=f"{type(exc).__name__}: {exc}")
         return f"{warn}\n\n{markdown}"
-
-
-def notes_to_dict(notes: ReleaseNotes) -> dict[str, Any]:
-    return notes.to_dict()

@@ -19,7 +19,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from ..api_guard import check_path_allowed
-from .i18n import normalize_lang
+from ..utils import normalize_lang
 from .report import render_markdown, report_to_dict
 from .rules import DEFAULT_RULES
 from .scanner import scan_dir, scan_sql_text

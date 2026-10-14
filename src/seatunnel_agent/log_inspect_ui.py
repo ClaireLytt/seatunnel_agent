@@ -12,7 +12,7 @@ from __future__ import annotations
 import gradio as gr
 
 from .log_inspect import render_markdown, scan_dir, scan_text
-from .log_inspect.i18n import normalize_lang
+from .utils import normalize_lang
 
 _I18N = {
     "en": {

@@ -10,7 +10,7 @@ language-free.
 
 from __future__ import annotations
 
-from ..utils import normalize_lang
+from ..utils import make_lookup, normalize_lang
 
 TP_I18N: dict[str, dict[str, str]] = {
     "en": {
@@ -90,9 +90,7 @@ TP_I18N: dict[str, dict[str, str]] = {
 }
 
 
-def tp(lang: str, key: str) -> str:
-    lang = normalize_lang(lang)
-    return TP_I18N.get(lang, {}).get(key) or TP_I18N["zh"].get(key, key)
+tp = make_lookup(TP_I18N)
 
 
 def issue_message(lang: str, kind: str, params: dict[str, str]) -> str:
