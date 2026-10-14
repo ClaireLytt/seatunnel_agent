@@ -54,7 +54,6 @@ from seatunnel_agent.data_comparison.comparator import (
     parse_alert_rules,
     TrendAlert,
     build_trend_data,
-    check_aggregate_threshold,
     check_quality_rules,
     check_row_count_threshold,
     compare_aggregates,
@@ -998,7 +997,7 @@ class TestParseThreshold:
 
 
 class TestCheckThreshold:
-    """Tests for check_row_count_threshold and check_aggregate_threshold."""
+    """Tests for check_row_count_threshold."""
 
     def test_row_count_within_pct(self):
         r = RowCountResult("t1", 100, "t2", 103, 3, 3.0)
@@ -1019,17 +1018,6 @@ class TestCheckThreshold:
         r = RowCountResult("t1", 100, "t2", 105, 5, 5.0)
         th = ThresholdConfig(value=5.0, is_percentage=True)
         assert check_row_count_threshold(r, th) is True
-
-    def test_aggregate_no_mismatch(self):
-        agg = AggregateResult("t1", "t2", [], mismatches=0)
-        th = ThresholdConfig(value=5.0)
-        assert check_aggregate_threshold(agg, th) is True
-
-    def test_aggregate_with_mismatch(self):
-        items = [AggregateItem("col", "SUM", 100.0, 200.0, False)]
-        agg = AggregateResult("t1", "t2", items, mismatches=1)
-        th = ThresholdConfig(value=5.0)
-        assert check_aggregate_threshold(agg, th) is False
 
 
 class TestColumnMapping:
@@ -3227,46 +3215,6 @@ class TestBuildChecksumSqlFixed:
         assert "% 1" in sql or "MOD(" in sql
 
 
-class TestCheckAggregateThresholdFixed:
-    """Verify check_aggregate_threshold now uses threshold parameter."""
-
-    def test_none_threshold_uses_mismatch_count(self):
-        result = AggregateResult("t1", "t2", items=[], mismatches=0)
-        assert check_aggregate_threshold(result, None) is True
-        result2 = AggregateResult("t1", "t2", items=[], mismatches=1)
-        assert check_aggregate_threshold(result2, None) is False
-
-    def test_absolute_threshold_within(self):
-        items = [AggregateItem("col", "sum", value_a=100, value_b=102, match=False)]
-        result = AggregateResult("t1", "t2", items=items, mismatches=1)
-        threshold = ThresholdConfig(value=5.0, is_percentage=False)
-        assert check_aggregate_threshold(result, threshold) is True
-
-    def test_absolute_threshold_exceeded(self):
-        items = [AggregateItem("col", "sum", value_a=100, value_b=110, match=False)]
-        result = AggregateResult("t1", "t2", items=items, mismatches=1)
-        threshold = ThresholdConfig(value=5.0, is_percentage=False)
-        assert check_aggregate_threshold(result, threshold) is False
-
-    def test_percentage_threshold_within(self):
-        items = [AggregateItem("col", "avg", value_a=100, value_b=101, match=False)]
-        result = AggregateResult("t1", "t2", items=items, mismatches=1)
-        threshold = ThresholdConfig(value=5.0, is_percentage=True)
-        assert check_aggregate_threshold(result, threshold) is True
-
-    def test_percentage_threshold_exceeded(self):
-        items = [AggregateItem("col", "avg", value_a=100, value_b=120, match=False)]
-        result = AggregateResult("t1", "t2", items=items, mismatches=1)
-        threshold = ThresholdConfig(value=5.0, is_percentage=True)
-        assert check_aggregate_threshold(result, threshold) is False
-
-    def test_none_values_skipped(self):
-        items = [AggregateItem("col", "sum", value_a=None, value_b=100, match=False)]
-        result = AggregateResult("t1", "t2", items=items, mismatches=1)
-        threshold = ThresholdConfig(value=1.0, is_percentage=False)
-        assert check_aggregate_threshold(result, threshold) is True
-
-
 class TestStratifiedSqlFixed:
     """Verify stratified SQL no longer has arbitrary outer TOP/LIMIT."""
 
@@ -3904,21 +3852,6 @@ class TestParseExpressionRule:
         results = check_quality_rules(rules, profile)
         assert len(results) == 1
         assert results[0].pending is True
-
-
-class TestBuildExpressionCheckSql:
-    """build_expression_check_sql generates correct SQL."""
-
-    def test_basic(self):
-        from seatunnel_agent.data_comparison.comparator import build_expression_check_sql
-        sql = build_expression_check_sql("users", "age > 0")
-        assert "SUM(CASE WHEN age > 0 THEN 1 ELSE 0 END)" in sql
-        assert "COUNT(*)" in sql
-
-    def test_with_where(self):
-        from seatunnel_agent.data_comparison.comparator import build_expression_check_sql
-        sql = build_expression_check_sql("users", "age > 0", "status = 'active'")
-        assert "WHERE status = 'active'" in sql
 
 
 class TestGetUpstreamTables:

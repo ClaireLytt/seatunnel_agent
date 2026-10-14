@@ -9,18 +9,17 @@ dropped by more than :data:`SCORE_DROP_TOLERANCE`.
 
 from __future__ import annotations
 
-import json
 import os
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+
+from ..jsonl_log import JsonlLog
 
 if TYPE_CHECKING:  # pragma: no cover
     from .runner import SuiteResult
 
 SCORE_DROP_TOLERANCE = 0.01
-_MAX_LOG_BYTES = 10 * 1024 * 1024
 
 
 def log_path() -> Path:
@@ -30,12 +29,10 @@ def log_path() -> Path:
 class RunLogger:
     def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path) if path else log_path()
-        self._lock = threading.Lock()
+        self._log = JsonlLog(lambda: self.path, env_switch="LLM_EVAL_LOG")
 
     def log(self, result: "SuiteResult") -> None:
         """Best-effort append; never raises into the run."""
-        if os.getenv("LLM_EVAL_LOG", "1") == "0":
-            return
         try:
             rec = {
                 "ts": datetime.now(timezone.utc).strftime(
@@ -46,37 +43,14 @@ class RunLogger:
                                  "passed": c.passed}
                           for c in result.cases},
             }
-            line = json.dumps(rec, ensure_ascii=False)
-            with self._lock:
-                self.path.parent.mkdir(parents=True, exist_ok=True)
-                if (self.path.is_file()
-                        and self.path.stat().st_size > _MAX_LOG_BYTES):
-                    lines = self.path.read_text(
-                        encoding="utf-8").splitlines()
-                    self.path.write_text(
-                        "\n".join(lines[len(lines) // 2:]) + "\n",
-                        encoding="utf-8")
-                with self.path.open("a", encoding="utf-8") as fh:
-                    fh.write(line + "\n")
         except Exception:  # noqa: BLE001 — history is best-effort
-            pass
+            return
+        self._log.append(rec)
 
     def recent(self, n: int = 50,
                suite: str | None = None) -> list[dict[str, Any]]:
-        try:
-            lines = self.path.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            return []
-        out: list[dict[str, Any]] = []
-        for line in lines:
-            try:
-                rec = json.loads(line)
-            except ValueError:
-                continue
-            if suite and rec.get("suite") != suite:
-                continue
-            out.append(rec)
-        return out[-n:]
+        where = (lambda rec: rec.get("suite") == suite) if suite else None
+        return self._log.recent(n, where=where)
 
     def last_run(self, suite: str) -> dict[str, Any] | None:
         """The most recent logged run of *suite*.

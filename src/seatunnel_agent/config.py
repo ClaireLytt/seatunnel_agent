@@ -80,11 +80,6 @@ class Settings:
     config_dir: str = "configs"
     llm_timeout: int = 120
 
-    @property
-    def anthropic_api_key(self) -> str:
-        return self.api_key
-
-
 def env_api_key() -> str:
     """The configured LLM API key ("" when unset) — single source of truth."""
     return os.getenv("API_KEY", "") or os.getenv("ANTHROPIC_API_KEY", "")

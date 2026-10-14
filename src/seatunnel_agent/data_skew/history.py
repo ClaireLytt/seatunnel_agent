@@ -9,14 +9,12 @@ so the UI can reload a past analysis into the editor.
 
 from __future__ import annotations
 
-import json
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ..jsonl_log import JsonlLog
 from .report import Severity, SkewReport
 
-_MAX_BYTES = 10 * 1024 * 1024
 _MAX_SQL_CHARS = 20_000
 
 
@@ -39,7 +37,7 @@ class SkewHistory:
     def __init__(self, log_dir: str | Path = "logs") -> None:
         self.log_dir = Path(log_dir)
         self.log_file = self.log_dir / "data_skew.jsonl"
-        self._lock = threading.Lock()
+        self._log = JsonlLog(lambda: self.log_file, rotate="rename")
 
     def log(
         self,
@@ -65,15 +63,7 @@ class SkewHistory:
             "optimized": bool(report.optimized_sql),
             "sql": (sql or "")[:_MAX_SQL_CHARS],
         }
-        line = json.dumps(record, ensure_ascii=False) + "\n"
-        try:
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-            with self._lock:
-                self._rotate_if_needed()
-                with open(self.log_file, "a", encoding="utf-8") as f:
-                    f.write(line)
-        except OSError:
-            pass  # history is best-effort; never break the analysis
+        self._log.append(record)
 
     def log_verify(
         self,
@@ -94,15 +84,7 @@ class SkewHistory:
             "probes": {"targets": targets, "confirmed": confirmed},
             "sql": (sql or "")[:_MAX_SQL_CHARS],
         }
-        line = json.dumps(record, ensure_ascii=False) + "\n"
-        try:
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-            with self._lock:
-                self._rotate_if_needed()
-                with open(self.log_file, "a", encoding="utf-8") as f:
-                    f.write(line)
-        except OSError:
-            pass  # history is best-effort; never break the analysis
+        self._log.append(record)
 
     def log_splitkey(
         self,
@@ -144,15 +126,7 @@ class SkewHistory:
             "splitkey": sk,
             "sql": f"-- splitkey: {table} partition_column={partition_column or '(none)'}",
         }
-        line = json.dumps(record, ensure_ascii=False) + "\n"
-        try:
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-            with self._lock:
-                self._rotate_if_needed()
-                with open(self.log_file, "a", encoding="utf-8") as f:
-                    f.write(line)
-        except OSError:
-            pass  # history is best-effort; never break the analysis
+        self._log.append(record)
 
     def log_runtime(
         self,
@@ -177,15 +151,7 @@ class SkewHistory:
                         "confirmed": confirmed, "suspect": suspect},
             "sql": f"-- runtime: {app}",
         }
-        line = json.dumps(record, ensure_ascii=False) + "\n"
-        try:
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-            with self._lock:
-                self._rotate_if_needed()
-                with open(self.log_file, "a", encoding="utf-8") as f:
-                    f.write(line)
-        except OSError:
-            pass  # history is best-effort; never break the analysis
+        self._log.append(record)
 
     def last_splitkey(self, table: str) -> dict | None:
         """The most recent splitkey record for *table*, or None.
@@ -224,28 +190,4 @@ class SkewHistory:
 
     def recent(self, n: int = 20) -> list[dict]:
         """Latest *n* records, newest first.  [] on any problem."""
-        try:
-            lines = self.log_file.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            return []
-        out: list[dict] = []
-        for line in reversed(lines):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                out.append(json.loads(line))
-            except ValueError:
-                continue
-            if len(out) >= n:
-                break
-        return out
-
-    def _rotate_if_needed(self) -> None:
-        try:
-            if (self.log_file.exists()
-                    and self.log_file.stat().st_size > _MAX_BYTES):
-                self.log_file.replace(
-                    self.log_file.with_suffix(".jsonl.1"))
-        except OSError:
-            pass
+        return list(reversed(self._log.recent(n)))

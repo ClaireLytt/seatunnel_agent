@@ -76,10 +76,6 @@ class PiiFinding:
     def unmasked_edges(self) -> list[SpreadEdge]:
         return [e for e in self.spread_edges if not e.masked]
 
-    @property
-    def masked_edges(self) -> list[SpreadEdge]:
-        return [e for e in self.spread_edges if e.masked]
-
     def to_dict(self) -> dict[str, Any]:
         return {
             "table": self.table,

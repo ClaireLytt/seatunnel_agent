@@ -63,37 +63,3 @@ def build_profile_sql(table_name: str, columns: list[dict[str, str]],
     return f"SELECT\n  {select}\nFROM {q(table_name)}"
 
 
-def parse_profile_result(
-    table_name: str,
-    columns: list[dict[str, str]],
-    row: tuple | list,
-) -> TableProfile:
-    """Parse the single result row from a profile SQL query."""
-    values = list(row)
-    row_count = values[0] if values else 0
-    profiles: list[ColumnProfile] = []
-    cols = columns[:_MAX_PROFILE_COLUMNS]
-    idx = 1
-    for c in cols:
-        if idx + 3 >= len(values):
-            break
-        non_null = values[idx]
-        distinct = values[idx + 1]
-        min_val = values[idx + 2]
-        max_val = values[idx + 3]
-        null_count = (row_count or 0) - (non_null or 0)
-        profiles.append(ColumnProfile(
-            name=c["name"],
-            dtype=c.get("type", ""),
-            total_count=row_count or 0,
-            null_count=null_count,
-            distinct_count=distinct or 0,
-            min_value=min_val,
-            max_value=max_val,
-        ))
-        idx += 4
-    return TableProfile(
-        table_name=table_name,
-        row_count=row_count or 0,
-        columns=profiles,
-    )

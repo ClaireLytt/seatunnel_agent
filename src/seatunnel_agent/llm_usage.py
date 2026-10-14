@@ -13,18 +13,19 @@ from __future__ import annotations
 
 import json
 import os
-import threading
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-_MAX_LOG_BYTES = 10 * 1024 * 1024
-_lock = threading.Lock()
+from .jsonl_log import JsonlLog
 
 
 def usage_path() -> Path:
     return Path(os.getenv("LLM_USAGE_PATH") or "logs/llm_usage.jsonl")
+
+
+_log = JsonlLog(usage_path, env_switch="LLM_USAGE_LOG")
 
 
 def record(provider: str, model: str, usage: dict[str, Any] | None,
@@ -34,8 +35,6 @@ def record(provider: str, model: str, usage: dict[str, Any] | None,
     *agent* optionally attributes the call to a feature (``text2sql``,
     ``sql_review``, …) for per-agent cost roll-ups; omitted calls land in
     the "unattributed" bucket."""
-    if os.getenv("LLM_USAGE_LOG", "1") == "0":
-        return
     try:
         usage = usage or {}
         # LLMClient populates input_tokens/output_tokens; accept the short
@@ -51,18 +50,9 @@ def record(provider: str, model: str, usage: dict[str, Any] | None,
         }
         if agent:
             rec["agent"] = agent
-        line = json.dumps(rec, ensure_ascii=False)
-        path = usage_path()
-        with _lock:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            if path.is_file() and path.stat().st_size > _MAX_LOG_BYTES:
-                lines = path.read_text(encoding="utf-8").splitlines()
-                path.write_text("\n".join(lines[len(lines) // 2:]) + "\n",
-                                encoding="utf-8")
-            with path.open("a", encoding="utf-8") as fh:
-                fh.write(line + "\n")
     except Exception:  # noqa: BLE001 — usage logging is best-effort
-        pass
+        return
+    _log.append(rec)
 
 
 def summarize(days: int = 30) -> dict[str, Any]:

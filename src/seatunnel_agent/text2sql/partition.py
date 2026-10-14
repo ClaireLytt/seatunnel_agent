@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 
 from .schema import TableSchema, _INCREMENTAL_SUFFIXES, _FULL_SUFFIXES
 
@@ -51,39 +51,6 @@ class TimeRange:
     @property
     def is_empty(self) -> bool:
         return self.start is None and self.end is None
-
-
-def extract_time_range(query: str, today: date | None = None) -> TimeRange:
-    """Best-effort extraction of a date/range from the question text."""
-    today = today or date.today()
-
-    m = _RECENT_DAYS_RE.search(query)
-    if m:
-        days = int(next(g for g in m.groups() if g))
-        return TimeRange(start=today - timedelta(days=days), end=today)
-
-    for pattern in _DATE_PATTERNS:
-        m = pattern.search(query)
-        if m:
-            y, mo, d = (int(g) for g in m.groups())
-            try:
-                found = date(y, mo, d)
-            except ValueError:
-                continue
-            return TimeRange(start=found, end=found)
-
-    m = _MONTH_DAY_RE.search(query)
-    if m:
-        mo, d = int(m.group(1)), int(m.group(2))
-        try:
-            found = date(today.year, mo, d)
-        except ValueError:
-            return TimeRange()
-        if found > today:
-            found = found.replace(year=today.year - 1)
-        return TimeRange(start=found, end=found)
-
-    return TimeRange()
 
 
 def build_partition_clause(

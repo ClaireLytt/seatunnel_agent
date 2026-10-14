@@ -6,12 +6,11 @@ import json
 import re
 import threading
 import time as _time
-import uuid
 from dataclasses import asdict, dataclass, field, fields as dc_fields
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from ..history import extract_title, new_session_id, now_iso  # noqa: F401 — shared session helpers (re-exported)
 
 HISTORY_DIR = Path.home() / ".seatunnel-agent" / "text2sql_history"
 
@@ -27,33 +26,6 @@ class Text2SQLSession:
     ds_type: str = ""
     chat_messages: list[dict[str, str]] = field(default_factory=list)
     agent_messages: list[dict[str, Any]] = field(default_factory=list)
-
-
-def new_session_id() -> str:
-    return uuid.uuid4().hex[:12]
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
-
-
-def extract_title(chat_messages: list[dict], max_len: int = 30) -> str:
-    for msg in chat_messages:
-        if msg.get("role") != "user":
-            continue
-        content = msg.get("content", "")
-        if isinstance(content, list):
-            content = " ".join(
-                p.get("text", "") if isinstance(p, dict) else str(p)
-                for p in content
-            )
-        if not isinstance(content, str):
-            continue
-        text = content.strip()
-        if text:
-            text = text.replace("\n", " ")
-            return text[:max_len] + ("..." if len(text) > max_len else "")
-    return "Untitled"
 
 
 def _session_path(session_id: str) -> Path:
@@ -117,16 +89,6 @@ def load_t2s_session(session_id: str) -> Text2SQLSession | None:
         return Text2SQLSession(**filtered)
     except (json.JSONDecodeError, TypeError, KeyError):
         return None
-
-
-def delete_t2s_session(session_id: str) -> None:
-    try:
-        path = _session_path(session_id)
-    except ValueError:
-        return
-    if path.exists():
-        path.unlink()
-    _invalidate_sessions_cache()
 
 
 def list_t2s_sessions() -> list[dict[str, str]]:

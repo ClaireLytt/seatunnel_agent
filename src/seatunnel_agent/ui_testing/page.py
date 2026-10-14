@@ -214,10 +214,6 @@ def unregister_alias(name: str, label: str) -> None:
         RUNTIME_ALIASES.pop(name, None)
 
 
-def healed_aliases() -> dict[str, list[str]]:
-    return {k: list(v) for k, v in RUNTIME_ALIASES.items()}
-
-
 def reset_aliases() -> None:
     RUNTIME_ALIASES.clear()
 

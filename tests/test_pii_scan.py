@@ -167,7 +167,7 @@ def test_masked_spread_does_not_escalate():
     f = next(x for x in report.findings
              if (x.table, x.column) == ("ods.u", "email"))
     assert f.severity == f.base_severity == "medium"
-    assert len(f.masked_edges) == 1 and not f.unmasked_edges
+    assert not f.unmasked_edges
 
 
 def test_masked_name_demoted_to_low():

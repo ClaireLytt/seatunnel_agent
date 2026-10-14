@@ -64,7 +64,7 @@ def test_format_markdown(usage_file):
 
 
 def test_size_cap_trims_oldest_half(usage_file, monkeypatch):
-    monkeypatch.setattr(llm_usage, "_MAX_LOG_BYTES", 200)
+    monkeypatch.setattr(llm_usage._log, "max_bytes", 200)
     for i in range(20):
         llm_usage.record("openai", f"m{i}", {"input": 1, "output": 1})
     lines = usage_file.read_text(encoding="utf-8").splitlines()

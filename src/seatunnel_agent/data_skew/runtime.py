@@ -387,7 +387,3 @@ def render_runtime_section(stages: list[StageSkew], lang: str,
     return "\n".join(parts)
 
 
-def check_runtime_eventlog(path: str | Path, lang: str = "zh") -> str:
-    """Parse → analyze → render, for an event log file/directory."""
-    stages, label = parse_eventlog(path)
-    return render_runtime_section(stages, lang, source_label=label)

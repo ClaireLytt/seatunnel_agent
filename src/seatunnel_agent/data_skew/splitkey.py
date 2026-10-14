@@ -635,24 +635,6 @@ def run_split_key_multi(
     return results, len(specs)
 
 
-def check_split_key(
-    executor,
-    conf_text: str,
-    ds_type: str = "",
-    sample_pct: int = 0,
-    lang: str = "zh",
-) -> str:
-    """Parse → measure (every source + sink keys) → render. Raises
-    SplitKeyError on config problems."""
-    results, total = run_split_key_multi(
-        executor, conf_text, ds_type=ds_type, sample_pct=sample_pct)
-    md = render_splitkey_multi(results, lang, sample_pct=sample_pct,
-                               total=total)
-    snk = sink_key_section(executor, conf_text, ds_type=ds_type,
-                           sample_pct=sample_pct, lang=lang)
-    return md + ("\n" + snk if snk else "")
-
-
 def sink_key_section(
     executor,
     conf_text: str,
@@ -846,22 +828,6 @@ class BatchFileResult:
     total: int = 0
     error_key: str = ""   # SplitKeyError key when the file failed to parse
     error_arg: str = ""
-
-    def worst_verdict(self) -> str:
-        """'bad' > 'none' > 'suspect' > 'good' across this file's sources
-        ('error' when the file itself failed)."""
-        if self.error_key:
-            return "error"
-        rank = {"bad": 0, "low_ndv": 0, "null": 0, "none": 1,
-                "suspect": 2, "good": 3}
-        worst, worst_r = "good", 4
-        for spec, configured, _ in self.results:
-            v = configured.verdict(spec.tasks) if configured else "none"
-            r = rank.get(v, 1)
-            if r < worst_r:
-                worst, worst_r = v, r
-        return worst
-
 
 def scan_config_files(directory: str, recursive: bool = True) -> list:
     """SeaTunnel-ish config files under *directory*, sorted, de-duplicated."""

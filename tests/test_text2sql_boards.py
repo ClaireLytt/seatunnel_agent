@@ -118,15 +118,13 @@ def test_board_crud(store: BoardStore) -> None:
     assert store.delete(b["id"]) is False
 
 
-def test_board_pin_unpin(store: BoardStore) -> None:
+def test_board_pin(store: BoardStore) -> None:
     b = store.create("看板A")
     item = store.pin(b["id"], title="各城市销售额", sql="SELECT city FROM sales",
                      ds_type="sqlite")
     assert item["title"] == "各城市销售额"
     board = store.get(b["id"])
     assert len(board["items"]) == 1
-    assert store.unpin(b["id"], item["id"]) is True
-    assert store.unpin(b["id"], item["id"]) is False
     with pytest.raises(ValueError, match="不存在"):
         store.pin("nope", title="x", sql="SELECT 1")
     with pytest.raises(ValueError):

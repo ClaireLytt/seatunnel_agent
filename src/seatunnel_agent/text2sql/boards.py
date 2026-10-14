@@ -116,22 +116,6 @@ class BoardStore:
                 return item
         raise ValueError(f"看板 '{board_id}' 不存在")
 
-    def unpin(self, board_id: str, item_id: str) -> bool:
-        with self._lock:
-            boards = self._read()
-            for b in boards:
-                if b.get("id") != board_id:
-                    continue
-                items = b.get("items", [])
-                kept = [it for it in items if it.get("id") != item_id]
-                if len(kept) == len(items):
-                    return False
-                b["items"] = kept
-                self._write(boards)
-                return True
-            return False
-
-
 def render_board(
     board: dict[str, Any],
     executor,

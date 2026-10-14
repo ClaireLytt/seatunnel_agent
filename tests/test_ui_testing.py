@@ -541,7 +541,6 @@ class TestSelfHeal:
                         steps=[Step(action="click", args={"target": "旧按钮"})])
 
     def test_heal_success_then_alias_reused(self, tmp_path):
-        from seatunnel_agent.ui_testing import page as page_mod
         from seatunnel_agent.ui_testing.runner import run_case
         self._reset()
         dc, llm = self._dc(), self._llm()
@@ -549,7 +548,6 @@ class TestSelfHeal:
         cr = run_case(self._case(), dc, llm, tmp_path)
         assert cr.verdict == "HEALED"
         assert cr.healed == ["旧按钮 -> New Label"]
-        assert page_mod.healed_aliases() == {"旧按钮": ["New Label"]}
         heal_calls = llm.client.chat.call_count
 
         # second case resolves straight through the alias: no failure, no LLM
@@ -559,7 +557,6 @@ class TestSelfHeal:
         self._reset()
 
     def test_bad_suggestion_rolls_back(self, tmp_path, monkeypatch):
-        from seatunnel_agent.ui_testing import page as page_mod
         from seatunnel_agent.ui_testing import runner
         self._reset()
         dc = self._dc()
@@ -570,7 +567,6 @@ class TestSelfHeal:
         cr = runner.run_case(self._case(), dc, llm, tmp_path)
         assert cr.verdict == "ERROR"
         assert "自愈失败" in cr.reason
-        assert page_mod.healed_aliases() == {}          # rolled back
         assert "旧按钮" in runner._heal_failed           # negative cache
 
         # later case: fails fast, no second suggestion round

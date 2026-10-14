@@ -867,32 +867,6 @@ def check_row_count_threshold(result: RowCountResult, threshold: ThresholdConfig
     return abs(result.delta) <= threshold.value
 
 
-def check_aggregate_threshold(result: AggregateResult, threshold: ThresholdConfig | None) -> bool:
-    """Return True if all aggregates are within the threshold tolerance."""
-    if threshold is None:
-        return result.mismatches == 0
-    for item in result.items:
-        if item.value_a is None or item.value_b is None:
-            continue
-        try:
-            va, vb = float(item.value_a), float(item.value_b)
-        except (TypeError, ValueError):
-            continue
-        diff = abs(va - vb)
-        if threshold.is_percentage:
-            denom = max(abs(va), abs(vb), 1e-9)
-            if diff / denom * 100 > threshold.value:
-                return False
-        else:
-            if diff > threshold.value:
-                return False
-    return True
-
-
-# ---------------------------------------------------------------------------
-# Column mapping  (D)
-# ---------------------------------------------------------------------------
-
 def parse_column_mapping(raw: str) -> ColumnMapping:
     """Parse 'col_a:col_b, name:full_name' into {col_a: col_b}.
 
@@ -1939,22 +1913,6 @@ def diff_reports(old: CompareReport, new: CompareReport) -> ReportDiff:
 
 # ---------------------------------------------------------------------------
 # Custom expression quality rules  (Phase 5B)
-# ---------------------------------------------------------------------------
-
-def build_expression_check_sql(
-    table: str, expression: str, where: str = "",
-) -> str:
-    tbl = quote_identifier(table)
-    w = f" WHERE {where}" if where.strip() else ""
-    return (
-        f"SELECT COUNT(*) AS total, "
-        f"SUM(CASE WHEN {expression} THEN 1 ELSE 0 END) AS passing "
-        f"FROM {tbl}{w}"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Data lineage integration  (Phase 5C)
 # ---------------------------------------------------------------------------
 
 def get_upstream_tables(table_name: str, sql_list: list[str]) -> list[str]:

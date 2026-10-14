@@ -1514,7 +1514,6 @@ from seatunnel_agent.data_skew.splitkey import (  # noqa: E402
     SplitKeyError,
     SplitStat,
     apply_split_key,
-    check_split_key,
     parse_seatunnel_source,
     parse_seatunnel_sources,
     pick_best_key,
@@ -1649,41 +1648,6 @@ def test_rank_candidates_orders_good_first():
     mild = SplitStat("uid", total=100, ndv=100, top1_count=10)
     ranked = rank_candidates([bad, mild, good], tasks)
     assert [s.column for s in ranked] == ["id", "uid", "region"]
-
-
-def test_check_split_key_end_to_end(tmp_path):
-    # region skewed (80% 'CN'), id uniform → verdicts + snippet promote id
-    rows = ",".join(
-        f"({i}, '{'CN' if i <= 80 else 'US'}', {i * 10})"
-        for i in range(1, 101))
-    ex = _sqlite_executor(
-        tmp_path,
-        "CREATE TABLE orders (id INTEGER, region TEXT, amount INTEGER);"
-        f"INSERT INTO orders VALUES {rows};")
-    conf = """
-    env { parallelism = 2 }
-    source { Jdbc { table_name = "orders", partition_column = "region" } }
-    sink { Console {} }
-    """
-    md = check_split_key(ex, conf, ds_type="sqlite", lang="zh")
-    assert "## SeaTunnel 分片键体检" in md
-    assert "`region`" in md
-    # configured key is low-cardinality → flagged, id promoted in the snippet
-    assert "partition_column = \"id\"" in md
-    assert "```hocon" in md
-    en = check_split_key(ex, conf, ds_type="sqlite", lang="en")
-    assert "## SeaTunnel Split-Key Check" in en
-
-
-def test_check_split_key_no_partition_column(tmp_path):
-    ex = _sqlite_executor(
-        tmp_path,
-        "CREATE TABLE t (id INTEGER, v TEXT);"
-        "INSERT INTO t VALUES (1,'a'),(2,'b'),(3,'c'),(4,'d'),(5,'e'),"
-        "(6,'f'),(7,'g'),(8,'h'),(9,'i'),(10,'j');")
-    conf = 'source { Jdbc { table_name = "t" } } sink {}'
-    md = check_split_key(ex, conf, ds_type="sqlite", lang="zh")
-    assert "未配置 `partition_column`" in md
 
 
 def test_render_splitkey_section_error_row():
@@ -2075,30 +2039,6 @@ def test_parse_sources_skips_unresolvable_entry():
         assert exc.key == "spk_no_table"
 
 
-def test_check_split_key_multi_sources(tmp_path):
-
-    db = _make_two_table_db(tmp_path)
-    from seatunnel_agent.text2sql.executor.base import (
-        DatabaseConfig,
-        create_executor,
-    )
-    ex = create_executor(
-        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
-
-    md = check_split_key(ex, _CONF_MULTI, ds_type="sqlite", lang="zh")
-    # one header, both source bodies, the multi note, one sink note
-    assert md.count("## SeaTunnel 分片键体检") == 1
-    assert "2 个 source" in md
-    assert "`orders`" in md and "`users`" in md
-    assert md.count("写入端同理") == 1
-    # skewed region flagged, uniform uid fine
-    assert "`region`" in md and "`uid`" in md
-
-    en = check_split_key(ex, _CONF_MULTI, ds_type="sqlite", lang="en")
-    assert en.count("## SeaTunnel Split-Key Check") == 1
-    assert "2 sources" in en
-
-
 def test_run_split_key_multi_cap_and_truncated_note(tmp_path):
     db = _make_two_table_db(tmp_path)
     from seatunnel_agent.text2sql.executor.base import (
@@ -2197,7 +2137,6 @@ from seatunnel_agent.data_skew.runtime import (  # noqa: E402
     RuntimeSkewError,
     StageSkew,
     analyze_history_server,
-    check_runtime_eventlog,
     parse_eventlog,
     render_runtime_section,
 )
@@ -2290,19 +2229,7 @@ def test_runtime_parse_gz_and_rolling_dir(tmp_path):
         assert exc.key == "rt_read_fail"
 
 
-def test_runtime_render(tmp_path):
-    log = tmp_path / "app-123"
-    _write_eventlog(log)
-    md = check_runtime_eventlog(log, lang="zh")
-    assert "## 运行时倾斜诊断" in md
-    assert "1 个确认倾斜" in md
-    assert "拖尾任务" in md
-    assert "spark.sql.adaptive.skewJoin.enabled=true" in md
-    assert "dws.orders" in md  # SQL mapping rendered
-    en = check_runtime_eventlog(log, lang="en")
-    assert "## Runtime Skew Diagnosis" in en
-    assert "straggler" in en
-
+def test_runtime_render():
     # balanced-only input → the all-ok line, no AQE block
     ok = render_runtime_section(
         [StageSkew(1, tasks=4, dur_p50=1000, dur_max=1200)], "zh")
@@ -2490,13 +2417,6 @@ def test_run_split_key_batch_and_render(tmp_path):
                                 ds_type="sqlite")
     c = batch_counts(items)
     assert c == {"files": 4, "sources": 3, "bad": 1, "none": 1, "errors": 1}
-    by_name = {item.path.split("\\")[-1].split("/")[-1]: item
-               for item in items}
-    assert by_name["a_skewed.conf"].worst_verdict() in ("bad", "low_ndv")
-    assert by_name["b_good.config"].worst_verdict() == "good"
-    assert by_name["c_nokey.conf"].worst_verdict() == "none"
-    assert by_name["d_broken.conf"].worst_verdict() == "error"
-
     md = render_splitkey_batch(items, "zh")
     assert "## SeaTunnel 分片键巡检" in md
     assert "1 个键倾斜" in md and "1 个解析失败" in md
@@ -2680,23 +2600,6 @@ def test_run_sink_keys_and_render(tmp_path):
     assert "### Sink-Side Key Check" in en and "hot key" in en
     # empty results render nothing
     assert render_sinkkey_section([], "orders", "zh") == ""
-
-
-def test_check_split_key_appends_sink_section(tmp_path):
-    from seatunnel_agent.text2sql.executor.base import (
-        DatabaseConfig,
-        create_executor,
-    )
-
-    db = _make_orders_db(tmp_path)
-    ex = create_executor(
-        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
-    md = check_split_key(ex, _CONF_SINK, ds_type="sqlite", lang="zh")
-    assert "## SeaTunnel 分片键体检" in md
-    assert "### Sink 端键体检" in md  # additive sub-section, same report
-    # a config without sink keys keeps the report unchanged
-    plain = check_split_key(ex, _SPLITKEY_CONF, ds_type="sqlite", lang="zh")
-    assert "Sink 端键体检" not in plain
 
 
 def test_cli_skew_stats_splitkey_trend(monkeypatch, tmp_path):

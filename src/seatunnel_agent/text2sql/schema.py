@@ -56,18 +56,6 @@ class TableSchema:
                 return col
         return None
 
-    def find_column_by_comment(self, text: str) -> ColumnSchema | None:
-        """Find the column whose comment best contains ``text``."""
-        best: ColumnSchema | None = None
-        best_len = 0
-        for col in self.columns + self.partition_columns:
-            if text and text in col.comment:
-                # Prefer the shortest comment containing the text (most specific)
-                if best is None or len(col.comment) < best_len:
-                    best = col
-                    best_len = len(col.comment)
-        return best
-
 
 _CREATE_RE = re.compile(
     r"CREATE\s+(?:EXTERNAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"

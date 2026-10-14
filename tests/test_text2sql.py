@@ -22,7 +22,6 @@ from seatunnel_agent.text2sql.partition import (
     TimeRange,
     build_partition_clause,
     classify_table,
-    extract_time_range,
     has_partition_filter,
 )
 from seatunnel_agent.text2sql.exporter import export_csv
@@ -96,10 +95,6 @@ class TestParseDDL:
         assert t.is_partitioned
         assert t.partition_columns[0].name == "pt"
         assert not store.get("atest.student").is_partitioned
-
-    def test_find_column_by_comment(self, store):
-        t = store.get("zz.dwm_scm_detail_di")
-        assert t.find_column_by_comment("仓库名称").name == "warehouse_name"
 
 
 # ------------------------------------------------------------------
@@ -210,19 +205,6 @@ class TestPartition:
         assert classify_table("a_di") == "incremental"
         assert classify_table("a_hf") == "full"
         assert classify_table("student") == "other"
-
-    def test_extract_recent_days(self):
-        tr = extract_time_range("最近30天的入库单量", today=date(2026, 3, 13))
-        assert tr.start == date(2026, 2, 11)
-        assert tr.end == date(2026, 3, 13)
-
-    def test_extract_exact_date(self):
-        tr = extract_time_range("日期为20260312的数据")
-        assert tr.start == tr.end == date(2026, 3, 12)
-
-    def test_extract_chinese_date(self):
-        tr = extract_time_range("2026年3月12日的数据")
-        assert tr.start == date(2026, 3, 12)
 
     def test_incremental_with_range(self, store):
         t = store.get("zz.dwm_scm_detail_di")
@@ -450,24 +432,6 @@ class TestEdgeCases:
         r = validate_sql(sql, store)
         assert r.ok, r.errors
 
-    def test_extract_time_range_english(self):
-        tr = extract_time_range("data from last 7 days", today=date(2026, 3, 13))
-        assert tr.start == date(2026, 3, 6)
-        assert tr.end == date(2026, 3, 13)
-
-    def test_extract_time_range_past_days(self):
-        tr = extract_time_range("past 14 days metrics", today=date(2026, 3, 13))
-        assert tr.start == date(2026, 2, 27)
-
-    def test_extract_time_range_no_match(self):
-        tr = extract_time_range("所有学生信息")
-        assert tr.is_empty
-
-    def test_extract_time_range_month_day(self):
-        tr = extract_time_range("3月12日的数据")
-        assert tr.start.month == 3
-        assert tr.start.day == 12
-
     def test_matcher_empty_query(self, store):
         matches = match_tables("", store)
         assert matches == []
@@ -492,28 +456,6 @@ class TestEdgeCases:
         result = enforce_limit("SELECT 1;")
         assert "LIMIT 1000" in result
         assert ";" not in result
-
-
-# ------------------------------------------------------------------
-# Cross-year date extraction
-# ------------------------------------------------------------------
-
-class TestCrossYearDate:
-    def test_month_day_future_rolls_back(self):
-        """'12月31日' queried on Jan 5 should give last year's Dec 31."""
-        tr = extract_time_range("12月31日的数据", today=date(2027, 1, 5))
-        assert tr.start == date(2026, 12, 31)
-        assert tr.end == date(2026, 12, 31)
-
-    def test_month_day_past_stays_current_year(self):
-        """'3月1日' queried on March 13 should stay current year."""
-        tr = extract_time_range("3月1日的数据", today=date(2027, 3, 13))
-        assert tr.start == date(2027, 3, 1)
-
-    def test_month_day_today_stays_current_year(self):
-        """Same day as today should stay current year."""
-        tr = extract_time_range("6月15日的数据", today=date(2027, 6, 15))
-        assert tr.start == date(2027, 6, 15)
 
 
 # ------------------------------------------------------------------
@@ -1421,20 +1363,6 @@ class TestChatHistory:
         sessions = ch.list_t2s_sessions()
         assert len(sessions) == 3
 
-    def test_delete_session(self, tmp_path, monkeypatch):
-        import seatunnel_agent.text2sql.chat_history as ch
-        monkeypatch.setattr(ch, "HISTORY_DIR", tmp_path)
-        s = ch.Text2SQLSession(
-            session_id="del1",
-            title="To Delete",
-            created_at=ch.now_iso(),
-            updated_at=ch.now_iso(),
-        )
-        ch.save_t2s_session(s)
-        assert ch.load_t2s_session("del1") is not None
-        ch.delete_t2s_session("del1")
-        assert ch.load_t2s_session("del1") is None
-
     def test_extract_title(self):
         from seatunnel_agent.text2sql.chat_history import extract_title
         msgs = [{"role": "user", "content": "查询最近的销售数据"}]
@@ -2243,27 +2171,6 @@ class TestProfiler:
         sql = build_profile_sql("t", cols)
         assert "col19__non_null" in sql
         assert "col20" not in sql
-
-    def test_parse_profile_result(self):
-        from seatunnel_agent.text2sql.profiler import parse_profile_result
-        cols = [{"name": "id", "type": "int"}, {"name": "name", "type": "string"}]
-        row = (100, 100, 100, 1, 100, 98, 50, "Alice", "Zoe")
-        profile = parse_profile_result("db.users", cols, row)
-        assert profile.row_count == 100
-        assert profile.table_name == "db.users"
-        assert len(profile.columns) == 2
-        assert profile.columns[0].name == "id"
-        assert profile.columns[0].null_count == 0
-        assert profile.columns[0].distinct_count == 100
-        assert profile.columns[1].null_count == 2
-
-    def test_parse_empty_table(self):
-        from seatunnel_agent.text2sql.profiler import parse_profile_result
-        cols = [{"name": "x", "type": "int"}]
-        row = (0, 0, 0, None, None)
-        profile = parse_profile_result("t", cols, row)
-        assert profile.row_count == 0
-        assert profile.columns[0].null_count == 0
 
     def test_profile_card(self):
         from seatunnel_agent.text2sql.profiler import TableProfile, ColumnProfile
