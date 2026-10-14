@@ -8,6 +8,7 @@ fully independent from the SeaTunnel page.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import re
 import threading
@@ -67,7 +68,9 @@ def _chart_cache_put(key: str, value: str) -> None:
 
 
 def _esc_html(s: str) -> str:
-    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    # quote=False + manual &quot;: escape & < > " but keep ' intact —
+    # several cards embed single-quoted JS in onclick attributes.
+    return html.escape(str(s), quote=False).replace('"', "&quot;")
 
 
 def build_schema_card(table, lang: str = "en", store=None) -> str:

@@ -8,6 +8,7 @@ deterministic comparison of two data sources.
 from __future__ import annotations
 
 import csv
+import html
 import json
 import logging
 import os
@@ -112,8 +113,9 @@ def _get_matplotlib():
 # ---------------------------------------------------------------------------
 
 def _esc_html(s: str) -> str:
-    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
-            .replace(">", "&gt;").replace('"', "&quot;"))
+    # quote=False + manual &quot;: escape & < > " but keep ' intact —
+    # several cards embed single-quoted JS in onclick attributes.
+    return html.escape(str(s), quote=False).replace('"', "&quot;")
 
 
 _ERR_ESSENCE_RES = (
