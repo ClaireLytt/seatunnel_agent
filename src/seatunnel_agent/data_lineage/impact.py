@@ -592,7 +592,6 @@ class ImpactLogger(_LineageLoggerBase):
         source: str = "cli",     # cli | api | ui | mcp
         baseline: str = "",
     ) -> None:
-        import json as _json
         from datetime import datetime, timezone
 
         record = {
@@ -606,12 +605,4 @@ class ImpactLogger(_LineageLoggerBase):
             "tables": [c.table for c in result.changed][:10],
             "elapsed_ms": result.elapsed_ms,
         }
-        line = _json.dumps(record, ensure_ascii=False) + "\n"
-        try:
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-            with self._lock:
-                self._rotate_if_needed()
-                with open(self.log_file, "a", encoding="utf-8") as f:
-                    f.write(line)
-        except OSError:
-            pass  # history is best-effort; never break the analysis
+        self._log.append(record)

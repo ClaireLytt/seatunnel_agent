@@ -671,9 +671,8 @@ def test_cli_impact_writes_history(tmp_path, monkeypatch):
 
 
 def test_cli_impact_stats_summary(tmp_path, monkeypatch):
-    import threading
-
     import seatunnel_agent.data_lineage.impact as impact_mod
+    from seatunnel_agent.jsonl_log import JsonlLog
 
     lg = impact_mod.ImpactLogger(tmp_path)
     lg.log_impact(_demo_result(), mode="git", source="cli", baseline="HEAD~1")
@@ -682,7 +681,7 @@ def test_cli_impact_stats_summary(tmp_path, monkeypatch):
     def fake_init(self, log_dir="logs"):
         self.log_dir = Path(tmp_path)
         self.log_file = self.log_dir / "impact.jsonl"
-        self._lock = threading.Lock()
+        self._log = JsonlLog(lambda: self.log_file, rotate="rename")
 
     monkeypatch.setattr(impact_mod.ImpactLogger, "__init__", fake_init)
     res = runner.invoke(cli, ["impact-stats"])
