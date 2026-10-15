@@ -8,9 +8,9 @@ import subprocess
 import pytest
 
 from seatunnel_agent.agent_core import ToolLoopAgent, ToolSpec
-from seatunnel_agent.code_fix import build_tools, fix, render_markdown
-from seatunnel_agent.config import Settings
-from seatunnel_agent.llm import LLMResponse, ToolCall
+from seatunnel_agent.agents.ai.code_fix import build_tools, fix, render_markdown
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 SETTINGS = Settings(api_key="sk-test")
 
@@ -75,7 +75,7 @@ def _tool(name, inp, cid="c1"):
 class TestTools:
     # the loop wraps tool exceptions; test the raw guard directly
     def test_path_guard_raises(self, tmp_path):
-        from seatunnel_agent.code_fix.tools import _resolve
+        from seatunnel_agent.agents.ai.code_fix.tools import _resolve
         make_project(tmp_path, git=False)
         with pytest.raises(ValueError):
             _resolve(tmp_path, "../outside.txt")

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from seatunnel_agent.history import (
+from seatunnel_agent.common.history import (
     Session,
     delete_session,
     extract_title,
@@ -23,8 +23,8 @@ from seatunnel_agent.history import (
 def _use_tmp_dir(tmp_path: Path):
     old_dir = tmp_path / "_old_history"
     with (
-        patch("seatunnel_agent.history.HISTORY_DIR", tmp_path),
-        patch("seatunnel_agent.history._OLD_HISTORY_DIR", old_dir),
+        patch("seatunnel_agent.common.history.HISTORY_DIR", tmp_path),
+        patch("seatunnel_agent.common.history._OLD_HISTORY_DIR", old_dir),
     ):
         yield tmp_path
 
@@ -243,17 +243,17 @@ class TestSessionIdSanitization:
     """Tests for session_id validation to prevent path traversal."""
 
     def test_valid_session_id(self, _use_tmp_dir):
-        from seatunnel_agent.history import _session_path
+        from seatunnel_agent.common.history import _session_path
         path = _session_path("abc123def456")
         assert path.name == "abc123def456.json"
 
     def test_path_traversal_rejected(self, _use_tmp_dir):
-        from seatunnel_agent.history import _session_path
+        from seatunnel_agent.common.history import _session_path
         with pytest.raises(ValueError, match="Invalid session_id"):
             _session_path("../../etc/passwd")
 
     def test_special_chars_rejected(self, _use_tmp_dir):
-        from seatunnel_agent.history import _session_path
+        from seatunnel_agent.common.history import _session_path
         with pytest.raises(ValueError, match="Invalid session_id"):
             _session_path("id with spaces")
 

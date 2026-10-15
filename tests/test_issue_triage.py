@@ -9,14 +9,14 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.config import Settings
-from seatunnel_agent.issue_triage import (
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.agents.ai.issue_triage import (
     build_tools,
     load_issues,
     render_markdown,
     triage,
 )
-from seatunnel_agent.llm import LLMResponse, ToolCall
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "triage_demo"
 SETTINGS = Settings(api_key="sk-test")
@@ -110,7 +110,7 @@ class TestCliAndApi:
 
         def fake_client(settings, tools=None, agent=None, **kw):
             return ScriptedClient([_text(_FINAL)])
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", fake_client)
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", fake_client)
         r = CliRunner().invoke(cli, ["triage", "-t", "UI 起不来",
                                      "-b", "端口占用", "-F", "json"])
         assert r.exit_code == 0, r.output
@@ -121,14 +121,14 @@ class TestCliAndApi:
         for var in ("API_KEY", "ANTHROPIC_API_KEY"):
             monkeypatch.delenv(var, raising=False)
         monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
-        monkeypatch.setattr("seatunnel_agent.config.load_dotenv",
+        monkeypatch.setattr("seatunnel_agent.common.config.load_dotenv",
                             lambda *a, **k: None)
-        monkeypatch.setattr("seatunnel_agent.settings_store.apply_to_env",
+        monkeypatch.setattr("seatunnel_agent.common.settings_store.apply_to_env",
                             lambda: None)
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.issue_triage.api import router
+        from seatunnel_agent.agents.ai.issue_triage.api import router
         app = FastAPI()
         app.include_router(router)
         resp = TestClient(app).post("/api/triage/run",
@@ -140,11 +140,11 @@ class TestCliAndApi:
 
         def fake_client(settings, tools=None, agent=None, **kw):
             return ScriptedClient([_text(_FINAL)])
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", fake_client)
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", fake_client)
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.issue_triage.api import router
+        from seatunnel_agent.agents.ai.issue_triage.api import router
         app = FastAPI()
         app.include_router(router)
         resp = TestClient(app).post("/api/triage/run", json={
@@ -158,7 +158,7 @@ class TestCliAndApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.issue_triage.api import router
+        from seatunnel_agent.agents.ai.issue_triage.api import router
         app = FastAPI()
         app.include_router(router)
         assert TestClient(app).get("/api/triage/health").json() == {

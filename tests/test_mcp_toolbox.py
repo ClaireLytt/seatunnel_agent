@@ -8,7 +8,7 @@ import sqlite3
 
 import pytest
 
-from seatunnel_agent.mcp_toolbox import build_tool_functions
+from seatunnel_agent.agents.data.mcp_toolbox.core import build_tool_functions
 
 
 @pytest.fixture()
@@ -31,7 +31,7 @@ def _make_db(path, script):
 def _save_conn(name, db_path):
     import os
 
-    from seatunnel_agent.data_comparison.presets import ConnectionPresetsStore
+    from seatunnel_agent.agents.data.data_comparison.presets import ConnectionPresetsStore
 
     store = ConnectionPresetsStore(os.environ["SEATUNNEL_DC_PRESETS_PATH"])
     store.save(name=name, ds_type="sqlite", host="", port=0,
@@ -287,7 +287,7 @@ def test_data_dictionary_with_sql_dir(tmp_path, monkeypatch):
 def test_audited_wrapper_converts_exceptions(tmp_path, monkeypatch):
     monkeypatch.setenv("SEATUNNEL_MCP_AUDIT_PATH",
                        str(tmp_path / "audit.jsonl"))
-    from seatunnel_agent.mcp_toolbox import _audited
+    from seatunnel_agent.agents.data.mcp_toolbox.core import _audited
 
     def boom(x: int) -> str:
         raise ValueError("nope")
@@ -301,7 +301,7 @@ def test_mcp_server_boot_with_annotations():
     pytest.importorskip("mcp")
     import anyio
 
-    from seatunnel_agent.mcp_toolbox import create_mcp_server
+    from seatunnel_agent.agents.data.mcp_toolbox.core import create_mcp_server
 
     s = create_mcp_server()
     tool_list = anyio.run(s.list_tools)
@@ -352,7 +352,7 @@ def test_skew_split_key_conn(tools, tmp_path):
     assert "Sink 端键体检" in out and "热点键" in out
 
     # history carries the measured metrics, source=mcp
-    from seatunnel_agent.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.history import default_history
     rec = [r for r in default_history().recent(5) if r.get("mode") == "splitkey"][0]
     assert rec["source"] == "mcp" and rec["splitkey"]["top1_pct"] == 80.0
 
@@ -410,7 +410,7 @@ def test_skew_verify_writes_history(tools, tmp_path):
              f"CREATE TABLE m (region TEXT); INSERT INTO m VALUES {rows};")
     _save_conn("dev-a", tmp_path / "a.db")
     tools["skew_verify"]("dev-a", "SELECT region, count(*) FROM m GROUP BY region")
-    from seatunnel_agent.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.history import default_history
     recs = default_history().recent()
     assert recs and recs[0]["mode"] == "verify"
     assert recs[0]["source"] == "mcp"
@@ -443,7 +443,7 @@ def test_mcp_server_resources():
     pytest.importorskip("mcp")
     import anyio
 
-    from seatunnel_agent.mcp_toolbox import create_mcp_server
+    from seatunnel_agent.agents.data.mcp_toolbox.core import create_mcp_server
 
     s = create_mcp_server()
     uris = {str(r.uri) for r in anyio.run(s.list_resources)}

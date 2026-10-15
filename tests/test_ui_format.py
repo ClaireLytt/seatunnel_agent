@@ -8,8 +8,8 @@ import time
 import zipfile
 from pathlib import Path
 
-from seatunnel_agent.config import Settings
-from seatunnel_agent.ui import (
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.hub.ui import (
     EventCollector,
     _build_template_choices,
     _export_session,
@@ -480,7 +480,7 @@ class TestTokenUsageDisplay:
 
 class TestNewToolEmojis:
     def test_restore_config_emoji(self):
-        from seatunnel_agent.ui import _TOOL_EMOJI
+        from seatunnel_agent.hub.ui import _TOOL_EMOJI
         assert "restore_config_version" in _TOOL_EMOJI
         assert "delete_config" in _TOOL_EMOJI
         assert "compare_config_versions" in _TOOL_EMOJI

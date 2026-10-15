@@ -13,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.schema_drift import (
+from seatunnel_agent.agents.data.schema_drift import (
     classify_type_change,
     diff_paths,
     diff_scripts,
@@ -243,7 +243,7 @@ def api_client():
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.schema_drift.api import router
+    from seatunnel_agent.agents.data.schema_drift.api import router
     app = fastapi.FastAPI()
     app.include_router(router)
     return TestClient(app)

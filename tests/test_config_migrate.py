@@ -15,7 +15,7 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.config_migrate import (
+from seatunnel_agent.agents.data.config_migrate import (
     migrate_datax,
     migrate_dir,
     migrate_file,

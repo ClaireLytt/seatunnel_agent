@@ -16,7 +16,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from ..config import Settings
+from ..common.config import Settings
 
 _MAX_RESULT_CHARS = 20000
 
@@ -71,7 +71,7 @@ class ToolLoopAgent:
         self.system_prompt = system_prompt
         self.max_steps = max(1, max_steps)
         if client is None:
-            from ..llm import LLMClient
+            from ..common.llm import LLMClient
             client = LLMClient(settings, agent=agent_name, tools=[{
                 "name": t.name,
                 "description": t.description,

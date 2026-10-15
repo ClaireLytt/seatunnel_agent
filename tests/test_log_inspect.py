@@ -13,14 +13,14 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.log_inspect import (
+from seatunnel_agent.agents.data.log_inspect import (
     collect_log_files,
     render_markdown,
     report_to_dict,
     scan_dir,
     scan_text,
 )
-from seatunnel_agent.log_inspect.clusterer import (
+from seatunnel_agent.agents.data.log_inspect.clusterer import (
     cluster_events,
     extract_events,
     normalize_message,
@@ -121,7 +121,7 @@ def test_info_line_mentioning_error_is_not_an_event():
 
 
 def test_oversized_file_truncation_warns(tmp_path, monkeypatch):
-    from seatunnel_agent.log_inspect import clusterer
+    from seatunnel_agent.agents.data.log_inspect import clusterer
 
     monkeypatch.setattr(clusterer, "MAX_FILE_BYTES", 100)
     log = tmp_path / "big.log"
@@ -252,7 +252,7 @@ def api_client():
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.log_inspect.api import router
+    from seatunnel_agent.agents.data.log_inspect.api import router
     app = fastapi.FastAPI()
     app.include_router(router)
     return TestClient(app)

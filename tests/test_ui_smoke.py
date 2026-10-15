@@ -15,8 +15,8 @@ pytestmark = pytest.mark.uitest
 
 @pytest.mark.uitest
 def test_ui_smoke():
-    from seatunnel_agent.ui_testing.report import write_html, write_json
-    from seatunnel_agent.ui_testing.runner import run_suite
+    from seatunnel_agent.agents.devops.ui_testing.report import write_html, write_json
+    from seatunnel_agent.agents.devops.ui_testing.runner import run_suite
 
     rr, run_dir = run_suite(suite="smoke", no_llm=True)
     write_json(rr, run_dir)

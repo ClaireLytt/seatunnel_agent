@@ -12,12 +12,12 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.data_lineage.dictionary import (
+from seatunnel_agent.agents.data.data_lineage.dictionary import (
     add_llm_descriptions,
     build_dictionary,
     render_dictionary_markdown,
 )
-from seatunnel_agent.data_lineage.loaders import build_graph
+from seatunnel_agent.agents.data.data_lineage.loaders import build_graph
 
 runner = CliRunner()
 
@@ -74,7 +74,7 @@ def test_llm_descriptions_are_additive(monkeypatch):
         def __init__(self, settings, **kw): pass
         def chat(self, *a, **kw): return FakeResp()
 
-    monkeypatch.setattr("seatunnel_agent.llm.LLMClient", FakeClient)
+    monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", FakeClient)
     filled = add_llm_descriptions(object(), entries, "zh")
     assert filled == 1
     gmv = next(e for e in entries if e["table"] == "dws.gmv_daily")

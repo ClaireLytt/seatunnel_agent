@@ -6,7 +6,7 @@ Offline checks over the three HTML builders — no browser, no LLM.
 
 from __future__ import annotations
 
-from seatunnel_agent.ui import (
+from seatunnel_agent.hub.ui import (
     _build_ai_hub_html,
     _build_data_hub_html,
     _build_landing_html,
@@ -101,7 +101,7 @@ class TestWorkspaceBackButton:
     """STAMP_JS (loaded by every page) injects the ↩ workspace button."""
 
     def test_mapping_in_stamp_js(self):
-        from seatunnel_agent.lang_pref import STAMP_JS
+        from seatunnel_agent.common.lang_pref import STAMP_JS
         for route in _AI_ROUTES:
             assert f"'{route}'" in STAMP_JS, route
         assert "'/ai'" in STAMP_JS and "'/data'" in STAMP_JS
@@ -113,13 +113,13 @@ class TestWorkspaceBackButton:
             assert f"'{route}'" in STAMP_JS, route
 
     def test_css_present(self):
-        from seatunnel_agent.ui import _CUSTOM_CSS
+        from seatunnel_agent.hub.ui import _CUSTOM_CSS
         assert ".st-ws-btn" in _CUSTOM_CSS
 
 
 class TestDevopsHub:
     def test_four_module_cards(self):
-        from seatunnel_agent.ui import _build_devops_hub_html
+        from seatunnel_agent.hub.ui import _build_devops_hub_html
         html = _build_devops_hub_html()
         for route in _DEVOPS_ROUTES:
             assert f'href="{route}"' in html, route
@@ -128,7 +128,7 @@ class TestDevopsHub:
         assert 'class="st-hub-back" href="/"' in html
 
     def test_stamp_js_maps_devops(self):
-        from seatunnel_agent.lang_pref import STAMP_JS
+        from seatunnel_agent.common.lang_pref import STAMP_JS
         for route in _DEVOPS_ROUTES:
             assert f"'{route}'" in STAMP_JS, route
         assert "'/devops'" in STAMP_JS

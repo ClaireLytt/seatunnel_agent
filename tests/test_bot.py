@@ -9,7 +9,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from seatunnel_agent.bot import (
+from seatunnel_agent.agents.devops.bot import (
     BOT_MARKER,
     create_bot_app,
     parse_patch,
@@ -194,7 +194,7 @@ class TestWebhook:
 
 class TestFindBotCommentPagination:
     def test_marker_found_on_second_page(self, monkeypatch):
-        from seatunnel_agent.bot import server as srv
+        from seatunnel_agent.agents.devops.bot import server as srv
         pages = {
             1: [{"body": "x", "url": "u1"}] * 100,
             2: [{"body": srv.BOT_MARKER + " hi", "url": "u-bot"}],
@@ -209,7 +209,7 @@ class TestFindBotCommentPagination:
         assert srv.default_find_bot_comment(payload) == "u-bot"
 
     def test_not_found_stops_on_short_page(self, monkeypatch):
-        from seatunnel_agent.bot import server as srv
+        from seatunnel_agent.agents.devops.bot import server as srv
         calls = []
 
         def fake_request(url, data=None, accept=""):

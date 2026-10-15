@@ -10,7 +10,7 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.dep_check import (
+from seatunnel_agent.agents.devops.dep_check import (
     check,
     check_fail,
     collect_from_path,
@@ -148,7 +148,7 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.dep_check.api import router
+        from seatunnel_agent.agents.devops.dep_check.api import router
         app = FastAPI()
         app.include_router(router)
         return TestClient(app)

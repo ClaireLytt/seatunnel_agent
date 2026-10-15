@@ -12,9 +12,9 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.config import Settings
-from seatunnel_agent.llm import LLMResponse, ToolCall
-from seatunnel_agent.orchestrator import (
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
+from seatunnel_agent.agents.ai.orchestrator import (
     Orchestrator,
     build_catalog,
     render_markdown,
@@ -255,9 +255,9 @@ class TestCli:
         for var in ("API_KEY", "ANTHROPIC_API_KEY"):
             monkeypatch.delenv(var, raising=False)
         monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
-        monkeypatch.setattr("seatunnel_agent.config.load_dotenv",
+        monkeypatch.setattr("seatunnel_agent.common.config.load_dotenv",
                             lambda *a, **k: None)
-        monkeypatch.setattr("seatunnel_agent.settings_store.apply_to_env",
+        monkeypatch.setattr("seatunnel_agent.common.settings_store.apply_to_env",
                             lambda: None)
         r = CliRunner().invoke(cli, ["orchestrate", "审查这段 sql"])
         assert r.exit_code == 0, r.output
@@ -271,7 +271,7 @@ class TestCli:
                 _tool("sql_fmt", {"sql": "select 1"}),
                 _text("all done"),
             ])
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", fake_client)
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", fake_client)
         r = CliRunner().invoke(cli, ["orchestrate", "format my sql",
                                      "-F", "json"])
         assert r.exit_code == 0, r.output
@@ -285,7 +285,7 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.orchestrator.api import router
+        from seatunnel_agent.agents.ai.orchestrator.api import router
         app = FastAPI()
         app.include_router(router)
         return TestClient(app)
@@ -300,9 +300,9 @@ class TestApi:
         for var in ("API_KEY", "ANTHROPIC_API_KEY"):
             monkeypatch.delenv(var, raising=False)
         monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
-        monkeypatch.setattr("seatunnel_agent.config.load_dotenv",
+        monkeypatch.setattr("seatunnel_agent.common.config.load_dotenv",
                             lambda *a, **k: None)
-        monkeypatch.setattr("seatunnel_agent.settings_store.apply_to_env",
+        monkeypatch.setattr("seatunnel_agent.common.settings_store.apply_to_env",
                             lambda: None)
         resp = self._client().post("/api/orchestrator/run",
                                    json={"request": "审查 sql", "lang": "zh"})
@@ -319,7 +319,7 @@ class TestApi:
                 _tool("sql_fmt", {"sql": "select 1"}),
                 _text("finished"),
             ])
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", fake_client)
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", fake_client)
         resp = self._client().post("/api/orchestrator/run",
                                    json={"request": "format it"})
         assert resp.status_code == 200
@@ -340,7 +340,7 @@ class TestApi:
                 def build_tool_result_message(self, trs):
                     return {"role": "user", "content": trs}
             return Boom()
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", broken_client)
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", broken_client)
         resp = self._client().post("/api/orchestrator/run",
                                    json={"request": "hi"})
         assert resp.status_code == 503
@@ -385,7 +385,7 @@ class TestSessionPersistence:
         assert "a1b" in orch.messages[1]["content"]
 
     def test_chat_logger_roundtrip(self, monkeypatch, tmp_path):
-        from seatunnel_agent.orchestrator.olog import ChatLogger
+        from seatunnel_agent.agents.ai.orchestrator.olog import ChatLogger
         log = tmp_path / "chat.jsonl"
         monkeypatch.setenv("ORCH_CHAT_LOG", "1")
         monkeypatch.setenv("ORCH_CHAT_PATH", str(log))
@@ -399,7 +399,7 @@ class TestSessionPersistence:
         assert turns[0]["steps"][0]["tool"] == "sql_fmt"
 
     def test_logging_disabled_by_default_fixture(self, tmp_path, monkeypatch):
-        from seatunnel_agent.orchestrator.olog import ChatLogger
+        from seatunnel_agent.agents.ai.orchestrator.olog import ChatLogger
         log = tmp_path / "chat.jsonl"
         monkeypatch.setenv("ORCH_CHAT_PATH", str(log))
         ChatLogger().log_turn("s", "q", "a")
@@ -408,7 +408,7 @@ class TestSessionPersistence:
 
 class TestSessionContinuity:
     def test_cleared_marker_persists(self, monkeypatch, tmp_path):
-        from seatunnel_agent.orchestrator.olog import ChatLogger
+        from seatunnel_agent.agents.ai.orchestrator.olog import ChatLogger
         monkeypatch.setenv("ORCH_CHAT_LOG", "1")
         monkeypatch.setenv("ORCH_CHAT_PATH", str(tmp_path / "c.jsonl"))
         lg = ChatLogger()

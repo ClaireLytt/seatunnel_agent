@@ -8,14 +8,14 @@ from pathlib import Path
 
 import pytest
 
-from seatunnel_agent.text2sql.retrieval import (
+from seatunnel_agent.agents.data.text2sql.retrieval import (
     BM25,
     HybridRetriever,
     _doc_tokens,
     schema_hash,
     table_document,
 )
-from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 _BENCH_DDL = _FIXTURES / "t2s_bench_schema.sql"
@@ -156,7 +156,7 @@ def test_schema_hash_stable_and_sensitive(bench_store) -> None:
 
 
 def test_tool_match_tables_uses_hybrid(bench_store) -> None:
-    from seatunnel_agent.text2sql.tools import Text2SQLRuntime, execute_text2sql_tool
+    from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, execute_text2sql_tool
 
     rt = Text2SQLRuntime(store=bench_store)
     out = json.loads(execute_text2sql_tool(
@@ -177,7 +177,7 @@ def test_tool_match_tables_uses_hybrid(bench_store) -> None:
 
 
 def test_prompt_full_injection_below_limit(bench_store) -> None:
-    from seatunnel_agent.text2sql.prompts import build_text2sql_prompt
+    from seatunnel_agent.agents.data.text2sql.prompts import build_text2sql_prompt
 
     prompt = build_text2sql_prompt(bench_store, "hive")  # 40 tables <= 50
     assert "仅允许查询以下表" in prompt
@@ -185,7 +185,7 @@ def test_prompt_full_injection_below_limit(bench_store) -> None:
 
 
 def test_prompt_names_only_above_limit(bench_store, monkeypatch) -> None:
-    from seatunnel_agent.text2sql.prompts import build_text2sql_prompt
+    from seatunnel_agent.agents.data.text2sql.prompts import build_text2sql_prompt
 
     monkeypatch.setenv("T2S_SCHEMA_PROMPT_LIMIT", "10")
     prompt = build_text2sql_prompt(bench_store, "hive")
@@ -201,7 +201,7 @@ def test_prompt_names_only_above_limit(bench_store, monkeypatch) -> None:
 
 
 def test_bench_load_and_validation(tmp_path) -> None:
-    from seatunnel_agent.text2sql.bench import load_bench
+    from seatunnel_agent.agents.data.text2sql.bench import load_bench
 
     cases = load_bench(_BENCH_FILE)
     assert len(cases) >= 50
@@ -215,7 +215,7 @@ def test_bench_load_and_validation(tmp_path) -> None:
 
 def test_bench_gate_hybrid_not_worse(bench_store) -> None:
     """The PRD regression gate as a test: hybrid Top1/Top3 >= keyword."""
-    from seatunnel_agent.text2sql.bench import load_bench, run_bench
+    from seatunnel_agent.agents.data.text2sql.bench import load_bench, run_bench
 
     cases = load_bench(_BENCH_FILE)
     kw = run_bench(bench_store, cases, "keyword")

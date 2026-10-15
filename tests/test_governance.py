@@ -9,12 +9,12 @@ import pytest
 
 pytest.importorskip("sqlglot")
 
-from seatunnel_agent.data_lineage.governance import (
+from seatunnel_agent.agents.data.data_lineage.governance import (
     analyze_governance,
     load_qlog_records,
     render_governance_markdown,
 )
-from seatunnel_agent.data_lineage.loaders import build_graph
+from seatunnel_agent.agents.data.data_lineage.loaders import build_graph
 
 
 @pytest.fixture()

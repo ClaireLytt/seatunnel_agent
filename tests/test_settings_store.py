@@ -7,14 +7,14 @@ import os
 
 import pytest
 
-from seatunnel_agent import settings_store
-from seatunnel_agent.settings_ui import _map_error, _validate
+from seatunnel_agent.common import settings_store
+from seatunnel_agent.hub.settings_ui import _map_error, _validate
 
 
 @pytest.fixture()
 def store(tmp_path, monkeypatch):
     """Isolated store + encryption key + clean env + reset module state."""
-    from seatunnel_agent.data_comparison import presets as presets_mod
+    from seatunnel_agent.agents.data.data_comparison import presets as presets_mod
     monkeypatch.setattr(presets_mod, "_KEY_PATH", tmp_path / "dc_secret.key")
     monkeypatch.setattr(presets_mod, "_cached_key", None)
     path = tmp_path / "llm_settings.json"

@@ -8,15 +8,15 @@ from pathlib import Path
 
 import pytest
 
-from seatunnel_agent.text2sql.evaluate import (
+from seatunnel_agent.agents.data.text2sql.evaluate import (
     EvalCase,
     load_dataset,
     render_eval_report,
     results_match,
     run_eval,
 )
-from seatunnel_agent.text2sql.executor import DatabaseConfig
-from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig
+from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 
 _FIXTURE = Path(__file__).parent / "fixtures" / "t2s_eval_demo.jsonl"
 
@@ -94,8 +94,8 @@ def test_run_eval_with_fake_runner(tmp_path) -> None:
 def test_eval_dataset_golden_sql_runs_on_seeded_db(tmp_path) -> None:
     """Every golden SQL in the shipped dataset must actually run against the
     seeded demo db — the dataset itself is gated."""
-    from seatunnel_agent.text2sql.executor import create_executor
-    from seatunnel_agent.ui_testing.seed_sqlite import seed_sqlite
+    from seatunnel_agent.agents.data.text2sql.executor import create_executor
+    from seatunnel_agent.agents.devops.ui_testing.seed_sqlite import seed_sqlite
 
     db = tmp_path / "demo.db"
     seed_sqlite(str(db))

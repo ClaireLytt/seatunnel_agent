@@ -11,9 +11,9 @@ import json
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.config import Settings
-from seatunnel_agent.llm import LLMResponse
-from seatunnel_agent.prompt_lab import (
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse
+from seatunnel_agent.agents.ai.prompt_lab import (
     ACTIVE,
     ExperimentLogger,
     render_diff,
@@ -53,7 +53,7 @@ def profiles(monkeypatch):
         "claude": {"LLM_PROVIDER": "anthropic", "API_KEY": "sk-ant",
                    "MODEL_NAME": "claude-opus-5"},
     }
-    monkeypatch.setattr("seatunnel_agent.prompt_lab.runner.load_profile",
+    monkeypatch.setattr("seatunnel_agent.agents.ai.prompt_lab.runner.load_profile",
                         lambda name: store.get(name, {}))
     monkeypatch.setenv("API_KEY", "sk-active")
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
@@ -166,7 +166,7 @@ class TestReport:
 
 class TestCli:
     def test_promptlab_cli(self, profiles, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", FakeClient)
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", FakeClient)
         r = CliRunner().invoke(cli_entry(), [
             "promptlab", "hello", "-p", "kimi", "-p", "claude"])
         assert r.exit_code == 0, r.output
@@ -175,12 +175,12 @@ class TestCli:
     def test_promptlab_all_failed_exit_1(self, profiles, monkeypatch):
         factory = lambda s: FakeClient(  # noqa: E731
             s, fail_for={"moonshot-v1-8k"})
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", factory)
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", factory)
         r = CliRunner().invoke(cli_entry(), ["promptlab", "x", "-p", "kimi"])
         assert r.exit_code == 1
 
     def test_json_format(self, profiles, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", FakeClient)
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", FakeClient)
         r = CliRunner().invoke(cli_entry(), [
             "promptlab", "hello", "-p", "kimi", "-F", "json"])
         assert r.exit_code == 0, r.output
@@ -198,13 +198,13 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.prompt_lab.api import router
+        from seatunnel_agent.agents.ai.prompt_lab.api import router
         app = FastAPI()
         app.include_router(router)
         return TestClient(app)
 
     def test_profiles_names_only(self, profiles, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.prompt_lab.api.list_profiles",
+        monkeypatch.setattr("seatunnel_agent.agents.ai.prompt_lab.api.list_profiles",
                             lambda: ["kimi", "claude"])
         resp = self._client().get("/api/promptlab/profiles")
         data = resp.json()
@@ -212,7 +212,7 @@ class TestApi:
         assert "sk-" not in resp.text
 
     def test_run_endpoint(self, profiles, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", FakeClient)
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", FakeClient)
         resp = self._client().post("/api/promptlab/run", json={
             "prompt": "hello", "profiles": ["kimi"], "lang": "en",
             "report": True})

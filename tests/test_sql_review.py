@@ -7,25 +7,25 @@ import json
 
 import pytest
 
-from seatunnel_agent.sql_review.linter import (
+from seatunnel_agent.agents.data.sql_review.linter import (
     clean_sql,
     is_known_dialect,
     lint_sql,
     line_of,
     normalize_dialect,
 )
-from seatunnel_agent.sql_review.report import (
+from seatunnel_agent.agents.data.sql_review.report import (
     CHECK_CATALOG,
     Finding,
     ReviewReport,
     Severity,
     render_report,
 )
-from seatunnel_agent.sql_review.tools import (
+from seatunnel_agent.agents.data.sql_review.tools import (
     SQLReviewRuntime,
     execute_review_tool,
 )
-from seatunnel_agent.sql_review.agent import static_review
+from seatunnel_agent.agents.data.sql_review.agent import static_review
 
 
 # ---------------------------------------------------------------------------
@@ -359,13 +359,14 @@ def test_render_report_zh_default_unchanged():
 
 
 def test_i18n_key_parity():
-    from seatunnel_agent.sql_review.i18n import CHECK_CATALOG_EN, SR_I18N
+    from seatunnel_agent.agents.data.sql_review.i18n import CHECK_CATALOG_EN, SR_I18N
     assert set(SR_I18N["en"]) == set(SR_I18N["zh"])
     assert set(CHECK_CATALOG_EN) == set(CHECK_CATALOG)
 
 
 def test_i18n_normalize_and_fallback():
-    from seatunnel_agent.sql_review.i18n import normalize_lang, sr
+    from seatunnel_agent.agents.data.sql_review.i18n import sr
+    from seatunnel_agent.common.utils import normalize_lang
     assert normalize_lang("en") == "en"
     assert normalize_lang("English") == "en"
     assert normalize_lang("zh") == "zh"
@@ -377,14 +378,14 @@ def test_i18n_normalize_and_fallback():
 
 
 def test_catalog_label():
-    from seatunnel_agent.sql_review.i18n import catalog_label
+    from seatunnel_agent.agents.data.sql_review.i18n import catalog_label
     assert catalog_label("groupby_completeness", "en") == "GROUP BY completeness"
     assert catalog_label("groupby_completeness", "zh") == CHECK_CATALOG["groupby_completeness"]
     assert catalog_label("unknown_cat", "en") == "unknown_cat"
 
 
 def test_build_review_prompt_language():
-    from seatunnel_agent.sql_review.prompts import build_review_prompt
+    from seatunnel_agent.agents.data.sql_review.prompts import build_review_prompt
     en = build_review_prompt("hive", lang="en")
     assert "English" in en and 'like "Line 6"' in en
     zh = build_review_prompt("hive", lang="zh")
@@ -582,7 +583,7 @@ def test_bare_partition_filter_suppresses_all():
 
 
 def _type_check_store():
-    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
     ddl = """
     create table zz.orders_di (
       order_id bigint comment 'id',
@@ -624,7 +625,7 @@ def test_join_key_unknown_table_not_flagged():
 
 
 def _part_store():
-    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
     ddl = """
     create table ods.user_log (
       user_id bigint comment 'id',
@@ -667,7 +668,7 @@ def test_ddl_partitioned_table_with_filter_clean():
 
 def test_ddl_partition_check_skips_suffix_tables():
     # *_di tables stay with the name-suffix rule — exactly one finding
-    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
     store = SchemaStore(parse_ddl(
         "create table zz.orders_di (id bigint comment '') "
         "partitioned by (pt string comment '');"))
@@ -750,7 +751,7 @@ def test_single_table_from_no_comma_join_finding():
 # ReviewConfig / .sqlreview.yaml
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.sql_review.config import (
+from seatunnel_agent.agents.data.sql_review.config import (
     DEFAULT_CONFIG,
     ReviewConfig,
     load_review_config,
@@ -862,8 +863,8 @@ def test_lint_with_severity_override():
 # Table lineage
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.sql_review.lineage import extract_table_lineage
-from seatunnel_agent.sql_review.report import TableLineage
+from seatunnel_agent.agents.data.sql_review.lineage import extract_table_lineage
+from seatunnel_agent.agents.data.sql_review.report import TableLineage
 
 
 def test_lineage_insert_overwrite():
@@ -918,7 +919,7 @@ def test_report_without_lineage_no_section():
 
 
 def test_static_review_report_includes_lineage():
-    from seatunnel_agent.sql_review.agent import static_review_report
+    from seatunnel_agent.agents.data.sql_review.agent import static_review_report
     rep = static_review_report(
         "insert into dw.x select id from ods.y where pt='1'", "hive")
     assert rep.lineage and rep.lineage.targets == ["dw.x"]
@@ -928,7 +929,8 @@ def test_static_review_report_includes_lineage():
 # runner: collect_sql_files / severity_reached
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.sql_review.runner import collect_sql_files, severity_reached
+from seatunnel_agent.agents.data.sql_review.runner import severity_reached
+from seatunnel_agent.common.utils import collect_sql_files
 
 
 def test_collect_sql_files_recursive_sorted(tmp_path):
@@ -963,7 +965,7 @@ def test_severity_reached_thresholds():
 # ReviewLogger (jsonl history)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.sql_review.rlog import ReviewLogger
+from seatunnel_agent.agents.data.sql_review.rlog import ReviewLogger
 
 
 def test_review_logger_log_and_recent(tmp_path):
@@ -1016,7 +1018,7 @@ def test_review_logger_skips_corrupt_lines(tmp_path):
 # Fixer (mock LLM)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.sql_review import fixer as fixer_mod
+from seatunnel_agent.agents.data.sql_review import fixer as fixer_mod
 
 
 class _FakeResp:
@@ -1160,7 +1162,7 @@ def test_cli_review_dedupes_overlapping_sources(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_split_statements_top_level_semicolon():
-    from seatunnel_agent.sql_review.linter import split_statements
+    from seatunnel_agent.agents.data.sql_review.linter import split_statements
     sql = "SELECT 1;\nSELECT 2"
     parts = split_statements(sql)
     assert len(parts) == 2
@@ -1171,13 +1173,13 @@ def test_split_statements_top_level_semicolon():
 
 
 def test_split_statements_ignores_semicolon_in_parens_and_strings():
-    from seatunnel_agent.sql_review.linter import split_statements
+    from seatunnel_agent.agents.data.sql_review.linter import split_statements
     sql = "SELECT concat(a, ';') FROM (SELECT 1) t"
     assert len(split_statements(sql)) == 1
 
 
 def test_split_statements_empty_returns_whole():
-    from seatunnel_agent.sql_review.linter import split_statements
+    from seatunnel_agent.agents.data.sql_review.linter import split_statements
     assert split_statements("") == [(0, "")]
 
 
@@ -1262,7 +1264,7 @@ def test_complexity_long_statement():
 # ---------------------------------------------------------------------------
 
 def test_custom_rule_fires():
-    from seatunnel_agent.sql_review.config import _parse_config
+    from seatunnel_agent.agents.data.sql_review.config import _parse_config
     cfg = _parse_config({"custom_rules": [
         {"pattern": r"\border\s+by\b", "message": "禁止 ORDER BY",
          "severity": "critical", "category": "resource_usage",
@@ -1276,7 +1278,7 @@ def test_custom_rule_fires():
 
 
 def test_custom_rule_validation_errors():
-    from seatunnel_agent.sql_review.config import _parse_config
+    from seatunnel_agent.agents.data.sql_review.config import _parse_config
     with pytest.raises(ValueError, match="必须是规则列表"):
         _parse_config({"custom_rules": {"pattern": "x"}})
     with pytest.raises(ValueError, match="缺少 pattern"):
@@ -1297,7 +1299,7 @@ def test_custom_rule_validation_errors():
 
 
 def test_custom_rule_defaults():
-    from seatunnel_agent.sql_review.config import _parse_config
+    from seatunnel_agent.agents.data.sql_review.config import _parse_config
     cfg = _parse_config({"custom_rules": [{"pattern": "x", "message": "m"}]})
     rule = cfg.custom_rules[0]
     assert rule.severity is Severity.SUGGESTION
@@ -1306,7 +1308,7 @@ def test_custom_rule_defaults():
 
 def test_custom_rule_survives_disabled_category():
     # `disable: [readability]` must not swallow the user's own custom rule
-    from seatunnel_agent.sql_review.config import _parse_config
+    from seatunnel_agent.agents.data.sql_review.config import _parse_config
     cfg = _parse_config({
         "disable": ["readability"],
         "custom_rules": [{"pattern": r"\bfoo\b", "message": "no foo"}],
@@ -1316,7 +1318,7 @@ def test_custom_rule_survives_disabled_category():
 
 
 def test_custom_rule_severity_not_clobbered_by_override():
-    from seatunnel_agent.sql_review.config import _parse_config
+    from seatunnel_agent.agents.data.sql_review.config import _parse_config
     cfg = _parse_config({
         "severity": {"readability": "suggestion"},
         "custom_rules": [{"pattern": r"\bfoo\b", "message": "no foo",
@@ -1328,7 +1330,7 @@ def test_custom_rule_severity_not_clobbered_by_override():
 
 
 def test_custom_rule_match_cap():
-    from seatunnel_agent.sql_review.config import _parse_config
+    from seatunnel_agent.agents.data.sql_review.config import _parse_config
     cfg = _parse_config({"custom_rules": [
         {"pattern": r"\bfoo\b", "message": "no foo"}]})
     sql = "SELECT " + ", ".join(["foo"] * 100) + " FROM t WHERE pt='1'"
@@ -1343,14 +1345,14 @@ def test_custom_rule_match_cap():
 
 
 def test_custom_rule_category_case_insensitive():
-    from seatunnel_agent.sql_review.config import _parse_config
+    from seatunnel_agent.agents.data.sql_review.config import _parse_config
     cfg = _parse_config({"custom_rules": [
         {"pattern": "x", "message": "m", "category": "Readability"}]})
     assert cfg.custom_rules[0].category == "readability"
 
 
 def test_custom_rule_finding_source_is_custom():
-    from seatunnel_agent.sql_review.config import _parse_config
+    from seatunnel_agent.agents.data.sql_review.config import _parse_config
     cfg = _parse_config({"custom_rules": [
         {"pattern": r"\bfoo\b", "message": "no foo"}]})
     fs = [f for f in lint_sql("SELECT foo FROM t WHERE pt='1'", config=cfg)
@@ -1374,7 +1376,7 @@ def test_inline_disable_in_block_comment_ignored():
 # ---------------------------------------------------------------------------
 
 def test_baseline_roundtrip(tmp_path):
-    from seatunnel_agent.sql_review.baseline import (
+    from seatunnel_agent.agents.data.sql_review.baseline import (
         load_baseline, save_baseline, split_by_baseline,
     )
     f1 = _mk_finding(Severity.RISK)
@@ -1390,7 +1392,7 @@ def test_baseline_roundtrip(tmp_path):
 
 
 def test_baseline_fingerprint_path_normalized(tmp_path):
-    from seatunnel_agent.sql_review.baseline import save_baseline, split_by_baseline, load_baseline
+    from seatunnel_agent.agents.data.sql_review.baseline import save_baseline, split_by_baseline, load_baseline
     f1 = _mk_finding(Severity.RISK)
     path = tmp_path / "base.json"
     save_baseline(path, [("sql\\a.sql", f1)])
@@ -1400,7 +1402,7 @@ def test_baseline_fingerprint_path_normalized(tmp_path):
 
 
 def test_baseline_invalid_file(tmp_path):
-    from seatunnel_agent.sql_review.baseline import load_baseline
+    from seatunnel_agent.agents.data.sql_review.baseline import load_baseline
     bad = tmp_path / "bad.json"
     bad.write_text("not json", encoding="utf-8")
     with pytest.raises(ValueError, match="解析失败"):
@@ -1435,8 +1437,8 @@ def test_cli_baseline_workflow(tmp_path):
 
 def test_formats_json_single_source():
     import json as _json
-    from seatunnel_agent.sql_review.agent import static_review_report
-    from seatunnel_agent.sql_review.formats import results_to_json
+    from seatunnel_agent.agents.data.sql_review.agent import static_review_report
+    from seatunnel_agent.agents.data.sql_review.formats import results_to_json
     rep = static_review_report("SELECT * FROM a", "hive")
     doc = _json.loads(results_to_json([("q.sql", rep)]))
     assert doc["source"] == "q.sql"
@@ -1446,8 +1448,8 @@ def test_formats_json_single_source():
 
 def test_formats_json_multi_source_is_list():
     import json as _json
-    from seatunnel_agent.sql_review.agent import static_review_report
-    from seatunnel_agent.sql_review.formats import results_to_json
+    from seatunnel_agent.agents.data.sql_review.agent import static_review_report
+    from seatunnel_agent.agents.data.sql_review.formats import results_to_json
     rep = static_review_report("SELECT 1", "hive")
     doc = _json.loads(results_to_json([("a.sql", rep), ("b.sql", rep)]))
     assert isinstance(doc, list) and len(doc) == 2
@@ -1455,8 +1457,8 @@ def test_formats_json_multi_source_is_list():
 
 def test_formats_sarif_structure():
     import json as _json
-    from seatunnel_agent.sql_review.agent import static_review_report
-    from seatunnel_agent.sql_review.formats import results_to_sarif
+    from seatunnel_agent.agents.data.sql_review.agent import static_review_report
+    from seatunnel_agent.agents.data.sql_review.formats import results_to_sarif
     rep = static_review_report("SELECT * FROM a", "hive")
     doc = _json.loads(results_to_sarif([("sql\\q.sql", rep)]))
     assert doc["version"] == "2.1.0"
@@ -1494,7 +1496,7 @@ def test_cli_format_sarif_to_file(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_column_lineage_extracted():
-    from seatunnel_agent.sql_review.lineage import extract_table_lineage
+    from seatunnel_agent.agents.data.sql_review.lineage import extract_table_lineage
     lin = extract_table_lineage(
         "INSERT OVERWRITE TABLE dw.t SELECT a.id, SUM(a.amt) AS total "
         "FROM ods.pay a GROUP BY a.id"
@@ -1505,7 +1507,7 @@ def test_column_lineage_extracted():
 
 
 def test_column_lineage_in_rendered_report():
-    from seatunnel_agent.sql_review.agent import static_review_report
+    from seatunnel_agent.agents.data.sql_review.agent import static_review_report
     md = render_report(static_review_report(
         "SELECT a.id FROM ods.pay a WHERE a.pt='1'", "hive"))
     assert "列级血缘" in md
@@ -1513,7 +1515,7 @@ def test_column_lineage_in_rendered_report():
 
 
 def test_column_lineage_in_to_dict():
-    from seatunnel_agent.sql_review.lineage import extract_table_lineage
+    from seatunnel_agent.agents.data.sql_review.lineage import extract_table_lineage
     lin = extract_table_lineage("SELECT a.id FROM t a")
     assert "columns" in lin.to_dict()
 
@@ -1552,7 +1554,7 @@ def test_partition_cols_with_regex_metachars_do_not_crash():
 
 def test_changed_sql_files_from_subdirectory(tmp_path):
     import subprocess
-    from seatunnel_agent.sql_review.runner import changed_sql_files
+    from seatunnel_agent.agents.data.sql_review.runner import changed_sql_files
 
     def git(*args):
         subprocess.run(["git", *args], cwd=tmp_path, check=True,
@@ -1582,7 +1584,7 @@ def test_changed_sql_files_from_subdirectory(tmp_path):
 # ---------------------------------------------------------------------------
 
 def test_norm_location_bilingual():
-    from seatunnel_agent.sql_review.tools import _norm_location
+    from seatunnel_agent.agents.data.sql_review.tools import _norm_location
     assert _norm_location("行 6") == "line:6"
     assert _norm_location("Line 6") == "line:6"
     assert _norm_location("line 6") == "line:6"
@@ -1591,7 +1593,7 @@ def test_norm_location_bilingual():
 
 
 def test_merge_findings_dedup_across_languages():
-    from seatunnel_agent.sql_review.tools import _merge_findings
+    from seatunnel_agent.agents.data.sql_review.tools import _merge_findings
     lint = [Finding(Severity.RISK, "partition_pruning", "d", "行 6", "i", "s"),
             Finding(Severity.RISK, "readability", "d", "全局", "i", "s")]
     llm = [Finding(Severity.RISK, "partition_pruning", "dup", "Line 6", "i", "s"),
@@ -1605,7 +1607,7 @@ def test_merge_findings_dedup_across_languages():
 
 def test_formats_parse_english_line_numbers():
     import json as _json
-    from seatunnel_agent.sql_review.formats import results_to_json, results_to_sarif
+    from seatunnel_agent.agents.data.sql_review.formats import results_to_json, results_to_sarif
     rep = ReviewReport(findings=[
         Finding(Severity.RISK, "calculation", "d", "Line 6", "i", "s")])
     doc = _json.loads(results_to_json([("q.sql", rep)]))
@@ -1632,7 +1634,7 @@ def test_report_loc_bidirectional():
 # ---------------------------------------------------------------------------
 
 def test_parse_config_text_thresholds():
-    from seatunnel_agent.sql_review.config import parse_config_text
+    from seatunnel_agent.agents.data.sql_review.config import parse_config_text
     cfg = parse_config_text(
         "thresholds:\n  max_joins: 2\n  max_subquery_depth: 1\n"
         "  max_stmt_lines: 50\n  readability_min_lines: 5\n"
@@ -1645,7 +1647,7 @@ def test_parse_config_text_thresholds():
 
 
 def test_parse_config_text_empty_and_invalid():
-    from seatunnel_agent.sql_review.config import (DEFAULT_CONFIG,
+    from seatunnel_agent.agents.data.sql_review.config import (DEFAULT_CONFIG,
                                                    parse_config_text)
     assert parse_config_text("") is DEFAULT_CONFIG
     with pytest.raises(ValueError):
@@ -1660,13 +1662,13 @@ def test_parse_config_text_empty_and_invalid():
     "thresholds: 5\n",                    # not a mapping
 ])
 def test_parse_config_thresholds_invalid(yaml_text):
-    from seatunnel_agent.sql_review.config import parse_config_text
+    from seatunnel_agent.agents.data.sql_review.config import parse_config_text
     with pytest.raises(ValueError):
         parse_config_text(yaml_text)
 
 
 def test_parse_config_data_rejects_non_dict():
-    from seatunnel_agent.sql_review.config import parse_config_data
+    from seatunnel_agent.agents.data.sql_review.config import parse_config_data
     with pytest.raises(ValueError):
         parse_config_data(["not", "a", "dict"])
 
@@ -1674,7 +1676,7 @@ def test_parse_config_data_rejects_non_dict():
 def test_lint_honors_custom_join_threshold():
     sql = ("select a.id from t1 a join t2 b on a.id=b.id "
            "join t3 c on a.id=c.id where a.pt='1'")
-    from seatunnel_agent.sql_review.config import ReviewConfig as _RC
+    from seatunnel_agent.agents.data.sql_review.config import ReviewConfig as _RC
     default = [f for f in lint_sql(sql, "hive")
                if f.category == "readability" and "JOIN" in f.description]
     cfg = _RC(max_joins=1)
@@ -1685,7 +1687,7 @@ def test_lint_honors_custom_join_threshold():
 
 
 def test_lint_honors_readability_min_lines():
-    from seatunnel_agent.sql_review.config import ReviewConfig as _RC
+    from seatunnel_agent.agents.data.sql_review.config import ReviewConfig as _RC
     sql = "SELECT id\n,a\n,b\nfrom t\nwhere pt='1'\nlimit 1"
     small = [f for f in lint_sql(sql, "hive", config=_RC(readability_min_lines=2))
              if f.category == "readability"]
@@ -1699,7 +1701,7 @@ def test_lint_honors_readability_min_lines():
 # ---------------------------------------------------------------------------
 
 def test_default_log_dir_env(monkeypatch, tmp_path):
-    from seatunnel_agent.sql_review import rlog
+    from seatunnel_agent.agents.data.sql_review import rlog
     monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path / "mylogs"))
     assert rlog.default_log_dir() == str(tmp_path / "mylogs")
     from pathlib import Path as _P
@@ -1709,7 +1711,7 @@ def test_default_log_dir_env(monkeypatch, tmp_path):
 
 
 def test_max_iterations_env(monkeypatch):
-    from seatunnel_agent.sql_review.agent import _max_iterations
+    from seatunnel_agent.agents.data.sql_review.agent import _max_iterations
     monkeypatch.setenv("SQLREVIEW_MAX_ITERATIONS", "3")
     assert _max_iterations() == 3
     monkeypatch.setenv("SQLREVIEW_MAX_ITERATIONS", "bogus")
@@ -1719,7 +1721,7 @@ def test_max_iterations_env(monkeypatch):
 
 
 def test_max_column_lineage_env(monkeypatch):
-    from seatunnel_agent.sql_review.lineage import _max_column_lineage
+    from seatunnel_agent.agents.data.sql_review.lineage import _max_column_lineage
     monkeypatch.setenv("SQLREVIEW_MAX_COLUMN_LINEAGE", "5")
     assert _max_column_lineage() == 5
     monkeypatch.setenv("SQLREVIEW_MAX_COLUMN_LINEAGE", "x")
@@ -1727,7 +1729,7 @@ def test_max_column_lineage_env(monkeypatch):
 
 
 def test_report_env_int(monkeypatch):
-    from seatunnel_agent.sql_review.report import _env_int
+    from seatunnel_agent.agents.data.sql_review.report import _env_int
     monkeypatch.setenv("X_TEST_INT", "7")
     assert _env_int("X_TEST_INT", 15) == 7
     monkeypatch.setenv("X_TEST_INT", "nan")
@@ -1741,7 +1743,7 @@ def test_report_env_int(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_load_resource_cached():
-    from seatunnel_agent.sql_review.prompts import _load_resource
+    from seatunnel_agent.agents.data.sql_review.prompts import _load_resource
     _load_resource.cache_clear()
     a = _load_resource("review_checklist.md")
     b = _load_resource("review_checklist.md")
@@ -1778,7 +1780,7 @@ class _AgentFakeLLM:
 
 
 def _make_agent(monkeypatch, reply, lang="zh"):
-    from seatunnel_agent.sql_review import agent as agent_mod
+    from seatunnel_agent.agents.data.sql_review import agent as agent_mod
     holder = {}
 
     def hook():
@@ -1813,7 +1815,7 @@ def api_client(tmp_path, monkeypatch):
     fastapi = pytest.importorskip("fastapi")
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
-    from seatunnel_agent.sql_review.api import router
+    from seatunnel_agent.agents.data.sql_review.api import router
     monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path / "logs"))
     app = fastapi.FastAPI()
     app.include_router(router)
@@ -1852,8 +1854,8 @@ def test_api_invalid_rules_400(api_client):
 
 
 def test_api_maxcompute_downgrade_warning(monkeypatch, api_client):
-    from seatunnel_agent.sql_review import api as api_mod
-    from seatunnel_agent.text2sql.schema import SchemaStore as _SS
+    from seatunnel_agent.agents.data.sql_review import api as api_mod
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore as _SS
 
     captured = {}
 
@@ -1874,7 +1876,7 @@ def test_api_maxcompute_downgrade_warning(monkeypatch, api_client):
 
 
 def test_api_fix_endpoint(monkeypatch, api_client):
-    from seatunnel_agent.sql_review import api as api_mod
+    from seatunnel_agent.agents.data.sql_review import api as api_mod
     monkeypatch.setattr(api_mod, "load_settings", lambda: None)
     monkeypatch.setattr(
         fixer_mod, "LLMClient",
@@ -1889,7 +1891,7 @@ def test_api_fix_endpoint(monkeypatch, api_client):
 
 
 def test_api_fix_with_given_report(monkeypatch, api_client):
-    from seatunnel_agent.sql_review import api as api_mod
+    from seatunnel_agent.agents.data.sql_review import api as api_mod
     monkeypatch.setattr(api_mod, "load_settings", lambda: None)
     monkeypatch.setattr(
         fixer_mod, "LLMClient",
@@ -1906,7 +1908,7 @@ def test_api_env_db_defaults(monkeypatch):
     monkeypatch.setenv("SQLREVIEW_DB_HOST", "envhost")
     monkeypatch.setenv("SQLREVIEW_DB_PORT", "9999")
     monkeypatch.setenv("SQLREVIEW_DB_DATABASE", "envdb")
-    from seatunnel_agent.sql_review import api as api_mod
+    from seatunnel_agent.agents.data.sql_review import api as api_mod
     importlib.reload(api_mod)
     try:
         assert api_mod._DEFAULT_DB_HOST == "envhost"
@@ -1923,7 +1925,7 @@ def test_api_env_db_defaults(monkeypatch):
 # Text2SQL review harness
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.sql_review.harness import (  # noqa: E402
+from seatunnel_agent.agents.data.sql_review.harness import (  # noqa: E402
     HarnessResult,
     iter_log_records,
     render_harness_report,
@@ -2049,11 +2051,11 @@ def test_render_harness_report_all_clean():
 # Harness: LLM cache + baseline diff; report line links; rlog sql hash
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.sql_review.harness import (  # noqa: E402
+from seatunnel_agent.agents.data.sql_review.harness import (  # noqa: E402
     diff_against_baseline,
     load_llm_cache,
 )
-from seatunnel_agent.sql_review.rlog import sql_hash  # noqa: E402
+from seatunnel_agent.agents.data.sql_review.rlog import sql_hash  # noqa: E402
 
 
 def _write_review_log(tmp_path, records):
@@ -2182,7 +2184,7 @@ def test_render_report_line_links():
 
 
 def test_rlog_records_sql_sha(tmp_path, monkeypatch):
-    from seatunnel_agent.sql_review.rlog import ReviewLogger
+    from seatunnel_agent.agents.data.sql_review.rlog import ReviewLogger
     logger = ReviewLogger(log_dir=tmp_path)
     logger.log(sql="SELECT 1", dialect="hive", mode="agent", findings=[])
     rec = logger.recent(1)[0]
@@ -2357,7 +2359,7 @@ def test_deep_offset_threshold_configurable():
 # ---------------------------------------------------------------------------
 
 def test_en_report_renders_english_rule_texts():
-    from seatunnel_agent.sql_review.report import ReviewReport, render_report
+    from seatunnel_agent.agents.data.sql_review.report import ReviewReport, render_report
     findings = lint_sql("SELECT * FROM t", "hive")
     report = ReviewReport(findings=findings, dialect="hive")
     md = render_report(report, lang="en")
@@ -2366,7 +2368,7 @@ def test_en_report_renders_english_rule_texts():
 
 
 def test_en_report_formats_args():
-    from seatunnel_agent.sql_review.report import ReviewReport, render_report
+    from seatunnel_agent.agents.data.sql_review.report import ReviewReport, render_report
     sql = "SELECT a, b, SUM(c) FROM t GROUP BY a"
     findings = lint_sql(sql, "hive")
     report = ReviewReport(findings=findings, dialect="hive")
@@ -2376,7 +2378,7 @@ def test_en_report_formats_args():
 
 
 def test_zh_report_unchanged_by_i18n_keys():
-    from seatunnel_agent.sql_review.report import ReviewReport, render_report
+    from seatunnel_agent.agents.data.sql_review.report import ReviewReport, render_report
     findings = lint_sql("SELECT * FROM t", "hive")
     report = ReviewReport(findings=findings, dialect="hive")
     md = render_report(report, lang="zh")
@@ -2384,7 +2386,7 @@ def test_zh_report_unchanged_by_i18n_keys():
 
 
 def test_finding_without_key_passes_through_in_en():
-    from seatunnel_agent.sql_review.i18n import finding_texts
+    from seatunnel_agent.agents.data.sql_review.i18n import finding_texts
     f = Finding(
         severity=Severity.RISK, category="calculation",
         description="LLM 发现的问题", location="行 1",
@@ -2395,7 +2397,7 @@ def test_finding_without_key_passes_through_in_en():
 
 
 def test_all_linter_keys_have_en_templates():
-    from seatunnel_agent.sql_review.i18n import RULE_TEXTS_EN
+    from seatunnel_agent.agents.data.sql_review.i18n import RULE_TEXTS_EN
     samples = [
         ("SELECT * FROM t", "hive"),
         ("SELECT a, SUM(b) FROM t GROUP BY a, c", "hive"),
@@ -2428,7 +2430,7 @@ def test_all_linter_keys_have_en_templates():
 # Static auto-fix (autofix.py)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.sql_review.autofix import apply_static_fixes, describe_fixes
+from seatunnel_agent.agents.data.sql_review.autofix import apply_static_fixes, describe_fixes
 
 
 def test_autofix_null_eq():
@@ -2533,7 +2535,7 @@ def test_syntax_error_does_not_stop_other_rules():
 # ---------------------------------------------------------------------------
 
 def _schema_ref_store(extra_cols: int = 0):
-    from seatunnel_agent.text2sql.schema import ColumnSchema, SchemaStore, TableSchema
+    from seatunnel_agent.agents.data.text2sql.schema import ColumnSchema, SchemaStore, TableSchema
     cols = [ColumnSchema("order_id", "bigint"), ColumnSchema("amount", "decimal(10,2)"),
             ColumnSchema("create_time", "timestamp")]
     cols += [ColumnSchema(f"ext_{i}", "string") for i in range(extra_cols)]
@@ -2635,7 +2637,7 @@ def test_schema_ref_en_templates_render():
 # EXPLAIN verification (OLTP dialects)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.sql_review.explain import (  # noqa: E402
+from seatunnel_agent.agents.data.sql_review.explain import (  # noqa: E402
     explain_full_scan_tables,
     verify_with_explain,
 )
@@ -2650,7 +2652,7 @@ class _FakeExecutor:
         self.seen_sql.append(sql)
         if self.error:
             raise self.error
-        from seatunnel_agent.text2sql.executor.base import QueryResult
+        from seatunnel_agent.agents.data.text2sql.executor.base import QueryResult
         return QueryResult(columns=self.columns, rows=self.rows,
                            elapsed_ms=1, row_count=len(self.rows))
 
@@ -2738,7 +2740,7 @@ def test_verify_no_plan_keeps_findings_unchanged():
 
 
 def test_explain_full_scan_en_template():
-    from seatunnel_agent.sql_review.i18n import finding_texts
+    from seatunnel_agent.agents.data.sql_review.i18n import finding_texts
     f = Finding(severity=Severity.RISK, category="resource_usage",
                 description="EXPLAIN 证实对 t 的全表扫描", location="全局",
                 impact="x", suggestion="y",
@@ -2752,7 +2754,7 @@ def test_explain_full_scan_en_template():
 # LLM review cache (live path)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.sql_review.cache import (  # noqa: E402
+from seatunnel_agent.agents.data.sql_review.cache import (  # noqa: E402
     ReviewCache,
     cache_enabled,
     config_fingerprint,
@@ -2761,7 +2763,7 @@ from seatunnel_agent.sql_review.cache import (  # noqa: E402
 
 
 def test_config_fingerprint_stable_and_sensitive():
-    from seatunnel_agent.sql_review.config import ReviewConfig
+    from seatunnel_agent.agents.data.sql_review.config import ReviewConfig
     assert config_fingerprint(None) == config_fingerprint(ReviewConfig())
     assert config_fingerprint(ReviewConfig(max_joins=9)) != config_fingerprint(None)
 
@@ -2790,7 +2792,7 @@ def test_review_cache_roundtrip(tmp_path):
 
 
 def test_review_cache_miss_on_changed_key(tmp_path):
-    from seatunnel_agent.sql_review.config import ReviewConfig
+    from seatunnel_agent.agents.data.sql_review.config import ReviewConfig
     cache = ReviewCache(cache_dir=tmp_path)
     rep = ReviewReport(findings=[], summary="ok", dialect="mysql")
     cache.put("select 1", "mysql", rep, "md", lang="zh", model="m1")
@@ -2804,7 +2806,7 @@ def test_review_cache_miss_on_changed_key(tmp_path):
 
 
 def test_review_cache_lineage_roundtrip(tmp_path):
-    from seatunnel_agent.sql_review.report import TableLineage
+    from seatunnel_agent.agents.data.sql_review.report import TableLineage
     cache = ReviewCache(cache_dir=tmp_path)
     rep = ReviewReport(findings=[], summary="ok", dialect="hive",
                        lineage=TableLineage(sources=["a.t"], targets=["b.t"]))
@@ -2824,7 +2826,7 @@ def test_cache_enabled_env(monkeypatch):
 
 
 def _make_caching_agent(monkeypatch, calls, holder):
-    from seatunnel_agent.sql_review import agent as agent_mod
+    from seatunnel_agent.agents.data.sql_review import agent as agent_mod
 
     def hook():
         calls["n"] += 1

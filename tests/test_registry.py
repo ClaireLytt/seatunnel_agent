@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from seatunnel_agent.registry import (
+from seatunnel_agent.hub.registry import (
     AgentManifest,
     card_html,
     discover,

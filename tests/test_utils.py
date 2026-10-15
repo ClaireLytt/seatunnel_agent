@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from seatunnel_agent.utils import (
+from seatunnel_agent.common.utils import (
     find_latest_log,
     normalize_lang,
     read_json_list,

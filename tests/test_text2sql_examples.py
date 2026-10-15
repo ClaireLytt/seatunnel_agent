@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from seatunnel_agent.text2sql.examples import ExampleStore, augment_question
+from seatunnel_agent.agents.data.text2sql.examples import ExampleStore, augment_question
 
 
 @pytest.fixture()
@@ -94,8 +94,8 @@ def test_corrupt_file_returns_empty(tmp_path) -> None:
 def test_agent_augments_user_message(tmp_path, monkeypatch) -> None:
     """The agent injects examples into the LLM message but keeps the raw
     question in last_user_question."""
-    from seatunnel_agent.text2sql.agent import Text2SQLAgent
-    from seatunnel_agent.text2sql.schema import SchemaStore
+    from seatunnel_agent.agents.data.text2sql.agent import Text2SQLAgent
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
 
     ex = ExampleStore(tmp_path / "ex.json")
     ex.add("各城市销售额", "SELECT city, SUM(amount) FROM sales GROUP BY city")
@@ -118,9 +118,9 @@ def test_agent_augments_user_message(tmp_path, monkeypatch) -> None:
         def append_assistant(self, raw):
             return {"role": "assistant", "content": raw}
 
-    monkeypatch.setattr("seatunnel_agent.text2sql.agent.LLMClient", _FakeLLM)
+    monkeypatch.setattr("seatunnel_agent.agents.data.text2sql.agent.LLMClient", _FakeLLM)
 
-    from seatunnel_agent.config import Settings
+    from seatunnel_agent.common.config import Settings
 
     agent = Text2SQLAgent(
         settings=Settings(api_key="test"), store=SchemaStore([]), ds_type="sqlite",

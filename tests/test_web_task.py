@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-from seatunnel_agent.config import Settings
-from seatunnel_agent.llm import LLMResponse, ToolCall
-from seatunnel_agent.web_task import run_task
-from seatunnel_agent.web_task.session import _origin
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
+from seatunnel_agent.agents.ai.web_task import run_task
+from seatunnel_agent.agents.ai.web_task.session import _origin
 
 SETTINGS = Settings(api_key="sk-test")
 
@@ -118,7 +118,7 @@ class TestOriginGuard:
 
     def test_playwright_session_goto_blocked_without_browser(self):
         """The guard fires before any page access — testable browserless."""
-        from seatunnel_agent.web_task.session import PlaywrightSession
+        from seatunnel_agent.agents.ai.web_task.session import PlaywrightSession
         s = PlaywrightSession(allow_external=False)
         s.origin = "http://127.0.0.1:7860"
         out = s.goto("https://evil.example.com/")

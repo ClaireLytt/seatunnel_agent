@@ -8,7 +8,7 @@ import json
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.doc_qa import (
+from seatunnel_agent.agents.ai.doc_qa import (
     BM25Index,
     Chunk,
     answer,
@@ -16,7 +16,7 @@ from seatunnel_agent.doc_qa import (
     get_index,
     tokenize,
 )
-from seatunnel_agent.llm import LLMResponse
+from seatunnel_agent.common.llm import LLMResponse
 
 
 class TestTokenize:
@@ -107,7 +107,7 @@ class TestCliAndApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.doc_qa.api import router
+        from seatunnel_agent.agents.ai.doc_qa.api import router
         app = FastAPI()
         app.include_router(router)
         client = TestClient(app)
@@ -119,6 +119,6 @@ class TestCliAndApi:
             "status": "ok", "agent": "doc_qa"}
 
     def test_manifest_registered(self):
-        from seatunnel_agent.registry import discover
+        from seatunnel_agent.hub.registry import discover
         names = {m.name for m in discover()}
         assert "doc_qa" in names

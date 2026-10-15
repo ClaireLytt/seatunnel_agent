@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from seatunnel_agent.config import Settings
-from seatunnel_agent.llm import LLMClient, LLMResponse, ToolCall, _convert_tools_to_openai
-from seatunnel_agent.tools import TOOL_DEFINITIONS
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMClient, LLMResponse, ToolCall, _convert_tools_to_openai
+from seatunnel_agent.agents.data.seatunnel.tools import TOOL_DEFINITIONS
 
 
 ANTHROPIC_SETTINGS = Settings(
@@ -70,14 +70,14 @@ class TestLLMClientInit:
         with pytest.raises(ValueError, match="Unknown LLM_PROVIDER"):
             LLMClient(bad_settings)
 
-    @patch("seatunnel_agent.llm.anthropic", create=True)
+    @patch("seatunnel_agent.common.llm.anthropic", create=True)
     def test_anthropic_init(self, mock_mod):
         mock_anthropic = MagicMock()
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             client = LLMClient(ANTHROPIC_SETTINGS)
         assert client.provider == "anthropic"
 
-    @patch("seatunnel_agent.llm.openai", create=True)
+    @patch("seatunnel_agent.common.llm.openai", create=True)
     def test_openai_init(self, mock_mod):
         mock_openai = MagicMock()
         with patch.dict("sys.modules", {"openai": mock_openai}):
@@ -365,7 +365,7 @@ class TestRetryLogic:
         err.status_code = 429
         fn = MagicMock(side_effect=[err, expected])
 
-        with patch("seatunnel_agent.llm.time.sleep"):
+        with patch("seatunnel_agent.common.llm.time.sleep"):
             result = client._call_with_retry(fn, "a", max_retries=3)
         assert result == expected
         assert fn.call_count == 2
@@ -391,7 +391,7 @@ class TestRetryLogic:
         err.status_code = 500
         fn = MagicMock(side_effect=err)
 
-        with patch("seatunnel_agent.llm.time.sleep"):
+        with patch("seatunnel_agent.common.llm.time.sleep"):
             with pytest.raises(Exception, match="server error"):
                 client._call_with_retry(fn, "a", max_retries=3)
         assert fn.call_count == 3
@@ -451,7 +451,7 @@ class TestRetryStringCodeIgnored:
         err.response = resp_mock
         fn = MagicMock(side_effect=[err, expected])
 
-        with patch("seatunnel_agent.llm.time.sleep"):
+        with patch("seatunnel_agent.common.llm.time.sleep"):
             result = client._call_with_retry(fn, "a", max_retries=3)
         assert result == expected
         assert fn.call_count == 2
@@ -468,12 +468,12 @@ class TestSupportsThinking:
         assert not LLMClient._supports_thinking("deepseek-chat")
 
     def test_custom_keywords_respected(self):
-        with patch("seatunnel_agent.llm._THINKING_MODEL_KEYWORDS", ("deepseek-r1",)):
+        with patch("seatunnel_agent.common.llm._THINKING_MODEL_KEYWORDS", ("deepseek-r1",)):
             assert LLMClient._supports_thinking("deepseek-r1-distill")
             assert not LLMClient._supports_thinking("claude-sonnet-5")
 
     def test_default_retry_count_from_constant(self):
-        import seatunnel_agent.llm as llm_mod
+        import seatunnel_agent.common.llm as llm_mod
         mock_anthropic = MagicMock()
         with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
             client = LLMClient(ANTHROPIC_SETTINGS)
@@ -482,7 +482,7 @@ class TestSupportsThinking:
         resp_mock.status_code = 502
         err.response = resp_mock
         fn = MagicMock(side_effect=err)
-        with patch("seatunnel_agent.llm.time.sleep"), \
+        with patch("seatunnel_agent.common.llm.time.sleep"), \
              pytest.raises(Exception, match="boom"):
             client._call_with_retry(fn, "a")
         assert fn.call_count == llm_mod.DEFAULT_LLM_MAX_RETRIES
@@ -505,7 +505,7 @@ class TestAgentAttribution:
 
             def fake_record(provider, model, usage, agent=None):
                 recorded.update(provider=provider, agent=agent)
-            monkeypatch.setattr("seatunnel_agent.llm_usage.record",
+            monkeypatch.setattr("seatunnel_agent.common.llm_usage.record",
                                 fake_record)
             client.chat("sys", [{"role": "user", "content": "x"}])
         assert recorded["agent"] == "text2sql"

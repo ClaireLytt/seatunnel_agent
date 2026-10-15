@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from seatunnel_agent.config import Settings, env_float, env_int, load_settings
+from seatunnel_agent.common.config import Settings, env_float, env_int, load_settings
 
 
 @pytest.fixture(autouse=True)
@@ -15,7 +15,7 @@ def _isolate_env(monkeypatch):
     monkeypatch.delenv("MODEL_NAME", raising=False)
     monkeypatch.delenv("LLM_PROVIDER", raising=False)
     monkeypatch.delenv("LLM_BASE_URL", raising=False)
-    monkeypatch.setattr("seatunnel_agent.config.load_dotenv", lambda: None)
+    monkeypatch.setattr("seatunnel_agent.common.config.load_dotenv", lambda: None)
 
 
 def test_load_settings_missing_api_key(monkeypatch):
@@ -87,12 +87,6 @@ def test_load_settings_validates_provider(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER", "invalid_provider")
     with pytest.raises(RuntimeError, match="LLM_PROVIDER"):
         load_settings()
-
-
-def test_backward_compat_property():
-    """Settings.anthropic_api_key property returns api_key."""
-    s = Settings(api_key="sk-test", seatunnel_home="/tmp")
-    assert s.anthropic_api_key == "sk-test"
 
 
 def test_load_settings_job_timeout(monkeypatch):

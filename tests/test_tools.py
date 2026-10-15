@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 
 
-from seatunnel_agent.config import Settings
-from seatunnel_agent.tools import execute_tool, _parse_job_metrics
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.agents.data.seatunnel.tools import execute_tool, _parse_job_metrics
 
 import tempfile as _tempfile
 
@@ -528,7 +528,7 @@ def test_run_batch_continue_on_failure():
 
 def test_run_batch_exception_in_job(monkeypatch):
     """If _run_seatunnel_job raises, batch catches it instead of crashing."""
-    from seatunnel_agent import tools as _tools_mod
+    from seatunnel_agent.agents.data.seatunnel import tools as _tools_mod
     def _boom(*a, **kw):
         raise RuntimeError("seatunnel_bin is not set")
     monkeypatch.setattr(_tools_mod, "_run_seatunnel_job", _boom)

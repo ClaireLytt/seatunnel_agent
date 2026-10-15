@@ -11,15 +11,15 @@ import pytest
 
 pytest.importorskip("yaml")
 
-from seatunnel_agent.text2sql.metrics import (
+from seatunnel_agent.agents.data.text2sql.metrics import (
     MetricError,
     MetricStore,
     build_metric_sql,
 )
-from seatunnel_agent.text2sql.partition import TimeRange
-from seatunnel_agent.text2sql.schema import SchemaStore
-from seatunnel_agent.text2sql.tools import Text2SQLRuntime, execute_text2sql_tool
-from seatunnel_agent.text2sql.validator import validate_sql
+from seatunnel_agent.agents.data.text2sql.partition import TimeRange
+from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, execute_text2sql_tool
+from seatunnel_agent.agents.data.text2sql.validator import validate_sql
 
 _DDL = """
 CREATE TABLE dwd.dwd_trade_order_di(
@@ -81,7 +81,7 @@ metrics:
 
 @pytest.fixture()
 def schema_store() -> SchemaStore:
-    from seatunnel_agent.text2sql.schema import parse_ddl
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
 
     return SchemaStore(parse_ddl(_DDL))
 
@@ -525,7 +525,7 @@ def _client():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.text2sql.api import router
+    from seatunnel_agent.agents.data.text2sql.api import router
 
     app = FastAPI()
     app.include_router(router)
@@ -594,8 +594,8 @@ def test_api_metrics_query_bad_dimension() -> None:
 
 def test_api_metrics_query_execute(monkeypatch) -> None:
     pytest.importorskip("fastapi")
-    from seatunnel_agent.text2sql.executor import QueryResult
-    import seatunnel_agent.text2sql.api as api_mod
+    from seatunnel_agent.agents.data.text2sql.executor import QueryResult
+    import seatunnel_agent.agents.data.text2sql.api as api_mod
 
     class _FakeExecutor:
         def run(self, sql: str, max_rows: int = 1000) -> QueryResult:
@@ -610,7 +610,7 @@ def test_api_metrics_query_execute(monkeypatch) -> None:
     # bypass from_db by giving schema_ddl AND no db introspection:
     # _load_schema_store only calls from_db when db_config is set, so patch
     # SchemaStore.from_db too.
-    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
     monkeypatch.setattr(
         SchemaStore, "from_db", classmethod(lambda cls, ex: cls(parse_ddl(_DDL))),
     )
@@ -685,8 +685,8 @@ def sqlite_runtime(tmp_path):
     """A Text2SQLRuntime backed by a real sqlite db with two days of sales."""
     import sqlite3
 
-    from seatunnel_agent.text2sql.executor import DatabaseConfig
-    from seatunnel_agent.text2sql.schema import parse_ddl
+    from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
 
     db = tmp_path / "sales.db"
     conn = sqlite3.connect(db)
@@ -718,8 +718,8 @@ def sqlite_runtime(tmp_path):
 
 def test_attribution_math_pure() -> None:
     """Contribution identity on a hand-built execute_fn (no DB)."""
-    from seatunnel_agent.text2sql.attribution import run_attribution
-    from seatunnel_agent.text2sql.schema import parse_ddl
+    from seatunnel_agent.agents.data.text2sql.attribution import run_attribution
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
 
     schema_store = SchemaStore(parse_ddl(_SQLITE_DDL))
     store, errors = MetricStore.from_text(_SQLITE_METRICS, schema_store)
@@ -759,8 +759,8 @@ def test_attribution_math_pure() -> None:
 
 
 def test_attribution_requires_both_ranges() -> None:
-    from seatunnel_agent.text2sql.attribution import run_attribution
-    from seatunnel_agent.text2sql.schema import parse_ddl
+    from seatunnel_agent.agents.data.text2sql.attribution import run_attribution
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
 
     schema_store = SchemaStore(parse_ddl(_SQLITE_DDL))
     store, _ = MetricStore.from_text(_SQLITE_METRICS, schema_store)
@@ -846,7 +846,7 @@ def test_tool_run_attribution_compare_mode(sqlite_runtime) -> None:
 
 def test_tool_run_attribution_export_report(sqlite_runtime, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("EXPORT_DIR", str(tmp_path))  # in case exporter honors it
-    from seatunnel_agent.text2sql import exporter as _exp
+    from seatunnel_agent.agents.data.text2sql import exporter as _exp
     monkeypatch.setattr(
         _exp, "default_desktop_dir", lambda: tmp_path, raising=False,
     )
@@ -866,7 +866,7 @@ def test_tool_run_attribution_export_report(sqlite_runtime, tmp_path, monkeypatc
 
 
 def test_render_attribution_markdown_ratio() -> None:
-    from seatunnel_agent.text2sql.attribution import (
+    from seatunnel_agent.agents.data.text2sql.attribution import (
         AttributionResult,
         render_attribution_markdown,
     )
@@ -904,8 +904,8 @@ def test_api_key_auth(monkeypatch) -> None:
     from fastapi import Depends, FastAPI
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.api_auth import require_api_key
-    from seatunnel_agent.text2sql.api import router
+    from seatunnel_agent.common.api_auth import require_api_key
+    from seatunnel_agent.agents.data.text2sql.api import router
 
     app = FastAPI()
     app.include_router(router, dependencies=[Depends(require_api_key)])
@@ -927,7 +927,7 @@ def test_api_key_auth(monkeypatch) -> None:
 def test_mcp_trace_and_attribution_tools(tmp_path, monkeypatch) -> None:
     import sqlite3
 
-    from seatunnel_agent.text2sql.mcp_server import build_tool_functions
+    from seatunnel_agent.agents.data.text2sql.mcp_server import build_tool_functions
 
     db = tmp_path / "s.db"
     conn = sqlite3.connect(db)
@@ -1050,7 +1050,7 @@ def test_api_metrics_attribution_sqlite(sqlite_runtime, monkeypatch) -> None:
     """REST attribution end-to-end on real sqlite (from_db patched — the
     sqlite introspector's full_name quirk is out of scope here)."""
     pytest.importorskip("fastapi")
-    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 
     monkeypatch.setattr(
         SchemaStore, "from_db",
@@ -1087,8 +1087,8 @@ def test_api_metrics_attribution_requires_db() -> None:
 def test_sqlite_from_db_bare_table_names(sqlite_runtime) -> None:
     """SQLite introspection must not prefix table names with the db file
     path — that used to poison the whitelist so no SQL could ever pass."""
-    from seatunnel_agent.text2sql.executor import create_executor
-    from seatunnel_agent.text2sql.validator import validate_sql
+    from seatunnel_agent.agents.data.text2sql.executor import create_executor
+    from seatunnel_agent.agents.data.text2sql.validator import validate_sql
 
     store = SchemaStore.from_db(create_executor(sqlite_runtime.db_config))
     assert store.table_names == ["sales"]
@@ -1103,7 +1103,7 @@ def test_load_metric_store_env_path(tmp_path, monkeypatch) -> None:
         encoding="utf-8",
     )
     monkeypatch.setenv("T2S_METRICS_PATH", str(target))
-    from seatunnel_agent.text2sql.metrics import load_metric_store
+    from seatunnel_agent.agents.data.text2sql.metrics import load_metric_store
 
     store, errors = load_metric_store()
     assert errors == [] and store.get("x") is not None
@@ -1111,7 +1111,7 @@ def test_load_metric_store_env_path(tmp_path, monkeypatch) -> None:
 
 def test_waterfall_chart_detection_and_build() -> None:
     pytest.importorskip("matplotlib")
-    from seatunnel_agent.text2sql.chart import build_chart, detect_chart_type
+    from seatunnel_agent.agents.data.text2sql.chart import build_chart, detect_chart_type
 
     columns = ["channel", "prev", "curr", "delta", "contribution_pct"]
     rows = [
@@ -1200,7 +1200,7 @@ def test_cli_metrics_sql(cli_files) -> None:
 
 
 def test_prompt_includes_metric_catalog(schema_store, metric_store) -> None:
-    from seatunnel_agent.text2sql.prompts import build_text2sql_prompt
+    from seatunnel_agent.agents.data.text2sql.prompts import build_text2sql_prompt
 
     prompt = build_text2sql_prompt(schema_store, "hive", metric_store=metric_store)
     assert "Metric Caliber Rules" in prompt
@@ -1265,7 +1265,7 @@ metrics:
 
 @pytest.fixture()
 def join_schema_store() -> SchemaStore:
-    from seatunnel_agent.text2sql.schema import parse_ddl
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
 
     return SchemaStore(parse_ddl(_JOIN_DDL))
 
@@ -1423,8 +1423,8 @@ def star_sqlite_runtime(tmp_path):
     """Runtime backed by sqlite with a fact table star-joined to a dim table."""
     import sqlite3
 
-    from seatunnel_agent.text2sql.executor import DatabaseConfig
-    from seatunnel_agent.text2sql.schema import parse_ddl
+    from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
 
     db = tmp_path / "star.db"
     conn = sqlite3.connect(db)
@@ -1525,7 +1525,7 @@ def test_star_join_attribution(star_sqlite_runtime) -> None:
 
 
 def test_ratio_factor_split_identity() -> None:
-    from seatunnel_agent.text2sql.attribution import ratio_factor_split
+    from seatunnel_agent.agents.data.text2sql.attribution import ratio_factor_split
 
     split = ratio_factor_split(120.0, 90.0, 400.0, 450.0)
     assert split is not None and split["check_ok"]
@@ -1542,8 +1542,8 @@ def test_ratio_factor_split_identity() -> None:
 
 def test_attribution_cross_dimensions_pure() -> None:
     """Crossed drill keeps the contribution identity (pure execute_fn)."""
-    from seatunnel_agent.text2sql.attribution import run_attribution
-    from seatunnel_agent.text2sql.schema import parse_ddl
+    from seatunnel_agent.agents.data.text2sql.attribution import run_attribution
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
 
     ddl = """
 CREATE TABLE sales(
@@ -1606,8 +1606,8 @@ metrics:
 
 
 def test_attribution_cross_bad_pair() -> None:
-    from seatunnel_agent.text2sql.attribution import run_attribution
-    from seatunnel_agent.text2sql.schema import parse_ddl
+    from seatunnel_agent.agents.data.text2sql.attribution import run_attribution
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
 
     schema_store = SchemaStore(parse_ddl(_SQLITE_DDL))
     store, errors = MetricStore.from_text(_SQLITE_METRICS, schema_store)
@@ -1656,8 +1656,8 @@ def test_tool_run_attribution_cross_sqlite(star_sqlite_runtime) -> None:
 
 def test_attribution_cross_validated_before_queries() -> None:
     """Invalid cross_dimensions must fail BEFORE any SQL runs (review fix)."""
-    from seatunnel_agent.text2sql.attribution import run_attribution
-    from seatunnel_agent.text2sql.schema import parse_ddl
+    from seatunnel_agent.agents.data.text2sql.attribution import run_attribution
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
 
     schema_store = SchemaStore(parse_ddl(_SQLITE_DDL))
     store, errors = MetricStore.from_text(_SQLITE_METRICS, schema_store)
@@ -1705,7 +1705,7 @@ metrics:
 def test_api_metrics_attribution_ratio_factor_split(sqlite_runtime, monkeypatch) -> None:
     """REST ratio attribution carries factor_split (parity with the tool)."""
     pytest.importorskip("fastapi")
-    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 
     monkeypatch.setattr(
         SchemaStore, "from_db",

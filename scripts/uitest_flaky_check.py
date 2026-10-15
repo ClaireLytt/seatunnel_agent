@@ -10,7 +10,7 @@ N = int(sys.argv[1]) if len(sys.argv) > 1 else 10
 baseline = None
 for i in range(1, N + 1):
     r = subprocess.run(
-        [sys.executable, "-m", "seatunnel_agent.ui_testing", "run",
+        [sys.executable, "-m", "seatunnel_agent.agents.devops.ui_testing", "run",
          "--suite", "smoke", "--no-llm"],
         capture_output=True, text=True, encoding="utf-8",
         errors="replace", timeout=900)

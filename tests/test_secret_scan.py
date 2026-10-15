@@ -10,7 +10,7 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.secret_scan import (
+from seatunnel_agent.agents.devops.secret_scan import (
     ScanConfig,
     check_fail,
     load_config,
@@ -20,7 +20,7 @@ from seatunnel_agent.secret_scan import (
     scan_paths,
     scan_text,
 )
-from seatunnel_agent.secret_scan.rules import entropy_hit, is_placeholder
+from seatunnel_agent.agents.devops.secret_scan.rules import entropy_hit, is_placeholder
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "secretscan_demo"
 
@@ -139,7 +139,7 @@ class TestReportAndGate:
         assert check_fail(result, "high")
         assert check_fail(result, "low")
         clean = scan_text("nothing here")
-        from seatunnel_agent.secret_scan import ScanResult
+        from seatunnel_agent.agents.devops.secret_scan import ScanResult
         assert not check_fail(ScanResult(findings=clean), "low")
 
 
@@ -173,7 +173,7 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.secret_scan.api import router
+        from seatunnel_agent.agents.devops.secret_scan.api import router
         app = FastAPI()
         app.include_router(router)
         return TestClient(app)

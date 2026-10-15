@@ -7,16 +7,16 @@ import json
 
 import pytest
 
-import seatunnel_agent.data_lineage.snapshot as snapshot_mod
-from seatunnel_agent.data_lineage.graph import LineageGraph
-from seatunnel_agent.data_lineage.snapshot import (
+import seatunnel_agent.agents.data.data_lineage.snapshot as snapshot_mod
+from seatunnel_agent.agents.data.data_lineage.graph import LineageGraph
+from seatunnel_agent.agents.data.data_lineage.snapshot import (
     diff_graphs,
     list_snapshots,
     load_snapshot,
     render_diff_markdown,
     save_snapshot,
 )
-from seatunnel_agent.data_lineage.tools import LineageRuntime, execute_lineage_tool
+from seatunnel_agent.agents.data.data_lineage.tools import LineageRuntime, execute_lineage_tool
 
 
 def _graph(edges: list[tuple[str, str]], confidence: str = "high") -> LineageGraph:
@@ -87,7 +87,7 @@ def test_diff_graphs_no_change():
 
 def test_load_snapshot_blocks_path_traversal(tmp_path):
     # 快照目录外放一个格式合法的 JSON，任何穿越/绝对路径都不应读到它
-    from seatunnel_agent.data_lineage.cache import graph_to_dict
+    from seatunnel_agent.agents.data.data_lineage.cache import graph_to_dict
 
     outside = tmp_path / "evil.json"
     outside.write_text(
