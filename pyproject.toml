@@ -115,6 +115,7 @@ files = [
     "src/seatunnel_agent/common/settings_store.py",
     "src/seatunnel_agent/common/session_scope.py",
     "src/seatunnel_agent/common/sql_text.py",
+    "src/seatunnel_agent/common/filelock.py",
     "src/seatunnel_agent/common/utils.py",
     "src/seatunnel_agent/common/llm_usage.py",
     "src/seatunnel_agent/agents/devops/secret_scan",

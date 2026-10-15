@@ -126,6 +126,50 @@ def test_store_refuses_to_overwrite_corrupt_file(tmp_path) -> None:
     assert store.list() == []
 
 
+_INTERLEAVE_WORKER = """
+import sys
+from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore
+store = SubscriptionStore(sys.argv[1])
+for i in range(int(sys.argv[3])):
+    store.add(name=f"sub-{sys.argv[2]}-{i}", cron="0 9 * * *",
+              source_type="metric", metric="m")
+"""
+
+
+def test_store_interleaved_cross_process_writes_lose_nothing(tmp_path) -> None:
+    """Two real processes hammering add() concurrently: without a
+    cross-process lock the read-modify-write races drop entries."""
+    import subprocess
+    import sys
+
+    path = str(tmp_path / "subs.json")
+    n = 25
+    procs = [
+        subprocess.Popen([sys.executable, "-c", _INTERLEAVE_WORKER,
+                          path, tag, str(n)])
+        for tag in ("a", "b")
+    ]
+    for p in procs:
+        assert p.wait(timeout=120) == 0
+    names = {e["name"] for e in SubscriptionStore(path).list()}
+    assert len(names) == 2 * n, f"lost {2 * n - len(names)} entries"
+
+
+def test_store_write_lock_timeout_raises(tmp_path) -> None:
+    from seatunnel_agent.common.filelock import FileLockTimeout, file_lock
+
+    path = tmp_path / "subs.json"
+    store = SubscriptionStore(path, lock_timeout=0.3)
+    with file_lock(path):  # simulate another process holding the lock
+        with pytest.raises(FileLockTimeout, match="file lock"):
+            store.add(name="x", cron="0 9 * * *",
+                      source_type="metric", metric="m")
+    # lock released -> write succeeds again
+    entry = store.add(name="x", cron="0 9 * * *",
+                      source_type="metric", metric="m")
+    assert store.get(entry["id"]) is not None
+
+
 def test_store_env_path(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("T2S_SUBSCRIPTIONS_PATH", str(tmp_path / "env.json"))
     store = SubscriptionStore()

@@ -29,6 +29,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from seatunnel_agent.common.filelock import file_lock
 from seatunnel_agent.common.utils import (
     read_json_list,
     read_json_list_strict,
@@ -85,11 +86,19 @@ WATCH_MODES = ("dod", "wow")
 
 
 class SubscriptionStore:
-    def __init__(self, path: str | Path | None = None) -> None:
+    def __init__(self, path: str | Path | None = None,
+                 lock_timeout: float = 10.0) -> None:
         if path is None:  # env read at init time so tests can redirect it
             path = os.getenv("T2S_SUBSCRIPTIONS_PATH", "config/t2s_subscriptions.json")
         self.path = Path(path)
         self._lock = threading.Lock()
+        self._lock_timeout = lock_timeout
+
+    def _write_lock(self):
+        """Cross-process guard for every read-modify-write (CLI ``cron
+        serve`` and the hub UI may write the same file concurrently).
+        Reads stay lock-free/tolerant."""
+        return file_lock(self.path, timeout=self._lock_timeout)
 
     def _read(self) -> list[dict[str, Any]]:
         return read_json_list(self.path)
@@ -170,7 +179,7 @@ class SubscriptionStore:
             "last_status": "",
             "last_error": "",
         }
-        with self._lock:
+        with self._lock, self._write_lock():
             data = self._read_for_write()
             data.append(entry)
             if len(data) > _MAX_SUBSCRIPTIONS:
@@ -179,7 +188,7 @@ class SubscriptionStore:
         return entry
 
     def delete(self, sub_id: str) -> bool:
-        with self._lock:
+        with self._lock, self._write_lock():
             data = self._read_for_write()
             before = len(data)
             data = [e for e in data if e.get("id") != sub_id]
@@ -189,7 +198,7 @@ class SubscriptionStore:
             return False
 
     def set_enabled(self, sub_id: str, enabled: bool) -> bool:
-        with self._lock:
+        with self._lock, self._write_lock():
             data = self._read_for_write()
             for entry in data:
                 if entry.get("id") == sub_id:
@@ -199,7 +208,7 @@ class SubscriptionStore:
             return False
 
     def record_run(self, sub_id: str, status: str, error: str = "") -> None:
-        with self._lock:
+        with self._lock, self._write_lock():
             data = self._read_for_write()
             for entry in data:
                 if entry.get("id") == sub_id:
