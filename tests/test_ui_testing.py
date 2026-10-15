@@ -802,3 +802,97 @@ def test_expand_assert_remaps_yaml_on_key():
     a = _expand_assert({"enabled": {"target": "x", True: False}}, "ctx")
     assert a.args.get("on") is False
     assert True not in a.args
+
+
+# ── click_css / click_cell actions ──
+
+class TestClickCssCell:
+    def test_shorthand_click_css(self):
+        steps = ldr._expand_step({"click_css": ".st-hist tbody td"}, {}, "t")
+        assert steps[0].action == "click_css"
+        assert steps[0].args == {"target": ".st-hist tbody td"}
+
+    def test_shorthand_click_cell_text(self):
+        steps = ldr._expand_step({"click_cell": "orders"}, {}, "t")
+        assert steps[0].action == "click_cell"
+        assert steps[0].args == {"target": "orders"}
+
+    def test_click_cell_mapping(self):
+        steps = ldr._expand_step(
+            {"click_cell": {"table": "#hist-table", "text": "orders"}}, {}, "t")
+        assert steps[0].args == {"table": "#hist-table", "text": "orders"}
+
+    def test_dispatch_click_css(self):
+        from seatunnel_agent.agents.devops.ui_testing.actions import (
+            run_script_step,
+        )
+        dc = MagicMock()
+        log = run_script_step(
+            Step(action="click_css", args={"target": ".x button"}), dc)
+        assert log.ok
+        dc.click_css.assert_called_once_with(".x button")
+
+    def test_dispatch_click_cell(self):
+        from seatunnel_agent.agents.devops.ui_testing.actions import (
+            run_script_step,
+        )
+        dc = MagicMock()
+        log = run_script_step(
+            Step(action="click_cell",
+                 args={"text": "orders", "table": "#t"}), dc)
+        assert log.ok
+        dc.click_cell.assert_called_once_with("orders", "#t")
+
+    def test_dispatch_click_cell_shorthand_target(self):
+        from seatunnel_agent.agents.devops.ui_testing.actions import (
+            run_script_step,
+        )
+        dc = MagicMock()
+        log = run_script_step(
+            Step(action="click_cell", args={"target": "orders"}), dc)
+        assert log.ok
+        dc.click_cell.assert_called_once_with("orders", None)
+
+    def _dcp(self, page):
+        from seatunnel_agent.agents.devops.ui_testing.page import DCPage
+        return DCPage(page, "http://x")
+
+    def test_page_click_css_filters_visible(self):
+        page = MagicMock()
+        loc = page.locator.return_value
+        loc.count.return_value = 1
+        self._dcp(page).click_css("tbody tr")
+        # must append visible=true so Gradio 6 Dataframe's hidden
+        # measurement rows are skipped (docs/pitfalls.md)
+        page.locator.assert_called_once_with("tbody tr >> visible=true")
+        loc.first.click.assert_called_once()
+
+    def test_page_click_css_not_found(self):
+        page = MagicMock()
+        page.locator.return_value.count.return_value = 0
+        with pytest.raises(LookupError, match="no visible element"):
+            self._dcp(page).click_css(".nope")
+
+    def test_page_click_cell_clicks_match(self):
+        page = MagicMock()
+        cells = page.locator.return_value
+        hit = cells.filter.return_value
+        hit.count.return_value = 1
+        self._dcp(page).click_cell("orders")
+        cells.filter.assert_called_once_with(has_text="orders")
+        hit.first.click.assert_called_once()
+
+    def test_page_click_cell_not_found(self):
+        page = MagicMock()
+        page.locator.return_value.filter.return_value.count.return_value = 0
+        with pytest.raises(LookupError, match="no visible cell"):
+            self._dcp(page).click_cell("nope")
+
+    def test_page_click_cell_scoped_to_table(self):
+        page = MagicMock()
+        scope = page.locator.return_value.first
+        scope.locator.return_value.filter.return_value.count.return_value = 1
+        self._dcp(page).click_cell("orders", "#hist")
+        page.locator.assert_called_once_with("#hist >> visible=true")
+        scope.locator.return_value.filter.assert_called_once_with(
+            has_text="orders")

@@ -6,8 +6,9 @@ Usage (AI 改完 UI 后快速验证,无需写正式用例文件)::
         [--page /datacompare] [--screenshot-dir runs/adhoc/foo] [--headed]
 
 steps 文件与正式用例同格式: 既可以是完整用例 (带 id/steps/expect),
-也可以是裸的步骤列表 (``- click: 连接``),动作/断言语法与
-config/uitest_cases/ 完全一致。每步输出 PASS/FAIL,失败即停但仍截屏,
+也可以是裸的步骤列表 (``- click: 连接``),动作/断言语法与正式用例完全一致
+(内置用例在包内 ``src/seatunnel_agent/agents/devops/ui_testing/cases/``,
+用户自建用例在 ``config/uitest_cases/``)。每步输出 PASS/FAIL,失败即停但仍截屏,
 退出码非 0 表示失败。
 """
 
@@ -38,7 +39,9 @@ def load_adhoc_case(path: str | Path, page: str = "") -> TestCase:
     Accepted shapes (YAML or JSON):
     - a bare list of steps: ``[- click: 连接, ...]``
     - a mapping with optional ``page`` / ``steps`` / ``expect`` keys
-    - a full case mapping (or 1-element list) as in config/uitest_cases/
+    - a full case mapping (or 1-element list) as in the built-in cases dir
+      (src/seatunnel_agent/agents/devops/ui_testing/cases/) or user-authored
+      config/uitest_cases/
     """
     p = Path(path)
     if not p.is_file():

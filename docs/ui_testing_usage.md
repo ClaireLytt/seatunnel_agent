@@ -89,7 +89,9 @@ Text2SQL 与辅助页 / SQL 方言翻译 / 变更影响分析 / 配置迁移 / �
     - ai_judge: 结果卡片明确标记行数不一致(红色/未通过语义)     # LLM 模糊断言
 ```
 
-动作全集:`goto / click / fill / clear / press / select_ds / select /
+动作全集:`goto / click / click_css(按 CSS 选择器点击首个可见元素,自动跳过
+Gradio 6 Dataframe 隐藏测量行)/ click_cell(点击含指定文本的可见单元格,
+可选 table 限定容器)/ fill / clear / press / select_ds / select /
 dropdown_type / check / slide（滑条取值）/ open_accordion / wait_status_ok / wait_status_error /
 wait_result / wait(须写 note) / screenshot / set_language /
 download(捕获下载按钮产出的文件)/ popup_click(捕获 window.open 新窗口文本)/

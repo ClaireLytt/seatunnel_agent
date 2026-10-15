@@ -58,6 +58,17 @@ def _dispatch(step: Step, dc: DCPage) -> str:
         dc.click_button(args["target"], side)
         return f"clicked '{args['target']}'"
 
+    if a == "click_css":
+        sel = str(args.get("selector", args.get("target", "")))
+        dc.click_css(sel)
+        return f"clicked css {sel!r}"
+
+    if a == "click_cell":
+        text = str(args.get("text", args.get("target", "")))
+        table = args.get("table")
+        dc.click_cell(text, table)
+        return f"clicked cell {text!r}" + (f" in {table!r}" if table else "")
+
     if a == "fill":
         dc.clear_and_type(args["target"], str(args.get("value", "")), side)
         return f"filled '{args['target']}'"
