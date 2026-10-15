@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for LLM cost observability — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -17,8 +16,9 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
-from .aggregate import check_budget, summarize_cost
 from seatunnel_agent.common.utils import normalize_lang
+
+from .aggregate import check_budget, summarize_cost
 from .report import render_markdown
 
 router = APIRouter(prefix="/api/llmcost", tags=["llm_cost"])

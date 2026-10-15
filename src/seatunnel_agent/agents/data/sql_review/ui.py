@@ -14,10 +14,14 @@ from pathlib import Path
 
 import gradio as gr
 
-from seatunnel_agent.common.config import load_settings
-from seatunnel_agent.common.page_scaffold import title_row
-from seatunnel_agent.agents.data.sql_review.agent import SQLReviewAgent, static_review_report
-from seatunnel_agent.agents.data.sql_review.config import ReviewConfig, parse_config_text
+from seatunnel_agent.agents.data.sql_review.agent import (
+    SQLReviewAgent,
+    static_review_report,
+)
+from seatunnel_agent.agents.data.sql_review.config import (
+    ReviewConfig,
+    parse_config_text,
+)
 from seatunnel_agent.agents.data.sql_review.fixer import generate_fix
 from seatunnel_agent.agents.data.sql_review.i18n import catalog_label, sr
 from seatunnel_agent.agents.data.sql_review.linter import DIALECTS, normalize_dialect
@@ -25,6 +29,8 @@ from seatunnel_agent.agents.data.sql_review.prompts import DIALECT_NAMES
 from seatunnel_agent.agents.data.sql_review.report import render_report
 from seatunnel_agent.agents.data.sql_review.rlog import ReviewLogger
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+from seatunnel_agent.common.config import load_settings
+from seatunnel_agent.common.page_scaffold import title_row
 
 _DIALECT_CHOICES = [(DIALECT_NAMES.get(d, d), d) for d in DIALECTS]
 
@@ -185,7 +191,9 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             return gr.update(value=sr(lang, "sr_fix_need_review"), visible=True)
         try:
             if mode == "static":
-                from seatunnel_agent.agents.data.sql_review.autofix import apply_static_fixes
+                from seatunnel_agent.agents.data.sql_review.autofix import (
+                    apply_static_fixes,
+                )
                 try:
                     config = _parse_rules(rules_text)
                 except ValueError:

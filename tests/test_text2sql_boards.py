@@ -132,7 +132,10 @@ def test_board_pin(store: BoardStore) -> None:
 
 
 def test_render_board_sqlite(store: BoardStore, tmp_path) -> None:
-    from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, create_executor
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        DatabaseConfig,
+        create_executor,
+    )
     from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 
     db = tmp_path / "b.db"

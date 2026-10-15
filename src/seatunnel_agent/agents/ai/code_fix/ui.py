@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the code-fix agent — registered via its plugin manifest."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the PII scan agent — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -19,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
 from seatunnel_agent.common.utils import normalize_lang
+
 from .report import render_markdown, report_to_dict
 from .rules import DEFAULT_RULES
 from .scanner import scan_dir, scan_sql_text

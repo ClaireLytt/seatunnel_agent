@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Browser session for the web-task agent.
 
 Wraps Playwright behind the four primitives the agent needs — snapshot /

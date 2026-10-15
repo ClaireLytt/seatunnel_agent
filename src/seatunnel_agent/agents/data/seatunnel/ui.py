@@ -15,14 +15,20 @@ from typing import Any
 
 import gradio as gr
 
-from seatunnel_agent.common.config import Settings, env_float, load_settings
 from seatunnel_agent.agents.data.seatunnel.agent import SeaTunnelAgent
-from seatunnel_agent.hub.pages import _DOCS_URL
-from seatunnel_agent.common.history import (
-    Session, delete_session, extract_title, list_sessions,
-    load_session, new_session_id, rename_session, save_session,
-)
 from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
+from seatunnel_agent.common.config import Settings, env_float, load_settings
+from seatunnel_agent.common.history import (
+    Session,
+    delete_session,
+    extract_title,
+    list_sessions,
+    load_session,
+    new_session_id,
+    rename_session,
+    save_session,
+)
+from seatunnel_agent.hub.pages import _DOCS_URL
 
 _EVENT_POLL_INTERVAL = env_float("UI_EVENT_POLL_INTERVAL", 0.3)
 _DEMO_STEP_DELAY = env_float("UI_DEMO_STEP_DELAY", 0.35)
@@ -282,7 +288,8 @@ def _run_demo(
     config_path: str,
     lang: str,
 ) -> list[dict[str, str]]:
-    import tempfile, os
+    import os
+    import tempfile
 
     fake_settings = Settings(
         api_key="demo", seatunnel_home=".", seatunnel_bin="", max_retries=3,

@@ -1,12 +1,12 @@
-# -*- coding: utf-8 -*-
 """Bilingual markdown report for the LLM cost summary."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from .i18n import tp
 from seatunnel_agent.common.utils import normalize_lang
+
+from .i18n import tp
 
 
 def _usd(v: float) -> str:

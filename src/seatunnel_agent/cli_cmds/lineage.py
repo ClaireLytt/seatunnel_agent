@@ -89,7 +89,11 @@ def lineage(
     if not use_agent and not table and not health and not export_ol:
         raise click.UsageError("请用 --table 指定目标表（或 --ask 用自然语言提问 / --check 治理体检）")
 
-    from seatunnel_agent.agents.data.data_lineage import LineageLogger, build_graph, load_lineage_config
+    from seatunnel_agent.agents.data.data_lineage import (
+        LineageLogger,
+        build_graph,
+        load_lineage_config,
+    )
 
     config = load_lineage_config()
     if meta_table:
@@ -121,7 +125,9 @@ def lineage(
     logger = LineageLogger()
 
     if export_ol:
-        from seatunnel_agent.agents.data.data_lineage.openlineage import export_openlineage_file
+        from seatunnel_agent.agents.data.data_lineage.openlineage import (
+            export_openlineage_file,
+        )
 
         try:
             out_path = export_openlineage_file(graph, export_ol)
@@ -134,8 +140,9 @@ def lineage(
 
     # ── agent mode ──
     if use_agent:
-        from ..common.config import load_settings
         from seatunnel_agent.agents.data.data_lineage import LineageAgent
+
+        from ..common.config import load_settings
 
         if ctx.obj.get("model"):
             os.environ["MODEL_NAME"] = ctx.obj["model"]
@@ -313,7 +320,9 @@ def migrate(
     from pathlib import Path
 
     from seatunnel_agent.agents.data.config_migrate import (
-        migrate_dir, migrate_file, render_batch_markdown,
+        migrate_dir,
+        migrate_file,
+        render_batch_markdown,
         render_migrate_markdown,
     )
     from seatunnel_agent.agents.data.config_migrate.migrator import LEVELS as MIG_LEVELS
@@ -365,7 +374,9 @@ def datadict(ctx: click.Context, sql_dir: str, sql_dialect: str, lang: str,
     from pathlib import Path
 
     from seatunnel_agent.agents.data.data_lineage.dictionary import (
-        add_llm_descriptions, build_dictionary, render_dictionary_markdown,
+        add_llm_descriptions,
+        build_dictionary,
+        render_dictionary_markdown,
     )
     from seatunnel_agent.agents.data.data_lineage.loaders import build_graph
 
@@ -533,8 +544,12 @@ def impact(
     from pathlib import Path
 
     from seatunnel_agent.agents.data.data_lineage.impact import (
-        LEVELS, analyze_dirs, impact_to_dict, materialize_git_ref,
-        render_impact_comment, render_impact_markdown,
+        LEVELS,
+        analyze_dirs,
+        impact_to_dict,
+        materialize_git_ref,
+        render_impact_comment,
+        render_impact_markdown,
     )
 
     if bool(old_dir) == bool(git_base):

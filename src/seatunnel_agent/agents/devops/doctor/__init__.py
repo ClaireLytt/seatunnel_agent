@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Doctor agent — read-only environment diagnosis with a deterministic
 no-key fallback. Prescribes fixes; never executes them."""
 

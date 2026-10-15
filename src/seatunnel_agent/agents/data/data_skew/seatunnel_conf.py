@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """SeaTunnel config (HOCON) parsing/rewriting for split-key analysis.
 
 Moved verbatim out of splitkey.py, which re-exports the public names.
@@ -13,7 +12,6 @@ from .measure import (  # noqa: F401 — SplitKeyError re-exported
     MAX_CANDIDATES,
     SplitKeyError,
 )
-
 
 _IDENT = r"[A-Za-z_][\w$]*"
 

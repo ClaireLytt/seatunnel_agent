@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import ms_since
 from seatunnel_agent.common.config import load_settings
+
 from .agent import Text2SQLAgent
 from .executor import DS_TYPES, DatabaseConfig, create_executor
 from .metrics import MetricError, build_metric_sql, load_metric_store, ratio_sides

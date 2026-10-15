@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Notification channels for subscription pushes (Feishu / DingTalk /
 WeCom / email), stdlib only.
 
@@ -9,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Callable
+from collections.abc import Callable
 
 _CARD_MAX_ROWS = 10
 

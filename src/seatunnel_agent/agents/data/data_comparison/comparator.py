@@ -8,10 +8,11 @@ import logging
 import math
 import os
 import re
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 _log = logging.getLogger(__name__)
 
@@ -46,35 +47,33 @@ _BACKSLASH_ESCAPE_DIALECTS = frozenset(
     {"mysql", "doris", "hive", "sparksql", "clickhouse"})
 
 from .models import (  # noqa: F401 — re-exported, public API
-    ColumnMapping,
-    SchemaDiffItem,
-    SchemaDiffResult,
-    RowCountResult,
     AggregateItem,
     AggregateResult,
-    ModifiedRow,
+    BatchFullItem,
+    ChecksumItem,
+    ChecksumResult,
+    ColumnMapping,
+    CompareReport,
+    CustomAggItem,
+    CustomAggResult,
     KeyedDiffResult,
+    ModifiedRow,
+    PartitionCompareItem,
+    PartitionResult,
     ProfileItem,
     ProfileResult,
-    ThresholdConfig,
-    BatchFullItem,
-    QualityRule,
     QualityResult,
-    ReportDiffItem,
+    QualityRule,
     ReportDiff,
+    ReportDiffItem,
+    RowCountResult,
+    SchemaDiffItem,
+    SchemaDiffResult,
     SkewBucket,
     SkewItem,
     SkewResult,
-    ChecksumItem,
-    ChecksumResult,
-    PartitionCompareItem,
-    PartitionResult,
-    CustomAggItem,
-    CustomAggResult,
-    CompareReport,
+    ThresholdConfig,
 )
-
-
 
 # ---------------------------------------------------------------------------
 # Identifier quoting
@@ -747,7 +746,7 @@ def build_trend_data(
 
     for fpath in sorted(reports_dir.glob("compare_*.json"), key=_file_ts):
         try:
-            with open(fpath, "r", encoding="utf-8") as f:
+            with open(fpath, encoding="utf-8") as f:
                 d = json.load(f)
             ts = _file_ts(fpath)
             report = CompareReport.from_dict(d)

@@ -16,16 +16,7 @@ from typing import Any
 
 import gradio as gr
 
-from seatunnel_agent.common.config import load_settings
-from seatunnel_agent.agents.data.text2sql.executor import (
-    DS_DEFAULTS,
-    DS_TYPES,
-    DIALECT_NAMES,
-    DatabaseConfig,
-    config_from_env,
-    create_executor,
-    schema_ddl_path_from_env,
-)
+from seatunnel_agent.agents.data.text2sql.boards import BoardStore, render_board
 from seatunnel_agent.agents.data.text2sql.chat_history import (
     Text2SQLSession,
     extract_title,
@@ -34,17 +25,26 @@ from seatunnel_agent.agents.data.text2sql.chat_history import (
     now_iso,
     save_t2s_session,
 )
-from seatunnel_agent.agents.data.text2sql.boards import BoardStore, render_board
+from seatunnel_agent.agents.data.text2sql.executor import (
+    DIALECT_NAMES,
+    DS_DEFAULTS,
+    DS_TYPES,
+    DatabaseConfig,
+    config_from_env,
+    create_executor,
+    schema_ddl_path_from_env,
+)
 from seatunnel_agent.agents.data.text2sql.favorites import FavoritesStore
-from seatunnel_agent.agents.data.text2sql.templates import SQL_TEMPLATES, template_choices, template_description
 from seatunnel_agent.agents.data.text2sql.i18n import (
     t2s as _t2s,
 )
 from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
-
-
-
+from seatunnel_agent.agents.data.text2sql.templates import (
+    SQL_TEMPLATES,
+    template_choices,
+    template_description,
+)
 from seatunnel_agent.agents.data.text2sql.ui_cards import (  # noqa: F401 — re-exported for tests/back-compat
     _DL_BTN_STYLE,
     _MAX_REVIEW_URL_SQL,
@@ -61,7 +61,6 @@ from seatunnel_agent.agents.data.text2sql.ui_cards import (  # noqa: F401 — re
 )
 from seatunnel_agent.agents.data.text2sql.ui_format import (  # noqa: F401 — re-exported for tests/back-compat
     _CHART_CACHE_MAX,
-    _IncrementalFormatter,
     _chart_cache,
     _chart_cache_lock,
     _chart_cache_put,
@@ -69,11 +68,13 @@ from seatunnel_agent.agents.data.text2sql.ui_format import (  # noqa: F401 — r
     _format_events,
     _format_tool_result,
     _history_rows,
+    _IncrementalFormatter,
     _placeholder,
     _session_choices_global,
     _shared_holder,
     _shared_holder_lock,
 )
+from seatunnel_agent.common.config import load_settings
 
 
 def render_schema_browser_page(app=None) -> None:
@@ -376,6 +377,7 @@ def render_history_page(app=None) -> None:
         if not records:
             raise gr.Error(_t2s(lang, "hist_no_selection"))
         import tempfile
+
         from seatunnel_agent.agents.data.text2sql.exporter import export_csv
         out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
         out_dir.mkdir(exist_ok=True)
@@ -390,6 +392,7 @@ def render_history_page(app=None) -> None:
         if not records:
             raise gr.Error(_t2s(lang, "hist_empty"))
         import tempfile
+
         from seatunnel_agent.agents.data.text2sql.exporter import export_csv
         out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
         out_dir.mkdir(exist_ok=True)
@@ -701,7 +704,9 @@ def render_text2sql_page(app=None) -> None:
     # Subscription scheduler rides along with the web UI (idempotent daemon
     # thread; `seatunnel-agent t2s-cron --serve` covers UI-less deployments).
     try:
-        from seatunnel_agent.agents.data.text2sql.subscriptions import start_global_scheduler
+        from seatunnel_agent.agents.data.text2sql.subscriptions import (
+            start_global_scheduler,
+        )
         start_global_scheduler()
     except Exception:
         pass  # subscriptions are optional — never block the page
@@ -736,7 +741,9 @@ def render_text2sql_page(app=None) -> None:
         """Update agent's runtime store AND rebuild its system prompt."""
         agent = holder.get("agent")
         if agent is not None:
-            from seatunnel_agent.agents.data.text2sql.prompts import build_text2sql_prompt
+            from seatunnel_agent.agents.data.text2sql.prompts import (
+                build_text2sql_prompt,
+            )
             agent.runtime.store = new_store
             ds_type = holder.get("ds_type", "hive")
             agent._system_prompt = build_text2sql_prompt(new_store, dialect=ds_type)
@@ -1256,9 +1263,14 @@ def render_text2sql_page(app=None) -> None:
         return None
 
     def _run_streaming(msg: str, history: list, lang: str, chart_pref: str = "Auto"):
-        from seatunnel_agent.hub.ui import EventCollector, _normalize_chat
-        from seatunnel_agent.agents.data.text2sql.chart import detect_chart_type, build_chart, fig_to_base64
         import matplotlib.pyplot as plt
+
+        from seatunnel_agent.agents.data.text2sql.chart import (
+            build_chart,
+            detect_chart_type,
+            fig_to_base64,
+        )
+        from seatunnel_agent.hub.ui import EventCollector, _normalize_chat
 
         t = lambda k: _t2s(lang, k)
         history = _normalize_chat(history)
@@ -1274,7 +1286,9 @@ def render_text2sql_page(app=None) -> None:
             if (holder.get("settings") is not None
                     and holder.get("settings_version") != settings_store.get_version()):
                 try:
-                    from seatunnel_agent.common.config import load_settings as _load_settings
+                    from seatunnel_agent.common.config import (
+                        load_settings as _load_settings,
+                    )
                     holder["settings"] = _load_settings()
                     holder["settings_version"] = settings_store.get_version()
                     holder["agent"] = None
@@ -1546,7 +1560,9 @@ def render_text2sql_page(app=None) -> None:
         ex_store = getattr(agent, "example_store", None) or ExampleStore()
         try:
             if positive:
-                from seatunnel_agent.agents.data.text2sql.validator import extract_tables
+                from seatunnel_agent.agents.data.text2sql.validator import (
+                    extract_tables,
+                )
                 ex_store.add(
                     question=question, sql=sql,
                     tables=extract_tables(sql), source="feedback",
@@ -1864,7 +1880,10 @@ def render_text2sql_page(app=None) -> None:
         return _sub_listing(lang)
 
     def _sub_run(sub_id: str, lang: str):
-        from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore, run_subscription
+        from seatunnel_agent.agents.data.text2sql.subscriptions import (
+            SubscriptionStore,
+            run_subscription,
+        )
 
         t = lambda k: _t2s(lang, k)
         if not sub_id:
@@ -2015,7 +2034,11 @@ def render_text2sql_page(app=None) -> None:
         except Exception:
             raise gr.Error(t("board_need_connect"))
 
-        from seatunnel_agent.agents.data.text2sql.chart import build_chart, detect_chart_type, fig_to_base64
+        from seatunnel_agent.agents.data.text2sql.chart import (
+            build_chart,
+            detect_chart_type,
+            fig_to_base64,
+        )
 
         entries = render_board(board, executor, store_ref, ds_type=ds_type)
         title = _t2s(lang, "board_title_fmt").format(name=board["name"])

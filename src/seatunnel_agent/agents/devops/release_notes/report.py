@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Bilingual changelog rendering + optional LLM polish (advisory)."""
 
 from __future__ import annotations
 
-from typing import Callable
-
-from .core import GROUPS, ReleaseNotes
+from collections.abc import Callable
 
 from seatunnel_agent.common.utils import normalize_lang
 
+from .core import GROUPS, ReleaseNotes
 
 _ZH_LABELS = {key: zh for key, _en, zh in GROUPS}
 

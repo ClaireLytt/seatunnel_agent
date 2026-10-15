@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Optional runtime skew verification against a live database.
 
 Static rules only *suspect* skew; when the user connects a datasource
@@ -17,9 +16,10 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
+from seatunnel_agent.common.utils import normalize_lang
+
 from .detector import clean_sql, split_statements
 from .i18n import dsk
-from seatunnel_agent.common.utils import normalize_lang
 
 MAX_TARGETS = 8
 TOP_N = 10

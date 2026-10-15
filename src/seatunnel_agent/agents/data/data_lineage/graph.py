@@ -148,7 +148,7 @@ class SlaImpactResult:
 
     root: str
     delay_hours: float = 0.0
-    affected: list[tuple["TableNode", int]] = field(default_factory=list)  # (node, hops)
+    affected: list[tuple[TableNode, int]] = field(default_factory=list)  # (node, hops)
     missing_root: bool = False
     truncated: bool = False
 

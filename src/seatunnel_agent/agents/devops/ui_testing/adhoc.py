@@ -20,7 +20,13 @@ from pathlib import Path
 
 import yaml
 
-from .loader import CASES_DIR, CaseLoadError, _expand_assert, _expand_step, _load_fixtures
+from .loader import (
+    CASES_DIR,
+    CaseLoadError,
+    _expand_assert,
+    _expand_step,
+    _load_fixtures,
+)
 from .models import CaseResult, Step, TestCase
 
 ADHOC_DIR = Path("runs") / "adhoc"

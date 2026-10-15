@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Code-fix agent — run tests, read, patch, re-run, until green.
 
 The full perceive→act→observe loop: the environment (pytest output) drives
@@ -23,6 +22,7 @@ from typing import Any
 
 from seatunnel_agent.agent_core import Step, ToolLoopAgent
 from seatunnel_agent.common.config import Settings
+
 from .tools import build_tools, run_pytest
 
 _SYSTEM = """\

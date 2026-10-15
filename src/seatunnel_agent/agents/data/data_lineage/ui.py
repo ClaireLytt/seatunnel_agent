@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the data lineage agent.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -15,7 +14,6 @@ import time
 
 import gradio as gr
 
-from seatunnel_agent.common.config import load_settings
 from seatunnel_agent.agents.data.data_lineage import (
     LineageAgent,
     LineageGraph,
@@ -31,8 +29,6 @@ from seatunnel_agent.agents.data.data_lineage import (
     render_sla_impact,
     static_lineage,
 )
-from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import SQL_DIALECTS
-from seatunnel_agent.common.page_scaffold import title_row
 from seatunnel_agent.agents.data.data_lineage.snapshot import (
     diff_graphs,
     list_snapshots,
@@ -40,6 +36,9 @@ from seatunnel_agent.agents.data.data_lineage.snapshot import (
     render_diff_markdown,
     save_snapshot,
 )
+from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import SQL_DIALECTS
+from seatunnel_agent.common.config import load_settings
+from seatunnel_agent.common.page_scaffold import title_row
 from seatunnel_agent.hub.ui import EventCollector
 
 _logger = LineageLogger()

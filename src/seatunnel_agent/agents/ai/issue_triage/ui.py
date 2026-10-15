@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the issue-triage agent — registered via its manifest."""
 
 from __future__ import annotations

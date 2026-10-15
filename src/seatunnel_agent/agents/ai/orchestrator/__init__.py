@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Agent orchestrator — one chat entry routed across the whole platform.
 
 An LLM with one tool per deterministic agent (SQL review, transpile, impact,

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Release-notes helper: parsing, bump logic, rendering, polish, CLI, API."""
 
 from __future__ import annotations
@@ -9,8 +8,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
-from seatunnel_agent.common.llm import LLMResponse
 from seatunnel_agent.agents.devops.release_notes import (
     build_notes,
     next_semver,
@@ -19,6 +16,8 @@ from seatunnel_agent.agents.devops.release_notes import (
     render_markdown,
     suggest_bump,
 )
+from seatunnel_agent.cli import cli
+from seatunnel_agent.common.llm import LLMResponse
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "release_demo"
 LOG = (DEMO / "commits.txt").read_text(encoding="utf-8")

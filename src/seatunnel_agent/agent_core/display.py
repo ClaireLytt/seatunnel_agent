@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Shared Rich console rendering for the interactive agents' tool calls.
 
 The CLI agents (seatunnel config, sql_review, text2sql, data_lineage)
@@ -9,7 +8,8 @@ color and the one-line success summary differ, so both are injected.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel

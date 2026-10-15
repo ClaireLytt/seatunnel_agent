@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the PII / sensitive-column scan agent (pii_scan).
 
 Deterministic only — no LLM, no database, no network.
@@ -12,7 +11,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.pii_scan import (
     DEFAULT_RULES,
     collect_columns_from_ddl,
@@ -23,6 +21,7 @@ from seatunnel_agent.agents.data.pii_scan import (
     scan_sql_text,
 )
 from seatunnel_agent.agents.data.pii_scan.rules import expression_is_masked
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 

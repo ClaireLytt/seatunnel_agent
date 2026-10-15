@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the SQL test-data generator (sql_testgen).
 
 Deterministic only — no LLM, no external database (SQLite is stdlib).
@@ -12,7 +11,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.sql_testgen import (
     generate,
     render_markdown,
@@ -20,6 +18,7 @@ from seatunnel_agent.agents.data.sql_testgen import (
     validate_with_sqlite,
     write_outputs,
 )
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 

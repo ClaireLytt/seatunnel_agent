@@ -7,6 +7,7 @@ report where each hit spreads and whether the propagation is masked.
 Fully deterministic — no database connection, no LLM, nothing executed.
 """
 
+from .report import render_markdown, report_to_dict
 from .rules import DEFAULT_RULES, MASKING_FUNCS, PiiRule, load_extra_rules
 from .scanner import (
     ColumnRef,
@@ -18,7 +19,6 @@ from .scanner import (
     scan_files,
     scan_sql_text,
 )
-from .report import render_markdown, report_to_dict
 
 __all__ = [
     "DEFAULT_RULES",

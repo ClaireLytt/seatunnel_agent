@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Optional LLM advice for transpile findings.
 
 Strictly additive: the deterministic result is never modified.  The advice
@@ -11,8 +10,9 @@ from __future__ import annotations
 
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.llm import LLMClient
-from .i18n import issue_message
 from seatunnel_agent.common.utils import normalize_lang
+
+from .i18n import issue_message
 from .prompts import ADVISOR_MARKER, ADVISOR_SYSTEM_PROMPT
 from .transpiler import TranspileResult
 

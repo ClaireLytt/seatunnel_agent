@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the scheduling DAG health checker.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -11,7 +10,12 @@ from __future__ import annotations
 import gradio as gr
 
 from seatunnel_agent.agents.data.dag_check import check_sql_dir, render_markdown
-from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row, wire_page
+from seatunnel_agent.common.page_scaffold import (
+    make_page_t,
+    scroll_marker,
+    title_row,
+    wire_page,
+)
 from seatunnel_agent.common.utils import normalize_lang
 
 _DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",

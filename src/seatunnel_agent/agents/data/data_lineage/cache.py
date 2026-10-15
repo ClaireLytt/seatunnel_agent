@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Local TTL cache for graphs built from the Hive metadata lineage table.
 
 A full-partition scan of ``zz.dwm_meta_table_lineage_df`` can take minutes, so

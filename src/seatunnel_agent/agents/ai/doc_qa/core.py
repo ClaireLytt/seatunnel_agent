@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Doc Q&A core — BM25 retrieval over local docs, zero dependencies.
 
 Corpus = the project's ``docs/*.md`` (recursive) plus the built-in connector

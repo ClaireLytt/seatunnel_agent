@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Split-key column measurement + candidate ranking (live SQL probes).
 
 Moved verbatim out of splitkey.py, which re-exports the public names.

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the SQL formatter — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -18,8 +17,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
-from .formatter import format_text
 from seatunnel_agent.common.utils import normalize_lang
+
+from .formatter import format_text
 from .report import render_markdown, result_to_dict
 
 router = APIRouter(prefix="/api/sqlfmt", tags=["sql_fmt"])

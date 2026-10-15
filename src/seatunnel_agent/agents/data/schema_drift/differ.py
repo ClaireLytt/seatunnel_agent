@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic schema parsing and drift detection.
 
 Type-change classification: a *widening* change within the same family
@@ -94,7 +93,9 @@ def parse_schema_script(sql_text: str, dialect: str = "hive",
     import sqlglot
     from sqlglot import exp
 
-    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import resolve_sqlglot_dialect
+    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import (
+        resolve_sqlglot_dialect,
+    )
 
     read = resolve_sqlglot_dialect(dialect)
     tables: dict[str, TableSchema] = {}

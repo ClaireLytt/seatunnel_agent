@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the Data Skew agent — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance to serve alongside the UI
@@ -20,9 +19,10 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
-from .detector import DIALECTS, _DIALECT_ALIASES
-from .history import default_history
 from seatunnel_agent.common.utils import normalize_lang
+
+from .detector import _DIALECT_ALIASES, DIALECTS
+from .history import default_history
 
 router = APIRouter(prefix="/api/skew", tags=["data_skew"])
 

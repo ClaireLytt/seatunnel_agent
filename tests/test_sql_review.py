@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the SQL Code Review module (linter, report, tools)."""
 
 from __future__ import annotations
@@ -7,11 +6,12 @@ import json
 
 import pytest
 
+from seatunnel_agent.agents.data.sql_review.agent import static_review
 from seatunnel_agent.agents.data.sql_review.linter import (
     clean_sql,
     is_known_dialect,
-    lint_sql,
     line_of,
+    lint_sql,
     normalize_dialect,
 )
 from seatunnel_agent.agents.data.sql_review.report import (
@@ -25,8 +25,6 @@ from seatunnel_agent.agents.data.sql_review.tools import (
     SQLReviewRuntime,
     execute_review_tool,
 )
-from seatunnel_agent.agents.data.sql_review.agent import static_review
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1377,7 +1375,9 @@ def test_inline_disable_in_block_comment_ignored():
 
 def test_baseline_roundtrip(tmp_path):
     from seatunnel_agent.agents.data.sql_review.baseline import (
-        load_baseline, save_baseline, split_by_baseline,
+        load_baseline,
+        save_baseline,
+        split_by_baseline,
     )
     f1 = _mk_finding(Severity.RISK)
     path = tmp_path / "base.json"
@@ -1392,7 +1392,11 @@ def test_baseline_roundtrip(tmp_path):
 
 
 def test_baseline_fingerprint_path_normalized(tmp_path):
-    from seatunnel_agent.agents.data.sql_review.baseline import save_baseline, split_by_baseline, load_baseline
+    from seatunnel_agent.agents.data.sql_review.baseline import (
+        load_baseline,
+        save_baseline,
+        split_by_baseline,
+    )
     f1 = _mk_finding(Severity.RISK)
     path = tmp_path / "base.json"
     save_baseline(path, [("sql\\a.sql", f1)])
@@ -1437,6 +1441,7 @@ def test_cli_baseline_workflow(tmp_path):
 
 def test_formats_json_single_source():
     import json as _json
+
     from seatunnel_agent.agents.data.sql_review.agent import static_review_report
     from seatunnel_agent.agents.data.sql_review.formats import results_to_json
     rep = static_review_report("SELECT * FROM a", "hive")
@@ -1448,6 +1453,7 @@ def test_formats_json_single_source():
 
 def test_formats_json_multi_source_is_list():
     import json as _json
+
     from seatunnel_agent.agents.data.sql_review.agent import static_review_report
     from seatunnel_agent.agents.data.sql_review.formats import results_to_json
     rep = static_review_report("SELECT 1", "hive")
@@ -1457,6 +1463,7 @@ def test_formats_json_multi_source_is_list():
 
 def test_formats_sarif_structure():
     import json as _json
+
     from seatunnel_agent.agents.data.sql_review.agent import static_review_report
     from seatunnel_agent.agents.data.sql_review.formats import results_to_sarif
     rep = static_review_report("SELECT * FROM a", "hive")
@@ -1554,6 +1561,7 @@ def test_partition_cols_with_regex_metachars_do_not_crash():
 
 def test_changed_sql_files_from_subdirectory(tmp_path):
     import subprocess
+
     from seatunnel_agent.agents.data.sql_review.runner import changed_sql_files
 
     def git(*args):
@@ -1607,7 +1615,11 @@ def test_merge_findings_dedup_across_languages():
 
 def test_formats_parse_english_line_numbers():
     import json as _json
-    from seatunnel_agent.agents.data.sql_review.formats import results_to_json, results_to_sarif
+
+    from seatunnel_agent.agents.data.sql_review.formats import (
+        results_to_json,
+        results_to_sarif,
+    )
     rep = ReviewReport(findings=[
         Finding(Severity.RISK, "calculation", "d", "Line 6", "i", "s")])
     doc = _json.loads(results_to_json([("q.sql", rep)]))
@@ -1647,8 +1659,10 @@ def test_parse_config_text_thresholds():
 
 
 def test_parse_config_text_empty_and_invalid():
-    from seatunnel_agent.agents.data.sql_review.config import (DEFAULT_CONFIG,
-                                                   parse_config_text)
+    from seatunnel_agent.agents.data.sql_review.config import (
+        DEFAULT_CONFIG,
+        parse_config_text,
+    )
     assert parse_config_text("") is DEFAULT_CONFIG
     with pytest.raises(ValueError):
         parse_config_text("- just\n- a list\n")
@@ -1815,6 +1829,7 @@ def api_client(tmp_path, monkeypatch):
     fastapi = pytest.importorskip("fastapi")
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
+
     from seatunnel_agent.agents.data.sql_review.api import router
     monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path / "logs"))
     app = fastapi.FastAPI()
@@ -2359,7 +2374,10 @@ def test_deep_offset_threshold_configurable():
 # ---------------------------------------------------------------------------
 
 def test_en_report_renders_english_rule_texts():
-    from seatunnel_agent.agents.data.sql_review.report import ReviewReport, render_report
+    from seatunnel_agent.agents.data.sql_review.report import (
+        ReviewReport,
+        render_report,
+    )
     findings = lint_sql("SELECT * FROM t", "hive")
     report = ReviewReport(findings=findings, dialect="hive")
     md = render_report(report, lang="en")
@@ -2368,7 +2386,10 @@ def test_en_report_renders_english_rule_texts():
 
 
 def test_en_report_formats_args():
-    from seatunnel_agent.agents.data.sql_review.report import ReviewReport, render_report
+    from seatunnel_agent.agents.data.sql_review.report import (
+        ReviewReport,
+        render_report,
+    )
     sql = "SELECT a, b, SUM(c) FROM t GROUP BY a"
     findings = lint_sql(sql, "hive")
     report = ReviewReport(findings=findings, dialect="hive")
@@ -2378,7 +2399,10 @@ def test_en_report_formats_args():
 
 
 def test_zh_report_unchanged_by_i18n_keys():
-    from seatunnel_agent.agents.data.sql_review.report import ReviewReport, render_report
+    from seatunnel_agent.agents.data.sql_review.report import (
+        ReviewReport,
+        render_report,
+    )
     findings = lint_sql("SELECT * FROM t", "hive")
     report = ReviewReport(findings=findings, dialect="hive")
     md = render_report(report, lang="zh")
@@ -2430,7 +2454,10 @@ def test_all_linter_keys_have_en_templates():
 # Static auto-fix (autofix.py)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.sql_review.autofix import apply_static_fixes, describe_fixes
+from seatunnel_agent.agents.data.sql_review.autofix import (
+    apply_static_fixes,
+    describe_fixes,
+)
 
 
 def test_autofix_null_eq():
@@ -2535,7 +2562,11 @@ def test_syntax_error_does_not_stop_other_rules():
 # ---------------------------------------------------------------------------
 
 def _schema_ref_store(extra_cols: int = 0):
-    from seatunnel_agent.agents.data.text2sql.schema import ColumnSchema, SchemaStore, TableSchema
+    from seatunnel_agent.agents.data.text2sql.schema import (
+        ColumnSchema,
+        SchemaStore,
+        TableSchema,
+    )
     cols = [ColumnSchema("order_id", "bigint"), ColumnSchema("amount", "decimal(10,2)"),
             ColumnSchema("create_time", "timestamp")]
     cols += [ColumnSchema(f"ext_{i}", "string") for i in range(extra_cols)]

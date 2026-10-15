@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Bilingual markdown report for eval runs."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from .runner import SuiteResult
-
 from seatunnel_agent.common.utils import normalize_lang
 
+from .runner import SuiteResult
 
 _I18N = {
     "en": {

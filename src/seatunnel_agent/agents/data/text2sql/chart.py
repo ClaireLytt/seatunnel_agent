@@ -9,9 +9,9 @@ import threading
 from typing import Any
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-
 
 _cjk_font_configured = False
 _cjk_font_lock = threading.Lock()
@@ -26,6 +26,7 @@ def _configure_cjk_font() -> None:
         if _cjk_font_configured:
             return
         import matplotlib.font_manager as fm
+
         from .exporter import NOTO_FONT_PATH, download_noto_font
 
         def _use(name: str) -> None:

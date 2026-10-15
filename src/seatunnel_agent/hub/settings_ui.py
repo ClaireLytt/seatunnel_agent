@@ -197,7 +197,9 @@ def _presets_store():
     through the SAME instance, so don't create one per callback."""
     global _presets_singleton
     if _presets_singleton is None:
-        from seatunnel_agent.agents.data.data_comparison.presets import ConnectionPresetsStore
+        from seatunnel_agent.agents.data.data_comparison.presets import (
+            ConnectionPresetsStore,
+        )
         _presets_singleton = ConnectionPresetsStore()
     return _presets_singleton
 

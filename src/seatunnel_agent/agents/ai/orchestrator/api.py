@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the orchestrator — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -20,6 +19,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
+
 from .catalog import build_catalog
 from .router import render_suggestions, suggest
 

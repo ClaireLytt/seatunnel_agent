@@ -45,6 +45,7 @@ def skew(
 
     from seatunnel_agent.agents.data.data_skew.history import default_history
     from seatunnel_agent.agents.data.data_skew.report import Severity, render_report
+
     from ..common.utils import collect_sql_files
 
     # ── collect analysis targets ──
@@ -78,8 +79,9 @@ def skew(
     results = []  # (label, SkewReport, markdown)
     for label, text in sources:
         if use_llm:
-            from ..common.config import load_settings
             from seatunnel_agent.agents.data.data_skew.agent import DataSkewAgent
+
+            from ..common.config import load_settings
             try:
                 settings = load_settings()
             except RuntimeError as e:

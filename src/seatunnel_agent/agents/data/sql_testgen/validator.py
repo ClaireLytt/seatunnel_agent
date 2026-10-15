@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Execute the generated data + query on in-memory SQLite (stdlib).
 
 Hive/Spark SQL is transpiled to the sqlite dialect via sqlglot; qualified
@@ -47,7 +46,9 @@ def _to_sqlite_query(sql: str, dialect: str) -> str:
     import sqlglot
     from sqlglot import exp
 
-    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import resolve_sqlglot_dialect
+    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import (
+        resolve_sqlglot_dialect,
+    )
 
     read = resolve_sqlglot_dialect(dialect)
     tree = sqlglot.parse_one(sql, read=read)

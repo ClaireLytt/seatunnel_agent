@@ -295,7 +295,7 @@ class MetricStore:
     @classmethod
     def from_text(
         cls, text: str, schema_store: SchemaStore | None = None,
-    ) -> tuple["MetricStore", list[str]]:
+    ) -> tuple[MetricStore, list[str]]:
         """Parse YAML text; returns (store, errors). Bad metrics are skipped."""
         try:
             import yaml
@@ -341,7 +341,7 @@ class MetricStore:
     @classmethod
     def from_file(
         cls, path: str | Path, schema_store: SchemaStore | None = None,
-    ) -> tuple["MetricStore", list[str]]:
+    ) -> tuple[MetricStore, list[str]]:
         p = Path(path)
         if not p.is_file():
             return cls(), [f"指标定义文件不存在: {p}"]

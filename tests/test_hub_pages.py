@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Hub pages: landing (`/`), Data Agents (`/data`), AI Platform (`/ai`).
 
 Offline checks over the three HTML builders — no browser, no LLM.

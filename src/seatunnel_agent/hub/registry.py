@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Plugin registry — drop-in agent packages, auto-discovered.
 
 A package under ``seatunnel_agent.agents.<workspace>`` becomes a platform
@@ -21,7 +20,7 @@ import html as _html
 import importlib
 import pkgutil
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -89,7 +88,7 @@ def workspace_manifests(workspace: str) -> list[AgentManifest]:
 _ICON_DIR = Path(__file__).parent.parent / "static" / "icons"
 
 
-@lru_cache(maxsize=None)
+@cache
 def _icon_svg(slug: str) -> str | None:
     """Vendored Ant Design outlined SVG for a route slug, or None."""
     path = _ICON_DIR / f"{slug}.svg"

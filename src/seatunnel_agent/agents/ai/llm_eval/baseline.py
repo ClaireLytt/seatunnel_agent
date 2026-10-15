@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Eval run history and regression compare.
 
 Every run is appended to ``logs/llm_eval_runs.jsonl`` (``LLM_EVAL_LOG=0``
@@ -31,7 +30,7 @@ class RunLogger:
         self.path = Path(path) if path else log_path()
         self._log = JsonlLog(lambda: self.path, env_switch="LLM_EVAL_LOG")
 
-    def log(self, result: "SuiteResult") -> None:
+    def log(self, result: SuiteResult) -> None:
         """Best-effort append; never raises into the run."""
         try:
             rec = {
@@ -63,7 +62,7 @@ class RunLogger:
         return runs[-1] if runs else None
 
 
-def compare(current: "SuiteResult",
+def compare(current: SuiteResult,
             previous: dict[str, Any] | None) -> dict[str, Any]:
     """Regression verdict vs a logged previous run (None → no baseline)."""
     if previous is None:

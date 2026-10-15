@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from seatunnel_agent.common.utils import safe_json
+
 from .config import COLUMN_IMPACT_DEPTH, LineageConfig
 from .graph import ChainResult, ColumnImpactResult, LineageGraph
 from .render import (

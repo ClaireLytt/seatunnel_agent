@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
 """Web-task agent: fake-session loop, origin guard, success heuristic."""
 
 from __future__ import annotations
 
-from seatunnel_agent.common.config import Settings
-from seatunnel_agent.common.llm import LLMResponse, ToolCall
 from seatunnel_agent.agents.ai.web_task import run_task
 from seatunnel_agent.agents.ai.web_task.session import _origin
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 SETTINGS = Settings(api_key="sk-test")
 

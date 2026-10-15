@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Bilingual markdown report for dependency health."""
 
 from __future__ import annotations
 
-from .core import DepReport
-
-
 from typing import Any
 
 from seatunnel_agent.common.utils import normalize_lang
+
+from .core import DepReport
 
 _I18N: dict[str, dict[str, Any]] = {
     "en": {

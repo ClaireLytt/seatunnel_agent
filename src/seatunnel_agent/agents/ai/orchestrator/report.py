@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
 """Markdown rendering for orchestrator runs (CLI / API report)."""
 
 from __future__ import annotations
 
-from .engine import OrchestratorResult
-
 from seatunnel_agent.common.utils import normalize_lang
 
+from .engine import OrchestratorResult
 
 _I18N = {
     "en": {

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Runtime skew diagnosis from Spark task metrics.
 
 Static rules suspect skew in the SQL text and probes confirm it in the
@@ -24,8 +23,9 @@ import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .i18n import dsk
 from seatunnel_agent.common.utils import normalize_lang
+
+from .i18n import dsk
 
 # a max/median ratio only counts when the max is worth caring about
 MIN_TASKS = 3
@@ -125,7 +125,7 @@ def _open_maybe_gz(path: Path):
     if path.suffix == ".gz":
         import gzip
         return gzip.open(path, "rt", encoding="utf-8", errors="replace")
-    return open(path, "r", encoding="utf-8", errors="replace")
+    return open(path, encoding="utf-8", errors="replace")
 
 
 def _iter_eventlog_lines(path: Path):

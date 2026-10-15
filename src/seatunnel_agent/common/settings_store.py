@@ -16,11 +16,11 @@ from __future__ import annotations
 import json
 import os
 import threading
-
-from .utils import write_json_atomic
 from pathlib import Path
 
 from seatunnel_agent.agents.data.data_comparison.presets import _decrypt, _encrypt
+
+from .utils import write_json_atomic
 
 # Env keys the /settings page manages; secrets are encrypted at rest.
 MANAGED_KEYS = (

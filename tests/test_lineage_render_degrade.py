@@ -1,10 +1,16 @@
-# -*- coding: utf-8 -*-
 """Mermaid 大图聚合降级测试（render.py AGGREGATE_THRESHOLD）。"""
 
 from __future__ import annotations
 
-from seatunnel_agent.agents.data.data_lineage.graph import ChainResult, EdgeMeta, TableNode
-from seatunnel_agent.agents.data.data_lineage.render import AGGREGATE_THRESHOLD, render_mermaid
+from seatunnel_agent.agents.data.data_lineage.graph import (
+    ChainResult,
+    EdgeMeta,
+    TableNode,
+)
+from seatunnel_agent.agents.data.data_lineage.render import (
+    AGGREGATE_THRESHOLD,
+    render_mermaid,
+)
 
 
 def _node(name: str, database: str = "", layer: str = "") -> TableNode:

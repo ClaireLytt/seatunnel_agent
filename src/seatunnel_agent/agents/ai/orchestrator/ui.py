@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the agent orchestrator.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -16,7 +15,12 @@ import threading
 
 import gradio as gr
 
-from seatunnel_agent.agents.ai.orchestrator import Orchestrator, build_catalog, render_suggestions, suggest
+from seatunnel_agent.agents.ai.orchestrator import (
+    Orchestrator,
+    build_catalog,
+    render_suggestions,
+    suggest,
+)
 from seatunnel_agent.agents.ai.orchestrator.olog import ChatLogger
 from seatunnel_agent.agents.ai.orchestrator.report import normalize_lang
 from seatunnel_agent.common.config import llm_ready as _llm_ready

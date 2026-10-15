@@ -27,8 +27,7 @@ def _utf8_stdout() -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    from .report import (print_summary, write_html, write_json,
-                         write_labels_patch)
+    from .report import print_summary, write_html, write_json, write_labels_patch
     from .runner import run_suite
 
     def progress(i: int, n: int, cr) -> None:

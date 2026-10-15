@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic SQL expansion for metric definitions.
 
 Moved verbatim out of metrics.py, which forwards the public names via a

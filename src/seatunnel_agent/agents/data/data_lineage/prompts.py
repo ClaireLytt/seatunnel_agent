@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
+from functools import cache
 from pathlib import Path
 
 from .config import LineageConfig
@@ -11,7 +11,7 @@ from .graph import LineageGraph
 _RESOURCE_DIR = Path(__file__).parent / "resources"
 
 
-@lru_cache(maxsize=None)
+@cache
 def _load_resource(name: str) -> str:
     """Bundled resources are immutable at runtime — read each file once."""
     path = _RESOURCE_DIR / name

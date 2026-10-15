@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """OpenLineage export (data_lineage/openlineage.py)."""
 
 from __future__ import annotations

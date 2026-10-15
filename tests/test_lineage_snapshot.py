@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for lineage snapshots and change detection."""
 
 from __future__ import annotations
@@ -16,7 +15,10 @@ from seatunnel_agent.agents.data.data_lineage.snapshot import (
     render_diff_markdown,
     save_snapshot,
 )
-from seatunnel_agent.agents.data.data_lineage.tools import LineageRuntime, execute_lineage_tool
+from seatunnel_agent.agents.data.data_lineage.tools import (
+    LineageRuntime,
+    execute_lineage_tool,
+)
 
 
 def _graph(edges: list[tuple[str, str]], confidence: str = "high") -> LineageGraph:

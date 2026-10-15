@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for metric consistency reports and the /metricdiff page."""
 
 from __future__ import annotations

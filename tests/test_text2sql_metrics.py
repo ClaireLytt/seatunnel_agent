@@ -18,7 +18,10 @@ from seatunnel_agent.agents.data.text2sql.metrics import (
 )
 from seatunnel_agent.agents.data.text2sql.partition import TimeRange
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
-from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, execute_text2sql_tool
+from seatunnel_agent.agents.data.text2sql.tools import (
+    Text2SQLRuntime,
+    execute_text2sql_tool,
+)
 from seatunnel_agent.agents.data.text2sql.validator import validate_sql
 
 _DDL = """
@@ -594,8 +597,8 @@ def test_api_metrics_query_bad_dimension() -> None:
 
 def test_api_metrics_query_execute(monkeypatch) -> None:
     pytest.importorskip("fastapi")
-    from seatunnel_agent.agents.data.text2sql.executor import QueryResult
     import seatunnel_agent.agents.data.text2sql.api as api_mod
+    from seatunnel_agent.agents.data.text2sql.executor import QueryResult
 
     class _FakeExecutor:
         def run(self, sql: str, max_rows: int = 1000) -> QueryResult:
@@ -904,8 +907,8 @@ def test_api_key_auth(monkeypatch) -> None:
     from fastapi import Depends, FastAPI
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.common.api_auth import require_api_key
     from seatunnel_agent.agents.data.text2sql.api import router
+    from seatunnel_agent.common.api_auth import require_api_key
 
     app = FastAPI()
     app.include_router(router, dependencies=[Depends(require_api_key)])
@@ -1111,7 +1114,10 @@ def test_load_metric_store_env_path(tmp_path, monkeypatch) -> None:
 
 def test_waterfall_chart_detection_and_build() -> None:
     pytest.importorskip("matplotlib")
-    from seatunnel_agent.agents.data.text2sql.chart import build_chart, detect_chart_type
+    from seatunnel_agent.agents.data.text2sql.chart import (
+        build_chart,
+        detect_chart_type,
+    )
 
     columns = ["channel", "prev", "curr", "delta", "contribution_pct"]
     rows = [

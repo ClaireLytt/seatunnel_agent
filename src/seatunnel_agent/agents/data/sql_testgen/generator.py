@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic test-data generation core.
 
 Pipeline: parse the query → physical tables + referenced columns per table
@@ -381,7 +380,9 @@ def generate(sql: str, ddl: str = "", rows: int = DEFAULT_ROWS,
     import sqlglot
     from sqlglot import exp
 
-    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import resolve_sqlglot_dialect
+    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import (
+        resolve_sqlglot_dialect,
+    )
 
     read = resolve_sqlglot_dialect(dialect)
     result = GenResult(query=sql, dialect=dialect)

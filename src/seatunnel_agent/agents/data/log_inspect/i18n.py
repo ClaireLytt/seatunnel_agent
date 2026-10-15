@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for log inspection reports and the /loginspect page."""
 
 from __future__ import annotations

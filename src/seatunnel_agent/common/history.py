@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 logger = logging.getLogger(__name__)
 
 HISTORY_DIR = Path.home() / ".seatunnel-agent" / "chat_history"

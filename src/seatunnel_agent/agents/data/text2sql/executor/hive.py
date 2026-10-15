@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from .base import DatabaseExecutor, QueryResult, _TABLE_NAME_RE
+from .base import _TABLE_NAME_RE, DatabaseExecutor, QueryResult
 
 if TYPE_CHECKING:
     from ..schema import TableSchema

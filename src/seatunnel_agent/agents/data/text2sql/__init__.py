@@ -7,10 +7,10 @@ schema matching -> SQL generation (LLM + rules) -> validation -> execution
 -> preview + CSV export.
 """
 
-from .schema import ColumnSchema, TableSchema, SchemaStore, parse_ddl
-from .validator import validate_sql, enforce_limit, validate_columns, ValidationResult
-from .matcher import match_tables, match_columns
-from .partition import classify_table, build_partition_clause
+from .matcher import match_columns, match_tables
+from .partition import build_partition_clause, classify_table
+from .schema import ColumnSchema, SchemaStore, TableSchema, parse_ddl
+from .validator import ValidationResult, enforce_limit, validate_columns, validate_sql
 
 __all__ = [
     "ColumnSchema",

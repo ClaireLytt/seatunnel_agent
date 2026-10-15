@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Routing system prompt for the orchestrator."""
 
 from __future__ import annotations

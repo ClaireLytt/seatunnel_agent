@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Measured consistency check: run the original and the optimized SQL against
 the connected datasource and compare the results.
 
@@ -15,9 +14,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from seatunnel_agent.common.utils import normalize_lang
+
 from .detector import split_statements
 from .i18n import dsk
-from seatunnel_agent.common.utils import normalize_lang
 
 MAX_COMPARE_ROWS = 500
 

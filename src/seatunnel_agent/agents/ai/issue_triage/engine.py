@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Issue-triage agent — dedupe, locate, label, draft a reply.
 
 Tools: BM25 search over the repo's historical issues (dedupe), bounded grep

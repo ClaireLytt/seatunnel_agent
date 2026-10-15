@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """MCP server exposing the data-skew static analyzer over stdio.
 
 Start with ``seatunnel-agent skew-mcp`` and register it in an MCP client
@@ -13,9 +12,9 @@ database, which makes it a safe tool to hand to an external agent.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
-from .detector import DIALECTS, _DIALECT_ALIASES
+from .detector import _DIALECT_ALIASES, DIALECTS
 from .history import default_history
 
 _INSTRUCTIONS = (
@@ -134,7 +133,11 @@ def build_tool_functions(
         partition_column，按 .env 中该 ds_type 的连接配置连库实测其分布
         （NDV / NULL 占比 / top-1 占比，只读查询），并实测候选列给出推荐。
         ds_type: hive / sparksql / mysql / postgresql / sqlite / clickhouse / doris。"""
-        from seatunnel_agent.agents.data.text2sql.executor.base import config_from_env, create_executor
+        from seatunnel_agent.agents.data.text2sql.executor.base import (
+            config_from_env,
+            create_executor,
+        )
+
         from .probe import effective_sample_pct
         from .splitkey import (
             SplitKeyError,
@@ -196,7 +199,11 @@ def build_tool_functions(
         """在 skew_split_key 实测的基础上，把推荐分片键写入配置并返回修改后的
         完整配置文本（不落盘，由调用方保存）。仅支持单 source 配置；无需修改时
         返回说明。参数同 skew_split_key。"""
-        from seatunnel_agent.agents.data.text2sql.executor.base import config_from_env, create_executor
+        from seatunnel_agent.agents.data.text2sql.executor.base import (
+            config_from_env,
+            create_executor,
+        )
+
         from .i18n import dsk
         from .probe import effective_sample_pct
         from .splitkey import (

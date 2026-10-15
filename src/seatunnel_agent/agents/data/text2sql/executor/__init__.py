@@ -1,9 +1,9 @@
 """Database executor package — multi-engine support for Text2SQL."""
 
 from .base import (
+    DIALECT_NAMES,
     DS_DEFAULTS,
     DS_TYPES,
-    DIALECT_NAMES,
     ENV_PREFIX,
     PARTITION_ENGINES,
     DatabaseConfig,

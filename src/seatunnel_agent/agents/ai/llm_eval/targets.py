@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Eval targets — adapters that turn a case input into one LLM output.
 
 ``TARGETS`` maps an agent name to ``fn(case_input, settings, client_factory)
@@ -9,7 +8,8 @@ test seam: tests register fakes or inject a fake ``client_factory``.
 from __future__ import annotations
 
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from seatunnel_agent.common.config import Settings
 

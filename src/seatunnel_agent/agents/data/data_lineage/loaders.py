@@ -14,7 +14,6 @@ from pathlib import Path
 
 from seatunnel_agent.agents.data.sql_review.lineage import extract_table_lineage
 from seatunnel_agent.agents.data.sql_review.linter import split_statements
-from seatunnel_agent.common.utils import collect_sql_files
 from seatunnel_agent.agents.data.text2sql.executor.base import (
     DatabaseExecutor,
     config_from_env,
@@ -22,6 +21,8 @@ from seatunnel_agent.agents.data.text2sql.executor.base import (
 )
 from seatunnel_agent.agents.data.text2sql.lineage import trace_lineage
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+from seatunnel_agent.common.utils import collect_sql_files
+
 from .config import load_lineage_config
 from .graph import ColumnEdge, LineageGraph
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """GitHub webhook server — PR opened/updated → bot review comment.
 
 Security: when a webhook secret is configured every delivery must carry a
@@ -16,7 +15,8 @@ import hashlib
 import hmac
 import json
 import os
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 

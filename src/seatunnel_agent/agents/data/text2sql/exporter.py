@@ -100,7 +100,7 @@ def export_excel(
     """Write rows to an Excel .xlsx file and return the absolute path."""
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment
+        from openpyxl.styles import Alignment, Font
     except ImportError:
         raise RuntimeError(
             "openpyxl is required for Excel export. "

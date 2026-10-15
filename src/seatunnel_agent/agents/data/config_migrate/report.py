@@ -1,10 +1,10 @@
-# -*- coding: utf-8 -*-
 """Render MigrateResult / BatchResult as markdown (zh/en)."""
 
 from __future__ import annotations
 
-from .migrator import BatchResult, Issue, MigrateResult
 from seatunnel_agent.common.utils import normalize_lang
+
+from .migrator import BatchResult, Issue, MigrateResult
 
 _MSG = {
     "zh": {

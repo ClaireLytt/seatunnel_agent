@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the batch log inspection agent (log_inspect).
 
 Deterministic only — no LLM, no database, no network.
@@ -12,7 +11,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.log_inspect import (
     collect_log_files,
     render_markdown,
@@ -25,6 +23,7 @@ from seatunnel_agent.agents.data.log_inspect.clusterer import (
     extract_events,
     normalize_message,
 )
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 

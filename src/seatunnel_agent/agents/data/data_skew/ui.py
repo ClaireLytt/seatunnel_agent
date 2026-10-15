@@ -15,14 +15,17 @@ from pathlib import Path
 
 import gradio as gr
 
-from seatunnel_agent.common.config import load_settings
-from seatunnel_agent.agents.data.data_skew.agent import DataSkewAgent, static_skew_report
-from seatunnel_agent.agents.data.data_skew.consistency import check_consistency, render_consistency_section
+from seatunnel_agent.agents.data.data_skew.agent import (
+    DataSkewAgent,
+    static_skew_report,
+)
+from seatunnel_agent.agents.data.data_skew.consistency import (
+    check_consistency,
+    render_consistency_section,
+)
 from seatunnel_agent.agents.data.data_skew.detector import DIALECTS, normalize_dialect
 from seatunnel_agent.agents.data.data_skew.history import default_history
 from seatunnel_agent.agents.data.data_skew.i18n import dsk
-from seatunnel_agent.agents.data.data_skew.report import render_report
-from seatunnel_agent.common.page_scaffold import scroll_marker, title_row
 from seatunnel_agent.agents.data.data_skew.probe import (
     ProbeCache,
     effective_sample_pct,
@@ -31,6 +34,7 @@ from seatunnel_agent.agents.data.data_skew.probe import (
     render_probe_section,
     run_probes,
 )
+from seatunnel_agent.agents.data.data_skew.report import render_report
 from seatunnel_agent.agents.data.data_skew.runtime import (
     RuntimeSkewError,
     analyze_history_server,
@@ -53,6 +57,8 @@ from seatunnel_agent.agents.data.text2sql.executor.base import (
     config_from_env,
     create_executor,
 )
+from seatunnel_agent.common.config import load_settings
+from seatunnel_agent.common.page_scaffold import scroll_marker, title_row
 
 _DIALECT_LABELS = {
     "spark": "Spark SQL (Spark 3)",
@@ -634,7 +640,9 @@ def render_data_skew_page(app: gr.Blocks) -> None:
     # Comparison): load names on demand, picking one fills the form ──
 
     def _presets_store():
-        from seatunnel_agent.agents.data.data_comparison.presets import ConnectionPresetsStore
+        from seatunnel_agent.agents.data.data_comparison.presets import (
+            ConnectionPresetsStore,
+        )
         return ConnectionPresetsStore()
 
     def do_preset_load(lang: str):

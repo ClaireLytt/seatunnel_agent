@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unit tests for the uitest adhoc command (no browser, no tokens)."""
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from seatunnel_agent.agents.devops.ui_testing import adhoc as ah
 from seatunnel_agent.agents.devops.ui_testing.__main__ import main
 from seatunnel_agent.agents.devops.ui_testing.loader import CaseLoadError
 from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, StepLog
-
 
 # ── load_adhoc_case ──
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Orchestrator: catalog, tool-use loop, keyword router, CLI, API.
 
 Fully offline — the LLM is a scripted fake injected as ``client``.
@@ -11,9 +10,6 @@ import json
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
-from seatunnel_agent.common.config import Settings
-from seatunnel_agent.common.llm import LLMResponse, ToolCall
 from seatunnel_agent.agents.ai.orchestrator import (
     Orchestrator,
     build_catalog,
@@ -22,6 +18,9 @@ from seatunnel_agent.agents.ai.orchestrator import (
     suggest,
     tool_definitions,
 )
+from seatunnel_agent.cli import cli
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 SETTINGS = Settings(api_key="sk-test")
 

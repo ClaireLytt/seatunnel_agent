@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """SeaTunnel split-key check: measure the parallel-read partition column.
 
 Static skew rules cover the compute layer; this module covers the sync /
@@ -14,19 +13,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .i18n import dsk
 from seatunnel_agent.common.utils import normalize_lang
-from .seatunnel_conf import (  # noqa: F401 — re-exported, public API
-    SourceSpec,
-    SplitKeyError,
-    _spec_from_params,
-    parse_seatunnel_sources,
-    parse_seatunnel_source,
-    _is_code_line,
-    apply_split_key,
-    SinkSpec,
-    parse_seatunnel_sinks,
-)
+
+from .i18n import dsk
 from .measure import (  # noqa: F401 — re-exported, public API
     _GOOD_VERDICTS,
     MAX_CANDIDATES,
@@ -36,11 +25,11 @@ from .measure import (  # noqa: F401 — re-exported, public API
     _ndv_expr,
     _stats_sql,
     _top1_sql,
-    measure_column,
     candidate_columns,
+    measure_column,
     measure_columns,
-    rank_candidates,
     pick_best_key,
+    rank_candidates,
 )
 from .probe import (
     HOT_KEY_CONFIRMED,
@@ -48,6 +37,17 @@ from .probe import (
     NULL_CONFIRMED,
     _pct,
     _safe_value,
+)
+from .seatunnel_conf import (  # noqa: F401 — re-exported, public API
+    SinkSpec,
+    SourceSpec,
+    SplitKeyError,
+    _is_code_line,
+    _spec_from_params,
+    apply_split_key,
+    parse_seatunnel_sinks,
+    parse_seatunnel_source,
+    parse_seatunnel_sources,
 )
 
 # multi-source configs: measure at most this many sources per check

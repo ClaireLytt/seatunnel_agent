@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the Prompt Lab.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via

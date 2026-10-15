@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Platform plugin manifest — see seatunnel_agent.hub.registry."""
 
 from seatunnel_agent.hub.registry import AgentManifest

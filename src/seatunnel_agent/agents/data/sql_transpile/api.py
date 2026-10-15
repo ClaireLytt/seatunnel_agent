@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the SQL transpile agent — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance to serve alongside the UI.
@@ -19,6 +18,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from seatunnel_agent.common.utils import normalize_lang
+
 from .report import batch_to_dict, render_markdown, result_to_dict
 from .transpiler import DIALECTS, translate, transpile_dir
 

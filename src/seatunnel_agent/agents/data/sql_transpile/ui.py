@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the SQL dialect translation agent.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -156,7 +155,10 @@ def render_sql_transpile_page(app: gr.Blocks) -> None:
         lang = normalize_lang(lang)
         if result is None:
             return _t(lang, "advice_none")
-        from seatunnel_agent.agents.data.sql_transpile.advisor import advisable_issues, generate_advice
+        from seatunnel_agent.agents.data.sql_transpile.advisor import (
+            advisable_issues,
+            generate_advice,
+        )
         if not advisable_issues(result):
             return _t(lang, "advice_none")
         try:

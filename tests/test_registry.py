@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Plugin registry: discovery, validation, resolution, card rendering."""
 
 from __future__ import annotations

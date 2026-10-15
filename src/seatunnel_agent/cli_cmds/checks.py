@@ -5,8 +5,9 @@ import sys
 
 import click
 
-from ..common.cli_common import _handle_error, console
 from seatunnel_agent.agents.data.sql_transpile import DIALECTS as TRANSPILE_DIALECTS
+
+from ..common.cli_common import _handle_error, console
 
 
 @click.command()
@@ -42,8 +43,13 @@ def pii(
     from pathlib import Path
 
     from seatunnel_agent.agents.data.pii_scan import (
-        DEFAULT_RULES, load_extra_rules, render_markdown, report_to_dict,
-        scan_dir, scan_files, scan_sql_text,
+        DEFAULT_RULES,
+        load_extra_rules,
+        render_markdown,
+        report_to_dict,
+        scan_dir,
+        scan_files,
+        scan_sql_text,
     )
 
     if not directory and not sql and not sql_file:
@@ -125,7 +131,10 @@ def loginspect(
     from pathlib import Path
 
     from seatunnel_agent.agents.data.log_inspect import (
-        render_markdown, report_to_dict, scan_dir, scan_files,
+        render_markdown,
+        report_to_dict,
+        scan_dir,
+        scan_files,
     )
     from seatunnel_agent.agents.data.log_inspect.clusterer import DEFAULT_PATTERNS
 
@@ -191,7 +200,11 @@ def schemadiff(
     import json as _json
     from pathlib import Path
 
-    from seatunnel_agent.agents.data.schema_drift import diff_paths, render_markdown, report_to_dict
+    from seatunnel_agent.agents.data.schema_drift import (
+        diff_paths,
+        render_markdown,
+        report_to_dict,
+    )
 
     report = diff_paths(old_path, new_path, dialect=dialect)
 
@@ -258,7 +271,10 @@ def testgen(
     from pathlib import Path
 
     from seatunnel_agent.agents.data.sql_testgen import (
-        generate, render_markdown, result_to_dict, validate_with_sqlite,
+        generate,
+        render_markdown,
+        result_to_dict,
+        validate_with_sqlite,
         write_outputs,
     )
 
@@ -327,8 +343,12 @@ def conflint(
     from pathlib import Path
 
     from seatunnel_agent.agents.data.config_lint import (
-        lint_dir, lint_file, lint_text,
-        render_batch_markdown, render_markdown, result_to_dict,
+        lint_dir,
+        lint_file,
+        lint_text,
+        render_batch_markdown,
+        render_markdown,
+        result_to_dict,
     )
 
     if not config_text and not conf_file and not directory:
@@ -396,7 +416,11 @@ def dagcheck(
     import json as _json
     from pathlib import Path
 
-    from seatunnel_agent.agents.data.dag_check import check_sql_dir, render_markdown, report_to_dict
+    from seatunnel_agent.agents.data.dag_check import (
+        check_sql_dir,
+        render_markdown,
+        report_to_dict,
+    )
 
     report = check_sql_dir(sql_dir, dialect=dialect,
                            seatunnel_dir=seatunnel_dir)
@@ -449,7 +473,11 @@ def metricdiff(
     import json as _json
     from pathlib import Path
 
-    from seatunnel_agent.agents.data.metric_diff import check_sql_dir, render_markdown, report_to_dict
+    from seatunnel_agent.agents.data.metric_diff import (
+        check_sql_dir,
+        render_markdown,
+        report_to_dict,
+    )
 
     report = check_sql_dir(sql_dir, dialect=dialect)
 
@@ -516,8 +544,12 @@ def transpile(
     from pathlib import Path
 
     from seatunnel_agent.agents.data.sql_transpile import (
-        batch_to_dict, render_batch_markdown, render_markdown,
-        result_to_dict, translate, transpile_dir,
+        batch_to_dict,
+        render_batch_markdown,
+        render_markdown,
+        result_to_dict,
+        translate,
+        transpile_dir,
     )
     from seatunnel_agent.agents.data.sql_transpile.transpiler import LEVELS
 
@@ -576,9 +608,12 @@ def transpile(
             # LLM advice (single source only; strictly additive)
             if not no_llm and len(sources) == 1:
                 try:
-                    from ..common.config import load_settings
                     from seatunnel_agent.agents.data.sql_transpile.advisor import (
-                        advisable_issues, generate_advice)
+                        advisable_issues,
+                        generate_advice,
+                    )
+
+                    from ..common.config import load_settings
                     if advisable_issues(result):
                         if ctx.obj.get("model"):
                             os.environ["MODEL_NAME"] = ctx.obj["model"]
@@ -629,7 +664,11 @@ def secretscan(
     from pathlib import Path
 
     from seatunnel_agent.agents.devops.secret_scan import (
-        ScanResult, check_fail, render_markdown, scan_paths, scan_text,
+        ScanResult,
+        check_fail,
+        render_markdown,
+        scan_paths,
+        scan_text,
     )
 
     if not text and not paths:
@@ -687,7 +726,12 @@ def depcheck(
     import json as _json
     from pathlib import Path
 
-    from seatunnel_agent.agents.devops.dep_check import check, check_fail, collect_from_path, render_markdown
+    from seatunnel_agent.agents.devops.dep_check import (
+        check,
+        check_fail,
+        collect_from_path,
+        render_markdown,
+    )
 
     try:
         reqs = collect_from_path(path)
@@ -756,7 +800,11 @@ def ciinspect(
     import json as _json
     from pathlib import Path
 
-    from seatunnel_agent.agents.devops.ci_inspect import analyze, collect_gh_runs, render_markdown
+    from seatunnel_agent.agents.devops.ci_inspect import (
+        analyze,
+        collect_gh_runs,
+        render_markdown,
+    )
 
     runs_text = None
     if runs_file:

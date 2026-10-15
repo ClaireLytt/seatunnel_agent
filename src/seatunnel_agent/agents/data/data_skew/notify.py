@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Webhook notification for skew patrols (same JSON-POST convention as the
 Data Comparison page's webhook: a generic ``{"text": ..., ...}`` payload
 that DingTalk/WeCom/Slack-style incoming webhooks all accept)."""

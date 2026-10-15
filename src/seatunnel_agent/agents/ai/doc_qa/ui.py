@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for doc Q&A — registered via the plugin manifest."""
 
 from __future__ import annotations

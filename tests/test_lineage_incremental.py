@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Incremental (per-file cached) SQL directory builds."""
 
 from __future__ import annotations

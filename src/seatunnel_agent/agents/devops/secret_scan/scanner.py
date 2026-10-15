@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Secret scanner core — deterministic, offline, never prints the secret.
 
 Scan inline text or walk a directory (binary files, vendored dirs and big

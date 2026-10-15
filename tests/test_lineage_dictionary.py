@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the data dictionary generator (data_lineage.dictionary).
 
 Deterministic only — the optional LLM description pass is tested with a
@@ -11,13 +10,13 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.data_lineage.dictionary import (
     add_llm_descriptions,
     build_dictionary,
     render_dictionary_markdown,
 )
 from seatunnel_agent.agents.data.data_lineage.loaders import build_graph
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for DAG check reports and the /dagcheck page."""
 
 from __future__ import annotations

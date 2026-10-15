@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from seatunnel_agent.agents.data.text2sql.executor import DIALECT_NAMES, DS_TYPES
+
 from .comparator import CompareReport, skew_side_verdict
 from .i18n import dc
 from .presets import ConnectionPresetsStore
@@ -151,8 +152,8 @@ def _build_webhook_summary(report: CompareReport) -> dict:
 
 def _send_webhook(url: str, payload: dict) -> tuple[bool, str]:
     """POST JSON payload to a webhook URL. Returns (success, message)."""
-    import urllib.request
     import urllib.error
+    import urllib.request
     data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
     req = urllib.request.Request(
         url, data=data,

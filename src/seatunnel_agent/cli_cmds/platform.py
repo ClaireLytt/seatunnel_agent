@@ -190,7 +190,11 @@ def llmcost(
     import json as _json
     from pathlib import Path
 
-    from seatunnel_agent.agents.ai.llm_cost import check_budget, render_markdown, summarize_cost
+    from seatunnel_agent.agents.ai.llm_cost import (
+        check_budget,
+        render_markdown,
+        summarize_cost,
+    )
 
     if fail_on == "budget" and budget is None:
         raise click.UsageError("--fail-on budget 需要同时提供 --budget")
@@ -264,8 +268,13 @@ def promptlab(
 
     from dotenv import load_dotenv
 
+    from seatunnel_agent.agents.ai.prompt_lab import (
+        ACTIVE,
+        render_matrix_markdown,
+        run_matrix,
+    )
+
     from ..common import settings_store
-    from seatunnel_agent.agents.ai.prompt_lab import ACTIVE, render_matrix_markdown, run_matrix
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -327,8 +336,15 @@ def llmeval(
 
     from dotenv import load_dotenv
 
+    from seatunnel_agent.agents.ai.llm_eval import (
+        RunLogger,
+        compare,
+        load_suite,
+        render_markdown,
+        run_suite,
+    )
+
     from ..common import settings_store
-    from seatunnel_agent.agents.ai.llm_eval import RunLogger, compare, load_suite, render_markdown, run_suite
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -405,12 +421,16 @@ def orchestrate(
 
     from dotenv import load_dotenv
 
-    from ..common import settings_store
-    from ..common.config import load_settings
     from seatunnel_agent.agents.ai.orchestrator import (
-        Orchestrator, build_catalog, render_markdown, render_suggestions,
+        Orchestrator,
+        build_catalog,
+        render_markdown,
+        render_suggestions,
         suggest,
     )
+
+    from ..common import settings_store
+    from ..common.config import load_settings
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -486,8 +506,11 @@ def relnotes(
     from pathlib import Path
 
     from seatunnel_agent.agents.devops.release_notes import (
-        build_notes, collect_git_log, current_version_from_pyproject,
-        polish_markdown, render_markdown,
+        build_notes,
+        collect_git_log,
+        current_version_from_pyproject,
+        polish_markdown,
+        render_markdown,
     )
 
     if log_file:
@@ -625,8 +648,9 @@ def codefix(
 
     from dotenv import load_dotenv
 
-    from ..common import settings_store
     from seatunnel_agent.agents.ai.code_fix import fix, render_markdown
+
+    from ..common import settings_store
     from ..common.config import load_settings
 
     load_dotenv()
@@ -687,9 +711,14 @@ def triage_cmd(
 
     from dotenv import load_dotenv
 
+    from seatunnel_agent.agents.ai.issue_triage import (
+        load_issues,
+        render_markdown,
+        triage,
+    )
+
     from ..common import settings_store
     from ..common.config import load_settings
-    from seatunnel_agent.agents.ai.issue_triage import load_issues, render_markdown, triage
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -725,9 +754,10 @@ def doctor(complaint: str, lang: str) -> None:
     不带参数或未配置 API key 时输出确定性全量体检。"""
     from dotenv import load_dotenv
 
+    from seatunnel_agent.agents.devops.doctor import diagnose
+
     from ..common import settings_store
     from ..common.config import load_settings
-    from seatunnel_agent.agents.devops.doctor import diagnose
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -767,9 +797,10 @@ def webtask(
     未达成以 FAILED 结束并退出码 1;需 API key 与 playwright。"""
     from dotenv import load_dotenv
 
+    from seatunnel_agent.agents.ai.web_task import run_task
+
     from ..common import settings_store
     from ..common.config import load_settings
-    from seatunnel_agent.agents.ai.web_task import run_task
 
     load_dotenv()
     settings_store.apply_to_env()

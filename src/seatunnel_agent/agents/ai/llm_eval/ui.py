@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the LLM eval harness.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -12,7 +11,13 @@ from pathlib import Path
 
 import gradio as gr
 
-from seatunnel_agent.agents.ai.llm_eval import RunLogger, compare, parse_suite, render_markdown, run_suite
+from seatunnel_agent.agents.ai.llm_eval import (
+    RunLogger,
+    compare,
+    parse_suite,
+    render_markdown,
+    run_suite,
+)
 from seatunnel_agent.agents.ai.llm_eval.report import normalize_lang
 from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Shared append-only JSONL log with size-capped rotation and tail reads.
 
 Single implementation behind the per-feature history/usage loggers
@@ -12,8 +11,9 @@ from __future__ import annotations
 import json
 import os
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 MAX_LOG_BYTES = 10 * 1024 * 1024
 

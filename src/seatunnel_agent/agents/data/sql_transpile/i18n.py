@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for SQL transpile reports and the /transpile page.
 
 Same pattern as ``sql_review.i18n``: one flat dict per language, looked up

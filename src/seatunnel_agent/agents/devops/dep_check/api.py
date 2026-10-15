@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for dependency health — FastAPI router.
 
 Inline metadata only (pyproject / requirements text) — the API never walks
@@ -18,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
+
 from .core import check, parse_pyproject_text, parse_requirements_text
 from .report import normalize_lang, render_markdown
 

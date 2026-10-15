@@ -230,12 +230,12 @@ class SchemaStore:
         return len(self._tables)
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "SchemaStore":
+    def from_file(cls, path: str | Path) -> SchemaStore:
         text = Path(path).read_text(encoding="utf-8")
         return cls(parse_ddl(text))
 
     @classmethod
-    def from_db(cls, executor) -> "SchemaStore":
+    def from_db(cls, executor) -> SchemaStore:
         """Build a store by introspecting all tables via any DatabaseExecutor."""
         return cls(executor.fetch_all_schemas())
 

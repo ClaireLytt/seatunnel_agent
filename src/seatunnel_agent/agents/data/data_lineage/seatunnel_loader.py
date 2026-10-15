@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Lineage from SeaTunnel job configs (HOCON): source tables → sink tables.
 
 A lightweight quote-aware brace scanner extracts the ``source``/``sink``
@@ -21,6 +20,7 @@ import re
 from pathlib import Path
 
 from seatunnel_agent.agents.data.sql_review.lineage import extract_table_lineage
+
 from .graph import ColumnEdge, LineageGraph
 from .sqlglot_lineage import extract_column_edges
 

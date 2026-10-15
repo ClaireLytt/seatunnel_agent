@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """GitHub bot core — review a PR patch with the platform's own tools.
 
 Deterministic and offline: input is a unified diff, output is one markdown

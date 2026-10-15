@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Issue-triage agent: tools, JSON parsing, loop with FakeLLM, CLI, API."""
 
 from __future__ import annotations
@@ -8,14 +7,14 @@ from pathlib import Path
 
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
-from seatunnel_agent.common.config import Settings
 from seatunnel_agent.agents.ai.issue_triage import (
     build_tools,
     load_issues,
     render_markdown,
     triage,
 )
+from seatunnel_agent.cli import cli
+from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "triage_demo"

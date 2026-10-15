@@ -1,13 +1,13 @@
-# -*- coding: utf-8 -*-
 """Render GenResult as markdown or a JSON-ready dict."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from seatunnel_agent.common.utils import normalize_lang
+
 from .generator import GenResult
 from .i18n import tp
-from seatunnel_agent.common.utils import normalize_lang
 
 
 def render_markdown(result: GenResult, lang: str = "zh") -> str:

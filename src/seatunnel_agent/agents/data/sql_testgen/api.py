@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the SQL test-data generator — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -18,8 +17,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
-from .generator import DEFAULT_ROWS, MAX_ROWS, generate
 from seatunnel_agent.common.utils import normalize_lang
+
+from .generator import DEFAULT_ROWS, MAX_ROWS, generate
 from .report import render_markdown, result_to_dict
 from .validator import validate_with_sqlite
 

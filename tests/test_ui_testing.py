@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unit tests for the UI testing agent framework (no browser, no tokens)."""
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ from seatunnel_agent.agents.devops.ui_testing.loader import (
 )
 from seatunnel_agent.agents.devops.ui_testing.models import Assertion, Step
 from seatunnel_agent.agents.devops.ui_testing.seed_sqlite import SEED, seed_sqlite
-
 
 # ── loader ──
 
@@ -300,7 +298,10 @@ class TestAgentLoop:
         assert not log.ok and "找不到按钮" in log.detail
 
     def test_round_cap(self):
-        from seatunnel_agent.agents.devops.ui_testing.agent import MAX_ROUNDS, run_ai_step
+        from seatunnel_agent.agents.devops.ui_testing.agent import (
+            MAX_ROUNDS,
+            run_ai_step,
+        )
         llm = self._llm([
             self._resp([self._tc("read_page", {})])] * (MAX_ROUNDS + 1))
         dc = MagicMock()
@@ -580,12 +581,17 @@ class TestSelfHeal:
         self._reset()
 
     def test_digest_gate_blocks_hallucination(self):
-        from seatunnel_agent.agents.devops.ui_testing.diagnose import suggest_locator_struct
+        from seatunnel_agent.agents.devops.ui_testing.diagnose import (
+            suggest_locator_struct,
+        )
         llm = self._llm(label="Ghost Button")   # not in the digest below
         assert suggest_locator_struct("旧按钮", "[BUTTONS] New Label", llm) is None
 
     def test_labels_patch_lines(self):
-        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.agents.devops.ui_testing.models import (
+            CaseResult,
+            RunResult,
+        )
         from seatunnel_agent.agents.devops.ui_testing.report import _labels_patch_lines
         rr = RunResult(started_at="t", suite="smoke", cases=[
             CaseResult("H1", "t", "HEALED", healed=["连接 -> Connect Now"]),
@@ -595,7 +601,10 @@ class TestSelfHeal:
         assert "healed: H1" in line
 
     def test_labels_patch_escapes_quotes(self):
-        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.agents.devops.ui_testing.models import (
+            CaseResult,
+            RunResult,
+        )
         from seatunnel_agent.agents.devops.ui_testing.report import _labels_patch_lines
         rr = RunResult(started_at="t", suite="smoke", cases=[
             CaseResult("H1", "t", "HEALED", healed=['连接 -> Say "Hi"']),
@@ -648,8 +657,14 @@ class TestSelfHeal:
         self._reset()
 
     def test_healed_counts_and_flaky_normalization(self):
-        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
-        from seatunnel_agent.agents.devops.ui_testing.rundiff import CaseDelta, flaky_trend
+        from seatunnel_agent.agents.devops.ui_testing.models import (
+            CaseResult,
+            RunResult,
+        )
+        from seatunnel_agent.agents.devops.ui_testing.rundiff import (
+            CaseDelta,
+            flaky_trend,
+        )
         rr = RunResult(started_at="t", suite="smoke", cases=[
             CaseResult("H1", "t", "HEALED")])
         assert rr.counts()["HEALED"] == 1
@@ -680,10 +695,15 @@ class TestFlakyTrend:
             "\n".join(json.dumps(r) for r in rows), encoding="utf-8")
 
     def test_history_roundtrip_and_trend(self, tmp_path):
-        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.agents.devops.ui_testing.models import (
+            CaseResult,
+            RunResult,
+        )
         from seatunnel_agent.agents.devops.ui_testing.report import append_history
         from seatunnel_agent.agents.devops.ui_testing.rundiff import (
-            flaky_trend, load_history)
+            flaky_trend,
+            load_history,
+        )
         rr = RunResult(started_at="20260101_000000", suite="smoke")
         rr.cases = [CaseResult("A1", "t", "PASS"),
                     CaseResult("B1", "t", "FAIL"),
@@ -713,7 +733,10 @@ class TestFlakyTrend:
 
     def test_format_trend_marks_flaky(self, tmp_path):
         from seatunnel_agent.agents.devops.ui_testing.rundiff import (
-            flaky_trend, format_trend, load_history)
+            flaky_trend,
+            format_trend,
+            load_history,
+        )
         self._hist(tmp_path, [
             {"ts": "1", "suite": "s", "verdicts": {"A1": "PASS", "B1": "PASS"}},
             {"ts": "2", "suite": "s", "verdicts": {"A1": "ERROR", "B1": "PASS"}},

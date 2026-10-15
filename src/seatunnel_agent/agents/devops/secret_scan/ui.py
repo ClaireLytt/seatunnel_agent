@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the secret scanner.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -10,9 +9,14 @@ from __future__ import annotations
 
 import gradio as gr
 
-from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
-from seatunnel_agent.agents.devops.secret_scan import ScanResult, render_markdown, scan_dir, scan_text
+from seatunnel_agent.agents.devops.secret_scan import (
+    ScanResult,
+    render_markdown,
+    scan_dir,
+    scan_text,
+)
 from seatunnel_agent.agents.devops.secret_scan.report import normalize_lang
+from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
 
 _I18N = {
     "en": {

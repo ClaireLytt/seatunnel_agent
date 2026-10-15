@@ -8,16 +8,9 @@ from __future__ import annotations
 
 import gradio as gr
 
-from seatunnel_agent.hub.pages import (  # noqa: F401 — re-exported for back-compat
-    _build_ai_hub_html,
-    _build_data_hub_html,
-    _build_devops_hub_html,
-    _build_landing_html,
-    _mount_hub,
-)
 from seatunnel_agent.agents.data.seatunnel.ui import (  # noqa: F401 — re-exported for back-compat
-    EventCollector,
     _TOOL_EMOJI,
+    EventCollector,
     _build_template_choices,
     _export_session,
     _format_events_as_chat,
@@ -25,8 +18,16 @@ from seatunnel_agent.agents.data.seatunnel.ui import (  # noqa: F401 — re-expo
     _render_seatunnel_page,
     _template_to_prompt,
 )
-from seatunnel_agent.hub.css import _CUSTOM_CSS  # noqa: F401 — re-exported for back-compat
-
+from seatunnel_agent.hub.css import (
+    _CUSTOM_CSS,  # noqa: F401 — re-exported for back-compat
+)
+from seatunnel_agent.hub.pages import (  # noqa: F401 — re-exported for back-compat
+    _build_ai_hub_html,
+    _build_data_hub_html,
+    _build_devops_hub_html,
+    _build_landing_html,
+    _mount_hub,
+)
 
 # Drag-to-resize for the left sidebar: restores the saved width, appends a
 # handle to .st-page-row (not inside .st-sidebar — sidebar_fix.js forces
@@ -106,11 +107,18 @@ def create_ui() -> gr.Blocks:
     from seatunnel_agent.common import settings_store
     settings_store.apply_to_env()
 
-    from seatunnel_agent.agents.data.text2sql.ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
-    from seatunnel_agent.agents.data.data_comparison.ui import render_data_comparison_page
-    from seatunnel_agent.agents.data.sql_review.ui import render_sql_review_page
+    from seatunnel_agent.agents.data.data_comparison.ui import (
+        render_data_comparison_page,
+    )
     from seatunnel_agent.agents.data.data_skew.ui import render_data_skew_page
     from seatunnel_agent.agents.data.mcp_toolbox.ui import render_mcp_page
+    from seatunnel_agent.agents.data.sql_review.ui import render_sql_review_page
+    from seatunnel_agent.agents.data.text2sql.ui import (
+        render_favorites_page,
+        render_history_page,
+        render_schema_browser_page,
+        render_text2sql_page,
+    )
 
     _hide_sub_nav_js = """
     () => {
@@ -192,19 +200,27 @@ def create_ui() -> gr.Blocks:
         render_lineage_page(app)
 
     with app.route("SQL Transpile", "/transpile"):
-        from seatunnel_agent.agents.data.sql_transpile.ui import render_sql_transpile_page
+        from seatunnel_agent.agents.data.sql_transpile.ui import (
+            render_sql_transpile_page,
+        )
         render_sql_transpile_page(app)
 
     with app.route("Change Impact", "/impact"):
-        from seatunnel_agent.agents.data.data_lineage.ui_impact import render_impact_page
+        from seatunnel_agent.agents.data.data_lineage.ui_impact import (
+            render_impact_page,
+        )
         render_impact_page(app)
 
     with app.route("Config Migrate", "/migrate"):
-        from seatunnel_agent.agents.data.config_migrate.ui import render_config_migrate_page
+        from seatunnel_agent.agents.data.config_migrate.ui import (
+            render_config_migrate_page,
+        )
         render_config_migrate_page(app)
 
     with app.route("UI Testing", "/uitest"):
-        from seatunnel_agent.agents.devops.ui_testing.gradio_page import render_uitest_page
+        from seatunnel_agent.agents.devops.ui_testing.gradio_page import (
+            render_uitest_page,
+        )
         render_uitest_page(app)
 
     with app.route("Settings", "/settings"):
@@ -260,7 +276,8 @@ def create_ui() -> gr.Blocks:
 
 def _kill_port(port: int) -> bool:
     """Kill whatever process is listening on *port*. Returns True if killed."""
-    import subprocess, sys
+    import subprocess
+    import sys
     if sys.platform != "win32":
         r = subprocess.run(
             ["lsof", "-ti", f":{port}"], capture_output=True, text=True,
@@ -283,7 +300,8 @@ def _kill_port(port: int) -> bool:
 
 def _port_has_listener(port: int) -> bool:
     """Check if a process is actually LISTENING on *port* (not TIME_WAIT)."""
-    import subprocess, sys
+    import subprocess
+    import sys
     if sys.platform == "win32":
         r = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
         return any(f":{port}" in ln and "LISTENING" in ln for ln in r.stdout.splitlines())
@@ -298,7 +316,9 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         if os.getenv("SEATUNNEL_UI_KILL_PORT", "").lower() in ("1", "true", "yes"):
             print(f"[ui] Port {port} in use — killing old process (SEATUNNEL_UI_KILL_PORT is set)...")
             _kill_port(port)
-            import time; time.sleep(0.5)
+            import time
+
+            time.sleep(0.5)
         else:
             raise SystemExit(
                 f"[ui] Port {port} is already in use. Stop the process using it, "
@@ -321,20 +341,38 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     if api:
         from fastapi import Depends
 
-        from seatunnel_agent.common.api_auth import require_api_key
-        from seatunnel_agent.agents.data.config_lint.api import router as conflint_api_router
-        from seatunnel_agent.agents.data.dag_check.api import router as dagcheck_api_router
-        from seatunnel_agent.agents.data.data_lineage.api import router as lineage_api_router
+        from seatunnel_agent.agents.data.config_lint.api import (
+            router as conflint_api_router,
+        )
+        from seatunnel_agent.agents.data.dag_check.api import (
+            router as dagcheck_api_router,
+        )
+        from seatunnel_agent.agents.data.data_lineage.api import (
+            router as lineage_api_router,
+        )
         from seatunnel_agent.agents.data.data_skew.api import router as skew_api_router
-        from seatunnel_agent.agents.data.log_inspect.api import router as loginspect_api_router
-        from seatunnel_agent.agents.data.metric_diff.api import router as metricdiff_api_router
+        from seatunnel_agent.agents.data.log_inspect.api import (
+            router as loginspect_api_router,
+        )
+        from seatunnel_agent.agents.data.metric_diff.api import (
+            router as metricdiff_api_router,
+        )
         from seatunnel_agent.agents.data.pii_scan.api import router as pii_api_router
-        from seatunnel_agent.agents.data.schema_drift.api import router as schemadrift_api_router
+        from seatunnel_agent.agents.data.schema_drift.api import (
+            router as schemadrift_api_router,
+        )
         from seatunnel_agent.agents.data.sql_fmt.api import router as sqlfmt_api_router
-        from seatunnel_agent.agents.data.sql_review.api import router as sql_review_api_router
-        from seatunnel_agent.agents.data.sql_testgen.api import router as testgen_api_router
-        from seatunnel_agent.agents.data.sql_transpile.api import router as transpile_api_router
+        from seatunnel_agent.agents.data.sql_review.api import (
+            router as sql_review_api_router,
+        )
+        from seatunnel_agent.agents.data.sql_testgen.api import (
+            router as testgen_api_router,
+        )
+        from seatunnel_agent.agents.data.sql_transpile.api import (
+            router as transpile_api_router,
+        )
         from seatunnel_agent.agents.data.text2sql.api import router as t2s_api_router
+        from seatunnel_agent.common.api_auth import require_api_key
         fastapi_app = app.app  # the served instance, now that launch() ran
         # SEATUNNEL_API_KEY (optional) gates every /api route via X-API-Key.
         auth = [Depends(require_api_key)]

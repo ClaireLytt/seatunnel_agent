@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Doc Q&A: tokenization, BM25 retrieval, answers, LLM fallback, CLI, API."""
 
 from __future__ import annotations
@@ -7,7 +6,6 @@ import json
 
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.ai.doc_qa import (
     BM25Index,
     Chunk,
@@ -16,6 +14,7 @@ from seatunnel_agent.agents.ai.doc_qa import (
     get_index,
     tokenize,
 )
+from seatunnel_agent.cli import cli
 from seatunnel_agent.common.llm import LLMResponse
 
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Dependency health core — declared vs installed, pins, licenses. Offline.
 
 Input is the project's own metadata (pyproject ``[project]`` deps + extras,
@@ -16,9 +15,10 @@ conscious decision); **info** = unknown license.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 _SEV_ORDER = {"high": 0, "medium": 1, "info": 2}
 _COPYLEFT = re.compile(r"\b[AL]?GPL\b", re.I)

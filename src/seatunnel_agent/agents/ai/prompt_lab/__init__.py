@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Prompt Lab — run one prompt across several LLM provider profiles.
 
 Side-by-side outputs, token/latency metrics and diffs.  Experiments never

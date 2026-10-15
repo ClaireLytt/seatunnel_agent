@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Orchestrator chat persistence — JSONL, one line per completed turn.
 
 Stores the plain-text transcript (request + final reply + tool-step labels),

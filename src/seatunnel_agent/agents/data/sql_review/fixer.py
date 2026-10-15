@@ -6,8 +6,9 @@ import re
 
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.llm import LLMClient
-from .i18n import sr
 from seatunnel_agent.common.utils import normalize_lang
+
+from .i18n import sr
 from .linter import normalize_dialect
 from .prompts import DIALECT_NAMES
 

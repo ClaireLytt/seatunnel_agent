@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unified MCP toolbox: the whole agent suite as one stdio MCP server.
 
 ``seatunnel-agent mcp`` exposes the deterministic capabilities of every
@@ -36,8 +35,9 @@ import os
 import re
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 MAX_QUERY_ROWS = 500
 
@@ -160,7 +160,10 @@ def build_tool_functions(
         hive/spark/flink/maxcompute/mysql/postgresql/clickhouse/doris/
         starrocks/sqlite；ddl 可选（CREATE TABLE 语句，启用 schema 校验）。"""
         from seatunnel_agent.agents.data.sql_review.agent import static_review_report
-        from seatunnel_agent.agents.data.sql_review.linter import is_known_dialect, normalize_dialect
+        from seatunnel_agent.agents.data.sql_review.linter import (
+            is_known_dialect,
+            normalize_dialect,
+        )
         from seatunnel_agent.agents.data.sql_review.report import render_report
 
         if not (sql or "").strip():
@@ -169,7 +172,10 @@ def build_tool_functions(
             return f"未知方言 / unknown dialect: {dialect}"
         store = None
         if (ddl or "").strip():
-            from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
+            from seatunnel_agent.agents.data.text2sql.schema import (
+                SchemaStore,
+                parse_ddl,
+            )
             try:
                 store = SchemaStore(parse_ddl(ddl))
             except Exception as exc:  # noqa: BLE001 — surface as text
@@ -200,7 +206,10 @@ def build_tool_functions(
         """SQL 变更影响分析：对比两段 SQL（旧版 vs 新版），输出表级/字段级
         变更、严重度分级（error/warn/info）与下游影响面的 Markdown 报告。
         适合在改动上线前评估 blast radius。"""
-        from seatunnel_agent.agents.data.data_lineage.impact import analyze_sql_texts, render_impact_markdown
+        from seatunnel_agent.agents.data.data_lineage.impact import (
+            analyze_sql_texts,
+            render_impact_markdown,
+        )
 
         try:
             result = analyze_sql_texts(old_sql, new_sql, sql_dialect=dialect)
@@ -212,8 +221,13 @@ def build_tool_functions(
                              lang: str = "") -> str:
         """DataX job JSON 或 sqoop 命令 → SeaTunnel HOCON 配置，附迁移说明
         清单（不支持项/需人工确认项）。source_kind: auto | datax | sqoop。"""
-        from seatunnel_agent.agents.data.config_migrate.migrator import migrate_datax, migrate_sqoop
-        from seatunnel_agent.agents.data.config_migrate.report import render_migrate_markdown
+        from seatunnel_agent.agents.data.config_migrate.migrator import (
+            migrate_datax,
+            migrate_sqoop,
+        )
+        from seatunnel_agent.agents.data.config_migrate.report import (
+            render_migrate_markdown,
+        )
 
         text = (content or "").strip()
         if not text:
@@ -234,7 +248,9 @@ def build_tool_functions(
                  migrate_to_seatunnel=migrate_to_seatunnel)
 
     # data-skew tools (already factored for MCP) — history source stays 'mcp'
-    from seatunnel_agent.agents.data.data_skew.mcp_server import build_tool_functions as _skew_tools
+    from seatunnel_agent.agents.data.data_skew.mcp_server import (
+        build_tool_functions as _skew_tools,
+    )
     tools.update(_skew_tools(default_lang=default_lang, include_db=include_db))
 
     if not include_db:
@@ -280,6 +296,7 @@ def build_tool_functions(
         # honor SEATUNNEL_DC_PRESETS_PATH at CALL time (the module-level
         # default is baked at import, which breaks test/app isolation)
         import os
+
         from seatunnel_agent.agents.data.data_comparison import presets as _p
         path = os.environ.get("SEATUNNEL_DC_PRESETS_PATH") or _p._DEFAULT_PATH
         return _p.ConnectionPresetsStore(path)
@@ -306,7 +323,10 @@ def build_tool_functions(
                 names = []
             hint = f"；已保存: {', '.join(n for n in names if n)}" if names else ""
             return None, f"未找到连接 '{key}' / connection not found{hint}"
-        from seatunnel_agent.agents.data.text2sql.executor.base import DatabaseConfig, create_executor
+        from seatunnel_agent.agents.data.text2sql.executor.base import (
+            DatabaseConfig,
+            create_executor,
+        )
         try:
             cfg = DatabaseConfig(
                 ds_type=str(preset.get("ds_type") or ""),
@@ -389,7 +409,9 @@ def build_tool_functions(
         """在已保存连接上执行**只读**查询（仅允许单条 SELECT/WITH；多语句、
         写操作一律拒绝），返回 Markdown 结果表。max_rows 上限 500，且在
         支持 LIMIT 的引擎上注入引擎侧 LIMIT（大表不做全量计算）。"""
-        from seatunnel_agent.agents.data.data_skew.consistency import extract_single_select
+        from seatunnel_agent.agents.data.data_skew.consistency import (
+            extract_single_select,
+        )
 
         executor, err = _executor_for(connection)
         if err:
@@ -491,8 +513,11 @@ def build_tool_functions(
         值生成的改写模板。先用 skew_check 做静态扫描，再用本工具实测确认。"""
         from seatunnel_agent.agents.data.data_skew.detector import normalize_dialect
         from seatunnel_agent.agents.data.data_skew.probe import (
-            effective_sample_pct, extract_probe_targets, render_probe_section,
-            run_probes)
+            effective_sample_pct,
+            extract_probe_targets,
+            render_probe_section,
+            run_probes,
+        )
 
         executor, err = _executor_for(connection)
         if err:
@@ -573,8 +598,10 @@ def build_tool_functions(
         """一致性实测：在同一连接上运行两版 SQL（各自仅允许单条 SELECT/WITH）
         并比对——行数一致性、小结果集逐行多重集比对、大结果集逐列聚合指纹。
         用于验证改写/迁移后的 SQL 与原 SQL 结果等价。"""
-        from seatunnel_agent.agents.data.data_skew.consistency import (check_consistency,
-                                            render_consistency_section)
+        from seatunnel_agent.agents.data.data_skew.consistency import (
+            check_consistency,
+            render_consistency_section,
+        )
 
         executor, err = _executor_for(connection)
         if err:
@@ -592,8 +619,10 @@ def build_tool_functions(
         """跨连接比对两张表的分段校验和（同名列取交集，逐段哈希）：行数/结构
         都一致后仍怀疑内容差异时用它，比逐行拉数便宜得多。where 可选，同时
         作用于两侧，禁分号。"""
-        from seatunnel_agent.agents.data.data_comparison.comparator import (build_checksum_sql,
-                                                 compare_checksums)
+        from seatunnel_agent.agents.data.data_comparison.comparator import (
+            build_checksum_sql,
+            compare_checksums,
+        )
 
         tb = (table_b or table_a or "").strip()
         for t in (table_a, tb):
@@ -652,7 +681,9 @@ def build_tool_functions(
 
     # ── lineage tools (only when a graph source is configured) ──────────
     if sql_dir or seatunnel_dir or use_hive:
-        from seatunnel_agent.agents.data.data_lineage.mcp_server import build_tool_functions as _lin_tools
+        from seatunnel_agent.agents.data.data_lineage.mcp_server import (
+            build_tool_functions as _lin_tools,
+        )
         tools.update(_lin_tools(
             sql_dir=sql_dir, seatunnel_dir=seatunnel_dir, use_hive=use_hive,
             meta_table=meta_table, partition=partition,
@@ -664,8 +695,10 @@ def build_tool_functions(
         def data_dictionary(lang: str = "") -> str:
             """从血缘图生成数据字典（分层排序的表清单：来源/去向/字段血缘），
             不连接数据库。"""
-            from seatunnel_agent.agents.data.data_lineage.dictionary import (build_dictionary,
-                                                  render_dictionary_markdown)
+            from seatunnel_agent.agents.data.data_lineage.dictionary import (
+                build_dictionary,
+                render_dictionary_markdown,
+            )
             from seatunnel_agent.agents.data.data_lineage.loaders import build_graph
 
             if _dict_state["graph"] is None:

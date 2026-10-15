@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from seatunnel_agent.agents.data.text2sql.subscriptions import builtin_params
+
 from .rules import DQCCheck, DQCRule
 
 _HISTORY_ENV = "DQC_HISTORY_PATH"
@@ -183,7 +184,10 @@ def run_checks(
     ds_type: str = "hive",
 ) -> list[CheckResult]:
     """Run every check; execution errors become status='error' results."""
-    from seatunnel_agent.agents.data.text2sql.validator import enforce_limit, validate_sql
+    from seatunnel_agent.agents.data.text2sql.validator import (
+        enforce_limit,
+        validate_sql,
+    )
 
     history = history or DQCHistory()
     results: list[CheckResult] = []
@@ -201,7 +205,9 @@ def run_checks(
             try:
                 qr = executor.run(enforce_limit(sql, dialect=ds_type), max_rows=10)
             except Exception as exc:
-                from seatunnel_agent.agents.data.text2sql.tools import _sanitize_db_error
+                from seatunnel_agent.agents.data.text2sql.tools import (
+                    _sanitize_db_error,
+                )
 
                 result.detail = _sanitize_db_error(str(exc))
                 results.append(result)

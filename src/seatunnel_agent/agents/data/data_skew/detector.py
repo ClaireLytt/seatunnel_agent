@@ -16,6 +16,7 @@ import re
 
 from seatunnel_agent.common.sql_text import clean_sql as _clean_sql_text
 from seatunnel_agent.common.utils import normalize_lang
+
 from .report import Severity, SkewFinding
 
 DIALECTS = ("spark", "maxcompute", "hive")

@@ -10,7 +10,8 @@ from typing import Any
 
 from .chat_history import list_t2s_sessions
 from .favorites import FavoritesStore
-from .i18n import HINTS_I18N, TOOL_EMOJI, TOOL_LABEL_I18N, t2s as _t2s
+from .i18n import HINTS_I18N, TOOL_EMOJI, TOOL_LABEL_I18N
+from .i18n import t2s as _t2s
 from .qlog import QueryLogger
 from .schema import SchemaStore
 from .ui_cards import (

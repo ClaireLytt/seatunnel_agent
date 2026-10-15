@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the change impact analysis agent (data_lineage.impact).
 
 Deterministic only — no LLM, no database, no network (git tests use a
@@ -14,7 +13,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.data_lineage.impact import (
     analyze_dirs,
     analyze_impact,
@@ -23,6 +21,7 @@ from seatunnel_agent.agents.data.data_lineage.impact import (
     render_impact_markdown,
 )
 from seatunnel_agent.agents.data.data_lineage.loaders import build_graph
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 
@@ -260,6 +259,7 @@ def api_client(monkeypatch):
     fastapi = pytest.importorskip("fastapi")
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
+
     from seatunnel_agent.agents.data.data_lineage.api import router
     monkeypatch.setenv("LINEAGE_API_ALLOWED_DIRS", str(DEMO))
     app = fastapi.FastAPI()
@@ -388,6 +388,7 @@ def test_cli_utf8_stdio_helper(monkeypatch):
     # regression: emoji level markers crashed GBK consoles mid-report
     import io
     import sys as _sys
+
     from seatunnel_agent.cli import _ensure_utf8_stdio
     gbk_out = io.TextIOWrapper(io.BytesIO(), encoding="gbk")
     monkeypatch.setattr(_sys, "stdout", gbk_out)

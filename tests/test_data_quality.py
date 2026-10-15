@@ -20,7 +20,10 @@ from seatunnel_agent.agents.data.data_quality.runner import (
     build_check_sql,
     push_failures,
 )
-from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, create_executor
+from seatunnel_agent.agents.data.text2sql.executor import (
+    DatabaseConfig,
+    create_executor,
+)
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 
 _DDL = """

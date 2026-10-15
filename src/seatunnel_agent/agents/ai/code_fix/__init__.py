@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Code-fix agent — run tests, read, patch, re-run, until green.
 
 A true agent: the pytest output is the environment feedback that drives

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """No-API-key fallback: deterministic keyword routing.
 
 When no LLM is configured the chat entry cannot orchestrate, but it can
@@ -10,8 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .catalog import AgentSpec
 from seatunnel_agent.common.utils import normalize_lang
+
+from .catalog import AgentSpec
 
 # keyword → tool name, scored by hit count (zh + en keywords per tool)
 _KEYWORDS: dict[str, tuple[str, ...]] = {

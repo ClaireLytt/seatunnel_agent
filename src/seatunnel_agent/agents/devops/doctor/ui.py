@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the environment doctor — registered via its manifest."""
 
 from __future__ import annotations
@@ -6,10 +5,9 @@ from __future__ import annotations
 import gradio as gr
 
 from seatunnel_agent.agents.devops.doctor import diagnose
+from seatunnel_agent.common.config import llm_ready as _llm_ready
 from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
 from seatunnel_agent.common.utils import normalize_lang as _norm
-from seatunnel_agent.common.config import llm_ready as _llm_ready
-
 
 _I18N = {
     "en": {

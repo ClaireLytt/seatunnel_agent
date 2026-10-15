@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """CI triage: templates, clustering, flaky/drift analysis, CLI, API."""
 
 from __future__ import annotations

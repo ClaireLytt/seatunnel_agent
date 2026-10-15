@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic SeaTunnel config lint core.
 
 Finding kinds (severity):

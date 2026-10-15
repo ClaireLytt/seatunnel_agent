@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Per-case pytest bridge for the UI suite.
 
 Unlike test_ui_smoke.py (one node for the whole smoke run), every YAML case

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic SQL formatting core (sqlglot pretty-print).
 
 Statements are split and formatted one by one: a statement that fails to
@@ -8,12 +7,13 @@ whitespace-normalized text, so an already-formatted file stays untouched.
 """
 
 from __future__ import annotations
-from seatunnel_agent.common.utils import collect_sql_files
 
 import difflib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from seatunnel_agent.common.utils import collect_sql_files
 
 
 @dataclass
@@ -67,7 +67,9 @@ def format_text(sql: str, dialect: str = "hive",
     import sqlglot
     from sqlglot import exp
 
-    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import resolve_sqlglot_dialect
+    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import (
+        resolve_sqlglot_dialect,
+    )
 
     read = resolve_sqlglot_dialect(dialect)
     result = FmtResult(name=name, original=sql, formatted=sql)

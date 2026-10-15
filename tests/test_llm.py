@@ -5,10 +5,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from seatunnel_agent.common.config import Settings
-from seatunnel_agent.common.llm import LLMClient, LLMResponse, ToolCall, _convert_tools_to_openai
 from seatunnel_agent.agents.data.seatunnel.tools import TOOL_DEFINITIONS
-
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import (
+    LLMClient,
+    LLMResponse,
+    ToolCall,
+    _convert_tools_to_openai,
+)
 
 ANTHROPIC_SETTINGS = Settings(
     api_key="sk-test",

@@ -11,8 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from .i18n import dsk
 from seatunnel_agent.common.utils import normalize_lang
+
+from .i18n import dsk
 
 
 class Severity(str, Enum):

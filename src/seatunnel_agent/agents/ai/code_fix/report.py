@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
 """Markdown rendering for code-fix runs."""
 
 from __future__ import annotations
 
-from .engine import CodeFixResult
-
 from seatunnel_agent.common.utils import normalize_lang
 
+from .engine import CodeFixResult
 
 _I18N = {
     "en": {

@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import ms_since
 from seatunnel_agent.common.config import load_settings
+
 from .agent import LineageAgent, static_lineage
 from .config import DEFAULT_DEPTH, DIRECTIONS, MAX_DEPTH, load_lineage_config
 from .loaders import build_graph

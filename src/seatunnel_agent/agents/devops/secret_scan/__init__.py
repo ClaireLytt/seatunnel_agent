@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Secret / credential scanner — naming patterns × entropy over code & config.
 
 Deterministic, offline, never echoes a full secret (masked previews only).

@@ -9,15 +9,17 @@ table) and the optimized SQL is written to ``<name>_optimized.sql``.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.llm import LLMClient
+from seatunnel_agent.common.utils import normalize_lang
+
 from .detector import detect_skew, normalize_dialect, split_statements
 from .i18n import dsk
-from seatunnel_agent.common.utils import normalize_lang
 from .prompts import build_system_prompt, build_user_prompt
 from .report import Severity, SkewFinding, SkewReport, render_report
 

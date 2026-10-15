@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from datetime import date
 
-from .schema import TableSchema, _INCREMENTAL_SUFFIXES, _FULL_SUFFIXES
+from .schema import _FULL_SUFFIXES, _INCREMENTAL_SUFFIXES, TableSchema
 
 
 def classify_table(table_name: str) -> str:

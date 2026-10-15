@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic checkers for eval outputs.
 
 Every check returns ``(passed, detail)``.  The optional LLM judge lives in

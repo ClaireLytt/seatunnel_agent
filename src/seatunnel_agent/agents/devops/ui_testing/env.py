@@ -111,7 +111,7 @@ class AppUnderTest:
         self.proc: subprocess.Popen | None = None
         self._log_file = None
 
-    def __enter__(self) -> "AppUnderTest":
+    def __enter__(self) -> AppUnderTest:
         seed_sqlite(self.db_path)
         if self.external_url:
             _wait_http(self.base_url, timeout_s=10)

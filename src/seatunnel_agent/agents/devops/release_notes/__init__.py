@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Release-notes helper — conventional-commit changelog + semver suggestion.
 
 Deterministic core over plain commit-log text; git access and the optional

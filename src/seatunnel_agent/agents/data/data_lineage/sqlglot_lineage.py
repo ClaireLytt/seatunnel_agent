@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Optional sqlglot-powered column lineage (install extras: ``lineage``).
 
 With sqlglot installed, column edges come from a real AST — alias resolution,

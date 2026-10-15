@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the SQL formatter (sql_fmt).
 
 Deterministic only — no database, no LLM.
@@ -12,7 +11,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.sql_fmt import (
     fmt_dir,
     format_text,
@@ -20,6 +18,7 @@ from seatunnel_agent.agents.data.sql_fmt import (
     render_markdown,
     result_to_dict,
 )
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 

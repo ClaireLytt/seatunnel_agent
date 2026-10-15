@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Answering layer: extractive by default, optional LLM synthesis.
 
 The extractive answer (top chunks + citations) is always produced and never
@@ -8,12 +7,12 @@ failure."""
 
 from __future__ import annotations
 
-from typing import Any, Callable
-
-from .core import BM25Index, Chunk
+from collections.abc import Callable
+from typing import Any
 
 from seatunnel_agent.common.utils import normalize_lang
 
+from .core import BM25Index, Chunk
 
 _I18N = {
     "en": {

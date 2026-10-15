@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Prompt Lab: profile→Settings mapping, matrix runner, diff, CLI, API.
 
 Fully offline — every LLM path is injected with a fake client factory.
@@ -11,8 +10,6 @@ import json
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.common.config import Settings
-from seatunnel_agent.common.llm import LLMResponse
 from seatunnel_agent.agents.ai.prompt_lab import (
     ACTIVE,
     ExperimentLogger,
@@ -21,6 +18,8 @@ from seatunnel_agent.agents.ai.prompt_lab import (
     run_matrix,
     settings_from_profile,
 )
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse
 
 
 def _resp(text: str, inp: int = 10, out: int = 5) -> LLMResponse:

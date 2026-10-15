@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Optional LLM root-cause advice for the top log clusters.
 
 Strictly additive: the deterministic clustering is never modified.  The
@@ -11,6 +10,7 @@ from __future__ import annotations
 
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.llm import LLMClient
+
 from .clusterer import InspectReport
 
 ADVISOR_MARKER = "🤖 llm-generated"

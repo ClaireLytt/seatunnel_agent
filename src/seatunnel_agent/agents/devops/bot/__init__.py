@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """GitHub bot — PR webhook → secret scan + static SQL review as a comment."""
 
 from .core import BOT_MARKER, BotFinding, PatchFile, parse_patch, review_patch

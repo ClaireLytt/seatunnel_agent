@@ -41,7 +41,6 @@ from .tools_sql import (  # noqa: F401 (re-exported for compatibility)
     _tool_transpile_sql,
 )
 
-
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "match_tables",

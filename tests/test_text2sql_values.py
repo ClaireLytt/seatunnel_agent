@@ -43,7 +43,10 @@ def store() -> SchemaStore:
 @pytest.fixture()
 def sqlite_env(tmp_path, store):
     """(executor, store) over a real sqlite db."""
-    from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, create_executor
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        DatabaseConfig,
+        create_executor,
+    )
 
     db = tmp_path / "v.db"
     conn = sqlite3.connect(db)

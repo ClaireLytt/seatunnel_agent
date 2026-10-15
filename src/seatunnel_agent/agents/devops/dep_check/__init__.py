@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Dependency health — declared vs installed, pins and licenses. Offline."""
 
 from .core import (

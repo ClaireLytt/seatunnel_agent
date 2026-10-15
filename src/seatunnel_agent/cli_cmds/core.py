@@ -71,7 +71,13 @@ def diagnose(ctx: click.Context, log: str, output: str | None) -> None:
 @click.pass_context
 def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
     """Start an interactive multi-turn chat session with the Agent."""
-    from ..common.history import load_session, save_session, new_session_id, now_iso, Session
+    from ..common.history import (
+        Session,
+        load_session,
+        new_session_id,
+        now_iso,
+        save_session,
+    )
     from ..common.history import list_sessions as _list_sessions
 
     if list_sessions:
@@ -169,6 +175,7 @@ def ui(port: int, host: str, share: bool, api: bool) -> None:
 def batch(ctx: click.Context, configs: tuple[str, ...], stop_on_failure: bool) -> None:
     """Run multiple SeaTunnel configs sequentially."""
     from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
+
     from ..common.config import load_settings
 
     if ctx.obj.get("model"):
@@ -186,8 +193,9 @@ def batch(ctx: click.Context, configs: tuple[str, ...], stop_on_failure: bool) -
 
 
 def _make_agent(model: str | None = None, provider: str | None = None):
-    from ..common.config import load_settings
     from seatunnel_agent.agents.data.seatunnel.agent import SeaTunnelAgent
+
+    from ..common.config import load_settings
 
     old_model = os.environ.get("MODEL_NAME")
     old_provider = os.environ.get("LLM_PROVIDER")

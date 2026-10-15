@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Run one prompt across several LLM provider profiles.
 
 Profiles are the named snapshots the /settings page stores
@@ -15,9 +14,10 @@ that cell's ``error`` instead of killing the matrix.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from seatunnel_agent.common.config import Settings, load_settings
 from seatunnel_agent.common.settings_store import load_profile
@@ -125,7 +125,9 @@ def run_matrix(prompt: str,
     system = (system or "").strip() or _DEFAULT_SYSTEM
     profiles = profiles or [ACTIVE]
     if client_factory is None:
-        from seatunnel_agent.common import llm  # resolved at call time so tests can monkeypatch
+        from seatunnel_agent.common import (
+            llm,  # resolved at call time so tests can monkeypatch
+        )
         client_factory = lambda s: llm.LLMClient(s, agent="prompt_lab")  # noqa: E731
 
     def job(p: str) -> CellResult:

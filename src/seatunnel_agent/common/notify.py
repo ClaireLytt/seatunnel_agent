@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Webhook notifications — one send() for DingTalk / Feishu / Slack / generic.
 
 The observability features (cost anomalies, eval regressions, flaky CI) can
@@ -16,7 +15,8 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 KINDS = ("dingtalk", "feishu", "slack", "generic")
 

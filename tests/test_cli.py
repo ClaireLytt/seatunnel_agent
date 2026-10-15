@@ -6,7 +6,6 @@ from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
 
-
 runner = CliRunner()
 
 

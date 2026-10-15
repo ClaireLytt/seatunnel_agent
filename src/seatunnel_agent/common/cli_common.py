@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Shared console + CLI helpers used by cli.py and every cli_cmds module.
 
 Lives outside both so cli_cmds submodules never import cli.py (which would

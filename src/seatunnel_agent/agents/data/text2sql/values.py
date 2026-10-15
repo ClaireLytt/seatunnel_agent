@@ -85,7 +85,7 @@ class ValueIndex:
         executor,
         store: SchemaStore,
         max_distinct: int = MAX_DISTINCT,
-    ) -> "ValueIndex":
+    ) -> ValueIndex:
         """Sample distinct values via the executor (one query per column)."""
         from .profiler import quote_identifier
 
@@ -149,7 +149,7 @@ class ValueIndex:
     @classmethod
     def load(
         cls, schema_hash: str, index_dir: Path | None = None,
-    ) -> "ValueIndex | None":
+    ) -> ValueIndex | None:
         path = cls.cache_path(schema_hash, index_dir)
         if not path.is_file():
             return None

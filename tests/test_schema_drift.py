@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the schema drift agent (schema_drift).
 
 Deterministic only — no LLM, no database, no network.
@@ -12,7 +11,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.schema_drift import (
     classify_type_change,
     diff_paths,
@@ -22,6 +20,7 @@ from seatunnel_agent.agents.data.schema_drift import (
     render_markdown,
     report_to_dict,
 )
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 

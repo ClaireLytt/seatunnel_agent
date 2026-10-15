@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import json
 import threading
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 
+from seatunnel_agent.agents.data.seatunnel.prompts import build_system_prompt
+from seatunnel_agent.agents.data.seatunnel.tools import TOOL_DEFINITIONS, execute_tool
 from seatunnel_agent.common.config import Settings, env_int
 from seatunnel_agent.common.context import truncate_messages
 from seatunnel_agent.common.llm import LLMClient
-from seatunnel_agent.agents.data.seatunnel.prompts import build_system_prompt
-from seatunnel_agent.agents.data.seatunnel.tools import TOOL_DEFINITIONS, execute_tool
 from seatunnel_agent.common.utils import truncate
 
 MAX_LOOP_ITERATIONS = env_int("AGENT_MAX_ITERATIONS", 20)

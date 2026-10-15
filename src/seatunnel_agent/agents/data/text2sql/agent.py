@@ -11,7 +11,8 @@ from __future__ import annotations
 import io
 import json
 import sys
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -36,6 +37,7 @@ from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.context import truncate_messages
 from seatunnel_agent.common.llm import LLMClient
 from seatunnel_agent.common.utils import truncate
+
 from .executor import DatabaseConfig
 from .prompts import build_text2sql_prompt
 from .schema import SchemaStore

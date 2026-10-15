@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the metric consistency checker (metric_diff).
 
 Deterministic only — no database, no LLM.
@@ -12,13 +11,13 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.metric_diff import (
     canonical_expr,
     check_sql_dir,
     render_markdown,
     report_to_dict,
 )
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Read-only showcase/status page for the MCP toolbox (``/mcp``).
 
 The toolbox itself is a stdio server for external MCP clients — this page
@@ -13,7 +12,10 @@ import json
 
 import gradio as gr
 
-from seatunnel_agent.agents.data.mcp_toolbox.core import _audit_file, build_tool_functions
+from seatunnel_agent.agents.data.mcp_toolbox.core import (
+    _audit_file,
+    build_tool_functions,
+)
 from seatunnel_agent.common.page_scaffold import title_row, wire_page
 
 _DEFAULT_LANG = "en"

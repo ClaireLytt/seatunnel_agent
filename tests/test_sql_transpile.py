@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the SQL dialect translation agent (sql_transpile).
 
 Deterministic only — no LLM, no database, no network.
@@ -12,7 +11,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.sql_transpile import (
     DIALECTS,
     infer_dialect,
@@ -23,6 +21,7 @@ from seatunnel_agent.agents.data.sql_transpile import (
     translate,
     transpile_dir,
 )
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 
@@ -343,6 +342,7 @@ def api_client():
     fastapi = pytest.importorskip("fastapi")
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
+
     from seatunnel_agent.agents.data.sql_transpile.api import router
     app = fastapi.FastAPI()
     app.include_router(router)

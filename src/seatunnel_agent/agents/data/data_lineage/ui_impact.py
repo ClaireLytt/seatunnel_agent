@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the change impact analysis agent.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -123,7 +122,9 @@ def render_impact_page(app: gr.Blocks) -> None:
     def _graph_iframe(result) -> str:
         import html as _html
 
-        from seatunnel_agent.agents.data.data_lineage.impact import render_impact_mermaid
+        from seatunnel_agent.agents.data.data_lineage.impact import (
+            render_impact_mermaid,
+        )
         from seatunnel_agent.agents.data.data_lineage.render import mermaid_html
 
         src = render_impact_mermaid(result)
@@ -141,7 +142,10 @@ def render_impact_page(app: gr.Blocks) -> None:
                    lang: str):
         from pathlib import Path
 
-        from seatunnel_agent.agents.data.data_lineage.impact import analyze_dirs, render_impact_markdown
+        from seatunnel_agent.agents.data.data_lineage.impact import (
+            analyze_dirs,
+            render_impact_markdown,
+        )
 
         old_dir = (old_dir or "").strip()
         new_dir = (new_dir or "").strip()
@@ -165,7 +169,9 @@ def render_impact_page(app: gr.Blocks) -> None:
         from pathlib import Path
 
         from seatunnel_agent.agents.data.data_lineage.impact import (
-            analyze_sql_texts, render_impact_markdown, render_text_diff,
+            analyze_sql_texts,
+            render_impact_markdown,
+            render_text_diff,
         )
 
         if not (old_sql or "").strip() or not (new_sql or "").strip():

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Orchestrator engine — a bounded tool-use loop over the agent catalog.
 
 One ``LLMClient`` chat with one tool per routable agent; the model picks
@@ -11,13 +10,15 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.utils import normalize_lang
+
 from .catalog import AgentSpec, build_catalog, tool_definitions
 from .prompts import build_system_prompt
-from seatunnel_agent.common.utils import normalize_lang
 
 _MAX_RESULT_CHARS = 20000  # keep one tool's markdown from flooding the context
 

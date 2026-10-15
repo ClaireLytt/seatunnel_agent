@@ -29,7 +29,7 @@ def _snippet(node: exp.Expression, max_len: int = 60) -> str:
 
 def manual_checks(
     ast: exp.Expression, stmt_line: int, *, src: str, dst: str
-) -> list["Issue"]:
+) -> list[Issue]:
     from .transpiler import Issue  # local import to avoid a cycle
 
     issues: list[Issue] = []

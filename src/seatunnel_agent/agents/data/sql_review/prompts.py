@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+
 from .linter import normalize_dialect
 
 _RESOURCE_DIR = Path(__file__).parent / "resources"

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """LLM eval harness — golden suites for the platform's LLM features.
 
 YAML suites run against the production prompts (text2sql, sql_review) or a

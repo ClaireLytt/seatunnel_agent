@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Eval runner: execute a suite against the LLM targets and score it.
 
 Deterministic checks decide pass/fail; the optional LLM judge
@@ -9,10 +8,12 @@ gate** — a model grading a model must never block a release on its own.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from seatunnel_agent.common.config import Settings
+
 from .scoring import run_check
 from .suite import Suite
 from .targets import TARGETS
@@ -105,7 +106,9 @@ def run_suite(suite: Suite,
               ) -> SuiteResult:
     """Run every case; per-case errors are captured, never raised."""
     if client_factory is None:
-        from seatunnel_agent.common import llm  # resolved at call time so tests can monkeypatch
+        from seatunnel_agent.common import (
+            llm,  # resolved at call time so tests can monkeypatch
+        )
         client_factory = lambda s: llm.LLMClient(s, agent="llm_eval")  # noqa: E731
     if settings is None:
         from seatunnel_agent.common.config import load_settings
