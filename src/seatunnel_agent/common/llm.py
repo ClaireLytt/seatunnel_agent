@@ -232,17 +232,17 @@ class LLMClient:
             kwargs["temperature"] = self.settings.temperature
         response = self._client.messages.create(**kwargs)
 
-        thinking = ""
-        text = ""
+        thinking_parts: list[str] = []
+        text_parts: list[str] = []
         tool_calls = []
 
         for block in response.content:
             if not hasattr(block, "type"):
                 continue
             if block.type == "thinking" and getattr(block, "thinking", ""):
-                thinking = block.thinking
+                thinking_parts.append(block.thinking)
             elif block.type == "text" and block.text:
-                text = block.text
+                text_parts.append(block.text)
             elif block.type == "tool_use":
                 tool_calls.append(ToolCall(
                     id=block.id, name=block.name, input=block.input,
@@ -258,8 +258,8 @@ class LLMClient:
         return LLMResponse(
             wants_tool_use=(response.stop_reason == "tool_use"),
             tool_calls=tool_calls,
-            thinking_text=thinking,
-            reply_text=text,
+            thinking_text="".join(thinking_parts),
+            reply_text="".join(text_parts),
             raw_content=response.content,
             usage=usage,
         )
