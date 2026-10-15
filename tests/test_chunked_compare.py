@@ -51,6 +51,15 @@ class TestChunkSqlBuilders:
                                   "mysql", where="dt = '2024-01-01'")
         assert "AND (dt = '2024-01-01')" in sql
 
+    def test_unsafe_where_rejected(self):
+        for w in ("1=1; DROP TABLE t", "1=1 -- x", "DELETE FROM t"):
+            with pytest.raises(ValueError):
+                build_chunk_map_sql("orders", "id", ["amount"], 0, 10.0,
+                                    "mysql", where=w)
+            with pytest.raises(ValueError):
+                build_chunk_rows_sql("orders", "id", ["amount"], 0, 10,
+                                     "mysql", where=w)
+
     def test_chunk_rows_sql_bounds(self):
         sql = build_chunk_rows_sql("orders", "id", ["amount"], 10, 20, "mysql")
         assert "id >= 10" in sql and "id < 20" in sql

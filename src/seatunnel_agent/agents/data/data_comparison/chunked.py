@@ -34,6 +34,7 @@ from .comparator import (
     _where_clause,
     cast_to_string,
     quote_identifier,
+    validate_where,
 )
 
 # rows per chunk that phase 1 aims for
@@ -153,6 +154,7 @@ def build_chunk_map_sql(
     chunk = _chunk_expr(qpk, lo, width, ds_type)
     cond = f"{qpk} IS NOT NULL"
     if where.strip():
+        validate_where(where)
         cond += f" AND ({where.strip()})"
     return (
         f"SELECT {chunk} AS chunk_id,"
@@ -174,6 +176,7 @@ def build_chunk_rows_sql(
     qcols = ", ".join(quote_identifier(c, ds_type) for c in columns)
     cond = f"{qpk} >= {lo!r} AND {qpk} < {hi!r}"
     if where.strip():
+        validate_where(where)
         cond += f" AND ({where.strip()})"
     return (
         f"SELECT {qpk}, {qcols}"
@@ -203,6 +206,7 @@ def build_all_rows_sql(table: str, pk_column: str, columns: list[str],
     qcols = ", ".join(quote_identifier(c, ds_type) for c in columns)
     cond = f"{qpk} IS NOT NULL"
     if where.strip():
+        validate_where(where)
         cond += f" AND ({where.strip()})"
     return (f"SELECT {qpk}, {qcols}\n  FROM {qt}\n WHERE {cond}"
             f"\n ORDER BY {qpk}")

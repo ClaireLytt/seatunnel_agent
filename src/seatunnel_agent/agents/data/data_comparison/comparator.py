@@ -165,7 +165,55 @@ def compare_schemas(
 # SQL builders
 # ---------------------------------------------------------------------------
 
+_WHERE_WRITE_KEYWORD_RE = re.compile(
+    r"\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|merge)\b",
+    re.IGNORECASE,
+)
+
+
+def _blank_string_literals(text: str) -> str:
+    """Blank the interior of '...' / "..." literals (length-preserving) so
+    separators and keywords inside legitimate filter values never trigger
+    the checks below."""
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch in ("'", '"'):
+            i += 1
+            while i < n and text[i] != ch:
+                if text[i] == "\\":
+                    out[i] = " "
+                    i += 1
+                    if i < n:
+                        out[i] = " "
+                        i += 1
+                    continue
+                out[i] = " "
+                i += 1
+        i += 1
+    return "".join(out)
+
+
+def validate_where(where: str) -> None:
+    """Read-only guard for user-supplied WHERE filters (mirrors the text2sql
+    validator's strip-literals + keyword-blacklist approach): reject stacked
+    statements, comment markers and write/DDL keywords. Raises ValueError."""
+    if not where.strip():
+        return
+    cleaned = _blank_string_literals(where)
+    if ";" in cleaned:
+        raise ValueError("WHERE 过滤条件不允许包含分号/多语句")
+    for marker in ("--", "/*", "#"):
+        if marker in cleaned:
+            raise ValueError(f"WHERE 过滤条件不允许包含注释符 '{marker}'")
+    m = _WHERE_WRITE_KEYWORD_RE.search(cleaned)
+    if m:
+        raise ValueError(f"WHERE 过滤条件包含写操作关键词 '{m.group(1)}'")
+
+
 def _where_clause(where: str) -> str:
+    validate_where(where)
     return f" WHERE {where}" if where.strip() else ""
 
 

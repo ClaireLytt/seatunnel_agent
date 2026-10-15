@@ -231,6 +231,41 @@ class TestSqlBuilders:
         assert "c19" in sql
         assert "c20" not in sql
 
+    def test_where_rejects_multi_statement_comments_and_writes(self):
+        from seatunnel_agent.agents.data.data_comparison.comparator import (
+            validate_where,
+        )
+        bad = [
+            "1=1; DROP TABLE users",
+            "1=1 -- hide the rest",
+            "1=1 /* sneaky */",
+            "1=1 # mysql comment",
+            "id IN (1,2); DELETE FROM t",
+            "1=1 OR INSERT INTO t VALUES (1)",
+            "UPDATE t SET x = 1",
+            "1=1 AND truncate table t",
+        ]
+        for w in bad:
+            with pytest.raises(ValueError):
+                validate_where(w)
+            with pytest.raises(ValueError):
+                build_count_sql("t", where=w)
+
+    def test_where_allows_legitimate_filters(self):
+        from seatunnel_agent.agents.data.data_comparison.comparator import (
+            validate_where,
+        )
+        good = [
+            "",
+            "dt = '2024-01-01' AND amount > 10",
+            "name LIKE '%a;b--%'",           # ; and -- inside a literal
+            "status IN ('created', 'updated')",  # keywords inside literals
+            "insert_flag = 1 AND updated_at > '2024-01-01'",  # substrings
+        ]
+        for w in good:
+            validate_where(w)  # must not raise
+        assert "dt = '2024-01-01'" in build_count_sql("t", where=good[1])
+
     def test_build_count_sql_quotes_special_name(self):
         sql = build_count_sql("my table")
         assert '"my table"' in sql

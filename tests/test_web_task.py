@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from seatunnel_agent.agents.ai.web_task import run_task
 from seatunnel_agent.agents.ai.web_task.session import _origin
 from seatunnel_agent.common.config import Settings
@@ -108,6 +110,36 @@ class TestLoop:
                           client=client)
         assert result.steps[0].error
         assert result.success
+
+
+class TestStartUrlGuard:
+    def test_rejects_non_http_schemes(self):
+        from seatunnel_agent.agents.ai.web_task.session import validate_start_url
+        for url in ("file:///etc/passwd", "ftp://host/x", "javascript:alert(1)",
+                    "about:blank", "example.com"):
+            with pytest.raises(ValueError):
+                validate_start_url(url)
+
+    def test_rejects_literal_private_ips_by_default(self):
+        from seatunnel_agent.agents.ai.web_task.session import validate_start_url
+        for url in ("http://127.0.0.1:7860/", "https://10.0.0.8/x",
+                    "http://192.168.1.1/", "http://169.254.169.254/meta",
+                    "http://[::1]/", "http://0.0.0.0/"):
+            with pytest.raises(ValueError):
+                validate_start_url(url)
+
+    def test_allow_private_and_public_hosts_pass(self):
+        from seatunnel_agent.agents.ai.web_task.session import validate_start_url
+        validate_start_url("https://example.com/page")       # public domain
+        validate_start_url("http://93.184.216.34/")           # public IP
+        validate_start_url("http://127.0.0.1:7860/", allow_private=True)
+
+    def test_session_start_validates_before_browser_launch(self):
+        from seatunnel_agent.agents.ai.web_task.session import PlaywrightSession
+        s = PlaywrightSession()
+        with pytest.raises(ValueError):
+            s.start("http://127.0.0.1:9/")
+        assert s._pw is None  # no Playwright driver was started
 
 
 class TestOriginGuard:
