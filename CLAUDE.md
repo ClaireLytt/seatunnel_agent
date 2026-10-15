@@ -61,6 +61,7 @@ Before asking the user a question, first investigate whether the answer can be d
    - **验证结果**:跑了哪些验证命令、实际输出结论(测试数、PASS/FAIL)。
    - **前后差异**:测试结果对比或截图对比(见第 5 节)。
    - **未解决问题 / 取舍**:明确列出,没有则写"无"。
+   - **优先级**:报告中的每个条目(已完成项与未解决项)标注 高 / 中 / 低 优先级。
 
 ## 8. 本地验证命令
 
