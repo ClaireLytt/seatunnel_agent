@@ -2,7 +2,13 @@
 
 The /settings page saves LLM credentials here instead of the local .env file.
 Values live in ``~/.seatunnel-agent/llm_settings.json`` with the API key
-encrypted at rest (same key file as the data-comparison presets store).
+obfuscated at rest (same key file as the data-comparison presets store).
+
+Security note: this is OBFUSCATION, NOT ENCRYPTION — the key file lives on
+the same machine next to the ciphertext, so anyone who can read
+``~/.seatunnel-agent/`` can recover the API key (and the key file's ``0o600``
+mode is a no-op on Windows). Protect that directory with filesystem/OS-level
+access controls.
 Overrides take effect by mutating ``os.environ`` — the same hook the CLI's
 ``--model/--provider`` flags use — so every code path that calls
 ``load_settings()`` per action picks them up immediately; pages that cache an
