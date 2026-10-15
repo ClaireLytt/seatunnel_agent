@@ -508,17 +508,28 @@ def run_subscription(
 # ----------------------------------------------------------------------
 
 
-#: catch-up cap: after a stall (slow run_fn, host sleep) only this many of
-#: the most recent missed minutes are replayed, so a long sleep never
-#: triggers a burst of stale fires.
+#: catch-up cap default: after a stall (slow run_fn, host sleep) only this
+#: many of the most recent missed minutes are replayed, so a long sleep
+#: never triggers a burst of stale fires. Override per-Scheduler via the
+#: ``catchup_minutes`` constructor arg or the ``SEATUNNEL_SUB_CATCHUP_MINUTES``
+#: environment variable (clamped to 0..1440).
 _MAX_CATCHUP_MINUTES = 10
+
+
+def _catchup_minutes_from_env() -> int:
+    raw = os.environ.get("SEATUNNEL_SUB_CATCHUP_MINUTES", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return _MAX_CATCHUP_MINUTES
+    return max(0, min(1440, value))
 
 
 class Scheduler:
     """Daemon-thread cron loop. One fire per subscription per matched minute.
 
     A slow ``run_fn`` can push the next tick past a whole minute; missed
-    minutes (up to ``_MAX_CATCHUP_MINUTES``) are replayed on the next check
+    minutes (up to ``catchup_minutes``) are replayed on the next check
     so same-minute crons of other subscriptions are not silently dropped."""
 
     def __init__(
@@ -526,10 +537,16 @@ class Scheduler:
         store: SubscriptionStore | None = None,
         tick_seconds: int = 20,
         run_fn: Callable[[dict[str, Any]], dict[str, Any]] = run_subscription,
+        catchup_minutes: int | None = None,
     ) -> None:
         self.store = store or SubscriptionStore()
         self.tick_seconds = tick_seconds
         self.run_fn = run_fn
+        self.catchup_minutes = (
+            max(0, min(1440, catchup_minutes))
+            if catchup_minutes is not None
+            else _catchup_minutes_from_env()
+        )
         self._fired: dict[str, str] = {}  # sub_id -> "YYYY-mm-dd HH:MM" last fired
         self._last_minute: datetime | None = None  # last minute already checked
         self._stop = threading.Event()
@@ -545,7 +562,8 @@ class Scheduler:
             while m < current:
                 minutes.append(m)
                 m += timedelta(minutes=1)
-            minutes = minutes[-_MAX_CATCHUP_MINUTES:]
+            cap = self.catchup_minutes
+            minutes = minutes[-cap:] if cap > 0 else []
         minutes.append(current)
         if self._last_minute is None or current > self._last_minute:
             self._last_minute = current
