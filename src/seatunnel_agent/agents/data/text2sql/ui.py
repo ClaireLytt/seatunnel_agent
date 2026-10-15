@@ -435,24 +435,6 @@ def render_favorites_page(app=None) -> None:
     """Full-page SQL favorites viewer."""
     store = FavoritesStore()
 
-    _ROW_HL_JS = """
-    () => {
-      requestAnimationFrame(() => {
-        document.querySelectorAll('.st-fav-table table tbody tr').forEach(tr => {
-          if (tr.dataset._hlBound) return;
-          tr.dataset._hlBound = '1';
-          tr.style.cursor = 'pointer';
-          tr.addEventListener('click', () => {
-            tr.classList.toggle('st-row-selected');
-            document.querySelectorAll('.st-fav-table table tbody tr').forEach(r => {
-              if (r !== tr) r.classList.remove('st-row-selected');
-            });
-          });
-        });
-      });
-    }
-    """
-
     with gr.Column(elem_classes=["st-history-page"]):
         lang_state = gr.State("en")
         with gr.Row(elem_classes=["st-topbar-row"]):
@@ -496,13 +478,6 @@ def render_favorites_page(app=None) -> None:
             wrap=True,
             column_widths=["30px", "15%", "50px", "55%", "100px"],
             elem_classes=["st-fav-table"],
-        )
-
-        gr.HTML(
-            '<style>'
-            '.st-fav-table table tbody tr.st-row-selected { background: var(--color-accent-soft, #dbeafe) !important; }'
-            '@media (prefers-color-scheme: dark) { .st-fav-table table tbody tr.st-row-selected { background: #1e3a5f !important; } }'
-            '</style>'
         )
 
     def _filtered_rows(query: str = "") -> list[list[str]]:
@@ -632,9 +607,6 @@ def render_favorites_page(app=None) -> None:
     if app is not None:
         app.load(fn=_refresh, inputs=[search_state],
                  outputs=[fav_table, selected_state, selected_info, rename_input])
-        app.load(fn=None, js=_ROW_HL_JS)
-
-    fav_table.change(fn=None, js=_ROW_HL_JS)
 
 
 def render_text2sql_page(app=None) -> None:
