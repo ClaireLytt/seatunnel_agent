@@ -17,6 +17,9 @@ jobs:
   ui-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      pull-requests: write
     env:
       # load_settings() is only called from LLM handlers, which --no-llm
       # never reaches — the dummy key just guards accidental lookups.
@@ -46,3 +49,58 @@ jobs:
           path: runs/
           retention-days: 14
           if-no-files-found: ignore
+
+      # Post (or update) a PR comment listing the failed cases plus a link to
+      # the run's artifacts. Skipped on fork PRs (no write token) and tolerant
+      # of comment failures so it never masks the real test failure.
+      - name: Comment failures on PR
+        if: failure() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const marker = '<!-- uitest-report -->';
+
+            // Latest runs/<timestamp>/result.json from this run.
+            let failed = [];
+            try {
+              const dirs = fs.readdirSync('runs')
+                .filter(d => fs.existsSync(path.join('runs', d, 'result.json')))
+                .sort();
+              if (dirs.length) {
+                const rr = JSON.parse(fs.readFileSync(
+                  path.join('runs', dirs[dirs.length - 1], 'result.json'), 'utf8'));
+                failed = (rr.cases || [])
+                  .filter(c => c.verdict !== 'PASS')
+                  .map(c => `- \`${c.case_id}\` ${c.title} (${c.verdict})`);
+              }
+            } catch (e) {
+              core.warning(`could not parse result.json: ${e}`);
+            }
+
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              marker,
+              '## UI smoke failed',
+              '',
+              failed.length ? '**Failed cases:**' : '_Could not read case results — see the run log._',
+              ...failed,
+              '',
+              `Screenshots & HTML report: [run artifacts](${runUrl}) (artifact \`ui-smoke-report\`)`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                ...context.repo, comment_id: existing.id, body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body,
+              });
+            }
