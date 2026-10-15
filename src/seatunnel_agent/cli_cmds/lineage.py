@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from ..cli import (
+from ..cli_common import (
     _ensure_utf8_stdio,
     _handle_error,
     _write_output,

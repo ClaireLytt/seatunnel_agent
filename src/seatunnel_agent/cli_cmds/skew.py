@@ -4,7 +4,7 @@ import sys
 
 import click
 
-from ..cli import console
+from ..cli_common import console
 
 
 @click.command()

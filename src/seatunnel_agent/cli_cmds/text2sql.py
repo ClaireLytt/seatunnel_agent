@@ -4,7 +4,7 @@ import os
 
 import click
 
-from ..cli import _ensure_utf8_stdio, console
+from ..cli_common import _ensure_utf8_stdio, console
 
 
 @click.command(name="t2s-bench")

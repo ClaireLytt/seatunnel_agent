@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from ..cli import _handle_error, _write_output, console
+from ..cli_common import _handle_error, _write_output, console
 
 
 @click.command()

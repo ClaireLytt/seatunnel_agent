@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from ..cli import _handle_error, console
+from ..cli_common import _handle_error, console
 from ..sql_transpile import DIALECTS as TRANSPILE_DIALECTS
 
 
