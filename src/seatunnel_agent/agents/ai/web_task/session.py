@@ -10,6 +10,7 @@ caller explicitly allows external sites.
 from __future__ import annotations
 
 import ipaddress
+import socket
 from typing import Any
 from urllib.parse import urlparse
 
@@ -25,10 +26,17 @@ def _origin(url: str) -> str:
 
 
 def validate_start_url(url: str, allow_private: bool = False) -> None:
-    """Guard the session's first navigation: http/https only, and literal
-    private / loopback / link-local IPs are rejected unless the caller
-    explicitly opts in. No DNS resolution is performed — only literal IP
-    hosts are judged. Raises ValueError."""
+    """Guard the session's first navigation: http/https only, and private /
+    loopback / link-local targets are rejected unless the caller explicitly
+    opts in. Literal IP hosts are judged directly; domain names are resolved
+    once via ``socket.getaddrinfo`` and rejected if ANY resolved address is
+    private. Resolution failures (NXDOMAIN, timeout) do NOT reject — the
+    browser will surface its own error, and offline scenarios must not be
+    blocked here.
+
+    Known TOCTOU limitation: DNS can change between this check and the
+    browser's own resolution (rebinding), so this is best-effort hardening,
+    not a complete SSRF guarantee. Raises ValueError."""
     p = urlparse(url)
     if p.scheme.lower() not in ("http", "https"):
         raise ValueError(
@@ -39,16 +47,35 @@ def validate_start_url(url: str, allow_private: bool = False) -> None:
         raise ValueError("start URL has no host")
     if allow_private:
         return
+
+    def _reject_if_private(ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+                           label: str) -> None:
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_unspecified):
+            raise ValueError(
+                f"start URL points at a private/loopback address ({label}); "
+                "pass allow_private=True to permit it explicitly"
+            )
+
     try:
-        ip = ipaddress.ip_address(host)
+        literal = ipaddress.ip_address(host)
     except ValueError:
-        return  # a domain name — no resolution, nothing to judge
-    if (ip.is_private or ip.is_loopback or ip.is_link_local
-            or ip.is_reserved or ip.is_unspecified):
-        raise ValueError(
-            f"start URL points at a private/loopback address ({host}); "
-            "pass allow_private=True to permit it explicitly"
-        )
+        pass  # a domain name — resolve it below
+    else:
+        _reject_if_private(literal, host)
+        return
+    try:
+        infos = socket.getaddrinfo(host, p.port or 80,
+                                   proto=socket.IPPROTO_TCP)
+    except OSError:
+        return  # unresolvable here — let the browser report it
+    for info in infos:
+        addr = info[4][0]
+        try:
+            resolved = ipaddress.ip_address(addr)
+        except ValueError:
+            continue
+        _reject_if_private(resolved, f"{host} -> {addr}")
 
 
 class PlaywrightSession:

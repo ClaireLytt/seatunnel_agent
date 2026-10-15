@@ -128,11 +128,59 @@ class TestStartUrlGuard:
             with pytest.raises(ValueError):
                 validate_start_url(url)
 
-    def test_allow_private_and_public_hosts_pass(self):
-        from seatunnel_agent.agents.ai.web_task.session import validate_start_url
-        validate_start_url("https://example.com/page")       # public domain
-        validate_start_url("http://93.184.216.34/")           # public IP
-        validate_start_url("http://127.0.0.1:7860/", allow_private=True)
+    def test_allow_private_and_public_hosts_pass(self, monkeypatch):
+        import socket
+
+        from seatunnel_agent.agents.ai.web_task import session as mod
+
+        def fake_gai(host, port, *a, **k):  # hermetic: no real DNS
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                     ("93.184.216.34", 80))]
+        monkeypatch.setattr(mod.socket, "getaddrinfo", fake_gai)
+        mod.validate_start_url("https://example.com/page")    # public domain
+        mod.validate_start_url("http://93.184.216.34/")       # public IP
+        mod.validate_start_url("http://127.0.0.1:7860/", allow_private=True)
+
+    def test_hostname_resolving_to_private_ip_is_rejected(self, monkeypatch):
+        import socket
+
+        from seatunnel_agent.agents.ai.web_task import session as mod
+
+        def fake_gai(host, port, *a, **k):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                     ("169.254.169.254", 80)),
+                    (socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                     ("93.184.216.34", 80))]
+        monkeypatch.setattr(mod.socket, "getaddrinfo", fake_gai)
+        # any private/loopback/link-local resolution rejects the URL
+        with pytest.raises(ValueError):
+            mod.validate_start_url("http://metadata.internal/latest")
+        # allow_private still bypasses the resolution check
+        mod.validate_start_url("http://metadata.internal/latest",
+                               allow_private=True)
+
+    def test_hostname_resolving_to_public_ip_passes(self, monkeypatch):
+        import socket
+
+        from seatunnel_agent.agents.ai.web_task import session as mod
+
+        def fake_gai(host, port, *a, **k):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                     ("93.184.216.34", 80))]
+        monkeypatch.setattr(mod.socket, "getaddrinfo", fake_gai)
+        mod.validate_start_url("https://example.com/page")
+
+    def test_hostname_resolution_failure_is_allowed(self, monkeypatch):
+        import socket
+
+        from seatunnel_agent.agents.ai.web_task import session as mod
+
+        def fake_gai(host, port, *a, **k):
+            raise socket.gaierror("NXDOMAIN")
+        monkeypatch.setattr(mod.socket, "getaddrinfo", fake_gai)
+        # NXDOMAIN/timeout must not reject — the browser will surface the
+        # error itself (offline scenarios must not be blocked here)
+        mod.validate_start_url("https://no-such-host.example/")
 
     def test_session_start_validates_before_browser_launch(self):
         from seatunnel_agent.agents.ai.web_task.session import PlaywrightSession
