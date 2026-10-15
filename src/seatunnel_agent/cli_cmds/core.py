@@ -150,7 +150,8 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
 @click.option("--host", "-h", type=str, default="127.0.0.1", help="Host to bind (0.0.0.0 for LAN access)")
 @click.option("--share", is_flag=True, help="Create a public Gradio link")
 @click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/, /api/skew/)")
-def ui(port: int, host: str, share: bool, api: bool) -> None:
+@click.option("--insecure", is_flag=True, help="Allow a non-loopback/share launch without SEATUNNEL_UI_AUTH (not recommended)")
+def ui(port: int, host: str, share: bool, api: bool, insecure: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     try:
         from ..ui import create_ui, launch_app
@@ -165,7 +166,7 @@ def ui(port: int, host: str, share: bool, api: bool) -> None:
     if api:
         console.print(f"[green]REST API enabled at http://{host}:{port}/api/text2sql/[/green]")
     console.print(f"[green]Starting web UI on http://{host}:{port}[/green]")
-    launch_app(app, port=port, host=host, share=share, api=api)
+    launch_app(app, port=port, host=host, share=share, api=api, insecure=insecure)
 
 
 @click.command()

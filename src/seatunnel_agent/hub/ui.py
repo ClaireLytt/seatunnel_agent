@@ -310,7 +310,44 @@ def _port_has_listener(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _resolve_ui_auth(host: str, share: bool, insecure: bool) -> tuple[str, str] | None:
+    """Credentials for a non-loopback/share launch, or None for no auth.
+
+    Loopback without --share never requires auth. Otherwise the UI is
+    reachable from the network, so require SEATUNNEL_UI_AUTH (``user:pass``)
+    unless --insecure explicitly waives it.
+    """
+    if host in _LOOPBACK_HOSTS and not share:
+        return None
+    import os
+    cred = os.getenv("SEATUNNEL_UI_AUTH", "").strip()
+    if cred:
+        user, sep, pwd = cred.partition(":")
+        if not sep or not user or not pwd:
+            raise SystemExit(
+                "[ui] SEATUNNEL_UI_AUTH must be in 'user:pass' format."
+            )
+        return (user, pwd)
+    if insecure:
+        print(
+            "[ui] ⚠️  WARNING: UI is exposed on the network WITHOUT authentication "
+            "(--insecure). Anyone who can reach this host can use the agents. "
+            "Set SEATUNNEL_UI_AUTH=user:pass to enable login."
+        )
+        return None
+    raise SystemExit(
+        f"[ui] Refusing to launch without authentication: host={host!r} share={share} "
+        "exposes the UI beyond this machine.\n"
+        "Set SEATUNNEL_UI_AUTH=user:pass to enable login, "
+        "or pass --insecure to launch without auth (not recommended)."
+    )
+
+
+def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False, insecure: bool = False) -> None:
+    ui_auth = _resolve_ui_auth(host, share, insecure)
     if _port_has_listener(port):
         import os
         if os.getenv("SEATUNNEL_UI_KILL_PORT", "").lower() in ("1", "true", "yes"):
@@ -333,6 +370,7 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         server_name=host,
         server_port=port,
         share=share,
+        auth=ui_auth,
         inbrowser=True,
         css=_CUSTOM_CSS,
         prevent_thread_lock=True,
