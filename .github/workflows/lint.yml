@@ -33,3 +33,21 @@ jobs:
           python-version: "3.11"
       - run: pip install mypy fastapi pydantic click
       - run: python -m mypy
+
+  # Known-vulnerability audit over the project's resolved dependency tree
+  # (pyproject main deps + transitives, via the PyPI advisory DB).
+  # continue-on-error: current deps already carry known advisories
+  # (e.g. python-dotenv 1.2.1 PYSEC-2026-2270), so a hard gate would block
+  # every unrelated PR until dependabot's upgrade PRs land. Flip to a
+  # blocking gate once the tree is clean.
+  pip-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install . pip-audit
+      - run: pip-audit
