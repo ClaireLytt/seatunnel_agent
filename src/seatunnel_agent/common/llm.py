@@ -95,6 +95,7 @@ class LLMClient:
         self.tools = tools if tools is not None else []
         # feature name for per-agent usage/cost attribution (llm_usage log)
         self.agent = agent
+        self._client: Any
 
         if self.provider == "anthropic":
             import anthropic

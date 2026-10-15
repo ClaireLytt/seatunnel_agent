@@ -48,10 +48,10 @@ def scan(req: PiiScanRequest) -> PiiScanResponse:
                             detail="Provide 'sql' or 'dir'")
     lang = normalize_lang(req.lang)
     if (req.dir or "").strip():
-        target = require_dir(req.dir, "PII_API_ALLOWED_DIRS")
+        target = require_dir(req.dir or "", "PII_API_ALLOWED_DIRS")
         result = scan_dir(target, dialect=req.dialect)
     else:
-        result = scan_sql_text(req.sql, dialect=req.dialect)
+        result = scan_sql_text(req.sql or "", dialect=req.dialect)
     return PiiScanResponse(
         result=report_to_dict(result, lang),
         report=render_markdown(result, lang) if req.report else None,

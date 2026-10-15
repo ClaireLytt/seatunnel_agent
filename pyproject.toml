@@ -129,6 +129,11 @@ files = [
     "src/seatunnel_agent/agents/ai/issue_triage",
     "src/seatunnel_agent/agents/devops/doctor",
     "src/seatunnel_agent/agents/ai/web_task",
+    "src/seatunnel_agent/agents/data/metric_diff",
+    "src/seatunnel_agent/agents/data/data_quality",
+    "src/seatunnel_agent/agents/data/pii_scan",
+    "src/seatunnel_agent/agents/data/dag_check",
+    "src/seatunnel_agent/common/llm.py",
 ]
 ignore_missing_imports = true
 check_untyped_defs = true

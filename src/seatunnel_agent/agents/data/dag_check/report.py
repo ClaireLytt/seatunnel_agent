@@ -30,11 +30,11 @@ def render_markdown(report: DagReport, lang: str = "zh") -> str:
             mark = _LEVEL_MARK[f.severity]
             msg = tp(lang, f"msg_{f.kind}")
             if f.kind == "cycle":
-                tables = f.tables
+                cycle = f.tables
                 # close the loop only when find_cycles didn't already
-                if tables and tables[0] != tables[-1]:
-                    tables = tables + tables[:1]
-                lines.append(f"- {mark} {msg}: `{' → '.join(tables)}`")
+                if cycle and cycle[0] != cycle[-1]:
+                    cycle = cycle + cycle[:1]
+                lines.append(f"- {mark} {msg}: `{' → '.join(cycle)}`")
             else:
                 tables = " · ".join(f"`{t}`" for t in f.tables[:10])
                 more = f" (+{len(f.tables) - 10})" if len(f.tables) > 10 else ""
