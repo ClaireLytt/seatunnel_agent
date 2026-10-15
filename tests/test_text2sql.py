@@ -997,6 +997,40 @@ class TestValidatorSetAdd:
 
 
 # ------------------------------------------------------------------
+# Validator: read-only bypass via SELECT INTO / OUTFILE / COPY
+# ------------------------------------------------------------------
+
+class TestValidatorReadOnlyBypass:
+    def test_select_into_outfile_rejected(self, store):
+        r = validate_sql(
+            "SELECT * FROM atest.student INTO OUTFILE '/tmp/x'", store,
+        )
+        assert not r.ok
+
+    def test_select_into_new_table_rejected(self, store):
+        r = validate_sql("SELECT id FROM atest.student INTO new_table", store)
+        assert not r.ok
+
+    def test_copy_rejected(self, store):
+        r = validate_sql("COPY atest.student TO '/tmp/x.csv'", store)
+        assert not r.ok
+        assert any("copy" in e.lower() for e in r.errors)
+
+    def test_into_in_alias_ok(self, store):
+        r = validate_sql(
+            "SELECT count(id) AS into_count FROM atest.student", store,
+        )
+        assert r.ok, r.errors
+
+    def test_into_in_string_literal_ok(self, store):
+        r = validate_sql(
+            "SELECT id FROM atest.student WHERE name = 'walked into class'",
+            store,
+        )
+        assert r.ok, r.errors
+
+
+# ------------------------------------------------------------------
 # Bug fix regressions: enforce_limit edge cases
 # ------------------------------------------------------------------
 

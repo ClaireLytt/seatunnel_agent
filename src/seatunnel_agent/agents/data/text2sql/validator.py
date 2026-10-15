@@ -17,7 +17,7 @@ from .schema import SchemaStore
 _FORBIDDEN_KEYWORDS = frozenset({
     "insert", "update", "delete", "drop", "alter", "truncate", "create",
     "grant", "revoke", "load", "msck", "export", "import",
-    "analyze", "refresh",
+    "analyze", "refresh", "into", "outfile", "copy",
 })
 
 _STATEMENT_LEVEL_RE = re.compile(
