@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import time
 
-from seatunnel_agent.data_lineage.graph import LineageGraph
+from seatunnel_agent.agents.data.data_lineage.graph import LineageGraph
 
 
 def _chain_graph() -> LineageGraph:

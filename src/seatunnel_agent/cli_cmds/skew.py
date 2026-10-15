@@ -43,8 +43,8 @@ def skew(
     import json as _json
     from pathlib import Path
 
-    from ..data_skew.history import default_history
-    from ..data_skew.report import Severity, render_report
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.report import Severity, render_report
     from ..common.utils import collect_sql_files
 
     # ── collect analysis targets ──
@@ -79,7 +79,7 @@ def skew(
     for label, text in sources:
         if use_llm:
             from ..common.config import load_settings
-            from ..data_skew.agent import DataSkewAgent
+            from seatunnel_agent.agents.data.data_skew.agent import DataSkewAgent
             try:
                 settings = load_settings()
             except RuntimeError as e:
@@ -88,7 +88,7 @@ def skew(
             res = agent.analyze(text, use_llm=True)
             rep, md = res.report, res.markdown
         else:
-            from ..data_skew.agent import static_skew_report
+            from seatunnel_agent.agents.data.data_skew.agent import static_skew_report
             rep = static_skew_report(text, dialect, lang)
             md = render_report(rep, lang)
         history.log(text, rep, mode="llm" if use_llm else "static", source="cli")
@@ -141,7 +141,7 @@ def skew_stats(recent: int) -> None:
     """数据倾斜分析历史与统计 (logs/data_skew.jsonl)。"""
     from collections import Counter
 
-    from ..data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.history import default_history
 
     records = default_history().recent(recent)
     if not records:
@@ -237,10 +237,10 @@ def skew_splitkey(
     import re as _re
     from pathlib import Path
 
-    from ..data_skew.history import default_history
-    from ..data_skew.i18n import dsk as _dsk
-    from ..data_skew.probe import effective_sample_pct
-    from ..data_skew.splitkey import (
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.i18n import dsk as _dsk
+    from seatunnel_agent.agents.data.data_skew.probe import effective_sample_pct
+    from seatunnel_agent.agents.data.data_skew.splitkey import (
         SplitKeyError,
         apply_split_key,
         batch_counts,
@@ -253,7 +253,7 @@ def skew_splitkey(
         sink_key_section,
         splitkey_metrics,
     )
-    from ..text2sql.executor.base import (
+    from seatunnel_agent.agents.data.text2sql.executor.base import (
         DatabaseConfig,
         config_from_env,
         create_executor,
@@ -286,7 +286,7 @@ def skew_splitkey(
         is wrong (a healthy patrol stays silent)."""
         if not webhook_url or not (counts.get("bad") or counts.get("errors")):
             return
-        from ..data_skew.notify import post_webhook
+        from seatunnel_agent.agents.data.data_skew.notify import post_webhook
         ok, msg = post_webhook(webhook_url, {
             "source": "seatunnel-agent", "kind": "splitkey_patrol",
             "counts": counts, "text": md_text})
@@ -415,9 +415,9 @@ def skew_runtime(
     或改用 --history + --app 走 History Server REST API（在线）。"""
     from pathlib import Path
 
-    from ..data_skew.history import default_history
-    from ..data_skew.i18n import dsk as _dsk
-    from ..data_skew.runtime import (
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.i18n import dsk as _dsk
+    from seatunnel_agent.agents.data.data_skew.runtime import (
         RuntimeSkewError,
         analyze_history_server,
         parse_eventlog,
@@ -459,7 +459,7 @@ def skew_runtime(
               show_default=True, help="Default report language")
 def skew_mcp(dialect: str, lang: str) -> None:
     """以 MCP server（stdio）暴露数据倾斜静态分析，供 Claude Desktop 等 MCP 客户端调用。"""
-    from ..data_skew.mcp_server import create_mcp_server
+    from seatunnel_agent.agents.data.data_skew.mcp_server import create_mcp_server
 
     try:
         server = create_mcp_server(default_dialect=dialect, default_lang=lang)

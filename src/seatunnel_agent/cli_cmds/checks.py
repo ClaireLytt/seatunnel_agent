@@ -6,7 +6,7 @@ import sys
 import click
 
 from ..common.cli_common import _handle_error, console
-from ..sql_transpile import DIALECTS as TRANSPILE_DIALECTS
+from seatunnel_agent.agents.data.sql_transpile import DIALECTS as TRANSPILE_DIALECTS
 
 
 @click.command()
@@ -41,7 +41,7 @@ def pii(
     import json as _json
     from pathlib import Path
 
-    from ..pii_scan import (
+    from seatunnel_agent.agents.data.pii_scan import (
         DEFAULT_RULES, load_extra_rules, render_markdown, report_to_dict,
         scan_dir, scan_files, scan_sql_text,
     )
@@ -124,10 +124,10 @@ def loginspect(
     import json as _json
     from pathlib import Path
 
-    from ..log_inspect import (
+    from seatunnel_agent.agents.data.log_inspect import (
         render_markdown, report_to_dict, scan_dir, scan_files,
     )
-    from ..log_inspect.clusterer import DEFAULT_PATTERNS
+    from seatunnel_agent.agents.data.log_inspect.clusterer import DEFAULT_PATTERNS
 
     if not directory and not log_file:
         raise click.UsageError("Provide --dir or --file")
@@ -191,7 +191,7 @@ def schemadiff(
     import json as _json
     from pathlib import Path
 
-    from ..schema_drift import diff_paths, render_markdown, report_to_dict
+    from seatunnel_agent.agents.data.schema_drift import diff_paths, render_markdown, report_to_dict
 
     report = diff_paths(old_path, new_path, dialect=dialect)
 
@@ -257,7 +257,7 @@ def testgen(
     import json as _json
     from pathlib import Path
 
-    from ..sql_testgen import (
+    from seatunnel_agent.agents.data.sql_testgen import (
         generate, render_markdown, result_to_dict, validate_with_sqlite,
         write_outputs,
     )
@@ -326,7 +326,7 @@ def conflint(
     import json as _json
     from pathlib import Path
 
-    from ..config_lint import (
+    from seatunnel_agent.agents.data.config_lint import (
         lint_dir, lint_file, lint_text,
         render_batch_markdown, render_markdown, result_to_dict,
     )
@@ -396,7 +396,7 @@ def dagcheck(
     import json as _json
     from pathlib import Path
 
-    from ..dag_check import check_sql_dir, render_markdown, report_to_dict
+    from seatunnel_agent.agents.data.dag_check import check_sql_dir, render_markdown, report_to_dict
 
     report = check_sql_dir(sql_dir, dialect=dialect,
                            seatunnel_dir=seatunnel_dir)
@@ -449,7 +449,7 @@ def metricdiff(
     import json as _json
     from pathlib import Path
 
-    from ..metric_diff import check_sql_dir, render_markdown, report_to_dict
+    from seatunnel_agent.agents.data.metric_diff import check_sql_dir, render_markdown, report_to_dict
 
     report = check_sql_dir(sql_dir, dialect=dialect)
 
@@ -515,11 +515,11 @@ def transpile(
     import json as _json
     from pathlib import Path
 
-    from ..sql_transpile import (
+    from seatunnel_agent.agents.data.sql_transpile import (
         batch_to_dict, render_batch_markdown, render_markdown,
         result_to_dict, translate, transpile_dir,
     )
-    from ..sql_transpile.transpiler import LEVELS
+    from seatunnel_agent.agents.data.sql_transpile.transpiler import LEVELS
 
     verbose = ctx.obj.get("verbose", False)
     machine = fmt == "json"
@@ -577,7 +577,7 @@ def transpile(
             if not no_llm and len(sources) == 1:
                 try:
                     from ..common.config import load_settings
-                    from ..sql_transpile.advisor import (
+                    from seatunnel_agent.agents.data.sql_transpile.advisor import (
                         advisable_issues, generate_advice)
                     if advisable_issues(result):
                         if ctx.obj.get("model"):

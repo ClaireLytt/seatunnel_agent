@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from seatunnel_agent.data_lineage.graph import ChainResult, EdgeMeta, TableNode
-from seatunnel_agent.data_lineage.render import AGGREGATE_THRESHOLD, render_mermaid
+from seatunnel_agent.agents.data.data_lineage.graph import ChainResult, EdgeMeta, TableNode
+from seatunnel_agent.agents.data.data_lineage.render import AGGREGATE_THRESHOLD, render_mermaid
 
 
 def _node(name: str, database: str = "", layer: str = "") -> TableNode:

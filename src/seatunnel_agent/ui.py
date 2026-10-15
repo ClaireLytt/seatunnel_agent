@@ -15,7 +15,7 @@ from .hub_pages import (  # noqa: F401 — re-exported for back-compat
     _build_landing_html,
     _mount_hub,
 )
-from .seatunnel_page import (  # noqa: F401 — re-exported for back-compat
+from seatunnel_agent.agents.data.seatunnel.ui import (  # noqa: F401 — re-exported for back-compat
     EventCollector,
     _TOOL_EMOJI,
     _build_template_choices,
@@ -106,11 +106,11 @@ def create_ui() -> gr.Blocks:
     from .common import settings_store
     settings_store.apply_to_env()
 
-    from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
-    from .data_comparison_ui import render_data_comparison_page
-    from .sql_review_ui import render_sql_review_page
-    from .data_skew_ui import render_data_skew_page
-    from .mcp_toolbox_ui import render_mcp_page
+    from seatunnel_agent.agents.data.text2sql.ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
+    from seatunnel_agent.agents.data.data_comparison.ui import render_data_comparison_page
+    from seatunnel_agent.agents.data.sql_review.ui import render_sql_review_page
+    from seatunnel_agent.agents.data.data_skew.ui import render_data_skew_page
+    from seatunnel_agent.agents.data.mcp_toolbox.ui import render_mcp_page
 
     _hide_sub_nav_js = """
     () => {
@@ -188,19 +188,19 @@ def create_ui() -> gr.Blocks:
         render_sql_review_page(app)
 
     with app.route("Lineage", "/lineage"):
-        from .lineage_ui import render_lineage_page
+        from seatunnel_agent.agents.data.data_lineage.ui import render_lineage_page
         render_lineage_page(app)
 
     with app.route("SQL Transpile", "/transpile"):
-        from .sql_transpile_ui import render_sql_transpile_page
+        from seatunnel_agent.agents.data.sql_transpile.ui import render_sql_transpile_page
         render_sql_transpile_page(app)
 
     with app.route("Change Impact", "/impact"):
-        from .impact_ui import render_impact_page
+        from seatunnel_agent.agents.data.data_lineage.ui_impact import render_impact_page
         render_impact_page(app)
 
     with app.route("Config Migrate", "/migrate"):
-        from .config_migrate_ui import render_config_migrate_page
+        from seatunnel_agent.agents.data.config_migrate.ui import render_config_migrate_page
         render_config_migrate_page(app)
 
     with app.route("UI Testing", "/uitest"):
@@ -215,35 +215,35 @@ def create_ui() -> gr.Blocks:
         render_data_skew_page(app)
 
     with app.route("PII Scan", "/pii"):
-        from .pii_ui import render_pii_page
+        from seatunnel_agent.agents.data.pii_scan.ui import render_pii_page
         render_pii_page(app)
 
     with app.route("Log Inspect", "/loginspect"):
-        from .log_inspect_ui import render_log_inspect_page
+        from seatunnel_agent.agents.data.log_inspect.ui import render_log_inspect_page
         render_log_inspect_page(app)
 
     with app.route("Schema Drift", "/schemadrift"):
-        from .schema_drift_ui import render_schema_drift_page
+        from seatunnel_agent.agents.data.schema_drift.ui import render_schema_drift_page
         render_schema_drift_page(app)
 
     with app.route("Test Data", "/testgen"):
-        from .sql_testgen_ui import render_sql_testgen_page
+        from seatunnel_agent.agents.data.sql_testgen.ui import render_sql_testgen_page
         render_sql_testgen_page(app)
 
     with app.route("Config Lint", "/conflint"):
-        from .config_lint_ui import render_config_lint_page
+        from seatunnel_agent.agents.data.config_lint.ui import render_config_lint_page
         render_config_lint_page(app)
 
     with app.route("DAG Check", "/dagcheck"):
-        from .dag_check_ui import render_dag_check_page
+        from seatunnel_agent.agents.data.dag_check.ui import render_dag_check_page
         render_dag_check_page(app)
 
     with app.route("Metric Diff", "/metricdiff"):
-        from .metric_diff_ui import render_metric_diff_page
+        from seatunnel_agent.agents.data.metric_diff.ui import render_metric_diff_page
         render_metric_diff_page(app)
 
     with app.route("SQL Format", "/sqlfmt"):
-        from .sql_fmt_ui import render_sql_fmt_page
+        from seatunnel_agent.agents.data.sql_fmt.ui import render_sql_fmt_page
         render_sql_fmt_page(app)
 
     with app.route("MCP Toolbox", "/mcp"):
@@ -322,19 +322,19 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from fastapi import Depends
 
         from .common.api_auth import require_api_key
-        from .config_lint.api import router as conflint_api_router
-        from .dag_check.api import router as dagcheck_api_router
-        from .data_lineage.api import router as lineage_api_router
-        from .data_skew.api import router as skew_api_router
-        from .log_inspect.api import router as loginspect_api_router
-        from .metric_diff.api import router as metricdiff_api_router
-        from .pii_scan.api import router as pii_api_router
-        from .schema_drift.api import router as schemadrift_api_router
-        from .sql_fmt.api import router as sqlfmt_api_router
-        from .sql_review.api import router as sql_review_api_router
-        from .sql_testgen.api import router as testgen_api_router
-        from .sql_transpile.api import router as transpile_api_router
-        from .text2sql.api import router as t2s_api_router
+        from seatunnel_agent.agents.data.config_lint.api import router as conflint_api_router
+        from seatunnel_agent.agents.data.dag_check.api import router as dagcheck_api_router
+        from seatunnel_agent.agents.data.data_lineage.api import router as lineage_api_router
+        from seatunnel_agent.agents.data.data_skew.api import router as skew_api_router
+        from seatunnel_agent.agents.data.log_inspect.api import router as loginspect_api_router
+        from seatunnel_agent.agents.data.metric_diff.api import router as metricdiff_api_router
+        from seatunnel_agent.agents.data.pii_scan.api import router as pii_api_router
+        from seatunnel_agent.agents.data.schema_drift.api import router as schemadrift_api_router
+        from seatunnel_agent.agents.data.sql_fmt.api import router as sqlfmt_api_router
+        from seatunnel_agent.agents.data.sql_review.api import router as sql_review_api_router
+        from seatunnel_agent.agents.data.sql_testgen.api import router as testgen_api_router
+        from seatunnel_agent.agents.data.sql_transpile.api import router as transpile_api_router
+        from seatunnel_agent.agents.data.text2sql.api import router as t2s_api_router
         fastapi_app = app.app  # the served instance, now that launch() ran
         # SEATUNNEL_API_KEY (optional) gates every /api route via X-API-Key.
         auth = [Depends(require_api_key)]

@@ -8,8 +8,8 @@ import sqlite3
 
 import pytest
 
-from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
-from seatunnel_agent.text2sql.values import (
+from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
+from seatunnel_agent.agents.data.text2sql.values import (
     ValueIndex,
     candidate_columns,
     load_or_build,
@@ -43,7 +43,7 @@ def store() -> SchemaStore:
 @pytest.fixture()
 def sqlite_env(tmp_path, store):
     """(executor, store) over a real sqlite db."""
-    from seatunnel_agent.text2sql.executor import DatabaseConfig, create_executor
+    from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, create_executor
 
     db = tmp_path / "v.db"
     conn = sqlite3.connect(db)
@@ -124,7 +124,7 @@ def test_search_cjk_substring_and_ascii_token() -> None:
 
 
 def test_match_tables_returns_value_hits(sqlite_env, monkeypatch, tmp_path) -> None:
-    from seatunnel_agent.text2sql.tools import (
+    from seatunnel_agent.agents.data.text2sql.tools import (
         Text2SQLRuntime,
         execute_text2sql_tool,
     )
@@ -150,7 +150,7 @@ def test_match_tables_returns_value_hits(sqlite_env, monkeypatch, tmp_path) -> N
 
 def test_value_hit_surfaces_missed_table(store) -> None:
     """A value hit on a table outside the top-5 keyword candidates appends it."""
-    from seatunnel_agent.text2sql.tools import (
+    from seatunnel_agent.agents.data.text2sql.tools import (
         Text2SQLRuntime,
         execute_text2sql_tool,
     )
@@ -170,8 +170,8 @@ def test_value_hit_surfaces_missed_table(store) -> None:
 
 
 def test_load_or_build_auto_sqlite(sqlite_env, tmp_path, monkeypatch) -> None:
-    from seatunnel_agent.text2sql import values as values_mod
-    from seatunnel_agent.text2sql.tools import Text2SQLRuntime
+    from seatunnel_agent.agents.data.text2sql import values as values_mod
+    from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime
 
     executor, store = sqlite_env
     monkeypatch.setattr(values_mod, "_INDEX_DIR", tmp_path)
@@ -190,8 +190,8 @@ def test_load_or_build_auto_sqlite(sqlite_env, tmp_path, monkeypatch) -> None:
 
 
 def test_load_or_build_non_sqlite_needs_optin(store, monkeypatch, tmp_path) -> None:
-    from seatunnel_agent.text2sql import values as values_mod
-    from seatunnel_agent.text2sql.tools import Text2SQLRuntime
+    from seatunnel_agent.agents.data.text2sql import values as values_mod
+    from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime
 
     monkeypatch.setattr(values_mod, "_INDEX_DIR", tmp_path)
     monkeypatch.delenv("T2S_VALUE_INDEX", raising=False)
@@ -234,7 +234,7 @@ def test_build_sqlserver_uses_top(store, monkeypatch) -> None:
 def test_runtime_value_index_caches_none(store, monkeypatch) -> None:
     """A None index is cached per store — no per-call rebuild attempt
     (review fix: avoids O(tables) schema hashing on every match_tables)."""
-    from seatunnel_agent.text2sql.tools import Text2SQLRuntime
+    from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime
 
     calls = {"n": 0}
 
@@ -243,7 +243,7 @@ def test_runtime_value_index_caches_none(store, monkeypatch) -> None:
         return None
 
     monkeypatch.setattr(
-        "seatunnel_agent.text2sql.values.load_or_build", _fake_load_or_build,
+        "seatunnel_agent.agents.data.text2sql.values.load_or_build", _fake_load_or_build,
     )
     rt = Text2SQLRuntime(store=store, ds_type="hive")
     assert rt.value_index is None
@@ -251,7 +251,7 @@ def test_runtime_value_index_caches_none(store, monkeypatch) -> None:
     assert calls["n"] == 1  # second access served from cache
 
     # store swap triggers exactly one retry
-    from seatunnel_agent.text2sql.schema import SchemaStore as _SS
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore as _SS
     rt.store = _SS([])
     assert rt.value_index is None
     assert calls["n"] == 2

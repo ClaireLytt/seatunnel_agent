@@ -7,7 +7,7 @@ import pytest
 
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.llm import LLMClient, LLMResponse, ToolCall, _convert_tools_to_openai
-from seatunnel_agent.tools import TOOL_DEFINITIONS
+from seatunnel_agent.agents.data.seatunnel.tools import TOOL_DEFINITIONS
 
 
 ANTHROPIC_SETTINGS = Settings(

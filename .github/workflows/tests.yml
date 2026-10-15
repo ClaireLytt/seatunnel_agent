@@ -49,7 +49,7 @@ jobs:
           pip install "mcp>=1.2"
           python -c "
           import anyio
-          from seatunnel_agent.mcp_toolbox import create_mcp_server
+          from seatunnel_agent.agents.data.mcp_toolbox.core import create_mcp_server
           tools = anyio.run(create_mcp_server().list_tools)
           assert len(tools) >= 15, [t.name for t in tools]
           print('mcp boot ok:', len(tools), 'tools')

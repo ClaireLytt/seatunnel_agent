@@ -4,7 +4,7 @@ import json
 from unittest.mock import patch
 
 
-from seatunnel_agent.agent import STOPPED_MESSAGE, SeaTunnelAgent
+from seatunnel_agent.agents.data.seatunnel.agent import STOPPED_MESSAGE, SeaTunnelAgent
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.context import truncate_messages
 from seatunnel_agent.common.llm import LLMResponse, ToolCall
@@ -61,7 +61,7 @@ class TestAgentLoop:
              patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
              patch.object(agent.llm, "build_tool_result_message", return_value={"role": "user", "content": []}), \
              patch(
-                 "seatunnel_agent.agent.execute_tool",
+                 "seatunnel_agent.agents.data.seatunnel.agent.execute_tool",
                  return_value=json.dumps({"valid": True, "errors": [], "warnings": [], "sections_found": ["source", "sink"]}),
              ):
             result = agent.run("validate my config")
@@ -81,7 +81,7 @@ class TestAgentLoop:
         with patch.object(agent.llm, "chat", side_effect=responses), \
              patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
              patch.object(agent.llm, "build_tool_result_message", return_value={"role": "user", "content": []}), \
-             patch("seatunnel_agent.agent.execute_tool", return_value=fail_result):
+             patch("seatunnel_agent.agents.data.seatunnel.agent.execute_tool", return_value=fail_result):
             agent.run_with_config("/tmp/job.conf")
 
         assert agent.retry_count >= SETTINGS.max_retries
@@ -96,7 +96,7 @@ class TestAgentLoop:
              patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
              patch.object(agent.llm, "build_tool_result_message", return_value={"role": "user", "content": []}), \
              patch(
-                 "seatunnel_agent.agent.execute_tool",
+                 "seatunnel_agent.agents.data.seatunnel.agent.execute_tool",
                  return_value=json.dumps({"content": "fake config"}),
              ):
             result = agent.run("infinite loop test")
@@ -114,7 +114,7 @@ class TestAgentLoop:
              patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
              patch.object(agent.llm, "build_tool_result_message", return_value={"role": "user", "content": []}), \
              patch(
-                 "seatunnel_agent.agent.execute_tool",
+                 "seatunnel_agent.agents.data.seatunnel.agent.execute_tool",
                  return_value=json.dumps({"success": True, "config_path": "/tmp/test.conf"}),
              ):
             agent.run("write a config")
@@ -133,7 +133,7 @@ class TestAgentLoop:
              patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
              patch.object(agent.llm, "build_tool_result_message", return_value={"role": "user", "content": []}), \
              patch(
-                 "seatunnel_agent.agent.execute_tool",
+                 "seatunnel_agent.agents.data.seatunnel.agent.execute_tool",
                  return_value=json.dumps({"success": False, "exit_code": 1, "stderr": "conn refused"}),
              ):
             agent.run("run job")
@@ -340,7 +340,7 @@ class TestStopEvent:
         with patch.object(agent.llm, "chat", side_effect=chat_then_stop), \
              patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
              patch.object(agent.llm, "build_tool_result_message", return_value={"role": "user", "content": []}), \
-             patch("seatunnel_agent.agent.execute_tool") as mock_exec:
+             patch("seatunnel_agent.agents.data.seatunnel.agent.execute_tool") as mock_exec:
             result = agent.run("task")
 
         assert result == STOPPED_MESSAGE
@@ -367,7 +367,7 @@ class TestStopEvent:
         with patch.object(agent.llm, "chat", return_value=resp), \
              patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}), \
              patch.object(agent.llm, "build_tool_result_message", side_effect=fake_build), \
-             patch("seatunnel_agent.agent.execute_tool", side_effect=exec_and_stop) as mock_exec:
+             patch("seatunnel_agent.agents.data.seatunnel.agent.execute_tool", side_effect=exec_and_stop) as mock_exec:
             result = agent.run("task")
 
         assert result == STOPPED_MESSAGE

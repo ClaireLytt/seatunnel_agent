@@ -9,19 +9,19 @@ import pytest
 
 pytest.importorskip("yaml")
 
-from seatunnel_agent.data_quality import (
+from seatunnel_agent.agents.data.data_quality import (
     render_report,
     run_checks,
     validate_rules,
 )
-from seatunnel_agent.data_quality.rules import parse_rules_text
-from seatunnel_agent.data_quality.runner import (
+from seatunnel_agent.agents.data.data_quality.rules import parse_rules_text
+from seatunnel_agent.agents.data.data_quality.runner import (
     DQCHistory,
     build_check_sql,
     push_failures,
 )
-from seatunnel_agent.text2sql.executor import DatabaseConfig, create_executor
-from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, create_executor
+from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 
 _DDL = """
 CREATE TABLE orders(
@@ -126,7 +126,7 @@ def test_build_check_sql_golden() -> None:
 def test_build_check_sql_where_macro() -> None:
     from datetime import date
 
-    from seatunnel_agent.text2sql.subscriptions import builtin_params
+    from seatunnel_agent.agents.data.text2sql.subscriptions import builtin_params
 
     rules, _ = parse_rules_text(
         "rules:\n  - table: orders\n    where: \"dt = '${yesterday}'\"\n"
@@ -197,10 +197,10 @@ def test_run_checks_whitelist_rejection(orders_db, tmp_path) -> None:
 
 
 def test_push_failures(monkeypatch) -> None:
-    from seatunnel_agent.data_quality.runner import CheckResult
+    from seatunnel_agent.agents.data.data_quality.runner import CheckResult
 
     pushed: list = []
-    import seatunnel_agent.text2sql.subscriptions as subs
+    import seatunnel_agent.agents.data.text2sql.subscriptions as subs
     monkeypatch.setattr(
         subs, "push_feishu",
         lambda url, title, body, ok=True, **kw: (pushed.append((title, ok)), (True, "ok"))[1],

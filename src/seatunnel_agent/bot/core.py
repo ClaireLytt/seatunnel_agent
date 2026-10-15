@@ -95,8 +95,8 @@ _LOC_NUM = re.compile(r"(\d+)")
 
 
 def _review_sql(files: list[PatchFile]) -> list[BotFinding]:
-    from ..sql_review.agent import static_review_report
-    from ..sql_review.linter import normalize_dialect
+    from seatunnel_agent.agents.data.sql_review.agent import static_review_report
+    from seatunnel_agent.agents.data.sql_review.linter import normalize_dialect
     out: list[BotFinding] = []
     for f in files:
         if not f.path.lower().endswith(".sql"):

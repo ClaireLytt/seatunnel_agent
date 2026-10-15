@@ -168,7 +168,7 @@ def ui(port: int, host: str, share: bool, api: bool) -> None:
 @click.pass_context
 def batch(ctx: click.Context, configs: tuple[str, ...], stop_on_failure: bool) -> None:
     """Run multiple SeaTunnel configs sequentially."""
-    from ..tools import execute_tool
+    from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
     from ..common.config import load_settings
 
     if ctx.obj.get("model"):
@@ -187,7 +187,7 @@ def batch(ctx: click.Context, configs: tuple[str, ...], stop_on_failure: bool) -
 
 def _make_agent(model: str | None = None, provider: str | None = None):
     from ..common.config import load_settings
-    from ..agent import SeaTunnelAgent
+    from seatunnel_agent.agents.data.seatunnel.agent import SeaTunnelAgent
 
     old_model = os.environ.get("MODEL_NAME")
     old_provider = os.environ.get("LLM_PROVIDER")

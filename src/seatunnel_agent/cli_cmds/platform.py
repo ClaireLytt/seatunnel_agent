@@ -44,7 +44,7 @@ def mcp_toolbox_cmd(
     """统一 MCP 工具箱（stdio）：SQL 审查/方言翻译/倾斜分析/变更影响/配置迁移
     + 已保存连接上的表结构浏览、只读查询与跨库比对。全部确定性实现，不调用
     LLM。血缘工具在给出 --sql-dir / --seatunnel-dir / --hive 之一时加载。"""
-    from ..mcp_toolbox import create_mcp_server
+    from seatunnel_agent.agents.data.mcp_toolbox.core import create_mcp_server
 
     allow = ([n.strip() for n in connections.split(",") if n.strip()]
              if connections else None)
@@ -66,7 +66,7 @@ def mcp_stats(recent: int) -> None:
     import json as _json
     from collections import Counter, defaultdict
 
-    from ..mcp_toolbox import _audit_file
+    from seatunnel_agent.agents.data.mcp_toolbox.core import _audit_file
 
     path = _audit_file()
     try:

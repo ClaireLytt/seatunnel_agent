@@ -13,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.pii_scan import (
+from seatunnel_agent.agents.data.pii_scan import (
     DEFAULT_RULES,
     collect_columns_from_ddl,
     load_extra_rules,
@@ -22,7 +22,7 @@ from seatunnel_agent.pii_scan import (
     scan_dir,
     scan_sql_text,
 )
-from seatunnel_agent.pii_scan.rules import expression_is_masked
+from seatunnel_agent.agents.data.pii_scan.rules import expression_is_masked
 
 runner = CliRunner()
 
@@ -296,7 +296,7 @@ def api_client():
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.pii_scan.api import router
+    from seatunnel_agent.agents.data.pii_scan.api import router
     app = fastapi.FastAPI()
     app.include_router(router)
     return TestClient(app)

@@ -13,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.metric_diff import (
+from seatunnel_agent.agents.data.metric_diff import (
     canonical_expr,
     check_sql_dir,
     render_markdown,
@@ -194,7 +194,7 @@ def api_client():
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.metric_diff.api import router
+    from seatunnel_agent.agents.data.metric_diff.api import router
     app = fastapi.FastAPI()
     app.include_router(router)
     return TestClient(app)

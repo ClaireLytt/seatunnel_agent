@@ -4,7 +4,7 @@
 Two sources:
 
 * the MCP toolbox's deterministic callables
-  (:func:`seatunnel_agent.mcp_toolbox.build_tool_functions`,
+  (:func:`seatunnel_agent.agents.data.mcp_toolbox.core.build_tool_functions`,
   ``include_db=False`` — the chat entry gets zero DB/file attack surface;
   file-path tools are filtered out for the same reason), and
 * thin wrappers over the inline cores not in the toolbox (sql_fmt,
@@ -83,7 +83,7 @@ def _doc(fn: Callable) -> str:
 def _wrap_sql_fmt(sql: str, dialect: str = "hive", lang: str = "zh") -> str:
     """SQL 格式化：sqlglot 确定性排版,解析失败的语句原样保留。返回格式化
     结果与差异的 Markdown 报告。dialect 如 hive/spark/mysql。"""
-    from ..sql_fmt import format_text, render_markdown
+    from seatunnel_agent.agents.data.sql_fmt import format_text, render_markdown
     if not (sql or "").strip():
         return "SQL 不能为空 / SQL must not be empty"
     return render_markdown(format_text(sql, dialect=dialect), lang)
@@ -93,8 +93,8 @@ def _wrap_config_lint(config: str, lang: str = "zh") -> str:
     """SeaTunnel 配置深度检查：对照内置连接器文档做参数级 lint —— 未知
     连接器/参数(给出 did-you-mean)、缺失必填项、类型与枚举校验等。
     入参为 HOCON 配置文本,只解析不执行。"""
-    from ..config_lint.linter import lint_text
-    from ..config_lint.report import render_markdown
+    from seatunnel_agent.agents.data.config_lint.linter import lint_text
+    from seatunnel_agent.agents.data.config_lint.report import render_markdown
     if not (config or "").strip():
         return "配置不能为空 / config must not be empty"
     return render_markdown(lint_text(config), lang)
@@ -104,8 +104,8 @@ def _wrap_schema_drift(old_ddl: str, new_ddl: str, dialect: str = "hive",
                        lang: str = "zh") -> str:
     """Schema 漂移检查:对比两份 DDL 脚本,每处结构变更按 breaking / risk /
     info 分级(删表删列、类型不兼容、分区变化、疑似重命名等)。"""
-    from ..schema_drift.differ import diff_scripts
-    from ..schema_drift.report import render_markdown
+    from seatunnel_agent.agents.data.schema_drift.differ import diff_scripts
+    from seatunnel_agent.agents.data.schema_drift.report import render_markdown
     if not (old_ddl or "").strip() or not (new_ddl or "").strip():
         return "需要同时提供旧/新 DDL / both old and new DDL are required"
     return render_markdown(diff_scripts(old_ddl, new_ddl, dialect=dialect),
@@ -115,8 +115,8 @@ def _wrap_schema_drift(old_ddl: str, new_ddl: str, dialect: str = "hive",
 def _wrap_pii_scan(sql: str, dialect: str = "hive", lang: str = "zh") -> str:
     """敏感数据扫描(PII):命名规则 × 字段血缘,识别手机号/身份证/银行卡等
     敏感列并标出未脱敏的下游扩散。入参为 SQL/DDL 脚本文本。"""
-    from ..pii_scan.report import render_markdown
-    from ..pii_scan.scanner import scan_sql_text
+    from seatunnel_agent.agents.data.pii_scan.report import render_markdown
+    from seatunnel_agent.agents.data.pii_scan.scanner import scan_sql_text
     if not (sql or "").strip():
         return "SQL 不能为空 / SQL must not be empty"
     return render_markdown(scan_sql_text(sql, dialect=dialect), lang)
@@ -126,9 +126,9 @@ def _wrap_sql_testgen(sql: str, ddl: str = "", rows: int = 20,
                       dialect: str = "hive", lang: str = "zh") -> str:
     """SQL 测试数据生成:关联感知造数(等值 join 列共享取值池、WHERE 条件
     可满足、混入边界行),并在内存 SQLite 上验证查询真的能跑通出数。"""
-    from ..sql_testgen.generator import generate
-    from ..sql_testgen.report import render_markdown
-    from ..sql_testgen.validator import validate_with_sqlite
+    from seatunnel_agent.agents.data.sql_testgen.generator import generate
+    from seatunnel_agent.agents.data.sql_testgen.report import render_markdown
+    from seatunnel_agent.agents.data.sql_testgen.validator import validate_with_sqlite
     if not (sql or "").strip():
         return "SQL 不能为空 / SQL must not be empty"
     result = generate(sql, ddl=ddl, rows=max(1, min(int(rows), 200)),
@@ -197,7 +197,7 @@ _WRAPPERS: dict[str, Callable[..., str]] = {
 
 def build_catalog(default_lang: str = "zh") -> dict[str, AgentSpec]:
     """Every routable agent, keyed by tool name."""
-    from ..mcp_toolbox import build_tool_functions
+    from seatunnel_agent.agents.data.mcp_toolbox.core import build_tool_functions
     specs: dict[str, AgentSpec] = {}
     for name, fn in build_tool_functions(default_lang=default_lang,
                                          include_db=False).items():

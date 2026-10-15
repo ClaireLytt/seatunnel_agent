@@ -728,7 +728,7 @@ class TestDskLabelSync:
     edit that silently breaks every DSK case lookup fails here instead."""
 
     def test_dsk_labels_match_i18n(self):
-        from seatunnel_agent.data_skew.i18n import dsk
+        from seatunnel_agent.agents.data.data_skew.i18n import dsk
         from seatunnel_agent.ui_testing.page import LABELS
 
         expected = {
@@ -751,7 +751,7 @@ class TestDskLabelSync:
             assert en == dsk("en", key), (alias, key, en)
 
     def test_dsk_shared_label_aliases(self):
-        from seatunnel_agent.data_skew.i18n import dsk
+        from seatunnel_agent.agents.data.data_skew.i18n import dsk
         from seatunnel_agent.ui_testing.page import LABELS
 
         # skew page labels that ride on keys shared with other pages
@@ -763,7 +763,7 @@ class TestDskLabelSync:
         assert dsk("zh", "dsk_dialect") in LABELS["SQL 方言"]
 
     def test_review_bridge_button_label(self):
-        from seatunnel_agent.sql_review.i18n import sr
+        from seatunnel_agent.agents.data.sql_review.i18n import sr
         from seatunnel_agent.ui_testing.page import LABELS
 
         zh, en = LABELS["倾斜分析"][:2]

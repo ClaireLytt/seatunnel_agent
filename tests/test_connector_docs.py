@@ -12,7 +12,7 @@ from seatunnel_agent.common.connector_docs import (
     list_documented_connectors,
     query_connector,
 )
-from seatunnel_agent.tools import execute_tool
+from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
 
 _tmp = _tempfile.gettempdir()
 

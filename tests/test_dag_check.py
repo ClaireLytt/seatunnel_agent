@@ -13,14 +13,14 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.dag_check import (
+from seatunnel_agent.agents.data.dag_check import (
     check_graph,
     check_sql_dir,
     render_markdown,
     report_to_dict,
 )
-from seatunnel_agent.dag_check.checker import _layer_of
-from seatunnel_agent.data_lineage.graph import LineageGraph
+from seatunnel_agent.agents.data.dag_check.checker import _layer_of
+from seatunnel_agent.agents.data.data_lineage.graph import LineageGraph
 
 runner = CliRunner()
 
@@ -187,7 +187,7 @@ def api_client():
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.dag_check.api import router
+    from seatunnel_agent.agents.data.dag_check.api import router
     app = fastapi.FastAPI()
     app.include_router(router)
     return TestClient(app)

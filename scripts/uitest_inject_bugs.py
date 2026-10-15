@@ -16,8 +16,8 @@ from pathlib import Path
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-UI = Path("src/seatunnel_agent/data_comparison_ui.py")
-I18N = Path("src/seatunnel_agent/data_comparison/i18n.py")
+UI = Path("src/seatunnel_agent/agents/data/data_comparison/ui.py")
+I18N = Path("src/seatunnel_agent/agents/data/data_comparison/i18n.py")
 
 BUGS = [
     ("① 前端接错组件: 连接A的输出接到B侧组件",

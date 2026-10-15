@@ -11,16 +11,16 @@ import pytest
 
 pytest.importorskip("yaml")
 
-from seatunnel_agent.text2sql.executor import DatabaseConfig
-from seatunnel_agent.text2sql.forecast import forecast_series
-from seatunnel_agent.text2sql.metrics import (
+from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig
+from seatunnel_agent.agents.data.text2sql.forecast import forecast_series
+from seatunnel_agent.agents.data.text2sql.metrics import (
     MetricStore,
     build_metric_series_sql,
 )
-from seatunnel_agent.text2sql.partition import TimeRange
-from seatunnel_agent.text2sql.qlog import QueryLogger
-from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
-from seatunnel_agent.text2sql.tools import (
+from seatunnel_agent.agents.data.text2sql.partition import TimeRange
+from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
+from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
+from seatunnel_agent.agents.data.text2sql.tools import (
     TOOL_DEFINITIONS,
     Text2SQLRuntime,
     execute_text2sql_tool,

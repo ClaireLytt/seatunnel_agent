@@ -89,7 +89,7 @@ def lineage(
     if not use_agent and not table and not health and not export_ol:
         raise click.UsageError("请用 --table 指定目标表（或 --ask 用自然语言提问 / --check 治理体检）")
 
-    from ..data_lineage import LineageLogger, build_graph, load_lineage_config
+    from seatunnel_agent.agents.data.data_lineage import LineageLogger, build_graph, load_lineage_config
 
     config = load_lineage_config()
     if meta_table:
@@ -121,7 +121,7 @@ def lineage(
     logger = LineageLogger()
 
     if export_ol:
-        from ..data_lineage.openlineage import export_openlineage_file
+        from seatunnel_agent.agents.data.data_lineage.openlineage import export_openlineage_file
 
         try:
             out_path = export_openlineage_file(graph, export_ol)
@@ -135,7 +135,7 @@ def lineage(
     # ── agent mode ──
     if use_agent:
         from ..common.config import load_settings
-        from ..data_lineage import LineageAgent
+        from seatunnel_agent.agents.data.data_lineage import LineageAgent
 
         if ctx.obj.get("model"):
             os.environ["MODEL_NAME"] = ctx.obj["model"]
@@ -168,8 +168,8 @@ def lineage(
         return
 
     # ── deterministic mode ──
-    from ..data_lineage import render_report, static_lineage
-    from ..data_lineage.render import (
+    from seatunnel_agent.agents.data.data_lineage import render_report, static_lineage
+    from seatunnel_agent.agents.data.data_lineage.render import (
         render_health,
         render_path,
         render_path_mermaid,
@@ -271,7 +271,7 @@ def lineage(
               help="Show the most recent N lineage queries")
 def lineage_stats(recent: int) -> None:
     """Show lineage query history (from logs/lineage.jsonl)."""
-    from ..data_lineage import LineageLogger
+    from seatunnel_agent.agents.data.data_lineage import LineageLogger
 
     records = LineageLogger().recent(recent)
     if not records:
@@ -312,11 +312,11 @@ def migrate(
     import json as _json
     from pathlib import Path
 
-    from ..config_migrate import (
+    from seatunnel_agent.agents.data.config_migrate import (
         migrate_dir, migrate_file, render_batch_markdown,
         render_migrate_markdown,
     )
-    from ..config_migrate.migrator import LEVELS as MIG_LEVELS
+    from seatunnel_agent.agents.data.config_migrate.migrator import LEVELS as MIG_LEVELS
 
     def _gate(worst: str | None) -> None:
         if fail_on and worst and MIG_LEVELS.index(worst) <= MIG_LEVELS.index(fail_on):
@@ -364,10 +364,10 @@ def datadict(ctx: click.Context, sql_dir: str, sql_dialect: str, lang: str,
     """数据字典生成 — 从 SQL 血缘图输出表/字段/上下游 Markdown 文档。"""
     from pathlib import Path
 
-    from ..data_lineage.dictionary import (
+    from seatunnel_agent.agents.data.data_lineage.dictionary import (
         add_llm_descriptions, build_dictionary, render_dictionary_markdown,
     )
-    from ..data_lineage.loaders import build_graph
+    from seatunnel_agent.agents.data.data_lineage.loaders import build_graph
 
     graph, warnings = build_graph(sql_dir=sql_dir, use_cache=False,
                                   sql_dialect=sql_dialect)
@@ -396,7 +396,7 @@ def impact_stats(recent: int) -> None:
     """变更影响分析历史与治理统计 (logs/impact.jsonl)。"""
     from collections import Counter
 
-    from ..data_lineage.impact import ImpactLogger
+    from seatunnel_agent.agents.data.data_lineage.impact import ImpactLogger
 
     records = ImpactLogger().recent(recent)
     if not records:
@@ -448,7 +448,7 @@ def lineage_mcp(
     """以 MCP server（stdio）暴露血缘分析工具，供 Claude Desktop 等 MCP 客户端调用。"""
     if not sql_dir and not seatunnel_dir and not use_hive:
         raise click.UsageError("至少指定一个血缘来源：--sql-dir / --seatunnel-dir / --hive")
-    from ..data_lineage.mcp_server import create_mcp_server
+    from seatunnel_agent.agents.data.data_lineage.mcp_server import create_mcp_server
 
     try:
         server = create_mcp_server(
@@ -473,12 +473,12 @@ def govern(sql_dir: str, qlog: str | None, days: int,
            output: str | None) -> None:
     """数据治理建议：血缘图 × 查询审计 → 下线候选/热表/失败高发（只建议不动手）。"""
     _ensure_utf8_stdio()
-    from ..data_lineage.governance import (
+    from seatunnel_agent.agents.data.data_lineage.governance import (
         analyze_governance,
         load_qlog_records,
         render_governance_markdown,
     )
-    from ..data_lineage.loaders import build_graph
+    from seatunnel_agent.agents.data.data_lineage.loaders import build_graph
 
     graph, warnings = build_graph(sql_dir=sql_dir)
     for w in warnings[:5]:
@@ -532,7 +532,7 @@ def impact(
     import shutil
     from pathlib import Path
 
-    from ..data_lineage.impact import (
+    from seatunnel_agent.agents.data.data_lineage.impact import (
         LEVELS, analyze_dirs, impact_to_dict, materialize_git_ref,
         render_impact_comment, render_impact_markdown,
     )
@@ -572,7 +572,7 @@ def impact(
         if output:
             Path(output).write_text(text, encoding="utf-8")
             console.print(f"[dim]Report saved to {output}[/dim]")
-        from ..data_lineage.impact import ImpactLogger
+        from seatunnel_agent.agents.data.data_lineage.impact import ImpactLogger
         ImpactLogger().log_impact(
             result, mode="git" if git_base else "dirs", source="cli",
             baseline=git_base or str(old_dir))

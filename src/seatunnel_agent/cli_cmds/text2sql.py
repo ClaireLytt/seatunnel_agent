@@ -19,8 +19,8 @@ from ..common.cli_common import _ensure_utf8_stdio, console
 def t2s_bench(ddl: str, bench_file: str, mode: str, gate: bool) -> None:
     """Text2SQL 表检索评测：对比 keyword-only 与 hybrid 的 Top1/Top3 命中率。"""
     _ensure_utf8_stdio()
-    from ..text2sql.bench import load_bench, render_bench_report, run_bench
-    from ..text2sql.schema import SchemaStore
+    from seatunnel_agent.agents.data.text2sql.bench import load_bench, render_bench_report, run_bench
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
 
     store = SchemaStore.from_file(ddl)
     try:
@@ -60,11 +60,11 @@ def t2s_index_values(ddl: str | None, ds_type: str, database: str,
     _ensure_utf8_stdio()
     import os as _os
 
-    from ..text2sql.executor import create_executor
-    from ..text2sql.retrieval import schema_hash
-    from ..text2sql.schema import SchemaStore
-    from ..text2sql.subscriptions import resolve_db_config
-    from ..text2sql.values import ValueIndex
+    from seatunnel_agent.agents.data.text2sql.executor import create_executor
+    from seatunnel_agent.agents.data.text2sql.retrieval import schema_hash
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+    from seatunnel_agent.agents.data.text2sql.subscriptions import resolve_db_config
+    from seatunnel_agent.agents.data.text2sql.values import ValueIndex
 
     from pathlib import Path
 
@@ -103,7 +103,7 @@ def t2s_index_values(ddl: str | None, ds_type: str, database: str,
 def t2s_mcp(ddl: str | None, metrics_file: str | None, ds_type: str,
             allow_execute: bool, database: str) -> None:
     """以 MCP server（stdio）暴露 Chat BI 确定性能力：表检索、指标口径、指标 SQL 展开。"""
-    from ..text2sql.mcp_server import create_mcp_server
+    from seatunnel_agent.agents.data.text2sql.mcp_server import create_mcp_server
 
     try:
         server = create_mcp_server(
@@ -124,7 +124,7 @@ def t2s_sub() -> None:
 def t2s_sub_list() -> None:
     """列出全部订阅及其上次执行状态。"""
     _ensure_utf8_stdio()
-    from ..text2sql.subscriptions import SubscriptionStore
+    from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore
 
     subs = SubscriptionStore().list()
     if not subs:
@@ -172,7 +172,7 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
                 watch: bool, threshold: float, watch_mode: str) -> None:
     """新建订阅（--metric 定时推数 / --metric --watch 异动告警 / --favorite 收藏推数）。"""
     _ensure_utf8_stdio()
-    from ..text2sql.subscriptions import SubscriptionStore
+    from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore
 
     if bool(metric) == bool(favorite_id):
         raise click.UsageError("--metric 与 --favorite 必须二选一")
@@ -207,7 +207,7 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
 @click.argument("sub_id")
 def t2s_sub_rm(sub_id: str) -> None:
     """删除订阅。"""
-    from ..text2sql.subscriptions import SubscriptionStore
+    from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore
 
     if not SubscriptionStore().delete(sub_id):
         raise click.ClickException(f"订阅 '{sub_id}' 不存在")
@@ -219,7 +219,7 @@ def t2s_sub_rm(sub_id: str) -> None:
 @click.option("--off", is_flag=True, help="停用而非启用")
 def t2s_sub_enable(sub_id: str, off: bool) -> None:
     """启用/停用订阅。"""
-    from ..text2sql.subscriptions import SubscriptionStore
+    from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore
 
     if not SubscriptionStore().set_enabled(sub_id, not off):
         raise click.ClickException(f"订阅 '{sub_id}' 不存在")
@@ -231,7 +231,7 @@ def t2s_sub_enable(sub_id: str, off: bool) -> None:
 def t2s_sub_run(sub_id: str) -> None:
     """立即执行一次订阅（不等 cron）。"""
     _ensure_utf8_stdio()
-    from ..text2sql.subscriptions import SubscriptionStore, run_subscription
+    from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore, run_subscription
 
     store = SubscriptionStore()
     sub = store.get(sub_id)
@@ -255,7 +255,7 @@ def t2s_cron(once: bool, tick: int) -> None:
     _ensure_utf8_stdio()
     import time as _time
 
-    from ..text2sql.subscriptions import Scheduler
+    from seatunnel_agent.agents.data.text2sql.subscriptions import Scheduler
 
     scheduler = Scheduler(tick_seconds=tick)
     if once:
@@ -292,15 +292,15 @@ def t2s_eval(ctx: click.Context, dataset: str, ddl: str | None, ds_type: str,
     换 --model/--provider 重跑即可做多模型准确率对比。
     """
     _ensure_utf8_stdio()
-    from ..text2sql.evaluate import (
+    from seatunnel_agent.agents.data.text2sql.evaluate import (
         load_dataset,
         make_agent_runner,
         render_eval_report,
         run_eval,
     )
-    from ..text2sql.metrics import load_metric_store
-    from ..text2sql.schema import SchemaStore
-    from ..text2sql.subscriptions import resolve_db_config
+    from seatunnel_agent.agents.data.text2sql.metrics import load_metric_store
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+    from seatunnel_agent.agents.data.text2sql.subscriptions import resolve_db_config
 
     try:
         settings = _settings_with_overrides(ctx)
@@ -325,7 +325,7 @@ def t2s_eval(ctx: click.Context, dataset: str, ddl: str | None, ds_type: str,
     if ddl:
         store = SchemaStore.from_file(ddl)
     else:
-        from ..text2sql.executor import create_executor
+        from seatunnel_agent.agents.data.text2sql.executor import create_executor
         store = SchemaStore.from_db(create_executor(db_config))
     if len(store) == 0:
         raise click.ClickException("未加载到任何表")
@@ -380,8 +380,8 @@ def dqc() -> None:
 def dqc_validate(rules_file: str, ddl: str) -> None:
     """校验规则与 DDL 的一致性（CI 门禁：有错误时退出码 1）。"""
     _ensure_utf8_stdio()
-    from ..data_quality import load_rules, validate_rules
-    from ..text2sql.schema import SchemaStore
+    from seatunnel_agent.agents.data.data_quality import load_rules, validate_rules
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
 
     rules, errors = load_rules(rules_file)
     errors += validate_rules(rules, SchemaStore.from_file(ddl))
@@ -411,10 +411,10 @@ def dqc_run(rules_file: str, ddl: str | None, ds_type: str, database: str,
             output: str | None) -> None:
     """执行全部质量检查并输出报告。"""
     _ensure_utf8_stdio()
-    from ..data_quality import load_rules, render_report, run_checks
-    from ..data_quality.runner import push_failures
-    from ..text2sql.executor import create_executor
-    from ..text2sql.subscriptions import resolve_db_config
+    from seatunnel_agent.agents.data.data_quality import load_rules, render_report, run_checks
+    from seatunnel_agent.agents.data.data_quality.runner import push_failures
+    from seatunnel_agent.agents.data.text2sql.executor import create_executor
+    from seatunnel_agent.agents.data.text2sql.subscriptions import resolve_db_config
 
     rules, errors = load_rules(rules_file)
     if errors:
@@ -426,7 +426,7 @@ def dqc_run(rules_file: str, ddl: str | None, ds_type: str, database: str,
 
     schema_store = None
     if ddl:
-        from ..text2sql.schema import SchemaStore
+        from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
         schema_store = SchemaStore.from_file(ddl)
 
     db_config = resolve_db_config({
@@ -455,11 +455,11 @@ def dqc_run(rules_file: str, ddl: str | None, ds_type: str, database: str,
 
 def _load_metrics_for_cli(metrics_file: str | None, ddl: str | None):
     """Shared loader for the metrics subcommands: (store, errors)."""
-    from ..text2sql.metrics import load_metric_store
+    from seatunnel_agent.agents.data.text2sql.metrics import load_metric_store
 
     schema_store = None
     if ddl:
-        from ..text2sql.schema import SchemaStore
+        from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
         schema_store = SchemaStore.from_file(ddl)
     return load_metric_store(schema_store, path=metrics_file)
 
@@ -559,7 +559,7 @@ def metrics_sql(
 ) -> None:
     """确定性展开指标 SQL（不执行）——同样的参数永远得到同一条 SQL。"""
     _ensure_utf8_stdio()
-    from ..text2sql.metrics import MetricError, build_metric_sql, parse_time_range
+    from seatunnel_agent.agents.data.text2sql.metrics import MetricError, build_metric_sql, parse_time_range
 
     store, errors = _load_metrics_for_cli(metrics_file, ddl)
     if errors:
@@ -571,7 +571,7 @@ def metrics_sql(
         known = ", ".join(x.name for x in store.metrics) or "(无)"
         raise click.ClickException(f"指标 '{name}' 未定义。已知指标: {known}")
 
-    from ..text2sql.schema import SchemaStore
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
     schema_store = SchemaStore.from_file(ddl)
     try:
         sql = build_metric_sql(
@@ -597,7 +597,7 @@ def t2s_examples() -> None:
 def t2s_examples_list(examples_file: str | None) -> None:
     """列出全部示例。"""
     _ensure_utf8_stdio()
-    from ..text2sql.examples import ExampleStore
+    from seatunnel_agent.agents.data.text2sql.examples import ExampleStore
 
     store = ExampleStore(examples_file)
     items = store.list()
@@ -624,8 +624,8 @@ def t2s_examples_list(examples_file: str | None) -> None:
 def t2s_examples_add(question: str, sql: str, examples_file: str | None) -> None:
     """手工添加一条验证示例。"""
     _ensure_utf8_stdio()
-    from ..text2sql.examples import ExampleStore
-    from ..text2sql.validator import extract_tables
+    from seatunnel_agent.agents.data.text2sql.examples import ExampleStore
+    from seatunnel_agent.agents.data.text2sql.validator import extract_tables
 
     store = ExampleStore(examples_file)
     try:
@@ -643,7 +643,7 @@ def t2s_examples_add(question: str, sql: str, examples_file: str | None) -> None
 def t2s_examples_rm(example_id: str, examples_file: str | None) -> None:
     """按 id 删除一条示例。"""
     _ensure_utf8_stdio()
-    from ..text2sql.examples import ExampleStore
+    from seatunnel_agent.agents.data.text2sql.examples import ExampleStore
 
     store = ExampleStore(examples_file)
     if store.remove(example_id):

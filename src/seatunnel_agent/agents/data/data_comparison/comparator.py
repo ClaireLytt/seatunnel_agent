@@ -1,0 +1,1594 @@
+"""Data comparison engine — deterministic schema / count / sample / aggregate diffs."""
+
+from __future__ import annotations
+
+import atexit
+import json
+import logging
+import math
+import os
+import re
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, TypeVar
+
+_log = logging.getLogger(__name__)
+
+try:
+    _POOL_WORKERS = max(1, int(os.getenv("DC_POOL_WORKERS", "4")))
+except ValueError:
+    _POOL_WORKERS = 4
+_POOL = ThreadPoolExecutor(max_workers=_POOL_WORKERS)
+atexit.register(_POOL.shutdown, wait=False)
+
+_T = TypeVar("_T")
+_U = TypeVar("_U")
+
+_SAFE_IDENT = re.compile(r"^[\w][\w.$]*$", re.ASCII)
+
+# Tunable limits (previously scattered magic numbers)
+try:
+    MAX_AGG_COLUMNS = max(1, int(os.getenv("DC_MAX_COMPARE_COLUMNS", "20")))
+except ValueError:
+    MAX_AGG_COLUMNS = 20
+DEFAULT_CHECKSUM_SEGMENTS = 10
+STR_CAST_LEN = 200
+GINI_SKEW_THRESHOLD = 0.6
+# Side-vs-side qualification thresholds: when A and B disagree by more than
+# this the skew is a sync-pipeline symptom, not a business fact.
+GINI_MISMATCH_THRESHOLD = 0.2
+TOP1_MISMATCH_PP = 20.0        # percentage points of top-1 share
+TOP1_SKEW_THRESHOLD = 50.0     # top-1 share marking a hot key on one side
+
+# Dialects where backslash is an escape character inside string literals.
+_BACKSLASH_ESCAPE_DIALECTS = frozenset(
+    {"mysql", "doris", "hive", "sparksql", "clickhouse"})
+
+from .models import (  # noqa: F401 — re-exported, public API
+    ColumnMapping,
+    SchemaDiffItem,
+    SchemaDiffResult,
+    RowCountResult,
+    AggregateItem,
+    AggregateResult,
+    ModifiedRow,
+    KeyedDiffResult,
+    ProfileItem,
+    ProfileResult,
+    ThresholdConfig,
+    BatchFullItem,
+    QualityRule,
+    QualityResult,
+    ReportDiffItem,
+    ReportDiff,
+    SkewBucket,
+    SkewItem,
+    SkewResult,
+    ChecksumItem,
+    ChecksumResult,
+    PartitionCompareItem,
+    PartitionResult,
+    CustomAggItem,
+    CustomAggResult,
+    CompareReport,
+)
+
+
+
+# ---------------------------------------------------------------------------
+# Identifier quoting
+# ---------------------------------------------------------------------------
+
+# Engines that quote identifiers with backticks; SQL Server uses brackets;
+# everything else gets ANSI double quotes.
+_BACKTICK_ENGINES = frozenset({
+    "mysql", "doris", "hive", "sparksql", "flinksql", "clickhouse",
+})
+
+
+def quote_identifier(name: str, ds_type: str = "") -> str:
+    """Quote a SQL identifier to prevent injection, using the dialect's style.
+
+    Simple names (alphanumeric + underscore/dot/$) pass through unchanged.
+    Anything else is quoted with the engine-appropriate delimiter:
+    backticks (MySQL family), brackets (SQL Server), or ANSI double quotes.
+    """
+    if _SAFE_IDENT.match(name):
+        return name
+    if ds_type in _BACKTICK_ENGINES:
+        return "`" + name.replace("`", "``") + "`"
+    if ds_type == "sqlserver":
+        return "[" + name.replace("]", "]]") + "]"
+    return '"' + name.replace('"', '""') + '"'
+
+
+_STR_CAST_TYPE: dict[str, str] = {
+    "hive":     "STRING",
+    "sparksql": "STRING",
+    "flinksql": "STRING",
+    "mysql":    f"CHAR({STR_CAST_LEN})",
+    "sqlite":   "TEXT",
+}
+
+
+def cast_to_string(expr: str, ds_type: str = "") -> str:
+    """Portable "cast to string" expression for *expr* in the given dialect."""
+    if ds_type == "clickhouse":
+        return f"toString({expr})"
+    return f"CAST({expr} AS {_STR_CAST_TYPE.get(ds_type, f'VARCHAR({STR_CAST_LEN})')})"
+
+
+# ---------------------------------------------------------------------------
+# Schema comparison
+# ---------------------------------------------------------------------------
+
+def compare_schemas(
+    cols_a: list[dict[str, str]],
+    cols_b: list[dict[str, str]],
+    table_a: str = "A",
+    table_b: str = "B",
+) -> SchemaDiffResult:
+    """Compare two column lists and return structured diffs.
+
+    Each column dict must have ``"name"`` and ``"type"`` keys.
+    """
+    map_a = {c["name"].lower(): c for c in cols_a}
+    map_b = {c["name"].lower(): c for c in cols_b}
+
+    items: list[SchemaDiffItem] = []
+    only_a = only_b = type_chg = 0
+
+    for key, ca in map_a.items():
+        if key not in map_b:
+            items.append(SchemaDiffItem(ca["name"], "removed", type_a=ca["type"]))
+            only_a += 1
+        else:
+            cb = map_b[key]
+            if ca["type"].lower() != cb["type"].lower():
+                items.append(SchemaDiffItem(
+                    ca["name"], "type_changed", type_a=ca["type"], type_b=cb["type"],
+                ))
+                type_chg += 1
+
+    for key, cb in map_b.items():
+        if key not in map_a:
+            items.append(SchemaDiffItem(cb["name"], "added", type_b=cb["type"]))
+            only_b += 1
+
+    return SchemaDiffResult(
+        table_a=table_a, table_b=table_b, items=items,
+        cols_only_a=only_a, cols_only_b=only_b, type_changes=type_chg,
+    )
+
+
+# ---------------------------------------------------------------------------
+# SQL builders
+# ---------------------------------------------------------------------------
+
+def _where_clause(where: str) -> str:
+    return f" WHERE {where}" if where.strip() else ""
+
+
+def _row_limit(ds_type: str, n: int) -> tuple[str, str]:
+    if ds_type == "sqlserver":
+        return f"TOP {int(n)} ", ""
+    return "", f" LIMIT {int(n)}"
+
+
+def build_count_sql(table_name: str, where: str = "") -> str:
+    return f"SELECT COUNT(*) AS cnt FROM {quote_identifier(table_name)}{_where_clause(where)}"
+
+
+def build_sample_sql(table_name: str, limit: int = 100, where: str = "",
+                     ds_type: str = "mysql") -> str:
+    top, tail = _row_limit(ds_type, limit)
+    return f"SELECT {top}* FROM {quote_identifier(table_name)}{_where_clause(where)}{tail}"
+
+
+_NUMERIC_KEYWORDS = frozenset({
+    "int", "integer", "bigint", "smallint", "tinyint",
+    "float", "double", "decimal", "numeric", "real", "number",
+    "serial", "bigserial", "smallserial", "money",
+})
+
+
+def is_numeric_type(dtype: str) -> bool:
+    """Check whether a column type string represents a numeric type."""
+    base = dtype.lower().split("(")[0].strip()
+    return base in _NUMERIC_KEYWORDS
+
+
+def build_aggregate_sql(table_name: str, columns: list[str], where: str = "",
+                        ds_type: str = "") -> str:
+    """Build SQL to compute SUM/AVG/MIN/MAX and NULL count for *columns*."""
+    if not columns:
+        return build_count_sql(table_name, where)
+    exprs: list[str] = ["COUNT(*) AS cnt"]
+    if len(columns) > MAX_AGG_COLUMNS:
+        _log.warning("Truncating columns from %d to %d for aggregate SQL on %s",
+                     len(columns), MAX_AGG_COLUMNS, table_name)
+    for c in columns[:MAX_AGG_COLUMNS]:
+        qc = quote_identifier(c, ds_type)
+        exprs.append(f"SUM({qc}) AS {quote_identifier(c + '__sum', ds_type)}")
+        exprs.append(f"AVG({qc}) AS {quote_identifier(c + '__avg', ds_type)}")
+        exprs.append(f"MIN({qc}) AS {quote_identifier(c + '__min', ds_type)}")
+        exprs.append(f"MAX({qc}) AS {quote_identifier(c + '__max', ds_type)}")
+        exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) "
+                     f"AS {quote_identifier(c + '__null', ds_type)}")
+    return ("SELECT " + ",\n       ".join(exprs)
+            + f"\n  FROM {quote_identifier(table_name, ds_type)}{_where_clause(where)}")
+
+
+# ---------------------------------------------------------------------------
+# Aggregate comparison
+# ---------------------------------------------------------------------------
+
+_METRIC_OFFSETS = {"sum": 0, "avg": 1, "min": 2, "max": 3, "null_count": 4}
+
+
+# Cross-source normalization rules for loose value equality. Migrations
+# between engines produce "false diffs" from rendering, not data: trailing
+# whitespace in CHAR columns, '2024-01-01T00:00:00' vs '2024-01-01 00:00:00'
+# vs a bare date, NULL vs '' on engines that conflate them. Each rule can be
+# switched via environment variables (documented defaults chosen for the
+# common Hive↔MySQL case).
+_NORM_TRIM = os.getenv("DC_NORM_TRIM", "1") != "0"
+_NORM_TIMESTAMPS = os.getenv("DC_NORM_TIMESTAMPS", "1") != "0"
+_NORM_NULL_EQ_EMPTY = os.getenv("DC_NORM_NULL_EQ_EMPTY", "0") == "1"
+
+_TS_RE = re.compile(
+    r"^(\d{4}-\d{2}-\d{2})"                 # date
+    r"(?:[T ](\d{2}:\d{2})(?::(\d{2}))?"    # optional time
+    r"(?:\.(\d+))?"                         # optional fraction
+    r"(Z|[+-]\d{2}:?\d{2})?)?$"             # optional zone suffix
+)
+
+
+def _canon_timestamp(s: str) -> str | None:
+    """Canonical 'YYYY-MM-DD HH:MM:SS.frac[zone]' for ISO-ish datetimes.
+
+    A bare date equals midnight; 'T' and ' ' separators, missing seconds and
+    trailing fractional zeros are normalized away. The zone suffix is KEPT
+    (normalized: 'Z' == '+00:00' == '+0000'), so '10:30:00+08:00' never
+    equals '10:30:00Z' — those are instants eight hours apart. Returns None
+    when the string is not datetime-shaped."""
+    m = _TS_RE.match(s)
+    if not m:
+        return None
+    date, hm, sec, frac, zone = m.groups()
+    frac = (frac or "").rstrip("0")
+    z = (zone or "").replace(":", "")
+    if z in ("+0000", "-0000"):
+        z = "Z"
+    return (f"{date} {hm or '00:00'}:{sec or '00'}"
+            + (f".{frac}" if frac else "") + z)
+
+
+def _close_enough(a: Any, b: Any, tolerance: float = 1e-6) -> bool:
+    if a is None and b is None:
+        return True
+    if a is None or b is None:
+        if _NORM_NULL_EQ_EMPTY and (a in (None, "") and b in (None, "")):
+            return True
+        return False
+    try:
+        fa, fb = float(a), float(b)
+    except (TypeError, ValueError):
+        sa, sb = str(a), str(b)
+        if _NORM_TRIM:
+            sa, sb = sa.strip(), sb.strip()
+        if sa == sb:
+            return True
+        if _NORM_TIMESTAMPS:
+            ca, cb = _canon_timestamp(sa), _canon_timestamp(sb)
+            if ca is not None and ca == cb:
+                return True
+        return False
+    if math.isnan(fa) and math.isnan(fb):
+        return True
+    if math.isnan(fa) or math.isnan(fb):
+        return False
+    if fa == fb:
+        return True
+    denom = max(abs(fa), abs(fb), 1e-9)
+    return abs(fa - fb) / denom < tolerance
+
+
+def compare_aggregates(
+    table_a: str,
+    row_a: tuple,
+    table_b: str,
+    row_b: tuple,
+    columns: list[str],
+    tolerance: float = 1e-6,
+) -> AggregateResult:
+    """Compare aggregate stats from SQL built by ``build_aggregate_sql``."""
+    items: list[AggregateItem] = []
+    mismatches = 0
+    if len(columns) > MAX_AGG_COLUMNS:
+        _log.warning("Truncating columns from %d to %d for aggregate comparison on %s / %s",
+                     len(columns), MAX_AGG_COLUMNS, table_a, table_b)
+    for i, col in enumerate(columns[:MAX_AGG_COLUMNS]):
+        base = 1 + i * 5  # skip cnt at index 0
+        for metric, offset in _METRIC_OFFSETS.items():
+            idx = base + offset
+            va = row_a[idx] if idx < len(row_a) else None
+            vb = row_b[idx] if idx < len(row_b) else None
+            ok = _close_enough(va, vb, tolerance)
+            if not ok:
+                mismatches += 1
+            items.append(AggregateItem(
+                column=col, metric=metric, value_a=va, value_b=vb, match=ok,
+            ))
+    return AggregateResult(
+        table_a=table_a, table_b=table_b, items=items, mismatches=mismatches,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Batch table comparison helpers
+# ---------------------------------------------------------------------------
+
+def find_common_tables(
+    tables_a: list[str], tables_b: list[str],
+) -> list[tuple[str, str]]:
+    """Find same-name tables across both sides (case-insensitive).
+
+    Returns ``[(name_a, name_b), ...]`` preserving original casing.
+    """
+    map_b = {t.lower(): t for t in tables_b}
+    pairs: list[tuple[str, str]] = []
+    for ta in tables_a:
+        tb = map_b.get(ta.lower())
+        if tb is not None:
+            pairs.append((ta, tb))
+    return pairs
+
+
+def build_row_count_result(
+    table_a: str, count_a: int, table_b: str, count_b: int,
+) -> RowCountResult:
+    """Build a ``RowCountResult`` with computed delta/pct."""
+    delta = count_a - count_b
+    denom = max(count_a, count_b, 1)
+    pct = delta / denom * 100
+    return RowCountResult(table_a, count_a, table_b, count_b, delta, pct)
+
+
+# ---------------------------------------------------------------------------
+# Key-based row diff  (A)
+# ---------------------------------------------------------------------------
+
+def diff_by_key(
+    cols_a: list[str],
+    rows_a: list[tuple],
+    cols_b: list[str],
+    rows_b: list[tuple],
+    key_cols: list[str],
+    max_rows: int = 200,
+) -> KeyedDiffResult:
+    """Compare rows by primary key columns (matched case-insensitively)."""
+    def _key_index(cols: list[str], name: str, side: str) -> int:
+        try:
+            return cols.index(name)
+        except ValueError:
+            lower_map = {c.lower(): i for i, c in enumerate(cols)}
+            idx = lower_map.get(name.lower())
+            if idx is None:
+                raise ValueError(
+                    f"Key column {name!r} not found in table {side} "
+                    f"(available: {', '.join(cols)})"
+                ) from None
+            return idx
+
+    key_idx_a = [_key_index(cols_a, k, "A") for k in key_cols]
+    key_idx_b = [_key_index(cols_b, k, "B") for k in key_cols]
+
+    shared = [c for c in cols_a if c in cols_b]
+    key_lower = {k.lower() for k in key_cols}
+    val_cols = [c for c in shared if c.lower() not in key_lower]
+
+    shared_idx_a = [cols_a.index(c) for c in shared]
+    shared_idx_b = [cols_b.index(c) for c in shared]
+    val_idx_a = {vc: cols_a.index(vc) for vc in val_cols}
+    val_idx_b = {vc: cols_b.index(vc) for vc in val_cols}
+
+    map_a: dict[tuple, tuple] = {}
+    for row in rows_a:
+        key = tuple(row[i] for i in key_idx_a)
+        map_a[key] = row
+
+    map_b: dict[tuple, tuple] = {}
+    for row in rows_b:
+        key = tuple(row[i] for i in key_idx_b)
+        map_b[key] = row
+
+    added: list[tuple] = []
+    removed: list[tuple] = []
+    modified: list[ModifiedRow] = []
+
+    for key, row_a in map_a.items():
+        if key not in map_b:
+            if len(removed) < max_rows:
+                removed.append(tuple(row_a[i] for i in shared_idx_a))
+        else:
+            row_b = map_b[key]
+            changes: list[tuple[str, Any, Any]] = []
+            for vc in val_cols:
+                va = row_a[val_idx_a[vc]]
+                vb = row_b[val_idx_b[vc]]
+                if not _close_enough(va, vb):
+                    changes.append((vc, va, vb))
+            if changes and len(modified) < max_rows:
+                modified.append(ModifiedRow(key=key, changes=changes,
+                                            row_a=row_a, row_b=row_b))
+
+    for key, row_b in map_b.items():
+        if key not in map_a:
+            if len(added) < max_rows:
+                added.append(tuple(row_b[i] for i in shared_idx_b))
+
+    return KeyedDiffResult(
+        key_columns=key_cols, columns=shared,
+        added=added, removed=removed, modified=modified,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Column profile  (C)
+# ---------------------------------------------------------------------------
+
+def build_profile_sql(table_name: str, columns: list[str], where: str = "",
+                      ds_type: str = "") -> str:
+    """Build SQL to compute distinct count, null count, min, max per column."""
+    if not columns:
+        return build_count_sql(table_name, where)
+    exprs: list[str] = ["COUNT(*) AS cnt"]
+    if len(columns) > MAX_AGG_COLUMNS:
+        _log.warning("Truncating columns from %d to %d for profile SQL on %s",
+                     len(columns), MAX_AGG_COLUMNS, table_name)
+    for c in columns[:MAX_AGG_COLUMNS]:
+        qc = quote_identifier(c, ds_type)
+        exprs.append(f"COUNT(DISTINCT {qc}) AS {quote_identifier(c + '__dist', ds_type)}")
+        exprs.append(f"SUM(CASE WHEN {qc} IS NULL THEN 1 ELSE 0 END) "
+                     f"AS {quote_identifier(c + '__null', ds_type)}")
+        exprs.append(f"MIN({qc}) AS {quote_identifier(c + '__min', ds_type)}")
+        exprs.append(f"MAX({qc}) AS {quote_identifier(c + '__max', ds_type)}")
+    return ("SELECT " + ",\n       ".join(exprs)
+            + f"\n  FROM {quote_identifier(table_name, ds_type)}{_where_clause(where)}")
+
+
+def compare_profiles(
+    table_a: str, row_a: tuple, total_a: int,
+    table_b: str, row_b: tuple, total_b: int,
+    columns: list[str],
+) -> ProfileResult:
+    """Compare column profiles from SQL built by ``build_profile_sql``."""
+    items: list[ProfileItem] = []
+    if len(columns) > MAX_AGG_COLUMNS:
+        _log.warning("Truncating columns from %d to %d for profile comparison on %s / %s",
+                     len(columns), MAX_AGG_COLUMNS, table_a, table_b)
+    for i, col in enumerate(columns[:MAX_AGG_COLUMNS]):
+        base = 1 + i * 4
+        dist_a = row_a[base] if base < len(row_a) else 0
+        null_a = row_a[base + 1] if base + 1 < len(row_a) else 0
+        min_a = row_a[base + 2] if base + 2 < len(row_a) else None
+        max_a = row_a[base + 3] if base + 3 < len(row_a) else None
+
+        dist_b = row_b[base] if base < len(row_b) else 0
+        null_b = row_b[base + 1] if base + 1 < len(row_b) else 0
+        min_b = row_b[base + 2] if base + 2 < len(row_b) else None
+        max_b = row_b[base + 3] if base + 3 < len(row_b) else None
+
+        nr_a = (int(null_a) / total_a * 100) if total_a else 0.0
+        nr_b = (int(null_b) / total_b * 100) if total_b else 0.0
+
+        items.append(ProfileItem(
+            column=col,
+            distinct_a=int(dist_a or 0), distinct_b=int(dist_b or 0),
+            null_rate_a=round(nr_a, 2), null_rate_b=round(nr_b, 2),
+            min_a=min_a, min_b=min_b,
+            max_a=max_a, max_b=max_b,
+        ))
+    return ProfileResult(
+        table_a=table_a, table_b=table_b,
+        total_a=total_a, total_b=total_b,
+        items=items,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Concurrent execution helper  (F)
+# ---------------------------------------------------------------------------
+
+def run_parallel(fn_a: Callable[[], _T], fn_b: Callable[[], _U]) -> tuple[_T, _U]:
+    """Run two callables concurrently, return (result_a, result_b)."""
+    future_a = _POOL.submit(fn_a)
+    future_b = _POOL.submit(fn_b)
+    return future_a.result(), future_b.result()
+
+
+# ---------------------------------------------------------------------------
+# Threshold  (B)
+# ---------------------------------------------------------------------------
+
+def parse_threshold(raw: str) -> ThresholdConfig | None:
+    """Parse '5%' or '100' into ThresholdConfig. Returns None if empty/invalid."""
+    s = raw.strip()
+    if not s:
+        return None
+    try:
+        if s.endswith("%"):
+            return ThresholdConfig(value=float(s[:-1]), is_percentage=True)
+        return ThresholdConfig(value=float(s), is_percentage=False)
+    except ValueError:
+        return None
+
+
+def check_row_count_threshold(result: RowCountResult, threshold: ThresholdConfig) -> bool:
+    """Return True if row count delta is within threshold (pass)."""
+    if threshold.is_percentage:
+        return abs(result.delta_pct) <= threshold.value
+    return abs(result.delta) <= threshold.value
+
+
+def parse_column_mapping(raw: str) -> ColumnMapping:
+    """Parse 'col_a:col_b, name:full_name' into {col_a: col_b}.
+
+    Pairs may be separated by commas or newlines — users pasting one
+    mapping per line used to have everything after the first colon
+    swallowed into a single bogus value."""
+    mapping: ColumnMapping = {}
+    if not raw.strip():
+        return mapping
+    for pair in re.split(r"[,\n]", raw):
+        pair = pair.strip()
+        if ":" not in pair:
+            continue
+        parts = pair.split(":", 1)
+        a_col = parts[0].strip()
+        b_col = parts[1].strip()
+        if a_col and b_col:
+            mapping[a_col] = b_col
+    return mapping
+
+
+def apply_column_mapping(columns: list[str], mapping: ColumnMapping) -> list[str]:
+    """Remap column names: values in mapping are renamed to keys."""
+    reverse = {v.lower(): k for k, v in mapping.items()}
+    return [reverse.get(c.lower(), c) for c in columns]
+
+
+# ---------------------------------------------------------------------------
+# Random sampling SQL  (G)
+# ---------------------------------------------------------------------------
+
+_RANDOM_SQL: dict[str, str] = {
+    "mysql":      "SELECT * FROM {table}{where} ORDER BY RAND() LIMIT {limit}",
+    "postgresql": "SELECT * FROM {table}{where} ORDER BY RANDOM() LIMIT {limit}",
+    "clickhouse": "SELECT * FROM {table}{where} ORDER BY rand() LIMIT {limit}",
+    "doris":      "SELECT * FROM {table}{where} ORDER BY RAND() LIMIT {limit}",
+    "hive":       "SELECT * FROM {table}{where} DISTRIBUTE BY RAND() SORT BY RAND() LIMIT {limit}",
+    "sparksql":   "SELECT * FROM {table}{where} ORDER BY RAND() LIMIT {limit}",
+    "sqlserver":  "SELECT TOP {limit} * FROM {table}{where} ORDER BY NEWID()",
+    "flinksql":   "SELECT * FROM {table}{where} LIMIT {limit}",
+    "sqlite":     "SELECT * FROM {table}{where} ORDER BY RANDOM() LIMIT {limit}",
+}
+
+
+def build_random_sample_sql(
+    table_name: str, limit: int = 100, ds_type: str = "mysql", where: str = "",
+) -> str:
+    """Build dialect-specific random sampling SQL."""
+    tpl = _RANDOM_SQL.get(ds_type, _RANDOM_SQL["mysql"])
+    return tpl.format(
+        table=quote_identifier(table_name),
+        limit=int(limit),
+        where=_where_clause(where),
+    )
+
+
+def build_stratified_sample_sql(
+    table_name: str,
+    group_col: str,
+    sample_per_group: int = 10,
+    ds_type: str = "mysql",
+    where: str = "",
+) -> str:
+    """Build SQL for stratified sampling via ROW_NUMBER() OVER(PARTITION BY)."""
+    qt = quote_identifier(table_name)
+    qc = quote_identifier(group_col)
+    wc = _where_clause(where)
+    n = int(sample_per_group)
+    return (
+        f"SELECT * FROM ("
+        f"SELECT *, ROW_NUMBER() OVER(PARTITION BY {qc} ORDER BY {qc}) AS _rn "
+        f"FROM {qt}{wc}"
+        f") _sub WHERE _rn <= {n}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# JDBC helpers  (C)
+# ---------------------------------------------------------------------------
+
+_JDBC_URL_PATTERNS: dict[str, str] = {
+    "mysql":      "jdbc:mysql://{host}:{port}/{database}",
+    "postgresql": "jdbc:postgresql://{host}:{port}/{database}",
+    "sqlserver":  "jdbc:sqlserver://{host}:{port};databaseName={database}",
+    "clickhouse": "jdbc:clickhouse://{host}:{port}/{database}",
+    "doris":      "jdbc:mysql://{host}:{port}/{database}",
+    "hive":       "jdbc:hive2://{host}:{port}/{database}",
+    "sparksql":   "jdbc:hive2://{host}:{port}/{database}",
+}
+
+_JDBC_DRIVERS: dict[str, str] = {
+    "mysql":      "com.mysql.cj.jdbc.Driver",
+    "doris":      "com.mysql.cj.jdbc.Driver",
+    "postgresql": "org.postgresql.Driver",
+    "sqlserver":  "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+    "clickhouse": "com.clickhouse.jdbc.ClickHouseDriver",
+    "hive":       "org.apache.hive.jdbc.HiveDriver",
+    "sparksql":   "org.apache.hive.jdbc.HiveDriver",
+}
+
+
+def build_jdbc_url(ds_type: str, host: str, port: int, database: str) -> str:
+    pattern = _JDBC_URL_PATTERNS.get(ds_type, "jdbc:{ds}://{host}:{port}/{database}")
+    return pattern.format(ds=ds_type, host=host, port=port, database=database)
+
+
+def get_jdbc_driver(ds_type: str) -> str:
+    return _JDBC_DRIVERS.get(ds_type, "")
+
+
+def _escape_hocon(s: str) -> str:
+    """Escape a string value for embedding in a HOCON double-quoted string."""
+    return s.replace("\\", "\\\\").replace('"', '\\"').replace("$", "$$")
+
+
+def generate_sync_config(
+    ds_type_a: str, host_a: str, port_a: int, db_a: str,
+    user_a: str | None, pwd_a: str | None, table_a: str,
+    ds_type_b: str, host_b: str, port_b: int, db_b: str,
+    user_b: str | None, pwd_b: str | None, table_b: str,
+    column_mapping: ColumnMapping | None = None,
+    parallelism: int = 2,
+) -> str:
+    """Generate a SeaTunnel HOCON sync job config: source A -> sink B."""
+    url_a = build_jdbc_url(ds_type_a, host_a, port_a, db_a)
+    url_b = build_jdbc_url(ds_type_b, host_b, port_b, db_b)
+    drv_a = get_jdbc_driver(ds_type_a)
+    drv_b = get_jdbc_driver(ds_type_b)
+
+    transform_block = "transform {\n}"
+    if column_mapping:
+        # SeaTunnel's SQL transform runs in its own engine, which quotes
+        # identifiers with backticks regardless of source/sink dialect.
+        field_list = ", ".join(
+            f"{quote_identifier(v, 'mysql')} AS {quote_identifier(k, 'mysql')}"
+            for k, v in column_mapping.items()
+        )
+        transform_block = (
+            'transform {\n'
+            '  Sql {\n'
+            f'    query = "{_escape_hocon(f"SELECT *, {field_list} FROM source_table")}"\n'
+            '  }\n'
+            '}'
+        )
+
+    lines = [
+        'env {',
+        '  job.mode = "BATCH"',
+        f'  parallelism = {int(parallelism)}',
+        '}',
+        '',
+        'source {',
+        '  Jdbc {',
+        f'    url = "{_escape_hocon(url_a)}"',
+        f'    driver = "{drv_a}"',
+    ]
+    if user_a:
+        lines.append(f'    user = "{_escape_hocon(user_a)}"')
+    if pwd_a:
+        lines.append(f'    password = "{_escape_hocon(pwd_a)}"')
+    lines += [
+        f'    query = "{_escape_hocon(f"SELECT * FROM {quote_identifier(table_a, ds_type_a)}")}"',
+        '  }',
+        '}',
+        '',
+        transform_block,
+        '',
+        'sink {',
+        '  Jdbc {',
+        f'    url = "{_escape_hocon(url_b)}"',
+        f'    driver = "{drv_b}"',
+    ]
+    if user_b:
+        lines.append(f'    user = "{_escape_hocon(user_b)}"')
+    if pwd_b:
+        lines.append(f'    password = "{_escape_hocon(pwd_b)}"')
+    lines += [
+        f'    database = "{_escape_hocon(db_b)}"',
+        f'    table = "{_escape_hocon(table_b)}"',
+        '    generate_sink_sql = true',
+        '  }',
+        '}',
+    ]
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Trend data  (H)
+# ---------------------------------------------------------------------------
+
+def build_trend_data(
+    reports_dir: Path,
+) -> list[dict[str, Any]]:
+    """Read saved reports and extract time-series delta data.
+
+    Returns a list of dicts with keys: timestamp, table_a, table_b, delta,
+    delta_pct, mismatches, schema_changes — plus, when the report carries a
+    skew analysis, ``skew_top1`` / ``skew_gini`` (worst column, either side)
+    and ``skew_top1_jump`` / ``skew_gini_jump`` (change vs the previous
+    report with skew data, for distribution-drift alerting).
+    """
+    if not reports_dir.is_dir():
+        return []
+
+    entries: list[dict[str, Any]] = []
+
+    def _file_ts(p: Path) -> str:
+        # filenames are compare_[<ta>_vs_<tb>_]YYYYmmdd_HHMMSS.json — the
+        # timestamp is always the trailing token, table names are optional
+        m = re.search(r"(\d{8}_\d{6})$", p.stem)
+        return m.group(1) if m else p.stem.replace("compare_", "")
+
+    for fpath in sorted(reports_dir.glob("compare_*.json"), key=_file_ts):
+        try:
+            with open(fpath, "r", encoding="utf-8") as f:
+                d = json.load(f)
+            ts = _file_ts(fpath)
+            report = CompareReport.from_dict(d)
+            if report.row_count:
+                entry: dict[str, Any] = {
+                    "timestamp": ts,
+                    "table_a": report.row_count.table_a,
+                    "table_b": report.row_count.table_b,
+                    "delta": report.row_count.delta,
+                    "delta_pct": report.row_count.delta_pct,
+                    "mismatches": report.aggregate.mismatches if report.aggregate else 0,
+                    "schema_changes": len(report.schema.items) if report.schema else 0,
+                    "skew_top1": None,
+                    "skew_gini": None,
+                }
+                if report.skew is not None and report.skew.items:
+                    entry["skew_top1"] = max(
+                        max(it.top1_pct_a, it.top1_pct_b)
+                        for it in report.skew.items)
+                    entry["skew_gini"] = max(
+                        max(it.gini_a, it.gini_b) for it in report.skew.items)
+                entries.append(entry)
+        except Exception:
+            _log.warning(
+                "Skipping corrupt report: %s", fpath, exc_info=True)
+            continue
+
+    # Drift fields: change vs the previous report that had skew data, so a
+    # rule like ``skew_top1_jump>10:1`` fires on a sudden hot-key surge.
+    prev_top1: float | None = None
+    prev_gini: float | None = None
+    for entry in entries:
+        top1, gini = entry["skew_top1"], entry["skew_gini"]
+        entry["skew_top1_jump"] = (
+            round(top1 - prev_top1, 2)
+            if top1 is not None and prev_top1 is not None else None)
+        entry["skew_gini_jump"] = (
+            round(gini - prev_gini, 4)
+            if gini is not None and prev_gini is not None else None)
+        if top1 is not None:
+            prev_top1, prev_gini = top1, gini
+    return entries
+
+
+# ---------------------------------------------------------------------------
+# Incremental comparison SQL  (A)
+# ---------------------------------------------------------------------------
+
+def build_incremental_sql(
+    table_name: str, watermark_col: str, last_value: str,
+    limit: int = 1000, where: str = "", ds_type: str = "mysql",
+) -> str:
+    """Build SQL that fetches only rows newer than *last_value*."""
+    tbl = quote_identifier(table_name)
+    wm = quote_identifier(watermark_col)
+    parts: list[str] = []
+    if last_value:
+        parts.append(f"{wm} > {_sql_literal(last_value)}")
+    w = where.strip()
+    if w:
+        parts.append(f"({w})")
+    clause = (" WHERE " + " AND ".join(parts)) if parts else ""
+    top, tail = _row_limit(ds_type, limit)
+    return f"SELECT {top}* FROM {tbl}{clause} ORDER BY {wm}{tail}"
+
+
+# ---------------------------------------------------------------------------
+# Data quality rules  (B)
+# ---------------------------------------------------------------------------
+
+def parse_quality_rules(raw: str) -> list[QualityRule]:
+    """Parse rules like ``name:not_null>95, age:range:0-150, id:unique>99``."""
+    rules: list[QualityRule] = []
+    if not raw.strip():
+        return rules
+    for token in raw.split(","):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            if ":range:" in token:
+                col, _, bounds = token.partition(":range:")
+                lo, hi = bounds.split("-", 1)
+                rules.append(QualityRule(
+                    column=col.strip(), rule_type="value_range",
+                    min_val=float(lo), max_val=float(hi)))
+            elif ":not_null>" in token:
+                col, _, val = token.partition(":not_null>")
+                rules.append(QualityRule(
+                    column=col.strip(), rule_type="not_null_rate",
+                    threshold=float(val)))
+            elif ":unique>" in token:
+                col, _, val = token.partition(":unique>")
+                rules.append(QualityRule(
+                    column=col.strip(), rule_type="unique_rate",
+                    threshold=float(val)))
+            elif ":min>" in token:
+                col, _, val = token.partition(":min>")
+                rules.append(QualityRule(
+                    column=col.strip(), rule_type="min_value",
+                    threshold=float(val)))
+            elif ":max<" in token:
+                col, _, val = token.partition(":max<")
+                rules.append(QualityRule(
+                    column=col.strip(), rule_type="max_value",
+                    threshold=float(val)))
+            elif ":expr:" in token:
+                col, _, expr = token.partition(":expr:")
+                rules.append(QualityRule(
+                    column=col.strip(), rule_type="expression",
+                    expression=expr.strip()))
+        except (ValueError, IndexError):
+            continue
+    return rules
+
+
+def check_quality_rules(
+    rules: list[QualityRule], profile: ProfileResult, side: str = "a",
+) -> list[QualityResult]:
+    """Evaluate quality rules against profile data from one side (a|b)."""
+    b = side.lower() == "b"
+    results: list[QualityResult] = []
+    item_map = {it.column.lower(): it for it in profile.items}
+
+    def _num(v) -> float:
+        try:
+            return float(v) if v is not None else 0.0
+        except (TypeError, ValueError):
+            return 0.0
+
+    for rule in rules:
+        item = item_map.get(rule.column.lower())
+        if item is None:
+            results.append(QualityResult(rule=rule, actual_value=0.0, passed=False))
+            continue
+        if rule.rule_type == "not_null_rate":
+            actual = 100.0 - (item.null_rate_b if b else item.null_rate_a)
+            results.append(QualityResult(rule=rule, actual_value=actual,
+                                         passed=actual >= rule.threshold))
+        elif rule.rule_type == "unique_rate":
+            total = (profile.total_b if b else profile.total_a) or 1
+            actual = (item.distinct_b if b else item.distinct_a) / total * 100.0
+            results.append(QualityResult(rule=rule, actual_value=actual,
+                                         passed=actual >= rule.threshold))
+        elif rule.rule_type == "min_value":
+            actual = _num(item.min_b if b else item.min_a)
+            results.append(QualityResult(rule=rule, actual_value=actual,
+                                         passed=actual >= rule.threshold))
+        elif rule.rule_type == "max_value":
+            actual = _num(item.max_b if b else item.max_a)
+            results.append(QualityResult(rule=rule, actual_value=actual,
+                                         passed=actual <= rule.threshold))
+        elif rule.rule_type == "value_range":
+            lo = _num(item.min_b if b else item.min_a)
+            hi = _num(item.max_b if b else item.max_a)
+            passed = (rule.min_val is None or lo >= rule.min_val) and                      (rule.max_val is None or hi <= rule.max_val)
+            results.append(QualityResult(rule=rule, actual_value=lo,
+                                         passed=passed))
+        elif rule.rule_type == "expression":
+            results.append(QualityResult(
+                rule=rule, actual_value=0.0, passed=False, pending=True))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Diff → SQL generation  (C)
+# ---------------------------------------------------------------------------
+
+def _sql_literal(value: Any, ds_type: str = "mysql") -> str:
+    """Format a Python value as a SQL literal."""
+    if value is None:
+        return "NULL"
+    if isinstance(value, (int, float)):
+        if math.isnan(value) or math.isinf(value):
+            return "NULL"
+        return str(value)
+    s = str(value)
+    if ds_type in _BACKSLASH_ESCAPE_DIALECTS:
+        s = s.replace("\\", "\\\\")
+    s = s.replace("'", "''")
+    return f"'{s}'"
+
+
+def generate_diff_sql(
+    keyed_diff: KeyedDiffResult, table_target: str,
+    ds_type: str = "mysql",
+) -> str:
+    """Generate INSERT/UPDATE/DELETE SQL from a keyed diff result."""
+    stmts: list[str] = []
+    tbl = quote_identifier(table_target, ds_type)
+    cols = keyed_diff.columns
+    key_cols = keyed_diff.key_columns
+    col_set = set(cols)
+
+    for row in keyed_diff.added:
+        col_names = ", ".join(quote_identifier(c, ds_type) for c in cols)
+        values = ", ".join(_sql_literal(row[i], ds_type) if i < len(row) else "NULL"
+                           for i in range(len(cols)))
+        stmts.append(f"INSERT INTO {tbl} ({col_names}) VALUES ({values});")
+
+    for row in keyed_diff.removed:
+        wheres = []
+        for kc in key_cols:
+            if kc not in col_set:
+                continue
+            idx = cols.index(kc)
+            wheres.append(f"{quote_identifier(kc, ds_type)} = {_sql_literal(row[idx] if idx < len(row) else None, ds_type)}")
+        if wheres:
+            stmts.append(f"DELETE FROM {tbl} WHERE {' AND '.join(wheres)};")
+
+    for mod in keyed_diff.modified:
+        sets = []
+        for col, _old, new in mod.changes:
+            sets.append(f"{quote_identifier(col, ds_type)} = {_sql_literal(new, ds_type)}")
+        wheres = []
+        for i, kc in enumerate(key_cols):
+            wheres.append(f"{quote_identifier(kc, ds_type)} = {_sql_literal(mod.key[i], ds_type)}")
+        stmts.append(f"UPDATE {tbl} SET {', '.join(sets)} WHERE {' AND '.join(wheres)};")
+
+    return "\n".join(stmts)
+
+
+# ---------------------------------------------------------------------------
+# Data masking  (G)
+# ---------------------------------------------------------------------------
+
+_SENSITIVE_PATTERNS: dict[str, re.Pattern] = {
+    "email": re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"),
+    "phone": re.compile(r"\b\d{3}[-.]?\d{3,4}[-.]?\d{4}\b"),
+    "id_number": re.compile(r"\b\d{15,18}[xX]?\b"),
+    "credit_card": re.compile(r"\b\d{4}[- ]?\d{4}[- ]?\d{4}[- ]?\d{4}\b"),
+}
+
+
+def detect_sensitive_columns(
+    columns: list[str], sample_rows: list[tuple], max_scan: int = 20,
+) -> dict[str, str]:
+    """Scan sample data and return ``{column: mask_type}`` for PII columns."""
+    result: dict[str, str] = {}
+    scan = sample_rows[:max_scan]
+    for ci, col in enumerate(columns):
+        for row in scan:
+            if ci >= len(row):
+                continue
+            val = row[ci]
+            if val is None:
+                continue
+            s = str(val)
+            for ptype, pat in _SENSITIVE_PATTERNS.items():
+                if pat.search(s):
+                    result[col] = ptype
+                    break
+            if col in result:
+                break
+    return result
+
+
+def mask_value(value: Any, mask_type: str) -> str:
+    """Mask a single value according to its sensitivity type."""
+    if value is None:
+        return "***"
+    s = str(value)
+    if mask_type == "email" and "@" in s:
+        local, _, domain = s.partition("@")
+        parts = domain.rsplit(".", 1)
+        dom = parts[0] if parts else domain
+        tld = ("." + parts[1]) if len(parts) > 1 else ""
+        return f"{local[:1] or '*'}***@{dom[:1] or '*'}***{tld}"
+    if mask_type == "phone" and len(s) >= 7:
+        return s[:3] + "****" + s[-4:]
+    if mask_type == "id_number" and len(s) >= 7:
+        return s[:3] + "*" * (len(s) - 7) + s[-4:]
+    if mask_type == "credit_card":
+        digits = re.sub(r"[^0-9]", "", s)
+        if len(digits) >= 4:
+            return "**** **** **** " + digits[-4:]
+    return "***"
+
+
+def mask_rows(
+    columns: list[str], rows: list[tuple], sensitive_cols: dict[str, str],
+) -> list[tuple]:
+    """Return rows with sensitive columns masked."""
+    if not sensitive_cols:
+        return rows
+    col_lower = {c.lower(): i for i, c in enumerate(columns)}
+    mask_idx: dict[int, str] = {}
+    for col, mtype in sensitive_cols.items():
+        idx = col_lower.get(col.lower())
+        if idx is not None:
+            mask_idx[idx] = mtype
+    if not mask_idx:
+        return rows
+    out: list[tuple] = []
+    for row in rows:
+        new_row = list(row)
+        for idx, mtype in mask_idx.items():
+            if idx < len(new_row):
+                new_row[idx] = mask_value(new_row[idx], mtype)
+        out.append(tuple(new_row))
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Data skew analysis  (BB)
+# ---------------------------------------------------------------------------
+
+def build_skew_sql(
+    table_name: str, column: str, where: str = "", top_n: int = 20,
+    ds_type: str = "mysql",
+) -> str:
+    """Build SQL to get top-N value frequencies for one column."""
+    qc = quote_identifier(column, ds_type)
+    qt = quote_identifier(table_name, ds_type)
+    if top_n > 0 and ds_type == "sqlserver":
+        top_clause = f"TOP {int(top_n)} "
+    else:
+        top_clause = ""
+    sql = (
+        f"SELECT {top_clause}{cast_to_string(qc, ds_type)} AS val, COUNT(*) AS cnt"
+        f"\n  FROM {qt}{_where_clause(where)}"
+        f"\n GROUP BY {qc}"
+        f"\n ORDER BY cnt DESC"
+    )
+    if top_n > 0 and ds_type != "sqlserver":
+        sql += f"\n LIMIT {top_n}"
+    return sql
+
+
+def compute_skew_metrics(counts: list[int]) -> tuple[float, float, float]:
+    """Return (gini, cv, top1_pct) from a list of frequency counts.
+
+    - gini: 0 = uniform, 1 = all in one value
+    - cv: coefficient of variation (std/mean)
+    - top1_pct: percentage held by largest value
+    """
+    if not counts:
+        return 0.0, 0.0, 0.0
+    total = sum(counts)
+    if total == 0:
+        return 0.0, 0.0, 0.0
+    n = len(counts)
+    if n == 1:
+        return 0.0, 0.0, 100.0
+
+    # Gini coefficient
+    sorted_c = sorted(counts)
+    cum = 0.0
+    weighted_sum = 0.0
+    for i, c in enumerate(sorted_c):
+        cum += c
+        weighted_sum += (2 * (i + 1) - n - 1) * c
+    gini = weighted_sum / (n * total) if total else 0.0
+    gini = max(0.0, min(1.0, gini))
+
+    # CV
+    mean = total / n
+    variance = sum((c - mean) ** 2 for c in counts) / n
+    std = math.sqrt(variance)
+    cv = std / mean if mean else 0.0
+
+    # Top-1 concentration
+    top1 = max(counts) / total * 100
+
+    return round(gini, 4), round(cv, 4), round(top1, 2)
+
+
+def compare_skew(
+    table_a: str, table_b: str, column: str,
+    rows_a: list[tuple], total_a: int,
+    rows_b: list[tuple], total_b: int,
+    top_n: int = 20,
+) -> SkewItem:
+    """Compare skew for one column between two tables."""
+    counts_a = [int(r[1]) for r in rows_a if len(r) >= 2]
+    counts_b = [int(r[1]) for r in rows_b if len(r) >= 2]
+
+    gini_a, cv_a, top1_a = compute_skew_metrics(counts_a)
+    gini_b, cv_b, top1_b = compute_skew_metrics(counts_b)
+
+    # Merge buckets from both sides
+    map_a: dict[str, int] = {}
+    for r in rows_a:
+        if len(r) >= 2:
+            map_a[str(r[0])] = int(r[1])
+    map_b: dict[str, int] = {}
+    for r in rows_b:
+        if len(r) >= 2:
+            map_b[str(r[0])] = int(r[1])
+
+    all_vals: list[str] = []
+    seen: set[str] = set()
+    for r in rows_a:
+        v = str(r[0]) if len(r) >= 1 else ""
+        if v not in seen:
+            all_vals.append(v)
+            seen.add(v)
+    for r in rows_b:
+        v = str(r[0]) if len(r) >= 1 else ""
+        if v not in seen:
+            all_vals.append(v)
+            seen.add(v)
+
+    buckets: list[SkewBucket] = []
+    for v in all_vals[:top_n]:
+        ca = map_a.get(v, 0)
+        cb = map_b.get(v, 0)
+        buckets.append(SkewBucket(
+            value=v,
+            count_a=ca, count_b=cb,
+            pct_a=round(ca / total_a * 100, 2) if total_a else 0.0,
+            pct_b=round(cb / total_b * 100, 2) if total_b else 0.0,
+        ))
+
+    return SkewItem(
+        column=column,
+        gini_a=gini_a, gini_b=gini_b,
+        cv_a=cv_a, cv_b=cv_b,
+        top1_pct_a=top1_a, top1_pct_b=top1_b,
+        ndv_a=len(map_a), ndv_b=len(map_b),
+        buckets=buckets,
+    )
+
+
+def skew_side_verdict(result: SkewResult) -> tuple[str, list[str]]:
+    """Qualify the measured skew: sync symptom or business fact.
+
+    Returns ``(verdict, columns)`` where verdict is:
+    - ``"mismatch"``: A and B disagree on a column's distribution — when B
+      is synced from A this points at the sync pipeline (split/filter
+      logic), so fix the data before tuning any compute.
+    - ``"both_skewed"``: both sides skew the same way — a business fact
+      (hot customer / default value); protect the downstream compute.
+    - ``"ok"``: nothing notable.
+    Mismatch wins over both_skewed when both are present.
+    """
+    if not result.items or not result.total_a or not result.total_b:
+        return "ok", []
+    mismatch: list[str] = []
+    both: list[str] = []
+    for it in result.items:
+        if (abs(it.gini_a - it.gini_b) > GINI_MISMATCH_THRESHOLD
+                or abs(it.top1_pct_a - it.top1_pct_b) > TOP1_MISMATCH_PP):
+            mismatch.append(it.column)
+        elif ((it.gini_a > GINI_SKEW_THRESHOLD and it.gini_b > GINI_SKEW_THRESHOLD)
+              or (it.top1_pct_a > TOP1_SKEW_THRESHOLD
+                  and it.top1_pct_b > TOP1_SKEW_THRESHOLD)):
+            both.append(it.column)
+    if mismatch:
+        return "mismatch", mismatch
+    if both:
+        return "both_skewed", both
+    return "ok", []
+
+
+# ---------------------------------------------------------------------------
+# Checksum comparison  (F1)
+# ---------------------------------------------------------------------------
+
+# Row-hash expression per dialect ({cols} = comma-joined string-cast columns).
+# SQL Server needs CONVERT to get a hex string (HASHBYTES returns varbinary);
+# ClickHouse is handled separately (its MD5 returns binary FixedString(16)).
+_HASH_FUNC: dict[str, str] = {
+    "mysql":      "MD5(CONCAT_WS(',', {cols}))",
+    "postgresql": "MD5(CONCAT_WS(',', {cols}))",
+    "hive":       "MD5(CONCAT_WS(',', {cols}))",
+    "sparksql":   "MD5(CONCAT_WS(',', {cols}))",
+    "doris":      "MD5(CONCAT_WS(',', {cols}))",
+    "flinksql":   "MD5(CONCAT_WS(',', {cols}))",
+    "sqlserver":  "CONVERT(VARCHAR(32), HASHBYTES('MD5', CONCAT_WS(',', {cols})), 2)",
+}
+
+# Segment-bucketing expression per dialect. Engines without a portable
+# non-cryptographic hash (Flink SQL, SQLite) fall back to a single segment.
+_SEG_FUNC: dict[str, str] = {
+    "mysql":      "MOD(CRC32(CONCAT_WS(',', {cols})), {n})",
+    "doris":      "MOD(CRC32(CONCAT_WS(',', {cols})), {n})",
+    "postgresql": "MOD(ABS(HASHTEXT(CONCAT_WS(',', {cols}))), {n})",
+    "hive":       "PMOD(HASH({raw_cols}), {n})",
+    "sparksql":   "PMOD(HASH({raw_cols}), {n})",
+    "sqlserver":  "ABS(CHECKSUM(CONCAT_WS(',', {cols}))) % {n}",
+}
+
+
+def build_checksum_sql(
+    table_name: str, columns: list[str], ds_type: str = "mysql",
+    where: str = "", segments: int = DEFAULT_CHECKSUM_SEGMENTS,
+) -> str:
+    """Build SQL to compute per-segment checksums for data verification."""
+    segments = max(1, int(segments))
+    qt = quote_identifier(table_name, ds_type)
+    qcols = [quote_identifier(c, ds_type) for c in columns]
+    cols_cast = ", ".join(cast_to_string(qc, ds_type) for qc in qcols)
+
+    if ds_type == "sqlite":
+        # SQLite has neither MD5 nor a hash function: single segment with a
+        # length-sum fingerprint (valid SQL, same-engine comparisons only).
+        concat = " || ',' || ".join(f"COALESCE(CAST({qc} AS TEXT), '')" for qc in qcols)
+        return (
+            f"SELECT 0 AS seg,"
+            f"\n  COUNT(*) AS cnt,"
+            f"\n  COALESCE(SUM(LENGTH({concat})), 0) AS seg_hash"
+            f"\n  FROM {qt}{_where_clause(where)}"
+        )
+
+    if ds_type == "clickhouse":
+        ts_cols = [f"toString({qc})" for qc in qcols]
+        hash_expr = "hex(MD5(concat(" + ", ',', ".join(ts_cols) + ")))"
+        seg_expr = f"cityHash64({', '.join(ts_cols)}) % {segments}"
+    else:
+        hash_expr = _HASH_FUNC.get(ds_type, _HASH_FUNC["mysql"]).format(cols=cols_cast)
+        seg_tpl = _SEG_FUNC.get(ds_type)
+        if seg_tpl is None:
+            seg_expr = "0"
+        else:
+            seg_expr = seg_tpl.format(cols=cols_cast, raw_cols=", ".join(qcols),
+                                      n=segments)
+
+    if seg_expr == "0":
+        return (
+            f"SELECT 0 AS seg,"
+            f"\n  COUNT(*) AS cnt,"
+            f"\n  MIN({hash_expr}) AS seg_hash"
+            f"\n  FROM {qt}{_where_clause(where)}"
+        )
+    return (
+        f"SELECT {seg_expr} AS seg,"
+        f"\n  COUNT(*) AS cnt,"
+        f"\n  MIN({hash_expr}) AS seg_hash"
+        f"\n  FROM {qt}{_where_clause(where)}"
+        f"\n GROUP BY {seg_expr}"
+        f"\n ORDER BY seg"
+    )
+
+
+def compare_checksums(
+    table_a: str, table_b: str,
+    rows_a: list[tuple], rows_b: list[tuple],
+) -> ChecksumResult:
+    """Compare per-segment checksums from both sides."""
+    map_a: dict[int, tuple[int, str]] = {}
+    for r in rows_a:
+        if len(r) >= 3:
+            map_a[int(r[0])] = (int(r[1]), str(r[2]).lower())
+    map_b: dict[int, tuple[int, str]] = {}
+    for r in rows_b:
+        if len(r) >= 3:
+            map_b[int(r[0])] = (int(r[1]), str(r[2]).lower())
+
+    all_segs = sorted(set(map_a.keys()) | set(map_b.keys()))
+    items: list[ChecksumItem] = []
+    match_count = 0
+    mismatch_count = 0
+    for seg in all_segs:
+        a = map_a.get(seg, (0, ""))
+        b = map_b.get(seg, (0, ""))
+        matched = (a[0] == b[0] and a[1] == b[1])
+        if matched:
+            match_count += 1
+        else:
+            mismatch_count += 1
+        items.append(ChecksumItem(
+            segment=seg, checksum_a=a[1], checksum_b=b[1], match=matched,
+        ))
+
+    return ChecksumResult(
+        table_a=table_a, table_b=table_b,
+        items=items, match_count=match_count, mismatch_count=mismatch_count,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Partition-level comparison  (F2)
+# ---------------------------------------------------------------------------
+
+def build_partition_count_sql(
+    table_name: str, partition_col: str, where: str = "",
+    ds_type: str = "mysql",
+) -> str:
+    """Build SQL to get row counts grouped by partition column."""
+    qt = quote_identifier(table_name, ds_type)
+    qp = quote_identifier(partition_col, ds_type)
+    return (
+        f"SELECT {cast_to_string(qp, ds_type)} AS part_val, COUNT(*) AS cnt"
+        f"\n  FROM {qt}{_where_clause(where)}"
+        f"\n GROUP BY {qp}"
+        f"\n ORDER BY cnt DESC"
+    )
+
+
+def compare_partitions(
+    table_a: str, table_b: str, partition_col: str,
+    rows_a: list[tuple], rows_b: list[tuple],
+) -> PartitionResult:
+    """Compare row counts per partition value."""
+    map_a: dict[str, int] = {}
+    for r in rows_a:
+        if len(r) >= 2:
+            map_a[str(r[0])] = int(r[1])
+    map_b: dict[str, int] = {}
+    for r in rows_b:
+        if len(r) >= 2:
+            map_b[str(r[0])] = int(r[1])
+
+    all_keys = list(dict.fromkeys(
+        [str(r[0]) for r in rows_a if len(r) >= 1] +
+        [str(r[0]) for r in rows_b if len(r) >= 1]
+    ))
+
+    items: list[PartitionCompareItem] = []
+    total_delta = 0
+    for k in all_keys:
+        ca = map_a.get(k, 0)
+        cb = map_b.get(k, 0)
+        delta = ca - cb
+        total_delta += abs(delta)
+        pct = round(delta / max(ca, cb, 1) * 100, 2)
+        items.append(PartitionCompareItem(
+            partition_value=k, count_a=ca, count_b=cb,
+            delta=delta, delta_pct=pct,
+        ))
+
+    return PartitionResult(
+        table_a=table_a, table_b=table_b,
+        partition_column=partition_col,
+        items=items, total_delta=total_delta,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Custom aggregate expressions  (F3)
+# ---------------------------------------------------------------------------
+
+_CUSTOM_AGG_FORBIDDEN = re.compile(
+    r"\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|GRANT|REVOKE"
+    r"|MERGE|CALL|UNION|SET|LOAD|COPY|RENAME)\b"
+    r"|INTO\s+OUTFILE|;",
+    re.IGNORECASE,
+)
+
+
+def parse_custom_agg_expressions(raw: str) -> list[tuple[str, str]]:
+    """Parse ``alias=EXPRESSION`` lines, returning (alias, expr) pairs."""
+    result: list[tuple[str, str]] = []
+    for line in raw.strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        alias, _, expr = line.partition("=")
+        alias = alias.strip()
+        expr = expr.strip()
+        if not alias or not expr:
+            continue
+        if _CUSTOM_AGG_FORBIDDEN.search(expr):
+            continue
+        result.append((alias, expr))
+    return result
+
+
+def build_custom_agg_sql(
+    table_name: str, expressions: list[tuple[str, str]], where: str = "",
+) -> str:
+    """Build SQL with user-defined aggregate expressions."""
+    qt = quote_identifier(table_name)
+    parts = [f"({expr}) AS {quote_identifier(alias)}" for alias, expr in expressions]
+    return f"SELECT {', '.join(parts)}\n  FROM {qt}{_where_clause(where)}"
+
+
+def compare_custom_aggs(
+    table_a: str, row_a: tuple, table_b: str, row_b: tuple,
+    expressions: list[tuple[str, str]],
+) -> CustomAggResult:
+    """Compare custom aggregate results."""
+    def _coerce(row: tuple, i: int) -> Any:
+        if i >= len(row) or row[i] is None:
+            return None
+        try:
+            return float(row[i])
+        except (TypeError, ValueError):
+            return row[i]
+
+    items: list[CustomAggItem] = []
+    mismatches = 0
+    for i, (alias, expr) in enumerate(expressions):
+        va = _coerce(row_a, i)
+        vb = _coerce(row_b, i)
+        matched = _close_enough(va, vb)
+        if not matched:
+            mismatches += 1
+        items.append(CustomAggItem(
+            expression=expr, alias=alias,
+            value_a=va, value_b=vb, match=matched,
+        ))
+    return CustomAggResult(
+        table_a=table_a, table_b=table_b,
+        items=items, mismatches=mismatches,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Trend alerting  (F4)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AlertRule:
+    """Parsed alert rule from user input."""
+    metric: str
+    threshold: float
+    consecutive: int
+
+
+@dataclass
+class TrendAlert:
+    """A single alert rule evaluation result."""
+    metric: str
+    threshold: float
+    consecutive_required: int
+    consecutive_actual: int
+    triggered: bool
+    current_value: float | None = None
+
+
+def parse_alert_rules(raw: str) -> list[AlertRule]:
+    """Parse alert rules from a string like ``row_count_delta>100:3, mismatches>0:5``.
+
+    Each rule: ``metric>threshold:consecutive_count``
+    """
+    rules: list[AlertRule] = []
+    for line in raw.replace(",", "\n").strip().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            left, consecutive_str = line.rsplit(":", 1)
+            consecutive = int(consecutive_str)
+            if ">" in left:
+                metric, threshold_str = left.split(">", 1)
+                rules.append(AlertRule(
+                    metric=metric.strip(),
+                    threshold=float(threshold_str),
+                    consecutive=max(1, consecutive),
+                ))
+        except (ValueError, IndexError):
+            continue
+    return rules
+
+
+def check_trend_alerts(
+    trend_data: list[dict[str, Any]],
+    alert_rules: list[AlertRule],
+) -> list[TrendAlert]:
+    """Check trend data against alert rules.
+
+    *trend_data* is the output of ``build_trend_data()``.
+    """
+    _metric_extractors: dict[str, str] = {
+        "row_count_delta": "delta",
+        "delta": "delta",
+        "delta_pct": "delta_pct",
+        "mismatches": "mismatches",
+    }
+
+    results: list[TrendAlert] = []
+    for rule in alert_rules:
+        metric = rule.metric
+        threshold = rule.threshold
+        required = rule.consecutive
+        field = _metric_extractors.get(metric, metric)
+
+        consecutive = 0
+        current_val: float | None = None
+        for entry in reversed(trend_data):
+            val = entry.get(field)
+            if val is None:
+                break
+            current_val = current_val if current_val is not None else float(val)
+            if abs(float(val)) > threshold:
+                consecutive += 1
+            else:
+                break
+
+        results.append(TrendAlert(
+            metric=metric,
+            threshold=threshold,
+            consecutive_required=required,
+            consecutive_actual=consecutive,
+            triggered=consecutive >= required,
+            current_value=current_val,
+        ))
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Report diff — compare two CompareReport objects  (Phase 5A)
+# ---------------------------------------------------------------------------
+
+def diff_reports(old: CompareReport, new: CompareReport) -> ReportDiff:
+    items: list[ReportDiffItem] = []
+
+    old_delta = old.row_count.delta if old.row_count else None
+    new_delta = new.row_count.delta if new.row_count else None
+    items.append(ReportDiffItem(
+        "row_count", "delta", old_delta, new_delta, old_delta != new_delta,
+    ))
+
+    old_schema = len(old.schema.items) if old.schema else 0
+    new_schema = len(new.schema.items) if new.schema else 0
+    items.append(ReportDiffItem(
+        "schema", "change_count", old_schema, new_schema, old_schema != new_schema,
+    ))
+
+    old_agg = old.aggregate.mismatches if old.aggregate else 0
+    new_agg = new.aggregate.mismatches if new.aggregate else 0
+    items.append(ReportDiffItem(
+        "aggregate", "mismatches", old_agg, new_agg, old_agg != new_agg,
+    ))
+
+    old_cksum = old.checksum.mismatch_count if old.checksum else 0
+    new_cksum = new.checksum.mismatch_count if new.checksum else 0
+    items.append(ReportDiffItem(
+        "checksum", "mismatch_count", old_cksum, new_cksum, old_cksum != new_cksum,
+    ))
+
+    return ReportDiff(items=items)
+
+
+# ---------------------------------------------------------------------------
+# Custom expression quality rules  (Phase 5B)
+# ---------------------------------------------------------------------------
+
+def get_upstream_tables(table_name: str, sql_list: list[str]) -> list[str]:
+    from seatunnel_agent.agents.data.text2sql.lineage import trace_lineage
+
+    seen: set[str] = set()
+    target_lower = table_name.lower()
+    for sql in sql_list:
+        lineage = trace_lineage(sql)
+        for t in lineage.source_tables:
+            if t.lower() != target_lower and t.lower() not in seen:
+                seen.add(t.lower())
+    return sorted(seen)

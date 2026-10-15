@@ -9,7 +9,7 @@ from seatunnel_agent.common.config import Settings
 from seatunnel_agent.templates import (
     TEMPLATES, get_template, list_templates, render_template,
 )
-from seatunnel_agent.tools import execute_tool
+from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
 
 import tempfile as _tempfile
 

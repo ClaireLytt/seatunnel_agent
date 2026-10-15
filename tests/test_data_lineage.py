@@ -7,19 +7,19 @@ import json
 
 import pytest
 
-from seatunnel_agent.data_lineage.graph import (
+from seatunnel_agent.agents.data.data_lineage.graph import (
     ColumnEdge,
     LineageGraph,
     norm_table,
 )
-from seatunnel_agent.data_lineage.loaders import (
+from seatunnel_agent.agents.data.data_lineage.loaders import (
     build_graph,
     from_hive_meta,
     from_sql_dir,
     from_sql_files,
     resolve_partition,
 )
-from seatunnel_agent.data_lineage.render import (
+from seatunnel_agent.agents.data.data_lineage.render import (
     mermaid_html,
     mermaid_id,
     render_column_mermaid,
@@ -27,13 +27,13 @@ from seatunnel_agent.data_lineage.render import (
     render_report,
     render_tree,
 )
-from seatunnel_agent.data_lineage.report import LineageReport
-from seatunnel_agent.data_lineage.rlog import LineageLogger
-from seatunnel_agent.data_lineage.tools import (
+from seatunnel_agent.agents.data.data_lineage.report import LineageReport
+from seatunnel_agent.agents.data.data_lineage.rlog import LineageLogger
+from seatunnel_agent.agents.data.data_lineage.tools import (
     LineageRuntime,
     execute_lineage_tool,
 )
-from seatunnel_agent.data_lineage.agent import static_lineage
+from seatunnel_agent.agents.data.data_lineage.agent import static_lineage
 
 
 # ---------------------------------------------------------------------------
@@ -427,7 +427,7 @@ def test_build_graph_hive_unconfigured_degrades_with_sql(monkeypatch, sql_dir):
 
 
 def test_build_graph_executor_creation_failure_degrades_with_sql(monkeypatch, sql_dir):
-    import seatunnel_agent.data_lineage.loaders as loaders_mod
+    import seatunnel_agent.agents.data.data_lineage.loaders as loaders_mod
 
     def boom():
         raise ImportError("pyhive is not installed")
@@ -439,7 +439,7 @@ def test_build_graph_executor_creation_failure_degrades_with_sql(monkeypatch, sq
 
 
 def test_build_graph_executor_creation_failure_raises_without_sql(monkeypatch):
-    import seatunnel_agent.data_lineage.loaders as loaders_mod
+    import seatunnel_agent.agents.data.data_lineage.loaders as loaders_mod
 
     def boom():
         raise ImportError("pyhive is not installed")
@@ -837,7 +837,7 @@ def test_sla_impact_orders_by_hops_and_missing_root():
 
 
 def test_render_sla_impact_chinese_labels():
-    from seatunnel_agent.data_lineage.render import render_sla_impact
+    from seatunnel_agent.agents.data.data_lineage.render import render_sla_impact
 
     text = render_sla_impact(_sla_graph().sla_impact("zz.ods_a", 2.5))
     assert "SLA 延迟影响分析" in text and "2.5 小时" in text
@@ -846,7 +846,7 @@ def test_render_sla_impact_chinese_labels():
 
 
 def test_render_health_sections():
-    from seatunnel_agent.data_lineage.render import render_health
+    from seatunnel_agent.agents.data.data_lineage.render import render_health
 
     g = linear_graph("a", "b")
     g.add_edge("b", "a")
@@ -858,7 +858,7 @@ def test_render_health_sections():
 
 
 def test_render_path_and_mermaid():
-    from seatunnel_agent.data_lineage.render import render_path, render_path_mermaid
+    from seatunnel_agent.agents.data.data_lineage.render import render_path, render_path_mermaid
 
     g = linear_graph("a", "b", "c")
     path = g.path_between("a", "c")
@@ -923,7 +923,7 @@ def test_cli_lineage_check(sql_dir):
 # SeaTunnel config loader
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.data_lineage.seatunnel_loader import (
+from seatunnel_agent.agents.data.data_lineage.seatunnel_loader import (
     collect_seatunnel_files,
     from_seatunnel_dir,
     from_seatunnel_files,
@@ -1047,7 +1047,7 @@ def test_cli_lineage_seatunnel_dir(st_dir):
 import os as _os
 import time as _time
 
-from seatunnel_agent.data_lineage.cache import (
+from seatunnel_agent.agents.data.data_lineage.cache import (
     _cache_path,
     graph_from_dict,
     graph_to_dict,
@@ -1118,7 +1118,7 @@ def test_build_graph_hive_cache_hit_needs_no_executor(tmp_path, monkeypatch):
         raise AssertionError("executor must not be created on a cache hit")
 
     monkeypatch.setattr(
-        "seatunnel_agent.data_lineage.loaders.hive_executor_from_env", _boom
+        "seatunnel_agent.agents.data.data_lineage.loaders.hive_executor_from_env", _boom
     )
     graph, warnings = build_graph(
         use_hive=True, meta_table="zz.meta_lineage", partition="20260917",
@@ -1132,7 +1132,7 @@ def test_build_graph_no_cache_forces_refresh(tmp_path, monkeypatch):
     monkeypatch.delenv("LINEAGE_CACHE_TTL", raising=False)
     save_cached_graph(_rich_graph(), "zz.meta_lineage", "20260917")
     monkeypatch.setattr(
-        "seatunnel_agent.data_lineage.loaders.hive_executor_from_env",
+        "seatunnel_agent.agents.data.data_lineage.loaders.hive_executor_from_env",
         lambda: None,
     )
     with pytest.raises(Exception):
@@ -1146,8 +1146,8 @@ def test_build_graph_no_cache_forces_refresh(tmp_path, monkeypatch):
 # sqlglot optional column lineage (extras: lineage)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.data_lineage import sqlglot_lineage as _sgl
-from seatunnel_agent.data_lineage.sqlglot_lineage import extract_column_edges
+from seatunnel_agent.agents.data.data_lineage import sqlglot_lineage as _sgl
+from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import extract_column_edges
 
 needs_sqlglot = pytest.mark.skipif(
     _sgl.sqlglot is None, reason="sqlglot 未安装（pip install .[lineage]）"
@@ -1229,7 +1229,7 @@ def test_from_sql_dir_uses_sqlglot_edges(fixture_graph):
 
 import importlib.util as _importlib_util
 
-from seatunnel_agent.data_lineage.mcp_server import (
+from seatunnel_agent.agents.data.data_lineage.mcp_server import (
     build_tool_functions,
     create_mcp_server,
 )
@@ -1332,7 +1332,7 @@ def test_merge_preserves_edge_meta():
 
 
 def test_trace_carries_edge_meta_and_mermaid_dashes_low_confidence():
-    from seatunnel_agent.data_lineage.render import render_mermaid
+    from seatunnel_agent.agents.data.data_lineage.render import render_mermaid
 
     g = LineageGraph()
     g.add_edge("a", "b", source="seatunnel", confidence="medium")
@@ -1344,7 +1344,7 @@ def test_trace_carries_edge_meta_and_mermaid_dashes_low_confidence():
 
 
 def test_cache_roundtrip_preserves_edge_meta(tmp_path, monkeypatch):
-    from seatunnel_agent.data_lineage.cache import graph_from_dict, graph_to_dict
+    from seatunnel_agent.agents.data.data_lineage.cache import graph_from_dict, graph_to_dict
 
     g = LineageGraph()
     g.add_edge("a", "b", source="seatunnel", confidence="medium")
@@ -1357,7 +1357,7 @@ def test_cache_roundtrip_preserves_edge_meta(tmp_path, monkeypatch):
 
 
 def test_seatunnel_loader_marks_medium_confidence(tmp_path):
-    from seatunnel_agent.data_lineage.seatunnel_loader import from_seatunnel_files
+    from seatunnel_agent.agents.data.data_lineage.seatunnel_loader import from_seatunnel_files
 
     conf = tmp_path / "job.conf"
     conf.write_text(
@@ -1388,7 +1388,7 @@ def test_add_column_edge_higher_confidence_replaces():
 
 
 def test_agent_chat_resets_per_question_state(fixture_graph):
-    from seatunnel_agent.data_lineage import agent as agent_mod
+    from seatunnel_agent.agents.data.data_lineage import agent as agent_mod
 
     ag = agent_mod.LineageAgent.__new__(agent_mod.LineageAgent)
     ag.runtime = _runtime(fixture_graph)

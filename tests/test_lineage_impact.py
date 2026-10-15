@@ -15,14 +15,14 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.data_lineage.impact import (
+from seatunnel_agent.agents.data.data_lineage.impact import (
     analyze_dirs,
     analyze_impact,
     impact_to_dict,
     materialize_git_ref,
     render_impact_markdown,
 )
-from seatunnel_agent.data_lineage.loaders import build_graph
+from seatunnel_agent.agents.data.data_lineage.loaders import build_graph
 
 runner = CliRunner()
 
@@ -260,7 +260,7 @@ def api_client(monkeypatch):
     fastapi = pytest.importorskip("fastapi")
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
-    from seatunnel_agent.data_lineage.api import router
+    from seatunnel_agent.agents.data.data_lineage.api import router
     monkeypatch.setenv("LINEAGE_API_ALLOWED_DIRS", str(DEMO))
     app = fastapi.FastAPI()
     app.include_router(router)
@@ -362,7 +362,7 @@ def test_materialize_git_ref_cleans_tmp_on_failure(tmp_path, monkeypatch):
     (repo / "sql" / "a.sql").write_text("SELECT 1;", encoding="utf-8")
     _git(repo, "add", "."); _git(repo, "commit", "-qm", "v1")
 
-    import seatunnel_agent.data_lineage.impact as impact_mod
+    import seatunnel_agent.agents.data.data_lineage.impact as impact_mod
     made: list[str] = []
     real_mkdtemp = impact_mod.tempfile.mkdtemp
     monkeypatch.setattr(impact_mod.tempfile, "mkdtemp",
@@ -399,14 +399,14 @@ def test_cli_utf8_stdio_helper(monkeypatch):
 
 def test_api_impact_unreadable_dir_is_400(api_client, monkeypatch):
     # regression: non-ValueError build failures used to leak as HTTP 500
-    import seatunnel_agent.data_lineage.impact as impact_mod
+    import seatunnel_agent.agents.data.data_lineage.impact as impact_mod
 
     def boom(*a, **kw):
         raise OSError("permission denied")
 
     monkeypatch.setattr(impact_mod, "analyze_dirs", boom)
     monkeypatch.setattr(
-        "seatunnel_agent.data_lineage.api.analyze_dirs", boom, raising=False)
+        "seatunnel_agent.agents.data.data_lineage.api.analyze_dirs", boom, raising=False)
     r = api_client.post("/api/lineage/impact", json={
         "old_dir": str(OLD), "new_dir": str(NEW),
     })
@@ -417,7 +417,7 @@ def test_api_impact_unreadable_dir_is_400(api_client, monkeypatch):
 # ─────────────────────────── MCP tool ───────────────────────────
 
 def _mcp_tools(**kw):
-    from seatunnel_agent.data_lineage.mcp_server import build_tool_functions
+    from seatunnel_agent.agents.data.data_lineage.mcp_server import build_tool_functions
     return build_tool_functions(**kw)
 
 
@@ -457,7 +457,7 @@ NEW_SNIPPET = ("INSERT OVERWRITE TABLE dws.gmv_daily "
 
 
 def test_analyze_sql_texts_detects_expression_change():
-    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    from seatunnel_agent.agents.data.data_lineage.impact import analyze_sql_texts
     r = analyze_sql_texts(OLD_SNIPPET, NEW_SNIPPET)
     gmv = next(c for c in r.changed if c.table == "dws.gmv_daily")
     mods = [cc for cc in gmv.column_changes if cc.kind == "modified"]
@@ -467,19 +467,19 @@ def test_analyze_sql_texts_detects_expression_change():
 
 
 def test_analyze_sql_texts_identical_is_clean():
-    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    from seatunnel_agent.agents.data.data_lineage.impact import analyze_sql_texts
     r = analyze_sql_texts(OLD_SNIPPET, OLD_SNIPPET)
     assert r.changed == [] and r.worst_level() is None
 
 
 def test_analyze_sql_texts_requires_both_sides():
-    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    from seatunnel_agent.agents.data.data_lineage.impact import analyze_sql_texts
     with pytest.raises(ValueError, match="required"):
         analyze_sql_texts(OLD_SNIPPET, "   ")
 
 
 def test_analyze_sql_texts_multi_statement_scripts():
-    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    from seatunnel_agent.agents.data.data_lineage.impact import analyze_sql_texts
     old = OLD_SNIPPET + "\nINSERT OVERWRITE TABLE ads.r SELECT gmv FROM dws.gmv_daily;"
     new = NEW_SNIPPET + "\nINSERT OVERWRITE TABLE ads.r SELECT gmv FROM dws.gmv_daily;"
     r = analyze_sql_texts(old, new)
@@ -489,7 +489,7 @@ def test_analyze_sql_texts_multi_statement_scripts():
 
 
 def test_render_text_diff():
-    from seatunnel_agent.data_lineage.impact import render_text_diff
+    from seatunnel_agent.agents.data.data_lineage.impact import render_text_diff
     d = render_text_diff("SELECT 1", "SELECT 2")
     assert d.startswith("### SQL diff")
     assert "-SELECT 1" in d and "+SELECT 2" in d
@@ -517,7 +517,7 @@ def test_api_impact_rejects_mixed_or_missing_modes(api_client):
 # ─────────────────────────── context dir / mermaid / md-comment ───────────────────────────
 
 def test_paste_mode_context_dir_reveals_real_downstream():
-    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    from seatunnel_agent.agents.data.data_lineage.impact import analyze_sql_texts
     # in isolation this drift is info (no visible consumers, see the
     # earlier test); with the repo context it must become warn with the
     # real downstream chain attached
@@ -532,13 +532,13 @@ def test_paste_mode_context_dir_reveals_real_downstream():
 
 
 def test_paste_mode_context_dir_must_exist():
-    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    from seatunnel_agent.agents.data.data_lineage.impact import analyze_sql_texts
     with pytest.raises(ValueError, match="context SQL directory"):
         analyze_sql_texts(OLD_SNIPPET, NEW_SNIPPET, context_dir="no_such_ctx")
 
 
 def test_render_impact_mermaid():
-    from seatunnel_agent.data_lineage.impact import render_impact_mermaid
+    from seatunnel_agent.agents.data.data_lineage.impact import render_impact_mermaid
     r = _demo_result()
     src = render_impact_mermaid(r)
     assert src.startswith("flowchart LR")
@@ -548,13 +548,13 @@ def test_render_impact_mermaid():
     assert "n_dws_gmv_daily --> n_ads_gmv_report" in src
     assert "classDef error" in src
     # clean result renders nothing
-    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    from seatunnel_agent.agents.data.data_lineage.impact import analyze_sql_texts
     clean = analyze_sql_texts(OLD_SNIPPET, OLD_SNIPPET)
     assert render_impact_mermaid(clean) == ""
 
 
 def test_render_impact_comment():
-    from seatunnel_agent.data_lineage.impact import render_impact_comment
+    from seatunnel_agent.agents.data.data_lineage.impact import render_impact_comment
     r = _demo_result()
     md = render_impact_comment(r, "zh")
     assert md.startswith("**变更影响**")
@@ -562,7 +562,7 @@ def test_render_impact_comment():
     assert "rpt.gmv_dashboard" in md
     en = render_impact_comment(r, "en")
     assert en.startswith("**Change Impact**")
-    from seatunnel_agent.data_lineage.impact import analyze_sql_texts
+    from seatunnel_agent.agents.data.data_lineage.impact import analyze_sql_texts
     clean = analyze_sql_texts(OLD_SNIPPET, OLD_SNIPPET)
     assert "✅" in render_impact_comment(clean, "zh")
 
@@ -624,7 +624,7 @@ def test_mermaid_draws_only_real_edges():
     # regression: depth-bucket guessing fabricated cross-branch edges —
     # the demo rendered ads.channel_report --> rpt.gmv_dashboard although
     # rpt.gmv_dashboard reads from ads.gmv_report
-    from seatunnel_agent.data_lineage.impact import render_impact_mermaid
+    from seatunnel_agent.agents.data.data_lineage.impact import render_impact_mermaid
     src = render_impact_mermaid(_demo_result())
     assert "n_ads_gmv_report --> n_rpt_gmv_dashboard" in src
     assert "n_ads_channel_report --> n_rpt_gmv_dashboard" not in src
@@ -636,7 +636,7 @@ def test_mermaid_draws_only_real_edges():
 # ─────────────────────────── analysis history (impact-stats) ───────────────────────────
 
 def test_impact_logger_roundtrip(tmp_path):
-    from seatunnel_agent.data_lineage.impact import ImpactLogger
+    from seatunnel_agent.agents.data.data_lineage.impact import ImpactLogger
     lg = ImpactLogger(tmp_path)
     r = _demo_result()
     lg.log_impact(r, mode="dirs", source="cli", baseline=str(OLD))
@@ -650,7 +650,7 @@ def test_impact_logger_roundtrip(tmp_path):
 
 
 def test_cli_impact_writes_history(tmp_path, monkeypatch):
-    import seatunnel_agent.data_lineage.impact as impact_mod
+    import seatunnel_agent.agents.data.data_lineage.impact as impact_mod
     made = []
     orig = impact_mod.ImpactLogger
 
@@ -671,7 +671,7 @@ def test_cli_impact_writes_history(tmp_path, monkeypatch):
 
 
 def test_cli_impact_stats_summary(tmp_path, monkeypatch):
-    import seatunnel_agent.data_lineage.impact as impact_mod
+    import seatunnel_agent.agents.data.data_lineage.impact as impact_mod
     from seatunnel_agent.common.jsonl_log import JsonlLog
 
     lg = impact_mod.ImpactLogger(tmp_path)

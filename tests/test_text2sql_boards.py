@@ -7,8 +7,8 @@ import sqlite3
 
 import pytest
 
-from seatunnel_agent.text2sql.boards import BoardStore, render_board
-from seatunnel_agent.text2sql.subscriptions import (
+from seatunnel_agent.agents.data.text2sql.boards import BoardStore, render_board
+from seatunnel_agent.agents.data.text2sql.subscriptions import (
     detect_channel,
     push_card,
     push_dingtalk,
@@ -37,7 +37,7 @@ def _mock_post(captured: list, response: dict):
 
 
 def test_push_dingtalk_payload(monkeypatch) -> None:
-    from seatunnel_agent.text2sql import notify as subs
+    from seatunnel_agent.agents.data.text2sql import notify as subs
 
     captured: list = []
     monkeypatch.setattr(subs, "_post_json", _mock_post(captured, {"errcode": 0}))
@@ -55,7 +55,7 @@ def test_push_dingtalk_payload(monkeypatch) -> None:
 
 
 def test_push_wecom_payload_and_truncation(monkeypatch) -> None:
-    from seatunnel_agent.text2sql import notify as subs
+    from seatunnel_agent.agents.data.text2sql import notify as subs
 
     captured: list = []
     monkeypatch.setattr(subs, "_post_json", _mock_post(captured, {"errcode": 0}))
@@ -66,7 +66,7 @@ def test_push_wecom_payload_and_truncation(monkeypatch) -> None:
 
 
 def test_push_card_dispatches(monkeypatch) -> None:
-    from seatunnel_agent.text2sql import notify as subs
+    from seatunnel_agent.agents.data.text2sql import notify as subs
 
     calls: list[str] = []
 
@@ -89,7 +89,7 @@ def test_push_card_dispatches(monkeypatch) -> None:
 
 
 def test_push_email_requires_smtp_host(monkeypatch) -> None:
-    from seatunnel_agent.text2sql.subscriptions import push_email
+    from seatunnel_agent.agents.data.text2sql.subscriptions import push_email
 
     monkeypatch.delenv("SMTP_HOST", raising=False)
     ok, msg = push_email("mailto:a@b.com", "t", "b")
@@ -132,8 +132,8 @@ def test_board_pin(store: BoardStore) -> None:
 
 
 def test_render_board_sqlite(store: BoardStore, tmp_path) -> None:
-    from seatunnel_agent.text2sql.executor import DatabaseConfig, create_executor
-    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
+    from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, create_executor
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 
     db = tmp_path / "b.db"
     conn = sqlite3.connect(db)
@@ -178,7 +178,7 @@ def test_board_corrupt_file(tmp_path) -> None:
 def test_push_email_rejects_header_injection(monkeypatch) -> None:
     """Address/title come from the user-editable subscription file — no
     SMTP header smuggling (review fix)."""
-    from seatunnel_agent.text2sql.subscriptions import push_email
+    from seatunnel_agent.agents.data.text2sql.subscriptions import push_email
 
     monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
     ok, msg = push_email("mailto:a@b.com\nBcc: evil@x.com", "t", "b")

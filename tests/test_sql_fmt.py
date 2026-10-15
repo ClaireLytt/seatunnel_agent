@@ -13,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.sql_fmt import (
+from seatunnel_agent.agents.data.sql_fmt import (
     fmt_dir,
     format_text,
     render_batch_markdown,
@@ -186,7 +186,7 @@ def api_client():
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.sql_fmt.api import router
+    from seatunnel_agent.agents.data.sql_fmt.api import router
     app = fastapi.FastAPI()
     app.include_router(router)
     return TestClient(app)

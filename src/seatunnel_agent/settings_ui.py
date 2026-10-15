@@ -168,7 +168,7 @@ def _effective_key() -> str:
 
 
 def _ds_choices() -> list[str]:
-    from .text2sql.executor import DIALECT_NAMES, DS_TYPES
+    from seatunnel_agent.agents.data.text2sql.executor import DIALECT_NAMES, DS_TYPES
     return [DIALECT_NAMES[d] for d in DS_TYPES]
 
 
@@ -177,7 +177,7 @@ def _ds_label_to_key(label: str) -> str:
 
     The preset store must hold the KEY: the Data Comparison page feeds
     preset["ds_type"] straight into create_executor, which knows keys only."""
-    from .text2sql.executor import DIALECT_NAMES
+    from seatunnel_agent.agents.data.text2sql.executor import DIALECT_NAMES
     for key, name in DIALECT_NAMES.items():
         if name == label:
             return key
@@ -185,7 +185,7 @@ def _ds_label_to_key(label: str) -> str:
 
 
 def _ds_key_to_label(key: str) -> str:
-    from .text2sql.executor import DIALECT_NAMES
+    from seatunnel_agent.agents.data.text2sql.executor import DIALECT_NAMES
     return DIALECT_NAMES.get(key, key)
 
 
@@ -197,7 +197,7 @@ def _presets_store():
     through the SAME instance, so don't create one per callback."""
     global _presets_singleton
     if _presets_singleton is None:
-        from .data_comparison.presets import ConnectionPresetsStore
+        from seatunnel_agent.agents.data.data_comparison.presets import ConnectionPresetsStore
         _presets_singleton = ConnectionPresetsStore()
     return _presets_singleton
 

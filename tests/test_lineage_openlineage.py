@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import json
 
-from seatunnel_agent.data_lineage.graph import ColumnEdge, LineageGraph
-from seatunnel_agent.data_lineage.openlineage import (
+from seatunnel_agent.agents.data.data_lineage.graph import ColumnEdge, LineageGraph
+from seatunnel_agent.agents.data.data_lineage.openlineage import (
     PRODUCER,
     export_openlineage_file,
     to_openlineage,

@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from seatunnel_agent.data_comparison.comparator import (
+from seatunnel_agent.agents.data.data_comparison.comparator import (
     AggregateItem,
     AggregateResult,
     AlertRule,
@@ -80,12 +80,12 @@ from seatunnel_agent.data_comparison.comparator import (
     quote_identifier,
     run_parallel,
 )
-from seatunnel_agent.data_comparison.i18n import DC_I18N, dc
-from seatunnel_agent.data_comparison.presets import ConnectionPresetsStore
-from seatunnel_agent.data_comparison.templates_store import ComparisonTemplatesStore
-from seatunnel_agent.data_comparison.comparator import _row_limit, _escape_hocon
-from seatunnel_agent.text2sql.executor.base import QueryResult
-from seatunnel_agent.data_comparison_ui import (
+from seatunnel_agent.agents.data.data_comparison.i18n import DC_I18N, dc
+from seatunnel_agent.agents.data.data_comparison.presets import ConnectionPresetsStore
+from seatunnel_agent.agents.data.data_comparison.templates_store import ComparisonTemplatesStore
+from seatunnel_agent.agents.data.data_comparison.comparator import _row_limit, _escape_hocon
+from seatunnel_agent.agents.data.text2sql.executor.base import QueryResult
+from seatunnel_agent.agents.data.data_comparison.ui import (
     _error_html,
     _esc_html,
     _export_report_csv,
@@ -112,7 +112,7 @@ from seatunnel_agent.data_comparison_ui import (
     build_summary_card,
     build_trend_alert_card,
 )
-from seatunnel_agent.text2sql.differ import ResultDiff
+from seatunnel_agent.agents.data.text2sql.differ import ResultDiff
 
 
 # ── TestComparator ──
@@ -566,7 +566,7 @@ class TestExportCsv:
 
     def test_export_csv_creates_file(self, monkeypatch, tmp_path):
         monkeypatch.setattr(
-            "seatunnel_agent.data_comparison.ui_reports._download_dir",
+            "seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir",
             lambda: tmp_path,
         )
         report = CompareReport(
@@ -582,7 +582,7 @@ class TestExportCsv:
 
     def test_export_csv_empty_report(self, monkeypatch, tmp_path):
         monkeypatch.setattr(
-            "seatunnel_agent.data_comparison.ui_reports._download_dir",
+            "seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir",
             lambda: tmp_path,
         )
         report = CompareReport()
@@ -1438,7 +1438,7 @@ class TestCheckQualityRules:
     """Tests for check_quality_rules()."""
 
     def test_side_b_uses_b_profile(self):
-        from seatunnel_agent.data_comparison.comparator import (
+        from seatunnel_agent.agents.data.data_comparison.comparator import (
             ProfileItem, ProfileResult, parse_quality_rules)
         item = ProfileItem(column="email", distinct_a=10, distinct_b=7,
                            null_rate_a=0.0, null_rate_b=22.22)
@@ -2455,7 +2455,7 @@ class _MockExecutor:
 
     @staticmethod
     def _make_empty_schema(name):
-        from seatunnel_agent.text2sql.schema import TableSchema
+        from seatunnel_agent.agents.data.text2sql.schema import TableSchema
         return TableSchema(database="testdb", name=name, columns=[])
 
 
@@ -2463,7 +2463,7 @@ class TestEndToEndCompareFlow:
     """Integration tests composing the full comparison pipeline."""
 
     def _make_executors(self):
-        from seatunnel_agent.text2sql.schema import ColumnSchema, TableSchema
+        from seatunnel_agent.agents.data.text2sql.schema import ColumnSchema, TableSchema
         schema_a = TableSchema(
             database="db", name="users_a",
             columns=[
@@ -2878,21 +2878,21 @@ class TestI18nNewKeys:
     """Tests for new i18n keys in Phase 3+4."""
 
     def test_checksum_keys(self):
-        from seatunnel_agent.data_comparison.i18n import DC_I18N
+        from seatunnel_agent.agents.data.data_comparison.i18n import DC_I18N
         for key in ["dc_checksum", "dc_checksum_result", "dc_checksum_segment",
                      "dc_checksum_match", "dc_checksum_mismatch", "dc_checksum_all_match"]:
             assert key in DC_I18N["en"], f"Missing EN key: {key}"
             assert key in DC_I18N["zh"], f"Missing ZH key: {key}"
 
     def test_partition_keys(self):
-        from seatunnel_agent.data_comparison.i18n import DC_I18N
+        from seatunnel_agent.agents.data.data_comparison.i18n import DC_I18N
         for key in ["dc_partition", "dc_partition_result", "dc_partition_col",
                      "dc_partition_value", "dc_partition_delta"]:
             assert key in DC_I18N["en"], f"Missing EN key: {key}"
             assert key in DC_I18N["zh"], f"Missing ZH key: {key}"
 
     def test_custom_agg_keys(self):
-        from seatunnel_agent.data_comparison.i18n import DC_I18N
+        from seatunnel_agent.agents.data.data_comparison.i18n import DC_I18N
         for key in ["dc_custom_agg", "dc_custom_agg_result", "dc_custom_agg_hint",
                      "dc_custom_agg_expression", "dc_custom_agg_alias"]:
             assert key in DC_I18N["en"], f"Missing EN key: {key}"
@@ -3147,23 +3147,23 @@ class TestDdlKeywordsExpanded:
     """Verify expanded DDL/SQL blocklists catch new dangerous keywords."""
 
     def test_custom_agg_blocks_union(self):
-        from seatunnel_agent.data_comparison.comparator import _CUSTOM_AGG_FORBIDDEN
+        from seatunnel_agent.agents.data.data_comparison.comparator import _CUSTOM_AGG_FORBIDDEN
         assert _CUSTOM_AGG_FORBIDDEN.search("SELECT 1 UNION SELECT 2")
 
     def test_custom_agg_blocks_semicolon(self):
-        from seatunnel_agent.data_comparison.comparator import _CUSTOM_AGG_FORBIDDEN
+        from seatunnel_agent.agents.data.data_comparison.comparator import _CUSTOM_AGG_FORBIDDEN
         assert _CUSTOM_AGG_FORBIDDEN.search("COUNT(*); DROP TABLE x")
 
     def test_custom_agg_blocks_merge(self):
-        from seatunnel_agent.data_comparison.comparator import _CUSTOM_AGG_FORBIDDEN
+        from seatunnel_agent.agents.data.data_comparison.comparator import _CUSTOM_AGG_FORBIDDEN
         assert _CUSTOM_AGG_FORBIDDEN.search("MERGE INTO t")
 
     def test_custom_agg_blocks_into_outfile(self):
-        from seatunnel_agent.data_comparison.comparator import _CUSTOM_AGG_FORBIDDEN
+        from seatunnel_agent.agents.data.data_comparison.comparator import _CUSTOM_AGG_FORBIDDEN
         assert _CUSTOM_AGG_FORBIDDEN.search("SELECT * INTO OUTFILE '/tmp/x'")
 
     def test_custom_agg_allows_valid_agg(self):
-        from seatunnel_agent.data_comparison.comparator import _CUSTOM_AGG_FORBIDDEN
+        from seatunnel_agent.agents.data.data_comparison.comparator import _CUSTOM_AGG_FORBIDDEN
         assert _CUSTOM_AGG_FORBIDDEN.search("SUM(amount)") is None
 
     def test_validate_where_blocks_union(self):
@@ -3274,7 +3274,7 @@ class TestDetailsCardHelper:
     """Verify the _details_card helper produces correct HTML."""
 
     def test_basic(self):
-        from seatunnel_agent.data_comparison_ui import _details_card
+        from seatunnel_agent.agents.data.data_comparison.ui import _details_card
         html = _details_card("<b>Title</b>", "<p>Body</p>")
         assert "<details open" in html
         assert "<b>Title</b>" in html
@@ -3282,7 +3282,7 @@ class TestDetailsCardHelper:
         assert "border:1px solid #e0e7ff" in html
 
     def test_custom_color(self):
-        from seatunnel_agent.data_comparison_ui import _details_card
+        from seatunnel_agent.agents.data.data_comparison.ui import _details_card
         html = _details_card("T", "B", border_color="#ff0000")
         assert "#ff0000" in html
 
@@ -3327,21 +3327,21 @@ class TestColumnTruncationWarning:
     def test_aggregate_sql_warns(self, caplog):
         cols = [f"col_{i}" for i in range(25)]
         import logging
-        with caplog.at_level(logging.WARNING, logger="seatunnel_agent.data_comparison.comparator"):
+        with caplog.at_level(logging.WARNING, logger="seatunnel_agent.agents.data.data_comparison.comparator"):
             build_aggregate_sql("t1", cols)
         assert any("Truncating columns from 25 to 20" in r.message for r in caplog.records)
 
     def test_profile_sql_warns(self, caplog):
         cols = [f"col_{i}" for i in range(22)]
         import logging
-        with caplog.at_level(logging.WARNING, logger="seatunnel_agent.data_comparison.comparator"):
+        with caplog.at_level(logging.WARNING, logger="seatunnel_agent.agents.data.data_comparison.comparator"):
             build_profile_sql("t1", cols)
         assert any("Truncating columns from 22 to 20" in r.message for r in caplog.records)
 
     def test_no_warning_under_20(self, caplog):
         cols = [f"col_{i}" for i in range(15)]
         import logging
-        with caplog.at_level(logging.WARNING, logger="seatunnel_agent.data_comparison.comparator"):
+        with caplog.at_level(logging.WARNING, logger="seatunnel_agent.agents.data.data_comparison.comparator"):
             build_aggregate_sql("t1", cols)
             build_profile_sql("t1", cols)
         truncation_warnings = [r for r in caplog.records if "Truncating" in r.message]
@@ -3351,7 +3351,7 @@ class TestColumnTruncationWarning:
         cols = [f"col_{i}" for i in range(25)]
         row = tuple([100] + [0] * (25 * 5))
         import logging
-        with caplog.at_level(logging.WARNING, logger="seatunnel_agent.data_comparison.comparator"):
+        with caplog.at_level(logging.WARNING, logger="seatunnel_agent.agents.data.data_comparison.comparator"):
             compare_aggregates("t1", row, "t2", row, cols)
         assert any("Truncating columns from 25 to 20" in r.message for r in caplog.records)
 
@@ -3359,7 +3359,7 @@ class TestColumnTruncationWarning:
         cols = [f"col_{i}" for i in range(21)]
         row = tuple([100] + [0] * (21 * 4))
         import logging
-        with caplog.at_level(logging.WARNING, logger="seatunnel_agent.data_comparison.comparator"):
+        with caplog.at_level(logging.WARNING, logger="seatunnel_agent.agents.data.data_comparison.comparator"):
             compare_profiles("t1", row, 100, "t2", row, 100, cols)
         assert any("Truncating columns from 21 to 20" in r.message for r in caplog.records)
 
@@ -3461,42 +3461,42 @@ class TestExportCSVCompleteness:
         )
 
     def test_skew_section(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison.ui_reports._download_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
         assert "[Skew Analysis]" in content
 
     def test_keyed_diff_section(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison.ui_reports._download_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
         assert "[Keyed Diff]" in content
 
     def test_checksum_section(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison.ui_reports._download_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
         assert "[Checksum]" in content
 
     def test_partition_section(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison.ui_reports._download_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
         assert "[Partition]" in content
 
     def test_custom_agg_section(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison.ui_reports._download_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
         assert "[Custom Aggregates]" in content
 
     def test_empty_report_no_crash(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison.ui_reports._download_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir", lambda: tmp_path)
         report = CompareReport()
         path = _export_report_csv(report)
         assert Path(path).exists()
@@ -3621,7 +3621,7 @@ class TestPhase3I18nKeys:
 @pytest.fixture()
 def _isolated_key(tmp_path, monkeypatch):
     """Point the encryption key file at tmp_path and clear the cached key."""
-    from seatunnel_agent.data_comparison import presets as presets_mod
+    from seatunnel_agent.agents.data.data_comparison import presets as presets_mod
     key_path = tmp_path / "dc_secret.key"
     monkeypatch.setattr(presets_mod, "_KEY_PATH", key_path)
     monkeypatch.setattr(presets_mod, "_cached_key", None)
@@ -3633,7 +3633,7 @@ class TestPasswordEncryption:
     """Password encryption/decryption in presets."""
 
     def test_encrypt_roundtrip(self, _isolated_key):
-        from seatunnel_agent.data_comparison.presets import _encrypt, _decrypt
+        from seatunnel_agent.agents.data.data_comparison.presets import _encrypt, _decrypt
         pwd = "s3cret!@#"
         encoded = _encrypt(pwd)
         assert encoded.startswith(("enc1:", "obf1:"))
@@ -3641,28 +3641,28 @@ class TestPasswordEncryption:
         assert _decrypt(encoded) == pwd
 
     def test_empty_password(self, _isolated_key):
-        from seatunnel_agent.data_comparison.presets import _encrypt, _decrypt
+        from seatunnel_agent.agents.data.data_comparison.presets import _encrypt, _decrypt
         assert _encrypt("") == ""
         assert _decrypt("") == ""
 
     def test_backward_compat_plain_password(self, _isolated_key):
-        from seatunnel_agent.data_comparison.presets import _decrypt
+        from seatunnel_agent.agents.data.data_comparison.presets import _decrypt
         assert _decrypt("plain_password") == "plain_password"
 
     def test_backward_compat_b64_password(self, _isolated_key):
         import base64
-        from seatunnel_agent.data_comparison.presets import _decrypt
+        from seatunnel_agent.agents.data.data_comparison.presets import _decrypt
         legacy = "b64:" + base64.b64encode(b"oldpwd").decode()
         assert _decrypt(legacy) == "oldpwd"
 
     def test_key_file_created(self, _isolated_key):
-        from seatunnel_agent.data_comparison.presets import _encrypt
+        from seatunnel_agent.agents.data.data_comparison.presets import _encrypt
         _encrypt("x")
         assert _isolated_key.is_file()
         assert _isolated_key.read_bytes().strip()
 
     def test_corrupt_token_returns_empty(self, _isolated_key):
-        from seatunnel_agent.data_comparison.presets import _decrypt
+        from seatunnel_agent.agents.data.data_comparison.presets import _decrypt
         assert _decrypt("enc1:not-a-valid-token") == ""
 
     def test_preset_password_stored_encrypted(self, _isolated_key, tmp_path):
@@ -3720,7 +3720,7 @@ class TestWebhookSummary:
     """_build_webhook_summary should extract top-10 items."""
 
     def test_schema_diffs_capped(self):
-        from seatunnel_agent.data_comparison_ui import _build_webhook_summary
+        from seatunnel_agent.agents.data.data_comparison.ui import _build_webhook_summary
         items = [
             SchemaDiffItem(column=f"c{i}", status="added", type_a="", type_b="INT")
             for i in range(15)
@@ -3732,7 +3732,7 @@ class TestWebhookSummary:
         assert len(summary["schema_diffs"]) == 10
 
     def test_agg_mismatches_capped(self):
-        from seatunnel_agent.data_comparison_ui import _build_webhook_summary
+        from seatunnel_agent.agents.data.data_comparison.ui import _build_webhook_summary
         items = [
             AggregateItem(column=f"c{i}", metric="sum",
                          value_a=float(i), value_b=float(i + 1), match=False)
@@ -3748,7 +3748,7 @@ class TestWebhookSummary:
         assert len(summary["agg_mismatches"]) == 10
 
     def test_no_diffs_returns_empty(self):
-        from seatunnel_agent.data_comparison_ui import _build_webhook_summary
+        from seatunnel_agent.agents.data.data_comparison.ui import _build_webhook_summary
         report = CompareReport()
         summary = _build_webhook_summary(report)
         assert summary == {}
@@ -3763,7 +3763,7 @@ class TestDiffReports:
     """diff_reports should compare two CompareReport objects."""
 
     def test_no_changes(self):
-        from seatunnel_agent.data_comparison.comparator import diff_reports
+        from seatunnel_agent.agents.data.data_comparison.comparator import diff_reports
         r1 = CompareReport(
             row_count=RowCountResult(table_a="t", count_a=10, table_b="t", count_b=10,
                                      delta=0, delta_pct=0.0),
@@ -3776,7 +3776,7 @@ class TestDiffReports:
         assert not rdiff.has_changes
 
     def test_delta_change(self):
-        from seatunnel_agent.data_comparison.comparator import diff_reports
+        from seatunnel_agent.agents.data.data_comparison.comparator import diff_reports
         r1 = CompareReport(
             row_count=RowCountResult(table_a="t", count_a=10, table_b="t", count_b=10,
                                      delta=0, delta_pct=0.0),
@@ -3792,7 +3792,7 @@ class TestDiffReports:
         assert delta_item.new_value == 5
 
     def test_aggregate_change(self):
-        from seatunnel_agent.data_comparison.comparator import diff_reports
+        from seatunnel_agent.agents.data.data_comparison.comparator import diff_reports
         r1 = CompareReport(
             aggregate=AggregateResult(table_a="t", table_b="t", items=[], mismatches=0),
         )
@@ -3805,7 +3805,7 @@ class TestDiffReports:
         assert agg_item.new_value == 3
 
     def test_none_sections(self):
-        from seatunnel_agent.data_comparison.comparator import diff_reports
+        from seatunnel_agent.agents.data.data_comparison.comparator import diff_reports
         r1 = CompareReport()
         r2 = CompareReport()
         rdiff = diff_reports(r1, r2)
@@ -3816,7 +3816,7 @@ class TestReportDiffCard:
     """build_report_diff_card should render HTML."""
 
     def test_card_with_changes(self):
-        from seatunnel_agent.data_comparison.comparator import ReportDiff, ReportDiffItem
+        from seatunnel_agent.agents.data.data_comparison.comparator import ReportDiff, ReportDiffItem
         rdiff = ReportDiff(items=[
             ReportDiffItem("row_count", "delta", 0, 5, True),
             ReportDiffItem("schema", "change_count", 0, 0, False),
@@ -3826,7 +3826,7 @@ class TestReportDiffCard:
         assert "row_count" in html
 
     def test_card_no_changes(self):
-        from seatunnel_agent.data_comparison.comparator import ReportDiff
+        from seatunnel_agent.agents.data.data_comparison.comparator import ReportDiff
         rdiff = ReportDiff(items=[])
         html = build_report_diff_card(rdiff, "en")
         assert "No changes" in html
@@ -3858,14 +3858,14 @@ class TestGetUpstreamTables:
     """get_upstream_tables should find source tables from SQL."""
 
     def test_basic(self):
-        from seatunnel_agent.data_comparison.comparator import get_upstream_tables
+        from seatunnel_agent.agents.data.data_comparison.comparator import get_upstream_tables
         sqls = ["SELECT * FROM orders JOIN customers ON orders.cid = customers.id"]
         result = get_upstream_tables("orders", sqls)
         assert "customers" in result
         assert "orders" not in result
 
     def test_excludes_target(self):
-        from seatunnel_agent.data_comparison.comparator import get_upstream_tables
+        from seatunnel_agent.agents.data.data_comparison.comparator import get_upstream_tables
         sqls = ["SELECT * FROM orders"]
         result = get_upstream_tables("orders", sqls)
         assert result == []
@@ -3915,8 +3915,8 @@ class TestFullReportExportExcelAllSheets:
     """Excel export should have all sheet names."""
 
     def test_sheet_names(self, tmp_path, monkeypatch):
-        from seatunnel_agent.data_comparison_ui import _export_report_excel
-        monkeypatch.setattr("seatunnel_agent.data_comparison.ui_reports._download_dir", lambda: tmp_path)
+        from seatunnel_agent.agents.data.data_comparison.ui import _export_report_excel
+        monkeypatch.setattr("seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir", lambda: tmp_path)
         report = CompareReport(
             schema=SchemaDiffResult(
                 table_a="t1", table_b="t2",
@@ -3977,7 +3977,7 @@ class TestReportDiffRealReports:
     """save→load→diff flow should work end-to-end."""
 
     def test_save_load_diff(self):
-        from seatunnel_agent.data_comparison.comparator import diff_reports
+        from seatunnel_agent.agents.data.data_comparison.comparator import diff_reports
         r1 = CompareReport(
             row_count=RowCountResult("t", 100, "t", 100, delta=0, delta_pct=0.0),
             aggregate=AggregateResult("t", "t", items=[], mismatches=0),
@@ -4115,7 +4115,7 @@ class TestFullReportExportCSVAllSections:
         )
 
     def test_all_csv_sections_present(self, tmp_path, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.data_comparison.ui_reports._download_dir", lambda: tmp_path)
+        monkeypatch.setattr("seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir", lambda: tmp_path)
         report = self._make_full_report()
         path = _export_report_csv(report)
         content = Path(path).read_text(encoding="utf-8-sig")
@@ -4147,7 +4147,7 @@ class TestReportDiffRoundtrip:
         with open(p2, "w") as f:
             json.dump(r2.to_dict(), f)
 
-        from seatunnel_agent.data_comparison.comparator import diff_reports
+        from seatunnel_agent.agents.data.data_comparison.comparator import diff_reports
         loaded_old = CompareReport.from_dict(json.loads(p1.read_text()))
         loaded_new = CompareReport.from_dict(json.loads(p2.read_text()))
         rdiff = diff_reports(loaded_old, loaded_new)
@@ -4190,7 +4190,7 @@ class TestWebhookPayloadStructure:
     """Webhook payload from _compare_all should have enhanced fields."""
 
     def test_build_webhook_summary_structure(self):
-        from seatunnel_agent.data_comparison_ui import _build_webhook_summary
+        from seatunnel_agent.agents.data.data_comparison.ui import _build_webhook_summary
         report = CompareReport(
             schema=SchemaDiffResult(
                 table_a="t1", table_b="t2",
@@ -4219,23 +4219,23 @@ class TestDialectQuoting:
     """quote_identifier / _sql_literal dialect behavior."""
 
     def test_mysql_backtick_quoting(self):
-        from seatunnel_agent.data_comparison.comparator import quote_identifier
+        from seatunnel_agent.agents.data.data_comparison.comparator import quote_identifier
         assert quote_identifier("my col", "mysql") == "`my col`"
 
     def test_postgres_double_quote(self):
-        from seatunnel_agent.data_comparison.comparator import quote_identifier
+        from seatunnel_agent.agents.data.data_comparison.comparator import quote_identifier
         assert quote_identifier("my col", "postgresql") == '"my col"'
 
     def test_default_double_quote_unchanged(self):
-        from seatunnel_agent.data_comparison.comparator import quote_identifier
+        from seatunnel_agent.agents.data.data_comparison.comparator import quote_identifier
         assert quote_identifier("my col") == '"my col"'
 
     def test_safe_identifier_not_quoted(self):
-        from seatunnel_agent.data_comparison.comparator import quote_identifier
+        from seatunnel_agent.agents.data.data_comparison.comparator import quote_identifier
         assert quote_identifier("orders", "mysql") == "orders"
 
     def test_backtick_escaped_in_backtick_dialect(self):
-        from seatunnel_agent.data_comparison.comparator import quote_identifier
+        from seatunnel_agent.agents.data.data_comparison.comparator import quote_identifier
         assert quote_identifier("a`b", "mysql") == "`a``b`"
 
     def test_sql_literal_mysql_backslash_escaped(self):
@@ -4282,7 +4282,7 @@ class TestDialectCastAndChecksum:
         assert "AS CHAR" in sql
 
     def test_diff_sql_mysql_backtick_table(self):
-        from seatunnel_agent.data_comparison.comparator import generate_diff_sql
+        from seatunnel_agent.agents.data.data_comparison.comparator import generate_diff_sql
         result = KeyedDiffResult(
             key_columns=["id"],
             columns=["id", "name"],
@@ -4343,7 +4343,7 @@ class TestValueNormalization:
 # Skew qualification verdict + skew drift in trends
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.data_comparison.comparator import skew_side_verdict
+from seatunnel_agent.agents.data.data_comparison.comparator import skew_side_verdict
 
 
 class TestSkewSideVerdict:
@@ -4459,7 +4459,7 @@ class TestSkewCardHandoff:
     """The both-skewed verdict offers a one-click handoff to /dataskew."""
 
     def _card(self, item):
-        from seatunnel_agent.data_comparison_ui import build_skew_card
+        from seatunnel_agent.agents.data.data_comparison.ui import build_skew_card
         res = SkewResult("ta", "tb", total_a=100, total_b=100, items=[item])
         return build_skew_card(res, "zh")
 
@@ -4489,8 +4489,8 @@ class TestSkewCardHandoff:
     def test_goto_button_carries_connection(self):
         """With side B's config the button also hands the connection over
         via a short-lived cookie — minus the password."""
-        from seatunnel_agent.data_comparison_ui import build_skew_card
-        from seatunnel_agent.text2sql.executor.base import DatabaseConfig
+        from seatunnel_agent.agents.data.data_comparison.ui import build_skew_card
+        from seatunnel_agent.agents.data.text2sql.executor.base import DatabaseConfig
 
         item = SkewItem(column="region", gini_a=0.8, gini_b=0.78,
                         top1_pct_a=70.0, top1_pct_b=68.0)
@@ -4512,7 +4512,7 @@ class TestSkewCardHandoff:
         import json as _json
         from urllib.parse import quote
 
-        from seatunnel_agent.data_skew_ui import parse_conn_handoff
+        from seatunnel_agent.agents.data.data_skew.ui import parse_conn_handoff
 
         raw = quote(_json.dumps({
             "ds_type": "MySQL", "host": "db-b", "port": 3306,

@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from seatunnel_agent.data_comparison.chunked import (
+from seatunnel_agent.agents.data.data_comparison.chunked import (
     ChunkedResult,
     build_chunk_map_sql,
     build_chunk_rows_sql,
@@ -186,8 +186,8 @@ class TestCompareChunked:
 
 class TestChunkedReportRoundTrip:
     def test_report_serialization(self):
-        from seatunnel_agent.data_comparison.comparator import CompareReport
-        from seatunnel_agent.data_comparison.chunked import (
+        from seatunnel_agent.agents.data.data_comparison.comparator import CompareReport
+        from seatunnel_agent.agents.data.data_comparison.chunked import (
             ChunkedResult, ChunkMismatch)
         chunked = ChunkedResult(
             table_a="ta", table_b="tb", pk_column="id",
@@ -204,9 +204,9 @@ class TestChunkedReportRoundTrip:
         assert not restored.chunked.match
 
     def test_card_renders_restored_report(self):
-        from seatunnel_agent.data_comparison.comparator import CompareReport
-        from seatunnel_agent.data_comparison.chunked import ChunkedResult
-        from seatunnel_agent.data_comparison_ui import build_chunked_card
+        from seatunnel_agent.agents.data.data_comparison.comparator import CompareReport
+        from seatunnel_agent.agents.data.data_comparison.chunked import ChunkedResult
+        from seatunnel_agent.agents.data.data_comparison.ui import build_chunked_card
         report = CompareReport(chunked=ChunkedResult(
             table_a="ta", table_b="tb", pk_column="id",
             chunk_count=2, total_a=5, total_b=5))
@@ -220,15 +220,15 @@ class TestHashCollisionSafety:
 
     def test_comma_in_values_not_ambiguous(self):
         # ('a,b', 'c') vs ('a', 'b,c') used to concat identically
-        from seatunnel_agent.data_comparison.chunked import _client_hash
+        from seatunnel_agent.agents.data.data_comparison.chunked import _client_hash
         assert _client_hash(("a,b", "c")) != _client_hash(("a", "b,c"))
 
     def test_null_not_empty_string(self):
-        from seatunnel_agent.data_comparison.chunked import _client_hash
+        from seatunnel_agent.agents.data.data_comparison.chunked import _client_hash
         assert _client_hash((None, "x")) != _client_hash(("", "x"))
 
     def test_null_position_matters(self):
-        from seatunnel_agent.data_comparison.chunked import _client_hash
+        from seatunnel_agent.agents.data.data_comparison.chunked import _client_hash
         assert _client_hash(("a", None, "b")) != _client_hash(("a", "b", None))
 
     def test_null_vs_empty_row_flagged_end_to_end(self):
@@ -254,12 +254,12 @@ class TestHashCollisionSafety:
 
 class TestClientFallbackSafety:
     def test_all_rows_sql_ordered(self):
-        from seatunnel_agent.data_comparison.chunked import build_all_rows_sql
+        from seatunnel_agent.agents.data.data_comparison.chunked import build_all_rows_sql
         sql = build_all_rows_sql("t", "id", ["a"], "sqlite")
         assert "ORDER BY" in sql
 
     def test_client_cap_hit_is_reported(self, monkeypatch):
-        import seatunnel_agent.data_comparison.chunked as ch
+        import seatunnel_agent.agents.data.data_comparison.chunked as ch
         monkeypatch.setattr(ch, "CLIENT_FETCH_CAP", 10)
         rows = [(i, i * 1.0, "s") for i in range(1, 31)]
         run = _make_pair(rows, rows)

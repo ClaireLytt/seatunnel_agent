@@ -13,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.config_lint import (
+from seatunnel_agent.agents.data.config_lint import (
     lint_dir,
     lint_file,
     lint_text,
@@ -246,7 +246,7 @@ def api_client():
     pytest.importorskip("httpx")
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.config_lint.api import router
+    from seatunnel_agent.agents.data.config_lint.api import router
     app = fastapi.FastAPI()
     app.include_router(router)
     return TestClient(app)

@@ -6,7 +6,7 @@ import json
 import sqlite3
 
 
-from seatunnel_agent.text2sql.masking import (
+from seatunnel_agent.agents.data.text2sql.masking import (
     apply_masking,
     mask_value,
     sensitive_kind,
@@ -69,9 +69,9 @@ def test_apply_masking_no_sensitive_is_noop() -> None:
 
 
 def test_execute_sql_masks_preview(tmp_path, monkeypatch) -> None:
-    from seatunnel_agent.text2sql.executor import DatabaseConfig
-    from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
-    from seatunnel_agent.text2sql.tools import (
+    from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
+    from seatunnel_agent.agents.data.text2sql.tools import (
         Text2SQLRuntime,
         execute_text2sql_tool,
     )
@@ -110,7 +110,7 @@ def test_execute_sql_masks_preview(tmp_path, monkeypatch) -> None:
 
 def test_subscription_card_masks(monkeypatch) -> None:
     monkeypatch.delenv("T2S_MASKING", raising=False)
-    from seatunnel_agent.text2sql.subscriptions import render_card_markdown
+    from seatunnel_agent.agents.data.text2sql.subscriptions import render_card_markdown
 
     md = render_card_markdown(["mobile"], [("13812345678",)])
     assert "13812345678" not in md and "138****78" in md

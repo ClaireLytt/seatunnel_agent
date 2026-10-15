@@ -11,9 +11,9 @@ import pytest
 
 pytest.importorskip("yaml")
 
-from seatunnel_agent.text2sql.metrics import MetricStore
-from seatunnel_agent.text2sql.schema import SchemaStore, parse_ddl
-from seatunnel_agent.text2sql.subscriptions import (
+from seatunnel_agent.agents.data.text2sql.metrics import MetricStore
+from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
+from seatunnel_agent.agents.data.text2sql.subscriptions import (
     Scheduler,
     SubscriptionStore,
     builtin_params,
@@ -183,7 +183,7 @@ def test_run_metric_subscription(sales_db, stores) -> None:
 
 
 def test_run_favorite_subscription(sales_db, stores, tmp_path) -> None:
-    from seatunnel_agent.text2sql.favorites import FavoritesStore
+    from seatunnel_agent.agents.data.text2sql.favorites import FavoritesStore
 
     schema_store, metric_store = stores
     favs = FavoritesStore(tmp_path / "favs.json")
@@ -327,7 +327,7 @@ def test_push_feishu_with_img_key(monkeypatch) -> None:
 
 
 def test_upload_feishu_image_needs_creds(monkeypatch) -> None:
-    from seatunnel_agent.text2sql.subscriptions import upload_feishu_image
+    from seatunnel_agent.agents.data.text2sql.subscriptions import upload_feishu_image
 
     monkeypatch.delenv("FEISHU_APP_ID", raising=False)
     monkeypatch.delenv("FEISHU_APP_SECRET", raising=False)
@@ -448,7 +448,7 @@ def mcp_files(tmp_path, sales_db) -> dict:
 
 
 def test_mcp_tools_default_set(mcp_files) -> None:
-    from seatunnel_agent.text2sql.mcp_server import build_tool_functions
+    from seatunnel_agent.agents.data.text2sql.mcp_server import build_tool_functions
 
     tools = build_tool_functions(
         ddl_path=mcp_files["ddl"], metrics_path=mcp_files["metrics"],
@@ -483,7 +483,7 @@ def test_mcp_tools_default_set(mcp_files) -> None:
 
 
 def test_mcp_execute_readonly(mcp_files) -> None:
-    from seatunnel_agent.text2sql.mcp_server import build_tool_functions
+    from seatunnel_agent.agents.data.text2sql.mcp_server import build_tool_functions
 
     tools = build_tool_functions(
         ddl_path=mcp_files["ddl"], metrics_path=mcp_files["metrics"],
@@ -504,7 +504,7 @@ def test_mcp_execute_readonly(mcp_files) -> None:
 
 
 def test_mcp_rejects_bad_config(tmp_path) -> None:
-    from seatunnel_agent.text2sql.mcp_server import build_tool_functions
+    from seatunnel_agent.agents.data.text2sql.mcp_server import build_tool_functions
 
     with pytest.raises(RuntimeError, match="不存在"):
         build_tool_functions(ddl_path=str(tmp_path / "nope.sql"))

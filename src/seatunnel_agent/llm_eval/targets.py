@@ -49,7 +49,7 @@ def run_text2sql(inp: dict[str, Any], settings: Settings,
     question = str(inp.get("question") or "")
     if not question.strip():
         raise ValueError("text2sql 需要 input.question")
-    from ..text2sql.prompts import build_text2sql_prompt
+    from seatunnel_agent.agents.data.text2sql.prompts import build_text2sql_prompt
     system = build_text2sql_prompt(None, dialect=str(inp.get("dialect",
                                                              "hive")))
     user = question
@@ -65,7 +65,7 @@ def run_sql_review(inp: dict[str, Any], settings: Settings,
     sql = str(inp.get("sql") or "")
     if not sql.strip():
         raise ValueError("sql_review 需要 input.sql")
-    from ..sql_review.prompts import build_review_prompt
+    from seatunnel_agent.agents.data.sql_review.prompts import build_review_prompt
     system = build_review_prompt(dialect=str(inp.get("dialect", "hive")),
                                  store=None,
                                  lang=str(inp.get("lang", "zh")))

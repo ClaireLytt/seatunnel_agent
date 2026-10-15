@@ -6,7 +6,7 @@ import sys
 import click
 
 from ..common.cli_common import _handle_error, _write_output, console
-from ..sql_review.linter import DIALECTS as REVIEW_DIALECTS
+from seatunnel_agent.agents.data.sql_review.linter import DIALECTS as REVIEW_DIALECTS
 
 
 @click.command()
@@ -76,7 +76,7 @@ def review(
     import time
     from pathlib import Path
 
-    from ..sql_review import load_review_config
+    from seatunnel_agent.agents.data.sql_review import load_review_config
 
     verbose = ctx.obj.get("verbose", False)
 
@@ -100,7 +100,7 @@ def review(
             for p in collect_sql_files(directory):
                 sources.append((str(p), p.read_text(encoding="utf-8")))
         if diff:
-            from ..sql_review.runner import changed_sql_files
+            from seatunnel_agent.agents.data.sql_review.runner import changed_sql_files
             for p in changed_sql_files(diff_base):
                 sources.append((str(p), p.read_text(encoding="utf-8")))
     except (OSError, RuntimeError) as e:
@@ -130,7 +130,7 @@ def review(
     # ── baseline (suppress known findings) ──
     baseline_prints: set[str] = set()
     if baseline and not update_baseline:
-        from ..sql_review.baseline import load_baseline
+        from seatunnel_agent.agents.data.sql_review.baseline import load_baseline
         try:
             baseline_prints = load_baseline(baseline)
         except ValueError as e:
@@ -140,15 +140,15 @@ def review(
     store = None
     db_executor = None
     if ddl:
-        from ..text2sql.schema import SchemaStore
+        from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
         store = SchemaStore.from_file(ddl)
     if db:
         m = re.fullmatch(r"([\w.\-]+):(\d+)/([\w.\-]+)", db.strip())
         if not m:
             raise click.UsageError("--db 格式应为 host:port/database")
-        from ..sql_review.linter import EXECUTOR_DS_TYPES
-        from ..text2sql.executor import DatabaseConfig, create_executor
-        from ..text2sql.schema import SchemaStore
+        from seatunnel_agent.agents.data.sql_review.linter import EXECUTOR_DS_TYPES
+        from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, create_executor
+        from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
         ds_type = EXECUTOR_DS_TYPES.get(dialect)
         if ds_type is None:
             click.echo(
@@ -187,8 +187,8 @@ def review(
         settings = load_settings()
 
     # ── review loop ──
-    from ..sql_review import Severity, render_report, static_review_report
-    from ..sql_review.rlog import ReviewLogger
+    from seatunnel_agent.agents.data.sql_review import Severity, render_report, static_review_report
+    from seatunnel_agent.agents.data.sql_review.rlog import ReviewLogger
 
     logger = ReviewLogger()
     all_findings = []
@@ -206,7 +206,7 @@ def review(
                 rep = static_review_report(text, dialect, store=store, config=review_config)
                 report_md = render_report(rep)
             else:
-                from ..sql_review import SQLReviewAgent
+                from seatunnel_agent.agents.data.sql_review import SQLReviewAgent
                 agent = SQLReviewAgent(
                     settings, dialect=dialect, store=store, config=review_config,
                     use_cache=not no_cache,
@@ -227,7 +227,7 @@ def review(
 
         # ── EXPLAIN verification (live DB + OLTP dialect only) ──
         if rep and db_executor is not None:
-            from ..sql_review.explain import verify_with_explain
+            from seatunnel_agent.agents.data.sql_review.explain import verify_with_explain
             verified = verify_with_explain(rep.findings, text, dialect, db_executor)
             if verified != rep.findings:
                 rep.findings = verified
@@ -238,7 +238,7 @@ def review(
 
         suppressed = 0
         if baseline_prints and rep:
-            from ..sql_review.baseline import split_by_baseline
+            from seatunnel_agent.agents.data.sql_review.baseline import split_by_baseline
             new, known = split_by_baseline(label, findings, baseline_prints)
             if known:
                 rep.findings = new
@@ -260,7 +260,7 @@ def review(
         elif machine:
             # agent mode may not yield a structured report; emit an empty
             # entry so json/sarif output still accounts for every source
-            from ..sql_review import ReviewReport
+            from seatunnel_agent.agents.data.sql_review import ReviewReport
             reports.append((label, ReviewReport(dialect=dialect)))
         per_file.append((
             label,
@@ -280,7 +280,7 @@ def review(
         if fix and findings:
             fixed_sql = None
             if static_only:
-                from ..sql_review.autofix import apply_static_fixes, describe_fixes
+                from seatunnel_agent.agents.data.sql_review.autofix import apply_static_fixes, describe_fixes
                 fixed_sql, applied = apply_static_fixes(
                     text, dialect, config=review_config)
                 if not applied:
@@ -292,7 +292,7 @@ def review(
                     console.print(f"\n[bold green]静态修复（{len(applied)} 处）:"
                                   f"[/bold green]\n{describe_fixes(applied)}")
             else:
-                from ..sql_review.fixer import generate_fix
+                from seatunnel_agent.agents.data.sql_review.fixer import generate_fix
                 try:
                     fixed_sql = generate_fix(settings, text, dialect, report_md)
                 except Exception as e:
@@ -328,7 +328,7 @@ def review(
 
     # ── machine-readable output (--format json/sarif) ──
     if machine:
-        from ..sql_review.formats import results_to_json, results_to_sarif
+        from seatunnel_agent.agents.data.sql_review.formats import results_to_json, results_to_sarif
         doc = results_to_json(reports) if fmt == "json" else results_to_sarif(reports)
         if output:
             _write_output(output, doc)
@@ -342,7 +342,7 @@ def review(
 
     # ── baseline update ──
     if update_baseline:
-        from ..sql_review.baseline import DEFAULT_BASELINE, save_baseline
+        from seatunnel_agent.agents.data.sql_review.baseline import DEFAULT_BASELINE, save_baseline
         bpath = baseline or DEFAULT_BASELINE
         try:
             n = save_baseline(bpath, baseline_entries)
@@ -357,7 +357,7 @@ def review(
 
     # ── CI gate ──
     if fail_on:
-        from ..sql_review.runner import severity_reached
+        from seatunnel_agent.agents.data.sql_review.runner import severity_reached
         if severity_reached(all_findings, fail_on):
             console.print(f"\n[red]存在 {fail_on} 及以上级别的问题，审查未通过。[/red]")
             sys.exit(1)
@@ -413,8 +413,8 @@ def review_harness(
     import json as _json
     from pathlib import Path
 
-    from ..sql_review import load_review_config
-    from ..sql_review.harness import (
+    from seatunnel_agent.agents.data.sql_review import load_review_config
+    from seatunnel_agent.agents.data.sql_review.harness import (
         DEFAULT_LOG, diff_against_baseline, load_llm_cache,
         render_harness_report, run_harness,
     )
@@ -426,7 +426,7 @@ def review_harness(
 
     store = None
     if ddl:
-        from ..text2sql.schema import SchemaStore, parse_ddl
+        from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
         tables = parse_ddl(Path(ddl).read_text(encoding="utf-8"))
         store = SchemaStore(tables) if tables else None
 
@@ -480,7 +480,7 @@ def review_harness(
               help="Only aggregate the most recent N reviews")
 def review_stats(recent: int | None) -> None:
     """Show SQL review history statistics (from logs/sql_review.jsonl)."""
-    from ..sql_review.rlog import ReviewLogger
+    from seatunnel_agent.agents.data.sql_review.rlog import ReviewLogger
 
     summary = ReviewLogger().summarize(recent)
     if not summary["reviews"]:
@@ -534,7 +534,7 @@ def sqlfmt(
     import json as _json
     from pathlib import Path
 
-    from ..sql_fmt import (
+    from seatunnel_agent.agents.data.sql_fmt import (
         FmtFileResult, fmt_dir, format_text,
         render_batch_markdown, render_markdown, result_to_dict,
     )

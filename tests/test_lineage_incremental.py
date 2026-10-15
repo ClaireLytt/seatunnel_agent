@@ -8,9 +8,9 @@ import os
 
 import pytest
 
-from seatunnel_agent.data_lineage import loaders
-from seatunnel_agent.data_lineage.cache import file_cache_dir
-from seatunnel_agent.data_lineage.loaders import from_sql_dir
+from seatunnel_agent.agents.data.data_lineage import loaders
+from seatunnel_agent.agents.data.data_lineage.cache import file_cache_dir
+from seatunnel_agent.agents.data.data_lineage.loaders import from_sql_dir
 
 SQL_A = "INSERT INTO dwd.orders SELECT id, amount FROM ods.orders_raw;"
 SQL_B = "INSERT INTO dws.gmv SELECT amount FROM dwd.orders;"
