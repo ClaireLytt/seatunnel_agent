@@ -40,7 +40,7 @@ from seatunnel_agent.agents.data.data_lineage.snapshot import (
     render_diff_markdown,
     save_snapshot,
 )
-from seatunnel_agent.ui import EventCollector
+from seatunnel_agent.hub.ui import EventCollector
 
 _logger = LineageLogger()
 

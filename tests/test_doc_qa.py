@@ -119,6 +119,6 @@ class TestCliAndApi:
             "status": "ok", "agent": "doc_qa"}
 
     def test_manifest_registered(self):
-        from seatunnel_agent.registry import discover
+        from seatunnel_agent.hub.registry import discover
         names = {m.name for m in discover()}
         assert "doc_qa" in names

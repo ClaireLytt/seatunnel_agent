@@ -55,7 +55,7 @@ metrics:
 # Runs create_ui + launch directly instead of ui.main() — no inbrowser,
 # no port-kill logic, quiet.
 _LAUNCH_SNIPPET = """
-import seatunnel_agent.ui as ui
+import seatunnel_agent.hub.ui as ui
 app = ui.create_ui()
 app.launch(server_name="127.0.0.1", server_port=%d, inbrowser=False,
            share=False, css=ui._CUSTOM_CSS, quiet=True,

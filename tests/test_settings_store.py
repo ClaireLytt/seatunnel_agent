@@ -8,7 +8,7 @@ import os
 import pytest
 
 from seatunnel_agent.common import settings_store
-from seatunnel_agent.settings_ui import _map_error, _validate
+from seatunnel_agent.hub.settings_ui import _map_error, _validate
 
 
 @pytest.fixture()

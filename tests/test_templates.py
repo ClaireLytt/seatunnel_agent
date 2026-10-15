@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from seatunnel_agent.common.config import Settings
-from seatunnel_agent.templates import (
+from seatunnel_agent.agents.data.seatunnel.templates import (
     TEMPLATES, get_template, list_templates, render_template,
 )
 from seatunnel_agent.agents.data.seatunnel.tools import execute_tool

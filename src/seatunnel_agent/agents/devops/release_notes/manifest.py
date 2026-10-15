@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Platform plugin manifest — see seatunnel_agent.registry."""
+"""Platform plugin manifest — see seatunnel_agent.hub.registry."""
 
-from seatunnel_agent.registry import AgentManifest
+from seatunnel_agent.hub.registry import AgentManifest
 
 MANIFEST = AgentManifest(
     name="release_notes",

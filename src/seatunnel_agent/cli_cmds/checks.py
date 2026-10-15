@@ -794,7 +794,7 @@ def ciinspect(
         console.print(f"[dim]报告已保存: {output}[/dim]")
 
     if do_notify and report.runs.flaky:
-        from ..notify import send as notify_send
+        from ..common.notify import send as notify_send
         notify_send("CI flaky alert",
                     "; ".join(f"{f['workflow']} @ {f['head_sha']}"
                               for f in report.runs.flaky[:10]))

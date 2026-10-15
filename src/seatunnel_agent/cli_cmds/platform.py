@@ -213,7 +213,7 @@ def llmcost(
         console.print(f"[dim]报告已保存: {output}[/dim]")
 
     if do_notify:
-        from ..notify import send as notify_send
+        from ..common.notify import send as notify_send
         over = budget is not None and check_budget(summary, budget)
         if summary["anomalies"] or over:
             parts = []
@@ -359,7 +359,7 @@ def llmeval(
         console.print(f"[dim]报告已保存: {output}[/dim]")
 
     if do_notify and (result.failed_cases or regression["regressed"]):
-        from ..notify import send as notify_send
+        from ..common.notify import send as notify_send
         notify_send(
             f"LLM eval alert: {suite.name}",
             f"score {result.score:.0%}; failed: "

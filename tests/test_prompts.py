@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from seatunnel_agent.prompts import build_system_prompt, SYSTEM_PROMPT, _TASK_HINTS
+from seatunnel_agent.agents.data.seatunnel.prompts import build_system_prompt, SYSTEM_PROMPT, _TASK_HINTS
 
 
 class TestBuildSystemPrompt:

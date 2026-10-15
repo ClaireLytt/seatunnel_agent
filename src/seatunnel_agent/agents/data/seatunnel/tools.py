@@ -411,7 +411,7 @@ def _test_connection(settings: Settings, host: str, port: int, service_type: str
 
 
 def _list_templates(settings: Settings, category: str = "") -> str:
-    from seatunnel_agent.templates import list_templates as _lt
+    from seatunnel_agent.agents.data.seatunnel.templates import list_templates as _lt
 
     templates = _lt(category or None)
     return safe_json({
@@ -434,7 +434,7 @@ def _use_template(
     parameters: dict[str, str],
     config_path: str,
 ) -> str:
-    from seatunnel_agent.templates import render_template
+    from seatunnel_agent.agents.data.seatunnel.templates import render_template
 
     content = render_template(template_name, parameters)
     if content is None:

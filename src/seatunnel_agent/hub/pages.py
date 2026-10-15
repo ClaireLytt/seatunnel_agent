@@ -16,8 +16,8 @@ def _hub_health_html() -> str:
     """Health strip under the hub subtitle — recomputed on every page load.
 
     Language-swapped by the same data-en/zh mechanism as the rest of the hub."""
-    from .common import settings_store
-    from .common.config import env_api_key
+    from seatunnel_agent.common import settings_store
+    from seatunnel_agent.common.config import env_api_key
     key = env_api_key()
     if key:
         model = _html.escape(os.getenv("MODEL_NAME", "claude-opus-5"))
@@ -39,7 +39,7 @@ def _hub_health_html() -> str:
             'Hive: <span data-en="not set" data-zh="未配置">not set</span></span>')
     # agent count beats a developer-facing test tally on a landing page
     try:
-        from .registry import discover
+        from seatunnel_agent.hub.registry import discover
         n = len(_card_blocks()) + len(discover())
         agents = (f'<span class="st-hub-ok"><span class="st-dot st-dot-ok">'
                   f'</span>{n} <span data-en="agents ready" '
@@ -76,14 +76,14 @@ def _hub_shell(header: str, body: str, back: bool = False) -> str:
         ver = ""
     left = _HUB_BACK_LINK if back else (
         f'<div class="st-hub-brand">SeaTunnel Agent{ver}</div>')
-    from .registry import _icon_svg
+    from seatunnel_agent.hub.registry import _icon_svg
     gear = (f'<a class="st-hub-gear" href="/settings" '
             f'title="Settings">{_icon_svg("settings") or "⚙"}</a>')
     topbar = (f'<div class="st-hub-topbar">{left}'
               f'<div class="st-hub-topbar-right">{gear}{_HUB_LANG_ROW}'
               f'</div></div>')
     try:  # same count the health strip shows — never let it drift
-        from .registry import discover
+        from seatunnel_agent.hub.registry import discover
         mark = f'№ {len(_card_blocks()) + len(discover())} agents'
     except Exception:  # noqa: BLE001 — the colophon is cosmetic
         mark = "SeaTunnel Agent"
@@ -131,7 +131,7 @@ def _build_landing_html() -> str:
 
 def _build_ai_hub_html() -> str:
     """`/ai` — the AI Platform workspace; cards come from plugin manifests."""
-    from .registry import card_html, workspace_manifests
+    from seatunnel_agent.hub.registry import card_html, workspace_manifests
     header = '''    <div class="st-hub-title" data-en='<span class="st-red">AI</span> Platform' data-zh='<span class="st-red">AI</span> 平台'><span class="st-red">AI</span> Platform</div>
     <div class="st-hub-subtitle" data-en="LLM engineering workspace · orchestrate, evaluate, experiment, observe" data-zh="LLM 工程工作台 · 编排、评测、实验、观测">LLM engineering workspace · orchestrate, evaluate, experiment, observe</div>
     <!--STATUS-->'''
@@ -317,7 +317,7 @@ _DATA_CARDS_HTML = '''
 def _swap_logos(html: str) -> str:
     """Replace the legacy colored-monogram logo divs in a card HTML literal
     with the vendored antd line icons (keyed by the card's href)."""
-    from .registry import logo_html
+    from seatunnel_agent.hub.registry import logo_html
     return re.sub(
         r'(<a class="st-hub-card[^"]*" href="(/[^"]+)">\s*)'
         r'<div class="st-hub-logo"[^>]*>.*?</div>',
@@ -330,7 +330,7 @@ _DATA_CARDS_HTML = _swap_logos(_DATA_CARDS_HTML)
 
 def _build_devops_hub_html() -> str:
     """`/devops` — engineering-hygiene workspace; cards from manifests."""
-    from .registry import card_html, workspace_manifests
+    from seatunnel_agent.hub.registry import card_html, workspace_manifests
     header = '''    <div class="st-hub-title" data-en='<span class="st-red">D</span>evOps' data-zh='<span class="st-red">D</span>evOps 工作区'><span class="st-red">D</span>evOps</div>
     <div class="st-hub-subtitle" data-en="Engineering hygiene · scan, triage, audit, release" data-zh="工程卫生工作台 · 扫描、诊断、体检、发布">Engineering hygiene · scan, triage, audit, release</div>'''
     cards = "\n".join(card_html(m) for m in workspace_manifests("devops"))

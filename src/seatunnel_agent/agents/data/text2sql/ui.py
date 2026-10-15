@@ -1256,7 +1256,7 @@ def render_text2sql_page(app=None) -> None:
         return None
 
     def _run_streaming(msg: str, history: list, lang: str, chart_pref: str = "Auto"):
-        from seatunnel_agent.ui import EventCollector, _normalize_chat
+        from seatunnel_agent.hub.ui import EventCollector, _normalize_chat
         from seatunnel_agent.agents.data.text2sql.chart import detect_chart_type, build_chart, fig_to_base64
         import matplotlib.pyplot as plt
 

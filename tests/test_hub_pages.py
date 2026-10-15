@@ -6,7 +6,7 @@ Offline checks over the three HTML builders — no browser, no LLM.
 
 from __future__ import annotations
 
-from seatunnel_agent.ui import (
+from seatunnel_agent.hub.ui import (
     _build_ai_hub_html,
     _build_data_hub_html,
     _build_landing_html,
@@ -113,13 +113,13 @@ class TestWorkspaceBackButton:
             assert f"'{route}'" in STAMP_JS, route
 
     def test_css_present(self):
-        from seatunnel_agent.ui import _CUSTOM_CSS
+        from seatunnel_agent.hub.ui import _CUSTOM_CSS
         assert ".st-ws-btn" in _CUSTOM_CSS
 
 
 class TestDevopsHub:
     def test_four_module_cards(self):
-        from seatunnel_agent.ui import _build_devops_hub_html
+        from seatunnel_agent.hub.ui import _build_devops_hub_html
         html = _build_devops_hub_html()
         for route in _DEVOPS_ROUTES:
             assert f'href="{route}"' in html, route

@@ -17,7 +17,7 @@ import gradio as gr
 
 from seatunnel_agent.common.config import Settings, env_float, load_settings
 from seatunnel_agent.agents.data.seatunnel.agent import SeaTunnelAgent
-from seatunnel_agent.hub_pages import _DOCS_URL
+from seatunnel_agent.hub.pages import _DOCS_URL
 from seatunnel_agent.common.history import (
     Session, delete_session, extract_title, list_sessions,
     load_session, new_session_id, rename_session, save_session,
@@ -192,7 +192,7 @@ def _t(lang: str, key: str) -> str:
 
 
 def _build_template_choices(lang: str) -> list[tuple[str, str]]:
-    from seatunnel_agent.templates import TEMPLATES
+    from seatunnel_agent.agents.data.seatunnel.templates import TEMPLATES
     none_label = _t(lang, "tpl_none")
     choices: list[tuple[str, str]] = [(none_label, "")]
     for t in TEMPLATES:
@@ -207,7 +207,7 @@ def _build_template_choices(lang: str) -> list[tuple[str, str]]:
 def _template_to_prompt(template_name: str, lang: str) -> str:
     if not template_name:
         return ""
-    from seatunnel_agent.templates import get_template
+    from seatunnel_agent.agents.data.seatunnel.templates import get_template
     tpl = get_template(template_name)
     if tpl is None:
         return ""

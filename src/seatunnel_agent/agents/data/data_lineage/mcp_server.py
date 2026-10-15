@@ -169,7 +169,7 @@ def create_mcp_server(
     sql_dialect: str = "hive",
 ):
     """FastMCP server (stdio) wrapping the lineage tools."""
-    from seatunnel_agent.mcp_compat import fastmcp_class
+    from seatunnel_agent.common.mcp_compat import fastmcp_class
 
     server = fastmcp_class()("seatunnel-lineage", instructions=_INSTRUCTIONS)
     functions = build_tool_functions(

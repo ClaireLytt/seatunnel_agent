@@ -103,8 +103,8 @@ where = ["src"]
 # that the gate catches real type bugs without demanding full annotation.
 python_version = "3.11"
 files = [
-    "src/seatunnel_agent/registry.py",
-    "src/seatunnel_agent/notify.py",
+    "src/seatunnel_agent/hub/registry.py",
+    "src/seatunnel_agent/common/notify.py",
     "src/seatunnel_agent/common/llm_usage.py",
     "src/seatunnel_agent/agents/devops/secret_scan",
     "src/seatunnel_agent/agents/devops/dep_check",

@@ -86,7 +86,7 @@ def workspace_manifests(workspace: str) -> list[AgentManifest]:
     return [m for m in discover() if m.workspace == workspace]
 
 
-_ICON_DIR = Path(__file__).parent / "static" / "icons"
+_ICON_DIR = Path(__file__).parent.parent / "static" / "icons"
 
 
 @lru_cache(maxsize=None)

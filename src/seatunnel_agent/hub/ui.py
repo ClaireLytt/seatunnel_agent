@@ -1,6 +1,6 @@
 """Gradio Web UI for SeaTunnel Agent.
 
-Run with:  python -m seatunnel_agent.ui
+Run with:  python -m seatunnel_agent.hub.ui
 Or:        seatunnel-agent ui
 """
 
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import gradio as gr
 
-from .hub_pages import (  # noqa: F401 — re-exported for back-compat
+from seatunnel_agent.hub.pages import (  # noqa: F401 — re-exported for back-compat
     _build_ai_hub_html,
     _build_data_hub_html,
     _build_devops_hub_html,
@@ -25,7 +25,7 @@ from seatunnel_agent.agents.data.seatunnel.ui import (  # noqa: F401 — re-expo
     _render_seatunnel_page,
     _template_to_prompt,
 )
-from .ui_css import _CUSTOM_CSS  # noqa: F401 — re-exported for back-compat
+from seatunnel_agent.hub.css import _CUSTOM_CSS  # noqa: F401 — re-exported for back-compat
 
 
 # Drag-to-resize for the left sidebar: restores the saved width, appends a
@@ -103,7 +103,7 @@ def create_ui() -> gr.Blocks:
     # UI-saved LLM settings override .env for this process (see /settings).
     from dotenv import load_dotenv
     load_dotenv()
-    from .common import settings_store
+    from seatunnel_agent.common import settings_store
     settings_store.apply_to_env()
 
     from seatunnel_agent.agents.data.text2sql.ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
@@ -208,7 +208,7 @@ def create_ui() -> gr.Blocks:
         render_uitest_page(app)
 
     with app.route("Settings", "/settings"):
-        from .settings_ui import render_settings_page
+        from seatunnel_agent.hub.settings_ui import render_settings_page
         render_settings_page(app)
 
     with app.route("Data Skew", "/dataskew"):
@@ -250,7 +250,7 @@ def create_ui() -> gr.Blocks:
         render_mcp_page(app)
 
     # plugin pages: every seatunnel_agent.<pkg>.manifest registers itself
-    from .registry import discover, resolve
+    from seatunnel_agent.hub.registry import discover, resolve
     for mf in discover():
         with app.route(mf.page_title, mf.route):
             resolve(mf.render)(app)
@@ -321,7 +321,7 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     if api:
         from fastapi import Depends
 
-        from .common.api_auth import require_api_key
+        from seatunnel_agent.common.api_auth import require_api_key
         from seatunnel_agent.agents.data.config_lint.api import router as conflint_api_router
         from seatunnel_agent.agents.data.dag_check.api import router as dagcheck_api_router
         from seatunnel_agent.agents.data.data_lineage.api import router as lineage_api_router
@@ -354,8 +354,8 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
             sqlfmt_api_router,
         ):
             fastapi_app.include_router(router, dependencies=auth)
-        # plugin routers come from the manifests (see seatunnel_agent.registry)
-        from .registry import discover, resolve
+        # plugin routers come from the manifests (see seatunnel_agent.hub.registry)
+        from seatunnel_agent.hub.registry import discover, resolve
         for mf in discover():
             if mf.api:
                 fastapi_app.include_router(resolve(mf.api), dependencies=auth)

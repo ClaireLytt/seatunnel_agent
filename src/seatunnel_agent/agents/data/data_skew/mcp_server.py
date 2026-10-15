@@ -256,7 +256,7 @@ def build_tool_functions(
 
 def create_mcp_server(default_dialect: str = "spark", default_lang: str = "zh"):
     """FastMCP server (stdio) wrapping the skew tools."""
-    from seatunnel_agent.mcp_compat import fastmcp_class
+    from seatunnel_agent.common.mcp_compat import fastmcp_class
 
     server = fastmcp_class()("seatunnel-dataskew", instructions=_INSTRUCTIONS)
     functions = build_tool_functions(

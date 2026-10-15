@@ -696,7 +696,7 @@ def create_mcp_server(
 ):
     """FastMCP server (stdio) wrapping the whole toolbox."""
     from seatunnel_agent import __version__
-    from seatunnel_agent.mcp_compat import fastmcp_class
+    from seatunnel_agent.common.mcp_compat import fastmcp_class
 
     cls = fastmcp_class()
     try:

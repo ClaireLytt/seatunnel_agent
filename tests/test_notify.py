@@ -9,7 +9,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.notify import build_payload, detect_kind, send
+from seatunnel_agent.common.notify import build_payload, detect_kind, send
 
 DEMO_CI = Path(__file__).resolve().parents[1] / "examples" / "ciinspect_demo"
 DEMO_COST = (Path(__file__).resolve().parents[1] / "examples"
@@ -63,7 +63,7 @@ class TestSend:
 class TestCliIntegration:
     def test_ciinspect_notify_on_flaky(self, monkeypatch):
         alerts = []
-        monkeypatch.setattr("seatunnel_agent.notify.send",
+        monkeypatch.setattr("seatunnel_agent.common.notify.send",
                             lambda title, text, **kw: alerts.append(
                                 (title, text)) or True)
         r = CliRunner().invoke(cli, [
@@ -74,7 +74,7 @@ class TestCliIntegration:
 
     def test_llmcost_notify_on_anomaly(self, monkeypatch, tmp_path):
         alerts = []
-        monkeypatch.setattr("seatunnel_agent.notify.send",
+        monkeypatch.setattr("seatunnel_agent.common.notify.send",
                             lambda title, text, **kw: alerts.append(
                                 (title, text)) or True)
         monkeypatch.setenv("SEATUNNEL_PRICING_PATH",
@@ -87,7 +87,7 @@ class TestCliIntegration:
 
     def test_no_alert_when_clean(self, monkeypatch, tmp_path):
         alerts = []
-        monkeypatch.setattr("seatunnel_agent.notify.send",
+        monkeypatch.setattr("seatunnel_agent.common.notify.send",
                             lambda *a, **kw: alerts.append(a) or True)
         runs = tmp_path / "runs.json"
         runs.write_text('[{"workflow":"w","conclusion":"success",'
