@@ -29,7 +29,11 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from seatunnel_agent.common.utils import read_json_list, write_json_atomic
+from seatunnel_agent.common.utils import (
+    read_json_list,
+    read_json_list_strict,
+    write_json_atomic,
+)
 
 from .attribution import NULL_LABEL
 from .cron import (  # noqa: F401 — re-exported, public API
@@ -89,6 +93,12 @@ class SubscriptionStore:
 
     def _read(self) -> list[dict[str, Any]]:
         return read_json_list(self.path)
+
+    def _read_for_write(self) -> list[dict[str, Any]]:
+        """Strict read used before every read-modify-write: a corrupt backing
+        file raises instead of being treated as empty, so the subsequent
+        write can never silently wipe existing subscriptions."""
+        return read_json_list_strict(self.path)
 
     def _write(self, data: list[dict[str, Any]]) -> None:
         write_json_atomic(self.path, data)
@@ -161,7 +171,7 @@ class SubscriptionStore:
             "last_error": "",
         }
         with self._lock:
-            data = self._read()
+            data = self._read_for_write()
             data.append(entry)
             if len(data) > _MAX_SUBSCRIPTIONS:
                 data = data[-_MAX_SUBSCRIPTIONS:]
@@ -170,7 +180,7 @@ class SubscriptionStore:
 
     def delete(self, sub_id: str) -> bool:
         with self._lock:
-            data = self._read()
+            data = self._read_for_write()
             before = len(data)
             data = [e for e in data if e.get("id") != sub_id]
             if len(data) < before:
@@ -180,7 +190,7 @@ class SubscriptionStore:
 
     def set_enabled(self, sub_id: str, enabled: bool) -> bool:
         with self._lock:
-            data = self._read()
+            data = self._read_for_write()
             for entry in data:
                 if entry.get("id") == sub_id:
                     entry["enabled"] = bool(enabled)
@@ -190,7 +200,7 @@ class SubscriptionStore:
 
     def record_run(self, sub_id: str, status: str, error: str = "") -> None:
         with self._lock:
-            data = self._read()
+            data = self._read_for_write()
             for entry in data:
                 if entry.get("id") == sub_id:
                     entry["last_run_at"] = datetime.now(timezone.utc).isoformat(

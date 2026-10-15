@@ -30,13 +30,28 @@ def make_lookup(i18n: dict[str, dict[str, str]]):
 
 def read_json_list(path: Path) -> list[Any]:
     """Read a JSON file expected to hold a list; missing/corrupt/non-list → []."""
+    try:
+        return read_json_list_strict(path)
+    except ValueError:
+        return []
+
+
+def read_json_list_strict(path: Path) -> list[Any]:
+    """Like :func:`read_json_list`, but distinguishes "missing file" from
+    "file exists yet cannot be read as a JSON list": the former returns [],
+    the latter raises ValueError. Use before a read-modify-write so a corrupt
+    file is never silently overwritten with an empty list."""
     if not path.is_file():
         return []
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return []
-    return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, OSError) as exc:
+        raise ValueError(f"Cannot read JSON list from {path}: {exc}") from exc
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Cannot read JSON list from {path}: top-level value is not a list"
+        )
+    return data
 
 
 def write_json_atomic(path: Path, data: Any) -> None:

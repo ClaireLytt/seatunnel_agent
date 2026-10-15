@@ -113,6 +113,19 @@ def test_store_validation(tmp_path) -> None:
         store.add(name="x", cron="0 9 * * *", source_type="weird")
 
 
+def test_store_refuses_to_overwrite_corrupt_file(tmp_path) -> None:
+    path = tmp_path / "subs.json"
+    corrupt = '{"broken": [truncated'
+    path.write_text(corrupt, encoding="utf-8")
+    store = SubscriptionStore(path)
+    with pytest.raises(ValueError, match="subs.json"):
+        store.add(name="x", cron="0 9 * * *", source_type="metric", metric="m")
+    # the corrupt file must not have been overwritten
+    assert path.read_text(encoding="utf-8") == corrupt
+    # read-only access stays lenient
+    assert store.list() == []
+
+
 def test_store_env_path(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("T2S_SUBSCRIPTIONS_PATH", str(tmp_path / "env.json"))
     store = SubscriptionStore()
