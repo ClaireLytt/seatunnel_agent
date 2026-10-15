@@ -16,6 +16,7 @@ import re
 from functools import lru_cache
 from typing import Any
 
+from ..sql_text import clean_sql as _clean_sql_text
 from .config import DEFAULT_CONFIG, ReviewConfig
 from .report import Finding, Severity
 
@@ -80,42 +81,7 @@ def is_known_dialect(dialect: str) -> bool:
 
 def clean_sql(sql: str) -> str:
     """Blank out string literals and comments, preserving length and newlines."""
-    out = list(sql)
-    i, n = 0, len(sql)
-
-    def blank(start: int, end: int) -> None:
-        for j in range(start, end):
-            if out[j] != "\n":
-                out[j] = " "
-
-    while i < n:
-        ch = sql[i]
-        if ch == "'" or ch == '"':
-            quote = ch
-            start = i
-            i += 1
-            while i < n:
-                if sql[i] == "\\":
-                    i += 2
-                    continue
-                if sql[i] == quote:
-                    i += 1
-                    break
-                i += 1
-            blank(start, min(i, n))
-        elif sql.startswith("--", i):
-            start = i
-            while i < n and sql[i] != "\n":
-                i += 1
-            blank(start, i)
-        elif sql.startswith("/*", i):
-            end = sql.find("*/", i + 2)
-            end = n if end == -1 else end + 2
-            blank(i, end)
-            i = end
-        else:
-            i += 1
-    return "".join(out)
+    return _clean_sql_text(sql)
 
 
 def line_of(sql: str, offset: int) -> int:

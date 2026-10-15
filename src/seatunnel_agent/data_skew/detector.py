@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 
+from ..sql_text import clean_sql as _clean_sql_text
 from ..utils import normalize_lang
 from .report import Severity, SkewFinding
 
@@ -44,47 +45,11 @@ def normalize_dialect(dialect: str) -> str:
 # ---------------------------------------------------------------------------
 
 def clean_sql(sql: str) -> str:
-    """Blank out string literals and comments, preserving length/newlines."""
-    out = list(sql)
-    i, n = 0, len(sql)
+    """Blank out string literals and comments, preserving length/newlines.
 
-    def blank(start: int, end: int) -> None:
-        for j in range(start, min(end, n)):
-            if out[j] != "\n":
-                out[j] = " "
-
-    while i < n:
-        ch = sql[i]
-        if ch in ("'", '"'):
-            quote = ch
-            start = i
-            i += 1
-            while i < n:
-                if sql[i] == "\\":
-                    i += 2
-                    continue
-                if sql[i] == quote:
-                    i += 1
-                    break
-                i += 1
-            blank(start + 1, i - 1 if i <= n and i > start + 1 else i)
-        elif ch == "-" and i + 1 < n and sql[i + 1] == "-":
-            start = i
-            while i < n and sql[i] != "\n":
-                i += 1
-            blank(start, i)
-        elif ch == "/" and i + 1 < n and sql[i + 1] == "*":
-            start = i
-            i += 2
-            while i + 1 < n and not (sql[i] == "*" and sql[i + 1] == "/"):
-                i += 1
-            i = min(i + 2, n)
-            # keep optimizer hints /*+ ... */ visible
-            if not sql[start:start + 3] == "/*+":
-                blank(start, i)
-        else:
-            i += 1
-    return "".join(out)
+    Keeps optimizer hints ``/*+ ... */`` and the quote characters visible —
+    the skew regexes anchor on both."""
+    return _clean_sql_text(sql, keep_hints=True, keep_quote_chars=True)
 
 
 def split_statements(sql: str) -> list[tuple[int, str]]:
