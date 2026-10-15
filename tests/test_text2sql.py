@@ -1015,6 +1015,14 @@ class TestValidatorReadOnlyBypass:
         assert not r.ok
         assert any("copy" in e.lower() for e in r.errors)
 
+    def test_bare_into_identifier_allowed(self, store):
+        r = validate_sql("SELECT into FROM atest.student", store)
+        assert r.ok, r.errors
+
+    def test_bare_copy_identifier_allowed(self, store):
+        r = validate_sql("SELECT copy FROM atest.student", store)
+        assert r.ok, r.errors
+
     def test_into_in_alias_ok(self, store):
         r = validate_sql(
             "SELECT count(id) AS into_count FROM atest.student", store,

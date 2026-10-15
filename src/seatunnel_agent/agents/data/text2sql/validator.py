@@ -20,6 +20,10 @@ _FORBIDDEN_KEYWORDS = frozenset({
     "analyze", "refresh", "into", "outfile", "copy",
 })
 
+#: keywords that are also plausible bare column names — resolved via the
+#: sqlglot AST instead of the token blacklist whenever the SQL parses.
+_AST_RESOLVED_KEYWORDS = frozenset({"into", "copy", "outfile"})
+
 _STATEMENT_LEVEL_RE = re.compile(
     r"(?:^|\s)(?:SET\s+\w+\s*=|ADD\s+(?:JAR|FILE|COLUMN|PARTITION)\b)",
     re.IGNORECASE,
@@ -101,6 +105,37 @@ def _extract_cte_names(cleaned: str) -> set[str]:
     return names
 
 
+def _ast_confirmed_forbidden(stripped: str, suspects: set[str]) -> set[str] | None:
+    """Resolve ambiguous keyword hits (``into``/``copy``/``outfile``) with the
+    sqlglot AST: only a real ``SELECT ... INTO <table>`` / ``COPY`` statement
+    keeps the hit; a bare identifier (``SELECT into FROM t``) is cleared.
+
+    Returns the confirmed subset of *suspects*, or ``None`` when the SQL does
+    not parse — the caller then falls back to the token blacklist (fail safe).
+    Note ``SELECT ... INTO OUTFILE`` does not parse at all, so it stays
+    rejected through that fallback.
+    """
+    try:
+        import sqlglot
+        from sqlglot import exp
+
+        statements = sqlglot.parse(stripped, error_level=sqlglot.ErrorLevel.RAISE)
+    except Exception:
+        return None
+    confirmed: set[str] = set()
+    for stmt in statements:
+        if stmt is None:
+            continue
+        for node in stmt.walk():
+            if isinstance(node, exp.Into) and isinstance(node.this, exp.Table):
+                # a bare `SELECT into FROM t` misparses as Into(this=Select),
+                # never Into(this=Table) — only the latter writes anywhere
+                confirmed |= suspects & {"into", "outfile"}
+            elif isinstance(node, exp.Copy):
+                confirmed |= suspects & {"copy"}
+    return confirmed
+
+
 def validate_sql(sql: str, store: SchemaStore | None = None) -> ValidationResult:
     """Validate that ``sql`` is a single, read-only SELECT on whitelisted tables."""
     errors: list[str] = []
@@ -119,6 +154,11 @@ def validate_sql(sql: str, store: SchemaStore | None = None) -> ValidationResult
 
     tokens = set(re.findall(r"[a-zA-Z_]\w*", cleaned.lower()))
     banned = tokens & _FORBIDDEN_KEYWORDS
+    ambiguous = banned & _AST_RESOLVED_KEYWORDS
+    if ambiguous:
+        confirmed = _ast_confirmed_forbidden(stripped, ambiguous)
+        if confirmed is not None:  # parse failed -> keep token blacklist
+            banned = (banned - ambiguous) | confirmed
     if banned:
         errors.append(f"Forbidden keyword(s): {', '.join(sorted(banned))}")
 
