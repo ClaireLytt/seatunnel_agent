@@ -19,6 +19,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import add_health, ms_since
 from .detector import DIALECTS, _DIALECT_ALIASES
 from .history import default_history
 from ..utils import normalize_lang
@@ -64,10 +65,8 @@ def check(req: SkewCheckRequest) -> SkewCheckResponse:
         counts={"high": len(rep.high), "medium": len(rep.medium),
                 "low": len(rep.low)},
         dialect=dialect,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "data_skew"}
+add_health(router, "data_skew")

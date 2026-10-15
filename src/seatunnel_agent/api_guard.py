@@ -10,9 +10,10 @@ implementation here instead of a copy per agent module.
 from __future__ import annotations
 
 import os
+import time
 from pathlib import Path
 
-from fastapi import HTTPException
+from fastapi import APIRouter, HTTPException
 
 
 def allowed_roots(env_var: str) -> list[Path]:
@@ -39,3 +40,26 @@ def check_path_allowed(raw_path: str, env_var: str, noun: str = "目录") -> Non
                 f"{env_var} 配置（多个目录用系统路径分隔符分隔）"
             ),
         )
+
+
+def require_dir(raw_path: str, env_var: str) -> str:
+    """Whitelist-check *raw_path* and require it to be an existing
+    directory — the shared head of every path-taking API endpoint.
+    Returns the stripped path."""
+    path = (raw_path or "").strip()
+    check_path_allowed(path, env_var)
+    if not Path(path).is_dir():
+        raise HTTPException(status_code=400, detail=f"不是有效目录: {path}")
+    return path
+
+
+def ms_since(start: float) -> int:
+    """Elapsed milliseconds since a ``time.time()`` start stamp."""
+    return int((time.time() - start) * 1000)
+
+
+def add_health(router: APIRouter, agent: str) -> None:
+    """Attach the standard ``GET /health`` endpoint to *router*."""
+    @router.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "agent": agent}

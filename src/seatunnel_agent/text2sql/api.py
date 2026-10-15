@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import ms_since
 from ..config import load_settings
 from .agent import Text2SQLAgent
 from .executor import DS_TYPES, DatabaseConfig, create_executor
@@ -181,7 +182,7 @@ def query(req: QueryRequest) -> QueryResponse:
         rows = [list(r) for r in rt.last_result.rows]
         row_count = rt.last_result.row_count
 
-    elapsed_ms = int((time.time() - start) * 1000)
+    elapsed_ms = ms_since(start)
 
     return QueryResponse(
         answer=answer,
@@ -322,7 +323,7 @@ def metrics_query(req: MetricsQueryRequest) -> MetricsQueryResponse:
         columns=result.columns,
         rows=[list(r) for r in result.rows],
         row_count=result.row_count,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 

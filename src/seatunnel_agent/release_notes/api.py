@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from ..api_guard import add_health, ms_since
 from .core import build_notes
 from .report import normalize_lang, render_markdown
 
@@ -44,10 +45,8 @@ def notes(req: NotesRequest) -> NotesResponse:
         result=result.to_dict(),
         report=(render_markdown(result, normalize_lang(req.lang))
                 if req.report else None),
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "release_notes"}
+add_health(router, "release_notes")

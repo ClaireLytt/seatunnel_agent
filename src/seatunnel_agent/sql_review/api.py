@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import ms_since
 from ..config import load_settings
 from ..text2sql.executor import DatabaseConfig, create_executor
 from ..text2sql.schema import SchemaStore, parse_ddl
@@ -185,7 +186,7 @@ def review(req: ReviewRequest) -> ReviewResponse:
             if rep.lineage:
                 lineage = rep.lineage.to_dict()
 
-    elapsed_ms = int((time.time() - start) * 1000)
+    elapsed_ms = ms_since(start)
     ReviewLogger().log(
         sql=req.sql, dialect=dialect, mode=req.mode,
         findings=raw_findings, stats=stats, source="api", elapsed_ms=elapsed_ms,
@@ -234,7 +235,7 @@ def fix(req: FixRequest) -> FixResponse:
         fixed_sql=fixed_sql,
         report=report_md,
         dialect=dialect,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 

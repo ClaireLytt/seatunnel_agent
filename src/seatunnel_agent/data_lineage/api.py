@@ -15,6 +15,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import ms_since
 from ..config import load_settings
 from .agent import LineageAgent, static_lineage
 from .config import DEFAULT_DEPTH, DIRECTIONS, MAX_DEPTH, load_lineage_config
@@ -138,7 +139,7 @@ def _log_elapsed(
     direction: str = "",
     chain_stats: dict[str, int] | None = None,
 ) -> int:
-    elapsed_ms = int((time.time() - start) * 1000)
+    elapsed_ms = ms_since(start)
     _logger.log(
         query=query, direction=direction, mode=mode, source="api",
         graph_stats=graph_stats, chain_stats=chain_stats, elapsed_ms=elapsed_ms,
@@ -354,7 +355,7 @@ def change_impact(req: ImpactRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400,
                             detail=f"变更影响分析失败: {exc}")
     data = impact_to_dict(result, req.lang)
-    data["elapsed_ms"] = int((time.time() - start) * 1000)
+    data["elapsed_ms"] = ms_since(start)
     from .impact import ImpactLogger
     ImpactLogger().log_impact(
         result, mode="dirs" if dir_mode else "text", source="api",

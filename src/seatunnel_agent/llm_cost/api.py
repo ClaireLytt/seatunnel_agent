@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from ..api_guard import add_health, ms_since
 from .aggregate import check_budget, summarize_cost
 from ..utils import normalize_lang
 from .report import render_markdown
@@ -44,10 +45,8 @@ def summary(days: int = Query(30, ge=1, le=36500),
         summary=s,
         report=render_markdown(s, normalize_lang(lang)) if report else None,
         over_budget=check_budget(s, budget) if budget is not None else None,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "llm_cost"}
+add_health(router, "llm_cost")

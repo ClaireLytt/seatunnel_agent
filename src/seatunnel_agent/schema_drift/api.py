@@ -17,7 +17,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import check_path_allowed
+from ..api_guard import add_health, check_path_allowed, ms_since
 from .differ import diff_paths, diff_scripts
 from ..utils import normalize_lang
 from .report import render_markdown, report_to_dict
@@ -82,10 +82,8 @@ def diff(req: DriftRequest) -> DriftResponse:
     return DriftResponse(
         result=report_to_dict(result, lang),
         report=render_markdown(result, lang) if req.report else None,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "schema_drift"}
+add_health(router, "schema_drift")

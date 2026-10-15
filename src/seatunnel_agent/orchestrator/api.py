@@ -19,6 +19,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import add_health, ms_since
 from .catalog import build_catalog
 from .router import render_suggestions, suggest
 
@@ -55,7 +56,7 @@ def run(req: RunRequest) -> RunResponse:
         reply = render_suggestions(suggest(req.request, catalog), req.lang)
         return RunResponse(reply=reply, steps=[], truncated=False,
                            suggested_only=True,
-                           elapsed_ms=int((time.time() - start) * 1000))
+                           elapsed_ms=ms_since(start))
     from .engine import Orchestrator
     try:
         result = Orchestrator(settings, lang=req.lang,
@@ -68,7 +69,7 @@ def run(req: RunRequest) -> RunResponse:
     return RunResponse(reply=result.reply,
                        steps=[s.to_dict() for s in result.steps],
                        truncated=result.truncated,
-                       elapsed_ms=int((time.time() - start) * 1000))
+                       elapsed_ms=ms_since(start))
 
 
 @router.get("/agents")
@@ -82,6 +83,4 @@ def agents(lang: str = "zh") -> dict[str, Any]:
     } for spec in sorted(catalog.values(), key=lambda s: s.name)]}
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "orchestrator"}
+add_health(router, "orchestrator")

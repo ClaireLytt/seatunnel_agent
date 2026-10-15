@@ -11,13 +11,12 @@ Endpoints (deterministic — nothing executed):
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from ..api_guard import check_path_allowed
+from ..api_guard import add_health, ms_since, require_dir
 from .differ import check_sql_dir
 from ..utils import normalize_lang
 from .report import render_markdown, report_to_dict
@@ -43,18 +42,13 @@ class MetricDiffResponse(BaseModel):
 def check(req: MetricDiffRequest) -> MetricDiffResponse:
     start = time.time()
     lang = normalize_lang(req.lang)
-    target = req.sql_dir.strip()
-    check_path_allowed(target, "METRICDIFF_API_ALLOWED_DIRS")
-    if not Path(target).is_dir():
-        raise HTTPException(status_code=400, detail=f"不是有效目录: {target}")
+    target = require_dir(req.sql_dir, "METRICDIFF_API_ALLOWED_DIRS")
     result = check_sql_dir(target, dialect=req.dialect)
     return MetricDiffResponse(
         result=report_to_dict(result, lang),
         report=render_markdown(result, lang) if req.report else None,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "metric_diff"}
+add_health(router, "metric_diff")

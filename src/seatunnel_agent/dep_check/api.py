@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import add_health, ms_since
 from .core import check, parse_pyproject_text, parse_requirements_text
 from .report import normalize_lang, render_markdown
 
@@ -53,10 +54,8 @@ def check_deps(req: CheckRequest) -> CheckResponse:
         result=result.to_dict(),
         report=(render_markdown(result, normalize_lang(req.lang))
                 if req.report else None),
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "dep_check"}
+add_health(router, "dep_check")

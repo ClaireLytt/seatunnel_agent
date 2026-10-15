@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import add_health, ms_since
 from .generator import DEFAULT_ROWS, MAX_ROWS, generate
 from ..utils import normalize_lang
 from .report import render_markdown, result_to_dict
@@ -57,10 +58,8 @@ def generate_data(req: TestgenRequest) -> TestgenResponse:
     return TestgenResponse(
         result=result_to_dict(result),
         report=render_markdown(result, lang) if req.report else None,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "sql_testgen"}
+add_health(router, "sql_testgen")

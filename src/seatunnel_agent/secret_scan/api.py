@@ -16,6 +16,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from ..api_guard import add_health, ms_since
 from .report import normalize_lang, render_markdown
 from .scanner import ScanResult, scan_text
 
@@ -44,10 +45,8 @@ def scan(req: ScanRequest) -> ScanResponse:
         result=result.to_dict(),
         report=(render_markdown(result, normalize_lang(req.lang))
                 if req.report else None),
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "secret_scan"}
+add_health(router, "secret_scan")

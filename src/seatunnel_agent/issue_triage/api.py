@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import add_health, ms_since
 from .engine import triage
 from .report import normalize_lang, render_markdown
 
@@ -58,9 +59,7 @@ def run(req: TriageRequest) -> TriageResponse:
         result=result.to_dict(),
         report=(render_markdown(result, normalize_lang(req.lang))
                 if req.report else None),
-        elapsed_ms=int((time.time() - start) * 1000))
+        elapsed_ms=ms_since(start))
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "issue_triage"}
+add_health(router, "issue_triage")

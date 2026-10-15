@@ -11,13 +11,12 @@ Endpoints (deterministic — nothing executed):
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from ..api_guard import check_path_allowed
+from ..api_guard import add_health, ms_since, require_dir
 from .checker import check_sql_dir
 from ..utils import normalize_lang
 from .report import render_markdown, report_to_dict
@@ -47,20 +46,15 @@ def check(req: DagCheckRequest) -> DagCheckResponse:
     lang = normalize_lang(req.lang)
     for raw in filter(None, (req.sql_dir.strip(),
                              (req.seatunnel_dir or "").strip())):
-        check_path_allowed(raw, "DAGCHECK_API_ALLOWED_DIRS")
-        if not Path(raw).is_dir():
-            raise HTTPException(status_code=400,
-                                detail=f"不是有效目录: {raw}")
+        require_dir(raw, "DAGCHECK_API_ALLOWED_DIRS")
     result = check_sql_dir(
         req.sql_dir.strip(), dialect=req.dialect,
         seatunnel_dir=(req.seatunnel_dir or "").strip() or None)
     return DagCheckResponse(
         result=report_to_dict(result, lang),
         report=render_markdown(result, lang) if req.report else None,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "dag_check"}
+add_health(router, "dag_check")

@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from ..api_guard import add_health, ms_since
 from .baseline import RunLogger, compare
 from .report import normalize_lang, render_markdown
 from .runner import run_suite
@@ -57,7 +58,7 @@ def run(req: RunRequest) -> RunResponse:
         regression=regression,
         report=(render_markdown(result, normalize_lang(req.lang), regression)
                 if req.report else None),
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
@@ -67,6 +68,4 @@ def history(suite: str | None = None,
     return {"runs": RunLogger().recent(n=n, suite=suite)}
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "llm_eval"}
+add_health(router, "llm_eval")

@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
+from ..api_guard import add_health, ms_since
 from .formatter import format_text
 from ..utils import normalize_lang
 from .report import render_markdown, result_to_dict
@@ -45,10 +46,8 @@ def format_sql(req: FormatRequest) -> FormatResponse:
     return FormatResponse(
         result=result_to_dict(result),
         report=render_markdown(result, lang) if req.report else None,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "sql_fmt"}
+add_health(router, "sql_fmt")

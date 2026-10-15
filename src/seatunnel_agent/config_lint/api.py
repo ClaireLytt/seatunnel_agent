@@ -11,13 +11,12 @@ Endpoints (deterministic — configs parsed, never executed):
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import check_path_allowed
+from ..api_guard import add_health, ms_since, require_dir
 from ..utils import normalize_lang
 from .linter import lint_dir, lint_text
 from .report import render_batch_markdown, render_markdown, result_to_dict
@@ -46,11 +45,7 @@ def lint(req: LintRequest) -> LintResponse:
                             detail="Provide 'config' or 'dir'")
     lang = normalize_lang(req.lang)
     if (req.dir or "").strip():
-        target = req.dir.strip()
-        check_path_allowed(target, "CONFLINT_API_ALLOWED_DIRS")
-        if not Path(target).is_dir():
-            raise HTTPException(status_code=400,
-                                detail=f"不是有效目录: {target}")
+        target = require_dir(req.dir, "CONFLINT_API_ALLOWED_DIRS")
         results = lint_dir(target)
         report = render_batch_markdown(results, lang) if req.report else None
     else:
@@ -59,10 +54,8 @@ def lint(req: LintRequest) -> LintResponse:
     return LintResponse(
         results=[result_to_dict(r, lang) for r in results],
         report=report,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "config_lint"}
+add_health(router, "config_lint")

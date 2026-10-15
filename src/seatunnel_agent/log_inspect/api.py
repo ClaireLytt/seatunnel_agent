@@ -11,23 +11,17 @@ Endpoints (deterministic — no LLM, nothing executed):
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import check_path_allowed
+from ..api_guard import add_health, ms_since, require_dir
 from .clusterer import DEFAULT_PATTERNS, scan_dir, scan_text
 from ..utils import normalize_lang
 from .report import render_markdown, report_to_dict
 
 router = APIRouter(prefix="/api/loginspect", tags=["log_inspect"])
-
-
-def _check_dir_allowed(raw_dir: str) -> None:
-    """API 是网络入口，目录参数必须限制在白名单内，防任意目录扫描。"""
-    check_path_allowed(raw_dir, "LOGINSPECT_API_ALLOWED_DIRS")
 
 
 class LogScanRequest(BaseModel):
@@ -54,11 +48,7 @@ def scan(req: LogScanRequest) -> LogScanResponse:
         raise HTTPException(status_code=400, detail="Provide 'dir' or 'text'")
     lang = normalize_lang(req.lang)
     if (req.dir or "").strip():
-        target = req.dir.strip()
-        _check_dir_allowed(target)
-        if not Path(target).is_dir():
-            raise HTTPException(status_code=400,
-                                detail=f"不是有效目录: {target}")
+        target = require_dir(req.dir, "LOGINSPECT_API_ALLOWED_DIRS")
         result = scan_dir(target,
                           patterns=tuple(req.patterns or DEFAULT_PATTERNS),
                           include_warn=req.include_warn)
@@ -68,10 +58,8 @@ def scan(req: LogScanRequest) -> LogScanResponse:
         result=report_to_dict(result, top=req.top),
         report=(render_markdown(result, lang, top=req.top)
                 if req.report else None),
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "log_inspect"}
+add_health(router, "log_inspect")

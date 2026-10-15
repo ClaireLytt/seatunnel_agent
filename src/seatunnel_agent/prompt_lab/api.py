@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from ..api_guard import add_health, ms_since
 from ..settings_store import list_profiles
 from .report import normalize_lang, render_matrix_markdown
 from .runner import ACTIVE, run_matrix
@@ -53,7 +54,7 @@ def run(req: RunRequest) -> RunResponse:
         report=(render_matrix_markdown(result, normalize_lang(req.lang))
                 if req.report else None),
         all_failed=result.all_failed,
-        elapsed_ms=int((time.time() - start) * 1000),
+        elapsed_ms=ms_since(start),
     )
 
 
@@ -63,6 +64,4 @@ def profiles() -> dict[str, list[str]]:
     return {"profiles": [ACTIVE] + list_profiles()}
 
 
-@router.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok", "agent": "prompt_lab"}
+add_health(router, "prompt_lab")
