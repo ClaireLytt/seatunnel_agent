@@ -11,12 +11,12 @@ Two entry points:
 
 from __future__ import annotations
 
-import json
 from typing import Any, Callable
 
 from rich.console import Console
 from rich.panel import Panel
 
+from ..agent_core.display import display_tool_call, display_tool_result
 from ..config import Settings
 from ..context import truncate_messages
 from ..llm import LLMClient
@@ -248,23 +248,11 @@ class LineageAgent:
     }
 
     def _display_tool_call(self, name: str, inputs: dict[str, Any]) -> None:
-        color = self._TOOL_STYLE.get(name, "white")
-        args_str = ", ".join(f"{k}={repr(v)[:120]}" for k, v in inputs.items())
-        self.console.print(
-            Panel(args_str or "(no arguments)", title=f"Calling: {name}", border_style=color)
-        )
+        display_tool_call(self.console, name, inputs, self._TOOL_STYLE)
+
+    @staticmethod
+    def _success_extra(data: dict[str, Any]) -> str:
+        return f" — graph: {data['graph']}" if "graph" in data else ""
 
     def _display_tool_result(self, name: str, result: str) -> None:
-        try:
-            data = json.loads(result)
-            if data.get("error"):
-                self.console.print(f"  [red]Error:[/red] {str(data['error'])[:200]}")
-            elif data.get("success") is True:
-                extra = ""
-                if "graph" in data:
-                    extra = f" — graph: {data['graph']}"
-                self.console.print(f"  [green]Success[/green]{extra}")
-            else:
-                self.console.print(f"  [dim]Result received ({len(result)} chars)[/dim]")
-        except (json.JSONDecodeError, AttributeError):
-            self.console.print(f"  [dim]Result: {truncate(result, 200)}[/dim]")
+        display_tool_result(self.console, result, self._success_extra)

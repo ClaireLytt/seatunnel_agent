@@ -31,6 +31,7 @@ def _get_utf8_stdout() -> Any:
             _utf8_stdout = sys.stdout
     return _utf8_stdout
 
+from ..agent_core.display import display_tool_call, display_tool_result
 from ..config import Settings
 from ..context import truncate_messages
 from ..llm import LLMClient
@@ -227,26 +228,16 @@ class Text2SQLAgent:
     }
 
     def _display_tool_call(self, name: str, inputs: dict[str, Any]) -> None:
-        color = self._TOOL_STYLE.get(name, "white")
-        args_str = ", ".join(f"{k}={repr(v)[:120]}" for k, v in inputs.items())
-        self.console.print(
-            Panel(args_str or "(no arguments)", title=f"Calling: {name}", border_style=color)
-        )
+        display_tool_call(self.console, name, inputs, self._TOOL_STYLE)
+
+    @staticmethod
+    def _success_extra(data: dict[str, Any]) -> str:
+        if "row_count" in data:
+            cached = " (cached)" if data.get("cached") else ""
+            return f" — {data['row_count']} rows, {data.get('elapsed_ms', '?')}ms{cached}"
+        if "csv_path" in data:
+            return f" — {data['csv_path']}"
+        return ""
 
     def _display_tool_result(self, name: str, result: str) -> None:
-        try:
-            data = json.loads(result)
-            if data.get("error"):
-                self.console.print(f"  [red]Error:[/red] {str(data['error'])[:200]}")
-            elif data.get("success") is True:
-                extra = ""
-                if "row_count" in data:
-                    cached = " (cached)" if data.get("cached") else ""
-                    extra = f" — {data['row_count']} rows, {data.get('elapsed_ms', '?')}ms{cached}"
-                elif "csv_path" in data:
-                    extra = f" — {data['csv_path']}"
-                self.console.print(f"  [green]Success[/green]{extra}")
-            else:
-                self.console.print(f"  [dim]Result received ({len(result)} chars)[/dim]")
-        except (json.JSONDecodeError, AttributeError):
-            self.console.print(f"  [dim]Result: {truncate(result, 200)}[/dim]")
+        display_tool_result(self.console, result, self._success_extra)
