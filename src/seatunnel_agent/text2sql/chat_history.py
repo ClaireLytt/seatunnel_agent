@@ -10,7 +10,12 @@ from dataclasses import asdict, dataclass, field, fields as dc_fields
 from pathlib import Path
 from typing import Any
 
-from ..history import extract_title, new_session_id, now_iso  # noqa: F401 — shared session helpers (re-exported)
+from ..history import (  # noqa: F401 — shared session helpers (re-exported)
+    extract_title,
+    new_session_id,
+    now_iso,
+)
+from ..utils import write_json_atomic
 
 HISTORY_DIR = Path.home() / ".seatunnel-agent" / "text2sql_history"
 
@@ -59,20 +64,7 @@ def save_t2s_session(session: Text2SQLSession) -> None:
         session.chat_messages = session.chat_messages[-_MAX_CHAT_MESSAGES:]
     if len(session.agent_messages) > _MAX_AGENT_MESSAGES:
         session.agent_messages = session.agent_messages[-_MAX_AGENT_MESSAGES:]
-    target = _session_path(session.session_id)
-    content = json.dumps(asdict(session), ensure_ascii=False, indent=2)
-    import tempfile, os
-    fd, tmp = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(content)
-        os.replace(tmp, str(target))
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    write_json_atomic(_session_path(session.session_id), asdict(session))
     _invalidate_sessions_cache()
 
 

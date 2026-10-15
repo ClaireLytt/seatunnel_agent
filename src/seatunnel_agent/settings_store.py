@@ -15,8 +15,9 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import threading
+
+from .utils import write_json_atomic
 from pathlib import Path
 
 from .data_comparison.presets import _decrypt, _encrypt
@@ -76,18 +77,7 @@ def _write_file(data: dict) -> None:
         except OSError:
             pass
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(data, fh, ensure_ascii=False, indent=2)
-        os.replace(tmp, str(path))
-    except BaseException:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    write_json_atomic(path, data)
 
 
 def _encode(values: dict[str, str]) -> dict[str, str]:
