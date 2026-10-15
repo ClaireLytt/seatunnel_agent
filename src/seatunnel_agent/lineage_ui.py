@@ -32,6 +32,7 @@ from .data_lineage import (
     static_lineage,
 )
 from .data_lineage.sqlglot_lineage import SQL_DIALECTS
+from .page_scaffold import title_row
 from .data_lineage.snapshot import (
     diff_graphs,
     list_snapshots,
@@ -289,10 +290,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
     # The global CSS locks .gradio-container to 100vh with overflow hidden,
     # so the page needs its own scroll container.
     with gr.Column(elem_classes=["st-lin-page"]):
-        with gr.Row():
-            title_md = gr.Markdown(t("title"))
-            home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                                 elem_classes=["st-home-btn"])
+        title_md, home_btn = title_row(t("title"))
 
         with gr.Row():
             # ── data source panel ──

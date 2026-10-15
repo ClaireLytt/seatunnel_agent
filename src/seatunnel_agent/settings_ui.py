@@ -8,6 +8,7 @@ import time
 import gradio as gr
 
 from . import settings_store
+from .page_scaffold import title_row, wire_page
 
 _I18N = {
     "en": {
@@ -305,10 +306,7 @@ def render_settings_page(app: gr.Blocks) -> None:
     t = lambda k: _t("en", k)
 
     with gr.Column(elem_classes=["st-set-page"]):
-        with gr.Row():
-            title_md = gr.Markdown(t("title"))
-            home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                                 elem_classes=["st-home-btn"])
+        title_md, home_btn = title_row(t("title"))
         # st-set-main breaks the fixed-height flex chain (same trick as
         # .st-lin-main etc.): children grow naturally, the page scrolls.
         with gr.Column(elem_classes=["st-set-main"]):
@@ -586,23 +584,13 @@ def render_settings_page(app: gr.Blocks) -> None:
         outputs=[status_md, conn_list_md, conn_del_dd])
     conn_del_btn.click(_del_conn, inputs=[conn_del_dd, lang_state],
                        outputs=[status_md, conn_list_md, conn_del_dd])
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
-    home_btn.click(fn=None, js=HOME_JS)
-    # Language follows the hub's choice (st-lang cookie), applied on load.
-    app.load(fn=None, js=STAMP_JS)
-
-    def _lang_on_load(request: gr.Request):
-        return _switch_lang(choice_from_request(request))
-
-    app.load(
-        _lang_on_load, inputs=None,
-        outputs=[lang_state, title_md, subtitle_md, current_md, provider_dd,
-                 api_key_tb, model_tb, base_url_tb, adv_acc, temp_tb,
-                 max_tokens_tb, timeout_tb, save_btn, test_btn, reset_btn,
-                 prof_acc, prof_name_tb, prof_dd, save_prof_btn,
-                 use_prof_btn, del_prof_btn, usage_acc, usage_md,
-                 conn_acc, conn_list_md, conn_name_tb, conn_type_dd,
-                 conn_env_tb, conn_host_tb, conn_port_tb, conn_db_tb,
-                 conn_user_tb, conn_pwd_tb, conn_save_btn, conn_del_dd,
-                 conn_del_btn],
-    )
+    wire_page(app, home_btn, _switch_lang,
+              [lang_state, title_md, subtitle_md, current_md, provider_dd,
+               api_key_tb, model_tb, base_url_tb, adv_acc, temp_tb,
+               max_tokens_tb, timeout_tb, save_btn, test_btn, reset_btn,
+               prof_acc, prof_name_tb, prof_dd, save_prof_btn,
+               use_prof_btn, del_prof_btn, usage_acc, usage_md,
+               conn_acc, conn_list_md, conn_name_tb, conn_type_dd,
+               conn_env_tb, conn_host_tb, conn_port_tb, conn_db_tb,
+               conn_user_tb, conn_pwd_tb, conn_save_btn, conn_del_dd,
+               conn_del_btn])

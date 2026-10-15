@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import gradio as gr
 
+from .page_scaffold import make_page_t, scroll_marker, title_row, wire_page
 from .sql_testgen import generate, render_markdown, validate_with_sqlite
 from .utils import normalize_lang
 
@@ -58,8 +59,7 @@ _I18N = {
 }
 
 
-def _t(lang: str, key: str) -> str:
-    return _I18N[normalize_lang(lang)].get(key, key)
+_t = make_page_t(_I18N)
 
 
 def render_sql_testgen_page(app: gr.Blocks) -> None:
@@ -68,14 +68,10 @@ def render_sql_testgen_page(app: gr.Blocks) -> None:
 
     lang_state = gr.State(lang0)
 
-    # marker: body:has(.st-scroll-page) re-enables page scrolling
-    gr.HTML('<div class="st-scroll-page" style="display:none"></div>')
+    scroll_marker()
 
     with gr.Column(elem_classes=["st-tgn-page"]):
-        with gr.Row():
-            title_md = gr.Markdown(t("title"))
-            home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                                 elem_classes=["st-home-btn"])
+        title_md, home_btn = title_row(t("title"))
 
         with gr.Row():
             with gr.Column(scale=2, elem_classes=["st-tgn-side"]):
@@ -135,15 +131,6 @@ def render_sql_testgen_page(app: gr.Blocks) -> None:
         outputs=[report_md],
     )
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
-    home_btn.click(fn=None, js=HOME_JS)
-    app.load(fn=None, js=STAMP_JS)
-
-    def _lang_on_load(request: gr.Request):
-        return switch_lang(choice_from_request(request))
-
-    app.load(
-        _lang_on_load, inputs=None,
-        outputs=[lang_state, title_md, sql_box, ddl_box, dialect_dd,
-                 rows_slider, validate_cb, gen_btn],
-    )
+    wire_page(app, home_btn, switch_lang,
+              [lang_state, title_md, sql_box, ddl_box, dialect_dd,
+               rows_slider, validate_cb, gen_btn])

@@ -15,6 +15,7 @@ from pathlib import Path
 import gradio as gr
 
 from .config import load_settings
+from .page_scaffold import title_row
 from .sql_review.agent import SQLReviewAgent, static_review_report
 from .sql_review.config import ReviewConfig, parse_config_text
 from .sql_review.fixer import generate_fix
@@ -47,10 +48,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
     # (the global CSS locks .gradio-container to 100vh / overflow hidden)
     gr.HTML('<div class="st-review-page" style="display:none"></div>')
 
-    with gr.Row():
-        title_md = gr.Markdown(f"{t0('sr_title')}\n{t0('sr_subtitle')}")
-        home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                             elem_classes=["st-home-btn"])
+    title_md, home_btn = title_row(f"{t0('sr_title')}\n{t0('sr_subtitle')}")
     lang_state = gr.State(_DEFAULT_LANG)
 
     with gr.Row():

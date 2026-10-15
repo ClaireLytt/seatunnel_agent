@@ -8,6 +8,7 @@ import threading
 
 import gradio as gr
 
+from .page_scaffold import make_page_t, scroll_marker, title_row
 from .web_task import run_task
 from .utils import normalize_lang as _norm
 from .config import llm_ready as _llm_ready
@@ -50,8 +51,7 @@ _I18N = {
 }
 
 
-def _t(lang: str, key: str) -> str:
-    return _I18N[_norm(lang)].get(key, key)
+_t = make_page_t(_I18N)
 
 
 def render_web_task_page(app: gr.Blocks) -> None:
@@ -60,13 +60,10 @@ def render_web_task_page(app: gr.Blocks) -> None:
 
     lang_state = gr.State(lang0)
 
-    gr.HTML('<div class="st-scroll-page" style="display:none"></div>')
+    scroll_marker()
 
     with gr.Column(elem_classes=["st-fmt-page"]):
-        with gr.Row():
-            title_md = gr.Markdown(t("title"))
-            home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                                 elem_classes=["st-home-btn"])
+        title_md, home_btn = title_row(t("title"))
 
         with gr.Row():
             with gr.Column(scale=2, elem_classes=["st-fmt-side"]):

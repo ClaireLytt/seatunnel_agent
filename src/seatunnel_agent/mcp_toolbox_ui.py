@@ -14,6 +14,7 @@ import json
 import gradio as gr
 
 from .mcp_toolbox import _audit_file, build_tool_functions
+from .page_scaffold import title_row, wire_page
 
 _DEFAULT_LANG = "en"
 
@@ -176,10 +177,7 @@ def render_mcp_page(app: gr.Blocks) -> None:
     # markers: page scroll (shared CSS) + uitest READY selector
     gr.HTML('<div class="st-scroll-page st-mcp-page" style="display:none"></div>')
 
-    with gr.Row():
-        title_md = gr.Markdown(f"{t0('title')}\n{t0('subtitle')}")
-        home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                             elem_classes=["st-home-btn"])
+    title_md, home_btn = title_row(f"{t0('title')}\n{t0('subtitle')}")
     lang_state = gr.State(_DEFAULT_LANG)
 
     with gr.Row():
@@ -221,16 +219,6 @@ def render_mcp_page(app: gr.Blocks) -> None:
             _audit_md(lg),                               # audit_md
         )
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
-    home_btn.click(fn=None, js=HOME_JS)
-    app.load(fn=None, js=STAMP_JS)
-
-    def _lang_on_load(request: gr.Request):
-        return _switch_lang(choice_from_request(request))
-
-    app.load(
-        _lang_on_load,
-        inputs=None,
-        outputs=[lang_state, title_md, tools_md, setup_md, setup_code,
-                 desktop_code, audit_head_md, audit_refresh_btn, audit_md],
-    )
+    wire_page(app, home_btn, _switch_lang,
+              [lang_state, title_md, tools_md, setup_md, setup_code,
+               desktop_code, audit_head_md, audit_refresh_btn, audit_md])

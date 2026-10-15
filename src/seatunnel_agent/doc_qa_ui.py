@@ -7,6 +7,7 @@ import gradio as gr
 
 from .doc_qa import answer, get_index
 from .doc_qa.answer import normalize_lang
+from .page_scaffold import make_page_t, scroll_marker, title_row
 
 _I18N = {
     "en": {
@@ -37,8 +38,7 @@ _I18N = {
 }
 
 
-def _t(lang: str, key: str) -> str:
-    return _I18N[normalize_lang(lang)].get(key, key)
+_t = make_page_t(_I18N)
 
 
 def render_doc_qa_page(app: gr.Blocks) -> None:
@@ -47,14 +47,10 @@ def render_doc_qa_page(app: gr.Blocks) -> None:
 
     lang_state = gr.State(lang0)
 
-    # marker: body:has(.st-scroll-page) re-enables page scrolling
-    gr.HTML('<div class="st-scroll-page" style="display:none"></div>')
+    scroll_marker()
 
     with gr.Column(elem_classes=["st-fmt-page"]):
-        with gr.Row():
-            title_md = gr.Markdown(t("title"))
-            home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                                 elem_classes=["st-home-btn"])
+        title_md, home_btn = title_row(t("title"))
 
         with gr.Row():
             with gr.Column(scale=2, elem_classes=["st-fmt-side"]):

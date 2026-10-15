@@ -22,6 +22,7 @@ from .data_skew.detector import DIALECTS, normalize_dialect
 from .data_skew.history import default_history
 from .data_skew.i18n import dsk
 from .data_skew.report import render_report
+from .page_scaffold import scroll_marker, title_row
 from .data_skew.probe import (
     ProbeCache,
     effective_sample_pct,
@@ -139,13 +140,9 @@ def _remove_section(report: str, head_re: re.Pattern[str]) -> str:
 def render_data_skew_page(app: gr.Blocks) -> None:
     t0 = lambda k: dsk(_DEFAULT_LANG, k)  # noqa: E731 — initial labels
 
-    # marker: body:has(.st-scroll-page) re-enables page scrolling
-    gr.HTML('<div class="st-scroll-page" style="display:none"></div>')
+    scroll_marker()
 
-    with gr.Row():
-        title_md = gr.Markdown(f"{t0('dsk_title')}\n{t0('dsk_subtitle')}")
-        home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                             elem_classes=["st-home-btn"])
+    title_md, home_btn = title_row(f"{t0('dsk_title')}\n{t0('dsk_subtitle')}")
     lang_state = gr.State(_DEFAULT_LANG)
 
     with gr.Row():

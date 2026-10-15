@@ -11,6 +11,7 @@ from __future__ import annotations
 import gradio as gr
 
 from .llm_cost import merged_prices, override_path, render_markdown, summarize_cost
+from .page_scaffold import make_page_t, scroll_marker, title_row
 from .utils import normalize_lang
 from .utils import cjk_font_family
 
@@ -59,8 +60,7 @@ _I18N = {
 }
 
 
-def _t(lang: str, key: str) -> str:
-    return _I18N[normalize_lang(lang)].get(key, key)
+_t = make_page_t(_I18N)
 
 
 def _cost_figure(summary: dict, lang: str, budget: float | None = None):
@@ -151,14 +151,10 @@ def render_llm_cost_page(app: gr.Blocks) -> None:
 
     lang_state = gr.State(lang0)
 
-    # marker: body:has(.st-scroll-page) re-enables page scrolling
-    gr.HTML('<div class="st-scroll-page" style="display:none"></div>')
+    scroll_marker()
 
     with gr.Column(elem_classes=["st-fmt-page"]):
-        with gr.Row():
-            title_md = gr.Markdown(t("title"))
-            home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                                 elem_classes=["st-home-btn"])
+        title_md, home_btn = title_row(t("title"))
 
         with gr.Row():
             days_dd = gr.Dropdown(choices=_DAY_CHOICES, value=30,

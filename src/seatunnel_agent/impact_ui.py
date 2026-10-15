@@ -12,7 +12,7 @@ from __future__ import annotations
 import gradio as gr
 
 from .data_lineage.sqlglot_lineage import SQL_DIALECTS
-from .utils import normalize_lang
+from .page_scaffold import make_page_t, title_row, wire_page
 
 _I18N = {
     "en": {
@@ -75,9 +75,7 @@ _I18N = {
 }
 
 
-def _t(lang: str, key: str) -> str:
-    lang = normalize_lang(lang)
-    return _I18N[lang].get(key, key)
+_t = make_page_t(_I18N)
 
 
 def render_impact_page(app: gr.Blocks) -> None:
@@ -87,10 +85,7 @@ def render_impact_page(app: gr.Blocks) -> None:
     lang_state = gr.State(lang0)
 
     with gr.Column(elem_classes=["st-imp-page"]):
-        with gr.Row():
-            title_md = gr.Markdown(t("title"))
-            home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                                 elem_classes=["st-home-btn"])
+        title_md, home_btn = title_row(t("title"))
 
         with gr.Row():
             with gr.Column(scale=2, elem_classes=["st-imp-side"]):
@@ -227,17 +222,7 @@ def render_impact_page(app: gr.Blocks) -> None:
                 lang_state],
         outputs=[graph_html, report_md],
     )
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
-    home_btn.click(fn=None, js=HOME_JS)
-    # Language follows the hub's choice (st-lang cookie), applied on load.
-    app.load(fn=None, js=STAMP_JS)
-
-    def _lang_on_load(request: gr.Request):
-        return switch_lang(choice_from_request(request))
-
-    app.load(
-        _lang_on_load, inputs=None,
-        outputs=[lang_state, title_md, tab_dirs, tab_paste, old_box,
-                 new_box, old_sql_box, new_sql_box, ctx_box, dialect_dd,
-                 depth_sl, analyze_btn, analyze_sql_btn],
-    )
+    wire_page(app, home_btn, switch_lang,
+              [lang_state, title_md, tab_dirs, tab_paste, old_box,
+               new_box, old_sql_box, new_sql_box, ctx_box, dialect_dd,
+               depth_sl, analyze_btn, analyze_sql_btn])

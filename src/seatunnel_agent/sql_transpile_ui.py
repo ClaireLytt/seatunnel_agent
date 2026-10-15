@@ -18,6 +18,7 @@ from .sql_transpile import (
     translate,
     transpile_dir,
 )
+from .page_scaffold import make_page_t, title_row, wire_page
 from .utils import normalize_lang
 
 _I18N = {
@@ -75,8 +76,7 @@ _I18N = {
 }
 
 
-def _t(lang: str, key: str) -> str:
-    return _I18N[normalize_lang(lang)].get(key, key)
+_t = make_page_t(_I18N)
 
 
 def _src_choices(lang: str) -> list[tuple[str, str]]:
@@ -91,10 +91,7 @@ def render_sql_transpile_page(app: gr.Blocks) -> None:
     result_state = gr.State(None)  # TranspileResult | None (for LLM advice)
 
     with gr.Column(elem_classes=["st-trp-page"]):
-        with gr.Row():
-            title_md = gr.Markdown(t("title"))
-            home_btn = gr.Button("\U0001f3e0", size="sm", scale=0,
-                                 elem_classes=["st-home-btn"])
+        title_md, home_btn = title_row(t("title"))
 
         with gr.Row():
             with gr.Column(scale=2, elem_classes=["st-trp-side"]):
@@ -210,20 +207,10 @@ def render_sql_transpile_page(app: gr.Blocks) -> None:
         inputs=[result_state, lang_state],
         outputs=[advice_md],
     )
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
-    home_btn.click(fn=None, js=HOME_JS)
-    # Language follows the hub's choice (st-lang cookie), applied on load.
-    app.load(fn=None, js=STAMP_JS)
-
-    def _lang_on_load(request: gr.Request):
-        return switch_lang(choice_from_request(request))
-
-    app.load(
-        _lang_on_load, inputs=None,
-        outputs=[lang_state, title_md, src_dd, dst_dd, sql_box,
-                 translate_btn, batch_acc, dir_box, out_box, batch_btn,
-                 out_code, advice_acc, advice_btn],
-    )
+    wire_page(app, home_btn, switch_lang,
+              [lang_state, title_md, src_dd, dst_dd, sql_box,
+               translate_btn, batch_acc, dir_box, out_box, batch_btn,
+               out_code, advice_acc, advice_btn])
     # SQL handed over from the review page (localStorage bridge): fill the
     # box and fire an input event so gradio picks the value up.
     app.load(fn=None, js="""
