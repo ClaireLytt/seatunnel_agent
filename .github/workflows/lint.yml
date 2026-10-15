@@ -10,6 +10,22 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Mechanical batch-workflow checks (CLAUDE.md §7): no AI attribution
+  # trailers in PR commits, and src/tests changes must ship an on-disk
+  # report under docs/reports/. PR-only: push/dispatch have no base ref.
+  workflow-check:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python scripts/check_workflow.py --range "origin/${{ github.base_ref }}...HEAD"
+
   ruff:
     runs-on: ubuntu-latest
     timeout-minutes: 5

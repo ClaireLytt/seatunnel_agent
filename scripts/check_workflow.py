@@ -5,12 +5,14 @@
 2. git 工作区干净(不允许留下未提交的修改)。
 3. 未推送 commit 若改动了 src/ 或 tests/,docs/reports/ 中必须同批提交了新报告。
 
-用法:python scripts/check_workflow.py
+用法:python scripts/check_workflow.py [--range <rev-range>]
+本地默认核对 origin/<当前分支>..HEAD;CI 中传 --range origin/<base>...HEAD 核对整个 PR。
 任一项 FAIL 时退出码非 0,本批次不得标记完成。
 """
 
 from __future__ import annotations
 
+import argparse
 import subprocess
 import sys
 
@@ -65,7 +67,10 @@ def check_report_committed(rng: str | None) -> tuple[bool, str]:
 
 
 def main() -> int:
-    rng = _unpushed_range()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--range", dest="rng", default=None, help="要核对的 rev 范围")
+    args = parser.parse_args()
+    rng = args.rng if args.rng else _unpushed_range()
     checks = [
         ("AI 署名", check_no_ai_attribution(rng)),
         ("工作区", check_clean_worktree()),
