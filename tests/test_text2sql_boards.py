@@ -37,7 +37,7 @@ def _mock_post(captured: list, response: dict):
 
 
 def test_push_dingtalk_payload(monkeypatch) -> None:
-    from seatunnel_agent.text2sql import subscriptions as subs
+    from seatunnel_agent.text2sql import notify as subs
 
     captured: list = []
     monkeypatch.setattr(subs, "_post_json", _mock_post(captured, {"errcode": 0}))
@@ -55,7 +55,7 @@ def test_push_dingtalk_payload(monkeypatch) -> None:
 
 
 def test_push_wecom_payload_and_truncation(monkeypatch) -> None:
-    from seatunnel_agent.text2sql import subscriptions as subs
+    from seatunnel_agent.text2sql import notify as subs
 
     captured: list = []
     monkeypatch.setattr(subs, "_post_json", _mock_post(captured, {"errcode": 0}))
@@ -66,7 +66,7 @@ def test_push_wecom_payload_and_truncation(monkeypatch) -> None:
 
 
 def test_push_card_dispatches(monkeypatch) -> None:
-    from seatunnel_agent.text2sql import subscriptions as subs
+    from seatunnel_agent.text2sql import notify as subs
 
     calls: list[str] = []
 
