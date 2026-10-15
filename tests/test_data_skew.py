@@ -436,7 +436,7 @@ def test_write_optimized_adds_sql_suffix(tmp_path):
 # probe: target extraction
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.probe import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.probe import (
     ProbeResult,
     ProbeTarget,
     extract_probe_targets,
@@ -773,7 +773,7 @@ def test_agent_probe_context_injected_into_prompt(tmp_path):
 # probe: sampling (TABLESAMPLE)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.probe import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.probe import (
     _table_expr,
     effective_sample_pct,
     engine_params_for_results,
@@ -892,7 +892,7 @@ def test_probe_lines_balanced_target_has_no_hot_values():
 # consistency: extraction and comparison
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.consistency import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.consistency import (
     ConsistencyResult,
     check_consistency,
     extract_single_select,
@@ -1466,7 +1466,7 @@ def test_cli_skew_stats(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 from seatunnel_agent.agents.data.data_skew.probe import (
-    render_storage_advice,  # noqa: E402
+    render_storage_advice,
 )
 
 
@@ -1519,7 +1519,7 @@ def test_storage_advice_in_probe_section():
 # SeaTunnel split-key check
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.splitkey import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.splitkey import (
     SourceSpec,
     SplitKeyError,
     SplitStat,
@@ -2142,7 +2142,7 @@ def test_mcp_split_key_apply(monkeypatch, tmp_path):
 # runtime diagnosis (Spark task metrics)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.runtime import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.runtime import (
     MIN_TASKS,
     RuntimeSkewError,
     StageSkew,
@@ -2376,7 +2376,7 @@ def test_mcp_runtime_tools(monkeypatch, tmp_path):
 # split-key: directory patrol (batch mode) + metric trend / drift
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.splitkey import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.splitkey import (
     _recheck_line,
     batch_counts,
     render_splitkey_batch,
@@ -2533,7 +2533,7 @@ def test_recheck_drift_line():
 # sink-side key check
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.splitkey import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.splitkey import (
     parse_seatunnel_sinks,
     render_sinkkey_section,
     run_sink_keys,

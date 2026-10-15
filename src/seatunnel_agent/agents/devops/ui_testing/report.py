@@ -283,7 +283,7 @@ def _rundiff_html(rr: RunResult, run_dir) -> str:
         if prev is None:
             return ""
         d = diff_runs(prev, run_dir)
-    except Exception:  # noqa: BLE001 — informational only
+    except Exception:
         return ""
     if not d.changed and not d.slower:
         return (f'<div class="meta">较上轮 ({_esc(d.old_run)}): '
@@ -307,7 +307,7 @@ def _coverage_html() -> str:
         from .coverage import compute_coverage
         from .loader import load_cases
         cov = compute_coverage(load_cases())
-    except Exception:  # noqa: BLE001 — coverage is informational only
+    except Exception:
         return ""
     if cov is None:
         return ""

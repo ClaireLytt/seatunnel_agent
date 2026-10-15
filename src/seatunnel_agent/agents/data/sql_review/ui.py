@@ -48,7 +48,7 @@ def _err_md(exc: Exception, lang: str) -> str:
 
 
 def render_sql_review_page(app: gr.Blocks) -> None:
-    t0 = lambda k: sr(_DEFAULT_LANG, k)  # noqa: E731 — initial labels
+    t0 = lambda k: sr(_DEFAULT_LANG, k)
 
     # marker: body:has(.st-review-page) re-enables page scrolling
     # (the global CSS locks .gradio-container to 100vh / overflow hidden)
@@ -171,7 +171,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                 if agent.runtime and agent.runtime.report:
                     findings = agent.runtime.report.findings
                     stats = agent.runtime.report.stats()
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return _err_md(exc, lang), "", gr.update(visible=False), no_dl
         ReviewLogger().log(
             sql=sql, dialect=dialect, mode=mode, findings=findings,
@@ -207,7 +207,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                 settings = load_settings()
                 fixed = generate_fix(settings, sql, normalize_dialect(dialect),
                                      report, lang=lang)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             sep = ": " if lang == "en" else "："
             return gr.update(value=f"{sr(lang, 'sr_fix_failed')}{sep}{exc}",
                              visible=True)
@@ -320,7 +320,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                         lines.append(f"- {label}（{item['count']} 次）")
             try:
                 fig = _trend_figure(logger.recent(500))
-            except Exception:  # noqa: BLE001 — the chart is optional
+            except Exception:
                 fig = None
             plot_update = (gr.update(value=fig, visible=True) if fig is not None
                            else gr.update(visible=False))
@@ -341,7 +341,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
 
     def _switch_lang(choice: str, report_cur: str, stats_cur: str):
         lg = "zh" if choice == "中文" else "en"
-        t = lambda k: sr(lg, k)  # noqa: E731
+        t = lambda k: sr(lg, k)
         return (
             lg,                                                     # lang_state
             f"{t('sr_title')}\n{t('sr_subtitle')}",                 # title_md

@@ -44,7 +44,7 @@ def canonical_expr(expression: str, dialect: str = "hive") -> str:
             col.set("db", None)
             col.set("catalog", None)
         text = node.sql()
-    except Exception:  # noqa: BLE001 — fall back to text normalization
+    except Exception:
         text = _QUALIFIER_RE.sub("", text)
     text = _COUNT_ONE_RE.sub("COUNT(*)", text)
     return re.sub(r"\s+", " ", text).strip().upper()
@@ -90,7 +90,7 @@ class MetricReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = {level: 0 for level in SEVERITIES}
+        out = dict.fromkeys(SEVERITIES, 0)
         for c in self.conflicts:
             out[c.severity] += 1
         out["total"] = len(self.conflicts)

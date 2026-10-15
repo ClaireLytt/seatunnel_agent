@@ -133,7 +133,7 @@ def _ut(lang: str, key: str) -> str:
 
 
 def _tools_md(lang: str) -> str:
-    t = lambda k: _ut(lang, k)  # noqa: E731
+    t = lambda k: _ut(lang, k)
     names = list(build_tool_functions(include_db=True))
     lines = [t("tools_head"), "",
              f"| {t('col_tool')} | {t('col_desc')} |", "|---|---|"]
@@ -145,7 +145,7 @@ def _tools_md(lang: str) -> str:
 
 
 def _audit_md(lang: str) -> str:
-    t = lambda k: _ut(lang, k)  # noqa: E731
+    t = lambda k: _ut(lang, k)
     try:
         raw = _audit_file().read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -174,7 +174,7 @@ def _audit_md(lang: str) -> str:
 
 
 def render_mcp_page(app: gr.Blocks) -> None:
-    t0 = lambda k: _ut(_DEFAULT_LANG, k)  # noqa: E731 — initial labels
+    t0 = lambda k: _ut(_DEFAULT_LANG, k)
 
     # markers: page scroll (shared CSS) + uitest READY selector
     gr.HTML('<div class="st-scroll-page st-mcp-page" style="display:none"></div>')
@@ -208,7 +208,7 @@ def render_mcp_page(app: gr.Blocks) -> None:
 
     def _switch_lang(choice: str):
         lg = "zh" if choice == "中文" else "en"
-        t = lambda k: _ut(lg, k)  # noqa: E731
+        t = lambda k: _ut(lg, k)
         return (
             lg,                                          # lang_state
             f"{t('title')}\n{t('subtitle')}",            # title_md

@@ -73,7 +73,7 @@ _t = make_page_t(_I18N)
 
 def render_sql_fmt_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -108,7 +108,7 @@ def render_sql_fmt_page(app: gr.Blocks) -> None:
         try:
             return render_markdown(format_text(sql_text, dialect=dialect),
                                    lang)
-        except Exception as exc:  # noqa: BLE001 — format must never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def do_check_dir(dir_text: str, dialect: str, lang: str):
@@ -121,7 +121,7 @@ def render_sql_fmt_page(app: gr.Blocks) -> None:
         try:
             results = fmt_dir(dir_text.strip(), dialect=dialect, write=False)
             return render_batch_markdown(results, lang)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def switch_lang(choice: str):

@@ -152,7 +152,7 @@ def _price_table_md(lang: str) -> str:
 
 def render_llm_cost_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -226,9 +226,9 @@ def render_llm_cost_page(app: gr.Blocks) -> None:
         try:
             fig_cost = _cost_figure(s, lang, budget)
             fig_tok = _tokens_figure(s, lang)
-        except Exception:  # noqa: BLE001 — charts are optional (matplotlib)
+        except Exception:
             fig_cost = fig_tok = None
-        upd = lambda f: (gr.update(value=f, visible=True) if f is not None  # noqa: E731
+        upd = lambda f: (gr.update(value=f, visible=True) if f is not None
                          else gr.update(visible=False))
         csv_path = _csv_file(s)
         csv_upd = (gr.update(visible=True, value=csv_path,

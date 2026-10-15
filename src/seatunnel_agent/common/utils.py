@@ -128,7 +128,7 @@ def cjk_font_family() -> str | None:
         return None
     try:
         names = {f.name for f in font_manager.fontManager.ttflist}
-    except Exception:  # noqa: BLE001 - a font cache problem must not break charts
+    except Exception:
         return None
     for cand in ("Microsoft YaHei", "SimHei", "PingFang SC",
                  "Hiragino Sans GB", "Noto Sans CJK SC",

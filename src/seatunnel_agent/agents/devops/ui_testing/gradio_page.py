@@ -153,7 +153,7 @@ def _run_stream(suite: str, agent: str, case_ids_text: str, no_llm: bool,
             from .report import write_labels_patch
             write_labels_patch(rr, run_dir)
             done["rr"] = rr
-        except Exception as e:  # noqa: BLE001 — surfaced in the UI
+        except Exception as e:
             done["error"] = f"{type(e).__name__}: {e}"
         finally:
             q.put(None)
@@ -193,7 +193,7 @@ def _run_stream(suite: str, agent: str, case_ids_text: str, no_llm: bool,
 
 
 def render_uitest_page(app: gr.Blocks | None = None) -> None:
-    t0 = lambda k: _ut("en", k)  # noqa: E731 — initial labels (default en)
+    t0 = lambda k: _ut("en", k)
 
     # marker: body:has(.st-uitest-page) re-enables page scrolling
     # (the global CSS locks .gradio-container to 100vh / overflow hidden)
@@ -241,7 +241,7 @@ def render_uitest_page(app: gr.Blocks | None = None) -> None:
 
     def _switch_lang(choice: str):
         lang = "zh" if choice == "中文" else "en"
-        t = lambda k: _ut(lang, k)  # noqa: E731
+        t = lambda k: _ut(lang, k)
         return (
             lang,
             f"{t('title')}\n{t('subtitle')}",

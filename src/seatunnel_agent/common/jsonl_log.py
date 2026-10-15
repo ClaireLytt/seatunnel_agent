@@ -55,7 +55,7 @@ class JsonlLog:
                 self._rotate_if_needed(path)
                 with path.open("a", encoding="utf-8") as fh:
                     fh.write(line + "\n")
-        except Exception:  # noqa: BLE001 — history/usage is best-effort
+        except Exception:
             pass
 
     def _rotate_if_needed(self, path: Path) -> None:

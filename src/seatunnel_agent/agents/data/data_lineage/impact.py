@@ -99,7 +99,7 @@ class ImpactResult:
     elapsed_ms: int = 0
 
     def counts(self) -> dict[str, int]:
-        by_level = {lv: 0 for lv in LEVELS}
+        by_level = dict.fromkeys(LEVELS, 0)
         blast: set[str] = set()
         for c in self.changed:
             by_level[c.level] += 1

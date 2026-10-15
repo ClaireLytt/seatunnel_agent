@@ -281,7 +281,7 @@ def _probe_one(executor, t: ProbeTarget, top_n: int, expr: str) -> ProbeResult:
         tq = executor.run(_top_sql(t, top_n, expr), max_rows=top_n)
         r.top = [("NULL" if v is None else str(v), int(c)) for v, c in tq.rows]
         r.elapsed_ms += tq.elapsed_ms
-    except Exception as exc:  # noqa: BLE001 — per-target failure stays local
+    except Exception as exc:
         r.error = str(exc)
     return r
 

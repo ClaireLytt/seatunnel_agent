@@ -84,7 +84,7 @@ target-version = "py311"
 # UP: pyupgrade, except UP017 (datetime.UTC needs 3.11 but requires-python
 # is >=3.10) and UP042 (str-enum refactor, manual). Not enabled yet:
 #   SIM (simplify, ~37 violations, only 5 auto-fixable — left for later).
-select = ["E9", "F", "B", "I", "W", "UP"]
+select = ["E9", "F", "B", "I", "W", "UP", "A", "RET", "C4", "RUF100"]
 ignore = ["B904", "B905", "B008", "B023", "UP017", "UP042"]
 
 [tool.ruff.lint.per-file-ignores]

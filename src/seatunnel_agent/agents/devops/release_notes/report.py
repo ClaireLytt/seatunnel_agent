@@ -83,7 +83,7 @@ def polish_markdown(markdown: str, lang: str = "zh",
                            [{"role": "user", "content": markdown}])
         polished = (resp.reply_text or "").strip()
         return polished or markdown
-    except Exception as exc:  # noqa: BLE001 — polish is advisory
+    except Exception as exc:
         warn = _I18N[lang]["polish_failed"].format(
             err=f"{type(exc).__name__}: {exc}")
         return f"{warn}\n\n{markdown}"

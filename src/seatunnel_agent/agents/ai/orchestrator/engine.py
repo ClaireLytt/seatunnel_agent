@@ -177,7 +177,7 @@ class Orchestrator:
                 tool_input = json.loads(str(tool_input))
             output = str(spec.run(**tool_input))
             error = False
-        except Exception as exc:  # noqa: BLE001 — errors go back to the model
+        except Exception as exc:
             output = f"工具执行失败 / tool failed: {type(exc).__name__}: {exc}"
             error = True
         if len(output) > _MAX_RESULT_CHARS:

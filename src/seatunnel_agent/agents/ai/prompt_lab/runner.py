@@ -107,7 +107,7 @@ def _run_cell(profile: str, prompt: str, system: str,
         usage = resp.usage or {}
         cell.input_tokens = int(usage.get("input_tokens", 0) or 0)
         cell.output_tokens = int(usage.get("output_tokens", 0) or 0)
-    except Exception as exc:  # noqa: BLE001 — isolate the cell
+    except Exception as exc:
         cell.error = f"{type(exc).__name__}: {exc}"
     cell.latency_ms = int((time.time() - start) * 1000)
     return cell
@@ -128,7 +128,7 @@ def run_matrix(prompt: str,
         from seatunnel_agent.common import (
             llm,  # resolved at call time so tests can monkeypatch
         )
-        client_factory = lambda s: llm.LLMClient(s, agent="prompt_lab")  # noqa: E731
+        client_factory = lambda s: llm.LLMClient(s, agent="prompt_lab")
 
     def job(p: str) -> CellResult:
         return _run_cell(p, prompt, system, client_factory)

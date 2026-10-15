@@ -103,7 +103,7 @@ def _review_sql(files: list[PatchFile]) -> list[BotFinding]:
         try:
             rep = static_review_report(f.added_text,
                                        normalize_dialect("hive"))
-        except Exception:  # noqa: BLE001 — a diff fragment may not parse
+        except Exception:
             continue
         for finding in rep.findings:
             sev = {"critical": "high", "risk": "medium"}.get(

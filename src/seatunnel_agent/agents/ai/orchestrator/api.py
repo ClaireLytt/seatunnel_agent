@@ -63,7 +63,7 @@ def run(req: RunRequest) -> RunResponse:
                               max_steps=req.max_steps).run(req.request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    except Exception as exc:  # noqa: BLE001 — provider/auth/network failures
+    except Exception as exc:
         raise HTTPException(status_code=503,
                             detail=f"{type(exc).__name__}: {exc}")
     return RunResponse(reply=result.reply,

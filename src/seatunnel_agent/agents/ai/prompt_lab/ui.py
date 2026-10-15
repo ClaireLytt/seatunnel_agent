@@ -87,7 +87,7 @@ _t = make_page_t(_I18N)
 def _profile_choices() -> list[str]:
     try:
         return [ACTIVE] + list_profiles()
-    except Exception:  # noqa: BLE001 — a broken store must not kill the page
+    except Exception:
         return [ACTIVE]
 
 
@@ -111,7 +111,7 @@ def _history_md(lang: str) -> str:
 
 def render_prompt_lab_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
     matrix_state = gr.State(None)  # last MatrixResult
@@ -162,7 +162,7 @@ def render_prompt_lab_page(app: gr.Blocks) -> None:
         try:
             result = run_matrix(prompt, system=system, profiles=profiles,
                                 parallel=parallel)
-        except Exception as exc:  # noqa: BLE001 — never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}", None, no_dd, no_dd
         ok = [c.profile for c in result.cells if not c.error]
         dd_a = gr.update(choices=ok, value=ok[0] if ok else None)

@@ -243,7 +243,7 @@ def test_runtime_value_index_caches_none(store, monkeypatch) -> None:
 
     def _fake_load_or_build(rt):
         calls["n"] += 1
-        return None
+        return
 
     monkeypatch.setattr(
         "seatunnel_agent.agents.data.text2sql.values.load_or_build", _fake_load_or_build,

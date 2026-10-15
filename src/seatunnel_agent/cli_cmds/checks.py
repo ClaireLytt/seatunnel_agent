@@ -632,7 +632,7 @@ def transpile(
         _gate(worst)
     except ValueError as e:
         raise click.UsageError(str(e))
-    except Exception as e:  # noqa: BLE001 — uniform CLI error handling
+    except Exception as e:
         _handle_error(e, verbose)
 
 

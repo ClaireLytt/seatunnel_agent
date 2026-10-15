@@ -166,7 +166,7 @@ def build_tool_functions(
         except SplitKeyError as exc:
             from .i18n import dsk
             return dsk(lg, exc.key).format(err=exc.arg)
-        except Exception as exc:  # noqa: BLE001 — surface to the caller
+        except Exception as exc:
             return f"体检失败 / split-key check failed: {exc}"
         previous_by_table = {spec.table: prev for spec, _, _ in results
                              if (prev := history.last_splitkey(spec.table))}
@@ -231,7 +231,7 @@ def build_tool_functions(
                 executor, conf, ds_type=ds, sample_pct=pct)
         except SplitKeyError as exc:
             return dsk(lg, exc.key).format(err=exc.arg)
-        except Exception as exc:  # noqa: BLE001 — surface to the caller
+        except Exception as exc:
             return f"体检失败 / split-key check failed: {exc}"
         if total > 1:
             return dsk(lg, "spk_apply_multi").format(n=total)

@@ -85,7 +85,7 @@ def upload_feishu_image(png_bytes: bytes, timeout: int = 30) -> str:
             data = json.loads(resp.read().decode("utf-8"))
         if data.get("code") == 0:
             return data.get("data", {}).get("image_key", "")
-    except Exception:  # noqa: BLE001 — best-effort by contract
+    except Exception:
         pass
     return ""
 

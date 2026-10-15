@@ -72,8 +72,8 @@ class TestNotes:
     def test_demo_grouping(self):
         notes = build_notes(LOG, "0.2.0")
         assert notes.bump == "major" and notes.next_version == "1.0.0"
-        groups = dict((k, [c.sha for c in cs])
-                      for k, _label, cs in notes.grouped())
+        groups = {k: [c.sha for c in cs]
+                      for k, _label, cs in notes.grouped()}
         assert len(groups["feat"]) == 3
         assert "other" in groups  # "update web link"
         assert [c.sha for c in notes.breaking] == ["d4e5f6a"]

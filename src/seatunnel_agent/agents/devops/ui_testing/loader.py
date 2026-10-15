@@ -112,7 +112,7 @@ def _expand_step(raw: Any, fixtures: dict[str, list[dict]],
     # its own StepLog line
     if action == "fill":
         side = args.pop("side", None)
-        pairs = [(k, v) for k, v in args.items()]
+        pairs = list(args.items())
         if not pairs:
             raise CaseLoadError(f"{ctx}: fill with no fields")
         steps = []

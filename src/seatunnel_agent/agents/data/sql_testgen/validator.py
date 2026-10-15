@@ -77,7 +77,7 @@ def validate_with_sqlite(result: GenResult) -> ValidationResult:
         return ValidationResult(status="skipped", detail="no tables")
     try:
         query = _to_sqlite_query(result.query, result.dialect)
-    except Exception as exc:  # noqa: BLE001 — unsupported syntax is a finding
+    except Exception as exc:
         return ValidationResult(status="transpile_error",
                                 detail=f"{type(exc).__name__}: {exc}")
     conn = sqlite3.connect(":memory:")

@@ -42,7 +42,7 @@ class RunLogger:
                                  "passed": c.passed}
                           for c in result.cases},
             }
-        except Exception:  # noqa: BLE001 — history is best-effort
+        except Exception:
             return
         self._log.append(rec)
 

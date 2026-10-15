@@ -50,7 +50,7 @@ def _default_transport(url: str, body: bytes) -> None:
     req = Request(url, data=body,
                   headers={"Content-Type": "application/json",
                            "User-Agent": "seatunnel-agent"})
-    with urlopen(req, timeout=15):  # noqa: S310 — user-configured webhook
+    with urlopen(req, timeout=15):
         pass
 
 
@@ -69,5 +69,5 @@ def send(title: str, text: str,
         (transport or _default_transport)(
             url, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
         return True
-    except Exception:  # noqa: BLE001 — alerting is best-effort
+    except Exception:
         return False

@@ -231,7 +231,7 @@ def _fetch_json(url: str, timeout: float = 10.0):
     import urllib.request
 
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return json.loads(resp.read().decode("utf-8", errors="replace"))
 
 
@@ -253,7 +253,7 @@ def analyze_history_server(
         base += "/api/v1"
     try:
         listing = fetch(f"{base}/applications/{app}/stages?status=COMPLETE")
-    except Exception as exc:  # noqa: BLE001 — network/HTTP/JSON
+    except Exception as exc:
         raise RuntimeSkewError("rt_http_fail", str(exc))
     if not isinstance(listing, list) or not listing:
         raise RuntimeSkewError("rt_no_stages")
@@ -274,7 +274,7 @@ def analyze_history_server(
         try:
             summ = fetch(f"{base}/applications/{app}/stages/{sid}/{attempt}"
                          f"/taskSummary?quantiles=0.5,1.0")
-        except Exception:  # noqa: BLE001 — one bad stage stays local
+        except Exception:
             continue
         dur = summ.get("duration") or summ.get("executorRunTime") or [0, 0]
         shuf = (summ.get("shuffleReadMetrics") or {}).get("readBytes") or [0, 0]

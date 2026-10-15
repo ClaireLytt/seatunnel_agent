@@ -36,7 +36,7 @@ def _gh_request(url: str, data: bytes | None = None,
     if data is not None:
         headers["Content-Type"] = "application/json"
     req = UrlRequest(url, data=data, headers=headers)
-    with urlopen(req, timeout=30) as resp:  # noqa: S310 — api.github.com
+    with urlopen(req, timeout=30) as resp:
         return resp.read()
 
 
@@ -81,7 +81,7 @@ def default_update_comment(comment_url: str, body: str) -> None:
     req = UrlRequest(comment_url,
                      data=json.dumps({"body": body}).encode("utf-8"),
                      headers=headers, method="PATCH")
-    with urlopen(req, timeout=30):  # noqa: S310 — api.github.com
+    with urlopen(req, timeout=30):
         pass
 
 
@@ -139,7 +139,7 @@ def create_bot_app(secret: str = "",
             return {"status": "ignored", "action": action}
         try:
             patch = fetch_diff(payload)
-        except Exception as exc:  # noqa: BLE001 — network/auth problems
+        except Exception as exc:
             raise HTTPException(status_code=502,
                                 detail=f"diff fetch failed: {exc}")
         findings, comment = review_patch(patch)
@@ -147,7 +147,7 @@ def create_bot_app(secret: str = "",
         # a bot that stacks near-identical comments gets muted within a week
         try:
             existing = find_bot_comment(payload)
-        except Exception:  # noqa: BLE001 — listing failed: fall back to post
+        except Exception:
             existing = None
         commented = False
         try:
@@ -161,7 +161,7 @@ def create_bot_app(secret: str = "",
                 # findings resolved by this push: say so instead of leaving
                 # a stale warning standing
                 update_comment(existing, RESOLVED_BODY)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             raise HTTPException(status_code=502,
                                 detail=f"comment post failed: {exc}")
         return {"status": "reviewed", "findings": len(findings),

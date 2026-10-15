@@ -46,7 +46,7 @@ def _column_lineage(sql: str, store=None) -> list[dict[str, object]]:
     try:
         from seatunnel_agent.agents.data.text2sql.lineage import trace_lineage
         traced = trace_lineage(sql, store=store)
-    except Exception:  # noqa: BLE001 — lineage must never break a review
+    except Exception:
         return []
     columns: list[dict[str, object]] = []
     for col in traced.output_columns[:_MAX_COLUMN_LINEAGE]:

@@ -47,7 +47,7 @@ class ExperimentLogger:
                     "reply_preview": (c.reply or "")[:_PREVIEW_CHARS],
                 } for c in result.cells],
             }
-        except Exception:  # noqa: BLE001 — history is best-effort
+        except Exception:
             return
         self._log.append(rec)
 

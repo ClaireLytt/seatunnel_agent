@@ -101,7 +101,7 @@ def run_judge(a: Assertion, dc: DCPage, llm: UITestLLM | None) -> StepLog:
                 b64 = base64.b64encode(dc.page.screenshot()).decode()
                 return [{"role": "user", "content": _image_content(
                     llm.client.provider, b64, prompt)}]
-            except Exception:  # noqa: BLE001 — screenshot failure -> text only
+            except Exception:
                 pass
         return [{"role": "user", "content": prompt}]
 
@@ -110,7 +110,7 @@ def run_judge(a: Assertion, dc: DCPage, llm: UITestLLM | None) -> StepLog:
     for _ in range(2):                       # one retry on unparseable output
         try:
             resp = llm.client.chat(_SYSTEM, _messages(use_image))
-        except Exception:  # noqa: BLE001 — likely a vision-unsupported model
+        except Exception:
             if not use_image:
                 raise
             _vision_state["ok"] = False      # remember for the whole run

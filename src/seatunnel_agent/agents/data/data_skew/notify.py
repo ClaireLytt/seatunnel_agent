@@ -22,7 +22,7 @@ def post_webhook(url: str, payload: dict) -> tuple[bool, str]:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=_WEBHOOK_TIMEOUT) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=_WEBHOOK_TIMEOUT) as resp:
             return True, str(resp.status)
     except (urllib.error.URLError, urllib.error.HTTPError, OSError) as exc:
         return False, str(exc)

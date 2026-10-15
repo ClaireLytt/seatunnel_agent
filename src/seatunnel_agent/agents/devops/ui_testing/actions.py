@@ -26,7 +26,7 @@ def run_script_step(step: Step, dc: DCPage) -> StepLog:
             detail = _dispatch(step, dc)
             return StepLog(step.desc, True, _ms(t0),
                            detail + (" (retry)" if attempt == 2 else ""))
-        except Exception as e:  # noqa: BLE001 — converted to StepLog
+        except Exception as e:
             last_err = e
             if attempt == 1:
                 dc.page.wait_for_timeout(700)

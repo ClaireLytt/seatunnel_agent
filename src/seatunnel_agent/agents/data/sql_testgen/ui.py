@@ -72,7 +72,7 @@ _t = make_page_t(_I18N)
 
 def render_sql_testgen_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -113,7 +113,7 @@ def render_sql_testgen_page(app: gr.Blocks) -> None:
                               dialect=dialect)
             if do_validate and result.tables:
                 result.validation = validate_with_sqlite(result)
-        except Exception as exc:  # noqa: BLE001 — generation must never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
         return render_markdown(result, lang)
 

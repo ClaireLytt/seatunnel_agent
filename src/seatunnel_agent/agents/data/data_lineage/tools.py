@@ -565,6 +565,6 @@ def execute_lineage_tool(
         return safe_json({"error": f"Unknown tool: {name}"})
     try:
         result = handler(tool_input, runtime)
-    except Exception as exc:  # noqa: BLE001 — tool errors go back to the model
+    except Exception as exc:
         result = {"error": f"Tool '{name}' failed: {exc}"}
     return safe_json(result)

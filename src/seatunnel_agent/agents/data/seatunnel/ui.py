@@ -1091,11 +1091,11 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
     def _show_stop():
         return gr.update(visible=False), gr.update(visible=True)
 
-    submit_io = dict(
-        fn=_handle_submit,
-        inputs=[user_input, chatbot, mode, config_path, lang_state, session_state],
-        outputs=[chatbot, session_state, history_dd],
-    )
+    submit_io = {
+        "fn": _handle_submit,
+        "inputs": [user_input, chatbot, mode, config_path, lang_state, session_state],
+        "outputs": [chatbot, session_state, history_dd],
+    }
     def _post_submit():
         return "", gr.update(value=""), gr.update(visible=True), gr.update(visible=False)
 

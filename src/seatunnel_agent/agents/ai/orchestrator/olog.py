@@ -45,7 +45,7 @@ class ChatLogger:
                            "elapsed_ms": s.get("elapsed_ms")}
                           for s in steps or []],
             }
-        except Exception:  # noqa: BLE001 — persistence is best-effort
+        except Exception:
             return
         self._log.append(rec)
 

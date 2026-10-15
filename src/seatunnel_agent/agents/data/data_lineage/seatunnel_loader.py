@@ -316,7 +316,7 @@ def from_seatunnel_files(
             continue
         try:
             _load_config(graph, text, origin=f"seatunnel:{path.name}")
-        except Exception as exc:  # noqa: BLE001 — one bad config must not kill the build
+        except Exception as exc:
             warnings.append(f"解析 {path} 失败: {exc}")
     return graph, warnings
 

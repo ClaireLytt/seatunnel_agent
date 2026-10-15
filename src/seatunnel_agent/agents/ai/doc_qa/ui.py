@@ -42,7 +42,7 @@ _t = make_page_t(_I18N)
 
 def render_doc_qa_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -70,7 +70,7 @@ def render_doc_qa_page(app: gr.Blocks) -> None:
         try:
             return answer(question, get_index(), lang=lang,
                           use_llm=use_llm)["markdown"]
-        except Exception as exc:  # noqa: BLE001 — never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def switch_lang(choice: str):

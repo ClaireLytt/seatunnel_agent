@@ -49,7 +49,7 @@ def _snap(dc: DCPage, shots_dir: Path, case_id: str, tag: str) -> str | None:
         name = f"{case_id}_{tag}.png"
         dc.screenshot(str(shots_dir / name))
         return f"shots/{name}"
-    except Exception:  # noqa: BLE001 — screenshots must never fail a run
+    except Exception:
         _log.warning("screenshot failed for %s", case_id, exc_info=True)
         return None
 
@@ -74,7 +74,7 @@ def _parse_missing(detail: str) -> str:
 def _safe_digest(dc: DCPage) -> str:
     try:
         return dc.digest()
-    except Exception:  # noqa: BLE001 — healing must never crash a run
+    except Exception:
         return ""
 
 
@@ -132,7 +132,7 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
                 # snapshot for a later wait_result to diff against
                 try:
                     last_result_html = dc.result_html()
-                except Exception:  # noqa: BLE001
+                except Exception:
                     last_result_html = None
             if step.action == "wait_result" and last_result_html is not None:
                 step.args["_before_html"] = last_result_html
@@ -202,7 +202,7 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
                 res.verdict = "FAIL"
                 res.reason = res.reason or log.detail
                 log.screenshot = _snap(dc, shots_dir, case.id, "assert_fail")
-    except Exception as e:  # noqa: BLE001 — an exception is ERROR, not a crash
+    except Exception as e:
         res.verdict = "ERROR"
         res.reason = f"{type(e).__name__}: {str(e)[:300]}"
         _snap(dc, shots_dir, case.id, "error")
@@ -214,7 +214,7 @@ def run_case(case: TestCase, dc: DCPage, llm, shots_dir: Path,
             from .diagnose import diagnose
             try:
                 digest = dc.digest()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 digest = ""
             attribution = diagnose(res, digest, app_log_tail_fn(), diag_llm)
             if attribution:
@@ -274,7 +274,7 @@ def run_suite(
             try:
                 from .agent import UITestLLM
                 _lazy["llm"] = UITestLLM()
-            except Exception:  # noqa: BLE001
+            except Exception:
                 _lazy["llm"] = None
         return _lazy["llm"]
 

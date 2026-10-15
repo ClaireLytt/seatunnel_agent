@@ -56,7 +56,7 @@ _t = make_page_t(_I18N)
 
 def render_config_migrate_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 

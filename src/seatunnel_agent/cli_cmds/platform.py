@@ -454,7 +454,7 @@ def orchestrate(
     try:
         result = Orchestrator(settings, lang=lang,
                               max_steps=max_steps).run(request)
-    except Exception as exc:  # noqa: BLE001 — LLM/provider errors
+    except Exception as exc:
         console.print(f"[red]编排失败: {type(exc).__name__}: {exc}[/red]")
         sys.exit(1)
 
@@ -819,7 +819,7 @@ def webtask(
         result = run_task(goal, url, settings, max_steps=max_steps,
                           headed=headed, allow_external=allow_external,
                           on_step=on_step)
-    except Exception as exc:  # noqa: BLE001 — playwright missing etc.
+    except Exception as exc:
         console.print(f"[red]{type(exc).__name__}: {exc}[/red]")
         sys.exit(2)
     console.print(result.reply, markup=False)

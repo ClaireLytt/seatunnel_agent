@@ -79,7 +79,7 @@ _t = make_page_t(_I18N)
 
 def render_impact_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -157,7 +157,7 @@ def render_impact_page(app: gr.Blocks) -> None:
         try:
             result = analyze_dirs(old_dir, new_dir, depth=int(depth),
                                   sql_dialect=dialect or "hive")
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return "", _t(lang, "fail").format(exc=exc)
         from seatunnel_agent.agents.data.data_lineage.impact import ImpactLogger
         ImpactLogger().log_impact(result, mode="dirs", source="ui",
@@ -183,7 +183,7 @@ def render_impact_page(app: gr.Blocks) -> None:
             result = analyze_sql_texts(old_sql, new_sql, depth=int(depth),
                                        sql_dialect=dialect or "hive",
                                        context_dir=ctx_dir)
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return "", _t(lang, "fail").format(exc=exc)
         from seatunnel_agent.agents.data.data_lineage.impact import ImpactLogger
         ImpactLogger().log_impact(result, mode="text", source="ui",

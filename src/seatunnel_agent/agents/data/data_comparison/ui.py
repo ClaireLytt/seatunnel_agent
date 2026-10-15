@@ -156,7 +156,7 @@ from seatunnel_agent.agents.data.text2sql.executor import (
 # Page renderer
 # ---------------------------------------------------------------------------
 
-def render_data_comparison_page(app=None) -> None:  # noqa: C901
+def render_data_comparison_page(app=None) -> None:
     """Render the Data Comparison page components."""
     from dotenv import load_dotenv
     load_dotenv()

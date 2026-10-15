@@ -144,7 +144,7 @@ def _remove_section(report: str, head_re: re.Pattern[str]) -> str:
 
 
 def render_data_skew_page(app: gr.Blocks) -> None:
-    t0 = lambda k: dsk(_DEFAULT_LANG, k)  # noqa: E731 — initial labels
+    t0 = lambda k: dsk(_DEFAULT_LANG, k)
 
     scroll_marker()
 
@@ -302,7 +302,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             ok, info = executor.test_connection()
             if not ok:
                 raise RuntimeError(info)
-        except Exception as exc:  # noqa: BLE001 — surface in the UI
+        except Exception as exc:
             return dsk(lang, "dsk_conn_fail").format(err=exc), None
         status = dsk(lang, "dsk_conn_ok").format(info=info)
         return status, {"executor": executor, "ds_type": ds,
@@ -344,7 +344,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             results = _cached_probes(conn, sql, pct)
             section = render_probe_section(
                 results, lang, dialect=normalize_dialect(dialect), sample_pct=pct)
-        except Exception as exc:  # noqa: BLE001 — surface in the UI
+        except Exception as exc:
             return gr.update(), _err_md(exc, lang)
         history.log_verify(
             sql, targets=len(extract_probe_targets(sql)),
@@ -365,7 +365,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         try:
             res = check_consistency(conn["executor"], sql, optimized)
             section = render_consistency_section(res, lang)
-        except Exception as exc:  # noqa: BLE001 — surface in the UI
+        except Exception as exc:
             return gr.update(), _err_md(exc, lang)
         return (_append_section(report_cur, section, _CST_HEAD_RE),
                 _restored_status(lang, conn))
@@ -419,7 +419,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                 section = section + "\n" + snk
         except SplitKeyError as exc:
             return gr.update(), dsk(lang, exc.key).format(err=exc.arg), hide
-        except Exception as exc:  # noqa: BLE001 — surface in the UI
+        except Exception as exc:
             return gr.update(), _err_md(exc, lang), hide
         for spec, configured, candidates in results:
             history.log_splitkey(
@@ -450,7 +450,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             stages, label = parse_eventlog(str(path))
         except RuntimeSkewError as exc:
             return gr.update(), dsk(lang, exc.key).format(err=exc.arg)
-        except Exception as exc:  # noqa: BLE001 — surface in the UI
+        except Exception as exc:
             return gr.update(), _err_md(exc, lang)
         # the uploaded temp name is meaningless — label with the app name
         # from the log when it has one
@@ -465,7 +465,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             stages, label = analyze_history_server(url, app_id)
         except RuntimeSkewError as exc:
             return gr.update(), dsk(lang, exc.key).format(err=exc.arg)
-        except Exception as exc:  # noqa: BLE001 — surface in the UI
+        except Exception as exc:
             return gr.update(), _err_md(exc, lang)
         return _runtime_report(stages, label, report_cur, lang, conn)
 
@@ -479,7 +479,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         pct = effective_sample_pct(conn["ds_type"], int(sample or 0))
         try:
             results = _cached_probes(conn, sql, pct)
-        except Exception:  # noqa: BLE001 — probing must never break the analysis
+        except Exception:
             return "", ""
         return (probe_lines_for_prompt(results, lang),
                 render_probe_section(results, lang, dialect=dialect, sample_pct=pct))
@@ -520,7 +520,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
                     report = report.rstrip() + "\n\n" + probe_section
                 optimized = result.optimized_sql
                 history.log(sql, result.report, mode="llm", source="ui")
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return _err_md(exc, lang), hide, hide, hide
 
         dl_report = gr.update(value=_tmp_file("data_skew_report.md", report),
@@ -601,7 +601,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             label = (f"{str(r.get('timestamp', ''))[5:16]} · "
                      f"{r.get('dialect', '')} · {_verdict_mark(r)} · {snippet}")
             choices.append((label, i))  # dropdown labels are plain text
-        t = lambda k: dsk(lang, k)  # noqa: E731
+        t = lambda k: dsk(lang, k)
         lines = [
             f"| {t('dsk_h_time')} | {t('dsk_h_source')} | {t('dsk_h_dialect')} "
             f"| {t('dsk_h_mode')} | {t('dsk_h_findings')} | {t('dsk_h_sql')} |",
@@ -648,7 +648,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
     def do_preset_load(lang: str):
         try:
             names = [p.get("name", "") for p in _presets_store().list()]
-        except Exception:  # noqa: BLE001 — never break the page over the store
+        except Exception:
             names = []
         names = [n for n in names if n]
         if not names:
@@ -667,7 +667,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             return no_change
         try:
             p = _presets_store().get_by_name(name)
-        except Exception:  # noqa: BLE001
+        except Exception:
             p = None
         if not p:
             return no_change
@@ -769,7 +769,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
     def _switch_lang(choice: str, report_cur: str, conn_cur: str,
                      hist_cur: str = ""):
         lg = "zh" if choice == "中文" else "en"
-        t = lambda k: dsk(lg, k)  # noqa: E731
+        t = lambda k: dsk(lg, k)
         return (
             lg,                                                    # lang_state
             f"{t('dsk_title')}\n{t('dsk_subtitle')}",              # title_md

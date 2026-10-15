@@ -60,7 +60,7 @@ _t = make_page_t(_I18N)
 
 def render_dag_check_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -99,7 +99,7 @@ def render_dag_check_page(app: gr.Blocks) -> None:
         try:
             report = check_sql_dir(dir_text.strip(), dialect=dialect,
                                    seatunnel_dir=st_dir)
-        except Exception as exc:  # noqa: BLE001 — check must never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
         return render_markdown(report, lang)
 

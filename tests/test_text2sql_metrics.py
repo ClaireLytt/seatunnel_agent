@@ -250,11 +250,11 @@ def test_additive_sql_shape(metric_store, schema_store) -> None:
 
 
 def test_additive_sql_deterministic(metric_store, schema_store) -> None:
-    kw = dict(
-        dimensions=["channel", "province"],
-        time_range=TimeRange(start=date(2026, 3, 1), end=date(2026, 3, 7)),
-        extra_filters=["channel = 'app'"],
-    )
+    kw = {
+        "dimensions": ["channel", "province"],
+        "time_range": TimeRange(start=date(2026, 3, 1), end=date(2026, 3, 7)),
+        "extra_filters": ["channel = 'app'"],
+    }
     sqls = {_build(metric_store, schema_store, "gmv", **kw) for _ in range(10)}
     assert len(sqls) == 1
     sql = sqls.pop()
@@ -307,9 +307,9 @@ def test_ratio_dim_must_be_shared(metric_store, schema_store) -> None:
 
 def test_generated_sql_passes_validator(metric_store, schema_store) -> None:
     for name, kw in (
-        ("gmv", dict(dimensions=["channel"], max_partition="20260320")),
-        ("refund_rate", dict(dimensions=["channel"], max_partition="20260320")),
-        ("refund_rate", dict(max_partition="20260320")),
+        ("gmv", {"dimensions": ["channel"], "max_partition": "20260320"}),
+        ("refund_rate", {"dimensions": ["channel"], "max_partition": "20260320"}),
+        ("refund_rate", {"max_partition": "20260320"}),
     ):
         sql = _build(metric_store, schema_store, name, **kw)
         result = validate_sql(sql, schema_store)

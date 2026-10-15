@@ -44,7 +44,7 @@ def resolve_sqlglot_dialect(dialect: str | None) -> str:
         try:
             if sqlglot.Dialect.get(name) is None:
                 return "hive"
-        except Exception:  # noqa: BLE001 — old sqlglot without Dialect.get
+        except Exception:
             return "hive"
     return name
 
@@ -99,7 +99,7 @@ def extract_column_edges(
     read = resolve_sqlglot_dialect(dialect)
     try:
         tree = sqlglot.parse_one(statement, read=read)
-    except Exception:  # noqa: BLE001 — any parse failure means fallback
+    except Exception:
         return None
 
     selects = _top_selects(tree)

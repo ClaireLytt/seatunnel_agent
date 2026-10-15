@@ -351,7 +351,7 @@ class TestCoverage:
         assert counts["missing"] <= 8
         # beyond-checklist extras never collide with checklist ids
         checklist_ids = {r.item_id.upper() for r in cov.rows}
-        assert not (set(x.upper() for x in cov.extra_case_ids) & checklist_ids)
+        assert not ({x.upper() for x in cov.extra_case_ids} & checklist_ids)
         assert "SR1" in cov.extra_case_ids       # sanity: SR group is extra
 
     def test_absent_checklist_returns_none(self, tmp_path):

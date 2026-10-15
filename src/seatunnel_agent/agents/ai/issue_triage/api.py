@@ -52,7 +52,7 @@ def run(req: TriageRequest) -> TriageResponse:
     try:
         result = triage(req.title, req.body, settings, issues=req.issues,
                         repo_dir=None)
-    except Exception as exc:  # noqa: BLE001 — provider failures
+    except Exception as exc:
         raise HTTPException(status_code=502,
                             detail=f"{type(exc).__name__}: {exc}")
     return TriageResponse(

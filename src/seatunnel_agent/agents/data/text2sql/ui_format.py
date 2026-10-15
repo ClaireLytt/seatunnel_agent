@@ -142,7 +142,7 @@ def _format_tool_result(name: str, raw: str, lang: str = "en",
                 if card:
                     lines.append("")
                     lines.append(card)
-            except Exception:  # noqa: BLE001 — the review card is optional
+            except Exception:
                 pass
         return "\n".join(lines)
 

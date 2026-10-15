@@ -30,7 +30,7 @@ def _fill_gaps(
     means nothing happened); ``fill='ffill'`` carries the last value
     forward (ratio metrics: 0 would be a fake caliber).
     """
-    by_day = {d: v for d, v in points}
+    by_day = dict(points)
     days = sorted(by_day)
     out: list[tuple[date, float]] = []
     # seed forward-fill from the first observed value so a leading missing
@@ -87,7 +87,7 @@ def forecast_series(
 
     # additive weekday offsets from the detrended residuals
     seasonal = n >= SEASONALITY_MIN_POINTS
-    offsets = {wd: 0.0 for wd in range(7)}
+    offsets = dict.fromkeys(range(7), 0.0)
     if seasonal:
         buckets: dict[int, list[float]] = {wd: [] for wd in range(7)}
         for i, (d, v) in enumerate(series):

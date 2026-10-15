@@ -49,7 +49,7 @@ class PlaywrightSession:
                        lambda: self._pw.stop()):
             try:
                 closer()
-            except Exception:  # noqa: BLE001 — teardown is best-effort
+            except Exception:
                 pass
 
     # ── agent primitives ────────────────────────────────────────────────
@@ -62,7 +62,7 @@ class PlaywrightSession:
             try:
                 if not el.is_visible():
                     continue
-            except Exception:  # noqa: BLE001 — detached node
+            except Exception:
                 continue
             idx = len(self._handles)
             self._handles.append(el)

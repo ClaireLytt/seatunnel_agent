@@ -27,7 +27,7 @@ def download_noto_font(timeout: int = _FONT_DOWNLOAD_TIMEOUT_S) -> Path | None:
     try:
         FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         import urllib.request
-        resp = urllib.request.urlopen(NOTO_SANS_SC_URL, timeout=timeout)  # noqa: S310
+        resp = urllib.request.urlopen(NOTO_SANS_SC_URL, timeout=timeout)
         with open(NOTO_FONT_PATH, "wb") as f:
             f.write(resp.read())
         return NOTO_FONT_PATH if NOTO_FONT_PATH.is_file() else None

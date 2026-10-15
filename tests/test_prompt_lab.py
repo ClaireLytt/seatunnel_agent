@@ -98,7 +98,7 @@ class TestRunMatrix:
         assert result.cells[2].model == "claude-sonnet-5"  # from env
 
     def test_error_isolated_per_cell(self, profiles):
-        factory = lambda s: FakeClient(s, fail_for={"moonshot-v1-8k"})  # noqa: E731
+        factory = lambda s: FakeClient(s, fail_for={"moonshot-v1-8k"})
         result = run_matrix("hi", profiles=["kimi", "claude"],
                             client_factory=factory)
         assert result.cells[0].error and "boom" in result.cells[0].error
@@ -106,7 +106,7 @@ class TestRunMatrix:
         assert not result.all_failed
 
     def test_all_failed(self, profiles):
-        factory = lambda s: FakeClient(  # noqa: E731
+        factory = lambda s: FakeClient(
             s, fail_for={"moonshot-v1-8k", "claude-opus-5"})
         result = run_matrix("hi", profiles=["kimi", "claude"],
                             client_factory=factory)
@@ -172,7 +172,7 @@ class TestCli:
         assert "moonshot-v1-8k" in r.output
 
     def test_promptlab_all_failed_exit_1(self, profiles, monkeypatch):
-        factory = lambda s: FakeClient(  # noqa: E731
+        factory = lambda s: FakeClient(
             s, fail_for={"moonshot-v1-8k"})
         monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", factory)
         r = CliRunner().invoke(cli_entry(), ["promptlab", "x", "-p", "kimi"])

@@ -52,7 +52,7 @@ def diagnose(cr: CaseResult, page_digest: str, app_log_tail: str,
         if not cat:
             return ""
         return f"[归因: {cat}] {summary}"
-    except Exception:  # noqa: BLE001
+    except Exception:
         return ""
 
 
@@ -86,7 +86,7 @@ def suggest_locator_struct(missing_name: str, page_digest: str,
         if not label or label not in page_digest:
             return None
         return label, str(obj.get("hint", ""))[:120]
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 

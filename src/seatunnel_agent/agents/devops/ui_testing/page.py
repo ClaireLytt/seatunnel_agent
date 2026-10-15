@@ -701,7 +701,7 @@ class DCPage:
                     "() => document.body && "
                     "document.body.innerText.trim().length > 0",
                     timeout=10_000)
-            except Exception:  # noqa: BLE001 — capture whatever is there
+            except Exception:
                 pass
             pop.wait_for_timeout(2_000)    # document.write / bridge settle
             text = pop.evaluate(

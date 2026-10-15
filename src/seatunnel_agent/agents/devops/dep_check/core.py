@@ -154,7 +154,7 @@ def _spec_satisfied(version: str, spec: str) -> bool | None:
         from packaging.specifiers import SpecifierSet
         from packaging.version import Version
         return Version(version) in SpecifierSet(spec)
-    except Exception:  # noqa: BLE001 — packaging absent or exotic spec
+    except Exception:
         return None
 
 

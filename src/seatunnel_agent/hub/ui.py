@@ -19,9 +19,9 @@ from seatunnel_agent.agents.data.seatunnel.ui import (  # noqa: F401 — re-expo
     _template_to_prompt,
 )
 from seatunnel_agent.hub.css import (
-    _CUSTOM_CSS,  # noqa: F401 — re-exported for back-compat
+    _CUSTOM_CSS,
 )
-from seatunnel_agent.hub.pages import (  # noqa: F401 — re-exported for back-compat
+from seatunnel_agent.hub.pages import (
     _build_ai_hub_html,
     _build_data_hub_html,
     _build_devops_hub_html,

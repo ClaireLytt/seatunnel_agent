@@ -93,7 +93,7 @@ def answer(question: str, index: BM25Index, k: int = 4, lang: str = "zh",
                     for i, (c, _s) in enumerate(hits, 1))
                 md = (f"{_I18N[lang]['title']}\n\n{reply}\n\n"
                       f"{_I18N[lang]['sources']}\n{cite}")
-        except Exception as exc:  # noqa: BLE001 — synthesis is advisory
+        except Exception as exc:
             md = (_I18N[lang]["llm_failed"].format(
                 err=f"{type(exc).__name__}: {exc}") + "\n\n" + md)
     return {"markdown": md,

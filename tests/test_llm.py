@@ -201,8 +201,7 @@ class TestCallOpenAI:
     def _make_client(self):
         mock_openai = MagicMock()
         with patch.dict("sys.modules", {"openai": mock_openai}):
-            client = LLMClient(OPENAI_SETTINGS)
-        return client
+            return LLMClient(OPENAI_SETTINGS)
 
     def test_plain_response(self):
         client = self._make_client()
@@ -271,8 +270,7 @@ class TestConvertMessage:
     def _make_client(self):
         mock_openai = MagicMock()
         with patch.dict("sys.modules", {"openai": mock_openai}):
-            client = LLMClient(OPENAI_SETTINGS)
-        return client
+            return LLMClient(OPENAI_SETTINGS)
 
     def test_user_message(self):
         client = self._make_client()

@@ -92,7 +92,7 @@ def format_text(sql: str, dialect: str = "hive",
             for select in tree.find_all(exp.Select):
                 if any(isinstance(e, exp.Star) for e in select.expressions):
                     result.select_star += 1
-        except Exception as exc:  # noqa: BLE001 — keep the statement verbatim
+        except Exception as exc:
             result.failed += 1
             result.parse_errors.append(_clean_error(exc))
             pieces.append("-- sqlfmt: kept verbatim (render failed)\n"

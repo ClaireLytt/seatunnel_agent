@@ -84,7 +84,7 @@ def _src_choices(lang: str) -> list[tuple[str, str]]:
 
 def render_sql_transpile_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
     result_state = gr.State(None)  # TranspileResult | None (for LLM advice)
@@ -169,7 +169,7 @@ def render_sql_transpile_page(app: gr.Blocks) -> None:
         try:
             return generate_advice(settings, result, lang) \
                 or _t(lang, "advice_none")
-        except Exception as exc:  # noqa: BLE001 — advice must never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def switch_lang(choice: str):

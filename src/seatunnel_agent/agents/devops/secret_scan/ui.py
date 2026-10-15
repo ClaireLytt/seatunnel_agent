@@ -68,7 +68,7 @@ _t = make_page_t(_I18N)
 
 def render_secret_scan_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -100,7 +100,7 @@ def render_secret_scan_page(app: gr.Blocks) -> None:
         try:
             result = ScanResult(findings=scan_text(text), files_scanned=1)
             return render_markdown(result, lang)
-        except Exception as exc:  # noqa: BLE001 — never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def do_scan_dir(dir_text: str, lang: str):
@@ -112,7 +112,7 @@ def render_secret_scan_page(app: gr.Blocks) -> None:
             return _t(lang, "bad_dir") + dir_text
         try:
             return render_markdown(scan_dir(dir_text.strip()), lang)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def switch_lang(choice: str):

@@ -84,7 +84,7 @@ def _audited(name: str, fn: Callable[..., str]) -> Callable[..., str]:
         ok = True
         try:
             out = fn(*args, **kwargs)
-        except Exception as exc:  # noqa: BLE001 — errors are strings, always
+        except Exception as exc:
             ok = False
             out = f"内部错误 / internal error: {type(exc).__name__}: {exc}"
         summary = ", ".join(
@@ -178,7 +178,7 @@ def build_tool_functions(
             )
             try:
                 store = SchemaStore(parse_ddl(ddl))
-            except Exception as exc:  # noqa: BLE001 — surface as text
+            except Exception as exc:
                 return f"DDL 解析失败 / DDL parse failed: {exc}"
         rep = static_review_report(sql, normalize_dialect(dialect), store=store)
         return render_report(rep, lang=_lang(lang))
@@ -197,7 +197,7 @@ def build_tool_functions(
         try:
             result = translate(sql, dst=to_dialect,
                                src=(from_dialect or None))
-        except Exception as exc:  # noqa: BLE001 — unknown dialect etc.
+        except Exception as exc:
             return f"翻译失败 / translation failed: {exc}"
         return render_markdown(result, lang=_lang(lang))
 
@@ -314,12 +314,12 @@ def build_tool_functions(
                 return _executors[key], ""
         try:
             preset = _store().get_by_name(key)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return None, f"读取连接预设失败 / preset store error: {exc}"
         if not preset:
             try:
                 names = [p.get("name", "") for p in _store().list()]
-            except Exception:  # noqa: BLE001
+            except Exception:
                 names = []
             hint = f"；已保存: {', '.join(n for n in names if n)}" if names else ""
             return None, f"未找到连接 '{key}' / connection not found{hint}"
@@ -340,7 +340,7 @@ def build_tool_functions(
             ok, info = executor.test_connection()
             if not ok:
                 return None, f"连接失败 / connection failed: {info}"
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return None, f"连接失败 / connection failed: {exc}"
         with _lock:
             _executors[key] = executor
@@ -351,7 +351,7 @@ def build_tool_functions(
         后续工具用返回的连接名引用数据库，凭据不经过模型上下文。"""
         try:
             presets = _store().list()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return f"读取连接预设失败 / preset store error: {exc}"
         if _allow is not None:
             presets = [p for p in presets if p.get("name") in _allow]
@@ -372,7 +372,7 @@ def build_tool_functions(
             return err
         try:
             names = _db(connection, executor.show_tables)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _invalidate(connection)
             return f"查询失败 / query failed: {exc}"
         kw = (keyword or "").strip().lower()
@@ -391,7 +391,7 @@ def build_tool_functions(
             return f"非法表名 / invalid table name: {table!r}"
         try:
             schema = _db(connection, executor.describe_table, table.strip())
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _invalidate(connection)
             return f"查询失败 / query failed: {exc}"
         lines = [f"**{schema.full_name}**"
@@ -428,7 +428,7 @@ def build_tool_functions(
             query = f"SELECT * FROM (\n{query}\n) mcp_q LIMIT {n}"
         try:
             res = _db(connection, executor.run, query, max_rows=n)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _invalidate(connection)
             return f"查询失败 / query failed: {exc}"
         if not res.rows:
@@ -456,7 +456,7 @@ def build_tool_functions(
                 q += f" WHERE {where.strip()}"
             try:
                 res = _db(conn, executor.run, q, max_rows=1)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _invalidate(conn)
                 return f"[{conn}] 查询失败 / query failed: {exc}"
             counts.append(int(res.rows[0][0] or 0))
@@ -479,7 +479,7 @@ def build_tool_functions(
                 return err
             try:
                 schemas.append(_db(conn, executor.describe_table, table))
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _invalidate(conn)
                 return f"[{conn}] 查询失败 / query failed: {exc}"
         sa, sb = schemas
@@ -530,7 +530,7 @@ def build_tool_functions(
         try:
             results = _db(connection, run_probes, executor, targets,
                           ds_type=ds, sample_pct=pct)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _invalidate(connection)
             return f"探查失败 / probing failed: {exc}"
         from seatunnel_agent.agents.data.data_skew.history import default_history
@@ -572,7 +572,7 @@ def build_tool_functions(
         except SplitKeyError as exc:
             from seatunnel_agent.agents.data.data_skew.i18n import dsk
             return dsk(lg, exc.key).format(err=exc.arg)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _invalidate(connection)
             return f"体检失败 / split-key check failed: {exc}"
         history = default_history()
@@ -589,7 +589,7 @@ def build_tool_functions(
         try:
             snk = _db(connection, sink_key_section, executor, conf,
                       ds_type=ds, sample_pct=pct, lang=lg)
-        except Exception:  # noqa: BLE001 — additive check stays best-effort
+        except Exception:
             snk = ""
         return md + ("\n" + snk if snk else "")
 
@@ -637,7 +637,7 @@ def build_tool_functions(
                 return err
             try:
                 schema = _db(conn, executor.describe_table, table)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _invalidate(conn)
                 return f"[{conn}] 查询失败 / query failed: {exc}"
             sides.append((executor, table, schema))
@@ -653,7 +653,7 @@ def build_tool_functions(
                                    where=(where or "").strip())
             try:
                 rows.append(_db(conn_name, ex.run, q, max_rows=64).rows)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _invalidate(conn_name)
                 return f"[{table}] 校验和查询失败 / checksum query failed: {exc}"
         result = compare_checksums(ta, tbx, rows[0], rows[1])
@@ -821,7 +821,7 @@ def _register_resources(server, functions: dict[str, Callable[..., str]]) -> Non
     for uri, fn in resources:
         try:
             server.resource(uri)(fn)
-        except Exception:  # noqa: BLE001 — resources are optional polish
+        except Exception:
             return
 
 
@@ -863,5 +863,5 @@ def _register_prompts(server) -> None:
     for fn in (skew_tuning_workflow, migration_acceptance_workflow):
         try:
             server.prompt()(fn)
-        except Exception:  # noqa: BLE001 — prompts are optional polish
+        except Exception:
             return

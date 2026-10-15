@@ -66,7 +66,7 @@ _t = make_page_t(_I18N)
 
 def render_config_lint_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -98,7 +98,7 @@ def render_config_lint_page(app: gr.Blocks) -> None:
             return _t(lang, "empty_conf")
         try:
             return render_markdown(lint_text(conf_text), lang)
-        except Exception as exc:  # noqa: BLE001 — lint must never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def do_lint_dir(dir_text: str, lang: str):
@@ -110,7 +110,7 @@ def render_config_lint_page(app: gr.Blocks) -> None:
             return _t(lang, "bad_dir") + dir_text
         try:
             return render_batch_markdown(lint_dir(dir_text.strip()), lang)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def switch_lang(choice: str):

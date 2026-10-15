@@ -312,8 +312,7 @@ class TestValidateColumns:
 class TestPartitionEnforcement:
     @pytest.fixture()
     def runtime(self, store, tmp_path):
-        rt = Text2SQLRuntime(store=store, logger=QueryLogger(log_dir=tmp_path))
-        return rt
+        return Text2SQLRuntime(store=store, logger=QueryLogger(log_dir=tmp_path))
 
     def test_rejects_missing_partition_filter(self, runtime):
         result_str = execute_text2sql_tool(

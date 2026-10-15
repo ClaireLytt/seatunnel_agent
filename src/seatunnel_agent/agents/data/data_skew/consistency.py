@@ -122,9 +122,9 @@ def check_consistency(
                     r.agg_compared = True
                     r.agg_match = fp_a == fp_b
                     r.agg_cols = len(cols)
-            except Exception:  # noqa: BLE001 — count verdict already stands
+            except Exception:
                 pass
-    except Exception as exc:  # noqa: BLE001 — surface in the report section
+    except Exception as exc:
         r.error = str(exc)
     return r
 

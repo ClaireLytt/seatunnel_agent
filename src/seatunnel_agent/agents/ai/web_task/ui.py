@@ -54,7 +54,7 @@ _t = make_page_t(_I18N)
 
 def render_web_task_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -99,7 +99,7 @@ def render_web_task_page(app: gr.Blocks) -> None:
                 outcome["result"] = run_task(
                     goal.strip(), url.strip(), load_settings(),
                     max_steps=int(max_steps), on_step=events.put)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 outcome["error"] = f"{type(exc).__name__}: {exc}"
             events.put(None)
 

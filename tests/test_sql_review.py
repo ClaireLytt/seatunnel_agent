@@ -1940,7 +1940,7 @@ def test_api_env_db_defaults(monkeypatch):
 # Text2SQL review harness
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.sql_review.harness import (  # noqa: E402
+from seatunnel_agent.agents.data.sql_review.harness import (
     HarnessResult,
     iter_log_records,
     render_harness_report,
@@ -2066,11 +2066,11 @@ def test_render_harness_report_all_clean():
 # Harness: LLM cache + baseline diff; report line links; rlog sql hash
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.sql_review.harness import (  # noqa: E402
+from seatunnel_agent.agents.data.sql_review.harness import (
     diff_against_baseline,
     load_llm_cache,
 )
-from seatunnel_agent.agents.data.sql_review.rlog import sql_hash  # noqa: E402
+from seatunnel_agent.agents.data.sql_review.rlog import sql_hash
 
 
 def _write_review_log(tmp_path, records):
@@ -2668,7 +2668,7 @@ def test_schema_ref_en_templates_render():
 # EXPLAIN verification (OLTP dialects)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.sql_review.explain import (  # noqa: E402
+from seatunnel_agent.agents.data.sql_review.explain import (
     explain_full_scan_tables,
     verify_with_explain,
 )
@@ -2785,7 +2785,7 @@ def test_explain_full_scan_en_template():
 # LLM review cache (live path)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.sql_review.cache import (  # noqa: E402
+from seatunnel_agent.agents.data.sql_review.cache import (
     ReviewCache,
     cache_enabled,
     config_fingerprint,

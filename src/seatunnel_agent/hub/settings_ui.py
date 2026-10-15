@@ -207,7 +207,7 @@ def _presets_store():
 def _conn_names() -> list[str]:
     try:
         return [p.get("name", "") for p in _presets_store().list()]
-    except Exception:  # noqa: BLE001 — never break the page over the store
+    except Exception:
         return []
 
 
@@ -216,11 +216,11 @@ def _conn_summary(lang: str) -> str:
     zh = lang == "zh"
     try:
         presets = _presets_store().list()
-    except Exception:  # noqa: BLE001
+    except Exception:
         presets = []
     if not presets:
         return "暂无已保存的连接" if zh else "No saved connections"
-    esc = lambda s: str(s).replace("|", "\\|")  # noqa: E731 — table safety
+    esc = lambda s: str(s).replace("|", "\\|")
     rows = ["| " + ("名称 | 类型 | 地址 | 数据库 | 用户" if zh
                     else "Name | Type | Address | Database | User") + " |",
             "|---|---|---|---|---|"]
@@ -238,7 +238,7 @@ def _usage_markdown(lang: str) -> str:
     from seatunnel_agent.common.llm_usage import format_markdown
     try:
         return format_markdown(lang)
-    except Exception:  # noqa: BLE001 — stats must never break the page
+    except Exception:
         return ""
 
 
@@ -437,7 +437,7 @@ def render_settings_page(app: gr.Blocks) -> None:
             ms = int((time.time() - t0) * 1000)
             reply = (resp.reply_text or "").strip().replace("\n", " ")[:60]
             return f"✅ {_t(lang, 'test_ok')} · `{s.model_name}` · {ms}ms · {reply}"
-        except Exception as e:  # noqa: BLE001 — every failure maps to a reason
+        except Exception as e:
             return f"❌ {_t(lang, 'test_fail')}: {_map_error(e, key, lang)}"
 
     def _do_reset(lang):

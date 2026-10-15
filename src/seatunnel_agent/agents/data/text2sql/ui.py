@@ -295,7 +295,7 @@ def render_history_page(app=None) -> None:
         elapsed = rec.get("exec_time_ms")
         badge = "✅" if status == "success" else "❌" if status == "error" else "⏳"
         elapsed_str = f"{elapsed}ms" if elapsed is not None else ""
-        html = (
+        return (
             f'<div style="border:1px solid var(--border-color-primary, #e5e7eb);'
             f'border-radius:8px;padding:12px;margin:8px 0;'
             f'background:var(--background-fill-secondary, #f9fafb);font-size:13px;">'
@@ -309,7 +309,6 @@ def render_history_page(app=None) -> None:
             f'{sql}</pre>'
             f'</div>'
         )
-        return html
 
     def _on_select(evt: gr.SelectData, current: list):
         row = evt.index[0]
@@ -1786,7 +1785,7 @@ def render_text2sql_page(app=None) -> None:
             status_upd,
         )
 
-    submit_io = dict(fn=_handle_submit, inputs=[user_input, chatbot, lang_state, chart_type_radio], outputs=[chatbot, chart_plot])
+    submit_io = {"fn": _handle_submit, "inputs": [user_input, chatbot, lang_state, chart_type_radio], "outputs": [chatbot, chart_plot]}
     _post_outputs = [user_input, send_btn, stop_btn, page_nav_row, page_info_md, page_state, page_table_md, status_box]
     send_btn.click(fn=_show_stop, outputs=[send_btn, stop_btn]) \
         .then(**submit_io) \

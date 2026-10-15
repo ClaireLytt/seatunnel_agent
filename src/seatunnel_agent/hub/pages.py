@@ -44,7 +44,7 @@ def _hub_health_html() -> str:
         agents = (f'<span class="st-hub-ok"><span class="st-dot st-dot-ok">'
                   f'</span>{n} <span data-en="agents ready" '
                   f'data-zh="个能力就绪">agents ready</span></span>')
-    except Exception:  # noqa: BLE001 — the strip must never break the hub
+    except Exception:
         agents = ""
     import datetime as _dt
     today = _dt.date.today().strftime("%A, %B %d, %Y").upper()
@@ -72,7 +72,7 @@ def _hub_shell(header: str, body: str, back: bool = False) -> str:
     try:
         from importlib.metadata import version
         ver = f'<span class="st-hub-ver">v{version("seatunnel-agent")}</span>'
-    except Exception:  # noqa: BLE001 — version tag is cosmetic
+    except Exception:
         ver = ""
     left = _HUB_BACK_LINK if back else (
         f'<div class="st-hub-brand">SeaTunnel Agent{ver}</div>')
@@ -85,7 +85,7 @@ def _hub_shell(header: str, body: str, back: bool = False) -> str:
     try:  # same count the health strip shows — never let it drift
         from seatunnel_agent.hub.registry import discover
         mark = f'№ {len(_card_blocks()) + len(discover())} agents'
-    except Exception:  # noqa: BLE001 — the colophon is cosmetic
+    except Exception:
         mark = "SeaTunnel Agent"
     footer = (f'<div class="st-hub-footer"><span>SeaTunnel Agent · '
               f'<a href="{_DOCS_URL}" target="_blank" rel="noopener">docs ↗</a>'

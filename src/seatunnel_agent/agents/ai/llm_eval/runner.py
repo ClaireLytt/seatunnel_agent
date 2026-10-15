@@ -109,7 +109,7 @@ def run_suite(suite: Suite,
         from seatunnel_agent.common import (
             llm,  # resolved at call time so tests can monkeypatch
         )
-        client_factory = lambda s: llm.LLMClient(s, agent="llm_eval")  # noqa: E731
+        client_factory = lambda s: llm.LLMClient(s, agent="llm_eval")
     if settings is None:
         from seatunnel_agent.common.config import load_settings
         settings = load_settings()
@@ -136,7 +136,7 @@ def run_suite(suite: Suite,
                 cr.checks.append(CheckResult(
                     type=check.type, value=check.value,
                     passed=passed, detail=detail))
-        except Exception as exc:  # noqa: BLE001 — isolate the case
+        except Exception as exc:
             cr.error = f"{type(exc).__name__}: {exc}"
         result.cases.append(cr)
     result.elapsed_ms = int((time.time() - start) * 1000)
@@ -158,6 +158,6 @@ def _run_judge(check, output: str, settings: Settings,
         return CheckResult(type="judge", value=check.value, passed=passed,
                            detail=text.splitlines()[0] if text else "(empty)",
                            advisory=True)
-    except Exception as exc:  # noqa: BLE001 — judge is advisory
+    except Exception as exc:
         return CheckResult(type="judge", value=check.value, passed=False,
                            detail=f"judge error: {exc}", advisory=True)

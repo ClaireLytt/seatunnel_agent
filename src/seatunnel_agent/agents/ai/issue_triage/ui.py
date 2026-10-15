@@ -50,7 +50,7 @@ _t = make_page_t(_I18N)
 
 def render_issue_triage_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -85,7 +85,7 @@ def render_issue_triage_page(app: gr.Blocks) -> None:
             result = triage(title, body, load_settings(), issues=issues,
                             repo_dir=".")
             return render_markdown(result, lang)
-        except Exception as exc:  # noqa: BLE001 — never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def switch_lang(choice: str):

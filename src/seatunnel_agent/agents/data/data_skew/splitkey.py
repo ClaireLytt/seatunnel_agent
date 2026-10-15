@@ -247,7 +247,7 @@ def _measure_source(executor, spec: SourceSpec, ds_type: str,
             executor, spec.table, spec.partition_column, ds_type, sample_pct)
     try:
         names = candidate_columns(executor, spec.table, exclude=spec.partition_column)
-    except Exception:  # noqa: BLE001 — schema listing is best-effort
+    except Exception:
         names = []
     candidates = measure_columns(executor, spec.table, names, ds_type, sample_pct)
     return spec, configured, candidates
@@ -296,7 +296,7 @@ def sink_key_section(
             executor, conf_text, ds_type=ds_type, sample_pct=sample_pct)
         return render_sinkkey_section(results, src_table, lang,
                                       sample_pct=sample_pct)
-    except Exception:  # noqa: BLE001 — strictly additive to the main check
+    except Exception:
         return ""
 
 
@@ -449,7 +449,7 @@ def run_split_key_batch(
                 max_sources=max_sources)
         except SplitKeyError as exc:
             item.error_key, item.error_arg = exc.key, exc.arg
-        except Exception as exc:  # noqa: BLE001 — one broken file stays local
+        except Exception as exc:
             item.error_key, item.error_arg = "spk_parse_fail", str(exc)
         out.append(item)
     return out

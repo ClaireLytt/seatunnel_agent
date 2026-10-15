@@ -71,7 +71,7 @@ _t = make_page_t(_I18N)
 
 def render_pii_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -109,7 +109,7 @@ def render_pii_page(app: gr.Blocks) -> None:
             return _t(lang, "bad_dir") + dir_text
         try:
             report = scan_dir(dir_text.strip(), dialect=dialect)
-        except Exception as exc:  # noqa: BLE001 — scan must never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
         return render_markdown(report, lang)
 
@@ -119,7 +119,7 @@ def render_pii_page(app: gr.Blocks) -> None:
             return _t(lang, "empty_sql")
         try:
             report = scan_sql_text(sql_text, dialect=dialect)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
         return render_markdown(report, lang)
 

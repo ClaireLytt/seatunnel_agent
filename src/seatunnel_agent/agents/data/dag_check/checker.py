@@ -63,7 +63,7 @@ class DagReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = {level: 0 for level in SEVERITIES}
+        out = dict.fromkeys(SEVERITIES, 0)
         for f in self.findings:
             out[f.severity] += 1
         out["total"] = len(self.findings)
