@@ -508,8 +508,18 @@ def run_subscription(
 # ----------------------------------------------------------------------
 
 
+#: catch-up cap: after a stall (slow run_fn, host sleep) only this many of
+#: the most recent missed minutes are replayed, so a long sleep never
+#: triggers a burst of stale fires.
+_MAX_CATCHUP_MINUTES = 10
+
+
 class Scheduler:
-    """Daemon-thread cron loop. One fire per subscription per matched minute."""
+    """Daemon-thread cron loop. One fire per subscription per matched minute.
+
+    A slow ``run_fn`` can push the next tick past a whole minute; missed
+    minutes (up to ``_MAX_CATCHUP_MINUTES``) are replayed on the next check
+    so same-minute crons of other subscriptions are not silently dropped."""
 
     def __init__(
         self,
@@ -521,35 +531,50 @@ class Scheduler:
         self.tick_seconds = tick_seconds
         self.run_fn = run_fn
         self._fired: dict[str, str] = {}  # sub_id -> "YYYY-mm-dd HH:MM" last fired
+        self._last_minute: datetime | None = None  # last minute already checked
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
     def check_once(self, now: datetime | None = None) -> list[str]:
         """Run every due subscription once; returns the ids that fired."""
         now = now or datetime.now()
-        minute_key = now.strftime("%Y-%m-%d %H:%M")
+        current = now.replace(second=0, microsecond=0)
+        minutes: list[datetime] = []
+        if self._last_minute is not None and self._last_minute < current:
+            m = self._last_minute + timedelta(minutes=1)
+            while m < current:
+                minutes.append(m)
+                m += timedelta(minutes=1)
+            minutes = minutes[-_MAX_CATCHUP_MINUTES:]
+        minutes.append(current)
+        if self._last_minute is None or current > self._last_minute:
+            self._last_minute = current
+
         fired: list[str] = []
-        for sub in self.store.list():
-            if not sub.get("enabled", True):
-                continue
-            sub_id = sub.get("id", "")
-            try:
-                spec = parse_cron(sub.get("cron", ""))
-            except ValueError:
-                continue
-            if not spec.matches(now) or self._fired.get(sub_id) == minute_key:
-                continue
-            self._fired[sub_id] = minute_key
-            fired.append(sub_id)
-            try:
-                outcome = self.run_fn(sub)
-                self.store.record_run(
-                    sub_id, outcome.get("status", "error"),
-                    outcome.get("error", ""),
-                )
-            except Exception as exc:  # run_fn contract says it never raises, but
-                logger.exception("Subscription %s failed", sub_id)
-                self.store.record_run(sub_id, "error", str(exc))
+        subs = self.store.list()
+        for minute in minutes:
+            minute_key = minute.strftime("%Y-%m-%d %H:%M")
+            for sub in subs:
+                if not sub.get("enabled", True):
+                    continue
+                sub_id = sub.get("id", "")
+                try:
+                    spec = parse_cron(sub.get("cron", ""))
+                except ValueError:
+                    continue
+                if not spec.matches(minute) or self._fired.get(sub_id) == minute_key:
+                    continue
+                self._fired[sub_id] = minute_key
+                fired.append(sub_id)
+                try:
+                    outcome = self.run_fn(sub)
+                    self.store.record_run(
+                        sub_id, outcome.get("status", "error"),
+                        outcome.get("error", ""),
+                    )
+                except Exception as exc:  # run_fn contract says it never raises, but
+                    logger.exception("Subscription %s failed", sub_id)
+                    self.store.record_run(sub_id, "error", str(exc))
         return fired
 
     def start(self) -> None:

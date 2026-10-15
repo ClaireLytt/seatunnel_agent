@@ -478,6 +478,33 @@ def test_scheduler_fires_once_per_minute(tmp_path) -> None:
     assert off_id not in runs
 
 
+def test_scheduler_catches_up_minutes_missed_by_slow_run(tmp_path) -> None:
+    """A slow run_fn can push the next tick past a whole minute; the cron
+    fire due in that skipped minute must be made up on the next check."""
+    store = SubscriptionStore(tmp_path / "subs.json")
+    slow = store.add(name="slow", cron="30 9 * * *", source_type="metric",
+                     metric="gmv")
+    missed = store.add(name="missed", cron="31 9 * * *", source_type="metric",
+                       metric="gmv")
+
+    runs: list[str] = []
+
+    def fake_run(sub):
+        runs.append(sub["id"])
+        return {"status": "success", "error": ""}
+
+    sched = Scheduler(store=store, run_fn=fake_run)
+    assert sched.check_once(datetime(2026, 3, 2, 9, 30, 10)) == [slow["id"]]
+    # the slow run stalled the loop: the next tick lands at 9:32, having
+    # never observed any 9:31 timestamp
+    fired = sched.check_once(datetime(2026, 3, 2, 9, 32, 10))
+    assert missed["id"] in fired, "9:31 cron silently dropped"
+    # the catch-up must not double-fire anything
+    assert runs.count(missed["id"]) == 1
+    assert runs.count(slow["id"]) == 1
+    assert sched.check_once(datetime(2026, 3, 2, 9, 32, 30)) == []
+
+
 def test_scheduler_survives_bad_cron(tmp_path) -> None:
     store = SubscriptionStore(tmp_path / "subs.json")
     entry = store.add(name="x", cron="0 9 * * *", source_type="metric", metric="gmv")
