@@ -16,7 +16,7 @@ from seatunnel_agent.doc_qa import (
     get_index,
     tokenize,
 )
-from seatunnel_agent.llm import LLMResponse
+from seatunnel_agent.common.llm import LLMResponse
 
 
 class TestTokenize:

@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from .detector import split_statements
 from .i18n import dsk
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 MAX_COMPARE_ROWS = 500
 

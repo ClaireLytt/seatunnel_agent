@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..utils import read_json_list, write_json_atomic
+from ..common.utils import read_json_list, write_json_atomic
 
 
 _DEFAULT_PATH = Path.home() / ".seatunnel-agent" / "dc_templates.json"

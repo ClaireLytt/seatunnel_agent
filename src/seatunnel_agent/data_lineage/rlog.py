@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..jsonl_log import JsonlLog
+from ..common.jsonl_log import JsonlLog
 
 _MAX_QUERY_CHARS = 300  # keep one JSONL line readable even for pasted SQL
 

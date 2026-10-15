@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 
 
-from seatunnel_agent.config import Settings
+from seatunnel_agent.common.config import Settings
 from seatunnel_agent.tools import execute_tool, _parse_job_metrics
 
 import tempfile as _tempfile

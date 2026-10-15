@@ -7,7 +7,7 @@ import gradio as gr
 
 from .doc_qa import answer, get_index
 from .doc_qa.answer import normalize_lang
-from .page_scaffold import make_page_t, scroll_marker, title_row
+from .common.page_scaffold import make_page_t, scroll_marker, title_row
 
 _I18N = {
     "en": {
@@ -90,7 +90,7 @@ def render_doc_qa_page(app: gr.Blocks) -> None:
     q_box.submit(do_ask, inputs=[q_box, llm_cb, lang_state],
                  outputs=[report_md])
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 

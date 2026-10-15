@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from .i18n import finding_message, tp
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .linter import LintFinding, LintResult
 
 _LEVEL_MARK = {"error": "⛔", "warn": "⚠️", "info": "ℹ️"}

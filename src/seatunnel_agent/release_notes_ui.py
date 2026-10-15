@@ -19,7 +19,7 @@ from .release_notes import (
     render_markdown,
 )
 from .release_notes.report import normalize_lang
-from .page_scaffold import make_page_t, scroll_marker, title_row
+from .common.page_scaffold import make_page_t, scroll_marker, title_row
 
 _I18N = {
     "en": {
@@ -123,7 +123,7 @@ def render_release_notes_page(app: gr.Blocks) -> None:
                   inputs=[log_box, version_box, polish_cb, lang_state],
                   outputs=[report_md])
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 

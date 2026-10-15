@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from .migrator import BatchResult, Issue, MigrateResult
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 _MSG = {
     "zh": {

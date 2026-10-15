@@ -257,7 +257,7 @@ def render_uitest_page(app: gr.Blocks | None = None) -> None:
             gr.update(value=t("editor_save")),
         )
 
-    from ..lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from ..common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     # Language follows the hub's choice (st-lang cookie), applied on load.
     if app is not None:

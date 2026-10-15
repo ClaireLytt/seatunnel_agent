@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from ..agent_core import Step, ToolLoopAgent
-from ..config import Settings
+from ..common.config import Settings
 
 _SYSTEM = """\
 You are an issue-triage agent for a software repository.

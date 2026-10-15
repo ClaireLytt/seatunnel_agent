@@ -15,10 +15,10 @@ from typing import Any
 
 import gradio as gr
 
-from .config import Settings, env_float, load_settings
+from .common.config import Settings, env_float, load_settings
 from .agent import SeaTunnelAgent
 from .hub_pages import _DOCS_URL
-from .history import (
+from .common.history import (
     Session, delete_session, extract_title, list_sessions,
     load_session, new_session_id, rename_session, save_session,
 )
@@ -654,7 +654,7 @@ def _save_current_session(
         session_id = new_session_id()
     agent = agent_holder.get("agent")
     agent_msgs = agent.messages if agent else []
-    from .history import now_iso
+    from .common.history import now_iso
     title = extract_title(chat_history)
     agent_ctx = agent.context if agent else {}
     existing = load_session(session_id)
@@ -770,7 +770,7 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
 
     def _load_settings_safe(lang):
         try:
-            from . import settings_store
+            from .common import settings_store
             settings_holder["current"] = load_settings()
             settings_holder["version"] = settings_store.get_version()
             s = settings_holder["current"]
@@ -813,7 +813,7 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
             return
         # The /settings page changed the LLM config since Connect: reload and
         # drop the cached agent so the new key/model takes effect immediately.
-        from . import settings_store
+        from .common import settings_store
         if settings_holder.get("version") != settings_store.get_version():
             try:
                 settings_holder["current"] = load_settings()
@@ -1032,7 +1032,7 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
         return (lang, *_switch_lang(lang))
 
     # Language follows the hub's choice (st-lang cookie), applied on load.
-    from .lang_pref import STAMP_JS, choice_from_request
+    from .common.lang_pref import STAMP_JS, choice_from_request
     app.load(fn=None, js=STAMP_JS)
 
     def _lang_on_load(request: gr.Request):

@@ -12,7 +12,7 @@ from typing import Any, Callable
 
 from .core import BM25Index, Chunk
 
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 
 _I18N = {
@@ -79,8 +79,8 @@ def answer(question: str, index: BM25Index, k: int = 4, lang: str = "zh",
             for i, (c, _s) in enumerate(hits, 1))
         try:
             if client_factory is None:
-                from ..config import load_settings
-                from ..llm import LLMClient
+                from ..common.config import load_settings
+                from ..common.llm import LLMClient
                 client = LLMClient(load_settings(), agent="doc_qa")
             else:
                 client = client_factory(None)

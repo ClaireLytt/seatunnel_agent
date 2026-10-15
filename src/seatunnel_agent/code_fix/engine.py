@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from ..agent_core import Step, ToolLoopAgent
-from ..config import Settings
+from ..common.config import Settings
 from .tools import build_tools, run_pytest
 
 _SYSTEM = """\

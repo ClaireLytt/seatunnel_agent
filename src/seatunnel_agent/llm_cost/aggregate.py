@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Cost aggregation over the cross-agent LLM usage log.
 
-Reads the same JSONL that :mod:`seatunnel_agent.llm_usage` appends to
+Reads the same JSONL that :mod:`seatunnel_agent.common.llm_usage` appends to
 (``{ts, provider, model, input, output}``, plus an optional ``agent`` field),
 prices every call via :mod:`.pricing`, and rolls the result up per model /
 day / agent.  Deterministic — no DB, no LLM.
@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from ..llm_usage import usage_path
+from ..common.llm_usage import usage_path
 from .pricing import PriceEntry, cost_usd, merged_prices
 
 ANOMALY_FACTOR = 2.0

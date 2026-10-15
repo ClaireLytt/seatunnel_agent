@@ -6,9 +6,9 @@ from __future__ import annotations
 import gradio as gr
 
 from .doctor import diagnose
-from .page_scaffold import make_page_t, scroll_marker, title_row
-from .utils import normalize_lang as _norm
-from .config import llm_ready as _llm_ready
+from .common.page_scaffold import make_page_t, scroll_marker, title_row
+from .common.utils import normalize_lang as _norm
+from .common.config import llm_ready as _llm_ready
 
 
 _I18N = {
@@ -74,8 +74,8 @@ def render_doctor_page(app: gr.Blocks) -> None:
                 return diagnose(complaint, settings=None, lang=lang).reply
             from dotenv import load_dotenv
 
-            from . import settings_store
-            from .config import load_settings
+            from .common import settings_store
+            from .common.config import load_settings
             load_dotenv()
             settings_store.apply_to_env()
             return diagnose(complaint, load_settings(), lang=lang).reply
@@ -100,7 +100,7 @@ def render_doctor_page(app: gr.Blocks) -> None:
                   outputs=[report_md])
     checkup_btn.click(do_checkup, inputs=[lang_state], outputs=[report_md])
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 

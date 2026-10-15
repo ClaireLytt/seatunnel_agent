@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .i18n import dsk
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 # a max/median ratio only counts when the max is worth caring about
 MIN_TASKS = 3

@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from seatunnel_agent.config import Settings
-from seatunnel_agent.llm import LLMResponse, ToolCall
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
 from seatunnel_agent.web_task import run_task
 from seatunnel_agent.web_task.session import _origin
 

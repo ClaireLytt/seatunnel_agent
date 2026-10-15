@@ -7,7 +7,7 @@ import os
 
 import pytest
 
-from seatunnel_agent import settings_store
+from seatunnel_agent.common import settings_store
 from seatunnel_agent.settings_ui import _map_error, _validate
 
 

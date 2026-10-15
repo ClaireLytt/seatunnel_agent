@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..jsonl_log import JsonlLog
+from ..common.jsonl_log import JsonlLog
 
 _MAX_TEXT = 8000
 

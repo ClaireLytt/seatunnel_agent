@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from .i18n import tp
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 
 def _usd(v: float) -> str:

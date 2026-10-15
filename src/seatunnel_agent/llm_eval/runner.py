@@ -12,7 +12,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from ..config import Settings
+from ..common.config import Settings
 from .scoring import run_check
 from .suite import Suite
 from .targets import TARGETS
@@ -105,10 +105,10 @@ def run_suite(suite: Suite,
               ) -> SuiteResult:
     """Run every case; per-case errors are captured, never raised."""
     if client_factory is None:
-        from .. import llm  # resolved at call time so tests can monkeypatch
+        from ..common import llm  # resolved at call time so tests can monkeypatch
         client_factory = lambda s: llm.LLMClient(s, agent="llm_eval")  # noqa: E731
     if settings is None:
-        from ..config import load_settings
+        from ..common.config import load_settings
         settings = load_settings()
     targets = targets if targets is not None else TARGETS
 

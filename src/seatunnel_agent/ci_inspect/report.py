@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from .core import CiReport
 
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 
 _I18N = {

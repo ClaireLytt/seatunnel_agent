@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..sql_text import clean_sql as _clean_sql_text
+from ..common.sql_text import clean_sql as _clean_sql_text
 from .checks import (
     _CONFIG_RULES,
     _DIALECT_RULES,

@@ -4,7 +4,7 @@ import sys
 
 import click
 
-from ..cli_common import console
+from ..common.cli_common import console
 
 
 @click.command()
@@ -45,7 +45,7 @@ def skew(
 
     from ..data_skew.history import default_history
     from ..data_skew.report import Severity, render_report
-    from ..utils import collect_sql_files
+    from ..common.utils import collect_sql_files
 
     # ── collect analysis targets ──
     sources: list[tuple[str, str]] = []
@@ -78,7 +78,7 @@ def skew(
     results = []  # (label, SkewReport, markdown)
     for label, text in sources:
         if use_llm:
-            from ..config import load_settings
+            from ..common.config import load_settings
             from ..data_skew.agent import DataSkewAgent
             try:
                 settings = load_settings()

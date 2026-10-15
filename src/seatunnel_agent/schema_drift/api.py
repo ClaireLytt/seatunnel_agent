@@ -17,9 +17,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import add_health, check_path_allowed, ms_since
+from ..common.api_guard import add_health, check_path_allowed, ms_since
 from .differ import diff_paths, diff_scripts
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .report import render_markdown, report_to_dict
 
 router = APIRouter(prefix="/api/schemadrift", tags=["schema_drift"])

@@ -5,9 +5,9 @@ from unittest.mock import patch
 
 
 from seatunnel_agent.agent import STOPPED_MESSAGE, SeaTunnelAgent
-from seatunnel_agent.config import Settings
-from seatunnel_agent.context import truncate_messages
-from seatunnel_agent.llm import LLMResponse, ToolCall
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.context import truncate_messages
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 SETTINGS = Settings(
     api_key="sk-test",

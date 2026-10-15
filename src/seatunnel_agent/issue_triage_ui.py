@@ -9,8 +9,8 @@ import gradio as gr
 
 from .issue_triage import load_issues, render_markdown, triage
 from .issue_triage.report import normalize_lang
-from .config import llm_ready as _llm_ready
-from .page_scaffold import make_page_t, scroll_marker, title_row
+from .common.config import llm_ready as _llm_ready
+from .common.page_scaffold import make_page_t, scroll_marker, title_row
 
 _DEMO = (Path(__file__).resolve().parents[2] / "examples" / "triage_demo"
          / "issues.jsonl")
@@ -78,8 +78,8 @@ def render_issue_triage_page(app: gr.Blocks) -> None:
         try:
             from dotenv import load_dotenv
 
-            from . import settings_store
-            from .config import load_settings
+            from .common import settings_store
+            from .common.config import load_settings
             load_dotenv()
             settings_store.apply_to_env()
             issues = load_issues(_DEMO) if _DEMO.is_file() else []
@@ -102,7 +102,7 @@ def render_issue_triage_page(app: gr.Blocks) -> None:
     run_btn.click(do_triage, inputs=[t_box, b_box, lang_state],
                   outputs=[report_md])
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 

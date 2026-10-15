@@ -19,10 +19,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import add_health, ms_since
+from ..common.api_guard import add_health, ms_since
 from .detector import DIALECTS, _DIALECT_ALIASES
 from .history import default_history
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 router = APIRouter(prefix="/api/skew", tags=["data_skew"])
 

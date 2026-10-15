@@ -18,8 +18,8 @@ from .prompt_lab import (
     run_matrix,
 )
 from .prompt_lab.report import normalize_lang
-from .page_scaffold import make_page_t, scroll_marker, title_row
-from .settings_store import list_profiles
+from .common.page_scaffold import make_page_t, scroll_marker, title_row
+from .common.settings_store import list_profiles
 
 _I18N = {
     "en": {
@@ -214,7 +214,7 @@ def render_prompt_lab_page(app: gr.Blocks) -> None:
                    outputs=[diff_md])
     hist_btn.click(do_history, inputs=[lang_state], outputs=[hist_md])
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 

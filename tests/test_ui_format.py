@@ -8,7 +8,7 @@ import time
 import zipfile
 from pathlib import Path
 
-from seatunnel_agent.config import Settings
+from seatunnel_agent.common.config import Settings
 from seatunnel_agent.ui import (
     EventCollector,
     _build_template_choices,

@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
-from ..jsonl_log import JsonlLog
+from ..common.jsonl_log import JsonlLog
 from .report import Severity, SkewReport
 
 _MAX_SQL_CHARS = 20_000

@@ -9,7 +9,7 @@ import threading
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.config import Settings
+from seatunnel_agent.common.config import Settings
 from seatunnel_agent.doctor import diagnose
 from seatunnel_agent.doctor.engine import (
     check_env,
@@ -17,7 +17,7 @@ from seatunnel_agent.doctor.engine import (
     check_port,
     read_log_tail,
 )
-from seatunnel_agent.llm import LLMResponse, ToolCall
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 SETTINGS = Settings(api_key="sk-test")
 
@@ -104,7 +104,7 @@ class TestCli:
         for var in ("API_KEY", "ANTHROPIC_API_KEY"):
             monkeypatch.delenv(var, raising=False)
         monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
-        monkeypatch.setattr("seatunnel_agent.settings_store.apply_to_env",
+        monkeypatch.setattr("seatunnel_agent.common.settings_store.apply_to_env",
                             lambda: None)
         r = CliRunner().invoke(cli, ["doctor"])
         assert r.exit_code == 0, r.output
@@ -115,7 +115,7 @@ class TestCli:
 
         def fake_client(settings, tools=None, agent=None, **kw):
             return ScriptedClient([_text("诊断:一切正常")])
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient", fake_client)
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", fake_client)
         r = CliRunner().invoke(cli, ["doctor", "LLM 超时"])
         assert r.exit_code == 0, r.output
         assert "一切正常" in r.output

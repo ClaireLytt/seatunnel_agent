@@ -134,7 +134,7 @@ class TestAggregate:
 
 class TestRecordAgent:
     def test_agent_field_roundtrip(self, monkeypatch, tmp_path):
-        from seatunnel_agent import llm_usage
+        from seatunnel_agent.common import llm_usage
         log = tmp_path / "usage.jsonl"
         monkeypatch.delenv("LLM_USAGE_LOG", raising=False)
         monkeypatch.setenv("LLM_USAGE_PATH", str(log))

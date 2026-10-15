@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from ..cli_common import _handle_error, console
+from ..common.cli_common import _handle_error, console
 from ..sql_transpile import DIALECTS as TRANSPILE_DIALECTS
 
 
@@ -576,7 +576,7 @@ def transpile(
             # LLM advice (single source only; strictly additive)
             if not no_llm and len(sources) == 1:
                 try:
-                    from ..config import load_settings
+                    from ..common.config import load_settings
                     from ..sql_transpile.advisor import (
                         advisable_issues, generate_advice)
                     if advisable_issues(result):

@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 
 from .i18n import issue_message, issue_suggestion, tp
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .transpiler import BatchResult, Issue, TranspileResult
 
 _LEVEL_MARK = {"error": "❌", "warn": "⚠️", "info": "ℹ️"}

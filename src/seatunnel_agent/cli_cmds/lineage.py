@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from ..cli_common import (
+from ..common.cli_common import (
     _ensure_utf8_stdio,
     _handle_error,
     _write_output,
@@ -134,7 +134,7 @@ def lineage(
 
     # ── agent mode ──
     if use_agent:
-        from ..config import load_settings
+        from ..common.config import load_settings
         from ..data_lineage import LineageAgent
 
         if ctx.obj.get("model"):
@@ -374,7 +374,7 @@ def datadict(ctx: click.Context, sql_dir: str, sql_dialect: str, lang: str,
     entries = build_dictionary(graph)
     if describe:
         try:
-            from ..config import load_settings
+            from ..common.config import load_settings
             filled = add_llm_descriptions(load_settings(), entries, lang)
             console.print(f"[dim]LLM 描述已生成 {filled}/{len(entries)}[/dim]")
         except RuntimeError as e:

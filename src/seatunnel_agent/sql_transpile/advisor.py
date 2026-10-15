@@ -9,10 +9,10 @@ text is rendered in its own report section / UI panel, always marked
 
 from __future__ import annotations
 
-from ..config import Settings
-from ..llm import LLMClient
+from ..common.config import Settings
+from ..common.llm import LLMClient
 from .i18n import issue_message
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .prompts import ADVISOR_MARKER, ADVISOR_SYSTEM_PROMPT
 from .transpiler import TranspileResult
 

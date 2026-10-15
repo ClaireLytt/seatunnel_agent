@@ -9,8 +9,8 @@ configured.
 
 from __future__ import annotations
 
-from ..config import Settings
-from ..llm import LLMClient
+from ..common.config import Settings
+from ..common.llm import LLMClient
 from .clusterer import InspectReport
 
 ADVISOR_MARKER = "🤖 llm-generated"

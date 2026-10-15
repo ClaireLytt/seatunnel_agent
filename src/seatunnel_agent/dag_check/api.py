@@ -16,9 +16,9 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from ..api_guard import add_health, ms_since, require_dir
+from ..common.api_guard import add_health, ms_since, require_dir
 from .checker import check_sql_dir
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .report import render_markdown, report_to_dict
 
 router = APIRouter(prefix="/api/dagcheck", tags=["dag_check"])

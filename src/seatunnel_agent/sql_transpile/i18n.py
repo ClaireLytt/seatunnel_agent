@@ -10,7 +10,7 @@ language-free.
 
 from __future__ import annotations
 
-from ..utils import make_lookup, normalize_lang
+from ..common.utils import make_lookup, normalize_lang
 
 TP_I18N: dict[str, dict[str, str]] = {
     "en": {

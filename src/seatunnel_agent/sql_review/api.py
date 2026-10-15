@@ -17,13 +17,13 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import ms_since
-from ..config import load_settings
+from ..common.api_guard import ms_since
+from ..common.config import load_settings
 from ..text2sql.executor import DatabaseConfig, create_executor
 from ..text2sql.schema import SchemaStore, parse_ddl
 from .agent import SQLReviewAgent
 from .config import ReviewConfig, parse_config_data
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .linter import DIALECTS, EXECUTOR_DS_TYPES, is_known_dialect, normalize_dialect
 from .rlog import ReviewLogger
 

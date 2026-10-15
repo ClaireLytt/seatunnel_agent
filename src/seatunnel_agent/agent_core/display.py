@@ -14,7 +14,7 @@ from typing import Any, Callable
 from rich.console import Console
 from rich.panel import Panel
 
-from ..utils import truncate
+from ..common.utils import truncate
 
 
 def display_tool_call(console: Console, name: str, inputs: dict[str, Any],

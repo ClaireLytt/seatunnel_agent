@@ -18,8 +18,8 @@ from .sql_transpile import (
     translate,
     transpile_dir,
 )
-from .page_scaffold import make_page_t, title_row, wire_page
-from .utils import normalize_lang
+from .common.page_scaffold import make_page_t, title_row, wire_page
+from .common.utils import normalize_lang
 
 _I18N = {
     "en": {
@@ -160,7 +160,7 @@ def render_sql_transpile_page(app: gr.Blocks) -> None:
         if not advisable_issues(result):
             return _t(lang, "advice_none")
         try:
-            from .config import load_settings
+            from .common.config import load_settings
             settings = load_settings()
         except RuntimeError:
             return _t(lang, "advice_no_key")

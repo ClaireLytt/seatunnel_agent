@@ -14,8 +14,8 @@ from pathlib import Path
 
 import gradio as gr
 
-from .config import load_settings
-from .page_scaffold import title_row
+from .common.config import load_settings
+from .common.page_scaffold import title_row
 from .sql_review.agent import SQLReviewAgent, static_review_report
 from .sql_review.config import ReviewConfig, parse_config_text
 from .sql_review.fixer import generate_fix
@@ -358,7 +358,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             gr.update(value=t("sr_refresh")),                       # refresh_btn
         )
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     # Language follows the hub's choice (st-lang cookie), applied on load.
     app.load(fn=None, js=STAMP_JS)

@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..connector_docs import CONNECTOR_DOCS
+from ..common.connector_docs import CONNECTOR_DOCS
 
 SEVERITIES = ("error", "warn", "info")
 _SEV_RANK = {"info": 1, "warn": 2, "error": 3}

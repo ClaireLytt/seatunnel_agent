@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from ..cli_common import console
+from ..common.cli_common import console
 
 
 @click.command(name="mcp")
@@ -129,7 +129,7 @@ def settings(clear_: bool, usage_: bool) -> None:
     """查看当前生效的 LLM 配置（界面覆盖 or .env），或清除界面覆盖。"""
     from dotenv import load_dotenv
 
-    from .. import settings_store
+    from ..common import settings_store
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -138,12 +138,12 @@ def settings(clear_: bool, usage_: bool) -> None:
         console.print("[green]OK[/green] 已清除界面覆盖，恢复 .env 配置")
         return
     if usage_:
-        from ..llm_usage import format_markdown
+        from ..common.llm_usage import format_markdown
         console.print(format_markdown("zh"))
         return
     src = ("界面设置（覆盖 .env） — " + str(settings_store.store_path())
            if settings_store.has_saved() else ".env / 环境变量")
-    from ..config import env_api_key
+    from ..common.config import env_api_key
     key = env_api_key()
     console.print(f"来源: {src}")
     console.print(f"LLM_PROVIDER = {os.getenv('LLM_PROVIDER', 'anthropic')}")
@@ -264,7 +264,7 @@ def promptlab(
 
     from dotenv import load_dotenv
 
-    from .. import settings_store
+    from ..common import settings_store
     from ..prompt_lab import ACTIVE, render_matrix_markdown, run_matrix
 
     load_dotenv()
@@ -327,7 +327,7 @@ def llmeval(
 
     from dotenv import load_dotenv
 
-    from .. import settings_store
+    from ..common import settings_store
     from ..llm_eval import RunLogger, compare, load_suite, render_markdown, run_suite
 
     load_dotenv()
@@ -405,8 +405,8 @@ def orchestrate(
 
     from dotenv import load_dotenv
 
-    from .. import settings_store
-    from ..config import load_settings
+    from ..common import settings_store
+    from ..common.config import load_settings
     from ..orchestrator import (
         Orchestrator, build_catalog, render_markdown, render_suggestions,
         suggest,
@@ -510,7 +510,7 @@ def relnotes(
         if polish:
             from dotenv import load_dotenv
 
-            from .. import settings_store
+            from ..common import settings_store
             load_dotenv()
             settings_store.apply_to_env()
             text_out = polish_markdown(text_out, lang)
@@ -581,7 +581,7 @@ def docqa(
     if use_llm:
         from dotenv import load_dotenv
 
-        from .. import settings_store
+        from ..common import settings_store
         load_dotenv()
         settings_store.apply_to_env()
     result = answer(question, get_index(docs), k=top_k, lang=lang,
@@ -625,9 +625,9 @@ def codefix(
 
     from dotenv import load_dotenv
 
-    from .. import settings_store
+    from ..common import settings_store
     from ..code_fix import fix, render_markdown
-    from ..config import load_settings
+    from ..common.config import load_settings
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -687,8 +687,8 @@ def triage_cmd(
 
     from dotenv import load_dotenv
 
-    from .. import settings_store
-    from ..config import load_settings
+    from ..common import settings_store
+    from ..common.config import load_settings
     from ..issue_triage import load_issues, render_markdown, triage
 
     load_dotenv()
@@ -725,8 +725,8 @@ def doctor(complaint: str, lang: str) -> None:
     不带参数或未配置 API key 时输出确定性全量体检。"""
     from dotenv import load_dotenv
 
-    from .. import settings_store
-    from ..config import load_settings
+    from ..common import settings_store
+    from ..common.config import load_settings
     from ..doctor import diagnose
 
     load_dotenv()
@@ -767,8 +767,8 @@ def webtask(
     未达成以 FAILED 结束并退出码 1;需 API key 与 playwright。"""
     from dotenv import load_dotenv
 
-    from .. import settings_store
-    from ..config import load_settings
+    from ..common import settings_store
+    from ..common.config import load_settings
     from ..web_task import run_task
 
     load_dotenv()

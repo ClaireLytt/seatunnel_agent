@@ -9,8 +9,8 @@ import pytest
 
 from seatunnel_agent.agent_core import ToolLoopAgent, ToolSpec
 from seatunnel_agent.code_fix import build_tools, fix, render_markdown
-from seatunnel_agent.config import Settings
-from seatunnel_agent.llm import LLMResponse, ToolCall
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 SETTINGS = Settings(api_key="sk-test")
 

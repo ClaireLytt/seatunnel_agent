@@ -17,8 +17,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import add_health, ms_since, require_dir
-from ..utils import normalize_lang
+from ..common.api_guard import add_health, ms_since, require_dir
+from ..common.utils import normalize_lang
 from .report import render_markdown, report_to_dict
 from .rules import DEFAULT_RULES
 from .scanner import scan_dir, scan_sql_text

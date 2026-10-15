@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from seatunnel_agent import llm_usage
+from seatunnel_agent.common import llm_usage
 
 
 @pytest.fixture()

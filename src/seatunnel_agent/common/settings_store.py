@@ -20,7 +20,7 @@ import threading
 from .utils import write_json_atomic
 from pathlib import Path
 
-from .data_comparison.presets import _decrypt, _encrypt
+from ..data_comparison.presets import _decrypt, _encrypt
 
 # Env keys the /settings page manages; secrets are encrypted at rest.
 MANAGED_KEYS = (

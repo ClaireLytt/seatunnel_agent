@@ -14,14 +14,14 @@ from rich.console import Console
 from rich.panel import Panel
 
 from ..agent_core.display import display_tool_call, display_tool_result
-from ..config import Settings
-from ..context import truncate_messages
-from ..llm import LLMClient
+from ..common.config import Settings
+from ..common.context import truncate_messages
+from ..common.llm import LLMClient
 from ..text2sql.schema import SchemaStore
-from ..utils import truncate
+from ..common.utils import truncate
 from .config import ReviewConfig
 from .i18n import sr
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .lineage import extract_table_lineage
 from .linter import lint_sql, normalize_dialect
 from .prompts import build_review_prompt

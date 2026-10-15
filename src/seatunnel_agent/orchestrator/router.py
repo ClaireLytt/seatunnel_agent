@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .catalog import AgentSpec
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 # keyword → tool name, scored by hit count (zh + en keywords per tool)
 _KEYWORDS: dict[str, tuple[str, ...]] = {

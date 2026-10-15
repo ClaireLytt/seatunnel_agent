@@ -8,7 +8,7 @@ import difflib
 
 from .runner import CellResult, MatrixResult
 
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 
 _I18N = {

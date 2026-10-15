@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .i18n import dsk
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .seatunnel_conf import (  # noqa: F401 — re-exported, public API
     SourceSpec,
     SplitKeyError,

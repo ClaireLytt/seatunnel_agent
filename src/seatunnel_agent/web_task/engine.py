@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..agent_core import Step, ToolLoopAgent, ToolSpec
-from ..config import Settings
+from ..common.config import Settings
 
 _SYSTEM = """\
 You are a web-task agent driving a real browser.

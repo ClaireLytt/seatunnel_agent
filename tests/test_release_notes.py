@@ -10,7 +10,7 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.llm import LLMResponse
+from seatunnel_agent.common.llm import LLMResponse
 from seatunnel_agent.release_notes import (
     build_notes,
     next_semver,

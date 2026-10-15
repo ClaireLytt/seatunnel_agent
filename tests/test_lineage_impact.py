@@ -672,7 +672,7 @@ def test_cli_impact_writes_history(tmp_path, monkeypatch):
 
 def test_cli_impact_stats_summary(tmp_path, monkeypatch):
     import seatunnel_agent.data_lineage.impact as impact_mod
-    from seatunnel_agent.jsonl_log import JsonlLog
+    from seatunnel_agent.common.jsonl_log import JsonlLog
 
     lg = impact_mod.ImpactLogger(tmp_path)
     lg.log_impact(_demo_result(), mode="git", source="cli", baseline="HEAD~1")

@@ -14,7 +14,7 @@ import gradio as gr
 
 from .llm_eval import RunLogger, compare, parse_suite, render_markdown, run_suite
 from .llm_eval.report import normalize_lang
-from .page_scaffold import make_page_t, scroll_marker, title_row
+from .common.page_scaffold import make_page_t, scroll_marker, title_row
 
 _DEMO_SUITE = (Path(__file__).resolve().parents[2] / "examples"
                / "llmeval_demo" / "text2sql_golden.yaml")
@@ -86,7 +86,7 @@ def _trend_figure(runs: list[dict]):
                 label=suite, color=palette[i % len(palette)])
     ax.set_ylim(0, 1.05)
     ax.set_ylabel("score")
-    from .utils import cjk_font_family
+    from .common.utils import cjk_font_family
     fam = cjk_font_family()  # suite names in the legend may be Chinese
     ax.legend(fontsize=8, **({"prop": {"family": fam, "size": 8}}
                              if fam else {}))
@@ -192,7 +192,7 @@ def render_llm_eval_page(app: gr.Blocks) -> None:
                   outputs=[report_md])
     trend_btn.click(do_trend, inputs=[lang_state], outputs=[trend_plot])
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 

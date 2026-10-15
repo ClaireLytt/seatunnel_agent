@@ -7,7 +7,7 @@ from typing import Any, Iterable
 
 from .formatter import FmtFileResult, FmtResult
 from .i18n import tp
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 
 def render_markdown(result: FmtResult, lang: str = "zh",

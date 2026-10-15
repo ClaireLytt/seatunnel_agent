@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from ..cli_common import _handle_error, _write_output, console
+from ..common.cli_common import _handle_error, _write_output, console
 
 
 @click.command()
@@ -71,8 +71,8 @@ def diagnose(ctx: click.Context, log: str, output: str | None) -> None:
 @click.pass_context
 def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
     """Start an interactive multi-turn chat session with the Agent."""
-    from ..history import load_session, save_session, new_session_id, now_iso, Session
-    from ..history import list_sessions as _list_sessions
+    from ..common.history import load_session, save_session, new_session_id, now_iso, Session
+    from ..common.history import list_sessions as _list_sessions
 
     if list_sessions:
         sessions = _list_sessions()
@@ -128,7 +128,7 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
 
     # Save session on exit
     if session.chat_messages:
-        from ..history import extract_title
+        from ..common.history import extract_title
         if session.title == "Untitled":
             session.title = extract_title(session.chat_messages)
         session.agent_messages = agent.messages
@@ -169,7 +169,7 @@ def ui(port: int, host: str, share: bool, api: bool) -> None:
 def batch(ctx: click.Context, configs: tuple[str, ...], stop_on_failure: bool) -> None:
     """Run multiple SeaTunnel configs sequentially."""
     from ..tools import execute_tool
-    from ..config import load_settings
+    from ..common.config import load_settings
 
     if ctx.obj.get("model"):
         os.environ["MODEL_NAME"] = ctx.obj["model"]
@@ -186,7 +186,7 @@ def batch(ctx: click.Context, configs: tuple[str, ...], stop_on_failure: bool) -
 
 
 def _make_agent(model: str | None = None, provider: str | None = None):
-    from ..config import load_settings
+    from ..common.config import load_settings
     from ..agent import SeaTunnelAgent
 
     old_model = os.environ.get("MODEL_NAME")

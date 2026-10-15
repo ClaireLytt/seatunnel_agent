@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from .engine import OrchestratorResult
 
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 
 _I18N = {

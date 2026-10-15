@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..utils import read_json_list, write_json_atomic
+from ..common.utils import read_json_list, write_json_atomic
 
 _MAX_EXAMPLES = 500
 _MAX_SQL_CHARS = 4000

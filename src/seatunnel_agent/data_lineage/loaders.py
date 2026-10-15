@@ -14,7 +14,7 @@ from pathlib import Path
 
 from ..sql_review.lineage import extract_table_lineage
 from ..sql_review.linter import split_statements
-from ..utils import collect_sql_files
+from ..common.utils import collect_sql_files
 from ..text2sql.executor.base import (
     DatabaseExecutor,
     config_from_env,

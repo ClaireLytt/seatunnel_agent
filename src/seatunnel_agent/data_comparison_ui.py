@@ -2539,8 +2539,8 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
     # Language follows the hub's choice (st-lang cookie), applied on load.
     # _switch_lang takes two extra inputs (status_a/b) — pass them through.
     if app is not None:
-        from .lang_pref import STAMP_JS as _STAMP_JS
-        from .lang_pref import choice_from_request as _choice
+        from .common.lang_pref import STAMP_JS as _STAMP_JS
+        from .common.lang_pref import choice_from_request as _choice
         app.load(fn=None, js=_STAMP_JS)
         # saved-report dropdown: choices are baked empty at build time —
         # populate on page load so the user never needs the ↻ button first

@@ -8,7 +8,7 @@ whitespace-normalized text, so an already-formatted file stays untouched.
 """
 
 from __future__ import annotations
-from ..utils import collect_sql_files
+from ..common.utils import collect_sql_files
 
 import difflib
 from dataclasses import dataclass, field

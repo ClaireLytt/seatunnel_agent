@@ -13,11 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from ..config import Settings
-from ..llm import LLMClient
+from ..common.config import Settings
+from ..common.llm import LLMClient
 from .detector import detect_skew, normalize_dialect, split_statements
 from .i18n import dsk
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .prompts import build_system_prompt, build_user_prompt
 from .report import Severity, SkewFinding, SkewReport, render_report
 

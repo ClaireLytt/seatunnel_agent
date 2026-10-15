@@ -16,9 +16,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import add_health, ms_since, require_dir
+from ..common.api_guard import add_health, ms_since, require_dir
 from .clusterer import DEFAULT_PATTERNS, scan_dir, scan_text
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .report import render_markdown, report_to_dict
 
 router = APIRouter(prefix="/api/loginspect", tags=["log_inspect"])

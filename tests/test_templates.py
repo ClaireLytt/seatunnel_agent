@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from seatunnel_agent.config import Settings
+from seatunnel_agent.common.config import Settings
 from seatunnel_agent.templates import (
     TEMPLATES, get_template, list_templates, render_template,
 )

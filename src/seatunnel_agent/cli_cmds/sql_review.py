@@ -5,7 +5,7 @@ import sys
 
 import click
 
-from ..cli_common import _handle_error, _write_output, console
+from ..common.cli_common import _handle_error, _write_output, console
 from ..sql_review.linter import DIALECTS as REVIEW_DIALECTS
 
 
@@ -88,7 +88,7 @@ def review(
         if sql_file:
             sources.append((sql_file, Path(sql_file).read_text(encoding="utf-8")))
         if paths or directory:
-            from ..utils import collect_sql_files
+            from ..common.utils import collect_sql_files
         for raw in paths:
             p = Path(raw)
             if p.is_dir():
@@ -179,7 +179,7 @@ def review(
     # ── LLM settings (agent mode; static --fix is deterministic, no LLM) ──
     settings = None
     if not static_only:
-        from ..config import load_settings
+        from ..common.config import load_settings
         if ctx.obj.get("model"):
             os.environ["MODEL_NAME"] = ctx.obj["model"]
         if ctx.obj.get("provider"):
@@ -538,7 +538,7 @@ def sqlfmt(
         FmtFileResult, fmt_dir, format_text,
         render_batch_markdown, render_markdown, result_to_dict,
     )
-    from ..utils import collect_sql_files
+    from ..common.utils import collect_sql_files
 
     if not sql and not directory and not paths:
         raise click.UsageError("Provide --sql / --dir or positional paths")

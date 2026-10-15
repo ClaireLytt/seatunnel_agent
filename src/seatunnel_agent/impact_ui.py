@@ -12,7 +12,7 @@ from __future__ import annotations
 import gradio as gr
 
 from .data_lineage.sqlglot_lineage import SQL_DIALECTS
-from .page_scaffold import make_page_t, title_row, wire_page
+from .common.page_scaffold import make_page_t, title_row, wire_page
 
 _I18N = {
     "en": {

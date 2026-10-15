@@ -2,8 +2,8 @@
 """Run one prompt across several LLM provider profiles.
 
 Profiles are the named snapshots the /settings page stores
-(:mod:`seatunnel_agent.settings_store`); each one is turned into a private
-:class:`~seatunnel_agent.config.Settings` — the process environment and the
+(:mod:`seatunnel_agent.common.settings_store`); each one is turned into a private
+:class:`~seatunnel_agent.common.config.Settings` — the process environment and the
 active profile are **never** touched, so an experiment cannot switch the
 whole app's provider.  The pseudo-profile ``"(active)"`` runs against the
 currently configured LLM.
@@ -19,8 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 
-from ..config import Settings, load_settings
-from ..settings_store import load_profile
+from ..common.config import Settings, load_settings
+from ..common.settings_store import load_profile
 
 ACTIVE = "(active)"
 _MAX_WORKERS = 4
@@ -125,7 +125,7 @@ def run_matrix(prompt: str,
     system = (system or "").strip() or _DEFAULT_SYSTEM
     profiles = profiles or [ACTIVE]
     if client_factory is None:
-        from .. import llm  # resolved at call time so tests can monkeypatch
+        from ..common import llm  # resolved at call time so tests can monkeypatch
         client_factory = lambda s: llm.LLMClient(s, agent="prompt_lab")  # noqa: E731
 
     def job(p: str) -> CellResult:

@@ -7,7 +7,7 @@ from typing import Any
 
 from .generator import GenResult
 from .i18n import tp
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 
 def render_markdown(result: GenResult, lang: str = "zh") -> str:

@@ -366,7 +366,7 @@ def test_i18n_key_parity():
 
 def test_i18n_normalize_and_fallback():
     from seatunnel_agent.sql_review.i18n import sr
-    from seatunnel_agent.utils import normalize_lang
+    from seatunnel_agent.common.utils import normalize_lang
     assert normalize_lang("en") == "en"
     assert normalize_lang("English") == "en"
     assert normalize_lang("zh") == "zh"
@@ -930,7 +930,7 @@ def test_static_review_report_includes_lineage():
 # ---------------------------------------------------------------------------
 
 from seatunnel_agent.sql_review.runner import severity_reached
-from seatunnel_agent.utils import collect_sql_files
+from seatunnel_agent.common.utils import collect_sql_files
 
 
 def test_collect_sql_files_recursive_sorted(tmp_path):

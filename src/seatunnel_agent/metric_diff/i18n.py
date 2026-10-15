@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from ..utils import make_lookup
+from ..common.utils import make_lookup
 
 MDF_I18N: dict[str, dict[str, str]] = {
     "en": {

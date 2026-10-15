@@ -353,7 +353,7 @@ def build_text2sql_prompt(
         )
 
     if store is not None and len(store) > 0:
-        from ..config import env_int
+        from ..common.config import env_int
 
         limit = env_int("T2S_SCHEMA_PROMPT_LIMIT", 50)
         if len(store) <= limit:

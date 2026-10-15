@@ -15,7 +15,7 @@ import time
 
 import gradio as gr
 
-from .config import load_settings
+from .common.config import load_settings
 from .data_lineage import (
     LineageAgent,
     LineageGraph,
@@ -32,7 +32,7 @@ from .data_lineage import (
     static_lineage,
 )
 from .data_lineage.sqlglot_lineage import SQL_DIALECTS
-from .page_scaffold import title_row
+from .common.page_scaffold import title_row
 from .data_lineage.snapshot import (
     diff_graphs,
     list_snapshots,
@@ -654,7 +654,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
             gr.update(value=s("ask_btn")),
         )
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     # Language follows the hub's choice (st-lang cookie), applied on load.
     app.load(fn=None, js=STAMP_JS)

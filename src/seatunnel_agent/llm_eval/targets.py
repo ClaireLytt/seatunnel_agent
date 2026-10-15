@@ -11,7 +11,7 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
-from ..config import Settings
+from ..common.config import Settings
 
 AdapterResult = dict[str, Any]
 Adapter = Callable[[dict[str, Any], Settings, Callable], AdapterResult]

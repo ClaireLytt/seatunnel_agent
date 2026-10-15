@@ -10,8 +10,8 @@ from __future__ import annotations
 import logging
 import time
 
-from ..config import load_settings
-from ..llm import LLMClient
+from ..common.config import load_settings
+from ..common.llm import LLMClient
 from .models import Step, StepLog
 from .page import DCPage
 

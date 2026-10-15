@@ -16,7 +16,7 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from ..api_guard import add_health, ms_since
+from ..common.api_guard import add_health, ms_since
 from .core import build_notes
 from .report import normalize_lang, render_markdown
 

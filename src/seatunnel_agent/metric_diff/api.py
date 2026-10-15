@@ -16,9 +16,9 @@ from typing import Any
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from ..api_guard import add_health, ms_since, require_dir
+from ..common.api_guard import add_health, ms_since, require_dir
 from .differ import check_sql_dir
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .report import render_markdown, report_to_dict
 
 router = APIRouter(prefix="/api/metricdiff", tags=["metric_diff"])

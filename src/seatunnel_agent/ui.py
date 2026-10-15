@@ -103,7 +103,7 @@ def create_ui() -> gr.Blocks:
     # UI-saved LLM settings override .env for this process (see /settings).
     from dotenv import load_dotenv
     load_dotenv()
-    from . import settings_store
+    from .common import settings_store
     settings_store.apply_to_env()
 
     from .text2sql_ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
@@ -321,7 +321,7 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     if api:
         from fastapi import Depends
 
-        from .api_auth import require_api_key
+        from .common.api_auth import require_api_key
         from .config_lint.api import router as conflint_api_router
         from .dag_check.api import router as dagcheck_api_router
         from .data_lineage.api import router as lineage_api_router

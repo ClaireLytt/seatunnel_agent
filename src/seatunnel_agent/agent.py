@@ -7,12 +7,12 @@ from typing import Any, Callable
 from rich.console import Console
 from rich.panel import Panel
 
-from .config import Settings, env_int
-from .context import truncate_messages
-from .llm import LLMClient
+from .common.config import Settings, env_int
+from .common.context import truncate_messages
+from .common.llm import LLMClient
 from .prompts import build_system_prompt
 from .tools import TOOL_DEFINITIONS, execute_tool
-from .utils import truncate
+from .common.utils import truncate
 
 MAX_LOOP_ITERATIONS = env_int("AGENT_MAX_ITERATIONS", 20)
 

@@ -464,7 +464,7 @@ class TestEdgeCases:
 
 class TestTokenTruncation:
     def test_short_conversation_unchanged(self):
-        from seatunnel_agent.context import truncate_messages
+        from seatunnel_agent.common.context import truncate_messages
         msgs = [
             {"role": "user", "content": "hello"},
             {"role": "assistant", "content": "hi"},
@@ -473,7 +473,7 @@ class TestTokenTruncation:
         assert len(result) == 2
 
     def test_long_conversation_trimmed(self):
-        from seatunnel_agent.context import truncate_messages
+        from seatunnel_agent.common.context import truncate_messages
         msgs = [{"role": "user", "content": "x" * 5000} for _ in range(50)]
         result = truncate_messages(msgs, max_chars=20000)
         total_chars = sum(len(m.get("content", "")) for m in result)
@@ -481,7 +481,7 @@ class TestTokenTruncation:
         assert len(result) < 50
 
     def test_truncation_adds_marker(self):
-        from seatunnel_agent.context import truncate_messages
+        from seatunnel_agent.common.context import truncate_messages
         msgs = [
             {"role": "user", "content": "a" * 5000},
             {"role": "assistant", "content": "b" * 5000},
@@ -494,7 +494,7 @@ class TestTokenTruncation:
         assert len(result) < len(msgs)
 
     def test_empty_messages_unchanged(self):
-        from seatunnel_agent.context import truncate_messages
+        from seatunnel_agent.common.context import truncate_messages
         assert truncate_messages([]) == []
 
 

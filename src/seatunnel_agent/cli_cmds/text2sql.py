@@ -4,7 +4,7 @@ import os
 
 import click
 
-from ..cli_common import _ensure_utf8_stdio, console
+from ..common.cli_common import _ensure_utf8_stdio, console
 
 
 @click.command(name="t2s-bench")
@@ -356,7 +356,7 @@ def _settings_with_overrides(ctx: click.Context):
             os.environ["MODEL_NAME"] = model
         if provider:
             os.environ["LLM_PROVIDER"] = provider
-        from ..config import load_settings
+        from ..common.config import load_settings
         return load_settings()
     finally:
         for key, old in (("MODEL_NAME", old_model), ("LLM_PROVIDER", old_provider)):

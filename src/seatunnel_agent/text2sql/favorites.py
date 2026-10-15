@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from ..utils import read_json_list, write_json_atomic
+from ..common.utils import read_json_list, write_json_atomic
 
 _MAX_FAVORITES = 200
 _PARAM_RE = re.compile(r"\$\{(\w+)\}")

@@ -15,14 +15,14 @@ from pathlib import Path
 
 import gradio as gr
 
-from .config import load_settings
+from .common.config import load_settings
 from .data_skew.agent import DataSkewAgent, static_skew_report
 from .data_skew.consistency import check_consistency, render_consistency_section
 from .data_skew.detector import DIALECTS, normalize_dialect
 from .data_skew.history import default_history
 from .data_skew.i18n import dsk
 from .data_skew.report import render_report
-from .page_scaffold import scroll_marker, title_row
+from .common.page_scaffold import scroll_marker, title_row
 from .data_skew.probe import (
     ProbeCache,
     effective_sample_pct,
@@ -808,7 +808,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             _placeholder_update(hist_cur, "dsk_history_empty", lg),  # hist_md
         )
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     # Language follows the hub's choice (st-lang cookie), applied on load.
     app.load(fn=None, js=STAMP_JS)
@@ -859,7 +859,7 @@ def render_data_skew_page(app: gr.Blocks) -> None:
             (request.cookies or {}).get(CONN_HANDOFF_COOKIE))
         if data is None:
             return noop
-        from .lang_pref import choice_from_request
+        from .common.lang_pref import choice_from_request
         lg = choice_from_request(request)
         if data["ds_type"] not in _PROBE_DS:
             return (*tuple(gr.update() for _ in range(6)),

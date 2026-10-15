@@ -14,10 +14,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from ..config import Settings
+from ..common.config import Settings
 from .catalog import AgentSpec, build_catalog, tool_definitions
 from .prompts import build_system_prompt
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 _MAX_RESULT_CHARS = 20000  # keep one tool's markdown from flooding the context
 
@@ -64,7 +64,7 @@ class Orchestrator:
         self.catalog = catalog if catalog is not None else build_catalog(
             default_lang=self.lang)
         if client is None:
-            from ..llm import LLMClient
+            from ..common.llm import LLMClient
             client = LLMClient(settings,
                                tools=tool_definitions(self.catalog),
                                agent="orchestrator")

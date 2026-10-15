@@ -19,8 +19,8 @@ import gradio as gr
 from .orchestrator import Orchestrator, build_catalog, render_suggestions, suggest
 from .orchestrator.olog import ChatLogger
 from .orchestrator.report import normalize_lang
-from .config import llm_ready as _llm_ready
-from .page_scaffold import make_page_t, scroll_marker, title_row
+from .common.config import llm_ready as _llm_ready
+from .common.page_scaffold import make_page_t, scroll_marker, title_row
 
 _I18N = {
     "en": {
@@ -198,7 +198,7 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
 
         try:
             if orch is None or getattr(orch, "lang", None) != lang:
-                from .config import load_settings
+                from .common.config import load_settings
                 orch = Orchestrator(load_settings(), lang=lang)
                 # page refresh lost the instance: rebuild context from the
                 # displayed transcript (everything before this user turn)
@@ -287,7 +287,7 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
         btn.click((lambda k: lambda lang: _t(lang, k))(key),
                   inputs=[lang_state], outputs=[input_box])
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 

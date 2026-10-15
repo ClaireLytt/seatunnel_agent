@@ -16,7 +16,7 @@ from typing import Any
 
 import gradio as gr
 
-from .config import load_settings
+from .common.config import load_settings
 from .text2sql.executor import (
     DS_DEFAULTS,
     DS_TYPES,
@@ -158,7 +158,7 @@ def render_schema_browser_page(app=None) -> None:
     schema_dd.change(fn=_browse, inputs=[schema_dd, lang_state], outputs=[schema_html])
     refresh_btn.click(fn=_refresh, inputs=[lang_state], outputs=[schema_dd, schema_html])
     back_btn.click(fn=None, js="() => { window.close(); }")
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     if app is not None:
         # Language follows the hub's choice (st-lang cookie), applied on load.
@@ -426,7 +426,7 @@ def render_history_page(app=None) -> None:
     _sel_outputs = [selected_state, selected_info, detail_html]
     _refresh_outputs = [history_table, selected_state, selected_info, detail_html]
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     if app is not None:
         # Language follows the hub's choice (st-lang cookie), applied on load.
@@ -642,7 +642,7 @@ def render_favorites_page(app=None) -> None:
                 gr.update(placeholder=_t2s("en", "fav_rename_placeholder")),
                 gr.update(value="✓"))
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     if app is not None:
         # Language follows the hub's choice (st-lang cookie), applied on load.
@@ -1165,7 +1165,7 @@ def render_text2sql_page(app=None) -> None:
 
         llm_status = f"⏳ LLM {settings.model_name} (checking...)"
 
-        from . import settings_store
+        from .common import settings_store
         with holder_lock:
             holder["settings"] = settings
             holder["settings_version"] = settings_store.get_version()
@@ -1270,11 +1270,11 @@ def render_text2sql_page(app=None) -> None:
             store_ref = holder.get("store")
             # The /settings page changed the LLM config since Connect: reload
             # and drop the cached agent so it takes effect without re-Connect.
-            from . import settings_store
+            from .common import settings_store
             if (holder.get("settings") is not None
                     and holder.get("settings_version") != settings_store.get_version()):
                 try:
-                    from .config import load_settings as _load_settings
+                    from .common.config import load_settings as _load_settings
                     holder["settings"] = _load_settings()
                     holder["settings_version"] = settings_store.get_version()
                     holder["agent"] = None
@@ -1668,8 +1668,8 @@ def render_text2sql_page(app=None) -> None:
     # Language follows the hub's choice (st-lang cookie), applied on load.
     # _switch_lang takes two extra inputs — pass them through unchanged.
     if app is not None:
-        from .lang_pref import STAMP_JS as _STAMP_JS
-        from .lang_pref import choice_from_request as _choice
+        from .common.lang_pref import STAMP_JS as _STAMP_JS
+        from .common.lang_pref import choice_from_request as _choice
         app.load(fn=None, js=_STAMP_JS)
 
         def _lang_on_load(f, s, request: gr.Request):

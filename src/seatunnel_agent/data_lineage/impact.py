@@ -29,7 +29,7 @@ from typing import Any
 from .graph import LineageGraph
 from .rlog import LineageLogger as _LineageLoggerBase
 from .snapshot import diff_graphs
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 LEVELS = ("error", "warn", "info")
 

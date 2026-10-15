@@ -21,7 +21,7 @@ from sqlglot import Dialect
 from sqlglot.errors import ErrorLevel, ParseError
 
 from ..sql_review.linter import split_statements
-from ..utils import collect_sql_files
+from ..common.utils import collect_sql_files
 from .rules import manual_checks
 
 # Dialect matrix: sources == targets. v1 shipped the first four; the

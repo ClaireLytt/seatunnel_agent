@@ -12,8 +12,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .config import Settings, env_float, env_int
-from .utils import safe_json, truncate
+from .common.config import Settings, env_float, env_int
+from .common.utils import safe_json, truncate
 
 CONNECTION_TEST_TIMEOUT = env_float("CONNECTION_TEST_TIMEOUT", 5.0)
 MAX_BATCH_CONFIGS = env_int("MAX_BATCH_CONFIGS", 20)
@@ -125,7 +125,7 @@ def _run_seatunnel_job(settings: Settings, config_path: str) -> str:
 
 
 def _read_log(settings: Settings, log_path: str, tail_lines: int = 100) -> str:
-    from .utils import resolve_log_path
+    from .common.utils import resolve_log_path
 
     if log_path == "auto" and not settings.seatunnel_home:
         return safe_json({"error": "SEATUNNEL_HOME is not set — cannot use 'auto' log path"})
@@ -444,7 +444,7 @@ def _use_template(
 
 
 def _query_connector_docs(settings: Settings, connector_name: str, param_name: str | None = None) -> str:
-    from .connector_docs import query_connector
+    from .common.connector_docs import query_connector
     return safe_json(query_connector(connector_name, param_name))
 
 

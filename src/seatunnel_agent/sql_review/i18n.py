@@ -8,7 +8,7 @@ language of the linter findings).
 
 from __future__ import annotations
 
-from ..utils import normalize_lang as normalize_lang  # re-export
+from ..common.utils import normalize_lang as normalize_lang  # re-export
 
 # English labels for report.CHECK_CATALOG (keys must stay in sync).
 CHECK_CATALOG_EN: dict[str, str] = {

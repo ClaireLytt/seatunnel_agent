@@ -14,7 +14,7 @@ import json
 import gradio as gr
 
 from .mcp_toolbox import _audit_file, build_tool_functions
-from .page_scaffold import title_row, wire_page
+from .common.page_scaffold import title_row, wire_page
 
 _DEFAULT_LANG = "en"
 

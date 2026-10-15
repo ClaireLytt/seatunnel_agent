@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 _logger = logging.getLogger(__name__)
 

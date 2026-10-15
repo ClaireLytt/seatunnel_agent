@@ -8,10 +8,10 @@ import threading
 
 import gradio as gr
 
-from .page_scaffold import make_page_t, scroll_marker, title_row
+from .common.page_scaffold import make_page_t, scroll_marker, title_row
 from .web_task import run_task
-from .utils import normalize_lang as _norm
-from .config import llm_ready as _llm_ready
+from .common.utils import normalize_lang as _norm
+from .common.config import llm_ready as _llm_ready
 
 
 _I18N = {
@@ -88,8 +88,8 @@ def render_web_task_page(app: gr.Blocks) -> None:
             return
         from dotenv import load_dotenv
 
-        from . import settings_store
-        from .config import load_settings
+        from .common import settings_store
+        from .common.config import load_settings
         load_dotenv()
         settings_store.apply_to_env()
 
@@ -143,7 +143,7 @@ def render_web_task_page(app: gr.Blocks) -> None:
                   inputs=[goal_box, url_box, steps_num, lang_state],
                   outputs=[report_md])
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 

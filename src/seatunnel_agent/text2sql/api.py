@@ -17,8 +17,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import ms_since
-from ..config import load_settings
+from ..common.api_guard import ms_since
+from ..common.config import load_settings
 from .agent import Text2SQLAgent
 from .executor import DS_TYPES, DatabaseConfig, create_executor
 from .metrics import MetricError, build_metric_sql, load_metric_store, ratio_sides

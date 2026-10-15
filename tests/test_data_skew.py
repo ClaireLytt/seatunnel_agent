@@ -404,7 +404,7 @@ def test_heading_quoted_midline_not_a_section():
 # ---------------------------------------------------------------------------
 
 def test_agent_static_path(tmp_path):
-    from seatunnel_agent.config import Settings
+    from seatunnel_agent.common.config import Settings
     from seatunnel_agent.data_skew.agent import DataSkewAgent
 
     agent = DataSkewAgent(Settings(api_key="x"), dialect="spark", lang="zh")
@@ -416,7 +416,7 @@ def test_agent_static_path(tmp_path):
 
 
 def test_agent_empty_sql_raises():
-    from seatunnel_agent.config import Settings
+    from seatunnel_agent.common.config import Settings
     from seatunnel_agent.data_skew.agent import DataSkewAgent
 
     agent = DataSkewAgent(Settings(api_key="x"))
@@ -738,7 +738,7 @@ def test_probe_lines_for_prompt():
 
 
 def test_agent_probe_context_injected_into_prompt(tmp_path):
-    from seatunnel_agent.config import Settings
+    from seatunnel_agent.common.config import Settings
     from seatunnel_agent.data_skew.agent import DataSkewAgent
 
     captured = {}

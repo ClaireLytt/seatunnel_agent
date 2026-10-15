@@ -16,8 +16,8 @@ from .config_lint import (
     render_batch_markdown,
     render_markdown,
 )
-from .page_scaffold import make_page_t, scroll_marker, title_row, wire_page
-from .utils import normalize_lang
+from .common.page_scaffold import make_page_t, scroll_marker, title_row, wire_page
+from .common.utils import normalize_lang
 
 _I18N = {
     "en": {

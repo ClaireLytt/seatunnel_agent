@@ -105,7 +105,7 @@ python_version = "3.11"
 files = [
     "src/seatunnel_agent/registry.py",
     "src/seatunnel_agent/notify.py",
-    "src/seatunnel_agent/llm_usage.py",
+    "src/seatunnel_agent/common/llm_usage.py",
     "src/seatunnel_agent/secret_scan",
     "src/seatunnel_agent/dep_check",
     "src/seatunnel_agent/release_notes",

@@ -10,12 +10,12 @@ from dataclasses import asdict, dataclass, field, fields as dc_fields
 from pathlib import Path
 from typing import Any
 
-from ..history import (  # noqa: F401 — shared session helpers (re-exported)
+from ..common.history import (  # noqa: F401 — shared session helpers (re-exported)
     extract_title,
     new_session_id,
     now_iso,
 )
-from ..utils import write_json_atomic
+from ..common.utils import write_json_atomic
 
 HISTORY_DIR = Path.home() / ".seatunnel-agent" / "text2sql_history"
 

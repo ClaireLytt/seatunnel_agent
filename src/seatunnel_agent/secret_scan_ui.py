@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import gradio as gr
 
-from .page_scaffold import make_page_t, scroll_marker, title_row
+from .common.page_scaffold import make_page_t, scroll_marker, title_row
 from .secret_scan import ScanResult, render_markdown, scan_dir, scan_text
 from .secret_scan.report import normalize_lang
 
@@ -130,7 +130,7 @@ def render_secret_scan_page(app: gr.Blocks) -> None:
     dir_btn.click(do_scan_dir, inputs=[dir_box, lang_state],
                   outputs=[report_md])
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 

@@ -13,8 +13,8 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.config import Settings
-from seatunnel_agent.llm import LLMResponse
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse
 from seatunnel_agent.llm_eval import (
     RunLogger,
     compare,
@@ -283,7 +283,7 @@ class TestReport:
 
 class TestCli:
     def _patch_llm(self, monkeypatch, script=None):
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient",
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient",
                             factory(script or {"say hello": "Hello!"}))
         monkeypatch.setenv("API_KEY", "sk-test")
 
@@ -329,9 +329,9 @@ class TestCli:
         for var in ("API_KEY", "ANTHROPIC_API_KEY"):
             monkeypatch.delenv(var, raising=False)
         monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
-        monkeypatch.setattr("seatunnel_agent.config.load_dotenv",
+        monkeypatch.setattr("seatunnel_agent.common.config.load_dotenv",
                             lambda *a, **k: None)
-        monkeypatch.setattr("seatunnel_agent.settings_store.apply_to_env",
+        monkeypatch.setattr("seatunnel_agent.common.settings_store.apply_to_env",
                             lambda: None)
         r = CliRunner().invoke(cli, ["llmeval", self._suite_file(tmp_path)])
         assert r.exit_code == 2
@@ -356,7 +356,7 @@ class TestApi:
         return TestClient(app)
 
     def test_run_endpoint(self, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.llm.LLMClient",
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient",
                             factory({"say hello": "Hello!"}))
         monkeypatch.setenv("API_KEY", "sk-test")
         resp = self._client().post("/api/llmeval/run", json={

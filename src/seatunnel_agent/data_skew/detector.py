@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import re
 
-from ..sql_text import clean_sql as _clean_sql_text
-from ..utils import normalize_lang
+from ..common.sql_text import clean_sql as _clean_sql_text
+from ..common.utils import normalize_lang
 from .report import Severity, SkewFinding
 
 DIALECTS = ("spark", "maxcompute", "hive")

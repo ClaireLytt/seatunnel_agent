@@ -120,7 +120,7 @@ def test_agent_augments_user_message(tmp_path, monkeypatch) -> None:
 
     monkeypatch.setattr("seatunnel_agent.text2sql.agent.LLMClient", _FakeLLM)
 
-    from seatunnel_agent.config import Settings
+    from seatunnel_agent.common.config import Settings
 
     agent = Text2SQLAgent(
         settings=Settings(api_key="test"), store=SchemaStore([]), ds_type="sqlite",

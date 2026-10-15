@@ -7,7 +7,7 @@ from typing import Any
 
 from .differ import MetricReport
 from .i18n import tp
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 _LEVEL_MARK = {"high": "⛔", "medium": "⚠️"}
 

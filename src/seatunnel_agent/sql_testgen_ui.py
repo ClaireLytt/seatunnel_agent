@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import gradio as gr
 
-from .page_scaffold import make_page_t, scroll_marker, title_row, wire_page
+from .common.page_scaffold import make_page_t, scroll_marker, title_row, wire_page
 from .sql_testgen import generate, render_markdown, validate_with_sqlite
-from .utils import normalize_lang
+from .common.utils import normalize_lang
 
 _DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",
              "doris", "starrocks"]

@@ -101,7 +101,7 @@ class TestWorkspaceBackButton:
     """STAMP_JS (loaded by every page) injects the ↩ workspace button."""
 
     def test_mapping_in_stamp_js(self):
-        from seatunnel_agent.lang_pref import STAMP_JS
+        from seatunnel_agent.common.lang_pref import STAMP_JS
         for route in _AI_ROUTES:
             assert f"'{route}'" in STAMP_JS, route
         assert "'/ai'" in STAMP_JS and "'/data'" in STAMP_JS
@@ -128,7 +128,7 @@ class TestDevopsHub:
         assert 'class="st-hub-back" href="/"' in html
 
     def test_stamp_js_maps_devops(self):
-        from seatunnel_agent.lang_pref import STAMP_JS
+        from seatunnel_agent.common.lang_pref import STAMP_JS
         for route in _DEVOPS_ROUTES:
             assert f"'{route}'" in STAMP_JS, route
         assert "'/devops'" in STAMP_JS

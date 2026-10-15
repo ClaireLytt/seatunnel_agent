@@ -7,8 +7,8 @@ import time
 
 import gradio as gr
 
-from . import settings_store
-from .page_scaffold import title_row, wire_page
+from .common import settings_store
+from .common.page_scaffold import title_row, wire_page
 
 _I18N = {
     "en": {
@@ -163,7 +163,7 @@ def _t(lang: str, key: str) -> str:
 
 
 def _effective_key() -> str:
-    from .config import env_api_key
+    from .common.config import env_api_key
     return env_api_key()
 
 
@@ -233,7 +233,7 @@ def _conn_summary(lang: str) -> str:
 
 
 def _usage_markdown(lang: str) -> str:
-    from .llm_usage import format_markdown
+    from .common.llm_usage import format_markdown
     try:
         return format_markdown(lang)
     except Exception:  # noqa: BLE001 — stats must never break the page
@@ -411,8 +411,8 @@ def render_settings_page(app: gr.Blocks) -> None:
             or settings_store.load_saved().get("API_KEY", "") or _effective_key()
         if not key:
             return f"❌ {_t(lang, 'no_key')}"
-        from .config import Settings
-        from .llm import LLMClient
+        from .common.config import Settings
+        from .common.llm import LLMClient
         try:
             timeout_s = min(int((timeout or "").strip()
                                 or os.getenv("LLM_TIMEOUT", "") or 10), 30)

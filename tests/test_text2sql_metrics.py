@@ -904,7 +904,7 @@ def test_api_key_auth(monkeypatch) -> None:
     from fastapi import Depends, FastAPI
     from fastapi.testclient import TestClient
 
-    from seatunnel_agent.api_auth import require_api_key
+    from seatunnel_agent.common.api_auth import require_api_key
     from seatunnel_agent.text2sql.api import router
 
     app = FastAPI()

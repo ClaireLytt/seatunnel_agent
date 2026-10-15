@@ -15,8 +15,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import ms_since
-from ..config import load_settings
+from ..common.api_guard import ms_since
+from ..common.config import load_settings
 from .agent import LineageAgent, static_lineage
 from .config import DEFAULT_DEPTH, DIRECTIONS, MAX_DEPTH, load_lineage_config
 from .loaders import build_graph
@@ -95,7 +95,7 @@ class AnalyzeResponse(BaseModel):
 
 def _check_dir_allowed(raw_dir: str) -> None:
     """API 是网络入口，目录参数必须限制在白名单内，防任意目录扫描。"""
-    from ..api_guard import check_path_allowed
+    from ..common.api_guard import check_path_allowed
 
     check_path_allowed(raw_dir, "LINEAGE_API_ALLOWED_DIRS")
 

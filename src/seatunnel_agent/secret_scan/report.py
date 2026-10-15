@@ -8,7 +8,7 @@ from .scanner import ScanResult
 
 from typing import Any
 
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 _I18N: dict[str, dict[str, Any]] = {
     "en": {

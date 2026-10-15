@@ -18,7 +18,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 from .report import batch_to_dict, render_markdown, result_to_dict
 from .transpiler import DIALECTS, translate, transpile_dir
 
@@ -31,7 +31,7 @@ _DIALECT_DESC = " | ".join(DIALECTS)
 
 def _check_dir_allowed(raw_dir: str) -> None:
     """API 是网络入口，目录参数必须限制在白名单内，防任意目录扫描。"""
-    from ..api_guard import check_path_allowed
+    from ..common.api_guard import check_path_allowed
 
     check_path_allowed(raw_dir, "TRANSPILE_API_ALLOWED_DIRS")
 

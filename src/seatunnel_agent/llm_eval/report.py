@@ -7,7 +7,7 @@ from typing import Any
 
 from .runner import SuiteResult
 
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 
 _I18N = {

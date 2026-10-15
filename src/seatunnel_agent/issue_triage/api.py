@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import add_health, ms_since
+from ..common.api_guard import add_health, ms_since
 from .engine import triage
 from .report import normalize_lang, render_markdown
 
@@ -41,8 +41,8 @@ def run(req: TriageRequest) -> TriageResponse:
     start = time.time()
     from dotenv import load_dotenv
 
-    from .. import settings_store
-    from ..config import load_settings
+    from ..common import settings_store
+    from ..common.config import load_settings
     load_dotenv()
     settings_store.apply_to_env()
     try:

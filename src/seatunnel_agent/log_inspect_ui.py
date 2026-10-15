@@ -12,8 +12,8 @@ from __future__ import annotations
 import gradio as gr
 
 from .log_inspect import render_markdown, scan_dir, scan_text
-from .page_scaffold import make_page_t, scroll_marker, title_row, wire_page
-from .utils import normalize_lang
+from .common.page_scaffold import make_page_t, scroll_marker, title_row, wire_page
+from .common.utils import normalize_lang
 
 _I18N = {
     "en": {
@@ -134,7 +134,7 @@ def render_log_inspect_page(app: gr.Blocks) -> None:
         if report is None or not report.clusters:
             return _t(lang, "advice_none")
         try:
-            from .config import load_settings
+            from .common.config import load_settings
             settings = load_settings()
         except RuntimeError:
             return _t(lang, "advice_no_key")

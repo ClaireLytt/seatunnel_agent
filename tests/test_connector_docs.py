@@ -6,8 +6,8 @@ import json
 import tempfile as _tempfile
 from pathlib import Path
 
-from seatunnel_agent.config import Settings
-from seatunnel_agent.connector_docs import (
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.connector_docs import (
     CONNECTOR_DOCS,
     list_documented_connectors,
     query_connector,

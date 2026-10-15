@@ -19,7 +19,7 @@ def _routes_js(workspace: str, fallback: list[str]) -> str:
     plugin registry so the back-button mapping can't drift when a plugin
     is added (the /docqa button once pointed at /data for exactly that)."""
     try:
-        from .registry import discover
+        from ..registry import discover
         routes = [m.route for m in discover() if m.workspace == workspace]
     except Exception:  # noqa: BLE001 — a broken plugin must not kill pages
         routes = fallback

@@ -17,8 +17,8 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from ..api_guard import add_health, ms_since
-from ..settings_store import list_profiles
+from ..common.api_guard import add_health, ms_since
+from ..common.settings_store import list_profiles
 from .report import normalize_lang, render_matrix_markdown
 from .runner import ACTIVE, run_matrix
 

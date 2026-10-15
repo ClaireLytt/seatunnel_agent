@@ -96,7 +96,7 @@ def _chunk_markdown(path: Path, rel: str) -> list[Chunk]:
 
 
 def _connector_chunks() -> list[Chunk]:
-    from ..connector_docs import CONNECTOR_DOCS
+    from ..common.connector_docs import CONNECTOR_DOCS
     chunks = []
     for key, doc in CONNECTOR_DOCS.items():
         lines = [f"# {doc.name} ({doc.connector_type})", doc.description, ""]

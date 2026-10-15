@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from ..agent_core import Step, ToolLoopAgent, ToolSpec
-from ..config import Settings
-from ..utils import normalize_lang
+from ..common.config import Settings
+from ..common.utils import normalize_lang
 
 _KEY_PACKAGES = ("gradio", "fastapi", "sqlglot", "matplotlib", "anthropic",
                  "openai", "pyyaml", "playwright", "click", "pyhocon")
@@ -57,8 +57,8 @@ def check_env() -> str:
 
 
 def check_llm_config() -> str:
-    from ..settings_store import mask_secret
-    from ..config import env_api_key
+    from ..common.settings_store import mask_secret
+    from ..common.config import env_api_key
     key = env_api_key()
     return "\n".join([
         f"LLM_PROVIDER = {os.getenv('LLM_PROVIDER', 'anthropic')}",

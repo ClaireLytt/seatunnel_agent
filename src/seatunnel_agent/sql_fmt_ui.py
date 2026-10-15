@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import gradio as gr
 
-from .page_scaffold import make_page_t, scroll_marker, title_row, wire_page
+from .common.page_scaffold import make_page_t, scroll_marker, title_row, wire_page
 from .sql_fmt import fmt_dir, format_text, render_batch_markdown, render_markdown
-from .utils import normalize_lang
+from .common.utils import normalize_lang
 
 _DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",
              "doris", "starrocks"]

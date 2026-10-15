@@ -11,9 +11,9 @@ from __future__ import annotations
 import gradio as gr
 
 from .llm_cost import merged_prices, override_path, render_markdown, summarize_cost
-from .page_scaffold import make_page_t, scroll_marker, title_row
-from .utils import normalize_lang
-from .utils import cjk_font_family
+from .common.page_scaffold import make_page_t, scroll_marker, title_row
+from .common.utils import normalize_lang
+from .common.utils import cjk_font_family
 
 _DAY_CHOICES = [7, 14, 30, 90]
 
@@ -251,7 +251,7 @@ def render_llm_cost_page(app: gr.Blocks) -> None:
     days_dd.change(do_refresh, **_refresh_io)
     budget_num.change(do_refresh, **_refresh_io)
 
-    from .lang_pref import HOME_JS, STAMP_JS, choice_from_request
+    from .common.lang_pref import HOME_JS, STAMP_JS, choice_from_request
     home_btn.click(fn=None, js=HOME_JS)
     app.load(fn=None, js=STAMP_JS)
 

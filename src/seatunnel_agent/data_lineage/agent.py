@@ -17,10 +17,10 @@ from rich.console import Console
 from rich.panel import Panel
 
 from ..agent_core.display import display_tool_call, display_tool_result
-from ..config import Settings
-from ..context import truncate_messages
-from ..llm import LLMClient
-from ..utils import truncate
+from ..common.config import Settings
+from ..common.context import truncate_messages
+from ..common.llm import LLMClient
+from ..common.utils import truncate
 from .config import COLUMN_IMPACT_DEPTH, LineageConfig
 from .graph import LineageGraph
 from .prompts import build_lineage_prompt

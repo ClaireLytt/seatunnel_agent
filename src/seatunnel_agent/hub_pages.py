@@ -16,8 +16,8 @@ def _hub_health_html() -> str:
     """Health strip under the hub subtitle — recomputed on every page load.
 
     Language-swapped by the same data-en/zh mechanism as the rest of the hub."""
-    from . import settings_store
-    from .config import env_api_key
+    from .common import settings_store
+    from .common.config import env_api_key
     key = env_api_key()
     if key:
         model = _html.escape(os.getenv("MODEL_NAME", "claude-opus-5"))

@@ -7,7 +7,7 @@ from typing import Callable
 
 from .core import GROUPS, ReleaseNotes
 
-from ..utils import normalize_lang
+from ..common.utils import normalize_lang
 
 
 _ZH_LABELS = {key: zh for key, _en, zh in GROUPS}
@@ -76,8 +76,8 @@ def polish_markdown(markdown: str, lang: str = "zh",
     lang = normalize_lang(lang)
     try:
         if client_factory is None:
-            from ..config import load_settings
-            from ..llm import LLMClient
+            from ..common.config import load_settings
+            from ..common.llm import LLMClient
             client = LLMClient(load_settings(), agent="release_notes")
         else:
             client = client_factory(None)

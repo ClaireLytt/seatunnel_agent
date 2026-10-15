@@ -4,7 +4,7 @@ from __future__ import annotations
 import click
 
 from . import __version__
-from .cli_common import (  # noqa: F401 — re-exported for cli_cmds back-compat
+from .common.cli_common import (  # noqa: F401 — re-exported for cli_cmds back-compat
     _ensure_utf8_stdio,
     _handle_error,
     _write_output,
