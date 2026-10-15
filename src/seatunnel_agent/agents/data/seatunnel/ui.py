@@ -9,6 +9,7 @@ import tempfile
 import threading
 import time
 import zipfile
+from collections.abc import MutableMapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,7 @@ from seatunnel_agent.common.history import (
     rename_session,
     save_session,
 )
+from seatunnel_agent.common.session_scope import SessionScopedDict
 from seatunnel_agent.hub.pages import _DOCS_URL
 
 _EVENT_POLL_INTERVAL = env_float("UI_EVENT_POLL_INTERVAL", 0.3)
@@ -652,7 +654,7 @@ def _build_history_choices() -> list[tuple[str, str]]:
 def _save_current_session(
     session_id: str,
     chat_history: list[dict[str, str]],
-    agent_holder: dict[str, Any],
+    agent_holder: MutableMapping[str, Any],
 ) -> str:
     chat_history = _normalize_chat(chat_history)
     if not chat_history:
@@ -767,9 +769,11 @@ _MODE_MAP = {
 
 
 def _render_seatunnel_page(app: gr.Blocks) -> None:
-    settings_holder: dict[str, Settings | None] = {"current": None}
-    agent_holder: dict[str, SeaTunnelAgent | None] = {"agent": None}
-    collector_holder: dict[str, EventCollector | None] = {"current": None}
+    # Per-browser-session state: plain dicts here would be shared by every
+    # browser session (one user's Connect/agent overwrites another's).
+    settings_holder = SessionScopedDict(lambda: {"current": None})
+    agent_holder = SessionScopedDict(lambda: {"agent": None})
+    collector_holder = SessionScopedDict(lambda: {"current": None})
 
     lang = "en"
 

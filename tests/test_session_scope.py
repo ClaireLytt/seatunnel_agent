@@ -92,7 +92,9 @@ def test_bucket_count_is_lru_capped():
 
 
 def test_ui_pages_use_session_scoped_holders():
-    """Guard: the chat page must keep per-session (not shared) holders."""
+    """Guard: the two chat pages must keep per-session (not shared) holders."""
+    from seatunnel_agent.agents.data.seatunnel import ui as st_ui
     from seatunnel_agent.agents.data.text2sql import ui as t2s_ui
 
     assert "SessionScopedDict(" in inspect.getsource(t2s_ui.render_text2sql_page)
+    assert inspect.getsource(st_ui._render_seatunnel_page).count("SessionScopedDict(") == 3
