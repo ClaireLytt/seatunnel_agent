@@ -188,32 +188,6 @@ def render_history_page(app=None) -> None:
     logger = QueryLogger()
     fav_store = FavoritesStore()
 
-    _HIST_ROW_HL_JS = """
-    () => {
-      requestAnimationFrame(() => {
-        document.querySelectorAll('.st-hist-table table tbody tr').forEach(tr => {
-          if (tr.dataset._hlBound) return;
-          tr.dataset._hlBound = '1';
-          tr.style.cursor = 'pointer';
-          tr.addEventListener('click', () => {
-            const wasSelected = tr.classList.contains('st-row-selected');
-            const idx = Array.from(tr.parentNode.children).indexOf(tr);
-            document.querySelectorAll('.st-hist-table table tbody tr').forEach(r => {
-              r.classList.remove('st-row-selected');
-            });
-            const tb = document.querySelector('#hist-sel-idx textarea, #hist-sel-idx input');
-            if (wasSelected) {
-              if (tb) { tb.value = '-1'; tb.dispatchEvent(new Event('input', {bubbles:true})); }
-            } else {
-              tr.classList.add('st-row-selected');
-              if (tb) { tb.value = String(idx); tb.dispatchEvent(new Event('input', {bubbles:true})); }
-            }
-          });
-        });
-      });
-    }
-    """
-
     with gr.Column(elem_classes=["st-history-page"]):
         lang_state = gr.State("en")
         with gr.Row(elem_classes=["st-topbar-row"]):
@@ -256,7 +230,6 @@ def render_history_page(app=None) -> None:
 
         selected_state = gr.State([])
         selected_info = gr.Markdown("", elem_classes=["st-hist-sel-info"])
-        selected_idx_box = gr.Textbox(visible=False, elem_id="hist-sel-idx")
 
         history_table = gr.Dataframe(
             headers=["#", "Time", "Question", "", "Elapsed", "SQL"],
@@ -271,14 +244,6 @@ def render_history_page(app=None) -> None:
 
         gr.HTML(
             '<style>'
-            '.st-hist-table table tbody tr.st-row-selected,'
-            '.st-fav-table table tbody tr.st-row-selected'
-            ' { background: var(--color-accent-soft, #dbeafe) !important; }'
-            '@media (prefers-color-scheme: dark) {'
-            '  .st-hist-table table tbody tr.st-row-selected,'
-            '  .st-fav-table table tbody tr.st-row-selected'
-            '  { background: #1e3a5f !important; }'
-            '}'
             '.st-hist-detail { padding: 0 8px; }'
             '</style>'
         )
@@ -316,22 +281,6 @@ def render_history_page(app=None) -> None:
             return [], "", ""
         question = ""
         records = list(reversed(logger.recent(100)))
-        if 0 <= row < len(records):
-            question = records[row].get("user_query", "")
-            if len(question) > 60:
-                question = question[:60] + "..."
-        info = f"**Selected row #{row}:** {question}"
-        return [row], info, _build_detail(row)
-
-    def _on_js_select(idx_str: str):
-        try:
-            row = int(idx_str)
-        except (ValueError, TypeError):
-            return [], "", ""
-        if row < 0:
-            return [], "", ""
-        records = list(reversed(logger.recent(100)))
-        question = ""
         if 0 <= row < len(records):
             question = records[row].get("user_query", "")
             if len(question) > 60:
@@ -447,11 +396,6 @@ def render_history_page(app=None) -> None:
         inputs=[selected_state],
         outputs=_sel_outputs,
     )
-    selected_idx_box.input(
-        fn=_on_js_select,
-        inputs=[selected_idx_box],
-        outputs=_sel_outputs,
-    )
     def _resume_set(choice: str):
         if not choice:
             return
@@ -485,9 +429,6 @@ def render_history_page(app=None) -> None:
 
     if app is not None:
         app.load(fn=_refresh, outputs=_refresh_outputs)
-        app.load(fn=None, js=_HIST_ROW_HL_JS)
-
-    history_table.change(fn=None, js=_HIST_ROW_HL_JS)
 
 
 def render_favorites_page(app=None) -> None:
