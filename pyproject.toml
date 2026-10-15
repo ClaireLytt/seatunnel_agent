@@ -109,6 +109,12 @@ python_version = "3.11"
 files = [
     "src/seatunnel_agent/hub/registry.py",
     "src/seatunnel_agent/common/notify.py",
+    "src/seatunnel_agent/common/config.py",
+    "src/seatunnel_agent/common/context.py",
+    "src/seatunnel_agent/common/jsonl_log.py",
+    "src/seatunnel_agent/common/settings_store.py",
+    "src/seatunnel_agent/common/sql_text.py",
+    "src/seatunnel_agent/common/utils.py",
     "src/seatunnel_agent/common/llm_usage.py",
     "src/seatunnel_agent/agents/devops/secret_scan",
     "src/seatunnel_agent/agents/devops/dep_check",
