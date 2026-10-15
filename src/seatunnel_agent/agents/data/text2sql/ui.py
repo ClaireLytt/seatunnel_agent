@@ -75,6 +75,7 @@ from seatunnel_agent.agents.data.text2sql.ui_format import (  # noqa: F401 — r
     _shared_holder_lock,
 )
 from seatunnel_agent.common.config import load_settings
+from seatunnel_agent.common.session_scope import SessionScopedDict
 
 
 def render_schema_browser_page(app=None) -> None:
@@ -714,16 +715,21 @@ def render_text2sql_page(app=None) -> None:
     lang = "en"
     t = lambda k: _t2s(lang, k)
 
-    holder: dict[str, Any] = {
-        "agent": None,
-        "collector": None,
-        "settings": None,
-        "store": None,
-        "full_store": None,
-        "ds_type": "hive",
-        "db_config": None,
-        "session_id": None,
-    }
+    # Per-browser-session state: a plain dict here would be shared by every
+    # browser session (user B's Connect overwrites user A's agent/db_config).
+    def _fresh_holder() -> dict[str, Any]:
+        return {
+            "agent": None,
+            "collector": None,
+            "settings": None,
+            "store": None,
+            "full_store": None,
+            "ds_type": "hive",
+            "db_config": None,
+            "session_id": None,
+        }
+
+    holder = SessionScopedDict(_fresh_holder)
     holder_lock = threading.Lock()
 
     def _table_choices(store, lang="zh"):
@@ -1187,6 +1193,11 @@ def render_text2sql_page(app=None) -> None:
             _shared_holder["db_config"] = db_config
             _shared_holder["ds_type"] = ds_type
 
+        # Pin this session's bucket before spawning the thread: the request
+        # contextvar is not inherited by threads, so `holder[...]` inside the
+        # worker would resolve to the wrong (default) bucket.
+        _h = holder.resolve()
+
         def _warmup():
             try:
                 from seatunnel_agent.agents.data.text2sql.agent import Text2SQLAgent
@@ -1195,23 +1206,23 @@ def render_text2sql_page(app=None) -> None:
                     metric_store=metric_store,
                 )
                 with holder_lock:
-                    if holder.get("agent") is None:
-                        holder["agent"] = agent
-                    resume_msgs = holder.pop("_resume_agent_msgs", None)
+                    if _h.get("agent") is None:
+                        _h["agent"] = agent
+                    resume_msgs = _h.pop("_resume_agent_msgs", None)
                     if resume_msgs:
                         agent.messages = resume_msgs
-                    holder["llm_status"] = f"✅ LLM {settings.model_name}"
+                    _h["llm_status"] = f"✅ LLM {settings.model_name}"
             except Exception as e:
                 e_msg = str(e)
                 with holder_lock:
                     if "timeout" in e_msg.lower() or "timed out" in e_msg.lower():
-                        holder["llm_status"] = f"⚠️ LLM timeout ({settings.llm_base_url or 'default'})"
+                        _h["llm_status"] = f"⚠️ LLM timeout ({settings.llm_base_url or 'default'})"
                     elif "auth" in e_msg.lower() or "api key" in e_msg.lower() or "401" in e_msg:
-                        holder["llm_status"] = "❌ LLM auth fail — check API_KEY"
+                        _h["llm_status"] = "❌ LLM auth fail — check API_KEY"
                     elif "connect" in e_msg.lower():
-                        holder["llm_status"] = f"❌ LLM unreachable ({settings.llm_base_url or 'default'})"
+                        _h["llm_status"] = f"❌ LLM unreachable ({settings.llm_base_url or 'default'})"
                     else:
-                        holder["llm_status"] = f"⚠️ LLM: {e_msg[:80]}"
+                        _h["llm_status"] = f"⚠️ LLM: {e_msg[:80]}"
 
         threading.Thread(target=_warmup, daemon=True).start()
 
