@@ -13,7 +13,7 @@ from click.testing import CliRunner
 
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.llm import LLMResponse
-from seatunnel_agent.prompt_lab import (
+from seatunnel_agent.agents.ai.prompt_lab import (
     ACTIVE,
     ExperimentLogger,
     render_diff,
@@ -53,7 +53,7 @@ def profiles(monkeypatch):
         "claude": {"LLM_PROVIDER": "anthropic", "API_KEY": "sk-ant",
                    "MODEL_NAME": "claude-opus-5"},
     }
-    monkeypatch.setattr("seatunnel_agent.prompt_lab.runner.load_profile",
+    monkeypatch.setattr("seatunnel_agent.agents.ai.prompt_lab.runner.load_profile",
                         lambda name: store.get(name, {}))
     monkeypatch.setenv("API_KEY", "sk-active")
     monkeypatch.setenv("LLM_PROVIDER", "anthropic")
@@ -198,13 +198,13 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.prompt_lab.api import router
+        from seatunnel_agent.agents.ai.prompt_lab.api import router
         app = FastAPI()
         app.include_router(router)
         return TestClient(app)
 
     def test_profiles_names_only(self, profiles, monkeypatch):
-        monkeypatch.setattr("seatunnel_agent.prompt_lab.api.list_profiles",
+        monkeypatch.setattr("seatunnel_agent.agents.ai.prompt_lab.api.list_profiles",
                             lambda: ["kimi", "claude"])
         resp = self._client().get("/api/promptlab/profiles")
         data = resp.json()

@@ -10,15 +10,15 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from seatunnel_agent.ui_testing import loader as ldr
-from seatunnel_agent.ui_testing.asserts import run_assert
-from seatunnel_agent.ui_testing.loader import (
+from seatunnel_agent.agents.devops.ui_testing import loader as ldr
+from seatunnel_agent.agents.devops.ui_testing.asserts import run_assert
+from seatunnel_agent.agents.devops.ui_testing.loader import (
     CaseLoadError,
     filter_cases,
     load_cases,
 )
-from seatunnel_agent.ui_testing.models import Assertion, Step
-from seatunnel_agent.ui_testing.seed_sqlite import SEED, seed_sqlite
+from seatunnel_agent.agents.devops.ui_testing.models import Assertion, Step
+from seatunnel_agent.agents.devops.ui_testing.seed_sqlite import SEED, seed_sqlite
 
 
 # ── loader ──
@@ -248,7 +248,7 @@ class TestAsserts:
 class TestAgentLoop:
     def _llm(self, responses):
         """A UITestLLM whose client replays the given LLMResponses."""
-        from seatunnel_agent.ui_testing.agent import UITestLLM
+        from seatunnel_agent.agents.devops.ui_testing.agent import UITestLLM
         llm = UITestLLM.__new__(UITestLLM)
         llm.tokens_used = 0
         client = MagicMock()
@@ -277,7 +277,7 @@ class TestAgentLoop:
         return tc
 
     def test_done_success(self):
-        from seatunnel_agent.ui_testing.agent import run_ai_step
+        from seatunnel_agent.agents.devops.ui_testing.agent import run_ai_step
         llm = self._llm([
             self._resp([self._tc("click", {"target": "连接"})]),
             self._resp([self._tc("done", {"success": True})]),
@@ -289,7 +289,7 @@ class TestAgentLoop:
         dc.click_button.assert_called_once_with("连接", None)
 
     def test_done_failure_reason(self):
-        from seatunnel_agent.ui_testing.agent import run_ai_step
+        from seatunnel_agent.agents.devops.ui_testing.agent import run_ai_step
         llm = self._llm([
             self._resp([self._tc("done", {"success": False,
                                           "reason": "找不到按钮"})]),
@@ -300,7 +300,7 @@ class TestAgentLoop:
         assert not log.ok and "找不到按钮" in log.detail
 
     def test_round_cap(self):
-        from seatunnel_agent.ui_testing.agent import MAX_ROUNDS, run_ai_step
+        from seatunnel_agent.agents.devops.ui_testing.agent import MAX_ROUNDS, run_ai_step
         llm = self._llm([
             self._resp([self._tc("read_page", {})])] * (MAX_ROUNDS + 1))
         dc = MagicMock()
@@ -309,7 +309,7 @@ class TestAgentLoop:
         assert not log.ok and str(MAX_ROUNDS) in log.detail
 
     def test_token_budget_cap(self):
-        from seatunnel_agent.ui_testing.agent import run_ai_step
+        from seatunnel_agent.agents.devops.ui_testing.agent import run_ai_step
         big = {"input_tokens": 40_000, "output_tokens": 1}
         llm = self._llm([self._resp([self._tc("read_page", {})], usage=big)])
         dc = MagicMock()
@@ -318,7 +318,7 @@ class TestAgentLoop:
         assert not log.ok and "预算" in log.detail
 
     def test_no_tool_use_fails(self):
-        from seatunnel_agent.ui_testing.agent import run_ai_step
+        from seatunnel_agent.agents.devops.ui_testing.agent import run_ai_step
         llm = self._llm([self._resp(text="我觉得应该点连接")])
         dc = MagicMock()
         dc.digest.return_value = "[PAGE]"
@@ -326,7 +326,7 @@ class TestAgentLoop:
         assert not log.ok and "未调用工具" in log.detail
 
     def test_tool_error_fed_back(self):
-        from seatunnel_agent.ui_testing.agent import _exec_tool
+        from seatunnel_agent.agents.devops.ui_testing.agent import _exec_tool
         dc = MagicMock()
         dc.click_button.side_effect = LookupError("button not found: x")
         out = _exec_tool("click", {"target": "x"}, dc)
@@ -337,7 +337,7 @@ class TestAgentLoop:
 
 class TestCoverage:
     def test_counts_and_statuses(self):
-        from seatunnel_agent.ui_testing.coverage import compute_coverage
+        from seatunnel_agent.agents.devops.ui_testing.coverage import compute_coverage
         cov = compute_coverage(load_cases())
         if cov is None:
             pytest.skip("checklist html not present")
@@ -354,7 +354,7 @@ class TestCoverage:
         assert "SR1" in cov.extra_case_ids       # sanity: SR group is extra
 
     def test_absent_checklist_returns_none(self, tmp_path):
-        from seatunnel_agent.ui_testing.coverage import compute_coverage
+        from seatunnel_agent.agents.devops.ui_testing.coverage import compute_coverage
         assert compute_coverage(load_cases(), path=tmp_path / "nope.html") is None
 
 
@@ -362,7 +362,7 @@ class TestCoverage:
 
 class TestJudge:
     def test_parse_verdicts(self):
-        from seatunnel_agent.ui_testing.judge import _parse
+        from seatunnel_agent.agents.devops.ui_testing.judge import _parse
         assert _parse('{"verdict": "pass", "reason": "ok"}')["verdict"] == "pass"
         assert _parse('前缀 {"verdict": "fail", "reason": "差"} 后缀')["verdict"] == "fail"
         assert _parse("not json") is None
@@ -372,8 +372,8 @@ class TestJudge:
         """verdict: fail — a false expectation must be judged fail."""
         import json as _json
 
-        from seatunnel_agent.ui_testing import judge as judge_mod
-        from seatunnel_agent.ui_testing.models import Assertion
+        from seatunnel_agent.agents.devops.ui_testing import judge as judge_mod
+        from seatunnel_agent.agents.devops.ui_testing.models import Assertion
 
         monkeypatch.setattr(judge_mod, "_judge_cache", {})
         monkeypatch.setenv("UITEST_JUDGE_VISION", "0")
@@ -408,8 +408,8 @@ class TestJudge:
         a cache entry."""
         import json as _json
 
-        from seatunnel_agent.ui_testing import judge as judge_mod
-        from seatunnel_agent.ui_testing.models import Assertion
+        from seatunnel_agent.agents.devops.ui_testing import judge as judge_mod
+        from seatunnel_agent.agents.devops.ui_testing.models import Assertion
 
         monkeypatch.setattr(judge_mod, "_judge_cache", {})
         monkeypatch.setenv("UITEST_JUDGE_VISION", "0")
@@ -433,7 +433,7 @@ class TestJudge:
         assert "(cached)" not in neg_log.detail
 
     def test_loader_rejects_bad_verdict(self):
-        from seatunnel_agent.ui_testing.loader import validate_case_yaml
+        from seatunnel_agent.agents.devops.ui_testing.loader import validate_case_yaml
         bad = """
 - id: NEGX
   title: bad verdict
@@ -446,8 +446,8 @@ class TestJudge:
             validate_case_yaml(bad)
 
     def test_cache_skips_second_llm_call(self, monkeypatch):
-        from seatunnel_agent.ui_testing import judge as judge_mod
-        from seatunnel_agent.ui_testing.models import Assertion
+        from seatunnel_agent.agents.devops.ui_testing import judge as judge_mod
+        from seatunnel_agent.agents.devops.ui_testing.models import Assertion
 
         monkeypatch.setattr(judge_mod, "_judge_cache", {})
         monkeypatch.setenv("UITEST_JUDGE_VISION", "0")
@@ -486,13 +486,13 @@ class TestSelfHeal:
     """The page's button was renamed to 'New Label'; cases still say 旧按钮."""
 
     def _reset(self):
-        from seatunnel_agent.ui_testing import page as page_mod
-        from seatunnel_agent.ui_testing import runner
+        from seatunnel_agent.agents.devops.ui_testing import page as page_mod
+        from seatunnel_agent.agents.devops.ui_testing import runner
         page_mod.reset_aliases()
         runner._heal_failed.clear()
 
     def _dc(self):
-        from seatunnel_agent.ui_testing import page as page_mod
+        from seatunnel_agent.agents.devops.ui_testing import page as page_mod
 
         class DC:
             page = MagicMock()
@@ -523,7 +523,7 @@ class TestSelfHeal:
     def _llm(self, label="New Label"):
         import json as _json
 
-        from seatunnel_agent.ui_testing.agent import UITestLLM
+        from seatunnel_agent.agents.devops.ui_testing.agent import UITestLLM
         llm = UITestLLM.__new__(UITestLLM)
         llm.tokens_used = 0
         resp = MagicMock()
@@ -535,13 +535,13 @@ class TestSelfHeal:
         return llm
 
     def _case(self):
-        from seatunnel_agent.ui_testing.models import TestCase
+        from seatunnel_agent.agents.devops.ui_testing.models import TestCase
         return TestCase(id="H1", title="heal demo", tags=["sqlite"],
                         page="/x",
                         steps=[Step(action="click", args={"target": "旧按钮"})])
 
     def test_heal_success_then_alias_reused(self, tmp_path):
-        from seatunnel_agent.ui_testing.runner import run_case
+        from seatunnel_agent.agents.devops.ui_testing.runner import run_case
         self._reset()
         dc, llm = self._dc(), self._llm()
 
@@ -557,7 +557,7 @@ class TestSelfHeal:
         self._reset()
 
     def test_bad_suggestion_rolls_back(self, tmp_path, monkeypatch):
-        from seatunnel_agent.ui_testing import runner
+        from seatunnel_agent.agents.devops.ui_testing import runner
         self._reset()
         dc = self._dc()
         # '保存' IS on the page (passes the digest gate) but is not the
@@ -572,7 +572,7 @@ class TestSelfHeal:
         # later case: fails fast, no second suggestion round
         calls = {"n": 0}
         monkeypatch.setattr(
-            "seatunnel_agent.ui_testing.diagnose.suggest_locator_struct",
+            "seatunnel_agent.agents.devops.ui_testing.diagnose.suggest_locator_struct",
             lambda *a, **k: calls.__setitem__("n", calls["n"] + 1))
         cr2 = runner.run_case(self._case(), dc, llm, tmp_path)
         assert cr2.verdict == "ERROR"
@@ -580,13 +580,13 @@ class TestSelfHeal:
         self._reset()
 
     def test_digest_gate_blocks_hallucination(self):
-        from seatunnel_agent.ui_testing.diagnose import suggest_locator_struct
+        from seatunnel_agent.agents.devops.ui_testing.diagnose import suggest_locator_struct
         llm = self._llm(label="Ghost Button")   # not in the digest below
         assert suggest_locator_struct("旧按钮", "[BUTTONS] New Label", llm) is None
 
     def test_labels_patch_lines(self):
-        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
-        from seatunnel_agent.ui_testing.report import _labels_patch_lines
+        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.agents.devops.ui_testing.report import _labels_patch_lines
         rr = RunResult(started_at="t", suite="smoke", cases=[
             CaseResult("H1", "t", "HEALED", healed=["连接 -> Connect Now"]),
         ])
@@ -595,8 +595,8 @@ class TestSelfHeal:
         assert "healed: H1" in line
 
     def test_labels_patch_escapes_quotes(self):
-        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
-        from seatunnel_agent.ui_testing.report import _labels_patch_lines
+        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.agents.devops.ui_testing.report import _labels_patch_lines
         rr = RunResult(started_at="t", suite="smoke", cases=[
             CaseResult("H1", "t", "HEALED", healed=['连接 -> Say "Hi"']),
         ])
@@ -604,9 +604,9 @@ class TestSelfHeal:
         assert '"Say \\"Hi\\""' in line          # valid python when pasted
 
     def test_assert_side_healing(self, tmp_path):
-        from seatunnel_agent.ui_testing import page as page_mod
-        from seatunnel_agent.ui_testing.models import Assertion, TestCase
-        from seatunnel_agent.ui_testing.runner import run_case
+        from seatunnel_agent.agents.devops.ui_testing import page as page_mod
+        from seatunnel_agent.agents.devops.ui_testing.models import Assertion, TestCase
+        from seatunnel_agent.agents.devops.ui_testing.runner import run_case
         self._reset()
         llm = self._llm()
 
@@ -648,8 +648,8 @@ class TestSelfHeal:
         self._reset()
 
     def test_healed_counts_and_flaky_normalization(self):
-        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
-        from seatunnel_agent.ui_testing.rundiff import CaseDelta, flaky_trend
+        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.agents.devops.ui_testing.rundiff import CaseDelta, flaky_trend
         rr = RunResult(started_at="t", suite="smoke", cases=[
             CaseResult("H1", "t", "HEALED")])
         assert rr.counts()["HEALED"] == 1
@@ -668,7 +668,7 @@ class TestSelfHeal:
 
 class TestReportMask:
     def test_mask_replaces_secrets(self, monkeypatch):
-        from seatunnel_agent.ui_testing import report
+        from seatunnel_agent.agents.devops.ui_testing import report
         monkeypatch.setenv("HIVE_PASSWORD", "supersecret99")
         assert "supersecret99" not in report.mask("pw is supersecret99!")
 
@@ -680,9 +680,9 @@ class TestFlakyTrend:
             "\n".join(json.dumps(r) for r in rows), encoding="utf-8")
 
     def test_history_roundtrip_and_trend(self, tmp_path):
-        from seatunnel_agent.ui_testing.models import CaseResult, RunResult
-        from seatunnel_agent.ui_testing.report import append_history
-        from seatunnel_agent.ui_testing.rundiff import (
+        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.agents.devops.ui_testing.report import append_history
+        from seatunnel_agent.agents.devops.ui_testing.rundiff import (
             flaky_trend, load_history)
         rr = RunResult(started_at="20260101_000000", suite="smoke")
         rr.cases = [CaseResult("A1", "t", "PASS"),
@@ -701,7 +701,7 @@ class TestFlakyTrend:
         assert "L6" not in rows            # SKIP is not signal
 
     def test_trend_ignores_corrupt_lines_and_last_window(self, tmp_path):
-        from seatunnel_agent.ui_testing.rundiff import load_history
+        from seatunnel_agent.agents.devops.ui_testing.rundiff import load_history
         self._hist(tmp_path, [
             {"ts": "1", "suite": "s", "verdicts": {"A1": "PASS"}},
             {"ts": "2", "suite": "s", "verdicts": {"A1": "FAIL"}},
@@ -712,7 +712,7 @@ class TestFlakyTrend:
         assert len(load_history(tmp_path, last=1)) == 1
 
     def test_format_trend_marks_flaky(self, tmp_path):
-        from seatunnel_agent.ui_testing.rundiff import (
+        from seatunnel_agent.agents.devops.ui_testing.rundiff import (
             flaky_trend, format_trend, load_history)
         self._hist(tmp_path, [
             {"ts": "1", "suite": "s", "verdicts": {"A1": "PASS", "B1": "PASS"}},
@@ -729,7 +729,7 @@ class TestDskLabelSync:
 
     def test_dsk_labels_match_i18n(self):
         from seatunnel_agent.agents.data.data_skew.i18n import dsk
-        from seatunnel_agent.ui_testing.page import LABELS
+        from seatunnel_agent.agents.devops.ui_testing.page import LABELS
 
         expected = {
             "开始分析": "dsk_analyze_btn",
@@ -752,7 +752,7 @@ class TestDskLabelSync:
 
     def test_dsk_shared_label_aliases(self):
         from seatunnel_agent.agents.data.data_skew.i18n import dsk
-        from seatunnel_agent.ui_testing.page import LABELS
+        from seatunnel_agent.agents.devops.ui_testing.page import LABELS
 
         # skew page labels that ride on keys shared with other pages
         assert dsk("zh", "dsk_host") in LABELS["主机"]
@@ -764,7 +764,7 @@ class TestDskLabelSync:
 
     def test_review_bridge_button_label(self):
         from seatunnel_agent.agents.data.sql_review.i18n import sr
-        from seatunnel_agent.ui_testing.page import LABELS
+        from seatunnel_agent.agents.devops.ui_testing.page import LABELS
 
         zh, en = LABELS["倾斜分析"][:2]
         assert zh == sr("zh", "sr_skew_btn")
@@ -775,7 +775,7 @@ def test_expand_assert_remaps_yaml_on_key():
     """YAML 1.1 parses bare `on:` as boolean True — the assert expander must
     map it back, or `on: false` checks silently invert (caught by review:
     C7's mid-run disabled check degenerated to expecting enabled)."""
-    from seatunnel_agent.ui_testing.loader import _expand_assert
+    from seatunnel_agent.agents.devops.ui_testing.loader import _expand_assert
     a = _expand_assert({"enabled": {"target": "x", True: False}}, "ctx")
     assert a.args.get("on") is False
     assert True not in a.args

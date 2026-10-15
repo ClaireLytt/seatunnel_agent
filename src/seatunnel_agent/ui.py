@@ -204,7 +204,7 @@ def create_ui() -> gr.Blocks:
         render_config_migrate_page(app)
 
     with app.route("UI Testing", "/uitest"):
-        from .ui_testing.gradio_page import render_uitest_page
+        from seatunnel_agent.agents.devops.ui_testing.gradio_page import render_uitest_page
         render_uitest_page(app)
 
     with app.route("Settings", "/settings"):

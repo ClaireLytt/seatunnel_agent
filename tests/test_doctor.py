@@ -10,8 +10,8 @@ from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
 from seatunnel_agent.common.config import Settings
-from seatunnel_agent.doctor import diagnose
-from seatunnel_agent.doctor.engine import (
+from seatunnel_agent.agents.devops.doctor import diagnose
+from seatunnel_agent.agents.devops.doctor.engine import (
     check_env,
     check_llm_config,
     check_port,

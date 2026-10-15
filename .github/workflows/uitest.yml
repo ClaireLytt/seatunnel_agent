@@ -36,7 +36,7 @@ jobs:
           python -m playwright install --with-deps chromium
 
       - name: Run UI smoke suite (no LLM)
-        run: python -m seatunnel_agent.ui_testing run --suite smoke --no-llm
+        run: python -m seatunnel_agent.agents.devops.ui_testing run --suite smoke --no-llm
 
       - name: Upload report on failure
         if: failure()

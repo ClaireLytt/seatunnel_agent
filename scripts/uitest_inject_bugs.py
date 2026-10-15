@@ -39,7 +39,7 @@ BUGS = [
 
 
 def run_cases(ids):
-    cmd = [sys.executable, "-m", "seatunnel_agent.ui_testing", "run",
+    cmd = [sys.executable, "-m", "seatunnel_agent.agents.devops.ui_testing", "run",
            "--no-llm", "--case", *ids]
     r = subprocess.run(cmd, capture_output=True, text=True,
                        encoding="utf-8", errors="replace", timeout=600)
@@ -79,7 +79,7 @@ else:
     I18N.write_text(src.replace(heal_old, heal_new), encoding="utf-8",
                     newline="")
     try:
-        cmd = [sys.executable, "-m", "seatunnel_agent.ui_testing", "run",
+        cmd = [sys.executable, "-m", "seatunnel_agent.agents.devops.ui_testing", "run",
                "--case", "C1"]                       # WITH LLM on purpose
         r = subprocess.run(cmd, capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=600)

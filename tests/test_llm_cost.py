@@ -13,7 +13,7 @@ import pytest
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.llm_cost import (
+from seatunnel_agent.agents.ai.llm_cost import (
     builtin_prices,
     check_budget,
     cost_usd,
@@ -23,7 +23,7 @@ from seatunnel_agent.llm_cost import (
     render_markdown,
     summarize_cost,
 )
-from seatunnel_agent.llm_cost.aggregate import _find_anomalies
+from seatunnel_agent.agents.ai.llm_cost.aggregate import _find_anomalies
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "llmcost_demo"
 USAGE = DEMO / "llm_usage_sample.jsonl"
@@ -209,7 +209,7 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.llm_cost.api import router
+        from seatunnel_agent.agents.ai.llm_cost.api import router
         monkeypatch.setenv("LLM_USAGE_PATH", str(USAGE))
         app = FastAPI()
         app.include_router(router)
@@ -227,7 +227,7 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.llm_cost.api import router
+        from seatunnel_agent.agents.ai.llm_cost.api import router
         app = FastAPI()
         app.include_router(router)
         resp = TestClient(app).get("/api/llmcost/health")

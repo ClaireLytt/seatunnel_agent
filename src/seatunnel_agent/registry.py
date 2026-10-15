@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """Plugin registry — drop-in agent packages, auto-discovered.
 
-A package under ``seatunnel_agent`` becomes a platform plugin by shipping a
-``manifest.py`` with a module-level ``MANIFEST = AgentManifest(...)``.
+A package under ``seatunnel_agent.agents.<workspace>`` becomes a platform
+plugin by shipping a ``manifest.py`` with a module-level
+``MANIFEST = AgentManifest(...)``.
 Discovery wires it everywhere at once:
 
 * hub card on its workspace page (``/ai`` / ``/devops``),
@@ -39,8 +40,8 @@ class AgentManifest:
     title_zh: str
     desc_en: str
     desc_zh: str
-    render: str          # "seatunnel_agent.secret_scan_ui:render_secret_scan_page"
-    api: str | None = None   # "seatunnel_agent.secret_scan.api:router"
+    render: str          # "seatunnel_agent.agents.devops.secret_scan.ui:render_secret_scan_page"
+    api: str | None = None   # "seatunnel_agent.agents.devops.secret_scan.api:router"
     order: int = 100     # card order within the workspace
 
 
@@ -51,25 +52,29 @@ def resolve(target: str) -> Any:
 
 
 def discover() -> list[AgentManifest]:
-    """Every ``seatunnel_agent.<pkg>.manifest.MANIFEST``, validated."""
-    import seatunnel_agent as root
+    """Every ``seatunnel_agent.agents.<ws>.<pkg>.manifest.MANIFEST``, validated."""
     found: list[AgentManifest] = []
-    for info in pkgutil.iter_modules(root.__path__):
-        if not info.ispkg:
-            continue
-        mod_name = f"seatunnel_agent.{info.name}.manifest"
-        try:
-            mod = importlib.import_module(mod_name)
-        except ModuleNotFoundError as exc:
-            if exc.name == mod_name:
-                continue  # package without a manifest — not a plugin
-            raise
-        mf = getattr(mod, "MANIFEST", None)
-        if not isinstance(mf, AgentManifest):
-            raise TypeError(f"{mod_name} 必须定义 MANIFEST = AgentManifest(...)")
-        if mf.workspace not in WORKSPACES:
-            raise ValueError(f"{mod_name}: workspace 必须是 {WORKSPACES}")
-        found.append(mf)
+    for ws in WORKSPACES:
+        ws_pkg = importlib.import_module(f"seatunnel_agent.agents.{ws}")
+        for info in pkgutil.iter_modules(ws_pkg.__path__):
+            if not info.ispkg:
+                continue
+            mod_name = f"seatunnel_agent.agents.{ws}.{info.name}.manifest"
+            try:
+                mod = importlib.import_module(mod_name)
+            except ModuleNotFoundError as exc:
+                if exc.name == mod_name:
+                    continue  # package without a manifest — not a plugin
+                raise
+            mf = getattr(mod, "MANIFEST", None)
+            if not isinstance(mf, AgentManifest):
+                raise TypeError(f"{mod_name} 必须定义 MANIFEST = AgentManifest(...)")
+            if mf.workspace not in WORKSPACES:
+                raise ValueError(f"{mod_name}: workspace 必须是 {WORKSPACES}")
+            if mf.workspace != ws:
+                raise ValueError(
+                    f"{mod_name}: workspace={mf.workspace!r} 与所在目录 agents/{ws} 不一致")
+            found.append(mf)
     routes = [m.route for m in found]
     dup = {r for r in routes if routes.count(r) > 1}
     if dup:

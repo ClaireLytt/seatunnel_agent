@@ -39,7 +39,7 @@ _PORT = int(os.getenv("UITEST_PORT", "7916")) + _OFFSET * 3
 
 
 def _collect():
-    from seatunnel_agent.ui_testing.loader import filter_cases, load_cases
+    from seatunnel_agent.agents.devops.ui_testing.loader import filter_cases, load_cases
 
     suite = os.getenv("UITEST_SUITE", "smoke")
     ids = os.getenv("UITEST_CASES", "").split() or None
@@ -54,8 +54,8 @@ CASES = _collect()
 def ui_env(tmp_path_factory):
     from playwright.sync_api import sync_playwright
 
-    from seatunnel_agent.ui_testing.env import AppUnderTest
-    from seatunnel_agent.ui_testing.page import DCPage
+    from seatunnel_agent.agents.devops.ui_testing.env import AppUnderTest
+    from seatunnel_agent.agents.devops.ui_testing.page import DCPage
 
     shots = tmp_path_factory.mktemp("shots")
     with AppUnderTest(port=_PORT, log_dir=shots.parent) as app:
@@ -82,7 +82,7 @@ _CHAIN_GROUPS = {
      if c.id in _CHAIN_GROUPS else c for c in CASES],
     ids=[c.id for c in CASES])
 def test_ui_case(case, ui_env):
-    from seatunnel_agent.ui_testing.runner import _skip_reason, run_case
+    from seatunnel_agent.agents.devops.ui_testing.runner import _skip_reason, run_case
 
     dc, shots, app = ui_env
     reason = _skip_reason(case, no_llm=True)

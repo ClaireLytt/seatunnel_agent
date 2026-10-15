@@ -8,7 +8,7 @@ import json
 from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
-from seatunnel_agent.doc_qa import (
+from seatunnel_agent.agents.ai.doc_qa import (
     BM25Index,
     Chunk,
     answer,
@@ -107,7 +107,7 @@ class TestCliAndApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.doc_qa.api import router
+        from seatunnel_agent.agents.ai.doc_qa.api import router
         app = FastAPI()
         app.include_router(router)
         client = TestClient(app)

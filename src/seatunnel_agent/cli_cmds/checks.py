@@ -628,7 +628,7 @@ def secretscan(
     import json as _json
     from pathlib import Path
 
-    from ..secret_scan import (
+    from seatunnel_agent.agents.devops.secret_scan import (
         ScanResult, check_fail, render_markdown, scan_paths, scan_text,
     )
 
@@ -687,7 +687,7 @@ def depcheck(
     import json as _json
     from pathlib import Path
 
-    from ..dep_check import check, check_fail, collect_from_path, render_markdown
+    from seatunnel_agent.agents.devops.dep_check import check, check_fail, collect_from_path, render_markdown
 
     try:
         reqs = collect_from_path(path)
@@ -756,7 +756,7 @@ def ciinspect(
     import json as _json
     from pathlib import Path
 
-    from ..ci_inspect import analyze, collect_gh_runs, render_markdown
+    from seatunnel_agent.agents.devops.ci_inspect import analyze, collect_gh_runs, render_markdown
 
     runs_text = None
     if runs_file:

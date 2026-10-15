@@ -14,7 +14,7 @@ from click.testing import CliRunner
 from seatunnel_agent.cli import cli
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.llm import LLMResponse, ToolCall
-from seatunnel_agent.orchestrator import (
+from seatunnel_agent.agents.ai.orchestrator import (
     Orchestrator,
     build_catalog,
     render_markdown,
@@ -285,7 +285,7 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.orchestrator.api import router
+        from seatunnel_agent.agents.ai.orchestrator.api import router
         app = FastAPI()
         app.include_router(router)
         return TestClient(app)
@@ -385,7 +385,7 @@ class TestSessionPersistence:
         assert "a1b" in orch.messages[1]["content"]
 
     def test_chat_logger_roundtrip(self, monkeypatch, tmp_path):
-        from seatunnel_agent.orchestrator.olog import ChatLogger
+        from seatunnel_agent.agents.ai.orchestrator.olog import ChatLogger
         log = tmp_path / "chat.jsonl"
         monkeypatch.setenv("ORCH_CHAT_LOG", "1")
         monkeypatch.setenv("ORCH_CHAT_PATH", str(log))
@@ -399,7 +399,7 @@ class TestSessionPersistence:
         assert turns[0]["steps"][0]["tool"] == "sql_fmt"
 
     def test_logging_disabled_by_default_fixture(self, tmp_path, monkeypatch):
-        from seatunnel_agent.orchestrator.olog import ChatLogger
+        from seatunnel_agent.agents.ai.orchestrator.olog import ChatLogger
         log = tmp_path / "chat.jsonl"
         monkeypatch.setenv("ORCH_CHAT_PATH", str(log))
         ChatLogger().log_turn("s", "q", "a")
@@ -408,7 +408,7 @@ class TestSessionPersistence:
 
 class TestSessionContinuity:
     def test_cleared_marker_persists(self, monkeypatch, tmp_path):
-        from seatunnel_agent.orchestrator.olog import ChatLogger
+        from seatunnel_agent.agents.ai.orchestrator.olog import ChatLogger
         monkeypatch.setenv("ORCH_CHAT_LOG", "1")
         monkeypatch.setenv("ORCH_CHAT_PATH", str(tmp_path / "c.jsonl"))
         lg = ChatLogger()

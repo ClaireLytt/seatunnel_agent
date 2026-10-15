@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.ci_inspect import (
+from seatunnel_agent.agents.devops.ci_inspect import (
     analyze,
     analyze_runs,
     cluster_logs,
@@ -154,7 +154,7 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.ci_inspect.api import router
+        from seatunnel_agent.agents.devops.ci_inspect.api import router
         app = FastAPI()
         app.include_router(router)
         return TestClient(app)

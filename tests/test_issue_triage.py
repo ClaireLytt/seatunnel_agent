@@ -10,7 +10,7 @@ from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
 from seatunnel_agent.common.config import Settings
-from seatunnel_agent.issue_triage import (
+from seatunnel_agent.agents.ai.issue_triage import (
     build_tools,
     load_issues,
     render_markdown,
@@ -128,7 +128,7 @@ class TestCliAndApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.issue_triage.api import router
+        from seatunnel_agent.agents.ai.issue_triage.api import router
         app = FastAPI()
         app.include_router(router)
         resp = TestClient(app).post("/api/triage/run",
@@ -144,7 +144,7 @@ class TestCliAndApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.issue_triage.api import router
+        from seatunnel_agent.agents.ai.issue_triage.api import router
         app = FastAPI()
         app.include_router(router)
         resp = TestClient(app).post("/api/triage/run", json={
@@ -158,7 +158,7 @@ class TestCliAndApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.issue_triage.api import router
+        from seatunnel_agent.agents.ai.issue_triage.api import router
         app = FastAPI()
         app.include_router(router)
         assert TestClient(app).get("/api/triage/health").json() == {

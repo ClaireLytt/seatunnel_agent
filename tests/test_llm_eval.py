@@ -15,7 +15,7 @@ from click.testing import CliRunner
 from seatunnel_agent.cli import cli
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.llm import LLMResponse
-from seatunnel_agent.llm_eval import (
+from seatunnel_agent.agents.ai.llm_eval import (
     RunLogger,
     compare,
     load_suite,
@@ -24,8 +24,8 @@ from seatunnel_agent.llm_eval import (
     run_check,
     run_suite,
 )
-from seatunnel_agent.llm_eval.scoring import extract_sql
-from seatunnel_agent.llm_eval.suite import Check
+from seatunnel_agent.agents.ai.llm_eval.scoring import extract_sql
+from seatunnel_agent.agents.ai.llm_eval.suite import Check
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "llmeval_demo"
 SETTINGS = Settings(api_key="sk-test")
@@ -350,7 +350,7 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.llm_eval.api import router
+        from seatunnel_agent.agents.ai.llm_eval.api import router
         app = FastAPI()
         app.include_router(router)
         return TestClient(app)

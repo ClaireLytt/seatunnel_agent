@@ -115,7 +115,7 @@ def uitest(args: tuple[str, ...]) -> None:
 
     Examples: seatunnel-agent uitest run --suite smoke --no-llm
     """
-    from ..ui_testing.__main__ import main as uitest_main
+    from seatunnel_agent.agents.devops.ui_testing.__main__ import main as uitest_main
     sys.exit(uitest_main(list(args) or ["run", "--suite", "smoke"]))
 
 
@@ -190,7 +190,7 @@ def llmcost(
     import json as _json
     from pathlib import Path
 
-    from ..llm_cost import check_budget, render_markdown, summarize_cost
+    from seatunnel_agent.agents.ai.llm_cost import check_budget, render_markdown, summarize_cost
 
     if fail_on == "budget" and budget is None:
         raise click.UsageError("--fail-on budget 需要同时提供 --budget")
@@ -265,7 +265,7 @@ def promptlab(
     from dotenv import load_dotenv
 
     from ..common import settings_store
-    from ..prompt_lab import ACTIVE, render_matrix_markdown, run_matrix
+    from seatunnel_agent.agents.ai.prompt_lab import ACTIVE, render_matrix_markdown, run_matrix
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -328,7 +328,7 @@ def llmeval(
     from dotenv import load_dotenv
 
     from ..common import settings_store
-    from ..llm_eval import RunLogger, compare, load_suite, render_markdown, run_suite
+    from seatunnel_agent.agents.ai.llm_eval import RunLogger, compare, load_suite, render_markdown, run_suite
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -407,7 +407,7 @@ def orchestrate(
 
     from ..common import settings_store
     from ..common.config import load_settings
-    from ..orchestrator import (
+    from seatunnel_agent.agents.ai.orchestrator import (
         Orchestrator, build_catalog, render_markdown, render_suggestions,
         suggest,
     )
@@ -485,7 +485,7 @@ def relnotes(
     import json as _json
     from pathlib import Path
 
-    from ..release_notes import (
+    from seatunnel_agent.agents.devops.release_notes import (
         build_notes, collect_git_log, current_version_from_pyproject,
         polish_markdown, render_markdown,
     )
@@ -540,7 +540,7 @@ def bot(port: int, host: str, secret_env: str) -> None:
         console.print("[red]需要 uvicorn(随 gradio 安装):pip install uvicorn[/red]")
         sys.exit(1)
 
-    from ..bot import create_bot_app
+    from seatunnel_agent.agents.devops.bot import create_bot_app
 
     secret = _os.getenv(secret_env, "")
     if not secret:
@@ -576,7 +576,7 @@ def docqa(
     """文档问答 — 离线 BM25 检索 SeaTunnel 连接器与项目文档,带来源引用。"""
     import json as _json
 
-    from ..doc_qa import answer, get_index
+    from seatunnel_agent.agents.ai.doc_qa import answer, get_index
 
     if use_llm:
         from dotenv import load_dotenv
@@ -626,7 +626,7 @@ def codefix(
     from dotenv import load_dotenv
 
     from ..common import settings_store
-    from ..code_fix import fix, render_markdown
+    from seatunnel_agent.agents.ai.code_fix import fix, render_markdown
     from ..common.config import load_settings
 
     load_dotenv()
@@ -689,7 +689,7 @@ def triage_cmd(
 
     from ..common import settings_store
     from ..common.config import load_settings
-    from ..issue_triage import load_issues, render_markdown, triage
+    from seatunnel_agent.agents.ai.issue_triage import load_issues, render_markdown, triage
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -727,7 +727,7 @@ def doctor(complaint: str, lang: str) -> None:
 
     from ..common import settings_store
     from ..common.config import load_settings
-    from ..doctor import diagnose
+    from seatunnel_agent.agents.devops.doctor import diagnose
 
     load_dotenv()
     settings_store.apply_to_env()
@@ -769,7 +769,7 @@ def webtask(
 
     from ..common import settings_store
     from ..common.config import load_settings
-    from ..web_task import run_task
+    from seatunnel_agent.agents.ai.web_task import run_task
 
     load_dotenv()
     settings_store.apply_to_env()

@@ -95,7 +95,7 @@ def test_eval_dataset_golden_sql_runs_on_seeded_db(tmp_path) -> None:
     """Every golden SQL in the shipped dataset must actually run against the
     seeded demo db — the dataset itself is gated."""
     from seatunnel_agent.agents.data.text2sql.executor import create_executor
-    from seatunnel_agent.ui_testing.seed_sqlite import seed_sqlite
+    from seatunnel_agent.agents.devops.ui_testing.seed_sqlite import seed_sqlite
 
     db = tmp_path / "demo.db"
     seed_sqlite(str(db))

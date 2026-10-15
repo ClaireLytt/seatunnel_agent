@@ -11,7 +11,7 @@ from click.testing import CliRunner
 
 from seatunnel_agent.cli import cli
 from seatunnel_agent.common.llm import LLMResponse
-from seatunnel_agent.release_notes import (
+from seatunnel_agent.agents.devops.release_notes import (
     build_notes,
     next_semver,
     parse_commit_lines,
@@ -140,7 +140,7 @@ class TestApi:
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
 
-        from seatunnel_agent.release_notes.api import router
+        from seatunnel_agent.agents.devops.release_notes.api import router
         app = FastAPI()
         app.include_router(router)
         return TestClient(app)
