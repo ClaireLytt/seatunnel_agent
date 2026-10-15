@@ -49,19 +49,21 @@ Before asking the user a question, first investigate whether the answer can be d
 - 同类错误出现 ≥2 次时,必须把问题、根因、规避方法追加到 `docs/pitfalls.md`,供人类查阅。
 - 动手前先查 `docs/pitfalls.md`,避免重蹈覆辙。
 
-## 7. 阶段二:自主任务流程
+## 7. 批次工作流(修改类任务必须走此流程)
 
-1. 明确需求。
-2. 解释计划。
-3. 修改代码。
-4. 自动验证:ruff / mypy / pytest;UI 改动加跑 uitest。
-5. 失败后最多自主修复 3 次。
-6. 输出结果报告(**每次代码修改验证完成后必须立即交付,不得只给进度汇报**),固定格式:
-   - **已完成**:改了什么(文件 + commit hash)。
-   - **验证结果**:跑了哪些验证命令、实际输出结论(测试数、PASS/FAIL)。
-   - **前后差异**:测试结果对比或截图对比(见第 5 节)。
-   - **未解决问题 / 取舍**:明确列出,没有则写"无"。
-   - **优先级**:报告中的每个条目(已完成项与未解决项)标注 高 / 中 / 低 优先级。
+1. **只读调查**:阅读代码、复现问题,此阶段不修改任何文件。
+2. **输出问题清单与批次划分**:按依赖关系、风险、修改范围分批;每个问题附证据(文件:行号/命令输出)。
+3. **等待批准**:用户以"批次 N"等明确字样批准后才能动手;未批准的批次不得执行任何修改。
+4. **只做已批准范围**:发现重大新问题或需扩大范围时,立即暂停并报告,等用户决定;失败后最多自主修复 3 次。
+5. **验证**:按第 8 节命令执行(UI 改动加跑 uitest),并核对实际 git diff 与批准范围一致。
+6. **结果报告落盘**:按 `docs/reports/TEMPLATE.md` 写入 `docs/reports/<YYYYMMDD>-<批次名>.md` 并随批次提交;同时在对话中交付。**未落盘报告 = 批次未完成**。
+7. **遗留问题清单**(报告内必含):每条给出 证据 / 原因 / 影响 / 优先级(高中低) / 建议处理方式;没有则写"无"。
+8. **等待用户圈选**下一步要处理的问题,再回到第 3 步。
+
+**证据与诚实要求**:
+- 未执行的步骤必须标记"未执行",不得假装完成;未运行的测试不得报告为通过。
+- "验证已跑"的证据 = 报告中贴命令及其结尾输出行(如 `2902 passed`);"真浏览器已验"的证据 = 截图或报告路径;"已获批准"的证据 = 引用用户批准原话。
+- 每批结束必须跑 `python scripts/check_workflow.py` 并在报告中附其输出(机械核对:无 AI 署名、工作区干净、报告已落盘)。
 
 ## 8. 本地验证命令
 
@@ -70,3 +72,4 @@ Before asking the user a question, first investigate whether the answer can be d
 - `pytest`(默认跳过 uitest,见 pyproject 的 `addopts = "-v -m 'not uitest'"`)
 - UI 相关改动:`python -m seatunnel_agent.agents.devops.ui_testing run --suite smoke --no-llm`
 - 纯文档改动(docs/、*.md):至少跑 `ruff check src tests` + `pytest --collect-only -q` 确认仓库未损坏;不要求全量 pytest/uitest。
+- 批次收尾:`python scripts/check_workflow.py`(工作流机械核对,FAIL 则本批次不得标记完成)。
