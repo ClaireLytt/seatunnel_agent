@@ -55,7 +55,11 @@ Before asking the user a question, first investigate whether the answer can be d
 3. 修改代码。
 4. 自动验证:ruff / mypy / pytest;UI 改动加跑 uitest。
 5. 失败后最多自主修复 3 次。
-6. 输出结果报告:已完成、验证结果、未解决问题。
+6. 输出结果报告(**每次代码修改验证完成后必须立即交付,不得只给进度汇报**),固定格式:
+   - **已完成**:改了什么(文件 + commit hash)。
+   - **验证结果**:跑了哪些验证命令、实际输出结论(测试数、PASS/FAIL)。
+   - **前后差异**:测试结果对比或截图对比(见第 5 节)。
+   - **未解决问题 / 取舍**:明确列出,没有则写"无"。
 
 ## 8. 本地验证命令
 
@@ -63,3 +67,4 @@ Before asking the user a question, first investigate whether the answer can be d
 - `mypy`(按 pyproject.toml `[tool.mypy]` files 白名单检查)
 - `pytest`(默认跳过 uitest,见 pyproject 的 `addopts = "-v -m 'not uitest'"`)
 - UI 相关改动:`python -m seatunnel_agent.agents.devops.ui_testing run --suite smoke --no-llm`
+- 纯文档改动(docs/、*.md):至少跑 `ruff check src tests` + `pytest --collect-only -q` 确认仓库未损坏;不要求全量 pytest/uitest。
