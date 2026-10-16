@@ -1,20 +1,18 @@
-"""REST API for the Text2SQL agent — FastAPI router.
+"""REST API for Text2SQL — FastAPI router (prefix /api/text2sql).
 
-Mount on the Gradio app's FastAPI instance to serve alongside the UI.
-Endpoints:
-  POST /api/text2sql/query   — run a natural-language question
-  GET  /api/text2sql/schema  — list loaded tables
-  GET  /api/text2sql/health  — health check
+Endpoints: /datasources, /connect, /session/{id}, /session/{id}/reset,
+/chat (SSE), /chat/stop, /query, /metrics, /metrics/query,
+/metrics/attribution, /schema (stub), /health.
+
+Session state lives in sessions.SessionManager; this module is thin
+endpoint wiring.
 """
 
 from __future__ import annotations
 
 import json
-import queue
 import threading
 import time
-import uuid
-from collections import OrderedDict
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -28,6 +26,7 @@ from .agent import Text2SQLAgent
 from .executor import DS_TYPES, DatabaseConfig, create_executor
 from .metrics import MetricError, build_metric_sql, load_metric_store, ratio_sides
 from .schema import SchemaStore
+from .sessions import SessionManager
 
 router = APIRouter(prefix="/api/text2sql", tags=["text2sql"])
 
@@ -56,45 +55,7 @@ class QueryResponse(BaseModel):
     elapsed_ms: int
 
 
-class _SessionStore:
-    """Thread-safe, LRU-bounded session store."""
-
-    def __init__(self, max_size: int = _MAX_SESSIONS) -> None:
-        self._max = max_size
-        self._store: OrderedDict[str, Any] = OrderedDict()
-        self._lock = threading.Lock()
-
-    def get(self, key: str) -> Any | None:
-        with self._lock:
-            if key in self._store:
-                self._store.move_to_end(key)
-                return self._store[key]
-        return None
-
-    def put(self, key: str, agent: Any) -> None:
-        with self._lock:
-            if key in self._store:
-                self._store.move_to_end(key)
-            self._store[key] = agent
-            while len(self._store) > self._max:
-                self._store.popitem(last=False)
-
-
-_sessions = _SessionStore()
-
-
-class _SessionEntry:
-    """Server-held session: the live agent plus the connect params that
-    rebuild it on new-chat reset."""
-
-    def __init__(self, agent, connect=None) -> None:
-        self.agent = agent
-        self.connect = connect
-
-
-# live chat streams per session, so /chat/stop can inject a terminal event
-_active_chats: dict[str, queue.Queue] = {}
-_active_lock = threading.Lock()
+_sessions = SessionManager()
 
 
 def _load_schema_store(
@@ -208,8 +169,7 @@ def connect(req: ConnectRequest) -> dict[str, Any]:
     (+ metrics) and keep the agent; credentials travel only on this call."""
     agent = _build_agent(req.ds_type, req.db_config, req.schema_ddl,
                          req.metrics_yaml)
-    session_id = uuid.uuid4().hex
-    _sessions.put(session_id, _SessionEntry(agent, req))
+    session_id = _sessions.create(agent, req)
 
     def _warmup() -> None:
         # touch the lazy retriever/executor so the first query doesn't pay
@@ -227,7 +187,7 @@ def connect(req: ConnectRequest) -> dict[str, Any]:
 @router.get("/session/{session_id}")
 def session_status(session_id: str) -> dict[str, Any]:
     entry = _sessions.get(session_id)
-    if not isinstance(entry, _SessionEntry):
+    if entry is None:
         raise HTTPException(status_code=404, detail="unknown session")
     return _session_meta(session_id, entry.agent)
 
@@ -251,28 +211,26 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
     final. The agent runs in a worker thread; /chat/stop injects a terminal
     event into the live stream."""
     entry = _sessions.get(req.session_id)
-    if not isinstance(entry, _SessionEntry):
+    if entry is None:
         raise HTTPException(status_code=404, detail="unknown session")
     agent = entry.agent
 
-    q: queue.Queue = queue.Queue()
-    with _active_lock:
-        if req.session_id in _active_chats:
-            raise HTTPException(status_code=409,
-                                detail="a chat turn is already running")
-        _active_chats[req.session_id] = q
+    q = _sessions.attach_stream(req.session_id)
+    if q is None:
+        raise HTTPException(status_code=409,
+                            detail="a chat turn is already running")
 
     def on_event(etype: str, data: dict[str, Any]) -> None:
         q.put((etype, data or {}))
 
     def work() -> None:
-        agent._on_event = on_event
         try:
+            agent.set_event_hook(on_event)
             agent.chat(req.question)
         except Exception as exc:  # surfaced as an SSE event
             q.put(("error", {"message": f"{type(exc).__name__}: {exc}"}))
         finally:
-            agent._on_event = None
+            agent.set_event_hook(None)
             q.put(None)
 
     threading.Thread(target=work, daemon=True).start()
@@ -326,20 +284,15 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
                                 "message": data.get("message", "")})
                     break
         finally:
-            with _active_lock:
-                if _active_chats.get(req.session_id) is q:
-                    del _active_chats[req.session_id]
+            _sessions.finish_stream(req.session_id, q)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 @router.post("/chat/stop")
 def chat_stop(req: StopRequest) -> dict[str, Any]:
-    with _active_lock:
-        q = _active_chats.get(req.session_id)
-    if q is None:
+    if not _sessions.stop(req.session_id):
         raise HTTPException(status_code=404, detail="no active chat")
-    q.put(("final_answer", {"text": "", "stopped": True}))
     return {"stopped": True}
 
 
@@ -347,11 +300,11 @@ def chat_stop(req: StopRequest) -> dict[str, Any]:
 def session_reset(session_id: str) -> dict[str, Any]:
     """New chat: rebuild a fresh agent from the stored connect params."""
     entry = _sessions.get(session_id)
-    if not isinstance(entry, _SessionEntry) or entry.connect is None:
+    if entry is None or entry.connect is None:
         raise HTTPException(status_code=404, detail="unknown session")
     c = entry.connect
     agent = _build_agent(c.ds_type, c.db_config, c.schema_ddl, c.metrics_yaml)
-    _sessions.put(session_id, _SessionEntry(agent, c))
+    _sessions.replace_agent(session_id, agent)
     return _session_meta(session_id, agent)
 
 
@@ -362,12 +315,12 @@ def query(req: QueryRequest) -> QueryResponse:
     agent: Text2SQLAgent | None = None
     if req.session_id:
         found = _sessions.get(req.session_id)
-        agent = found.agent if isinstance(found, _SessionEntry) else found
+        agent = found.agent if found else None
 
     if agent is None:
         agent = _build_agent(req.ds_type, req.db_config, req.schema_ddl, req.metrics_yaml)
         if req.session_id:
-            _sessions.put(req.session_id, agent)
+            _sessions.put_legacy(req.session_id, agent)
 
     try:
         if agent.messages:

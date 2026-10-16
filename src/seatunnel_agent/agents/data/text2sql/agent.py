@@ -81,6 +81,11 @@ class Text2SQLAgent:
             store, dialect=ds_type, metric_store=metric_store,
         )
 
+    def set_event_hook(self, on_event: EventCallback | None) -> None:
+        """Public seam for attaching/detaching a per-turn event listener
+        (used by the streaming REST layer)."""
+        self._on_event = on_event
+
     def _emit(self, event_type: str, data: dict[str, Any]) -> None:
         if self._on_event:
             self._on_event(event_type, data)

@@ -113,6 +113,9 @@ def chat_page_url(tmp_path, monkeypatch):
             self.runtime.store = type(
                 "S", (), {"tables": [type("T", (), {"full_name": "orders"})()]})()
 
+        def set_event_hook(self, cb):
+            self._on_event = cb
+
         def chat(self, message):
             self._on_event("text", {"text": "looking at orders"})
             rows = [[f"r{i}", i] for i in range(60)]
