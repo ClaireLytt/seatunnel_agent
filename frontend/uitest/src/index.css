@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Theme tokens copied from docs/landing.html (engineering-paper style). */
+:root {
+  --paper: #f7f6f2;
+  --ink: #2b2e8c;
+  --ink-soft: #5558b8;
+  --grid: rgba(43, 46, 140, 0.08);
+  --grid-bold: rgba(43, 46, 140, 0.16);
+  --fg: #23253a;
+  --muted: #6b6e85;
+  --card: #ffffff;
+  --line: #dddbd2;
+  --accent: #d4552b;
+  --ok: #2e7d4f;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --paper: #10122b;
+    --ink: #9fa3ff;
+    --ink-soft: #7a7ee0;
+    --grid: rgba(159, 163, 255, 0.07);
+    --grid-bold: rgba(159, 163, 255, 0.14);
+    --fg: #e8e9f5;
+    --muted: #9a9db8;
+    --card: #181a38;
+    --line: #2c2f55;
+    --accent: #ff7d4d;
+    --ok: #5ecb8f;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --paper: #10122b;
+  --ink: #9fa3ff;
+  --ink-soft: #7a7ee0;
+  --grid: rgba(159, 163, 255, 0.07);
+  --grid-bold: rgba(159, 163, 255, 0.14);
+  --fg: #e8e9f5;
+  --muted: #9a9db8;
+  --card: #181a38;
+  --line: #2c2f55;
+  --accent: #ff7d4d;
+  --ok: #5ecb8f;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  color: var(--fg);
+  background:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+    linear-gradient(var(--grid-bold) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-bold) 1px, transparent 1px), var(--paper);
+  background-size:
+    16px 16px,
+    16px 16px,
+    80px 80px,
+    80px 80px;
+  line-height: 1.65;
+}
