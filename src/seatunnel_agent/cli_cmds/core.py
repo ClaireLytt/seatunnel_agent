@@ -154,8 +154,12 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
 def ui(port: int, host: str, share: bool, api: bool, insecure: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     try:
-        from ..ui import create_ui, launch_app
-    except ImportError:
+        from ..hub.ui import create_ui, launch_app
+    except ModuleNotFoundError as exc:
+        # only a missing gradio means "not installed" — anything else
+        # (e.g. a broken internal import) must surface, not be masked
+        if exc.name is None or not exc.name.startswith("gradio"):
+            raise
         console.print(
             "[red]Gradio is not installed.[/red]\n"
             'Install it with: pip install "seatunnel-agent[ui]"'
