@@ -20,6 +20,10 @@ const resources = {
       notConnected: 'Not connected',
       home: 'Home',
       legacy: 'Legacy page',
+      askPh: 'Ask about your data…',
+      send: 'Send',
+      stop: 'Stop',
+      newChat: 'New chat',
     },
   },
   zh: {
@@ -39,6 +43,10 @@ const resources = {
       notConnected: '未连接',
       home: '首页',
       legacy: '旧版页面',
+      askPh: '问点数据相关的…',
+      send: '发送',
+      stop: '停止',
+      newChat: '新会话',
     },
   },
 }

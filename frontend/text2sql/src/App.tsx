@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
+import { ChatPanel } from '@/ChatPanel'
 import { ConnectPanel } from '@/ConnectPanel'
 import type { SessionMeta } from '@/api'
 
@@ -35,11 +36,11 @@ export default function App() {
       </motion.aside>
 
       <main className="min-h-[70vh] flex-1">
-        {/* Chat panel lands in ticket #65; until then show the session state */}
-        {session && (
-          <div className="st-session rounded border border-line bg-card p-4 font-mono text-sm text-fg">
-            session {session.session_id.slice(0, 8)}… · {session.ds_type} · {session.table_count}{' '}
-            tables
+        {session ? (
+          <ChatPanel session={session} onSessionReset={setSession} />
+        ) : (
+          <div className="st-session rounded border border-line bg-card p-4 font-mono text-sm text-muted">
+            —
           </div>
         )}
       </main>

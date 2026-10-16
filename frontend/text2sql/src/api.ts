@@ -40,3 +40,33 @@ export async function connect(dsType: DsType, dbConfig: DbConfig): Promise<Sessi
   }
   return r.json()
 }
+
+export type ChatEvent =
+  | { type: 'text'; text: string }
+  | { type: 'tool_call'; name: string }
+  | { type: 'result'; sql: string; columns: string[]; rows: unknown[][]; row_count: number }
+  | { type: 'final'; text: string; stopped?: boolean }
+  | { type: 'error'; message: string }
+
+export async function chatStream(
+  sessionId: string,
+  question: string,
+  onEvent: (e: ChatEvent) => void,
+): Promise<void> {
+  const { postSSE } = await import('@shared/sse')
+  await postSSE<ChatEvent>(`${BASE}/chat`, { session_id: sessionId, question }, onEvent)
+}
+
+export async function stopChat(sessionId: string): Promise<void> {
+  await fetch(`${BASE}/chat/stop`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId }),
+  })
+}
+
+export async function resetSession(sessionId: string): Promise<SessionMeta> {
+  const r = await fetch(`${BASE}/session/${sessionId}/reset`, { method: 'POST' })
+  if (!r.ok) throw new Error(`reset: HTTP ${r.status}`)
+  return r.json()
+}

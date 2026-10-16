@@ -85,6 +85,93 @@ def test_t2s_page_connects(page_url):
         status = page.locator(".st-connect-status")
         expect(status).to_contain_text("Connected", timeout=20000)
         expect(status).to_contain_text("2 tables")
-        expect(page.locator(".st-session")).to_contain_text("sqlite")
+        # connected session opens the chat panel (#65)
+        expect(page.get_by_role("button", name="Send")).to_be_visible()
+
+        browser.close()
+
+
+@pytest.fixture()
+def chat_page_url(tmp_path, monkeypatch):
+    """Same in-process server, but the agent is faked so the chat stream
+    (not the LLM) is the seam under test."""
+    from pathlib import Path
+
+    import uvicorn
+    from fastapi import FastAPI
+    from fastapi.staticfiles import StaticFiles
+
+    from seatunnel_agent.agents.data.text2sql import api as t2s_api
+
+    if not (Path(DIST) / "index.html").is_file():
+        pytest.skip("text2sql dist not built")
+
+    class FakeAgent:
+        def __init__(self):
+            self._on_event = None
+            self.runtime = type("R", (), {"ds_type": "sqlite"})()
+            self.runtime.store = type(
+                "S", (), {"tables": [type("T", (), {"full_name": "orders"})()]})()
+
+        def chat(self, message):
+            self._on_event("text", {"text": "looking at orders"})
+            self._on_event("tool_result", {
+                "name": "execute_sql",
+                "result": {"sql": "SELECT count(*) FROM orders",
+                           "columns": ["cnt"], "rows": [[42]],
+                           "row_count": 1}})
+            self._on_event("final_answer", {"text": "orders has 42 rows"})
+            return "orders has 42 rows"
+
+    monkeypatch.setattr(t2s_api, "_build_agent", lambda *a, **k: FakeAgent())
+
+    app = FastAPI()
+    app.include_router(t2s_api.router)
+    app.mount("/text2sql-next", StaticFiles(directory=DIST, html=True))
+    port = _free_port()
+    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
+                                           log_level="warning"))
+    t = threading.Thread(target=server.run, daemon=True)
+    t.start()
+    deadline = time.time() + 15
+    while not server.started:
+        if time.time() > deadline:
+            pytest.fail("uvicorn did not start")
+        time.sleep(0.1)
+    yield f"http://127.0.0.1:{port}/text2sql-next/"
+    server.should_exit = True
+    t.join(timeout=5)
+
+
+@pytest.mark.uitest
+def test_t2s_chat_streams_and_renders_table(chat_page_url):
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(chat_page_url, wait_until="networkidle")
+
+        page.locator("#ds").select_option("sqlite")
+        page.get_by_label("Database").fill("whatever.db")
+        page.get_by_role("button", name="Connect").click()
+        expect(page.locator(".st-connect-status")).to_contain_text(
+            "Connected", timeout=15000)
+
+        page.get_by_placeholder("Ask about your data").fill("how many orders?")
+        page.get_by_role("button", name="Send").click()
+
+        expect(page.locator(".st-msg-user")).to_contain_text("how many orders?")
+        expect(page.locator(".st-msg-bot").first).to_contain_text(
+            "looking at orders", timeout=15000)
+        table = page.locator(".st-result table")
+        expect(table).to_be_visible()
+        expect(table).to_contain_text("cnt")
+        expect(table).to_contain_text("42")
+        expect(page.get_by_text("orders has 42 rows")).to_be_visible()
+
+        # new chat clears the transcript
+        page.get_by_role("button", name="New chat").click()
+        expect(page.locator(".st-msg-user")).to_have_count(0)
 
         browser.close()

@@ -9,6 +9,8 @@ Endpoints:
 
 from __future__ import annotations
 
+import json
+import queue
 import threading
 import time
 import uuid
@@ -16,6 +18,7 @@ from collections import OrderedDict
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import ms_since
@@ -58,17 +61,17 @@ class _SessionStore:
 
     def __init__(self, max_size: int = _MAX_SESSIONS) -> None:
         self._max = max_size
-        self._store: OrderedDict[str, Text2SQLAgent] = OrderedDict()
+        self._store: OrderedDict[str, Any] = OrderedDict()
         self._lock = threading.Lock()
 
-    def get(self, key: str) -> Text2SQLAgent | None:
+    def get(self, key: str) -> Any | None:
         with self._lock:
             if key in self._store:
                 self._store.move_to_end(key)
                 return self._store[key]
         return None
 
-    def put(self, key: str, agent: Text2SQLAgent) -> None:
+    def put(self, key: str, agent: Any) -> None:
         with self._lock:
             if key in self._store:
                 self._store.move_to_end(key)
@@ -78,6 +81,20 @@ class _SessionStore:
 
 
 _sessions = _SessionStore()
+
+
+class _SessionEntry:
+    """Server-held session: the live agent plus the connect params that
+    rebuild it on new-chat reset."""
+
+    def __init__(self, agent, connect=None) -> None:
+        self.agent = agent
+        self.connect = connect
+
+
+# live chat streams per session, so /chat/stop can inject a terminal event
+_active_chats: dict[str, queue.Queue] = {}
+_active_lock = threading.Lock()
 
 
 def _load_schema_store(
@@ -192,7 +209,7 @@ def connect(req: ConnectRequest) -> dict[str, Any]:
     agent = _build_agent(req.ds_type, req.db_config, req.schema_ddl,
                          req.metrics_yaml)
     session_id = uuid.uuid4().hex
-    _sessions.put(session_id, agent)
+    _sessions.put(session_id, _SessionEntry(agent, req))
 
     def _warmup() -> None:
         # touch the lazy retriever/executor so the first query doesn't pay
@@ -209,9 +226,110 @@ def connect(req: ConnectRequest) -> dict[str, Any]:
 
 @router.get("/session/{session_id}")
 def session_status(session_id: str) -> dict[str, Any]:
-    agent = _sessions.get(session_id)
-    if agent is None:
+    entry = _sessions.get(session_id)
+    if not isinstance(entry, _SessionEntry):
         raise HTTPException(status_code=404, detail="unknown session")
+    return _session_meta(session_id, entry.agent)
+
+
+class ChatRequest(BaseModel):
+    session_id: str
+    question: str
+
+
+class StopRequest(BaseModel):
+    session_id: str
+
+
+def _sse(obj: dict[str, Any]) -> str:
+    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+
+
+@router.post("/chat")
+def chat_stream(req: ChatRequest) -> StreamingResponse:
+    """Stream one chat turn as SSE: text / result (execute_sql snapshots) /
+    final. The agent runs in a worker thread; /chat/stop injects a terminal
+    event into the live stream."""
+    entry = _sessions.get(req.session_id)
+    if not isinstance(entry, _SessionEntry):
+        raise HTTPException(status_code=404, detail="unknown session")
+    agent = entry.agent
+
+    q: queue.Queue = queue.Queue()
+    with _active_lock:
+        _active_chats[req.session_id] = q
+
+    def on_event(etype: str, data: dict[str, Any]) -> None:
+        q.put((etype, data or {}))
+
+    def work() -> None:
+        agent._on_event = on_event
+        try:
+            agent.chat(req.question)
+        except Exception as exc:  # surfaced as an SSE event
+            q.put(("error", {"message": f"{type(exc).__name__}: {exc}"}))
+        finally:
+            agent._on_event = None
+            q.put(None)
+
+    threading.Thread(target=work, daemon=True).start()
+
+    def stream():
+        try:
+            while True:
+                item = q.get()
+                if item is None:
+                    break
+                etype, data = item
+                if etype == "text" or etype == "thinking":
+                    yield _sse({"type": "text", "text": data.get("text", "")})
+                elif etype == "tool_call":
+                    yield _sse({"type": "tool_call",
+                                "name": data.get("name", "")})
+                elif etype == "tool_result" and data.get("name") == "execute_sql":
+                    res = data.get("result") or {}
+                    yield _sse({"type": "result",
+                                "sql": res.get("sql", ""),
+                                "columns": res.get("columns", []),
+                                "rows": res.get("rows", []),
+                                "row_count": res.get("row_count", 0)})
+                elif etype == "final_answer":
+                    yield _sse({"type": "final",
+                                "text": data.get("text", ""),
+                                **({"stopped": True} if data.get("stopped")
+                                   else {})})
+                    break
+                elif etype == "error":
+                    yield _sse({"type": "error",
+                                "message": data.get("message", "")})
+                    break
+        finally:
+            with _active_lock:
+                if _active_chats.get(req.session_id) is q:
+                    del _active_chats[req.session_id]
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@router.post("/chat/stop")
+def chat_stop(req: StopRequest) -> dict[str, Any]:
+    with _active_lock:
+        q = _active_chats.get(req.session_id)
+    if q is None:
+        raise HTTPException(status_code=404, detail="no active chat")
+    q.put(("final_answer", {"text": "", "stopped": True}))
+    return {"stopped": True}
+
+
+@router.post("/session/{session_id}/reset")
+def session_reset(session_id: str) -> dict[str, Any]:
+    """New chat: rebuild a fresh agent from the stored connect params."""
+    entry = _sessions.get(session_id)
+    if not isinstance(entry, _SessionEntry) or entry.connect is None:
+        raise HTTPException(status_code=404, detail="unknown session")
+    c = entry.connect
+    agent = _build_agent(c.ds_type, c.db_config, c.schema_ddl, c.metrics_yaml)
+    _sessions.put(session_id, _SessionEntry(agent, c))
     return _session_meta(session_id, agent)
 
 
@@ -221,7 +339,8 @@ def query(req: QueryRequest) -> QueryResponse:
 
     agent: Text2SQLAgent | None = None
     if req.session_id:
-        agent = _sessions.get(req.session_id)
+        found = _sessions.get(req.session_id)
+        agent = found.agent if isinstance(found, _SessionEntry) else found
 
     if agent is None:
         agent = _build_agent(req.ds_type, req.db_config, req.schema_ddl, req.metrics_yaml)
