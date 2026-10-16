@@ -9,6 +9,7 @@ on:
     paths:
       - "src/seatunnel_agent/**"
       - "tests/**"
+      - "frontend/uitest/**"
       - "pyproject.toml"
       - ".github/workflows/uitest.yml"
   workflow_dispatch:
@@ -37,6 +38,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[all,uitest,sqlreview]"
           python -m playwright install --with-deps chromium
+
+      # Build the React /uitest page so the app under test serves it (and the
+      # browser smoke tests target the real frontend, not a fallback).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/uitest/package-lock.json
+      - name: Build /uitest frontend
+        run: npm ci && npm run build
+        working-directory: frontend/uitest
 
       - name: Run UI smoke suite (no LLM)
         run: python -m seatunnel_agent.agents.devops.ui_testing run --suite smoke --no-llm

@@ -217,15 +217,7 @@ def create_ui() -> gr.Blocks:
         )
         render_config_migrate_page(app)
 
-    # /uitest is the React app (frontend/uitest, mounted in launch_app);
-    # the Gradio page is only a fallback when the dist was never built.
-    from seatunnel_agent.agents.devops.ui_testing.api import FRONTEND_DIST
-    if not (FRONTEND_DIST / "index.html").is_file():
-        with app.route("UI Testing", "/uitest"):
-            from seatunnel_agent.agents.devops.ui_testing.gradio_page import (
-                render_uitest_page,
-            )
-            render_uitest_page(app)
+    # /uitest is the React app (frontend/uitest), mounted in launch_app.
 
     with app.route("Settings", "/settings"):
         from seatunnel_agent.hub.settings_ui import render_settings_page
@@ -393,6 +385,17 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from fastapi.staticfiles import StaticFiles
         app.app.mount("/uitest", StaticFiles(directory=FRONTEND_DIST, html=True),
                       name="uitest-frontend")
+    else:
+        # dist never built — a hint page beats a 404, and the hub still boots
+        from fastapi.responses import HTMLResponse
+
+        @app.app.get("/uitest", include_in_schema=False)
+        @app.app.get("/uitest/", include_in_schema=False)
+        def _uitest_unbuilt() -> HTMLResponse:
+            return HTMLResponse(
+                "<pre style='margin:40px;font-size:15px'>UI Testing frontend "
+                "is not built.\n\n  cd frontend/uitest &amp;&amp; npm ci "
+                "&amp;&amp; npm run build\n\nthen restart the UI.</pre>")
 
     if api:
         from fastapi import Depends

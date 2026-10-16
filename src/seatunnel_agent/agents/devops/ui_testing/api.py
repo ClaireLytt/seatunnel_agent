@@ -21,7 +21,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
-from .gradio_page import _AGENT_LABELS, _AGENT_ROUTES, _SUITES, _agent_case_ids
+from .catalog import AGENT_LABELS, AGENT_ROUTES, SUITES, agent_case_ids
 
 router = APIRouter(prefix="/api/uitest", tags=["uitest"])
 
@@ -46,11 +46,11 @@ class CaseRequest(BaseModel):
 @router.get("/meta")
 def meta() -> dict:
     return {
-        "suites": _SUITES,
+        "suites": SUITES,
         "agents": [
-            {"key": k, "label_en": _AGENT_LABELS["en"][k],
-             "label_zh": _AGENT_LABELS["zh"][k]}
-            for k in _AGENT_ROUTES
+            {"key": k, "label_en": AGENT_LABELS["en"][k],
+             "label_zh": AGENT_LABELS["zh"][k]}
+            for k in AGENT_ROUTES
         ],
     }
 
@@ -61,14 +61,14 @@ def _sse(obj: dict) -> str:
 
 @router.post("/run")
 def run(req: RunRequest) -> StreamingResponse:
-    if req.suite not in _SUITES:
+    if req.suite not in SUITES:
         raise HTTPException(status_code=422, detail=f"unknown suite: {req.suite}")
     if not _run_lock.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="a run is already in progress")
 
     case_ids = [c for c in (req.case_ids or "").replace(",", " ").split() if c]
     if not case_ids and req.agent and req.agent != "all":
-        case_ids = _agent_case_ids(req.agent)
+        case_ids = agent_case_ids(req.agent)
 
     def stream():
         from .report import write_html, write_json, write_labels_patch
