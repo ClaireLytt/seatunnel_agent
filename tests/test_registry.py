@@ -84,6 +84,22 @@ class TestDataCoverage:
                            "/loginspect", "/mcp"}
 
 
+# data agents whose REST routers used to be a hand-maintained tuple in
+# launch_app — they must now declare api= so the manifest loop mounts them
+_DATA_API_NAMES = {
+    "text2sql", "sql_review", "data_lineage", "sql_transpile", "data_skew",
+    "pii_scan", "log_inspect", "schema_drift", "sql_testgen", "config_lint",
+    "dag_check", "metric_diff", "sql_fmt",
+}
+
+
+class TestDataApiRouters:
+    def test_router_bearing_agents_declare_api(self):
+        by_name = {m.name: m for m in workspace_manifests("data")}
+        missing = [n for n in _DATA_API_NAMES if not by_name[n].api]
+        assert not missing, missing
+
+
 class TestCardHtml:
     def test_markup_shape_and_escaping(self):
         mf = AgentManifest(

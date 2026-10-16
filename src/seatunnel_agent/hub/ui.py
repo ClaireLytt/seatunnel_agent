@@ -304,58 +304,11 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     if api:
         from fastapi import Depends
 
-        from seatunnel_agent.agents.data.config_lint.api import (
-            router as conflint_api_router,
-        )
-        from seatunnel_agent.agents.data.dag_check.api import (
-            router as dagcheck_api_router,
-        )
-        from seatunnel_agent.agents.data.data_lineage.api import (
-            router as lineage_api_router,
-        )
-        from seatunnel_agent.agents.data.data_skew.api import router as skew_api_router
-        from seatunnel_agent.agents.data.log_inspect.api import (
-            router as loginspect_api_router,
-        )
-        from seatunnel_agent.agents.data.metric_diff.api import (
-            router as metricdiff_api_router,
-        )
-        from seatunnel_agent.agents.data.pii_scan.api import router as pii_api_router
-        from seatunnel_agent.agents.data.schema_drift.api import (
-            router as schemadrift_api_router,
-        )
-        from seatunnel_agent.agents.data.sql_fmt.api import router as sqlfmt_api_router
-        from seatunnel_agent.agents.data.sql_review.api import (
-            router as sql_review_api_router,
-        )
-        from seatunnel_agent.agents.data.sql_testgen.api import (
-            router as testgen_api_router,
-        )
-        from seatunnel_agent.agents.data.sql_transpile.api import (
-            router as transpile_api_router,
-        )
-        from seatunnel_agent.agents.data.text2sql.api import router as t2s_api_router
         from seatunnel_agent.common.api_auth import require_api_key
         fastapi_app = app.app  # the served instance, now that launch() ran
         # SEATUNNEL_API_KEY (optional) gates every /api route via X-API-Key.
         auth = [Depends(require_api_key)]
-        for router in (
-            t2s_api_router,
-            sql_review_api_router,
-            lineage_api_router,
-            transpile_api_router,
-            skew_api_router,
-            pii_api_router,
-            loginspect_api_router,
-            schemadrift_api_router,
-            testgen_api_router,
-            conflint_api_router,
-            dagcheck_api_router,
-            metricdiff_api_router,
-            sqlfmt_api_router,
-        ):
-            fastapi_app.include_router(router, dependencies=auth)
-        # plugin routers come from the manifests (see seatunnel_agent.hub.registry)
+        # every REST router comes from the manifests (hub.registry)
         from seatunnel_agent.hub.registry import discover, resolve
         for mf in discover():
             if mf.api:

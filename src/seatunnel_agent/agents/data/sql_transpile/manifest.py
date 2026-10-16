@@ -13,6 +13,7 @@ MANIFEST = AgentManifest(
     title_zh="SQL 方言翻译",
     desc_en="hive / spark / doris / starrocks translation with an incompatibility report — deterministic, no DB connection",
     desc_zh="hive / spark / doris / starrocks 互转 + 不兼容点清单 — 确定性翻译，不连接数据库",
+    api="seatunnel_agent.agents.data.sql_transpile.api:router",
     render="seatunnel_agent.agents.data.sql_transpile.ui:render_sql_transpile_page",
     group="quality",
     order=30,

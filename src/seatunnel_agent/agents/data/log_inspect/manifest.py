@@ -16,6 +16,7 @@ MANIFEST = AgentManifest(
     title_zh="批量日志巡检",
     desc_en="Exception clustering over a log directory — collapse noisy logs into Top-N root causes",
     desc_zh="日志目录异常聚类 — 把嘈杂日志收敛成 Top-N 个根因",
+    api="seatunnel_agent.agents.data.log_inspect.api:router",
     render="seatunnel_agent.agents.data.log_inspect.ui:render_log_inspect_page",
     card=False,
 )
