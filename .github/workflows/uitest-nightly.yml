@@ -20,7 +20,7 @@ jobs:
       # into env here and let the LLM-smoke step check env instead.
       UITEST_LLM_API_KEY: ${{ secrets.UITEST_LLM_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -85,7 +85,7 @@ jobs:
       HIVE_PORT: "10000"
       HIVE_DATABASE: default
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
