@@ -3,7 +3,7 @@ import type { Config } from 'tailwindcss'
 // Theme tokens mirror docs/landing.html (engineering-paper style).
 export default {
   darkMode: ['selector', '[data-theme="dark"]'],
-  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  content: ['./index.html', './src/**/*.{ts,tsx}', '../shared/src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {

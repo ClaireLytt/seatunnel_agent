@@ -1,11 +1,7 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
-// Language follows the hub's st-lang cookie (set on the landing page).
-function langFromCookie(): 'en' | 'zh' {
-  const m = document.cookie.match(/(?:^|;\s*)st-lang=([^;]+)/)
-  return m && decodeURIComponent(m[1]).startsWith('zh') ? 'zh' : 'en'
-}
+import { langFromCookie } from '@shared/lang'
 
 const EDITOR_PH_EN = `- id: MY1
   title: my first case

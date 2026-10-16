@@ -1,0 +1,8 @@
+{
+  "name": "seatunnel-frontend",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "uitest"
+  ]
+}
