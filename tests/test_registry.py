@@ -66,7 +66,21 @@ class TestCardHtml:
         assert 'href="/x"' in html
         assert "A &amp; B" in html           # escaped
         assert 'data-zh="甲"' in html
-        # no "Enter →" footer — the whole card is the link
-        assert "st-hub-enter" not in html
-        # unknown route → two-letter monogram fallback inside the logo tile
-        assert 'class="st-hub-logo">X</div>' in html
+        # rich card: colored logo tile + colored bilingual "Enter →" row
+        assert 'style="background:#000;"' in html
+        assert ('<div class="st-hub-enter" style="color:#000;" '
+                'data-en="Enter →" data-zh="进入 →">Enter →</div>') in html
+        # unknown route → glyph fallback inside the colored logo tile
+        assert ">X</div>" in html
+
+    def test_group_field_optional(self):
+        mf = AgentManifest(
+            name="x", workspace="data", route="/x", page_title="X",
+            logo="X", color="#000", title_en="t", title_zh="题",
+            desc_en="d", desc_zh="述", render="m:f", group="quality")
+        assert mf.group == "quality"
+        base = AgentManifest(
+            name="y", workspace="ai", route="/y", page_title="Y",
+            logo="Y", color="#000", title_en="t", title_zh="题",
+            desc_en="d", desc_zh="述", render="m:f")
+        assert base.group is None

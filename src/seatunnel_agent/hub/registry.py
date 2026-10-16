@@ -42,6 +42,7 @@ class AgentManifest:
     render: str          # "seatunnel_agent.agents.devops.secret_scan.ui:render_secret_scan_page"
     api: str | None = None   # "seatunnel_agent.agents.devops.secret_scan.api:router"
     order: int = 100     # card order within the workspace
+    group: str | None = None  # workspace section key (display text lives in the hub)
 
 
 def resolve(target: str) -> Any:
@@ -98,22 +99,27 @@ def _icon_svg(slug: str) -> str | None:
         return None
 
 
-def logo_html(route: str, fallback: str = "") -> str:
+def logo_html(route: str, fallback: str = "", color: str = "") -> str:
     """Hub-card icon tile: a single-color antd line icon keyed by route;
-    falls back to a two-letter monogram when no SVG is vendored."""
+    falls back to the manifest glyph when no SVG is vendored.  The tile
+    carries the manifest accent color as its background."""
     svg = _icon_svg(route.strip("/"))
     glyph = svg if svg else _html.escape(fallback[:2].upper() or "·")
-    return f'<div class="st-hub-logo">{glyph}</div>'
+    style = f' style="background:{_html.escape(color)};"' if color else ""
+    return f'<div class="st-hub-logo"{style}>{glyph}</div>'
 
 
 def card_html(mf: AgentManifest) -> str:
-    """The standard hub card markup (bilingual via data-en/data-zh)."""
+    """The standard hub card markup (bilingual via data-en/data-zh):
+    colored logo tile + title + desc + colored "Enter →" row."""
     e = _html.escape
     return (
         f'    <a class="st-hub-card" href="{mf.route}">\n'
-        f'      {logo_html(mf.route, mf.logo)}\n'
+        f'      {logo_html(mf.route, mf.logo, mf.color)}\n'
         f'      <div class="st-hub-card-title" data-en="{e(mf.title_en)}" '
         f'data-zh="{e(mf.title_zh)}">{e(mf.title_en)}</div>\n'
         f'      <div class="st-hub-card-desc" data-en="{e(mf.desc_en)}" '
         f'data-zh="{e(mf.desc_zh)}">{e(mf.desc_en)}</div>\n'
+        f'      <div class="st-hub-enter" style="color:{e(mf.color)};" '
+        f'data-en="Enter →" data-zh="进入 →">Enter →</div>\n'
         f'    </a>')
