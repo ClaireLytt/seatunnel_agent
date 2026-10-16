@@ -150,6 +150,24 @@ def _build_agent(
     return agent
 
 
+@router.get("/datasources")
+def datasources() -> dict[str, Any]:
+    """Supported dialects + per-dialect env-derived connection defaults
+    (never the password) — the UI's dropdown source and prefill."""
+    from .executor import config_from_env
+    out = []
+    for ds in DS_TYPES:
+        defaults: dict[str, str] = {}
+        cfg = config_from_env(ds)
+        if cfg is not None:
+            defaults = {"host": cfg.host, "port": str(cfg.port),
+                        "database": cfg.database or ""}
+            if cfg.username:
+                defaults["username"] = cfg.username
+        out.append({"ds_type": ds, "defaults": defaults})
+    return {"datasources": out}
+
+
 class ConnectRequest(BaseModel):
     ds_type: str
     db_config: dict[str, Any] | None = None
@@ -175,6 +193,17 @@ def connect(req: ConnectRequest) -> dict[str, Any]:
                          req.metrics_yaml)
     session_id = uuid.uuid4().hex
     _sessions.put(session_id, agent)
+
+    def _warmup() -> None:
+        # touch the lazy retriever/executor so the first query doesn't pay
+        # for them; LLM warmup belongs to the query path (#65)
+        try:
+            _ = agent.runtime.retriever
+            _ = agent.runtime.executor
+        except Exception:
+            pass  # best-effort; connect already validated the connection
+
+    threading.Thread(target=_warmup, daemon=True).start()
     return _session_meta(session_id, agent)
 
 

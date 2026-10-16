@@ -31,6 +31,13 @@ python scripts/check_workflow.py -> 输出附于本批最终 commit 后(见对�
 - 后:connect 一次返回 session_id,服务端 LRU 持 agent;React 页在 /text2sql-next 可真连数据库。
 - 测试:2914 → 2918 passed。
 
+## 代码评审(双轴)后的修正
+
+- **硬 bug(Standards/Spec 双抓)**:t2s 挂载块曾插入 uitest if/else 之间,致"uitest 未构建"提示页错绑到 t2s 条件 —— 已修复为独立 if
+- env 预填(Spec):新增 `GET /datasources`(方言清单 + config_from_env 派生默认值,绝不含密码),前端下拉与预填改为端点驱动,顺带消灭 DS_TYPES 前端硬编码(Standards)
+- warmup(Spec):connect 后后台线程预热 runtime.retriever/executor;LLM 预热归 #65 查询路径
+- 其余接受并记录:sqlite-vs-其他 的条件字段粒度、t2s dist 相对路径(与 FRONTEND_DIST 既有模式一致)
+
 ## 未解决问题 / 遗留清单
 
 | 优先级 | 问题 | 证据 | 原因 | 影响 | 建议处理方式 |

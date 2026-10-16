@@ -1,7 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
-import { connect, DS_TYPES, type DbConfig, type DsType, type SessionMeta } from '@/api'
+import {
+  connect,
+  fetchDatasources,
+  type Datasource,
+  type DbConfig,
+  type DsType,
+  type SessionMeta,
+} from '@/api'
 
 const inputCls =
   'w-full rounded border border-line bg-card px-3 py-2 font-mono text-sm text-fg ' +
@@ -13,10 +20,21 @@ const needsServer = (ds: DsType) => ds !== 'sqlite'
 
 export function ConnectPanel({ onConnected }: { onConnected: (s: SessionMeta) => void }) {
   const { t } = useTranslation()
+  const [sources, setSources] = useState<Datasource[]>([])
   const [ds, setDs] = useState<DsType>('hive')
   const [cfg, setCfg] = useState<DbConfig>({})
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
+
+  useEffect(() => {
+    fetchDatasources().then(setSources).catch(console.error)
+  }, [])
+
+  // env-derived defaults prefill the form whenever the dialect changes
+  const pick = (next: DsType) => {
+    setDs(next)
+    setCfg(sources.find((s) => s.ds_type === next)?.defaults ?? {})
+  }
 
   const set = (k: keyof DbConfig) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setCfg((c) => ({ ...c, [k]: e.target.value }))
@@ -41,13 +59,8 @@ export function ConnectPanel({ onConnected }: { onConnected: (s: SessionMeta) =>
         <label className={labelCls} htmlFor="ds">
           {t('dsType')}
         </label>
-        <select
-          id="ds"
-          className={inputCls}
-          value={ds}
-          onChange={(e) => setDs(e.target.value as DsType)}
-        >
-          {DS_TYPES.map((d) => (
+        <select id="ds" className={inputCls} value={ds} onChange={(e) => pick(e.target.value)}>
+          {(sources.length ? sources.map((s) => s.ds_type) : ['hive']).map((d) => (
             <option key={d} value={d}>
               {d}
             </option>

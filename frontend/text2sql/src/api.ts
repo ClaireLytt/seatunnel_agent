@@ -1,18 +1,17 @@
 const BASE = '/api/text2sql'
 
-// Mirrors executor.DS_TYPES; sqlite needs only a file path.
-export const DS_TYPES = [
-  'hive',
-  'mysql',
-  'sqlserver',
-  'sparksql',
-  'clickhouse',
-  'doris',
-  'postgresql',
-  'sqlite',
-  'flinksql',
-] as const
-export type DsType = (typeof DS_TYPES)[number]
+export type DsType = string
+
+export interface Datasource {
+  ds_type: DsType
+  defaults: Partial<DbConfig>
+}
+
+export async function fetchDatasources(): Promise<Datasource[]> {
+  const r = await fetch(`${BASE}/datasources`)
+  if (!r.ok) throw new Error(`datasources: HTTP ${r.status}`)
+  return (await r.json()).datasources
+}
 
 export interface DbConfig {
   host?: string

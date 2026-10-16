@@ -33,6 +33,19 @@ def demo_db(tmp_path) -> str:
     return str(path)
 
 
+def test_datasources_lists_dialects_with_env_defaults(client, monkeypatch):
+    monkeypatch.setenv("MYSQL_HOST", "db.internal")
+    monkeypatch.setenv("MYSQL_PORT", "3307")
+    r = client.get("/api/text2sql/datasources")
+    assert r.status_code == 200
+    items = {d["ds_type"]: d for d in r.json()["datasources"]}
+    assert "sqlite" in items and "mysql" in items
+    assert items["mysql"]["defaults"]["host"] == "db.internal"
+    assert items["mysql"]["defaults"]["port"] == "3307"
+    # credentials never leak through defaults
+    assert "password" not in items["mysql"]["defaults"]
+
+
 def test_connect_returns_session_with_tables(client, demo_db):
     r = client.post("/api/text2sql/connect", json={
         "ds_type": "sqlite",
