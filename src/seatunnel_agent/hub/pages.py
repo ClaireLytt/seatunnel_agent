@@ -39,8 +39,7 @@ def _hub_health_html() -> str:
             'Hive: <span data-en="not set" data-zh="未配置">not set</span></span>')
     # agent count beats a developer-facing test tally on a landing page
     try:
-        from seatunnel_agent.hub.registry import discover
-        n = len(_card_blocks()) + len(discover())
+        n = _agent_count()
         agents = (f'<span class="st-hub-ok"><span class="st-dot st-dot-ok">'
                   f'</span>{n} <span data-en="agents ready" '
                   f'data-zh="个能力就绪">agents ready</span></span>')
@@ -83,8 +82,7 @@ def _hub_shell(header: str, body: str, back: bool = False) -> str:
               f'<div class="st-hub-topbar-right">{gear}{_HUB_LANG_ROW}'
               f'</div></div>')
     try:  # same count the health strip shows — never let it drift
-        from seatunnel_agent.hub.registry import discover
-        mark = f'№ {len(_card_blocks()) + len(discover())} agents'
+        mark = f'№ {_agent_count()} agents'
     except Exception:
         mark = "SeaTunnel Agent"
     footer = (f'<div class="st-hub-footer"><span>SeaTunnel Agent · '
@@ -120,7 +118,11 @@ def _build_landing_html() -> str:
   </div>'''
     # cross-cutting engineering tools live right on the landing page
     # (Settings is global config, not a workspace — it lives in the top bar)
-    eng_cards = "".join(_card_blocks()[h] for h in _ENG_TOOLS)
+    from seatunnel_agent.hub.registry import card_html, workspace_manifests
+    by_route = dict(_card_blocks())
+    by_route.update({m.route: card_html(m)
+                     for m in workspace_manifests("data") if not m.card})
+    eng_cards = "".join(by_route[h] for h in _ENG_TOOLS)
     body += (
         '\n  <div class="st-hub-section-title st-hub-landing-sec" '
         'data-en="Engineering Tools" data-zh="工程工具">Engineering Tools</div>'
@@ -147,14 +149,11 @@ def _build_ai_hub_html() -> str:
 # Data-agent cards grouped into sections on the /data hub; the engineering
 # tools are cross-cutting (settings, MCP, UI tests, log inspection) and live
 # on the landing page instead.
-_DATA_GROUPS: list[tuple[str, str, list[str]]] = [
-    ("Build & Pipelines", "构建与接入",
-     ["/seatunnel", "/text2sql", "/datacompare", "/migrate", "/conflint"]),
-    ("SQL Quality & Review", "SQL 质量与审查",
-     ["/sqlreview", "/sqlfmt", "/transpile", "/dataskew", "/testgen"]),
-    ("Lineage & Governance", "血缘与治理",
-     ["/lineage", "/impact", "/schemadrift", "/metricdiff", "/pii",
-      "/dagcheck"]),
+# group key (from AgentManifest.group) -> section title; order matters
+_DATA_GROUPS: list[tuple[str, str, str]] = [
+    ("build", "Build & Pipelines", "构建与接入"),
+    ("quality", "SQL Quality & Review", "SQL 质量与审查"),
+    ("governance", "Lineage & Governance", "血缘与治理"),
 ]
 _ENG_TOOLS = ["/loginspect", "/uitest", "/mcp"]  # /settings lives in the top bar
 
@@ -190,73 +189,14 @@ _HUB_FILTER_ROW = (
     's.style.display=any?\'\':\'none\'});"></div></div>')
 
 
-# All 20 agent cards in one literal; the builders pick blocks by href.
-_DATA_CARDS_HTML = '''
-    <a class="st-hub-card" href="/seatunnel">
-      <div class="st-hub-logo" style="background:#f76707;">ST</div>
-      <div class="st-hub-card-title" data-en="SeaTunnel Pipeline Builder" data-zh="SeaTunnel Pipeline Builder · 数据管道构建">SeaTunnel Pipeline Builder</div>
-      <div class="st-hub-card-desc" data-en="Generate / validate / run SeaTunnel configs with natural language, auto-diagnose &amp; fix" data-zh="自然语言生成 / 验证 / 运行 SeaTunnel 配置，自动诊断修复">Generate / validate / run SeaTunnel configs with natural language, auto-diagnose &amp; fix</div>
-      <div class="st-hub-enter" style="color:#f76707;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/text2sql">
-      <div class="st-hub-logo" style="background:#0ea5e9;">SQL</div>
-      <div class="st-hub-card-title" data-en="Text2SQL · Chat BI" data-zh="Text2SQL · Chat BI · 智能问数">Text2SQL · Chat BI</div>
-      <div class="st-hub-card-desc" data-en="Ask in natural language → auto match table schema → generate &amp; run Hive SQL → preview &amp; CSV export" data-zh="自然语言提问 → 自动匹配表结构 → 生成并执行 Hive SQL → 结果预览与 CSV 导出">Ask in natural language → auto match table schema → generate &amp; run Hive SQL → preview &amp; CSV export</div>
-      <div class="st-hub-enter" style="color:#0ea5e9;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/datacompare">
-      <div class="st-hub-logo" style="background:#8b5cf6;">⇄</div>
-      <div class="st-hub-card-title" data-en="Data Comparison" data-zh="数据比对">Data Comparison</div>
-      <div class="st-hub-card-desc" data-en="Compare schemas, row counts, and data across two data sources" data-zh="跨数据源比对表结构、行数、数据差异">Compare schemas, row counts, and data across two data sources</div>
-      <div class="st-hub-enter" style="color:#8b5cf6;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/dataskew">
-      <div class="st-hub-logo" style="background:#f59e0b;">⚖</div>
-      <div class="st-hub-card-title" data-en="Data Skew Analyzer" data-zh="数据倾斜分析">Data Skew Analyzer</div>
-      <div class="st-hub-card-desc" data-en="Detect SQL data-skew patterns statically and rewrite with LLM — Spark SQL / MaxCompute SQL" data-zh="静态识别 SQL 数据倾斜写法并用 LLM 改写优化 —— 支持 Spark SQL / MaxCompute SQL">Detect SQL data-skew patterns statically and rewrite with LLM — Spark SQL / MaxCompute SQL</div>
-      <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/sqlreview">
-      <div class="st-hub-logo" style="background:#10b981;">CR</div>
-      <div class="st-hub-card-title" data-en="SQL Code Review" data-zh="SQL 代码审查">SQL Code Review</div>
-      <div class="st-hub-card-desc" data-en="Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards" data-zh="Hive / Spark / Flink / MaxCompute SQL 静态 + LLM 审查 — 性能、质量与规范">Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality &amp; standards</div>
-      <div class="st-hub-enter" style="color:#10b981;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/lineage">
-      <div class="st-hub-logo" style="background:#0891b2;">⇆</div>
-      <div class="st-hub-card-title" data-en="Data Lineage" data-zh="数据血缘">Data Lineage</div>
-      <div class="st-hub-card-desc" data-en="Table &amp; column lineage from SQL files, SeaTunnel configs and Hive metadata — impact, SLA, health" data-zh="从 SQL / SeaTunnel 配置 / Hive 元数据构建表级与字段级血缘 — 影响分析、SLA、治理体检">Table &amp; column lineage from SQL files, SeaTunnel configs and Hive metadata — impact, SLA, health</div>
-      <div class="st-hub-enter" style="color:#0891b2;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/impact">
-      <div class="st-hub-logo" style="background:#e11d48;">Δ</div>
-      <div class="st-hub-card-title" data-en="Change Impact Analysis" data-zh="变更影响分析">Change Impact Analysis</div>
-      <div class="st-hub-card-desc" data-en="SQL diff × lineage — compare two SQL trees and report the release blast radius with severity levels" data-zh="SQL 变更 × 血缘 — 对比两份 SQL 目录，输出上线影响面与严重度分级">SQL diff × lineage — compare two SQL trees and report the release blast radius with severity levels</div>
-      <div class="st-hub-enter" style="color:#e11d48;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/migrate">
-      <div class="st-hub-logo" style="background:#0d9488;">🚚</div>
-      <div class="st-hub-card-title" data-en="DataX/Sqoop Migration" data-zh="配置迁移 DataX/Sqoop">DataX/Sqoop Migration</div>
-      <div class="st-hub-card-desc" data-en="Convert DataX job JSON / sqoop commands into SeaTunnel configs with a migration-notes list" data-zh="DataX job JSON / sqoop 命令一键转 SeaTunnel 配置，附迁移说明清单">Convert DataX job JSON / sqoop commands into SeaTunnel configs with a migration-notes list</div>
-      <div class="st-hub-enter" style="color:#0d9488;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/transpile">
-      <div class="st-hub-logo" style="background:#16a34a;">🔁</div>
-      <div class="st-hub-card-title" data-en="SQL Dialect Translation" data-zh="SQL 方言翻译">SQL Dialect Translation</div>
-      <div class="st-hub-card-desc" data-en="hive / spark / doris / starrocks translation with an incompatibility report — deterministic, no DB connection" data-zh="hive / spark / doris / starrocks 互转 + 不兼容点清单 — 确定性翻译，不连接数据库">hive / spark / doris / starrocks translation with an incompatibility report — deterministic, no DB connection</div>
-      <div class="st-hub-enter" style="color:#16a34a;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
+# Cards for pages without a manifest (the React uitest page and the
+# hub-level Settings page); everything else renders via card_html().
+_TOOL_CARDS_HTML = '''
     <a class="st-hub-card" href="/uitest">
       <div class="st-hub-logo" style="background:#f59e0b;">UT</div>
       <div class="st-hub-card-title" data-en="UI Testing Agent" data-zh="UI 测试 Agent">UI Testing Agent</div>
       <div class="st-hub-card-desc" data-en="Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports" data-zh="真实浏览器驱动的页面自动回归 — YAML 用例、LLM 模糊断言、HTML 报告">Browser-driven regression for the Gradio pages — YAML cases, LLM fuzzy assertions, HTML reports</div>
       <div class="st-hub-enter" style="color:#f59e0b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/mcp">
-      <div class="st-hub-logo" style="background:#6366f1;">MCP</div>
-      <div class="st-hub-card-title" data-en="MCP Toolbox" data-zh="MCP 工具箱">MCP Toolbox</div>
-      <div class="st-hub-card-desc" data-en="The whole suite as one MCP server for Claude Code / Desktop — tools, client setup &amp; call audit" data-zh="整套 agent 一个 MCP server 交给 Claude Code / Desktop —— 工具清单、接入配置与调用审计">The whole suite as one MCP server for Claude Code / Desktop — tools, client setup &amp; call audit</div>
-      <div class="st-hub-enter" style="color:#6366f1;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
     <a class="st-hub-card" href="/settings">
       <div class="st-hub-logo" style="background:#64748b;">⚙</div>
@@ -264,54 +204,7 @@ _DATA_CARDS_HTML = '''
       <div class="st-hub-card-desc" data-en="Configure the LLM API (provider, key, model, base URL) from the browser — no .env editing" data-zh="在界面上配置 LLM API（提供商 / Key / 模型 / Base URL），无需修改本地 .env">Configure the LLM API (provider, key, model, base URL) from the browser — no .env editing</div>
       <div class="st-hub-enter" style="color:#64748b;" data-en="Enter →" data-zh="进入 →">Enter →</div>
     </a>
-    <a class="st-hub-card" href="/pii">
-      <div class="st-hub-logo" style="background:#dc2626;">🔒</div>
-      <div class="st-hub-card-title" data-en="PII Scan" data-zh="敏感数据扫描 PII">PII Scan</div>
-      <div class="st-hub-card-desc" data-en="Naming rules × column lineage — find sensitive columns and flag unmasked downstream spread" data-zh="命名规则 × 字段血缘 — 识别敏感列并标出未脱敏的下游扩散">Naming rules × column lineage — find sensitive columns and flag unmasked downstream spread</div>
-      <div class="st-hub-enter" style="color:#dc2626;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/loginspect">
-      <div class="st-hub-logo" style="background:#7c3aed;">🧾</div>
-      <div class="st-hub-card-title" data-en="Log Inspection" data-zh="批量日志巡检">Log Inspection</div>
-      <div class="st-hub-card-desc" data-en="Exception clustering over a log directory — collapse noisy logs into Top-N root causes" data-zh="日志目录异常聚类 — 把嘈杂日志收敛成 Top-N 个根因">Exception clustering over a log directory — collapse noisy logs into Top-N root causes</div>
-      <div class="st-hub-enter" style="color:#7c3aed;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/schemadrift">
-      <div class="st-hub-logo" style="background:#2563eb;">🧬</div>
-      <div class="st-hub-card-title" data-en="Schema Drift" data-zh="Schema 漂移检查">Schema Drift</div>
-      <div class="st-hub-card-desc" data-en="Diff two DDL snapshots — breaking / risk / info severity for every structural change" data-zh="对比两份 DDL 快照 — 每处结构变更按破坏 / 风险 / 提示分级">Diff two DDL snapshots — breaking / risk / info severity for every structural change</div>
-      <div class="st-hub-enter" style="color:#2563eb;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/testgen">
-      <div class="st-hub-logo" style="background:#ca8a04;">🧪</div>
-      <div class="st-hub-card-title" data-en="Test Data Generator" data-zh="SQL 测试数据生成">Test Data Generator</div>
-      <div class="st-hub-card-desc" data-en="Join-aware datasets that exercise a query, validated on in-memory SQLite" data-zh="关联感知造数，让查询真正跑通 — 内存 SQLite 一键验证">Join-aware datasets that exercise a query, validated on in-memory SQLite</div>
-      <div class="st-hub-enter" style="color:#ca8a04;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/conflint">
-      <div class="st-hub-logo" style="background:#ea580c;">🧰</div>
-      <div class="st-hub-card-title" data-en="Config Lint" data-zh="配置深度检查">Config Lint</div>
-      <div class="st-hub-card-desc" data-en="Param-level lint of SeaTunnel configs vs the built-in connector docs — typos get did-you-mean" data-zh="对照内置连接器文档做参数级检查 — 拼错参数给「是不是想写」建议">Param-level lint of SeaTunnel configs vs the built-in connector docs — typos get did-you-mean</div>
-      <div class="st-hub-enter" style="color:#ea580c;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/dagcheck">
-      <div class="st-hub-logo" style="background:#0f766e;">🗓️</div>
-      <div class="st-hub-card-title" data-en="DAG Check" data-zh="调度 DAG 体检">DAG Check</div>
-      <div class="st-hub-card-desc" data-en="Cycles, broken upstream, dead jobs — plus execution batches and the critical path" data-zh="环/断链/死作业检测 — 并给出执行分批与关键路径">Cycles, broken upstream, dead jobs — plus execution batches and the critical path</div>
-      <div class="st-hub-enter" style="color:#0f766e;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/metricdiff">
-      <div class="st-hub-logo" style="background:#9333ea;">📏</div>
-      <div class="st-hub-card-title" data-en="Metric Diff" data-zh="指标口径一致性">Metric Diff</div>
-      <div class="st-hub-card-desc" data-en="Same-named metrics defined differently across jobs — why two reports disagree" data-zh="同名指标在不同作业里定义不同 — 「两张报表数对不上」的头号原因">Same-named metrics defined differently across jobs — why two reports disagree</div>
-      <div class="st-hub-enter" style="color:#9333ea;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>
-    <a class="st-hub-card" href="/sqlfmt">
-      <div class="st-hub-logo" style="background:#4f46e5;">🪄</div>
-      <div class="st-hub-card-title" data-en="SQL Formatter" data-zh="SQL 格式化">SQL Formatter</div>
-      <div class="st-hub-card-desc" data-en="Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim" data-zh="确定性排版，black 式 --check / --write — 解析失败原样保留">Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim</div>
-      <div class="st-hub-enter" style="color:#4f46e5;" data-en="Enter →" data-zh="进入 →">Enter →</div>
-    </a>'''
+'''
 
 
 def _swap_logos(html: str) -> str:
@@ -325,7 +218,7 @@ def _swap_logos(html: str) -> str:
         html, flags=re.S)
 
 
-_DATA_CARDS_HTML = _swap_logos(_DATA_CARDS_HTML)
+_TOOL_CARDS_HTML = _swap_logos(_TOOL_CARDS_HTML)
 
 
 def _build_devops_hub_html() -> str:
@@ -339,24 +232,36 @@ def _build_devops_hub_html() -> str:
     return _hub_shell(header, body, back=True)
 
 
+def _agent_count() -> int:
+    """Agents shown anywhere on the hub: carded manifests, the card-less
+    landing tools (loginspect/mcp), and the literal cards (uitest/settings).
+    Text2SQL aux pages are routes, not agents."""
+    from seatunnel_agent.hub.registry import discover
+    ms = discover()
+    return (len([m for m in ms if m.card or m.route in _ENG_TOOLS])
+            + len(_card_blocks()))
+
+
 def _card_blocks() -> dict[str, str]:
     """href → card HTML block, extracted from the single literal above."""
     return {href: block for block, href in re.findall(
         r'(<a class="st-hub-card" href="(/[^"]+)">.*?</a>)',
-        _DATA_CARDS_HTML, re.S)}
+        _TOOL_CARDS_HTML, re.S)}
 
 
 def _build_data_hub_html() -> str:
     """`/data` — the Data Agents workspace, grouped sections + filter."""
     header = '''    <div class="st-hub-title" data-en='<span class="st-red">D</span>ata Agents' data-zh='<span class="st-red">数</span>据 Agent 工作区'><span class="st-red">D</span>ata Agents</div>
     <div class="st-hub-subtitle" data-en="Data engineering workspace · Choose an agent to start" data-zh="数据工程工作台 · 选择一个能力开始">Data engineering workspace · Choose an agent to start</div>'''
-    by_href = _card_blocks()
+    from seatunnel_agent.hub.registry import card_html, workspace_manifests
+    mfs = [m for m in workspace_manifests("data") if m.card]
     parts = [_HUB_FILTER_ROW]
-    for en, zh, hrefs in _DATA_GROUPS:
+    for key, en, zh in _DATA_GROUPS:
         parts.append(f'<div class="st-hub-section-title" data-en="{en}" '
                      f'data-zh="{zh}">{en}</div>')
         parts.append('<div class="st-hub-grid">'
-                     + "".join(by_href[h] for h in hrefs) + '</div>')
+                     + "".join(card_html(m) for m in mfs if m.group == key)
+                     + '</div>')
     return _hub_shell(header, "\n".join(parts), back=True)
 
 

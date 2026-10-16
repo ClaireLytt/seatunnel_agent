@@ -107,19 +107,6 @@ def create_ui() -> gr.Blocks:
     from seatunnel_agent.common import settings_store
     settings_store.apply_to_env()
 
-    from seatunnel_agent.agents.data.data_comparison.ui import (
-        render_data_comparison_page,
-    )
-    from seatunnel_agent.agents.data.data_skew.ui import render_data_skew_page
-    from seatunnel_agent.agents.data.mcp_toolbox.ui import render_mcp_page
-    from seatunnel_agent.agents.data.sql_review.ui import render_sql_review_page
-    from seatunnel_agent.agents.data.text2sql.ui import (
-        render_favorites_page,
-        render_history_page,
-        render_schema_browser_page,
-        render_text2sql_page,
-    )
-
     _hide_sub_nav_js = """
     () => {
         function hide() {
@@ -171,101 +158,18 @@ def create_ui() -> gr.Blocks:
     with app.route("DevOps", "/devops"):
         _mount_hub(app, _build_devops_hub_html)
 
-    with app.route("SeaTunnel", "/seatunnel"):
-        _render_seatunnel_page(app)
-        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
-
-    with app.route("Text2SQL", "/text2sql"):
-        render_text2sql_page(app)
-        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
-
-    with app.route("Query History", "/history"):
-        render_history_page(app)
-
-    with app.route("SQL Favorites", "/favorites"):
-        render_favorites_page(app)
-
-    with app.route("Schema Browser", "/schema-browser"):
-        render_schema_browser_page(app)
-
-    with app.route("Data Comparison", "/datacompare"):
-        render_data_comparison_page(app)
-        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
-
-    with app.route("SQL Review", "/sqlreview"):
-        render_sql_review_page(app)
-
-    with app.route("Lineage", "/lineage"):
-        from seatunnel_agent.agents.data.data_lineage.ui import render_lineage_page
-        render_lineage_page(app)
-
-    with app.route("SQL Transpile", "/transpile"):
-        from seatunnel_agent.agents.data.sql_transpile.ui import (
-            render_sql_transpile_page,
-        )
-        render_sql_transpile_page(app)
-
-    with app.route("Change Impact", "/impact"):
-        from seatunnel_agent.agents.data.data_lineage.ui_impact import (
-            render_impact_page,
-        )
-        render_impact_page(app)
-
-    with app.route("Config Migrate", "/migrate"):
-        from seatunnel_agent.agents.data.config_migrate.ui import (
-            render_config_migrate_page,
-        )
-        render_config_migrate_page(app)
-
-    # /uitest is the React app (frontend/uitest), mounted in launch_app.
-
     with app.route("Settings", "/settings"):
         from seatunnel_agent.hub.settings_ui import render_settings_page
         render_settings_page(app)
 
-    with app.route("Data Skew", "/dataskew"):
-        render_data_skew_page(app)
-
-    with app.route("PII Scan", "/pii"):
-        from seatunnel_agent.agents.data.pii_scan.ui import render_pii_page
-        render_pii_page(app)
-
-    with app.route("Log Inspect", "/loginspect"):
-        from seatunnel_agent.agents.data.log_inspect.ui import render_log_inspect_page
-        render_log_inspect_page(app)
-
-    with app.route("Schema Drift", "/schemadrift"):
-        from seatunnel_agent.agents.data.schema_drift.ui import render_schema_drift_page
-        render_schema_drift_page(app)
-
-    with app.route("Test Data", "/testgen"):
-        from seatunnel_agent.agents.data.sql_testgen.ui import render_sql_testgen_page
-        render_sql_testgen_page(app)
-
-    with app.route("Config Lint", "/conflint"):
-        from seatunnel_agent.agents.data.config_lint.ui import render_config_lint_page
-        render_config_lint_page(app)
-
-    with app.route("DAG Check", "/dagcheck"):
-        from seatunnel_agent.agents.data.dag_check.ui import render_dag_check_page
-        render_dag_check_page(app)
-
-    with app.route("Metric Diff", "/metricdiff"):
-        from seatunnel_agent.agents.data.metric_diff.ui import render_metric_diff_page
-        render_metric_diff_page(app)
-
-    with app.route("SQL Format", "/sqlfmt"):
-        from seatunnel_agent.agents.data.sql_fmt.ui import render_sql_fmt_page
-        render_sql_fmt_page(app)
-
-    with app.route("MCP Toolbox", "/mcp"):
-        render_mcp_page(app)
-
     # plugin pages: every seatunnel_agent.<pkg>.manifest registers itself
     from seatunnel_agent.hub.registry import discover, resolve
+    sidebar_resize = {"/seatunnel", "/text2sql", "/datacompare"}
     for mf in discover():
         with app.route(mf.page_title, mf.route):
             resolve(mf.render)(app)
+            if mf.route in sidebar_resize:
+                app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
 
     return app
 

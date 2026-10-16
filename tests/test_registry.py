@@ -56,6 +56,34 @@ class TestResolution:
             resolve("seatunnel_agent.nope:thing")
 
 
+# every hard-coded data-agent route in hub/ui.py must be manifest-covered
+_DATA_ROUTES = {
+    "/seatunnel", "/text2sql", "/history", "/favorites", "/schema-browser",
+    "/datacompare", "/sqlreview", "/lineage", "/transpile", "/impact",
+    "/migrate", "/dataskew", "/pii", "/loginspect", "/schemadrift",
+    "/testgen", "/conflint", "/dagcheck", "/metricdiff", "/sqlfmt", "/mcp",
+}
+
+
+class TestDataCoverage:
+    def test_every_data_route_has_a_manifest(self):
+        covered = {m.route for m in workspace_manifests("data")}
+        assert _DATA_ROUTES <= covered, sorted(_DATA_ROUTES - covered)
+
+    def test_data_cards_carry_group_and_color(self):
+        for m in workspace_manifests("data"):
+            if m.card:
+                assert m.group, m.name
+                assert m.color.startswith("#"), m.name
+
+    def test_cardless_pages_marked(self):
+        no_card = {m.route for m in workspace_manifests("data")
+                   if not m.card}
+        # text2sql aux pages + landing engineering tools keep no /data card
+        assert no_card == {"/history", "/favorites", "/schema-browser",
+                           "/loginspect", "/mcp"}
+
+
 class TestCardHtml:
     def test_markup_shape_and_escaping(self):
         mf = AgentManifest(

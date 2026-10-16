@@ -43,6 +43,7 @@ class AgentManifest:
     api: str | None = None   # "seatunnel_agent.agents.devops.secret_scan.api:router"
     order: int = 100     # card order within the workspace
     group: str | None = None  # workspace section key (display text lives in the hub)
+    card: bool = True    # False: route only, no card on the workspace page
 
 
 def resolve(target: str) -> Any:
@@ -66,15 +67,22 @@ def discover() -> list[AgentManifest]:
                 if exc.name == mod_name:
                     continue  # package without a manifest — not a plugin
                 raise
-            mf = getattr(mod, "MANIFEST", None)
-            if not isinstance(mf, AgentManifest):
-                raise TypeError(f"{mod_name} 必须定义 MANIFEST = AgentManifest(...)")
-            if mf.workspace not in WORKSPACES:
-                raise ValueError(f"{mod_name}: workspace 必须是 {WORKSPACES}")
-            if mf.workspace != ws:
-                raise ValueError(
-                    f"{mod_name}: workspace={mf.workspace!r} 与所在目录 agents/{ws} 不一致")
-            found.append(mf)
+            # a package exposes one MANIFEST, or MANIFESTS for multi-page
+            # packages (e.g. lineage + impact share one package)
+            mfs = getattr(mod, "MANIFESTS", None)
+            if mfs is None:
+                mfs = [getattr(mod, "MANIFEST", None)]
+            for mf in mfs:
+                if not isinstance(mf, AgentManifest):
+                    raise TypeError(
+                        f"{mod_name} 必须定义 MANIFEST = AgentManifest(...) "
+                        f"或 MANIFESTS = [AgentManifest(...), ...]")
+                if mf.workspace not in WORKSPACES:
+                    raise ValueError(f"{mod_name}: workspace 必须是 {WORKSPACES}")
+                if mf.workspace != ws:
+                    raise ValueError(
+                        f"{mod_name}: workspace={mf.workspace!r} 与所在目录 agents/{ws} 不一致")
+                found.append(mf)
     routes = [m.route for m in found]
     dup = {r for r in routes if routes.count(r) > 1}
     if dup:
