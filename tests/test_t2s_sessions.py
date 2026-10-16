@@ -52,6 +52,13 @@ def test_attach_stream_rejects_second_and_releases_on_finish():
     assert m.attach_stream(sid) is not None  # free again
 
 
+def test_replace_agent_on_missing_session_returns_none():
+    m = SessionManager(max_size=1)
+    sid = m.create(_A(), connect="c")
+    m.create(_A(), connect=None)  # evicts sid
+    assert m.replace_agent(sid, _A()) is None  # atomic, no assert/raise
+
+
 def test_put_legacy_wraps_in_entry_shape():
     m = SessionManager()
     a = _A()

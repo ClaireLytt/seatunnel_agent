@@ -251,28 +251,8 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
                     yield _sse({"type": "tool_call",
                                 "name": data.get("name", "")})
                 elif etype == "tool_result" and data.get("name") == "execute_sql":
-                    # the real agent passes the tool's JSON *string* through
-                    res = data.get("result")
-                    if isinstance(res, str):
-                        try:
-                            res = json.loads(res)
-                        except (ValueError, TypeError):
-                            res = {}
-                    res = res if isinstance(res, dict) else {}
-                    cols = res.get("columns", [])
-                    rows = res.get("rows", [])
-                    try:
-                        from .chart import detect_chart_type
-                        chart = detect_chart_type(
-                            cols, [tuple(r) for r in rows])
-                    except Exception:
-                        chart = None
-                    yield _sse({"type": "result",
-                                "sql": res.get("sql", ""),
-                                "columns": cols,
-                                "rows": rows,
-                                "row_count": res.get("row_count", 0),
-                                "chart_type": chart})
+                    from .chart import result_snapshot
+                    yield _sse(result_snapshot(data.get("result")))
                 elif etype == "final_answer":
                     yield _sse({"type": "final",
                                 "text": data.get("text", ""),
@@ -304,7 +284,8 @@ def session_reset(session_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="unknown session")
     c = entry.connect
     agent = _build_agent(c.ds_type, c.db_config, c.schema_ddl, c.metrics_yaml)
-    _sessions.replace_agent(session_id, agent)
+    if _sessions.replace_agent(session_id, agent) is None:
+        raise HTTPException(status_code=404, detail="unknown session")
     return _session_meta(session_id, agent)
 
 

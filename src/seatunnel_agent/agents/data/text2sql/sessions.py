@@ -46,12 +46,17 @@ class SessionManager:
         """Stateless /query callers supply their own key; same entry shape."""
         self._put(session_id, SessionEntry(agent, None))
 
-    def replace_agent(self, session_id: str, agent: Any) -> SessionEntry:
-        entry = self.get(session_id)
-        assert entry is not None
-        new = SessionEntry(agent, entry.connect)
-        self._put(session_id, new)
-        return new
+    def replace_agent(self, session_id: str, agent: Any) -> SessionEntry | None:
+        """Atomically swap the agent, keeping connect params; None when the
+        session vanished (e.g. LRU-evicted) in the meantime."""
+        with self._store_lock:
+            entry = self._store.get(session_id)
+            if entry is None:
+                return None
+            new = SessionEntry(agent, entry.connect)
+            self._store[session_id] = new
+            self._store.move_to_end(session_id)
+            return new
 
     def get(self, session_id: str) -> SessionEntry | None:
         with self._store_lock:

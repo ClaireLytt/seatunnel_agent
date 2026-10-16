@@ -45,9 +45,6 @@ class BlockingAgent(FakeAgent):
         super().__init__()
         self.release = threading.Event()
 
-    def set_event_hook(self, cb):
-        self._on_event = cb
-
     def chat(self, message: str) -> str:
         self._on_event("text", {"text": "thinking…"})
         self.release.wait(timeout=30)
@@ -92,9 +89,6 @@ def test_chat_streams_text_result_final(client, monkeypatch):
 
 
 class ChartAgent(FakeAgent):
-    def set_event_hook(self, cb):
-        self._on_event = cb
-
     def chat(self, message: str) -> str:
         self._on_event("tool_result", {
             "name": "execute_sql",
@@ -128,9 +122,6 @@ def test_single_row_result_has_no_chart_type(client, monkeypatch):
 class RealShapeAgent(FakeAgent):
     """Mimics the real agent: tool_result carries a JSON *string*, and the
     answer streams as text_delta chunks before the final message."""
-
-    def set_event_hook(self, cb):
-        self._on_event = cb
 
     def chat(self, message: str) -> str:
         self._on_event("text_delta", {"text": "there "})

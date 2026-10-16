@@ -28,6 +28,20 @@ GREEN: sessions 5 + chat 9 + connect 5 = 19 passed
   ② 测试 fake 未实现新缝导致 work 线程在 try 外崩、SSE 挂死 —— 已把 hook 挂接移入 try 兜底
 ```
 
+## 评审修正(双轴)
+
+- replace_agent 原子化(锁内取-换,会话消失返回 None -> 端点 404;assert 移除)并补单测先红后绿
+- chart 检测移入 chart.result_snapshot(格式化层),SSE 循环只剩一行调用 -- 补齐 spec #99 该决策
+- 测试 fake 的 3 处重复 set_event_hook 覆盖删除
+- check_workflow 输出(§7.8,amend 前快照;amend 后终态见对话):
+
+```
+[PASS] AI 署名: 无 AI 署名(范围 origin/agent-ui..HEAD)
+[FAIL] 工作区: 工作区不干净:
+?? cw_out.txt
+[FAIL] 报告落盘: 未推送 commit 改了 src/tests 但 docs/reports/ 无新报告(范围 origin/agent-ui..HEAD)
+```
+
 ## 前后差异
 
 - 前:api.py 653 行,3 个模块级可变全局,两种会话形态 4 处 isinstance,私有属性跨模块直写。

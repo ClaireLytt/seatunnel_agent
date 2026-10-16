@@ -287,3 +287,26 @@ def build_chart(
     except Exception:
         plt.close(fig)
         return None
+
+
+def result_snapshot(raw: object) -> dict:
+    """Build the streaming "result" payload from an execute_sql tool result
+    (the real agent passes the tool's JSON *string* through), including the
+    auto-detected chart type. Formatting concern — kept out of transport."""
+    import json as _json
+    res = raw
+    if isinstance(res, str):
+        try:
+            res = _json.loads(res)
+        except (ValueError, TypeError):
+            res = {}
+    res = res if isinstance(res, dict) else {}
+    cols = res.get("columns", [])
+    rows = res.get("rows", [])
+    try:
+        chart = detect_chart_type(cols, [tuple(r) for r in rows])
+    except Exception:
+        chart = None
+    return {"type": "result", "sql": res.get("sql", ""), "columns": cols,
+            "rows": rows, "row_count": res.get("row_count", 0),
+            "chart_type": chart}
