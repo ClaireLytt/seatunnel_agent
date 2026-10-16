@@ -19,6 +19,7 @@ MANIFESTS = [
         desc_zh="自然语言提问 → 自动匹配表结构 → 生成并执行 Hive SQL → 结果预览与 CSV 导出",
         api="seatunnel_agent.agents.data.text2sql.api:router",
         render="",  # React static mount serves this route (#67)
+        legacy="/text2sql-legacy",
         group="build",
         order=20,
         external=True,

@@ -115,6 +115,21 @@ class TestExternalManifest:
         assert legacy.card is False
         assert "render_text2sql_page" in legacy.render
 
+class TestExternalMounting:
+    def test_external_apps_follow_dist_convention(self):
+        from pathlib import Path
+
+        from seatunnel_agent.hub.registry import frontend_dist
+        ext = {m.name: m for m in discover() if m.external}
+        # every rebuilt React app registers an external manifest
+        assert {"uitest", "text2sql"} <= set(ext)
+        assert frontend_dist(ext["text2sql"]) == Path("frontend") / "text2sql" / "dist"
+        assert frontend_dist(ext["uitest"]) == Path("frontend") / "uitest" / "dist"
+        # hint page may link a legacy route when one exists
+        assert ext["text2sql"].legacy == "/text2sql-legacy"
+        assert ext["uitest"].legacy is None
+
+
 class TestCardHtml:
     def test_markup_shape_and_escaping(self):
         mf = AgentManifest(

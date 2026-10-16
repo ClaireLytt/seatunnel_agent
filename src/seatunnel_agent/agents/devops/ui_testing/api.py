@@ -26,7 +26,17 @@ from .catalog import AGENT_LABELS, AGENT_ROUTES, SUITES, agent_case_ids
 router = APIRouter(prefix="/api/uitest", tags=["uitest"])
 
 # repo-root dist built by `npm run build` in frontend/uitest
-FRONTEND_DIST = Path("frontend") / "uitest" / "dist"
+# bundle path comes from the registry convention (frontend/<name>/dist);
+# kept as a thin alias for existing importers (tests)
+from seatunnel_agent.hub.registry import frontend_dist as _frontend_dist
+
+
+def _uitest_dist() -> Path:
+    from .manifest import MANIFEST
+    return _frontend_dist(MANIFEST)
+
+
+FRONTEND_DIST = _uitest_dist()
 
 _RUN_ID_RE = re.compile(r"^\d{8}_\d{6}$")
 _run_lock = threading.Lock()
