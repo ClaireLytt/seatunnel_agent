@@ -78,3 +78,40 @@ export async function resetSession(sessionId: string): Promise<SessionMeta> {
   if (!r.ok) throw new Error(`reset: HTTP ${r.status}`)
   return r.json()
 }
+
+export interface TableInfo {
+  name: string
+  column_count: number
+  comment: string
+}
+
+export interface TableDetail {
+  name: string
+  comment: string
+  columns: { name: string; type: string; comment: string }[]
+  partition_columns: { name: string; type: string }[]
+}
+
+const j = async (r: Response) => {
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))
+    throw new Error(d.detail || `HTTP ${r.status}`)
+  }
+  return r.json()
+}
+
+export const fetchSchema = (sid: string): Promise<{ tables: TableInfo[] }> =>
+  fetch(`${BASE}/session/${sid}/schema`).then(j)
+
+export const fetchTable = (sid: string, name: string): Promise<TableDetail> =>
+  fetch(`${BASE}/session/${sid}/schema/${encodeURIComponent(name)}`).then(j)
+
+export const filterTables = (sid: string, tables: string[]): Promise<SessionMeta> =>
+  fetch(`${BASE}/session/${sid}/schema/filter`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tables }),
+  }).then(j)
+
+export const reloadSchema = (sid: string): Promise<SessionMeta> =>
+  fetch(`${BASE}/session/${sid}/schema/reload`, { method: 'POST' }).then(j)

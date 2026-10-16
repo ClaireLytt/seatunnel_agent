@@ -119,6 +119,10 @@ def _build_agent(
             detail="Invalid metrics_yaml: " + "; ".join(metric_errors),
         )
 
+    return _agent_from_store(store, ds_type, db_config, metric_store)
+
+
+def _agent_from_store(store, ds_type, db_config, metric_store) -> Text2SQLAgent:
     settings = load_settings()
     agent = Text2SQLAgent(
         settings, store=store, ds_type=ds_type, db_config=db_config,
@@ -170,6 +174,9 @@ def connect(req: ConnectRequest) -> dict[str, Any]:
     agent = _build_agent(req.ds_type, req.db_config, req.schema_ddl,
                          req.metrics_yaml)
     session_id = _sessions.create(agent, req)
+    entry = _sessions.get(session_id)
+    assert entry is not None
+    entry.extras["full_store"] = agent.runtime.store
 
     def _warmup() -> None:
         # touch the lazy retriever/executor so the first query doesn't pay
@@ -286,6 +293,85 @@ def session_reset(session_id: str) -> dict[str, Any]:
     agent = _build_agent(c.ds_type, c.db_config, c.schema_ddl, c.metrics_yaml)
     if _sessions.replace_agent(session_id, agent) is None:
         raise HTTPException(status_code=404, detail="unknown session")
+    return _session_meta(session_id, agent)
+
+
+class FilterRequest(BaseModel):
+    tables: list[str]
+
+
+def _entry_or_404(session_id: str):
+    entry = _sessions.get(session_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="unknown session")
+    return entry
+
+
+@router.get("/session/{session_id}/schema")
+def schema_list(session_id: str) -> dict[str, Any]:
+    entry = _entry_or_404(session_id)
+    tables = entry.agent.runtime.store.tables
+    return {"tables": [
+        {"name": t.full_name,
+         "column_count": len(t.columns) + len(t.partition_columns),
+         "comment": t.comment}
+        for t in tables
+    ]}
+
+
+@router.get("/session/{session_id}/schema/{table}")
+def schema_detail(session_id: str, table: str) -> dict[str, Any]:
+    entry = _entry_or_404(session_id)
+    t = entry.agent.runtime.store.get(table)
+    if t is None:
+        raise HTTPException(status_code=404, detail="unknown table")
+    return {"name": t.full_name, "comment": t.comment,
+            "columns": [{"name": c.name, "type": c.dtype,
+                         "comment": c.comment} for c in t.columns],
+            "partition_columns": [{"name": c.name, "type": c.dtype}
+                                  for c in t.partition_columns]}
+
+
+@router.post("/session/{session_id}/schema/filter")
+def schema_filter(session_id: str, req: FilterRequest) -> dict[str, Any]:
+    """Narrow (or widen back) the session's table whitelist; the full
+    snapshot taken at connect is the widening source."""
+    from .schema import SchemaStore
+    entry = _entry_or_404(session_id)
+    full = entry.extras.get("full_store") or entry.agent.runtime.store
+    wanted = []
+    for name in req.tables:
+        t = full.get(name)
+        if t is None:
+            raise HTTPException(status_code=400,
+                                detail=f"unknown table: {name}")
+        wanted.append(t)
+    if not wanted:
+        raise HTTPException(status_code=400, detail="empty table filter")
+    c = entry.connect
+    store = SchemaStore(wanted)
+    metric_store, _ = load_metric_store(
+        store, c.metrics_yaml if c else None)
+    agent = _agent_from_store(store, entry.agent.runtime.ds_type,
+                              entry.agent.runtime.db_config, metric_store)
+    if _sessions.replace_agent(session_id, agent) is None:
+        raise HTTPException(status_code=404, detail="unknown session")
+    return _session_meta(session_id, agent)
+
+
+@router.post("/session/{session_id}/schema/reload")
+def schema_reload(session_id: str) -> dict[str, Any]:
+    """Re-introspect the datasource; refreshes the full snapshot too."""
+    entry = _entry_or_404(session_id)
+    if entry.connect is None:
+        raise HTTPException(status_code=404, detail="unknown session")
+    c = entry.connect
+    agent = _build_agent(c.ds_type, c.db_config, c.schema_ddl,
+                         c.metrics_yaml)
+    new_entry = _sessions.replace_agent(session_id, agent)
+    if new_entry is None:
+        raise HTTPException(status_code=404, detail="unknown session")
+    new_entry.extras["full_store"] = agent.runtime.store
     return _session_meta(session_id, agent)
 
 

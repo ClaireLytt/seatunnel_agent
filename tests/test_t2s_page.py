@@ -191,3 +191,39 @@ def test_t2s_chat_streams_and_renders_table(chat_page_url):
         expect(page.locator(".st-msg-user")).to_have_count(0)
 
         browser.close()
+
+
+@pytest.mark.uitest
+def test_t2s_schema_filter_and_browser(page_url):
+    """Ticket #68: sidebar table filter narrows the session; the #schema
+    view lists tables and shows column detail. Real SQLite session."""
+    from playwright.sync_api import expect, sync_playwright
+
+    url, db_path = page_url
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(url, wait_until="networkidle")
+        page.locator("#ds").select_option("sqlite")
+        page.get_by_label("Database").fill(db_path)
+        page.get_by_role("button", name="Connect").click()
+        expect(page.locator(".st-connect-status")).to_contain_text(
+            "Connected", timeout=20000)
+
+        # narrow to one table via the filter panel
+        panel = page.locator(".st-schema-panel")
+        expect(panel).to_contain_text("2/2")
+        panel.get_by_role("button").first.click()  # expand
+        panel.get_by_role("button", name="None").click()
+        panel.get_by_label("orders").check()
+        panel.locator(".st-filter-apply").click()
+        expect(panel).to_contain_text("1/2", timeout=15000)
+
+        # schema browser view shows the remaining table's columns
+        page.get_by_role("link", name="Schema browser").click()
+        browser_view = page.locator(".st-schema-browser")
+        expect(browser_view).to_contain_text("orders")
+        browser_view.get_by_role("button", name="orders").click()
+        expect(page.locator(".st-table-detail")).to_contain_text("amount")
+
+        browser.close()

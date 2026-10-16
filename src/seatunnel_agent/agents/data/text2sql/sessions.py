@@ -18,11 +18,15 @@ _MAX_SESSIONS = 20
 
 
 class SessionEntry:
-    """Live agent plus the connect params that rebuild it on reset."""
+    """Live agent plus the connect params that rebuild it on reset, and a
+    small extras bag for session-scoped snapshots (e.g. the full schema
+    store that table filtering widens back from)."""
 
-    def __init__(self, agent: Any, connect: Any = None) -> None:
+    def __init__(self, agent: Any, connect: Any = None,
+                 extras: dict[str, Any] | None = None) -> None:
         self.agent = agent
         self.connect = connect
+        self.extras: dict[str, Any] = extras if extras is not None else {}
 
 
 class SessionManager:
@@ -53,7 +57,7 @@ class SessionManager:
             entry = self._store.get(session_id)
             if entry is None:
                 return None
-            new = SessionEntry(agent, entry.connect)
+            new = SessionEntry(agent, entry.connect, dict(entry.extras))
             self._store[session_id] = new
             self._store.move_to_end(session_id)
             return new
