@@ -125,7 +125,7 @@
 - id: T2S4
   title: 切中文后再切回英文界面复原
   tags: [full, sqlite]
-  page: /text2sql
+  page: /text2sql-legacy
   lang: en
   steps:
     - set_language: 中文

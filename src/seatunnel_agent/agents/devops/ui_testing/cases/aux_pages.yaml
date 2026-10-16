@@ -4,7 +4,7 @@
 - id: T2S1
   title: Text2SQL 侧栏 SQLite 连接 (隐藏字段回归)
   tags: [smoke, sqlite]
-  page: /text2sql
+  page: /text2sql-legacy
   lang: en
   steps:
     - select_ds: {value: SQLite}
@@ -19,7 +19,7 @@
 - id: T2S2
   title: Text2SQL 端口非法给出明确错误
   tags: [full, sqlite]
-  page: /text2sql
+  page: /text2sql-legacy
   lang: en
   steps:
     - fill: {主机: 127.0.0.1}
@@ -33,7 +33,7 @@
 - id: T2S3
   title: Text2SQL 语言切换翻译未连接状态 (回归)
   tags: [full, sqlite]
-  page: /text2sql
+  page: /text2sql-legacy
   lang: en
   steps:
     - set_language: 中文

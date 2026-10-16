@@ -2,9 +2,9 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Dev route until the route swap ticket (#67): served at /text2sql-next.
+// Served at /text2sql (route swap #67); legacy Gradio at /text2sql-legacy.
 export default defineConfig({
-  base: '/text2sql-next/',
+  base: '/text2sql/',
   plugins: [react()],
   resolve: {
     alias: {

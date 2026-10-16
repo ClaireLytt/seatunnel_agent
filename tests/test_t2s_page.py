@@ -48,7 +48,7 @@ def page_url(tmp_path):
 
     app = FastAPI()
     app.include_router(router)
-    app.mount("/text2sql-next", StaticFiles(directory=DIST, html=True))
+    app.mount("/text2sql", StaticFiles(directory=DIST, html=True))
 
     port = _free_port()
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
@@ -60,7 +60,7 @@ def page_url(tmp_path):
         if time.time() > deadline:
             pytest.fail("uvicorn did not start")
         time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/text2sql-next/", str(db)
+    yield f"http://127.0.0.1:{port}/text2sql/", str(db)
     server.should_exit = True
     t.join(timeout=5)
 
@@ -128,7 +128,7 @@ def chat_page_url(tmp_path, monkeypatch):
 
     app = FastAPI()
     app.include_router(t2s_api.router)
-    app.mount("/text2sql-next", StaticFiles(directory=DIST, html=True))
+    app.mount("/text2sql", StaticFiles(directory=DIST, html=True))
     port = _free_port()
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
                                            log_level="warning"))
@@ -139,7 +139,7 @@ def chat_page_url(tmp_path, monkeypatch):
         if time.time() > deadline:
             pytest.fail("uvicorn did not start")
         time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/text2sql-next/"
+    yield f"http://127.0.0.1:{port}/text2sql/"
     server.should_exit = True
     t.join(timeout=5)
 

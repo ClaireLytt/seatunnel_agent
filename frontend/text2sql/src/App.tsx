@@ -25,11 +25,27 @@ export default function App() {
           <p className="mt-2 text-sm text-muted">{t('subtitle')}</p>
         </div>
         <ConnectPanel onConnected={setSession} />
+        <div className="st-legacy-links rounded border border-line bg-card p-3 font-mono text-[12px]">
+          <div className="mb-1 uppercase tracking-[0.18em] text-ink-soft">{t('pending')}</div>
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {['templates', 'metrics', 'favoritesF', 'feedback', 'subscriptions', 'boards'].map(
+              (k) => (
+                <a
+                  key={k}
+                  href="/text2sql-legacy"
+                  className="text-muted underline-offset-4 hover:underline"
+                >
+                  {t(k)}
+                </a>
+              ),
+            )}
+          </div>
+        </div>
         <div className="flex gap-4 font-mono text-sm">
           <a href="/" className="text-ink underline-offset-4 hover:underline">
             {t('home')}
           </a>
-          <a href="/text2sql" className="text-muted underline-offset-4 hover:underline">
+          <a href="/text2sql-legacy" className="text-muted underline-offset-4 hover:underline">
             {t('legacy')}
           </a>
         </div>

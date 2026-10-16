@@ -46,7 +46,8 @@ class TestDiscovery:
 class TestResolution:
     def test_every_render_and_api_resolves(self):
         for mf in discover():
-            assert callable(resolve(mf.render)), mf.name
+            if not mf.external:
+                assert callable(resolve(mf.render)), mf.name
             if mf.api:
                 router = resolve(mf.api)
                 assert hasattr(router, "routes"), mf.name
@@ -81,7 +82,7 @@ class TestDataCoverage:
                    if not m.card}
         # text2sql aux pages + landing engineering tools keep no /data card
         assert no_card == {"/history", "/favorites", "/schema-browser",
-                           "/loginspect", "/mcp"}
+                           "/loginspect", "/mcp", "/text2sql-legacy"}
 
 
 # data agents whose REST routers used to be a hand-maintained tuple in
@@ -99,6 +100,20 @@ class TestDataApiRouters:
         missing = [n for n in _DATA_API_NAMES if not by_name[n].api]
         assert not missing, missing
 
+
+class TestExternalManifest:
+    def test_external_entry_keeps_card_but_no_render(self):
+        # /text2sql is served by the React static mount (#67): its manifest
+        # entry is external — card on the hub, no Gradio route/render
+        from seatunnel_agent.hub.registry import discover
+        by_route = {m.route: m for m in discover()}
+        main = by_route["/text2sql"]
+        assert main.external is True
+        assert main.card is True
+        legacy = by_route["/text2sql-legacy"]
+        assert legacy.external is False
+        assert legacy.card is False
+        assert "render_text2sql_page" in legacy.render
 
 class TestCardHtml:
     def test_markup_shape_and_escaping(self):

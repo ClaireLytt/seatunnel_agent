@@ -6,7 +6,7 @@
 - id: CBI1
   title: 指标目录面板 · 连接后加载指标并点选出口径卡片
   tags: [smoke, sqlite]
-  page: /text2sql
+  page: /text2sql-legacy
   lang: en
   steps:
     - select_ds: {value: SQLite}
@@ -25,7 +25,7 @@
 - id: CBI2
   title: 订阅面板 · 创建指标订阅并立即执行成功
   tags: [smoke, sqlite]
-  page: /text2sql
+  page: /text2sql-legacy
   lang: en
   steps:
     - select_ds: {value: SQLite}
@@ -49,7 +49,7 @@
 - id: CBI3
   title: 订阅面板 · 必填校验与非法 cron 给出明确错误
   tags: [full, sqlite]
-  page: /text2sql
+  page: /text2sql-legacy
   lang: en
   steps:
     - open_accordion: 🔔 Subscriptions
@@ -68,7 +68,7 @@
 - id: CBI4
   title: 指标目录 · 未配置指标的数据源不显示指标计数 (静默降级)
   tags: [full, sqlite]
-  page: /text2sql
+  page: /text2sql-legacy
   lang: en
   steps:
     - set_language: 中文

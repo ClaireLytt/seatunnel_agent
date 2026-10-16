@@ -59,7 +59,7 @@
 - id: SCR6
   title: Text2SQL 页侧栏可滚动
   tags: [smoke, sqlite]
-  page: /text2sql
+  page: /text2sql-legacy
   steps:
     - wait: 500
       note: 纯断言用例,等页面水合完成即可

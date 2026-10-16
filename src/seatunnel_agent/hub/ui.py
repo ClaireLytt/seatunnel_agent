@@ -164,8 +164,10 @@ def create_ui() -> gr.Blocks:
 
     # plugin pages: every seatunnel_agent.<pkg>.manifest registers itself
     from seatunnel_agent.hub.registry import discover, resolve
-    sidebar_resize = {"/seatunnel", "/text2sql", "/datacompare"}
+    sidebar_resize = {"/seatunnel", "/text2sql-legacy", "/datacompare"}
     for mf in discover():
+        if mf.external:
+            continue  # route served outside Gradio (React static mount)
         with app.route(mf.page_title, mf.route):
             resolve(mf.render)(app)
             if mf.route in sidebar_resize:
@@ -301,14 +303,27 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
                 "is not built.\n\n  cd frontend/uitest &amp;&amp; npm ci "
                 "&amp;&amp; npm run build\n\nthen restart the UI.</pre>")
 
-    # Text2SQL React rebuild (#62): dev route until the route swap (#67).
+    # Text2SQL React page owns the main route (#67); legacy Gradio page
+    # lives at /text2sql-legacy until the program closes (#75).
     from pathlib import Path as _Path
     t2s_dist = _Path("frontend") / "text2sql" / "dist"
     if (t2s_dist / "index.html").is_file():
         from fastapi.staticfiles import StaticFiles
-        app.app.mount("/text2sql-next",
+        app.app.mount("/text2sql",
                       StaticFiles(directory=t2s_dist, html=True),
                       name="text2sql-frontend")
+    else:
+        from fastapi.responses import HTMLResponse
+
+        @app.app.get("/text2sql", include_in_schema=False)
+        @app.app.get("/text2sql/", include_in_schema=False)
+        def _t2s_unbuilt() -> HTMLResponse:
+            return HTMLResponse(
+                "<pre style='margin:40px;font-size:15px'>Text2SQL frontend "
+                "is not built.\n\n  cd frontend &amp;&amp; npm ci &amp;&amp; "
+                "npm run build --workspace @seatunnel/text2sql-frontend"
+                "\n\nthen restart the UI. Legacy page: "
+                "<a href='/text2sql-legacy'>/text2sql-legacy</a></pre>")
 
     if api:
         from fastapi import Depends
