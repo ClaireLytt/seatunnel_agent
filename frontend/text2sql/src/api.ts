@@ -43,8 +43,16 @@ export async function connect(dsType: DsType, dbConfig: DbConfig): Promise<Sessi
 
 export type ChatEvent =
   | { type: 'text'; text: string }
+  | { type: 'delta'; text: string }
   | { type: 'tool_call'; name: string }
-  | { type: 'result'; sql: string; columns: string[]; rows: unknown[][]; row_count: number }
+  | {
+      type: 'result'
+      sql: string
+      columns: string[]
+      rows: unknown[][]
+      row_count: number
+      chart_type?: string | null
+    }
   | { type: 'final'; text: string; stopped?: boolean }
   | { type: 'error'; message: string }
 

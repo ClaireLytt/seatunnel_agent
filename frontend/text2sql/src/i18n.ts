@@ -24,6 +24,7 @@ const resources = {
       send: 'Send',
       stop: 'Stop',
       newChat: 'New chat',
+      chartType: 'Chart type',
     },
   },
   zh: {
@@ -47,6 +48,7 @@ const resources = {
       send: '发送',
       stop: '停止',
       newChat: '新会话',
+      chartType: '图表类型',
     },
   },
 }

@@ -85,6 +85,100 @@ def test_chat_streams_text_result_final(client, monkeypatch):
     assert events[2]["text"] == "there is 1 row"
 
 
+class ChartAgent(FakeAgent):
+    def chat(self, message: str) -> str:
+        self._on_event("tool_result", {
+            "name": "execute_sql",
+            "result": {"sql": "SELECT region, amount FROM t",
+                       "columns": ["region", "amount"],
+                       "rows": [["north", 10], ["south", 25], ["east", 7]],
+                       "row_count": 3},
+        })
+        self._on_event("final_answer", {"text": "done"})
+        return "done"
+
+
+def test_result_event_carries_server_detected_chart_type(client, monkeypatch):
+    sid = _connect_fake(client, monkeypatch, ChartAgent())
+    with client.stream("POST", "/api/text2sql/chat",
+                       json={"session_id": sid, "question": "q"}) as r:
+        events = _read_events(r)
+    result = next(e for e in events if e["type"] == "result")
+    assert result["chart_type"] in ("bar", "line", "pie", "scatter")
+
+
+def test_single_row_result_has_no_chart_type(client, monkeypatch):
+    sid = _connect_fake(client, monkeypatch, FakeAgent())
+    with client.stream("POST", "/api/text2sql/chat",
+                       json={"session_id": sid, "question": "q"}) as r:
+        events = _read_events(r)
+    result = next(e for e in events if e["type"] == "result")
+    assert result.get("chart_type") is None
+
+
+class RealShapeAgent(FakeAgent):
+    """Mimics the real agent: tool_result carries a JSON *string*, and the
+    answer streams as text_delta chunks before the final message."""
+
+    def chat(self, message: str) -> str:
+        self._on_event("text_delta", {"text": "there "})
+        self._on_event("text_delta", {"text": "is 1 row"})
+        self._on_event("tool_result", {
+            "name": "execute_sql",
+            "result": json.dumps({"sql": "SELECT 1", "columns": ["n"],
+                                  "rows": [[1]], "row_count": 1}),
+        })
+        self._on_event("final_answer", {"text": "there is 1 row"})
+        return "there is 1 row"
+
+
+def test_string_tool_result_is_parsed_not_crashed(client, monkeypatch):
+    sid = _connect_fake(client, monkeypatch, RealShapeAgent())
+    with client.stream("POST", "/api/text2sql/chat",
+                       json={"session_id": sid, "question": "q"}) as r:
+        events = _read_events(r)
+    kinds = [e["type"] for e in events]
+    assert "result" in kinds and kinds[-1] == "final"
+    result = next(e for e in events if e["type"] == "result")
+    assert result["columns"] == ["n"] and result["rows"] == [[1]]
+
+
+def test_text_deltas_stream_as_delta_events(client, monkeypatch):
+    sid = _connect_fake(client, monkeypatch, RealShapeAgent())
+    with client.stream("POST", "/api/text2sql/chat",
+                       json={"session_id": sid, "question": "q"}) as r:
+        events = _read_events(r)
+    deltas = [e["text"] for e in events if e["type"] == "delta"]
+    assert deltas == ["there ", "is 1 row"]
+
+
+def test_concurrent_chat_on_same_session_409(client, monkeypatch):
+    agent = BlockingAgent()
+    sid = _connect_fake(client, monkeypatch, agent)
+    def reader() -> None:
+        with client.stream("POST", "/api/text2sql/chat",
+                           json={"session_id": sid, "question": "q"}) as r:
+            for _ in r.iter_lines():
+                pass
+
+    t = threading.Thread(target=reader, daemon=True)
+    t.start()
+    # wait until the stream's worker hooked our fake (probing with POST /chat
+    # would itself start a real turn and poison the session)
+    import time
+    deadline = time.time() + 10
+    while agent._on_event is None and time.time() < deadline:
+        time.sleep(0.05)
+    assert agent._on_event is not None, "chat never started"
+    r = client.post("/api/text2sql/chat",
+                    json={"session_id": sid, "question": "again"})
+    assert r.status_code == 409
+    client.post("/api/text2sql/chat/stop", json={"session_id": sid})
+    agent.release.set()
+    t.join(timeout=10)
+    assert not t.is_alive()
+
+
 def test_chat_unknown_session_404(client):
     r = client.post("/api/text2sql/chat",
                     json={"session_id": "nope", "question": "hi"})
@@ -120,9 +214,11 @@ def test_stop_terminates_stream(client, monkeypatch):
     t.join(timeout=10)
     agent.release.set()
     assert not t.is_alive(), "stream did not terminate on stop"
-    assert events[0]["type"] == "text"
+    # stop may legally preempt the worker's first event, so only the
+    # terminal semantics are asserted
     assert events[-1]["type"] == "final"
     assert events[-1].get("stopped") is True
+    assert all(e["type"] in ("text", "final") for e in events)
 
 
 def test_reset_rebuilds_agent(client, monkeypatch):

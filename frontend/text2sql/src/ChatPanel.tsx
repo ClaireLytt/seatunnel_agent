@@ -2,47 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { chatStream, resetSession, stopChat, type ChatEvent, type SessionMeta } from '@/api'
+import { ResultBlock, type ResultData } from '@/ResultBlock'
 
 type Item =
   | { kind: 'user'; text: string }
   | { kind: 'text'; text: string }
-  | { kind: 'result'; sql: string; columns: string[]; rows: unknown[][]; row_count: number }
+  | ({ kind: 'result' } & ResultData)
   | { kind: 'final'; text: string; stopped?: boolean }
   | { kind: 'error'; text: string }
-
-function ResultTable({ item }: { item: Extract<Item, { kind: 'result' }> }) {
-  const shown = item.rows.slice(0, 50)
-  return (
-    <div className="st-result overflow-x-auto">
-      <pre className="mb-2 rounded border border-line bg-paper px-2 py-1 font-mono text-[12px] text-muted">
-        {item.sql}
-      </pre>
-      <table className="w-full font-mono text-[13px]">
-        <thead>
-          <tr className="border-b-2 border-ink text-left">
-            {item.columns.map((c) => (
-              <th key={c} className="px-2 py-1 text-ink">
-                {c}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {shown.map((r, i) => (
-            <tr key={i} className="border-b border-line last:border-b-0">
-              {r.map((v, j) => (
-                <td key={j} className="px-2 py-1 text-fg">
-                  {String(v ?? '')}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="mt-1 font-mono text-[11px] text-muted">{item.row_count} rows</div>
-    </div>
-  )
-}
 
 export function ChatPanel({
   session,
@@ -70,6 +37,13 @@ export function ChatPanel({
     try {
       await chatStream(session.session_id, q, (e: ChatEvent) => {
         if (e.type === 'text') setItems((xs) => [...xs, { kind: 'text', text: e.text }])
+        else if (e.type === 'delta')
+          setItems((xs) => {
+            const last = xs[xs.length - 1]
+            if (last && last.kind === 'text')
+              return [...xs.slice(0, -1), { kind: 'text', text: last.text + e.text }]
+            return [...xs, { kind: 'text', text: e.text }]
+          })
         else if (e.type === 'result')
           setItems((xs) => [
             ...xs,
@@ -103,7 +77,7 @@ export function ChatPanel({
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pr-1">
         {items.map((it, i) =>
           it.kind === 'result' ? (
-            <ResultTable key={i} item={it} />
+            <ResultBlock key={i} data={it} />
           ) : (
             <div
               key={i}

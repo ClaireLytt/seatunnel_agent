@@ -115,11 +115,12 @@ def chat_page_url(tmp_path, monkeypatch):
 
         def chat(self, message):
             self._on_event("text", {"text": "looking at orders"})
+            rows = [[f"r{i}", i] for i in range(60)]
             self._on_event("tool_result", {
                 "name": "execute_sql",
-                "result": {"sql": "SELECT count(*) FROM orders",
-                           "columns": ["cnt"], "rows": [[42]],
-                           "row_count": 1}})
+                "result": {"sql": "SELECT region, amount FROM orders",
+                           "columns": ["region", "amount"], "rows": rows,
+                           "row_count": 60}})
             self._on_event("final_answer", {"text": "orders has 42 rows"})
             return "orders has 42 rows"
 
@@ -166,9 +167,21 @@ def test_t2s_chat_streams_and_renders_table(chat_page_url):
             "looking at orders", timeout=15000)
         table = page.locator(".st-result table")
         expect(table).to_be_visible()
-        expect(table).to_contain_text("cnt")
-        expect(table).to_contain_text("42")
+        expect(table).to_contain_text("region")
+        expect(table).to_contain_text("r0")
         expect(page.get_by_text("orders has 42 rows")).to_be_visible()
+
+        # ticket #66: pagination for >20 rows, server-detected Recharts chart,
+        # client CSV export control
+        expect(page.locator(".st-pager")).to_contain_text("1/2")
+        # 60 rows exceed auto-detect caps (server returns None) — the manual
+        # type override is the behavior under test here
+        expect(page.locator(".st-chart")).to_have_count(0)
+        page.get_by_label("Chart type").select_option("bar")
+        expect(page.locator(".st-chart svg")).to_be_visible()
+        expect(page.locator(".st-csv")).to_be_visible()
+        page.locator(".st-pager button").nth(1).click()
+        expect(table).to_contain_text("r59")
 
         # new chat clears the transcript
         page.get_by_role("button", name="New chat").click()

@@ -257,6 +257,9 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
 
     q: queue.Queue = queue.Queue()
     with _active_lock:
+        if req.session_id in _active_chats:
+            raise HTTPException(status_code=409,
+                                detail="a chat turn is already running")
         _active_chats[req.session_id] = q
 
     def on_event(etype: str, data: dict[str, Any]) -> None:
@@ -283,16 +286,35 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
                 etype, data = item
                 if etype == "text" or etype == "thinking":
                     yield _sse({"type": "text", "text": data.get("text", "")})
+                elif etype == "text_delta":
+                    yield _sse({"type": "delta",
+                                "text": data.get("text", "")})
                 elif etype == "tool_call":
                     yield _sse({"type": "tool_call",
                                 "name": data.get("name", "")})
                 elif etype == "tool_result" and data.get("name") == "execute_sql":
-                    res = data.get("result") or {}
+                    # the real agent passes the tool's JSON *string* through
+                    res = data.get("result")
+                    if isinstance(res, str):
+                        try:
+                            res = json.loads(res)
+                        except (ValueError, TypeError):
+                            res = {}
+                    res = res if isinstance(res, dict) else {}
+                    cols = res.get("columns", [])
+                    rows = res.get("rows", [])
+                    try:
+                        from .chart import detect_chart_type
+                        chart = detect_chart_type(
+                            cols, [tuple(r) for r in rows])
+                    except Exception:
+                        chart = None
                     yield _sse({"type": "result",
                                 "sql": res.get("sql", ""),
-                                "columns": res.get("columns", []),
-                                "rows": res.get("rows", []),
-                                "row_count": res.get("row_count", 0)})
+                                "columns": cols,
+                                "rows": rows,
+                                "row_count": res.get("row_count", 0),
+                                "chart_type": chart})
                 elif etype == "final_answer":
                     yield _sse({"type": "final",
                                 "text": data.get("text", ""),
