@@ -47,6 +47,14 @@ python scripts/check_workflow.py 输出附于本批最终 commit 后(见对话)�
 - 前:/uitest 为 Gradio 页面(gradio_page.py 渲染)。后:/uitest 为 React 18 + TS + Vite + Tailwind + Motion + Recharts + react-i18next + PWA 页面,landing 工程纸风格(截图见上);Gradio 页仅作为 dist 未构建时的回退。
 - 测试:改动前 pytest 基线 2903 collected;改动后全量 2902 passed, 1 skipped;uitest smoke FAIL/ERROR 均为 0。
 
+## 追加改动(用户反馈)
+
+> 用户:"把紫色梯子全部改成黑色就可以"。
+
+- 网格线颜色:浅色主题 `rgba(43,46,140,…)` → `rgba(0,0,0,.07/.15)`(黑);暗色主题黑色不可见,改为中性浅灰白 `rgba(232,233,245,.07/.14)`。文件:frontend/uitest/src/index.css:10-11,26-27,42-43。
+- 验证:`npm run build` ✓;`ruff check src tests` → All checks passed!;`pytest --collect-only -q` → 2903/2997 collected。
+- 截图对比:docs/reports/shots/uitest_light.png → uitest_light_blackgrid.png;uitest_dark.png → uitest_dark_blackgrid.png。
+
 ## 未解决问题 / 遗留清单
 
 | 优先级 | 问题 | 证据 | 原因 | 影响 | 建议处理方式 |

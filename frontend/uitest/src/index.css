@@ -7,8 +7,8 @@
   --paper: #f7f6f2;
   --ink: #2b2e8c;
   --ink-soft: #5558b8;
-  --grid: rgba(43, 46, 140, 0.08);
-  --grid-bold: rgba(43, 46, 140, 0.16);
+  --grid: rgba(0, 0, 0, 0.07);
+  --grid-bold: rgba(0, 0, 0, 0.15);
   --fg: #23253a;
   --muted: #6b6e85;
   --card: #ffffff;
@@ -23,8 +23,8 @@
     --paper: #10122b;
     --ink: #9fa3ff;
     --ink-soft: #7a7ee0;
-    --grid: rgba(159, 163, 255, 0.07);
-    --grid-bold: rgba(159, 163, 255, 0.14);
+    --grid: rgba(232, 233, 245, 0.07);
+    --grid-bold: rgba(232, 233, 245, 0.14);
     --fg: #e8e9f5;
     --muted: #9a9db8;
     --card: #181a38;
@@ -39,8 +39,8 @@
   --paper: #10122b;
   --ink: #9fa3ff;
   --ink-soft: #7a7ee0;
-  --grid: rgba(159, 163, 255, 0.07);
-  --grid-bold: rgba(159, 163, 255, 0.14);
+  --grid: rgba(232, 233, 245, 0.07);
+  --grid-bold: rgba(232, 233, 245, 0.14);
   --fg: #e8e9f5;
   --muted: #9a9db8;
   --card: #181a38;
