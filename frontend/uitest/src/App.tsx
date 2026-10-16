@@ -13,7 +13,7 @@ import {
   type RunEntry,
 } from '@/api'
 import { CountsChart } from '@/components/CountsChart'
-import { SpotlightCard } from '@/components/ui/spotlight-card'
+import { Card } from '@/components/ui/card'
 
 const inputCls =
   'w-full rounded border border-line bg-card px-3 py-2 font-mono text-sm text-fg ' +
@@ -112,7 +112,7 @@ export default function App() {
         </a>
       </motion.header>
 
-      <SpotlightCard className="mt-8">
+      <Card className="mt-8">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1.2fr_1.6fr_auto_auto]">
           <div>
             <label className={labelCls} htmlFor="suite">
@@ -179,7 +179,7 @@ export default function App() {
             </button>
           </div>
         </div>
-      </SpotlightCard>
+      </Card>
 
       <AnimatePresence>
         {lines.length > 0 && (
@@ -208,10 +208,10 @@ export default function App() {
           >
             <h2 className="mb-2 font-display text-xl font-bold text-ink">{t('results')}</h2>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.2fr_1fr]">
-              <SpotlightCard>
+              <Card>
                 <CountsChart counts={counts} />
-              </SpotlightCard>
-              <SpotlightCard className="font-mono text-sm">
+              </Card>
+              <Card className="font-mono text-sm">
                 <div className="flex flex-wrap gap-x-5 gap-y-1">
                   {['PASS', 'HEALED', 'FAIL', 'ERROR', 'SKIP', 'MANUAL'].map((k) => (
                     <span key={k} className="text-muted">
@@ -230,7 +230,7 @@ export default function App() {
                     {t('download')}
                   </a>
                 )}
-              </SpotlightCard>
+              </Card>
             </div>
           </motion.section>
         )}
@@ -257,7 +257,7 @@ export default function App() {
       {history.length > 0 && (
         <section className="st-history mt-8">
           <h2 className="mb-2 font-display text-xl font-bold text-ink">{t('history')}</h2>
-          <SpotlightCard className="p-0">
+          <Card className="p-0">
             <table className="w-full font-mono text-[13px]">
               <tbody>
                 {history.map((h) => (
@@ -307,7 +307,7 @@ export default function App() {
                 ))}
               </tbody>
             </table>
-          </SpotlightCard>
+          </Card>
         </section>
       )}
 
@@ -326,7 +326,7 @@ export default function App() {
               exit={{ opacity: 0, height: 0 }}
               className="overflow-hidden"
             >
-              <SpotlightCard className="mt-3">
+              <Card className="mt-3">
                 <textarea
                   className={`${inputCls} min-h-[220px]`}
                   value={caseYaml}
@@ -342,7 +342,7 @@ export default function App() {
                   </button>
                   {caseStatus && <span className="font-mono text-sm text-fg">{caseStatus}</span>}
                 </div>
-              </SpotlightCard>
+              </Card>
             </motion.div>
           )}
         </AnimatePresence>

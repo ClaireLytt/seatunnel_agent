@@ -5,8 +5,8 @@
 /* Theme tokens copied from docs/landing.html (engineering-paper style). */
 :root {
   --paper: #f7f6f2;
-  --ink: #2b2e8c;
-  --ink-soft: #5558b8;
+  --ink: #16181d;
+  --ink-soft: #4b4e57;
   --grid: rgba(0, 0, 0, 0.07);
   --grid-bold: rgba(0, 0, 0, 0.15);
   --fg: #23253a;
@@ -20,15 +20,15 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
-    --paper: #10122b;
-    --ink: #9fa3ff;
-    --ink-soft: #7a7ee0;
+    --paper: #131316;
+    --ink: #e8e9f5;
+    --ink-soft: #b9bcc8;
     --grid: rgba(232, 233, 245, 0.07);
     --grid-bold: rgba(232, 233, 245, 0.14);
     --fg: #e8e9f5;
-    --muted: #9a9db8;
-    --card: #181a38;
-    --line: #2c2f55;
+    --muted: #a0a0ab;
+    --card: #1c1c20;
+    --line: #303036;
     --accent: #ff7d4d;
     --ok: #5ecb8f;
     color-scheme: dark;
@@ -36,15 +36,15 @@
 }
 
 :root[data-theme='dark'] {
-  --paper: #10122b;
-  --ink: #9fa3ff;
-  --ink-soft: #7a7ee0;
+  --paper: #131316;
+  --ink: #e8e9f5;
+  --ink-soft: #b9bcc8;
   --grid: rgba(232, 233, 245, 0.07);
   --grid-bold: rgba(232, 233, 245, 0.14);
   --fg: #e8e9f5;
-  --muted: #9a9db8;
-  --card: #181a38;
-  --line: #2c2f55;
+  --muted: #a0a0ab;
+  --card: #1c1c20;
+  --line: #303036;
   --accent: #ff7d4d;
   --ok: #5ecb8f;
   color-scheme: dark;
