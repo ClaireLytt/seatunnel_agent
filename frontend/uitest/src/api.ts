@@ -46,7 +46,11 @@ export async function runSuite(
   body: { suite: string; agent: string; case_ids: string; no_llm: boolean },
   onEvent: (e: RunEvent) => void,
 ): Promise<void> {
-  await postSSE<RunEvent>(`${BASE}/run`, body, onEvent)
+  try {
+    await postSSE<RunEvent>(`${BASE}/run`, body, onEvent)
+  } catch (e) {
+    throw new Error(`run: ${e instanceof Error ? e.message : e}`)
+  }
 }
 
 export async function saveCase(text: string): Promise<{ ids: string[]; path: string }> {
