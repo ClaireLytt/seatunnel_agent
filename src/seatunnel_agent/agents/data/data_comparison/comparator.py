@@ -8,10 +8,11 @@ import logging
 import math
 import os
 import re
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 _log = logging.getLogger(__name__)
 
@@ -46,35 +47,33 @@ _BACKSLASH_ESCAPE_DIALECTS = frozenset(
     {"mysql", "doris", "hive", "sparksql", "clickhouse"})
 
 from .models import (  # noqa: F401 — re-exported, public API
-    ColumnMapping,
-    SchemaDiffItem,
-    SchemaDiffResult,
-    RowCountResult,
     AggregateItem,
     AggregateResult,
-    ModifiedRow,
+    BatchFullItem,
+    ChecksumItem,
+    ChecksumResult,
+    ColumnMapping,
+    CompareReport,
+    CustomAggItem,
+    CustomAggResult,
     KeyedDiffResult,
+    ModifiedRow,
+    PartitionCompareItem,
+    PartitionResult,
     ProfileItem,
     ProfileResult,
-    ThresholdConfig,
-    BatchFullItem,
-    QualityRule,
     QualityResult,
-    ReportDiffItem,
+    QualityRule,
     ReportDiff,
+    ReportDiffItem,
+    RowCountResult,
+    SchemaDiffItem,
+    SchemaDiffResult,
     SkewBucket,
     SkewItem,
     SkewResult,
-    ChecksumItem,
-    ChecksumResult,
-    PartitionCompareItem,
-    PartitionResult,
-    CustomAggItem,
-    CustomAggResult,
-    CompareReport,
+    ThresholdConfig,
 )
-
-
 
 # ---------------------------------------------------------------------------
 # Identifier quoting
@@ -166,7 +165,55 @@ def compare_schemas(
 # SQL builders
 # ---------------------------------------------------------------------------
 
+_WHERE_WRITE_KEYWORD_RE = re.compile(
+    r"\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|merge)\b",
+    re.IGNORECASE,
+)
+
+
+def _blank_string_literals(text: str) -> str:
+    """Blank the interior of '...' / "..." literals (length-preserving) so
+    separators and keywords inside legitimate filter values never trigger
+    the checks below."""
+    out = list(text)
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch in ("'", '"'):
+            i += 1
+            while i < n and text[i] != ch:
+                if text[i] == "\\":
+                    out[i] = " "
+                    i += 1
+                    if i < n:
+                        out[i] = " "
+                        i += 1
+                    continue
+                out[i] = " "
+                i += 1
+        i += 1
+    return "".join(out)
+
+
+def validate_where(where: str) -> None:
+    """Read-only guard for user-supplied WHERE filters (mirrors the text2sql
+    validator's strip-literals + keyword-blacklist approach): reject stacked
+    statements, comment markers and write/DDL keywords. Raises ValueError."""
+    if not where.strip():
+        return
+    cleaned = _blank_string_literals(where)
+    if ";" in cleaned:
+        raise ValueError("WHERE 过滤条件不允许包含分号/多语句")
+    for marker in ("--", "/*", "#"):
+        if marker in cleaned:
+            raise ValueError(f"WHERE 过滤条件不允许包含注释符 '{marker}'")
+    m = _WHERE_WRITE_KEYWORD_RE.search(cleaned)
+    if m:
+        raise ValueError(f"WHERE 过滤条件包含写操作关键词 '{m.group(1)}'")
+
+
 def _where_clause(where: str) -> str:
+    validate_where(where)
     return f" WHERE {where}" if where.strip() else ""
 
 
@@ -747,7 +794,7 @@ def build_trend_data(
 
     for fpath in sorted(reports_dir.glob("compare_*.json"), key=_file_ts):
         try:
-            with open(fpath, "r", encoding="utf-8") as f:
+            with open(fpath, encoding="utf-8") as f:
                 d = json.load(f)
             ts = _file_ts(fpath)
             report = CompareReport.from_dict(d)

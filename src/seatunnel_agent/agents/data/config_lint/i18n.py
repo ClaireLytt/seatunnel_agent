@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for config lint reports and the /conflint page."""
 
 from __future__ import annotations

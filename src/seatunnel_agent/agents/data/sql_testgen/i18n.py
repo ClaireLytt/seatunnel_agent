@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for test-data generation reports and the /testgen page."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """path_between 正确性回归 + 大图性能冒烟（parent 指针 BFS）。"""
 
 from __future__ import annotations

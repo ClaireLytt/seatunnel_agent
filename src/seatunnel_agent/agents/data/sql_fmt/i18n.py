@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for SQL formatter reports and the /sqlfmt page."""
 
 from __future__ import annotations

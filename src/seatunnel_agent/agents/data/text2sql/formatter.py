@@ -124,5 +124,4 @@ def format_sql(sql: str) -> str:
             formatted.append(stripped)
 
     result = "\n".join(formatted)
-    result = _restore_strings(result, literals)
-    return result
+    return _restore_strings(result, literals)

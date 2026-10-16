@@ -1,13 +1,14 @@
-# -*- coding: utf-8 -*-
 """Render FmtResult(s) as markdown or JSON-ready dicts."""
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
+
+from seatunnel_agent.common.utils import normalize_lang
 
 from .formatter import FmtFileResult, FmtResult
 from .i18n import tp
-from seatunnel_agent.common.utils import normalize_lang
 
 
 def render_markdown(result: FmtResult, lang: str = "zh",

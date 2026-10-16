@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+
 from .config import ReviewConfig
 from .lineage import extract_table_lineage
 from .linter import lint_sql, normalize_dialect

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the DataX/Sqoop → SeaTunnel migration agent.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -57,7 +56,7 @@ _t = make_page_t(_I18N)
 
 def render_config_migrate_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -84,7 +83,10 @@ def render_config_migrate_page(app: gr.Blocks) -> None:
     # ── callbacks ──
 
     def do_migrate(text: str, lang: str):
-        from seatunnel_agent.agents.data.config_migrate import migrate_text, render_migrate_markdown
+        from seatunnel_agent.agents.data.config_migrate import (
+            migrate_text,
+            render_migrate_markdown,
+        )
 
         if not (text or "").strip():
             return "", _t(lang, "empty")
@@ -94,7 +96,10 @@ def render_config_migrate_page(app: gr.Blocks) -> None:
     def do_batch(dir_text: str, out_text: str, lang: str):
         from pathlib import Path
 
-        from seatunnel_agent.agents.data.config_migrate import migrate_dir, render_batch_markdown
+        from seatunnel_agent.agents.data.config_migrate import (
+            migrate_dir,
+            render_batch_markdown,
+        )
 
         if not (dir_text or "").strip():
             return "", _t(lang, "empty")

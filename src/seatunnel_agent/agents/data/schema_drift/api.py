@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the schema drift agent — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -18,8 +17,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, check_path_allowed, ms_since
-from .differ import diff_paths, diff_scripts
 from seatunnel_agent.common.utils import normalize_lang
+
+from .differ import diff_paths, diff_scripts
 from .report import render_markdown, report_to_dict
 
 router = APIRouter(prefix="/api/schemadrift", tags=["schema_drift"])

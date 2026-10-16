@@ -14,7 +14,6 @@ from pathlib import Path
 
 from seatunnel_agent.agents.data.sql_review.lineage import extract_table_lineage
 from seatunnel_agent.agents.data.sql_review.linter import split_statements
-from seatunnel_agent.common.utils import collect_sql_files
 from seatunnel_agent.agents.data.text2sql.executor.base import (
     DatabaseExecutor,
     config_from_env,
@@ -22,6 +21,8 @@ from seatunnel_agent.agents.data.text2sql.executor.base import (
 )
 from seatunnel_agent.agents.data.text2sql.lineage import trace_lineage
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+from seatunnel_agent.common.utils import collect_sql_files
+
 from .config import load_lineage_config
 from .graph import ColumnEdge, LineageGraph
 
@@ -92,7 +93,7 @@ def from_sql_files(
         try:
             _load_sql_script(fragment, sql_text, origin=f"sql:{path.name}",
                              store=store, dialect=dialect)
-        except Exception as exc:  # noqa: BLE001 — one bad file must not kill the build
+        except Exception as exc:
             warnings.append(f"解析 {path} 失败: {exc}")
             parsed_ok = False
         graph.merge(fragment)
@@ -158,7 +159,7 @@ def _load_column_edges(
         return
     try:
         traced = trace_lineage(statement, store=store)
-    except Exception:  # noqa: BLE001 — column lineage is best-effort
+    except Exception:
         return
     # Unqualified columns are attributable when there is exactly one source.
     sole_source = sources[0] if len(sources) == 1 else ""
@@ -361,7 +362,7 @@ def build_graph(
                 warnings.append(
                     f"Hive 血缘图来自本地缓存（pt={pt}），如需强制刷新请用 --no-cache"
                 )
-        except Exception as exc:  # noqa: BLE001 — degrade to SQL-only when possible
+        except Exception as exc:
             if has_sql_source:
                 warnings.append(f"Hive 元数据加载失败，已降级为仅 SQL 血缘: {exc}")
             else:

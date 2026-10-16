@@ -12,6 +12,7 @@ import time
 
 from seatunnel_agent.common.config import load_settings
 from seatunnel_agent.common.llm import LLMClient
+
 from .models import Step, StepLog
 from .page import DCPage
 
@@ -125,7 +126,7 @@ def _exec_tool(name: str, inp: dict, dc: DCPage) -> str:
         # effect without an extra read_page round-trip
         dc.page.wait_for_timeout(600)
         return f"{out}\n\n当前页面摘要:\n{dc.digest()}"
-    except Exception as e:  # noqa: BLE001 — feed the error back to the model
+    except Exception as e:
         return f"ERROR: {type(e).__name__}: {str(e)[:400]}"
 
 

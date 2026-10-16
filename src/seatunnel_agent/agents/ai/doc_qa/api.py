@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for doc Q&A — FastAPI router.
 
   POST /api/docqa/ask   — retrieve (and optionally synthesize) an answer
@@ -14,6 +13,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
+
 from .answer import answer, normalize_lang
 from .core import get_index
 

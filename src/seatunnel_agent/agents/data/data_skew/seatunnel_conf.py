@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """SeaTunnel config (HOCON) parsing/rewriting for split-key analysis.
 
 Moved verbatim out of splitkey.py, which re-exports the public names.
@@ -9,11 +8,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .measure import (  # noqa: F401 — SplitKeyError re-exported
+from .measure import (
     MAX_CANDIDATES,
     SplitKeyError,
 )
-
 
 _IDENT = r"[A-Za-z_][\w$]*"
 
@@ -132,7 +130,7 @@ def parse_seatunnel_sources(conf_text: str) -> list[SourceSpec]:
         raise SplitKeyError("spk_parse_fail", f"pyhocon not installed: {exc}")
     try:
         conf = ConfigFactory.parse_string(conf_text)
-    except Exception as exc:  # noqa: BLE001 — HOCON syntax error
+    except Exception as exc:
         raise SplitKeyError("spk_parse_fail", str(exc))
 
     source = conf.get("source", None)
@@ -255,7 +253,7 @@ def parse_seatunnel_sinks(conf_text: str) -> list[SinkSpec]:
     try:
         from pyhocon import ConfigFactory
         conf = ConfigFactory.parse_string(conf_text)
-    except Exception:  # noqa: BLE001 — the source parser already reported
+    except Exception:
         return []
 
     sink = conf.get("sink", None)
@@ -275,7 +273,7 @@ def parse_seatunnel_sinks(conf_text: str) -> list[SinkSpec]:
         for key in ("table.identifier", "table", "table_name", "database"):
             try:
                 v = params.get(key, None)
-            except Exception:  # noqa: BLE001 — dotted lookup on odd shapes
+            except Exception:
                 v = None
             if v is not None and not hasattr(v, "items"):
                 table = str(v).strip()

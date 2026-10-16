@@ -21,7 +21,7 @@ def _routes_js(workspace: str, fallback: list[str]) -> str:
     try:
         from ..hub.registry import discover
         routes = [m.route for m in discover() if m.workspace == workspace]
-    except Exception:  # noqa: BLE001 — a broken plugin must not kill pages
+    except Exception:
         routes = fallback
     return "[" + ", ".join(f"'{r}'" for r in routes) + "]"
 
@@ -91,6 +91,6 @@ def choice_from_request(request: gr.Request | None) -> str:
     """Cookie -> the "English"/"中文" choice the _switch_lang callbacks expect."""
     try:
         lang = (request.cookies or {}).get(COOKIE, "en") if request else "en"
-    except Exception:  # noqa: BLE001 — never break page load over a cookie
+    except Exception:
         lang = "en"
     return "中文" if lang == "zh" else "English"

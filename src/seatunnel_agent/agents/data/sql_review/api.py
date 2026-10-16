@@ -17,13 +17,17 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from seatunnel_agent.agents.data.text2sql.executor import (
+    DatabaseConfig,
+    create_executor,
+)
+from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 from seatunnel_agent.common.api_guard import ms_since
 from seatunnel_agent.common.config import load_settings
-from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, create_executor
-from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
+from seatunnel_agent.common.utils import normalize_lang
+
 from .agent import SQLReviewAgent
 from .config import ReviewConfig, parse_config_data
-from seatunnel_agent.common.utils import normalize_lang
 from .linter import DIALECTS, EXECUTOR_DS_TYPES, is_known_dialect, normalize_dialect
 from .rlog import ReviewLogger
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Experiment history for the prompt lab — JSONL, one line per matrix run.
 
 Previews only (no full replies, never any API key).  Env knobs:
@@ -29,7 +28,7 @@ class ExperimentLogger:
         self.path = Path(path) if path else log_path()
         self._log = JsonlLog(lambda: self.path, env_switch="PROMPT_LAB_LOG")
 
-    def log(self, result: "MatrixResult") -> None:
+    def log(self, result: MatrixResult) -> None:
         """Best-effort append; never raises into the experiment."""
         try:
             rec: dict[str, Any] = {
@@ -48,7 +47,7 @@ class ExperimentLogger:
                     "reply_preview": (c.reply or "")[:_PREVIEW_CHARS],
                 } for c in result.cells],
             }
-        except Exception:  # noqa: BLE001 — history is best-effort
+        except Exception:
             return
         self._log.append(rec)
 

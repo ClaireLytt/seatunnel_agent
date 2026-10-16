@@ -19,15 +19,6 @@ from typing import Any
 
 import gradio as gr
 
-from seatunnel_agent.agents.data.text2sql.executor import (
-    DS_DEFAULTS,
-    DIALECT_NAMES,
-    ENV_PREFIX,
-    DatabaseConfig,
-    config_from_env,
-    create_executor,
-)
-from seatunnel_agent.agents.data.text2sql.differ import diff_results
 from seatunnel_agent.agents.data.data_comparison.comparator import (
     AggregateResult,
     BatchFullItem,
@@ -49,14 +40,13 @@ from seatunnel_agent.agents.data.data_comparison.comparator import (
     build_partition_count_sql,
     build_profile_sql,
     build_random_sample_sql,
-    build_skew_sql,
-    build_stratified_sample_sql,
-    check_trend_alerts,
-    parse_alert_rules,
     build_row_count_result,
     build_sample_sql,
+    build_skew_sql,
+    build_stratified_sample_sql,
     build_trend_data,
     check_quality_rules,
+    check_trend_alerts,
     compare_aggregates,
     compare_checksums,
     compare_custom_aggs,
@@ -66,21 +56,51 @@ from seatunnel_agent.agents.data.data_comparison.comparator import (
     compare_skew,
     detect_sensitive_columns,
     diff_by_key,
+    diff_reports,
     find_common_tables,
     generate_diff_sql,
     generate_sync_config,
+    get_upstream_tables,
     is_numeric_type,
     mask_rows,
+    parse_alert_rules,
     parse_column_mapping,
     parse_custom_agg_expressions,
     parse_quality_rules,
     parse_threshold,
     run_parallel,
-    diff_reports,
-    get_upstream_tables,
 )
 from seatunnel_agent.agents.data.data_comparison.i18n import dc
-
+from seatunnel_agent.agents.data.data_comparison.ui_cards import (  # noqa: F401
+    _threshold_badge,
+    build_aggregate_card,
+    build_batch_count_card,
+    build_batch_full_card,
+    build_batch_template_card,
+    build_checksum_card,
+    build_chunked_card,
+    build_count_card,
+    build_custom_agg_card,
+    build_diff_sql_card,
+    build_keyed_diff_card,
+    build_lineage_card,
+    build_partition_card,
+    build_profile_card,
+    build_quality_card,
+    build_report_diff_card,
+    build_sample_diff_card,
+    build_schema_diff_card,
+    build_skew_card,
+    build_sql_result_card,
+    build_standalone_report,
+    build_summary_card,
+    build_trend_alert_card,
+)
+from seatunnel_agent.agents.data.data_comparison.ui_reports import (  # noqa: F401
+    _download_dir,
+    _export_report_csv,
+    _export_report_excel,
+)
 
 # Module-level helpers moved to data_comparison.ui_shared / ui_cards / ui_reports.
 # Re-exported here because tests and other modules import them from this path.
@@ -122,44 +142,21 @@ from seatunnel_agent.agents.data.data_comparison.ui_shared import (  # noqa: F40
     _validate_where,
     _with_validation,
 )
-from seatunnel_agent.agents.data.data_comparison.ui_cards import (  # noqa: F401
-    _threshold_badge,
-    build_aggregate_card,
-    build_batch_count_card,
-    build_batch_full_card,
-    build_batch_template_card,
-    build_checksum_card,
-    build_chunked_card,
-    build_count_card,
-    build_custom_agg_card,
-    build_diff_sql_card,
-    build_keyed_diff_card,
-    build_lineage_card,
-    build_partition_card,
-    build_profile_card,
-    build_quality_card,
-    build_report_diff_card,
-    build_sample_diff_card,
-    build_schema_diff_card,
-    build_skew_card,
-    build_sql_result_card,
-    build_standalone_report,
-    build_summary_card,
-    build_trend_alert_card,
+from seatunnel_agent.agents.data.text2sql.differ import diff_results
+from seatunnel_agent.agents.data.text2sql.executor import (
+    DIALECT_NAMES,
+    DS_DEFAULTS,
+    ENV_PREFIX,
+    DatabaseConfig,
+    config_from_env,
+    create_executor,
 )
-from seatunnel_agent.agents.data.data_comparison.ui_reports import (  # noqa: F401
-    _download_dir,
-    _export_report_csv,
-    _export_report_excel,
-)
-
-
 
 # ---------------------------------------------------------------------------
 # Page renderer
 # ---------------------------------------------------------------------------
 
-def render_data_comparison_page(app=None) -> None:  # noqa: C901
+def render_data_comparison_page(app=None) -> None:
     """Render the Data Comparison page components."""
     from dotenv import load_dotenv
     load_dotenv()
@@ -994,7 +991,7 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
         if not fpath.is_file():
             return dc(lang_val, "dc_no_reports")
         try:
-            with open(fpath, "r", encoding="utf-8") as f:
+            with open(fpath, encoding="utf-8") as f:
                 data = json.load(f)
             report = CompareReport.from_dict(data)
             with holder_lock:
@@ -1361,9 +1358,9 @@ def render_data_comparison_page(app=None) -> None:  # noqa: C901
             new_path = _REPORTS_DIR / new_name
             if not old_path.is_file() or not new_path.is_file():
                 return dc(lang_val, "dc_no_reports")
-            with open(old_path, "r", encoding="utf-8") as f:
+            with open(old_path, encoding="utf-8") as f:
                 old_report = CompareReport.from_dict(json.load(f))
-            with open(new_path, "r", encoding="utf-8") as f:
+            with open(new_path, encoding="utf-8") as f:
                 new_report = CompareReport.from_dict(json.load(f))
             rdiff = diff_reports(old_report, new_report)
             return build_report_diff_card(rdiff, lang_val)

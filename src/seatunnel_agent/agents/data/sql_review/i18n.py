@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for the SQL Review page and CR report rendering.
 
 Mirrors the ``data_comparison.i18n`` pattern: one flat dict per language,

@@ -8,7 +8,12 @@ from typing import Any
 from .executor import PARTITION_ENGINES, QueryResult
 from .partition import has_partition_filter
 from .quality import check_quality
-from .runtime import Text2SQLRuntime, _sanitize_db_error, _suggest_column, classify_error
+from .runtime import (
+    Text2SQLRuntime,
+    _sanitize_db_error,
+    _suggest_column,
+    classify_error,
+)
 from .validator import ValidationResult, enforce_limit, validate_sql
 
 _PREVIEW_ROWS = 20
@@ -177,7 +182,10 @@ def _tool_review_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]
     dialect = str(inp.get("dialect", "") or "").strip().lower() \
         or _REVIEW_DIALECT_BY_DS.get(rt.ds_type, "hive")
     try:
-        from seatunnel_agent.agents.data.sql_review.linter import is_known_dialect, lint_sql
+        from seatunnel_agent.agents.data.sql_review.linter import (
+            is_known_dialect,
+            lint_sql,
+        )
 
         if not is_known_dialect(dialect):
             return {"error": f"Unknown review dialect '{dialect}'"}

@@ -11,8 +11,9 @@ import json
 import logging
 import os
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ class LLMClient:
         self.tools = tools if tools is not None else []
         # feature name for per-agent usage/cost attribution (llm_usage log)
         self.agent = agent
+        self._client: Any
 
         if self.provider == "anthropic":
             import anthropic
@@ -140,37 +142,35 @@ class LLMClient:
     ) -> dict[str, Any] | list[dict[str, Any]]:
         if self.provider == "anthropic":
             return {"role": "user", "content": tool_results}
-        else:
-            msgs: list[dict[str, Any]] = []
-            for tr in tool_results:
-                msgs.append({
-                    "role": "tool",
-                    "tool_call_id": tr["tool_use_id"],
-                    "content": tr["content"],
-                })
-            return msgs
+        msgs: list[dict[str, Any]] = []
+        for tr in tool_results:
+            msgs.append({
+                "role": "tool",
+                "tool_call_id": tr["tool_use_id"],
+                "content": tr["content"],
+            })
+        return msgs
 
     def append_assistant(self, raw_content: Any) -> dict[str, Any]:
         if self.provider == "anthropic":
             return {"role": "assistant", "content": raw_content}
-        else:
-            msg: dict[str, Any] = {
-                "role": "assistant",
-                "content": raw_content.content or "",
-            }
-            if raw_content.tool_calls:
-                msg["tool_calls"] = [
-                    {
-                        "id": tc.id,
-                        "type": "function",
-                        "function": {
-                            "name": tc.function.name,
-                            "arguments": tc.function.arguments,
-                        },
-                    }
-                    for tc in raw_content.tool_calls
-                ]
-            return msg
+        msg: dict[str, Any] = {
+            "role": "assistant",
+            "content": raw_content.content or "",
+        }
+        if raw_content.tool_calls:
+            msg["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in raw_content.tool_calls
+            ]
+        return msg
 
     # ------------------------------------------------------------------
     # Retry helper
@@ -218,30 +218,30 @@ class LLMClient:
         return any(k in model_name for k in _THINKING_MODEL_KEYWORDS)
 
     def _call_anthropic(self, system_prompt: str, messages: list) -> LLMResponse:
-        kwargs: dict[str, Any] = dict(
-            model=self.settings.model_name,
-            max_tokens=self.settings.max_tokens,
-            system=system_prompt,
-            tools=self.tools,
-            messages=messages,
-        )
+        kwargs: dict[str, Any] = {
+            "model": self.settings.model_name,
+            "max_tokens": self.settings.max_tokens,
+            "system": system_prompt,
+            "tools": self.tools,
+            "messages": messages,
+        }
         if self._supports_thinking(self.settings.model_name):
             kwargs["thinking"] = {"type": "adaptive"}
         if self.settings.temperature > 0:
             kwargs["temperature"] = self.settings.temperature
         response = self._client.messages.create(**kwargs)
 
-        thinking = ""
-        text = ""
+        thinking_parts: list[str] = []
+        text_parts: list[str] = []
         tool_calls = []
 
         for block in response.content:
             if not hasattr(block, "type"):
                 continue
             if block.type == "thinking" and getattr(block, "thinking", ""):
-                thinking = block.thinking
+                thinking_parts.append(block.thinking)
             elif block.type == "text" and block.text:
-                text = block.text
+                text_parts.append(block.text)
             elif block.type == "tool_use":
                 tool_calls.append(ToolCall(
                     id=block.id, name=block.name, input=block.input,
@@ -257,8 +257,8 @@ class LLMClient:
         return LLMResponse(
             wants_tool_use=(response.stop_reason == "tool_use"),
             tool_calls=tool_calls,
-            thinking_text=thinking,
-            reply_text=text,
+            thinking_text="".join(thinking_parts),
+            reply_text="".join(text_parts),
             raw_content=response.content,
             usage=usage,
         )
@@ -278,13 +278,13 @@ class LLMClient:
         current_tool_name = ""
         current_tool_json = ""
 
-        stream_kwargs: dict[str, Any] = dict(
-            model=self.settings.model_name,
-            max_tokens=self.settings.max_tokens,
-            system=system_prompt,
-            tools=self.tools,
-            messages=messages,
-        )
+        stream_kwargs: dict[str, Any] = {
+            "model": self.settings.model_name,
+            "max_tokens": self.settings.max_tokens,
+            "system": system_prompt,
+            "tools": self.tools,
+            "messages": messages,
+        }
         if self._supports_thinking(self.settings.model_name):
             stream_kwargs["thinking"] = {"type": "adaptive"}
         if self.settings.temperature > 0:
@@ -350,12 +350,12 @@ class LLMClient:
         for msg in messages:
             oai_messages.extend(self._convert_message(msg))
 
-        oai_kwargs: dict[str, Any] = dict(
-            model=self.settings.model_name,
-            max_tokens=self.settings.max_tokens,
-            messages=oai_messages,
-            tools=_convert_tools_to_openai(self.tools),
-        )
+        oai_kwargs: dict[str, Any] = {
+            "model": self.settings.model_name,
+            "max_tokens": self.settings.max_tokens,
+            "messages": oai_messages,
+            "tools": _convert_tools_to_openai(self.tools),
+        }
         if self.settings.temperature > 0:
             oai_kwargs["temperature"] = self.settings.temperature
         base = self.settings.llm_base_url or "https://api.openai.com"
@@ -421,13 +421,13 @@ class LLMClient:
         for msg in messages:
             oai_messages.extend(self._convert_message(msg))
 
-        stream_oai_kwargs: dict[str, Any] = dict(
-            model=self.settings.model_name,
-            max_tokens=self.settings.max_tokens,
-            messages=oai_messages,
-            tools=_convert_tools_to_openai(self.tools),
-            stream=True,
-        )
+        stream_oai_kwargs: dict[str, Any] = {
+            "model": self.settings.model_name,
+            "max_tokens": self.settings.max_tokens,
+            "messages": oai_messages,
+            "tools": _convert_tools_to_openai(self.tools),
+            "stream": True,
+        }
         if self.settings.temperature > 0:
             stream_oai_kwargs["temperature"] = self.settings.temperature
         if not self.settings.llm_base_url:

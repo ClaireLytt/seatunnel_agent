@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unified MCP toolbox (seatunnel-agent mcp) — the tool callables are plain
 functions, so everything here runs without the ``mcp`` package."""
 
@@ -31,7 +30,9 @@ def _make_db(path, script):
 def _save_conn(name, db_path):
     import os
 
-    from seatunnel_agent.agents.data.data_comparison.presets import ConnectionPresetsStore
+    from seatunnel_agent.agents.data.data_comparison.presets import (
+        ConnectionPresetsStore,
+    )
 
     store = ConnectionPresetsStore(os.environ["SEATUNNEL_DC_PRESETS_PATH"])
     store.save(name=name, ds_type="sqlite", host="", port=0,

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Lineage graph snapshots and change detection.
 
 Snapshots reuse the cache serialization format and live under

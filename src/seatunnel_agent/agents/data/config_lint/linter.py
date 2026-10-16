@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic SeaTunnel config lint core.
 
 Finding kinds (severity):
@@ -67,7 +66,7 @@ class LintResult:
     connectors: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = {level: 0 for level in SEVERITIES}
+        out = dict.fromkeys(SEVERITIES, 0)
         for f in self.findings:
             out[f.severity] += 1
         out["total"] = len(self.findings)
@@ -214,7 +213,7 @@ def lint_text(text: str, name: str = "<inline>") -> LintResult:
             kind=kind, severity="error",
             message_params={"detail": str(exc)[:300]}))
         return result
-    except Exception as exc:  # noqa: BLE001 — pyhocon raises bare exceptions too
+    except Exception as exc:
         result.findings.append(LintFinding(
             kind="syntax_error", severity="error",
             message_params={"detail": str(exc)[:300]}))

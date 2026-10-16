@@ -1,11 +1,12 @@
-# -*- coding: utf-8 -*-
 """SeaTunnel transform 字段级血缘（任务 #34）。"""
 
 from __future__ import annotations
 
 import pytest
 
-from seatunnel_agent.agents.data.data_lineage.seatunnel_loader import from_seatunnel_files
+from seatunnel_agent.agents.data.data_lineage.seatunnel_loader import (
+    from_seatunnel_files,
+)
 
 FIELD_MAPPER_CONF = """
 env { job.mode = "BATCH" }

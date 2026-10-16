@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the config lint agent — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -18,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
 from seatunnel_agent.common.utils import normalize_lang
+
 from .linter import lint_dir, lint_text
 from .report import render_batch_markdown, render_markdown, result_to_dict
 

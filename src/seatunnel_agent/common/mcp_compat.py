@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """mcp SDK version shim.
 
 mcp 2.x renamed ``FastMCP`` to ``MCPServer`` (same ``tool()`` / ``run()``

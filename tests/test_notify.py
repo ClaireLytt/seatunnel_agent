@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Notify channel: payload shapes, kind detection, send(), CLI integration."""
 
 from __future__ import annotations

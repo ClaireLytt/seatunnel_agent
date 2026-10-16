@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Code-fix agent tools — all bound to one working directory.
 
 Every path is resolved and must stay under the workdir (``.git`` excluded);

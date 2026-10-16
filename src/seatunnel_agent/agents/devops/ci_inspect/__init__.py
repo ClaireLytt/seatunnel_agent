@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """CI log triage — failure clustering, flaky detection, duration drift.
 
 Deterministic, offline core; GitHub fetching is a CLI convenience."""

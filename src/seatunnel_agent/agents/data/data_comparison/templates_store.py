@@ -11,7 +11,6 @@ from typing import Any
 
 from seatunnel_agent.common.utils import read_json_list, write_json_atomic
 
-
 _DEFAULT_PATH = Path.home() / ".seatunnel-agent" / "dc_templates.json"
 _MAX_TEMPLATES = 100
 

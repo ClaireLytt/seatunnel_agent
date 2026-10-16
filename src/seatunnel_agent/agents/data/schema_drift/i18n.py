@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for schema drift reports and the /schemadrift page."""
 
 from __future__ import annotations

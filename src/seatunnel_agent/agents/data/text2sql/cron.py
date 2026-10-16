@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Zero-dependency cron parsing + built-in template params for subscriptions.
 
 Moved verbatim out of subscriptions.py, which re-exports the public names.
@@ -10,7 +9,6 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 from .partition import pt_value
-
 
 # ----------------------------------------------------------------------
 # Cron (standard 5 fields, zero-dep)

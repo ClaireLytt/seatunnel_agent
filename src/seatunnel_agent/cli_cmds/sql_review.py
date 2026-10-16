@@ -5,8 +5,9 @@ import sys
 
 import click
 
-from ..common.cli_common import _handle_error, _write_output, console
 from seatunnel_agent.agents.data.sql_review.linter import DIALECTS as REVIEW_DIALECTS
+
+from ..common.cli_common import _handle_error, _write_output, console
 
 
 @click.command()
@@ -147,7 +148,10 @@ def review(
         if not m:
             raise click.UsageError("--db 格式应为 host:port/database")
         from seatunnel_agent.agents.data.sql_review.linter import EXECUTOR_DS_TYPES
-        from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, create_executor
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            create_executor,
+        )
         from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
         ds_type = EXECUTOR_DS_TYPES.get(dialect)
         if ds_type is None:
@@ -187,7 +191,11 @@ def review(
         settings = load_settings()
 
     # ── review loop ──
-    from seatunnel_agent.agents.data.sql_review import Severity, render_report, static_review_report
+    from seatunnel_agent.agents.data.sql_review import (
+        Severity,
+        render_report,
+        static_review_report,
+    )
     from seatunnel_agent.agents.data.sql_review.rlog import ReviewLogger
 
     logger = ReviewLogger()
@@ -227,7 +235,9 @@ def review(
 
         # ── EXPLAIN verification (live DB + OLTP dialect only) ──
         if rep and db_executor is not None:
-            from seatunnel_agent.agents.data.sql_review.explain import verify_with_explain
+            from seatunnel_agent.agents.data.sql_review.explain import (
+                verify_with_explain,
+            )
             verified = verify_with_explain(rep.findings, text, dialect, db_executor)
             if verified != rep.findings:
                 rep.findings = verified
@@ -238,7 +248,9 @@ def review(
 
         suppressed = 0
         if baseline_prints and rep:
-            from seatunnel_agent.agents.data.sql_review.baseline import split_by_baseline
+            from seatunnel_agent.agents.data.sql_review.baseline import (
+                split_by_baseline,
+            )
             new, known = split_by_baseline(label, findings, baseline_prints)
             if known:
                 rep.findings = new
@@ -280,7 +292,10 @@ def review(
         if fix and findings:
             fixed_sql = None
             if static_only:
-                from seatunnel_agent.agents.data.sql_review.autofix import apply_static_fixes, describe_fixes
+                from seatunnel_agent.agents.data.sql_review.autofix import (
+                    apply_static_fixes,
+                    describe_fixes,
+                )
                 fixed_sql, applied = apply_static_fixes(
                     text, dialect, config=review_config)
                 if not applied:
@@ -328,7 +343,10 @@ def review(
 
     # ── machine-readable output (--format json/sarif) ──
     if machine:
-        from seatunnel_agent.agents.data.sql_review.formats import results_to_json, results_to_sarif
+        from seatunnel_agent.agents.data.sql_review.formats import (
+            results_to_json,
+            results_to_sarif,
+        )
         doc = results_to_json(reports) if fmt == "json" else results_to_sarif(reports)
         if output:
             _write_output(output, doc)
@@ -342,7 +360,10 @@ def review(
 
     # ── baseline update ──
     if update_baseline:
-        from seatunnel_agent.agents.data.sql_review.baseline import DEFAULT_BASELINE, save_baseline
+        from seatunnel_agent.agents.data.sql_review.baseline import (
+            DEFAULT_BASELINE,
+            save_baseline,
+        )
         bpath = baseline or DEFAULT_BASELINE
         try:
             n = save_baseline(bpath, baseline_entries)
@@ -415,8 +436,11 @@ def review_harness(
 
     from seatunnel_agent.agents.data.sql_review import load_review_config
     from seatunnel_agent.agents.data.sql_review.harness import (
-        DEFAULT_LOG, diff_against_baseline, load_llm_cache,
-        render_harness_report, run_harness,
+        DEFAULT_LOG,
+        diff_against_baseline,
+        load_llm_cache,
+        render_harness_report,
+        run_harness,
     )
 
     try:
@@ -535,9 +559,14 @@ def sqlfmt(
     from pathlib import Path
 
     from seatunnel_agent.agents.data.sql_fmt import (
-        FmtFileResult, fmt_dir, format_text,
-        render_batch_markdown, render_markdown, result_to_dict,
+        FmtFileResult,
+        fmt_dir,
+        format_text,
+        render_batch_markdown,
+        render_markdown,
+        result_to_dict,
     )
+
     from ..common.utils import collect_sql_files
 
     if not sql and not directory and not paths:

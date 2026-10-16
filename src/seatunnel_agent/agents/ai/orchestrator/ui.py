@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the agent orchestrator.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -16,7 +15,12 @@ import threading
 
 import gradio as gr
 
-from seatunnel_agent.agents.ai.orchestrator import Orchestrator, build_catalog, render_suggestions, suggest
+from seatunnel_agent.agents.ai.orchestrator import (
+    Orchestrator,
+    build_catalog,
+    render_suggestions,
+    suggest,
+)
 from seatunnel_agent.agents.ai.orchestrator.olog import ChatLogger
 from seatunnel_agent.agents.ai.orchestrator.report import normalize_lang
 from seatunnel_agent.common.config import llm_ready as _llm_ready
@@ -96,7 +100,7 @@ def _agents_md(lang: str) -> str:
     zh = normalize_lang(lang) == "zh"
     try:
         catalog = build_catalog(default_lang=lang)
-    except Exception as exc:  # noqa: BLE001 — the list must not kill the page
+    except Exception as exc:
         return f"⚠️ {exc}"
     rows = ["| " + ("Agent | 页面 | 说明" if zh else "Agent | Page | What it does")
             + " |", "|---|---|---|"]
@@ -108,7 +112,7 @@ def _agents_md(lang: str) -> str:
 
 def render_orchestrator_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
     orch_state = gr.State(None)  # per-session Orchestrator (multi-turn)
@@ -209,7 +213,7 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
                         # keep logging under the restored session so the
                         # next refresh still sees the WHOLE conversation
                         orch.session_id = restored_sid
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             history.append({"role": "assistant",
                             "content": f"⚠️ {type(exc).__name__}: {exc}"})
             yield history, orch, ""
@@ -226,7 +230,7 @@ def render_orchestrator_page(app: gr.Blocks) -> None:
         def worker():
             try:
                 outcome["result"] = orch.run(text, on_step=events.put)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 outcome["error"] = f"{type(exc).__name__}: {exc}"
             events.put(None)  # sentinel
 

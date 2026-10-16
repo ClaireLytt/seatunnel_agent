@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Dependency health: parsing, checks with an injected resolver, CLI, API."""
 
 from __future__ import annotations
@@ -9,7 +8,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.devops.dep_check import (
     check,
     check_fail,
@@ -18,6 +16,7 @@ from seatunnel_agent.agents.devops.dep_check import (
     parse_requirements_text,
     render_markdown,
 )
+from seatunnel_agent.cli import cli
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "depcheck_demo"
 

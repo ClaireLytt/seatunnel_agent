@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the batch log inspection agent.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -12,7 +11,12 @@ from __future__ import annotations
 import gradio as gr
 
 from seatunnel_agent.agents.data.log_inspect import render_markdown, scan_dir, scan_text
-from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row, wire_page
+from seatunnel_agent.common.page_scaffold import (
+    make_page_t,
+    scroll_marker,
+    title_row,
+    wire_page,
+)
 from seatunnel_agent.common.utils import normalize_lang
 
 _I18N = {
@@ -71,7 +75,7 @@ _t = make_page_t(_I18N)
 
 def render_log_inspect_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
     report_state = gr.State(None)   # InspectReport | None (for LLM advice)
@@ -115,7 +119,7 @@ def render_log_inspect_page(app: gr.Blocks) -> None:
             return _t(lang, "bad_dir") + dir_text, None, ""
         try:
             report = scan_dir(dir_text.strip(), include_warn=include_warn)
-        except Exception as exc:  # noqa: BLE001 — scan must never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}", None, ""
         return render_markdown(report, lang, top=int(top)), report, ""
 
@@ -125,7 +129,7 @@ def render_log_inspect_page(app: gr.Blocks) -> None:
             return _t(lang, "empty_text"), None, ""
         try:
             report = scan_text(text, include_warn=include_warn)
-        except Exception as exc:  # noqa: BLE001 — scan must never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}", None, ""
         return render_markdown(report, lang, top=int(top)), report, ""
 
@@ -142,7 +146,7 @@ def render_log_inspect_page(app: gr.Blocks) -> None:
             from seatunnel_agent.agents.data.log_inspect.advisor import generate_advice
             return generate_advice(settings, report, lang) \
                 or _t(lang, "advice_none")
-        except Exception as exc:  # noqa: BLE001 — advice must never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def switch_lang(choice: str):

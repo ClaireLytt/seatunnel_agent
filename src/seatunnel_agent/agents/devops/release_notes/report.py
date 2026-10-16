@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Bilingual changelog rendering + optional LLM polish (advisory)."""
 
 from __future__ import annotations
 
-from typing import Callable
-
-from .core import GROUPS, ReleaseNotes
+from collections.abc import Callable
 
 from seatunnel_agent.common.utils import normalize_lang
 
+from .core import GROUPS, ReleaseNotes
 
 _ZH_LABELS = {key: zh for key, _en, zh in GROUPS}
 
@@ -85,7 +83,7 @@ def polish_markdown(markdown: str, lang: str = "zh",
                            [{"role": "user", "content": markdown}])
         polished = (resp.reply_text or "").strip()
         return polished or markdown
-    except Exception as exc:  # noqa: BLE001 — polish is advisory
+    except Exception as exc:
         warn = _I18N[lang]["polish_failed"].format(
             err=f"{type(exc).__name__}: {exc}")
         return f"{warn}\n\n{markdown}"

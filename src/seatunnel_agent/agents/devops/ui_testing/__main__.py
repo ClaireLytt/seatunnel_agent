@@ -3,6 +3,13 @@
     python -m seatunnel_agent.agents.devops.ui_testing run [--suite smoke] [--case A5 B3]
         [--headed] [--port 7912] [--no-llm] [--keep-app] [--base-url URL]
     python -m seatunnel_agent.agents.devops.ui_testing list [--suite full]
+    python -m seatunnel_agent.agents.devops.ui_testing adhoc --steps check.yaml
+        [--url http://127.0.0.1:7860] [--page /datacompare]
+        [--screenshot-dir DIR] [--headed] [--port 7912]
+
+adhoc: 即席浏览器验证 — AI 改完 UI 后无需写正式用例文件,给一个临时
+steps 文件 (与正式用例同格式,可为裸步骤列表) 即可驱动浏览器顺序执行
+动作+断言,逐步输出 PASS/FAIL 与截图路径,失败退出码非 0。
 """
 
 from __future__ import annotations
@@ -20,8 +27,7 @@ def _utf8_stdout() -> None:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    from .report import (print_summary, write_html, write_json,
-                         write_labels_patch)
+    from .report import print_summary, write_html, write_json, write_labels_patch
     from .runner import run_suite
 
     def progress(i: int, n: int, cr) -> None:
@@ -72,6 +78,41 @@ def cmd_run(args: argparse.Namespace) -> int:
         else:
             print(f"\n{repeat} 轮 verdict 完全一致,零 flaky。")
     return rc
+
+
+def cmd_adhoc(args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from .adhoc import run_adhoc
+    from .loader import CaseLoadError
+
+    try:
+        res, shots_dir = run_adhoc(
+            steps_file=args.steps, url=args.url, page=args.page,
+            screenshot_dir=args.screenshot_dir or None,
+            headed=args.headed, port=args.port)
+    except CaseLoadError as e:
+        print(f"用例解析失败: {e}")
+        return 2
+
+    def shot_path(rel: str | None) -> str:
+        # _snap names files relative to a run dir; adhoc writes them
+        # directly into shots_dir
+        return str((shots_dir / Path(rel).name).resolve()) if rel else ""
+
+    for log in [*res.steps, *res.asserts]:
+        mark = "PASS" if log.ok else "FAIL"
+        line = f"{mark}  {log.desc}"
+        if log.detail:
+            line += f" — {log.detail}"
+        if log.screenshot:
+            line += f"  [截图: {shot_path(log.screenshot)}]"
+        print(line, flush=True)
+    ok = res.verdict in ("PASS", "HEALED")
+    print(f"\n结果: {res.verdict}"
+          + (f" — {res.reason}" if res.reason else "")
+          + f" ({res.elapsed_ms / 1000:.1f}s)  截图目录: {shots_dir.resolve()}")
+    return 0 if ok else 1
 
 
 def cmd_trend(args: argparse.Namespace) -> int:
@@ -169,6 +210,20 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--repeat", type=int, default=1,
                     help="连续跑 N 轮并比对 verdict, 不一致标 FLAKY 并退出非零")
     pr.set_defaults(fn=cmd_run)
+
+    pa = sub.add_parser("adhoc", help="即席浏览器验证 (临时 steps 文件,免正式用例)")
+    pa.add_argument("--steps", required=True,
+                    help="临时用例文件 (YAML/JSON, 与正式用例同格式或裸步骤列表)")
+    pa.add_argument("--url", default="",
+                    help="复用已启动的应用而非自起子进程")
+    pa.add_argument("--page", default="",
+                    help="目标页路由 (默认取文件内 page 或 /datacompare)")
+    pa.add_argument("--screenshot-dir", default="",
+                    help="截图输出目录 (默认 runs/adhoc/<时间戳>)")
+    pa.add_argument("--headed", action="store_true", help="有头浏览器调试")
+    pa.add_argument("--port", type=int, default=7912,
+                    help="被测应用端口 (默认 7912, 严禁 7860)")
+    pa.set_defaults(fn=cmd_adhoc)
 
     pc = sub.add_parser("compare", help="对比两轮运行的 verdict 变化")
     pc.add_argument("runs", nargs="*", default=[],

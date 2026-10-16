@@ -30,14 +30,14 @@ def _use_tmp_dir(tmp_path: Path):
 
 
 def _make_session(**overrides) -> Session:
-    defaults = dict(
-        session_id=new_session_id(),
-        title="Test session",
-        created_at="2026-09-11T12:00:00",
-        updated_at="2026-09-11T12:00:00",
-        chat_messages=[{"role": "user", "content": "hello"}],
-        agent_messages=[{"role": "user", "content": "hello"}],
-    )
+    defaults = {
+        "session_id": new_session_id(),
+        "title": "Test session",
+        "created_at": "2026-09-11T12:00:00",
+        "updated_at": "2026-09-11T12:00:00",
+        "chat_messages": [{"role": "user", "content": "hello"}],
+        "agent_messages": [{"role": "user", "content": "hello"}],
+    }
     defaults.update(overrides)
     return Session(**defaults)
 

@@ -52,7 +52,7 @@ def diagnose(cr: CaseResult, page_digest: str, app_log_tail: str,
         if not cat:
             return ""
         return f"[归因: {cat}] {summary}"
-    except Exception:  # noqa: BLE001
+    except Exception:
         return ""
 
 
@@ -63,7 +63,7 @@ _HEAL_SYSTEM = """你是 UI 测试定位修复助手。一个测试步骤按名�
 
 
 def suggest_locator_struct(missing_name: str, page_digest: str,
-                           llm: "UITestLLM | None") -> tuple[str, str] | None:
+                           llm: UITestLLM | None) -> tuple[str, str] | None:
     """(label, hint) for a failed lookup, or None — never raises.
 
     Anti-hallucination gate: the suggested label must literally appear in
@@ -86,12 +86,12 @@ def suggest_locator_struct(missing_name: str, page_digest: str,
         if not label or label not in page_digest:
             return None
         return label, str(obj.get("hint", ""))[:120]
-    except Exception:  # noqa: BLE001
+    except Exception:
         return None
 
 
 def suggest_locator(missing_name: str, page_digest: str,
-                    llm: "UITestLLM | None") -> str:
+                    llm: UITestLLM | None) -> str:
     """One-line LABELS-table fix suggestion for a failed lookup; '' on any
     problem — healing hints must never break a run."""
     sug = suggest_locator_struct(missing_name, page_digest, llm)

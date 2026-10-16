@@ -400,6 +400,37 @@ class DCPage:
     def click_button(self, name: str, side: str | None = None) -> None:
         self.button(name, side).click()
 
+    def click_css(self, selector: str) -> None:
+        """Click the first VISIBLE element matching a raw CSS selector.
+
+        ``>> visible=true`` is appended so Gradio 6 Dataframe's hidden
+        measurement rows are skipped — a bare ``tbody tr`` matches those
+        first (see docs/pitfalls.md)."""
+        loc = self.page.locator(f"{selector} >> visible=true")
+        if not loc.count():
+            raise LookupError(f"no visible element for selector: {selector}")
+        loc.first.click()
+
+    def click_cell(self, text: str, table: str | None = None) -> None:
+        """Click the first visible table cell containing *text*.
+
+        Matches by text (substring) across td/th/gridcell/.cell-wrap so it
+        works on both plain HTML tables and Gradio 6 Dataframe grids, where
+        hidden measurement rows must be skipped. *table* optionally narrows
+        the search to a CSS container (e.g. ``#hist-table``)."""
+        if table:
+            scope = self.page.locator(f"{table} >> visible=true").first
+        else:
+            scope = self.page
+        cells = scope.locator(
+            "css=td, th, [role='gridcell'], .cell-wrap >> visible=true")
+        hit = cells.filter(has_text=text)
+        if not hit.count():
+            raise LookupError(
+                f"no visible cell containing {text!r}"
+                + (f" in {table!r}" if table else ""))
+        hit.first.click()
+
     def clear_box(self, name: str, side: str | None = None) -> None:
         """Clear with real keystrokes so Gradio's .input event fires."""
         box = self.textbox(name, side)
@@ -701,7 +732,7 @@ class DCPage:
                     "() => document.body && "
                     "document.body.innerText.trim().length > 0",
                     timeout=10_000)
-            except Exception:  # noqa: BLE001 — capture whatever is there
+            except Exception:
                 pass
             pop.wait_for_timeout(2_000)    # document.write / bridge settle
             text = pop.evaluate(

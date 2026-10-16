@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the DAG health checker — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -17,8 +16,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
-from .checker import check_sql_dir
 from seatunnel_agent.common.utils import normalize_lang
+
+from .checker import check_sql_dir
 from .report import render_markdown, report_to_dict
 
 router = APIRouter(prefix="/api/dagcheck", tags=["dag_check"])

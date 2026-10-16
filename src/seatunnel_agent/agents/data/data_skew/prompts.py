@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """System / user prompts for the Data Skew LLM optimizer.
 
 The prompt bakes in the task-tuning rule catalog and the fixed 5-step

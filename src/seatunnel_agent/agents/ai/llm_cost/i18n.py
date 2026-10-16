@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for LLM cost reports and the /llmcost page."""
 
 from __future__ import annotations

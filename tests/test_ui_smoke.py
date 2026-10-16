@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """pytest bridge for the UI smoke suite.
 
 Deselected by default (needs a browser and ~3 minutes); run explicitly:

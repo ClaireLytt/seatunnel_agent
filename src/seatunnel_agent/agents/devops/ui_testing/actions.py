@@ -26,7 +26,7 @@ def run_script_step(step: Step, dc: DCPage) -> StepLog:
             detail = _dispatch(step, dc)
             return StepLog(step.desc, True, _ms(t0),
                            detail + (" (retry)" if attempt == 2 else ""))
-        except Exception as e:  # noqa: BLE001 — converted to StepLog
+        except Exception as e:
             last_err = e
             if attempt == 1:
                 dc.page.wait_for_timeout(700)
@@ -57,6 +57,17 @@ def _dispatch(step: Step, dc: DCPage) -> str:
     if a == "click":
         dc.click_button(args["target"], side)
         return f"clicked '{args['target']}'"
+
+    if a == "click_css":
+        sel = str(args.get("selector", args.get("target", "")))
+        dc.click_css(sel)
+        return f"clicked css {sel!r}"
+
+    if a == "click_cell":
+        text = str(args.get("text", args.get("target", "")))
+        table = args.get("table")
+        dc.click_cell(text, table)
+        return f"clicked cell {text!r}" + (f" in {table!r}" if table else "")
 
     if a == "fill":
         dc.clear_and_type(args["target"], str(args.get("value", "")), side)

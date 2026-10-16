@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Execute the generated data + query on in-memory SQLite (stdlib).
 
 Hive/Spark SQL is transpiled to the sqlite dialect via sqlglot; qualified
@@ -47,7 +46,9 @@ def _to_sqlite_query(sql: str, dialect: str) -> str:
     import sqlglot
     from sqlglot import exp
 
-    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import resolve_sqlglot_dialect
+    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import (
+        resolve_sqlglot_dialect,
+    )
 
     read = resolve_sqlglot_dialect(dialect)
     tree = sqlglot.parse_one(sql, read=read)
@@ -76,7 +77,7 @@ def validate_with_sqlite(result: GenResult) -> ValidationResult:
         return ValidationResult(status="skipped", detail="no tables")
     try:
         query = _to_sqlite_query(result.query, result.dialect)
-    except Exception as exc:  # noqa: BLE001 — unsupported syntax is a finding
+    except Exception as exc:
         return ValidationResult(status="transpile_error",
                                 detail=f"{type(exc).__name__}: {exc}")
     conn = sqlite3.connect(":memory:")

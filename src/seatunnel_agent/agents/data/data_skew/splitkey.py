@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """SeaTunnel split-key check: measure the parallel-read partition column.
 
 Static skew rules cover the compute layer; this module covers the sync /
@@ -14,19 +13,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .i18n import dsk
 from seatunnel_agent.common.utils import normalize_lang
-from .seatunnel_conf import (  # noqa: F401 — re-exported, public API
-    SourceSpec,
-    SplitKeyError,
-    _spec_from_params,
-    parse_seatunnel_sources,
-    parse_seatunnel_source,
-    _is_code_line,
-    apply_split_key,
-    SinkSpec,
-    parse_seatunnel_sinks,
-)
+
+from .i18n import dsk
 from .measure import (  # noqa: F401 — re-exported, public API
     _GOOD_VERDICTS,
     MAX_CANDIDATES,
@@ -36,11 +25,11 @@ from .measure import (  # noqa: F401 — re-exported, public API
     _ndv_expr,
     _stats_sql,
     _top1_sql,
-    measure_column,
     candidate_columns,
+    measure_column,
     measure_columns,
-    rank_candidates,
     pick_best_key,
+    rank_candidates,
 )
 from .probe import (
     HOT_KEY_CONFIRMED,
@@ -48,6 +37,17 @@ from .probe import (
     NULL_CONFIRMED,
     _pct,
     _safe_value,
+)
+from .seatunnel_conf import (  # noqa: F401 — re-exported, public API
+    SinkSpec,
+    SourceSpec,
+    SplitKeyError,
+    _is_code_line,
+    _spec_from_params,
+    apply_split_key,
+    parse_seatunnel_sinks,
+    parse_seatunnel_source,
+    parse_seatunnel_sources,
 )
 
 # multi-source configs: measure at most this many sources per check
@@ -247,7 +247,7 @@ def _measure_source(executor, spec: SourceSpec, ds_type: str,
             executor, spec.table, spec.partition_column, ds_type, sample_pct)
     try:
         names = candidate_columns(executor, spec.table, exclude=spec.partition_column)
-    except Exception:  # noqa: BLE001 — schema listing is best-effort
+    except Exception:
         names = []
     candidates = measure_columns(executor, spec.table, names, ds_type, sample_pct)
     return spec, configured, candidates
@@ -296,7 +296,7 @@ def sink_key_section(
             executor, conf_text, ds_type=ds_type, sample_pct=sample_pct)
         return render_sinkkey_section(results, src_table, lang,
                                       sample_pct=sample_pct)
-    except Exception:  # noqa: BLE001 — strictly additive to the main check
+    except Exception:
         return ""
 
 
@@ -449,7 +449,7 @@ def run_split_key_batch(
                 max_sources=max_sources)
         except SplitKeyError as exc:
             item.error_key, item.error_arg = exc.key, exc.arg
-        except Exception as exc:  # noqa: BLE001 — one broken file stays local
+        except Exception as exc:
             item.error_key, item.error_arg = "spk_parse_fail", str(exc)
         out.append(item)
     return out

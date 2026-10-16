@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Dependency health core — declared vs installed, pins, licenses. Offline.
 
 Input is the project's own metadata (pyproject ``[project]`` deps + extras,
@@ -16,9 +15,10 @@ conscious decision); **info** = unknown license.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 _SEV_ORDER = {"high": 0, "medium": 1, "info": 2}
 _COPYLEFT = re.compile(r"\b[AL]?GPL\b", re.I)
@@ -154,7 +154,7 @@ def _spec_satisfied(version: str, spec: str) -> bool | None:
         from packaging.specifiers import SpecifierSet
         from packaging.version import Version
         return Version(version) in SpecifierSet(spec)
-    except Exception:  # noqa: BLE001 — packaging absent or exotic spec
+    except Exception:
         return None
 
 

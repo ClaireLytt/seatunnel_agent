@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """LLM eval harness: suite parsing, checkers, runner, regression, CLI, API.
 
 Fully offline — the LLM is a scripted fake injected via client_factory.
@@ -12,9 +11,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
-from seatunnel_agent.common.config import Settings
-from seatunnel_agent.common.llm import LLMResponse
 from seatunnel_agent.agents.ai.llm_eval import (
     RunLogger,
     compare,
@@ -26,6 +22,9 @@ from seatunnel_agent.agents.ai.llm_eval import (
 )
 from seatunnel_agent.agents.ai.llm_eval.scoring import extract_sql
 from seatunnel_agent.agents.ai.llm_eval.suite import Check
+from seatunnel_agent.cli import cli
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "llmeval_demo"
 SETTINGS = Settings(api_key="sk-test")

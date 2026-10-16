@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the SQL test-data generator.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -10,8 +9,17 @@ from __future__ import annotations
 
 import gradio as gr
 
-from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row, wire_page
-from seatunnel_agent.agents.data.sql_testgen import generate, render_markdown, validate_with_sqlite
+from seatunnel_agent.agents.data.sql_testgen import (
+    generate,
+    render_markdown,
+    validate_with_sqlite,
+)
+from seatunnel_agent.common.page_scaffold import (
+    make_page_t,
+    scroll_marker,
+    title_row,
+    wire_page,
+)
 from seatunnel_agent.common.utils import normalize_lang
 
 _DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",
@@ -64,7 +72,7 @@ _t = make_page_t(_I18N)
 
 def render_sql_testgen_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -105,7 +113,7 @@ def render_sql_testgen_page(app: gr.Blocks) -> None:
                               dialect=dialect)
             if do_validate and result.tables:
                 result.validation = validate_with_sqlite(result)
-        except Exception as exc:  # noqa: BLE001 — generation must never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
         return render_markdown(result, lang)
 

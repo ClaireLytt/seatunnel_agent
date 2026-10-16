@@ -14,10 +14,14 @@ from pathlib import Path
 
 import gradio as gr
 
-from seatunnel_agent.common.config import load_settings
-from seatunnel_agent.common.page_scaffold import title_row
-from seatunnel_agent.agents.data.sql_review.agent import SQLReviewAgent, static_review_report
-from seatunnel_agent.agents.data.sql_review.config import ReviewConfig, parse_config_text
+from seatunnel_agent.agents.data.sql_review.agent import (
+    SQLReviewAgent,
+    static_review_report,
+)
+from seatunnel_agent.agents.data.sql_review.config import (
+    ReviewConfig,
+    parse_config_text,
+)
 from seatunnel_agent.agents.data.sql_review.fixer import generate_fix
 from seatunnel_agent.agents.data.sql_review.i18n import catalog_label, sr
 from seatunnel_agent.agents.data.sql_review.linter import DIALECTS, normalize_dialect
@@ -25,6 +29,8 @@ from seatunnel_agent.agents.data.sql_review.prompts import DIALECT_NAMES
 from seatunnel_agent.agents.data.sql_review.report import render_report
 from seatunnel_agent.agents.data.sql_review.rlog import ReviewLogger
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+from seatunnel_agent.common.config import load_settings
+from seatunnel_agent.common.page_scaffold import title_row
 
 _DIALECT_CHOICES = [(DIALECT_NAMES.get(d, d), d) for d in DIALECTS]
 
@@ -42,7 +48,7 @@ def _err_md(exc: Exception, lang: str) -> str:
 
 
 def render_sql_review_page(app: gr.Blocks) -> None:
-    t0 = lambda k: sr(_DEFAULT_LANG, k)  # noqa: E731 — initial labels
+    t0 = lambda k: sr(_DEFAULT_LANG, k)
 
     # marker: body:has(.st-review-page) re-enables page scrolling
     # (the global CSS locks .gradio-container to 100vh / overflow hidden)
@@ -165,7 +171,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                 if agent.runtime and agent.runtime.report:
                     findings = agent.runtime.report.findings
                     stats = agent.runtime.report.stats()
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return _err_md(exc, lang), "", gr.update(visible=False), no_dl
         ReviewLogger().log(
             sql=sql, dialect=dialect, mode=mode, findings=findings,
@@ -185,7 +191,9 @@ def render_sql_review_page(app: gr.Blocks) -> None:
             return gr.update(value=sr(lang, "sr_fix_need_review"), visible=True)
         try:
             if mode == "static":
-                from seatunnel_agent.agents.data.sql_review.autofix import apply_static_fixes
+                from seatunnel_agent.agents.data.sql_review.autofix import (
+                    apply_static_fixes,
+                )
                 try:
                     config = _parse_rules(rules_text)
                 except ValueError:
@@ -199,7 +207,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                 settings = load_settings()
                 fixed = generate_fix(settings, sql, normalize_dialect(dialect),
                                      report, lang=lang)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             sep = ": " if lang == "en" else "："
             return gr.update(value=f"{sr(lang, 'sr_fix_failed')}{sep}{exc}",
                              visible=True)
@@ -312,7 +320,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
                         lines.append(f"- {label}（{item['count']} 次）")
             try:
                 fig = _trend_figure(logger.recent(500))
-            except Exception:  # noqa: BLE001 — the chart is optional
+            except Exception:
                 fig = None
             plot_update = (gr.update(value=fig, visible=True) if fig is not None
                            else gr.update(visible=False))
@@ -333,7 +341,7 @@ def render_sql_review_page(app: gr.Blocks) -> None:
 
     def _switch_lang(choice: str, report_cur: str, stats_cur: str):
         lg = "zh" if choice == "中文" else "en"
-        t = lambda k: sr(lg, k)  # noqa: E731
+        t = lambda k: sr(lg, k)
         return (
             lg,                                                     # lang_state
             f"{t('sr_title')}\n{t('sr_subtitle')}",                 # title_md

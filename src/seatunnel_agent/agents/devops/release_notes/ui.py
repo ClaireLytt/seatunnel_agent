@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the release-notes helper.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -62,7 +61,7 @@ _t = make_page_t(_I18N)
 
 def render_release_notes_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -89,7 +88,7 @@ def render_release_notes_page(app: gr.Blocks) -> None:
     def do_load_repo():
         try:
             return collect_git_log(".")
-        except Exception as exc:  # noqa: BLE001 — git missing/not a repo
+        except Exception as exc:
             return f"# {type(exc).__name__}: {exc}"
 
     def do_generate(log_text: str, version: str, polish: bool, lang: str):
@@ -102,7 +101,7 @@ def render_release_notes_page(app: gr.Blocks) -> None:
             if polish:
                 md = polish_markdown(md, lang)
             return md
-        except Exception as exc:  # noqa: BLE001 — never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def switch_lang(choice: str):

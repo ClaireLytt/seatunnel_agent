@@ -87,7 +87,7 @@ def _wait_http(url: str, timeout_s: float = 60.0, proc: subprocess.Popen | None 
             with urllib.request.urlopen(url, timeout=3) as resp:
                 if resp.status < 500:
                     return
-        except Exception as e:  # noqa: BLE001 — retry until deadline
+        except Exception as e:
             last_err = e
         time.sleep(0.5)
     raise TimeoutError(f"App-under-test not ready at {url} within {timeout_s}s"
@@ -111,7 +111,7 @@ class AppUnderTest:
         self.proc: subprocess.Popen | None = None
         self._log_file = None
 
-    def __enter__(self) -> "AppUnderTest":
+    def __enter__(self) -> AppUnderTest:
         seed_sqlite(self.db_path)
         if self.external_url:
             _wait_http(self.base_url, timeout_s=10)

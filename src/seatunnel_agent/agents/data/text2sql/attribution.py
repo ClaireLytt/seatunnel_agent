@@ -17,8 +17,9 @@ and logging stay in the tool layer.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from .metrics import MetricDef, MetricError, MetricStore, build_metric_sql
 from .partition import TimeRange

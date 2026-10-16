@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic log-event extraction and exception clustering.
 
 Event model: an ERROR/WARN/FATAL log line (or a bare exception trace)
@@ -11,9 +10,10 @@ the same failure from different jobs lands in one cluster.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 DEFAULT_PATTERNS = ("*.log", "*.log.*", "*.out", "*.err")
 MAX_FILE_BYTES = 50 * 1024 * 1024    # per-file cap: a runaway log is truncated

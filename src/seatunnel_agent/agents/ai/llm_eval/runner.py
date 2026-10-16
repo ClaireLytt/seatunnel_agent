@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Eval runner: execute a suite against the LLM targets and score it.
 
 Deterministic checks decide pass/fail; the optional LLM judge
@@ -9,10 +8,12 @@ gate** — a model grading a model must never block a release on its own.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from seatunnel_agent.common.config import Settings
+
 from .scoring import run_check
 from .suite import Suite
 from .targets import TARGETS
@@ -105,8 +106,10 @@ def run_suite(suite: Suite,
               ) -> SuiteResult:
     """Run every case; per-case errors are captured, never raised."""
     if client_factory is None:
-        from seatunnel_agent.common import llm  # resolved at call time so tests can monkeypatch
-        client_factory = lambda s: llm.LLMClient(s, agent="llm_eval")  # noqa: E731
+        from seatunnel_agent.common import (
+            llm,  # resolved at call time so tests can monkeypatch
+        )
+        client_factory = lambda s: llm.LLMClient(s, agent="llm_eval")
     if settings is None:
         from seatunnel_agent.common.config import load_settings
         settings = load_settings()
@@ -133,7 +136,7 @@ def run_suite(suite: Suite,
                 cr.checks.append(CheckResult(
                     type=check.type, value=check.value,
                     passed=passed, detail=detail))
-        except Exception as exc:  # noqa: BLE001 — isolate the case
+        except Exception as exc:
             cr.error = f"{type(exc).__name__}: {exc}"
         result.cases.append(cr)
     result.elapsed_ms = int((time.time() - start) * 1000)
@@ -155,6 +158,6 @@ def _run_judge(check, output: str, settings: Settings,
         return CheckResult(type="judge", value=check.value, passed=passed,
                            detail=text.splitlines()[0] if text else "(empty)",
                            advisory=True)
-    except Exception as exc:  # noqa: BLE001 — judge is advisory
+    except Exception as exc:
         return CheckResult(type="judge", value=check.value, passed=False,
                            detail=f"judge error: {exc}", advisory=True)

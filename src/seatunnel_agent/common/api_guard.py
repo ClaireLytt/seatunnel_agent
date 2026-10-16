@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Shared directory whitelist for the REST APIs.
 
 Every agent API that accepts a filesystem path is a network entry point, so

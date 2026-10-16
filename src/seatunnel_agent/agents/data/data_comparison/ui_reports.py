@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from seatunnel_agent.agents.data.text2sql.exporter import safe_stem
+
 from .comparator import CompareReport
 
 # ---------------------------------------------------------------------------
@@ -124,7 +125,7 @@ def _export_report_excel(report: CompareReport) -> str:
     """Export a CompareReport to a multi-sheet Excel workbook."""
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment, PatternFill
+        from openpyxl.styles import Alignment, Font, PatternFill
     except ImportError:
         raise RuntimeError("openpyxl is required for Excel export.")
 

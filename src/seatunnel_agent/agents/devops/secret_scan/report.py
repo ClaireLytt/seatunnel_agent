@@ -1,14 +1,12 @@
-# -*- coding: utf-8 -*-
 """Bilingual markdown report for secret scans."""
 
 from __future__ import annotations
 
-from .scanner import ScanResult
-
-
 from typing import Any
 
 from seatunnel_agent.common.utils import normalize_lang
+
+from .scanner import ScanResult
 
 _I18N: dict[str, dict[str, Any]] = {
     "en": {

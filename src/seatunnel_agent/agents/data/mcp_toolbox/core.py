@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unified MCP toolbox: the whole agent suite as one stdio MCP server.
 
 ``seatunnel-agent mcp`` exposes the deterministic capabilities of every
@@ -36,8 +35,9 @@ import os
 import re
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 MAX_QUERY_ROWS = 500
 
@@ -84,7 +84,7 @@ def _audited(name: str, fn: Callable[..., str]) -> Callable[..., str]:
         ok = True
         try:
             out = fn(*args, **kwargs)
-        except Exception as exc:  # noqa: BLE001 — errors are strings, always
+        except Exception as exc:
             ok = False
             out = f"内部错误 / internal error: {type(exc).__name__}: {exc}"
         summary = ", ".join(
@@ -160,7 +160,10 @@ def build_tool_functions(
         hive/spark/flink/maxcompute/mysql/postgresql/clickhouse/doris/
         starrocks/sqlite；ddl 可选（CREATE TABLE 语句，启用 schema 校验）。"""
         from seatunnel_agent.agents.data.sql_review.agent import static_review_report
-        from seatunnel_agent.agents.data.sql_review.linter import is_known_dialect, normalize_dialect
+        from seatunnel_agent.agents.data.sql_review.linter import (
+            is_known_dialect,
+            normalize_dialect,
+        )
         from seatunnel_agent.agents.data.sql_review.report import render_report
 
         if not (sql or "").strip():
@@ -169,10 +172,13 @@ def build_tool_functions(
             return f"未知方言 / unknown dialect: {dialect}"
         store = None
         if (ddl or "").strip():
-            from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
+            from seatunnel_agent.agents.data.text2sql.schema import (
+                SchemaStore,
+                parse_ddl,
+            )
             try:
                 store = SchemaStore(parse_ddl(ddl))
-            except Exception as exc:  # noqa: BLE001 — surface as text
+            except Exception as exc:
                 return f"DDL 解析失败 / DDL parse failed: {exc}"
         rep = static_review_report(sql, normalize_dialect(dialect), store=store)
         return render_report(rep, lang=_lang(lang))
@@ -191,7 +197,7 @@ def build_tool_functions(
         try:
             result = translate(sql, dst=to_dialect,
                                src=(from_dialect or None))
-        except Exception as exc:  # noqa: BLE001 — unknown dialect etc.
+        except Exception as exc:
             return f"翻译失败 / translation failed: {exc}"
         return render_markdown(result, lang=_lang(lang))
 
@@ -200,7 +206,10 @@ def build_tool_functions(
         """SQL 变更影响分析：对比两段 SQL（旧版 vs 新版），输出表级/字段级
         变更、严重度分级（error/warn/info）与下游影响面的 Markdown 报告。
         适合在改动上线前评估 blast radius。"""
-        from seatunnel_agent.agents.data.data_lineage.impact import analyze_sql_texts, render_impact_markdown
+        from seatunnel_agent.agents.data.data_lineage.impact import (
+            analyze_sql_texts,
+            render_impact_markdown,
+        )
 
         try:
             result = analyze_sql_texts(old_sql, new_sql, sql_dialect=dialect)
@@ -212,8 +221,13 @@ def build_tool_functions(
                              lang: str = "") -> str:
         """DataX job JSON 或 sqoop 命令 → SeaTunnel HOCON 配置，附迁移说明
         清单（不支持项/需人工确认项）。source_kind: auto | datax | sqoop。"""
-        from seatunnel_agent.agents.data.config_migrate.migrator import migrate_datax, migrate_sqoop
-        from seatunnel_agent.agents.data.config_migrate.report import render_migrate_markdown
+        from seatunnel_agent.agents.data.config_migrate.migrator import (
+            migrate_datax,
+            migrate_sqoop,
+        )
+        from seatunnel_agent.agents.data.config_migrate.report import (
+            render_migrate_markdown,
+        )
 
         text = (content or "").strip()
         if not text:
@@ -234,7 +248,9 @@ def build_tool_functions(
                  migrate_to_seatunnel=migrate_to_seatunnel)
 
     # data-skew tools (already factored for MCP) — history source stays 'mcp'
-    from seatunnel_agent.agents.data.data_skew.mcp_server import build_tool_functions as _skew_tools
+    from seatunnel_agent.agents.data.data_skew.mcp_server import (
+        build_tool_functions as _skew_tools,
+    )
     tools.update(_skew_tools(default_lang=default_lang, include_db=include_db))
 
     if not include_db:
@@ -280,6 +296,7 @@ def build_tool_functions(
         # honor SEATUNNEL_DC_PRESETS_PATH at CALL time (the module-level
         # default is baked at import, which breaks test/app isolation)
         import os
+
         from seatunnel_agent.agents.data.data_comparison import presets as _p
         path = os.environ.get("SEATUNNEL_DC_PRESETS_PATH") or _p._DEFAULT_PATH
         return _p.ConnectionPresetsStore(path)
@@ -297,16 +314,19 @@ def build_tool_functions(
                 return _executors[key], ""
         try:
             preset = _store().get_by_name(key)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return None, f"读取连接预设失败 / preset store error: {exc}"
         if not preset:
             try:
                 names = [p.get("name", "") for p in _store().list()]
-            except Exception:  # noqa: BLE001
+            except Exception:
                 names = []
             hint = f"；已保存: {', '.join(n for n in names if n)}" if names else ""
             return None, f"未找到连接 '{key}' / connection not found{hint}"
-        from seatunnel_agent.agents.data.text2sql.executor.base import DatabaseConfig, create_executor
+        from seatunnel_agent.agents.data.text2sql.executor.base import (
+            DatabaseConfig,
+            create_executor,
+        )
         try:
             cfg = DatabaseConfig(
                 ds_type=str(preset.get("ds_type") or ""),
@@ -320,7 +340,7 @@ def build_tool_functions(
             ok, info = executor.test_connection()
             if not ok:
                 return None, f"连接失败 / connection failed: {info}"
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return None, f"连接失败 / connection failed: {exc}"
         with _lock:
             _executors[key] = executor
@@ -331,7 +351,7 @@ def build_tool_functions(
         后续工具用返回的连接名引用数据库，凭据不经过模型上下文。"""
         try:
             presets = _store().list()
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return f"读取连接预设失败 / preset store error: {exc}"
         if _allow is not None:
             presets = [p for p in presets if p.get("name") in _allow]
@@ -352,7 +372,7 @@ def build_tool_functions(
             return err
         try:
             names = _db(connection, executor.show_tables)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _invalidate(connection)
             return f"查询失败 / query failed: {exc}"
         kw = (keyword or "").strip().lower()
@@ -371,7 +391,7 @@ def build_tool_functions(
             return f"非法表名 / invalid table name: {table!r}"
         try:
             schema = _db(connection, executor.describe_table, table.strip())
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _invalidate(connection)
             return f"查询失败 / query failed: {exc}"
         lines = [f"**{schema.full_name}**"
@@ -389,7 +409,9 @@ def build_tool_functions(
         """在已保存连接上执行**只读**查询（仅允许单条 SELECT/WITH；多语句、
         写操作一律拒绝），返回 Markdown 结果表。max_rows 上限 500，且在
         支持 LIMIT 的引擎上注入引擎侧 LIMIT（大表不做全量计算）。"""
-        from seatunnel_agent.agents.data.data_skew.consistency import extract_single_select
+        from seatunnel_agent.agents.data.data_skew.consistency import (
+            extract_single_select,
+        )
 
         executor, err = _executor_for(connection)
         if err:
@@ -406,7 +428,7 @@ def build_tool_functions(
             query = f"SELECT * FROM (\n{query}\n) mcp_q LIMIT {n}"
         try:
             res = _db(connection, executor.run, query, max_rows=n)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _invalidate(connection)
             return f"查询失败 / query failed: {exc}"
         if not res.rows:
@@ -434,7 +456,7 @@ def build_tool_functions(
                 q += f" WHERE {where.strip()}"
             try:
                 res = _db(conn, executor.run, q, max_rows=1)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _invalidate(conn)
                 return f"[{conn}] 查询失败 / query failed: {exc}"
             counts.append(int(res.rows[0][0] or 0))
@@ -457,7 +479,7 @@ def build_tool_functions(
                 return err
             try:
                 schemas.append(_db(conn, executor.describe_table, table))
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _invalidate(conn)
                 return f"[{conn}] 查询失败 / query failed: {exc}"
         sa, sb = schemas
@@ -491,8 +513,11 @@ def build_tool_functions(
         值生成的改写模板。先用 skew_check 做静态扫描，再用本工具实测确认。"""
         from seatunnel_agent.agents.data.data_skew.detector import normalize_dialect
         from seatunnel_agent.agents.data.data_skew.probe import (
-            effective_sample_pct, extract_probe_targets, render_probe_section,
-            run_probes)
+            effective_sample_pct,
+            extract_probe_targets,
+            render_probe_section,
+            run_probes,
+        )
 
         executor, err = _executor_for(connection)
         if err:
@@ -505,7 +530,7 @@ def build_tool_functions(
         try:
             results = _db(connection, run_probes, executor, targets,
                           ds_type=ds, sample_pct=pct)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _invalidate(connection)
             return f"探查失败 / probing failed: {exc}"
         from seatunnel_agent.agents.data.data_skew.history import default_history
@@ -547,7 +572,7 @@ def build_tool_functions(
         except SplitKeyError as exc:
             from seatunnel_agent.agents.data.data_skew.i18n import dsk
             return dsk(lg, exc.key).format(err=exc.arg)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _invalidate(connection)
             return f"体检失败 / split-key check failed: {exc}"
         history = default_history()
@@ -564,7 +589,7 @@ def build_tool_functions(
         try:
             snk = _db(connection, sink_key_section, executor, conf,
                       ds_type=ds, sample_pct=pct, lang=lg)
-        except Exception:  # noqa: BLE001 — additive check stays best-effort
+        except Exception:
             snk = ""
         return md + ("\n" + snk if snk else "")
 
@@ -573,8 +598,10 @@ def build_tool_functions(
         """一致性实测：在同一连接上运行两版 SQL（各自仅允许单条 SELECT/WITH）
         并比对——行数一致性、小结果集逐行多重集比对、大结果集逐列聚合指纹。
         用于验证改写/迁移后的 SQL 与原 SQL 结果等价。"""
-        from seatunnel_agent.agents.data.data_skew.consistency import (check_consistency,
-                                            render_consistency_section)
+        from seatunnel_agent.agents.data.data_skew.consistency import (
+            check_consistency,
+            render_consistency_section,
+        )
 
         executor, err = _executor_for(connection)
         if err:
@@ -592,8 +619,10 @@ def build_tool_functions(
         """跨连接比对两张表的分段校验和（同名列取交集，逐段哈希）：行数/结构
         都一致后仍怀疑内容差异时用它，比逐行拉数便宜得多。where 可选，同时
         作用于两侧，禁分号。"""
-        from seatunnel_agent.agents.data.data_comparison.comparator import (build_checksum_sql,
-                                                 compare_checksums)
+        from seatunnel_agent.agents.data.data_comparison.comparator import (
+            build_checksum_sql,
+            compare_checksums,
+        )
 
         tb = (table_b or table_a or "").strip()
         for t in (table_a, tb):
@@ -608,7 +637,7 @@ def build_tool_functions(
                 return err
             try:
                 schema = _db(conn, executor.describe_table, table)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _invalidate(conn)
                 return f"[{conn}] 查询失败 / query failed: {exc}"
             sides.append((executor, table, schema))
@@ -624,7 +653,7 @@ def build_tool_functions(
                                    where=(where or "").strip())
             try:
                 rows.append(_db(conn_name, ex.run, q, max_rows=64).rows)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 _invalidate(conn_name)
                 return f"[{table}] 校验和查询失败 / checksum query failed: {exc}"
         result = compare_checksums(ta, tbx, rows[0], rows[1])
@@ -652,7 +681,9 @@ def build_tool_functions(
 
     # ── lineage tools (only when a graph source is configured) ──────────
     if sql_dir or seatunnel_dir or use_hive:
-        from seatunnel_agent.agents.data.data_lineage.mcp_server import build_tool_functions as _lin_tools
+        from seatunnel_agent.agents.data.data_lineage.mcp_server import (
+            build_tool_functions as _lin_tools,
+        )
         tools.update(_lin_tools(
             sql_dir=sql_dir, seatunnel_dir=seatunnel_dir, use_hive=use_hive,
             meta_table=meta_table, partition=partition,
@@ -664,8 +695,10 @@ def build_tool_functions(
         def data_dictionary(lang: str = "") -> str:
             """从血缘图生成数据字典（分层排序的表清单：来源/去向/字段血缘），
             不连接数据库。"""
-            from seatunnel_agent.agents.data.data_lineage.dictionary import (build_dictionary,
-                                                  render_dictionary_markdown)
+            from seatunnel_agent.agents.data.data_lineage.dictionary import (
+                build_dictionary,
+                render_dictionary_markdown,
+            )
             from seatunnel_agent.agents.data.data_lineage.loaders import build_graph
 
             if _dict_state["graph"] is None:
@@ -788,7 +821,7 @@ def _register_resources(server, functions: dict[str, Callable[..., str]]) -> Non
     for uri, fn in resources:
         try:
             server.resource(uri)(fn)
-        except Exception:  # noqa: BLE001 — resources are optional polish
+        except Exception:
             return
 
 
@@ -830,5 +863,5 @@ def _register_prompts(server) -> None:
     for fn in (skew_tuning_workflow, migration_acceptance_workflow):
         try:
             server.prompt()(fn)
-        except Exception:  # noqa: BLE001 — prompts are optional polish
+        except Exception:
             return

@@ -1,4 +1,13 @@
-"""Connection presets store — save/load database connection configs."""
+"""Connection presets store — save/load database connection configs.
+
+Security note: the at-rest protection here is OBFUSCATION, NOT ENCRYPTION in
+any threat-model sense — the key file (``dc_secret.key``) lives on the same
+machine, in the same directory tree as the ciphertext, so anyone who can read
+``~/.seatunnel-agent/`` can decrypt everything. The XOR-keystream fallback is
+unauthenticated, and the ``0o600`` permission on the key file is a no-op on
+Windows (no POSIX mode bits). Protect the ``~/.seatunnel-agent/`` directory
+with filesystem/OS-level access controls if the passwords matter.
+"""
 
 from __future__ import annotations
 
@@ -68,7 +77,10 @@ def _load_or_create_key() -> bytes:
 def _xor_keystream(data: bytes, key: bytes, nonce: bytes) -> bytes:
     """HMAC-SHA256 keystream XOR — fallback when cryptography is unavailable.
 
-    Confidentiality only (no authentication); install `cryptography` for Fernet.
+    Obfuscation, not encryption: no authentication, and the key sits next to
+    the ciphertext on the same machine — being able to read the files is
+    being able to decrypt. Install `cryptography` for Fernet (which still
+    shares the same local-key caveat).
     """
     out = bytearray()
     counter = 0

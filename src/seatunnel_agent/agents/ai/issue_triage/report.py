@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
 """Markdown rendering for triage results."""
 
 from __future__ import annotations
 
-from .engine import TriageResult
-
 from seatunnel_agent.common.utils import normalize_lang
 
+from .engine import TriageResult
 
 _I18N = {
     "en": {

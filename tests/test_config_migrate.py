@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the DataX/Sqoop → SeaTunnel migration agent (config_migrate).
 
 Deterministic only — no LLM, no database, no network. Every generated
@@ -14,7 +13,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.config_migrate import (
     migrate_datax,
     migrate_dir,
@@ -24,6 +22,7 @@ from seatunnel_agent.agents.data.config_migrate import (
     render_batch_markdown,
     render_migrate_markdown,
 )
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Doc Q&A — offline BM25 retrieval over project + connector docs, with
 optional grounded LLM synthesis."""
 

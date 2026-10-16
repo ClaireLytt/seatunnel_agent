@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic DAG health checks over the lineage graph.
 
 Finding kinds (severity):
@@ -64,7 +63,7 @@ class DagReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = {level: 0 for level in SEVERITIES}
+        out = dict.fromkeys(SEVERITIES, 0)
         for f in self.findings:
             out[f.severity] += 1
         out["total"] = len(self.findings)
@@ -179,7 +178,9 @@ def check_sql_dir(directory: str, dialect: str = "hive",
 
     graph, warnings = from_sql_dir(directory, dialect=dialect)
     if seatunnel_dir:
-        from seatunnel_agent.agents.data.data_lineage.seatunnel_loader import from_seatunnel_dir
+        from seatunnel_agent.agents.data.data_lineage.seatunnel_loader import (
+            from_seatunnel_dir,
+        )
 
         st_graph, st_warnings = from_seatunnel_dir(seatunnel_dir)
         graph.merge(st_graph)

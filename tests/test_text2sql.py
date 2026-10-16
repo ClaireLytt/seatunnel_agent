@@ -10,28 +10,31 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
-from seatunnel_agent.agents.data.text2sql.validator import (
-    enforce_limit,
-    extract_tables,
-    validate_columns,
-    validate_sql,
+from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, QueryResult
+from seatunnel_agent.agents.data.text2sql.exporter import export_csv
+from seatunnel_agent.agents.data.text2sql.matcher import (
+    match_columns,
+    match_tables,
+    tokenize,
 )
-from seatunnel_agent.agents.data.text2sql.matcher import match_tables, match_columns, tokenize
 from seatunnel_agent.agents.data.text2sql.partition import (
     TimeRange,
     build_partition_clause,
     classify_table,
     has_partition_filter,
 )
-from seatunnel_agent.agents.data.text2sql.exporter import export_csv
 from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
+from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 from seatunnel_agent.agents.data.text2sql.tools import (
     Text2SQLRuntime,
     execute_text2sql_tool,
 )
-from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, QueryResult
-
+from seatunnel_agent.agents.data.text2sql.validator import (
+    enforce_limit,
+    extract_tables,
+    validate_columns,
+    validate_sql,
+)
 
 _DDL = """
 -- comment line
@@ -309,8 +312,7 @@ class TestValidateColumns:
 class TestPartitionEnforcement:
     @pytest.fixture()
     def runtime(self, store, tmp_path):
-        rt = Text2SQLRuntime(store=store, logger=QueryLogger(log_dir=tmp_path))
-        return rt
+        return Text2SQLRuntime(store=store, logger=QueryLogger(log_dir=tmp_path))
 
     def test_rejects_missing_partition_filter(self, runtime):
         result_str = execute_text2sql_tool(
@@ -504,7 +506,10 @@ class TestTokenTruncation:
 
 class TestExecutorSafety:
     def test_invalid_table_name_rejected(self):
-        from seatunnel_agent.agents.data.text2sql.executor import HiveExecutor, DatabaseConfig
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            HiveExecutor,
+        )
         config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="default")
         executor = HiveExecutor(config)
         with pytest.raises(ValueError, match="Invalid table name"):
@@ -518,7 +523,10 @@ class TestExecutorSafety:
         assert not _TABLE_NAME_RE.fullmatch("db.table; DROP")
 
     def test_cursor_closed_on_success(self):
-        from seatunnel_agent.agents.data.text2sql.executor import HiveExecutor, DatabaseConfig
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            HiveExecutor,
+        )
         config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="default")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
@@ -532,7 +540,10 @@ class TestExecutorSafety:
         mock_conn.close.assert_called_once()
 
     def test_cursor_closed_on_error(self):
-        from seatunnel_agent.agents.data.text2sql.executor import HiveExecutor, DatabaseConfig
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            HiveExecutor,
+        )
         config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="default")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
@@ -552,7 +563,10 @@ class TestExecutorSafety:
 
 class TestHiveConnection:
     def test_connection_success(self):
-        from seatunnel_agent.agents.data.text2sql.executor import HiveExecutor, DatabaseConfig
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            HiveExecutor,
+        )
         config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="test")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
@@ -565,7 +579,10 @@ class TestHiveConnection:
         assert "localhost" in msg
 
     def test_connection_failure(self):
-        from seatunnel_agent.agents.data.text2sql.executor import HiveExecutor, DatabaseConfig
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            HiveExecutor,
+        )
         config = DatabaseConfig(ds_type="hive", host="badhost", port=10000, database="default")
         executor = HiveExecutor(config)
         with patch.object(executor, "_connect", side_effect=ConnectionError("refused")):
@@ -580,7 +597,10 @@ class TestHiveConnection:
 
 class TestHiveSchemaFetch:
     def test_show_tables(self):
-        from seatunnel_agent.agents.data.text2sql.executor import HiveExecutor, DatabaseConfig
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            HiveExecutor,
+        )
         config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
@@ -593,7 +613,10 @@ class TestHiveSchemaFetch:
         mock_cursor.close.assert_called_once()
 
     def test_describe_table(self):
-        from seatunnel_agent.agents.data.text2sql.executor import HiveExecutor, DatabaseConfig
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            HiveExecutor,
+        )
         config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
@@ -622,7 +645,10 @@ class TestHiveSchemaFetch:
         """Owner:/OwnerType:/CreateTime: rows after '# Detailed Table
         Information' must not be parsed as columns (they used to leak into
         generated SQL and break Hive with 'Invalid column OwnerType:')."""
-        from seatunnel_agent.agents.data.text2sql.executor import HiveExecutor, DatabaseConfig
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            HiveExecutor,
+        )
         config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
@@ -665,7 +691,10 @@ class TestHiveSchemaFetch:
         """Partition columns still parse, and every section after
         '# Detailed Table Information' (Storage Information, Constraints)
         stays out of the column list."""
-        from seatunnel_agent.agents.data.text2sql.executor import HiveExecutor, DatabaseConfig
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            HiveExecutor,
+        )
         config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
         executor = HiveExecutor(config)
         mock_cursor = MagicMock()
@@ -695,8 +724,15 @@ class TestHiveSchemaFetch:
         assert [c.name for c in schema.partition_columns] == ["dt"]
 
     def test_from_db(self):
-        from seatunnel_agent.agents.data.text2sql.executor import HiveExecutor, DatabaseConfig
-        from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, TableSchema, ColumnSchema
+        from seatunnel_agent.agents.data.text2sql.executor import (
+            DatabaseConfig,
+            HiveExecutor,
+        )
+        from seatunnel_agent.agents.data.text2sql.schema import (
+            ColumnSchema,
+            SchemaStore,
+            TableSchema,
+        )
         config = DatabaseConfig(ds_type="hive", host="localhost", port=10000, database="testdb")
         executor = HiveExecutor(config)
         fake_tables = [
@@ -811,8 +847,9 @@ class TestChartDetection:
         assert detect_chart_type(cols, rows) is None
 
     def test_build_chart_bar(self):
-        from seatunnel_agent.agents.data.text2sql.chart import build_chart
         import matplotlib.pyplot as plt
+
+        from seatunnel_agent.agents.data.text2sql.chart import build_chart
         cols = ["city", "sales"]
         rows = [(f"city_{i}", i * 10) for i in range(10)]
         fig = build_chart(cols, rows, "bar")
@@ -959,6 +996,48 @@ class TestValidatorSetAdd:
 
 
 # ------------------------------------------------------------------
+# Validator: read-only bypass via SELECT INTO / OUTFILE / COPY
+# ------------------------------------------------------------------
+
+class TestValidatorReadOnlyBypass:
+    def test_select_into_outfile_rejected(self, store):
+        r = validate_sql(
+            "SELECT * FROM atest.student INTO OUTFILE '/tmp/x'", store,
+        )
+        assert not r.ok
+
+    def test_select_into_new_table_rejected(self, store):
+        r = validate_sql("SELECT id FROM atest.student INTO new_table", store)
+        assert not r.ok
+
+    def test_copy_rejected(self, store):
+        r = validate_sql("COPY atest.student TO '/tmp/x.csv'", store)
+        assert not r.ok
+        assert any("copy" in e.lower() for e in r.errors)
+
+    def test_bare_into_identifier_allowed(self, store):
+        r = validate_sql("SELECT into FROM atest.student", store)
+        assert r.ok, r.errors
+
+    def test_bare_copy_identifier_allowed(self, store):
+        r = validate_sql("SELECT copy FROM atest.student", store)
+        assert r.ok, r.errors
+
+    def test_into_in_alias_ok(self, store):
+        r = validate_sql(
+            "SELECT count(id) AS into_count FROM atest.student", store,
+        )
+        assert r.ok, r.errors
+
+    def test_into_in_string_literal_ok(self, store):
+        r = validate_sql(
+            "SELECT id FROM atest.student WHERE name = 'walked into class'",
+            store,
+        )
+        assert r.ok, r.errors
+
+
+# ------------------------------------------------------------------
 # Bug fix regressions: enforce_limit edge cases
 # ------------------------------------------------------------------
 
@@ -1055,8 +1134,9 @@ class TestScatterChart:
     """Feature 4: scatter chart type."""
 
     def test_scatter_with_two_numeric(self):
-        from seatunnel_agent.agents.data.text2sql.chart import build_chart
         import matplotlib.pyplot as plt
+
+        from seatunnel_agent.agents.data.text2sql.chart import build_chart
         cols = ["x", "y"]
         rows = [(1, 10), (2, 20), (3, 15), (4, 25)]
         fig = build_chart(cols, rows, "scatter")
@@ -1065,8 +1145,9 @@ class TestScatterChart:
         plt.close(fig)
 
     def test_scatter_with_one_numeric(self):
-        from seatunnel_agent.agents.data.text2sql.chart import build_chart
         import matplotlib.pyplot as plt
+
+        from seatunnel_agent.agents.data.text2sql.chart import build_chart
         cols = ["name", "value"]
         rows = [("A", 10), ("B", 20), ("C", 30)]
         fig = build_chart(cols, rows, "scatter")
@@ -1173,7 +1254,10 @@ class TestRetryTracking:
     """Test sql_retries counter and max_retries_reached flag."""
 
     def test_retries_increment_on_error(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_execute_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="hive")
         result = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
         assert result.get("attempt") == 1
@@ -1183,8 +1267,12 @@ class TestRetryTracking:
 
     def test_retries_reset_on_success(self, store, monkeypatch):
         from unittest.mock import MagicMock
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+
         from seatunnel_agent.agents.data.text2sql.executor import QueryResult
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_execute_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         rt.sql_retries = 2
         mock_executor = MagicMock()
@@ -1200,7 +1288,10 @@ class TestRetryTracking:
         assert rt.sql_retries == 0
 
     def test_max_retries_reached(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_execute_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="hive", max_sql_retries=2)
         _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
         result = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
@@ -1208,7 +1299,10 @@ class TestRetryTracking:
         assert result.get("attempt") == 2
 
     def test_error_has_retry_hint(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_execute_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="hive")
         result = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
         assert "retry_hint" in result
@@ -1233,6 +1327,7 @@ class TestSqlResultCache:
 
     def test_cache_ttl_expiry(self, monkeypatch):
         import time as _time
+
         from seatunnel_agent.agents.data.text2sql.cache import SqlResultCache
         from seatunnel_agent.agents.data.text2sql.executor import QueryResult
         cache = SqlResultCache(ttl_seconds=1)
@@ -1302,8 +1397,12 @@ class TestCacheIntegration:
 
     def test_execute_sql_cache_hit(self, store):
         from unittest.mock import MagicMock
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+
         from seatunnel_agent.agents.data.text2sql.executor import QueryResult
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_execute_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         mock_executor = MagicMock()
         mock_executor.run.return_value = QueryResult(
@@ -1322,7 +1421,10 @@ class TestCacheIntegration:
         assert mock_executor.run.call_count == 1
 
     def test_execute_sql_error_not_cached(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_execute_sql
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_execute_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="hive")
         r1 = _tool_execute_sql({"sql": "DROP TABLE t"}, rt)
         assert r1.get("error") is not None
@@ -1379,8 +1481,11 @@ class TestGetResultPage:
     """Feature 6: pagination tool."""
 
     def test_basic_page(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_get_result_page
         from seatunnel_agent.agents.data.text2sql.executor import QueryResult
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_get_result_page,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         rt.last_result = QueryResult(
             columns=["id"], rows=[(i,) for i in range(120)],
@@ -1394,8 +1499,11 @@ class TestGetResultPage:
         assert result["total_rows"] == 120
 
     def test_last_page(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_get_result_page
         from seatunnel_agent.agents.data.text2sql.executor import QueryResult
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_get_result_page,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         rt.last_result = QueryResult(
             columns=["id"], rows=[(i,) for i in range(120)],
@@ -1407,8 +1515,11 @@ class TestGetResultPage:
         assert result["page"] == 3
 
     def test_page_beyond_max_clamped(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_get_result_page
         from seatunnel_agent.agents.data.text2sql.executor import QueryResult
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_get_result_page,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         rt.last_result = QueryResult(
             columns=["id"], rows=[(1,), (2,)],
@@ -1418,7 +1529,10 @@ class TestGetResultPage:
         assert result["page"] == 1
 
     def test_no_result(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_get_result_page
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_get_result_page,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         result = _tool_get_result_page({"page": 1}, rt)
         assert result.get("error") is not None
@@ -1451,8 +1565,11 @@ class TestExportExcelPdf:
         assert Path(path).stat().st_size > 100
 
     def test_export_excel_tool(self, store, tmp_path):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_export_excel
         from seatunnel_agent.agents.data.text2sql.executor import QueryResult
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_export_excel,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         rt.last_result = QueryResult(
             columns=["id", "name"], rows=[(1, "A"), (2, "B")],
@@ -1463,8 +1580,11 @@ class TestExportExcelPdf:
         assert result["excel_path"].endswith(".xlsx")
 
     def test_export_pdf_tool(self, store, tmp_path):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_export_pdf
         from seatunnel_agent.agents.data.text2sql.executor import QueryResult
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_export_pdf,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         rt.last_result = QueryResult(
             columns=["id", "name"], rows=[(1, "A"), (2, "B")],
@@ -1475,7 +1595,11 @@ class TestExportExcelPdf:
         assert result["pdf_path"].endswith(".pdf")
 
     def test_export_no_result(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_export_excel, _tool_export_pdf
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_export_excel,
+            _tool_export_pdf,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         assert _tool_export_excel({}, rt).get("error") is not None
         assert _tool_export_pdf({}, rt).get("error") is not None
@@ -1486,8 +1610,12 @@ class TestExplainSql:
 
     def test_explain_success(self, store):
         from unittest.mock import MagicMock
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_explain_sql
+
         from seatunnel_agent.agents.data.text2sql.executor import QueryResult
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_explain_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         mock_executor = MagicMock()
         mock_executor.run.return_value = QueryResult(
@@ -1504,19 +1632,28 @@ class TestExplainSql:
         assert call_sql.startswith("EXPLAIN ")
 
     def test_explain_unsupported_engine(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_explain_sql
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_explain_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="sqlserver")
         result = _tool_explain_sql({"sql": "SELECT 1"}, rt)
         assert "not supported" in result["error"]
 
     def test_explain_rejects_non_select(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_explain_sql
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_explain_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         result = _tool_explain_sql({"sql": "DROP TABLE atest.student"}, rt)
         assert result.get("error") is not None
 
     def test_explain_empty_sql(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_explain_sql
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_explain_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         result = _tool_explain_sql({"sql": ""}, rt)
         assert result.get("error") is not None
@@ -1569,9 +1706,10 @@ class TestRestApi:
     """Feature 10: REST API endpoints."""
 
     def test_health(self):
-        from fastapi.testclient import TestClient
-        from seatunnel_agent.agents.data.text2sql.api import router
         from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from seatunnel_agent.agents.data.text2sql.api import router
         app = FastAPI()
         app.include_router(router)
         client = TestClient(app)
@@ -1580,9 +1718,10 @@ class TestRestApi:
         assert resp.json()["status"] == "ok"
 
     def test_schema_endpoint(self):
-        from fastapi.testclient import TestClient
-        from seatunnel_agent.agents.data.text2sql.api import router
         from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from seatunnel_agent.agents.data.text2sql.api import router
         app = FastAPI()
         app.include_router(router)
         client = TestClient(app)
@@ -1591,9 +1730,10 @@ class TestRestApi:
         assert "message" in resp.json()
 
     def test_query_no_config(self):
-        from fastapi.testclient import TestClient
-        from seatunnel_agent.agents.data.text2sql.api import router
         from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from seatunnel_agent.agents.data.text2sql.api import router
         app = FastAPI()
         app.include_router(router)
         client = TestClient(app)
@@ -1604,9 +1744,10 @@ class TestRestApi:
         assert resp.status_code == 400
 
     def test_query_with_ddl(self, monkeypatch):
-        from fastapi.testclient import TestClient
-        from seatunnel_agent.agents.data.text2sql.api import router
         from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from seatunnel_agent.agents.data.text2sql.api import router
         app = FastAPI()
         app.include_router(router)
         client = TestClient(app)
@@ -1642,7 +1783,10 @@ class TestSchemaBrowser:
 
     def _make_table(self, name="test_db.users", comment="User table",
                     columns=None, partition_columns=None):
-        from seatunnel_agent.agents.data.text2sql.schema import ColumnSchema, TableSchema
+        from seatunnel_agent.agents.data.text2sql.schema import (
+            ColumnSchema,
+            TableSchema,
+        )
         if columns is None:
             columns = [
                 ColumnSchema(name="id", dtype="bigint", comment="Primary key"),
@@ -1669,8 +1813,8 @@ class TestSchemaBrowser:
         assert "2 columns" in html
 
     def test_partitioned_card(self):
-        from seatunnel_agent.agents.data.text2sql.ui import build_schema_card
         from seatunnel_agent.agents.data.text2sql.schema import ColumnSchema
+        from seatunnel_agent.agents.data.text2sql.ui import build_schema_card
         table = self._make_table(
             partition_columns=[
                 ColumnSchema(name="dt", dtype="string", comment="Date partition"),
@@ -1699,8 +1843,8 @@ class TestSchemaBrowser:
         assert "字段列表" in html
 
     def test_xss_escape(self):
-        from seatunnel_agent.agents.data.text2sql.ui import build_schema_card
         from seatunnel_agent.agents.data.text2sql.schema import ColumnSchema
+        from seatunnel_agent.agents.data.text2sql.ui import build_schema_card
         table = self._make_table(
             comment="<script>alert(1)</script>",
             columns=[ColumnSchema(name="x", dtype="string", comment="a&b")],
@@ -1795,7 +1939,11 @@ class TestDataLineage:
 
     def test_with_store_resolution(self):
         from seatunnel_agent.agents.data.text2sql.lineage import trace_lineage
-        from seatunnel_agent.agents.data.text2sql.schema import ColumnSchema, TableSchema, SchemaStore
+        from seatunnel_agent.agents.data.text2sql.schema import (
+            ColumnSchema,
+            SchemaStore,
+            TableSchema,
+        )
         tables = [
             TableSchema(database="db", name="orders", columns=[
                 ColumnSchema(name="id", dtype="bigint"),
@@ -1876,7 +2024,10 @@ class TestFavoritesEdgeCases:
     """Tests for favorites store edge cases."""
 
     def test_max_favorites_cap(self, tmp_path):
-        from seatunnel_agent.agents.data.text2sql.favorites import FavoritesStore, _MAX_FAVORITES
+        from seatunnel_agent.agents.data.text2sql.favorites import (
+            _MAX_FAVORITES,
+            FavoritesStore,
+        )
         store = FavoritesStore(tmp_path / "favs.json")
         for i in range(_MAX_FAVORITES + 10):
             store.save(f"q{i}", f"SELECT {i}")
@@ -1900,8 +2051,11 @@ class TestChatHistoryPersistence:
 
     def test_save_and_load(self, tmp_path):
         from seatunnel_agent.agents.data.text2sql.chat_history import (
-            Text2SQLSession, save_t2s_session, load_t2s_session,
-            new_session_id, now_iso,
+            Text2SQLSession,
+            load_t2s_session,
+            new_session_id,
+            now_iso,
+            save_t2s_session,
         )
         with patch.object(
             __import__("seatunnel_agent.agents.data.text2sql.chat_history", fromlist=["HISTORY_DIR"]),
@@ -1932,8 +2086,12 @@ class TestChatHistoryPersistence:
 
     def test_chat_message_cap(self, tmp_path):
         from seatunnel_agent.agents.data.text2sql.chat_history import (
-            Text2SQLSession, save_t2s_session, load_t2s_session,
-            new_session_id, now_iso, _MAX_CHAT_MESSAGES,
+            _MAX_CHAT_MESSAGES,
+            Text2SQLSession,
+            load_t2s_session,
+            new_session_id,
+            now_iso,
+            save_t2s_session,
         )
         with patch.object(
             __import__("seatunnel_agent.agents.data.text2sql.chat_history", fromlist=["HISTORY_DIR"]),
@@ -2031,6 +2189,7 @@ class TestChartEdgeCases:
 
     def test_scatter_single_numeric(self):
         import matplotlib.pyplot as plt
+
         from seatunnel_agent.agents.data.text2sql.chart import build_chart
         fig = build_chart(["cat", "val"], [("a", 1), ("b", 2)], "scatter")
         assert fig is not None
@@ -2116,7 +2275,9 @@ class TestValidatorExtras:
     """Tests for validator functions not covered elsewhere."""
 
     def test_strip_literals_and_comments(self):
-        from seatunnel_agent.agents.data.text2sql.validator import _strip_literals_and_comments
+        from seatunnel_agent.agents.data.text2sql.validator import (
+            _strip_literals_and_comments,
+        )
         sql = "SELECT * FROM t WHERE name = 'hello' -- comment"
         cleaned = _strip_literals_and_comments(sql)
         assert "hello" not in cleaned
@@ -2173,7 +2334,10 @@ class TestProfiler:
         assert "col20" not in sql
 
     def test_profile_card(self):
-        from seatunnel_agent.agents.data.text2sql.profiler import TableProfile, ColumnProfile
+        from seatunnel_agent.agents.data.text2sql.profiler import (
+            ColumnProfile,
+            TableProfile,
+        )
         from seatunnel_agent.agents.data.text2sql.ui import build_profile_card
         profile = TableProfile(
             table_name="db.t",
@@ -2479,7 +2643,10 @@ class TestXssEscaping:
 
 class TestExplainErrorSanitized:
     def test_explain_error_redacts_connection_info(self, store):
-        from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, _tool_explain_sql
+        from seatunnel_agent.agents.data.text2sql.tools import (
+            Text2SQLRuntime,
+            _tool_explain_sql,
+        )
         rt = Text2SQLRuntime(store=store, ds_type="mysql")
         mock_executor = MagicMock()
         mock_executor.run.side_effect = Exception(
@@ -2498,6 +2665,7 @@ class TestExplainErrorSanitized:
 class TestSQLitePragmaSafety:
     def _make_executor(self, tmp_path):
         import sqlite3
+
         from seatunnel_agent.agents.data.text2sql.executor.sqlite import SQLiteExecutor
         db = tmp_path / "t.db"
         conn = sqlite3.connect(db)
@@ -2527,7 +2695,9 @@ class TestSQLitePragmaSafety:
 
 class TestSchemaDdlPathEnv:
     def test_default(self, monkeypatch):
-        from seatunnel_agent.agents.data.text2sql.executor.base import schema_ddl_path_from_env
+        from seatunnel_agent.agents.data.text2sql.executor.base import (
+            schema_ddl_path_from_env,
+        )
         monkeypatch.delenv("SCHEMA_DDL_PATH", raising=False)
         assert schema_ddl_path_from_env().endswith("schema_ddl.sql")
 
@@ -2540,7 +2710,9 @@ class TestSchemaDdlPathEnv:
         assert schema_ddl_path_from_env() == DEFAULT_SCHEMA_DDL_PATH
 
     def test_relative_inside_workspace_ok(self, monkeypatch):
-        from seatunnel_agent.agents.data.text2sql.executor.base import schema_ddl_path_from_env
+        from seatunnel_agent.agents.data.text2sql.executor.base import (
+            schema_ddl_path_from_env,
+        )
         monkeypatch.setenv("SCHEMA_DDL_PATH", "config/custom_ddl.sql")
         assert schema_ddl_path_from_env().endswith("custom_ddl.sql")
 
@@ -2600,6 +2772,7 @@ class TestExportTargets:
 
     def test_font_download_has_timeout(self):
         import inspect
+
         from seatunnel_agent.agents.data.text2sql import exporter
         sig = inspect.signature(exporter.download_noto_font)
         assert sig.parameters["timeout"].default == 15
@@ -2631,6 +2804,7 @@ class TestEnvConfigurableDefaults:
 
     def test_pg_schema_env_override(self, monkeypatch):
         import importlib
+
         from seatunnel_agent.agents.data.text2sql.executor import postgres
         monkeypatch.setenv("PG_SCHEMA", "analytics")
         importlib.reload(postgres)
@@ -2646,6 +2820,7 @@ class TestEnvConfigurableDefaults:
 
     def test_favorites_path_env_override(self, monkeypatch):
         import importlib
+
         from seatunnel_agent.agents.data.text2sql import favorites
         monkeypatch.setenv("SQL_FAVORITES_PATH", "custom/favs.json")
         importlib.reload(favorites)

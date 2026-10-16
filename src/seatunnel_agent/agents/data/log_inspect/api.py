@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the batch log inspection agent — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -17,8 +16,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
-from .clusterer import DEFAULT_PATTERNS, scan_dir, scan_text
 from seatunnel_agent.common.utils import normalize_lang
+
+from .clusterer import DEFAULT_PATTERNS, scan_dir, scan_text
 from .report import render_markdown, report_to_dict
 
 router = APIRouter(prefix="/api/loginspect", tags=["log_inspect"])

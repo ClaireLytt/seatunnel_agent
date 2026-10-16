@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the secret scanner.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -10,9 +9,14 @@ from __future__ import annotations
 
 import gradio as gr
 
-from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
-from seatunnel_agent.agents.devops.secret_scan import ScanResult, render_markdown, scan_dir, scan_text
+from seatunnel_agent.agents.devops.secret_scan import (
+    ScanResult,
+    render_markdown,
+    scan_dir,
+    scan_text,
+)
 from seatunnel_agent.agents.devops.secret_scan.report import normalize_lang
+from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
 
 _I18N = {
     "en": {
@@ -64,7 +68,7 @@ _t = make_page_t(_I18N)
 
 def render_secret_scan_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -96,7 +100,7 @@ def render_secret_scan_page(app: gr.Blocks) -> None:
         try:
             result = ScanResult(findings=scan_text(text), files_scanned=1)
             return render_markdown(result, lang)
-        except Exception as exc:  # noqa: BLE001 — never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def do_scan_dir(dir_text: str, lang: str):
@@ -108,7 +112,7 @@ def render_secret_scan_page(app: gr.Blocks) -> None:
             return _t(lang, "bad_dir") + dir_text
         try:
             return render_markdown(scan_dir(dir_text.strip()), lang)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def switch_lang(choice: str):

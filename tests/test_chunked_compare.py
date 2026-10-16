@@ -12,7 +12,6 @@ from seatunnel_agent.agents.data.data_comparison.chunked import (
     compare_chunked,
 )
 
-
 # ---------------------------------------------------------------------------
 # SQL builders
 # ---------------------------------------------------------------------------
@@ -51,6 +50,15 @@ class TestChunkSqlBuilders:
         sql = build_chunk_map_sql("orders", "id", ["amount"], 0, 10.0,
                                   "mysql", where="dt = '2024-01-01'")
         assert "AND (dt = '2024-01-01')" in sql
+
+    def test_unsafe_where_rejected(self):
+        for w in ("1=1; DROP TABLE t", "1=1 -- x", "DELETE FROM t"):
+            with pytest.raises(ValueError):
+                build_chunk_map_sql("orders", "id", ["amount"], 0, 10.0,
+                                    "mysql", where=w)
+            with pytest.raises(ValueError):
+                build_chunk_rows_sql("orders", "id", ["amount"], 0, 10,
+                                     "mysql", where=w)
 
     def test_chunk_rows_sql_bounds(self):
         sql = build_chunk_rows_sql("orders", "id", ["amount"], 10, 20, "mysql")
@@ -186,9 +194,11 @@ class TestCompareChunked:
 
 class TestChunkedReportRoundTrip:
     def test_report_serialization(self):
-        from seatunnel_agent.agents.data.data_comparison.comparator import CompareReport
         from seatunnel_agent.agents.data.data_comparison.chunked import (
-            ChunkedResult, ChunkMismatch)
+            ChunkedResult,
+            ChunkMismatch,
+        )
+        from seatunnel_agent.agents.data.data_comparison.comparator import CompareReport
         chunked = ChunkedResult(
             table_a="ta", table_b="tb", pk_column="id",
             chunk_count=4, chunk_width=10.0, total_a=30, total_b=29,
@@ -204,8 +214,8 @@ class TestChunkedReportRoundTrip:
         assert not restored.chunked.match
 
     def test_card_renders_restored_report(self):
-        from seatunnel_agent.agents.data.data_comparison.comparator import CompareReport
         from seatunnel_agent.agents.data.data_comparison.chunked import ChunkedResult
+        from seatunnel_agent.agents.data.data_comparison.comparator import CompareReport
         from seatunnel_agent.agents.data.data_comparison.ui import build_chunked_card
         report = CompareReport(chunked=ChunkedResult(
             table_a="ta", table_b="tb", pk_column="id",
@@ -254,7 +264,9 @@ class TestHashCollisionSafety:
 
 class TestClientFallbackSafety:
     def test_all_rows_sql_ordered(self):
-        from seatunnel_agent.agents.data.data_comparison.chunked import build_all_rows_sql
+        from seatunnel_agent.agents.data.data_comparison.chunked import (
+            build_all_rows_sql,
+        )
         sql = build_all_rows_sql("t", "id", ["a"], "sqlite")
         assert "ORDER BY" in sql
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """JSON tool schemas for the SeaTunnel config agent (sent to the LLM).
 
 Moved verbatim out of tools.py, which re-exports TOOL_DEFINITIONS.

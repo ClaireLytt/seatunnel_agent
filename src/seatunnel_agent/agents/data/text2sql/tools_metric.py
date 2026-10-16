@@ -8,11 +8,11 @@ from typing import Any
 from .executor import QueryResult
 from .metrics import (
     MetricError,
-    build_metric_sql,
     build_metric_series_sql,
+    build_metric_sql,
     parse_date,
-    ratio_sides,
     parse_time_range,
+    ratio_sides,
 )
 from .runtime import Text2SQLRuntime, _sanitize_db_error
 from .validator import enforce_limit, validate_sql
@@ -273,7 +273,7 @@ def _derive_prev_range(curr: Any, mode: str) -> Any:
 
     start, end = curr.start, curr.end
 
-    def _year_back(d: "date") -> "date":
+    def _year_back(d: date) -> date:
         try:
             return d.replace(year=d.year - 1)
         except ValueError:  # Feb 29
@@ -293,7 +293,7 @@ def _derive_prev_range(curr: Any, mode: str) -> Any:
 
 def _run_one_attribution(
     inp: dict[str, Any], rt: Text2SQLRuntime, metric: Any,
-) -> "Any":
+) -> Any:
     from .attribution import run_attribution
     from .metrics import parse_time_range
 

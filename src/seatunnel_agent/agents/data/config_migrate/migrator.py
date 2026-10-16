@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """DataX / Sqoop → SeaTunnel config migration (deterministic).
 
 Same philosophy as sql_transpile: a rule-based converter that always

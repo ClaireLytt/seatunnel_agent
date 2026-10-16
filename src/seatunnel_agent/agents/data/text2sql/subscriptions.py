@@ -24,13 +24,25 @@ import logging
 import os
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from seatunnel_agent.common.utils import read_json_list, write_json_atomic
-from .executor import DatabaseConfig, config_from_env, create_executor
+from seatunnel_agent.common.filelock import file_lock
+from seatunnel_agent.common.utils import (
+    read_json_list,
+    read_json_list_strict,
+    write_json_atomic,
+)
+
 from .attribution import NULL_LABEL
+from .cron import (  # noqa: F401 — re-exported, public API
+    CronSpec,
+    builtin_params,
+    parse_cron,
+)
+from .executor import DatabaseConfig, config_from_env, create_executor
 from .favorites import FavoritesStore, apply_params
 from .metrics import (
     MetricError,
@@ -38,14 +50,6 @@ from .metrics import (
     build_metric_sql,
     load_metric_store,
     ratio_sides,
-)
-from .partition import TimeRange
-from .schema import SchemaStore
-from .validator import enforce_limit, validate_sql
-from .cron import (  # noqa: F401 — re-exported, public API
-    CronSpec,
-    parse_cron,
-    builtin_params,
 )
 from .notify import (  # noqa: F401 — re-exported, public API
     _CHANNEL_PUSHERS,
@@ -61,6 +65,9 @@ from .notify import (  # noqa: F401 — re-exported, public API
     render_card_markdown,
     upload_feishu_image,
 )
+from .partition import TimeRange
+from .schema import SchemaStore
+from .validator import enforce_limit, validate_sql
 
 logger = logging.getLogger(__name__)
 
@@ -79,14 +86,28 @@ WATCH_MODES = ("dod", "wow")
 
 
 class SubscriptionStore:
-    def __init__(self, path: str | Path | None = None) -> None:
+    def __init__(self, path: str | Path | None = None,
+                 lock_timeout: float = 10.0) -> None:
         if path is None:  # env read at init time so tests can redirect it
             path = os.getenv("T2S_SUBSCRIPTIONS_PATH", "config/t2s_subscriptions.json")
         self.path = Path(path)
         self._lock = threading.Lock()
+        self._lock_timeout = lock_timeout
+
+    def _write_lock(self):
+        """Cross-process guard for every read-modify-write (CLI ``cron
+        serve`` and the hub UI may write the same file concurrently).
+        Reads stay lock-free/tolerant."""
+        return file_lock(self.path, timeout=self._lock_timeout)
 
     def _read(self) -> list[dict[str, Any]]:
         return read_json_list(self.path)
+
+    def _read_for_write(self) -> list[dict[str, Any]]:
+        """Strict read used before every read-modify-write: a corrupt backing
+        file raises instead of being treated as empty, so the subsequent
+        write can never silently wipe existing subscriptions."""
+        return read_json_list_strict(self.path)
 
     def _write(self, data: list[dict[str, Any]]) -> None:
         write_json_atomic(self.path, data)
@@ -158,8 +179,8 @@ class SubscriptionStore:
             "last_status": "",
             "last_error": "",
         }
-        with self._lock:
-            data = self._read()
+        with self._lock, self._write_lock():
+            data = self._read_for_write()
             data.append(entry)
             if len(data) > _MAX_SUBSCRIPTIONS:
                 data = data[-_MAX_SUBSCRIPTIONS:]
@@ -167,8 +188,8 @@ class SubscriptionStore:
         return entry
 
     def delete(self, sub_id: str) -> bool:
-        with self._lock:
-            data = self._read()
+        with self._lock, self._write_lock():
+            data = self._read_for_write()
             before = len(data)
             data = [e for e in data if e.get("id") != sub_id]
             if len(data) < before:
@@ -177,8 +198,8 @@ class SubscriptionStore:
             return False
 
     def set_enabled(self, sub_id: str, enabled: bool) -> bool:
-        with self._lock:
-            data = self._read()
+        with self._lock, self._write_lock():
+            data = self._read_for_write()
             for entry in data:
                 if entry.get("id") == sub_id:
                     entry["enabled"] = bool(enabled)
@@ -187,8 +208,8 @@ class SubscriptionStore:
             return False
 
     def record_run(self, sub_id: str, status: str, error: str = "") -> None:
-        with self._lock:
-            data = self._read()
+        with self._lock, self._write_lock():
+            data = self._read_for_write()
             for entry in data:
                 if entry.get("id") == sub_id:
                     entry["last_run_at"] = datetime.now(timezone.utc).isoformat(
@@ -487,48 +508,91 @@ def run_subscription(
 # ----------------------------------------------------------------------
 
 
+#: catch-up cap default: after a stall (slow run_fn, host sleep) only this
+#: many of the most recent missed minutes are replayed, so a long sleep
+#: never triggers a burst of stale fires. Override per-Scheduler via the
+#: ``catchup_minutes`` constructor arg or the ``SEATUNNEL_SUB_CATCHUP_MINUTES``
+#: environment variable (clamped to 0..1440).
+_MAX_CATCHUP_MINUTES = 10
+
+
+def _catchup_minutes_from_env() -> int:
+    raw = os.environ.get("SEATUNNEL_SUB_CATCHUP_MINUTES", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        return _MAX_CATCHUP_MINUTES
+    return max(0, min(1440, value))
+
+
 class Scheduler:
-    """Daemon-thread cron loop. One fire per subscription per matched minute."""
+    """Daemon-thread cron loop. One fire per subscription per matched minute.
+
+    A slow ``run_fn`` can push the next tick past a whole minute; missed
+    minutes (up to ``catchup_minutes``) are replayed on the next check
+    so same-minute crons of other subscriptions are not silently dropped."""
 
     def __init__(
         self,
         store: SubscriptionStore | None = None,
         tick_seconds: int = 20,
         run_fn: Callable[[dict[str, Any]], dict[str, Any]] = run_subscription,
+        catchup_minutes: int | None = None,
     ) -> None:
         self.store = store or SubscriptionStore()
         self.tick_seconds = tick_seconds
         self.run_fn = run_fn
+        self.catchup_minutes = (
+            max(0, min(1440, catchup_minutes))
+            if catchup_minutes is not None
+            else _catchup_minutes_from_env()
+        )
         self._fired: dict[str, str] = {}  # sub_id -> "YYYY-mm-dd HH:MM" last fired
+        self._last_minute: datetime | None = None  # last minute already checked
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
     def check_once(self, now: datetime | None = None) -> list[str]:
         """Run every due subscription once; returns the ids that fired."""
         now = now or datetime.now()
-        minute_key = now.strftime("%Y-%m-%d %H:%M")
+        current = now.replace(second=0, microsecond=0)
+        minutes: list[datetime] = []
+        if self._last_minute is not None and self._last_minute < current:
+            m = self._last_minute + timedelta(minutes=1)
+            while m < current:
+                minutes.append(m)
+                m += timedelta(minutes=1)
+            cap = self.catchup_minutes
+            minutes = minutes[-cap:] if cap > 0 else []
+        minutes.append(current)
+        if self._last_minute is None or current > self._last_minute:
+            self._last_minute = current
+
         fired: list[str] = []
-        for sub in self.store.list():
-            if not sub.get("enabled", True):
-                continue
-            sub_id = sub.get("id", "")
-            try:
-                spec = parse_cron(sub.get("cron", ""))
-            except ValueError:
-                continue
-            if not spec.matches(now) or self._fired.get(sub_id) == minute_key:
-                continue
-            self._fired[sub_id] = minute_key
-            fired.append(sub_id)
-            try:
-                outcome = self.run_fn(sub)
-                self.store.record_run(
-                    sub_id, outcome.get("status", "error"),
-                    outcome.get("error", ""),
-                )
-            except Exception as exc:  # run_fn contract says it never raises, but
-                logger.exception("Subscription %s failed", sub_id)
-                self.store.record_run(sub_id, "error", str(exc))
+        subs = self.store.list()
+        for minute in minutes:
+            minute_key = minute.strftime("%Y-%m-%d %H:%M")
+            for sub in subs:
+                if not sub.get("enabled", True):
+                    continue
+                sub_id = sub.get("id", "")
+                try:
+                    spec = parse_cron(sub.get("cron", ""))
+                except ValueError:
+                    continue
+                if not spec.matches(minute) or self._fired.get(sub_id) == minute_key:
+                    continue
+                self._fired[sub_id] = minute_key
+                fired.append(sub_id)
+                try:
+                    outcome = self.run_fn(sub)
+                    self.store.record_run(
+                        sub_id, outcome.get("status", "error"),
+                        outcome.get("error", ""),
+                    )
+                except Exception as exc:  # run_fn contract says it never raises, but
+                    logger.exception("Subscription %s failed", sub_id)
+                    self.store.record_run(sub_id, "error", str(exc))
         return fired
 
     def start(self) -> None:

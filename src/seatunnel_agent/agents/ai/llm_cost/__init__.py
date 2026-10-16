@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """LLM cost observability — price the cross-agent usage log.
 
 Deterministic: reads ``logs/llm_usage.jsonl`` (written by every

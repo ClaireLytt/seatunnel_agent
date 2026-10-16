@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the environment doctor — registered via its manifest."""
 
 from __future__ import annotations
@@ -6,10 +5,9 @@ from __future__ import annotations
 import gradio as gr
 
 from seatunnel_agent.agents.devops.doctor import diagnose
+from seatunnel_agent.common.config import llm_ready as _llm_ready
 from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
 from seatunnel_agent.common.utils import normalize_lang as _norm
-from seatunnel_agent.common.config import llm_ready as _llm_ready
-
 
 _I18N = {
     "en": {
@@ -46,7 +44,7 @@ _t = make_page_t(_I18N)
 
 def render_doctor_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -79,7 +77,7 @@ def render_doctor_page(app: gr.Blocks) -> None:
             load_dotenv()
             settings_store.apply_to_env()
             return diagnose(complaint, load_settings(), lang=lang).reply
-        except Exception as exc:  # noqa: BLE001 — never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def do_checkup(lang: str):

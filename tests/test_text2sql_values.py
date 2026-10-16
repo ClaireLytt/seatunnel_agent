@@ -43,7 +43,10 @@ def store() -> SchemaStore:
 @pytest.fixture()
 def sqlite_env(tmp_path, store):
     """(executor, store) over a real sqlite db."""
-    from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig, create_executor
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        DatabaseConfig,
+        create_executor,
+    )
 
     db = tmp_path / "v.db"
     conn = sqlite3.connect(db)
@@ -240,7 +243,7 @@ def test_runtime_value_index_caches_none(store, monkeypatch) -> None:
 
     def _fake_load_or_build(rt):
         calls["n"] += 1
-        return None
+        return
 
     monkeypatch.setattr(
         "seatunnel_agent.agents.data.text2sql.values.load_or_build", _fake_load_or_build,

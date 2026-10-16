@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Doctor agent: read-only tools, deterministic fallback, LLM loop, CLI."""
 
 from __future__ import annotations
@@ -8,8 +7,6 @@ import threading
 
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
-from seatunnel_agent.common.config import Settings
 from seatunnel_agent.agents.devops.doctor import diagnose
 from seatunnel_agent.agents.devops.doctor.engine import (
     check_env,
@@ -17,6 +14,8 @@ from seatunnel_agent.agents.devops.doctor.engine import (
     check_port,
     read_log_tail,
 )
+from seatunnel_agent.cli import cli
+from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 SETTINGS = Settings(api_key="sk-test")

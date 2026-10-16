@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the web-task agent — registered via its manifest."""
 
 from __future__ import annotations
@@ -8,11 +7,10 @@ import threading
 
 import gradio as gr
 
-from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
 from seatunnel_agent.agents.ai.web_task import run_task
-from seatunnel_agent.common.utils import normalize_lang as _norm
 from seatunnel_agent.common.config import llm_ready as _llm_ready
-
+from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
+from seatunnel_agent.common.utils import normalize_lang as _norm
 
 _I18N = {
     "en": {
@@ -56,7 +54,7 @@ _t = make_page_t(_I18N)
 
 def render_web_task_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -101,7 +99,7 @@ def render_web_task_page(app: gr.Blocks) -> None:
                 outcome["result"] = run_task(
                     goal.strip(), url.strip(), load_settings(),
                     max_steps=int(max_steps), on_step=events.put)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 outcome["error"] = f"{type(exc).__name__}: {exc}"
             events.put(None)
 

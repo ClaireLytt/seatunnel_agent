@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Shared SQL text scrubbing.
 
 One implementation of the "blank out string literals and comments,

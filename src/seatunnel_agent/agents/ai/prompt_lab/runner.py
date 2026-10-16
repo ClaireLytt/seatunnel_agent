@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Run one prompt across several LLM provider profiles.
 
 Profiles are the named snapshots the /settings page stores
@@ -15,9 +14,10 @@ that cell's ``error`` instead of killing the matrix.
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from seatunnel_agent.common.config import Settings, load_settings
 from seatunnel_agent.common.settings_store import load_profile
@@ -107,7 +107,7 @@ def _run_cell(profile: str, prompt: str, system: str,
         usage = resp.usage or {}
         cell.input_tokens = int(usage.get("input_tokens", 0) or 0)
         cell.output_tokens = int(usage.get("output_tokens", 0) or 0)
-    except Exception as exc:  # noqa: BLE001 — isolate the cell
+    except Exception as exc:
         cell.error = f"{type(exc).__name__}: {exc}"
     cell.latency_ms = int((time.time() - start) * 1000)
     return cell
@@ -125,8 +125,10 @@ def run_matrix(prompt: str,
     system = (system or "").strip() or _DEFAULT_SYSTEM
     profiles = profiles or [ACTIVE]
     if client_factory is None:
-        from seatunnel_agent.common import llm  # resolved at call time so tests can monkeypatch
-        client_factory = lambda s: llm.LLMClient(s, agent="prompt_lab")  # noqa: E731
+        from seatunnel_agent.common import (
+            llm,  # resolved at call time so tests can monkeypatch
+        )
+        client_factory = lambda s: llm.LLMClient(s, agent="prompt_lab")
 
     def job(p: str) -> CellResult:
         return _run_cell(p, prompt, system, client_factory)

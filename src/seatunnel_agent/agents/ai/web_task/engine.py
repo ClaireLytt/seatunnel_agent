@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Web-task agent — goal + URL → observe/act loop over a real browser.
 
 A light computer-use loop: snapshot (indexed interactive elements) → the

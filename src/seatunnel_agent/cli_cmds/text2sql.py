@@ -19,7 +19,11 @@ from ..common.cli_common import _ensure_utf8_stdio, console
 def t2s_bench(ddl: str, bench_file: str, mode: str, gate: bool) -> None:
     """Text2SQL 表检索评测：对比 keyword-only 与 hybrid 的 Top1/Top3 命中率。"""
     _ensure_utf8_stdio()
-    from seatunnel_agent.agents.data.text2sql.bench import load_bench, render_bench_report, run_bench
+    from seatunnel_agent.agents.data.text2sql.bench import (
+        load_bench,
+        render_bench_report,
+        run_bench,
+    )
     from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
 
     store = SchemaStore.from_file(ddl)
@@ -59,14 +63,13 @@ def t2s_index_values(ddl: str | None, ds_type: str, database: str,
     """构建值级检索索引：采样低基数字符串列的枚举值（问题里的取值 → 表/列/字面量）。"""
     _ensure_utf8_stdio()
     import os as _os
+    from pathlib import Path
 
     from seatunnel_agent.agents.data.text2sql.executor import create_executor
     from seatunnel_agent.agents.data.text2sql.retrieval import schema_hash
     from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
     from seatunnel_agent.agents.data.text2sql.subscriptions import resolve_db_config
     from seatunnel_agent.agents.data.text2sql.values import ValueIndex
-
-    from pathlib import Path
 
     ddl_path = ddl or _os.getenv("SCHEMA_DDL_PATH", "config/schema_ddl.sql")
     if not Path(ddl_path).is_file():
@@ -231,7 +234,10 @@ def t2s_sub_enable(sub_id: str, off: bool) -> None:
 def t2s_sub_run(sub_id: str) -> None:
     """立即执行一次订阅（不等 cron）。"""
     _ensure_utf8_stdio()
-    from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore, run_subscription
+    from seatunnel_agent.agents.data.text2sql.subscriptions import (
+        SubscriptionStore,
+        run_subscription,
+    )
 
     store = SubscriptionStore()
     sub = store.get(sub_id)
@@ -411,7 +417,11 @@ def dqc_run(rules_file: str, ddl: str | None, ds_type: str, database: str,
             output: str | None) -> None:
     """执行全部质量检查并输出报告。"""
     _ensure_utf8_stdio()
-    from seatunnel_agent.agents.data.data_quality import load_rules, render_report, run_checks
+    from seatunnel_agent.agents.data.data_quality import (
+        load_rules,
+        render_report,
+        run_checks,
+    )
     from seatunnel_agent.agents.data.data_quality.runner import push_failures
     from seatunnel_agent.agents.data.text2sql.executor import create_executor
     from seatunnel_agent.agents.data.text2sql.subscriptions import resolve_db_config
@@ -559,7 +569,11 @@ def metrics_sql(
 ) -> None:
     """确定性展开指标 SQL（不执行）——同样的参数永远得到同一条 SQL。"""
     _ensure_utf8_stdio()
-    from seatunnel_agent.agents.data.text2sql.metrics import MetricError, build_metric_sql, parse_time_range
+    from seatunnel_agent.agents.data.text2sql.metrics import (
+        MetricError,
+        build_metric_sql,
+        parse_time_range,
+    )
 
     store, errors = _load_metrics_for_cli(metrics_file, ddl)
     if errors:

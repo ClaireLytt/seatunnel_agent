@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Notification channels for subscription pushes (Feishu / DingTalk /
 WeCom / email), stdlib only.
 
@@ -9,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Callable
+from collections.abc import Callable
 
 _CARD_MAX_ROWS = 10
 
@@ -86,7 +85,7 @@ def upload_feishu_image(png_bytes: bytes, timeout: int = 30) -> str:
             data = json.loads(resp.read().decode("utf-8"))
         if data.get("code") == 0:
             return data.get("data", {}).get("image_key", "")
-    except Exception:  # noqa: BLE001 — best-effort by contract
+    except Exception:
         pass
     return ""
 

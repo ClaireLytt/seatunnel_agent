@@ -18,7 +18,6 @@ from .graph import (
     norm_table,
 )
 from .loaders import build_graph, from_hive_meta, from_sql_dir, from_sql_files
-from .seatunnel_loader import from_seatunnel_dir, from_seatunnel_files
 from .render import (
     mermaid_html,
     render_column_mermaid,
@@ -32,6 +31,7 @@ from .render import (
 )
 from .report import LineageReport
 from .rlog import LineageLogger
+from .seatunnel_loader import from_seatunnel_dir, from_seatunnel_files
 
 __all__ = [
     "LineageAgent",

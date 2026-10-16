@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Model pricing catalog — USD per 1M tokens, longest-prefix matched.
 
 The built-in table covers the providers the platform ships adapters for.

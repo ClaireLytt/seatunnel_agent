@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """GitHub bot: patch parsing, review comment, signature, webhook flow."""
 
 from __future__ import annotations

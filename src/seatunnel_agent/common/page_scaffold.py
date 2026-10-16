@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Shared scaffolding for the per-agent Gradio pages.
 
 Every ``*_ui.py`` page repeats the same skeleton: an ``_I18N`` lookup, the
@@ -9,7 +8,8 @@ pages keep only their own strings, layout and callbacks.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Sequence
+from collections.abc import Callable, Sequence
+from typing import Any
 
 import gradio as gr
 

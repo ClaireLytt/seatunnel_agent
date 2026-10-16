@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for issue triage — FastAPI router.
 
   POST /api/triage/run    — triage an inline issue (optional inline history)
@@ -14,6 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
+
 from .engine import triage
 from .report import normalize_lang, render_markdown
 
@@ -52,7 +52,7 @@ def run(req: TriageRequest) -> TriageResponse:
     try:
         result = triage(req.title, req.body, settings, issues=req.issues,
                         repo_dir=None)
-    except Exception as exc:  # noqa: BLE001 — provider failures
+    except Exception as exc:
         raise HTTPException(status_code=502,
                             detail=f"{type(exc).__name__}: {exc}")
     return TriageResponse(

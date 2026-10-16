@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the secret scanner — FastAPI router.
 
 Inline text only: the API is a network entry point and must not walk
@@ -17,6 +16,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
+
 from .report import normalize_lang, render_markdown
 from .scanner import ScanResult, scan_text
 

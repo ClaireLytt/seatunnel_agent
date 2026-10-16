@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Change impact analysis: SQL diff × lineage downstream walk.
 
 Given two lineage graphs (built from an "old" and a "new" SQL directory, or
@@ -26,10 +25,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from seatunnel_agent.common.utils import normalize_lang
+
 from .graph import LineageGraph
 from .rlog import LineageLogger as _LineageLoggerBase
 from .snapshot import diff_graphs
-from seatunnel_agent.common.utils import normalize_lang
 
 LEVELS = ("error", "warn", "info")
 
@@ -99,7 +99,7 @@ class ImpactResult:
     elapsed_ms: int = 0
 
     def counts(self) -> dict[str, int]:
-        by_level = {lv: 0 for lv in LEVELS}
+        by_level = dict.fromkeys(LEVELS, 0)
         blast: set[str] = set()
         for c in self.changed:
             by_level[c.level] += 1

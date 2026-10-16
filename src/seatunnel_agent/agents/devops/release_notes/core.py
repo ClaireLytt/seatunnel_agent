@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Release-notes core — classify commits, group a changelog, suggest a bump.
 
 Deterministic: input is plain ``sha<TAB>subject`` lines (what

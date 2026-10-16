@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Secret detection rule catalog — provider token patterns, credential
 assignments, and a high-entropy fallback.
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Routable agent catalog for the orchestrator.
 
 Two sources:
@@ -18,8 +17,9 @@ descriptions are the (bilingual) docstrings.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 # file-path toolbox tools stay out of the chat entry
 _SKIP_TOOLS = {"skew_check_file"}
@@ -140,7 +140,11 @@ def _wrap_sql_testgen(sql: str, ddl: str = "", rows: int = 20,
 def _wrap_secret_scan(text: str, lang: str = "zh") -> str:
     """敏感凭证扫描:云厂商 token / 私钥块 / 明文密码与 API Key 赋值 /
     DSN 内嵌密码 / 高熵字符串。入参为代码或配置文本,预览自动脱敏。"""
-    from seatunnel_agent.agents.devops.secret_scan import ScanResult, render_markdown, scan_text
+    from seatunnel_agent.agents.devops.secret_scan import (
+        ScanResult,
+        render_markdown,
+        scan_text,
+    )
     if not (text or "").strip():
         return "文本不能为空 / text must not be empty"
     return render_markdown(
@@ -151,7 +155,10 @@ def _wrap_dep_check(metadata: str, lang: str = "zh") -> str:
     """依赖体检:对 pyproject.toml 或 requirements.txt 文本做离线检查 ——
     声明未装、版本违反、未钉版本、重复冲突与 License 清单。"""
     from seatunnel_agent.agents.devops.dep_check import (
-        check, parse_pyproject_text, parse_requirements_text, render_markdown,
+        check,
+        parse_pyproject_text,
+        parse_requirements_text,
+        render_markdown,
     )
     if not (metadata or "").strip():
         return "依赖声明不能为空 / metadata must not be empty"

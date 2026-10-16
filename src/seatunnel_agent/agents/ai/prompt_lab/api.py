@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for the prompt lab — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -19,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
 from seatunnel_agent.common.settings_store import list_profiles
+
 from .report import normalize_lang, render_matrix_markdown
 from .runner import ACTIVE, run_matrix
 

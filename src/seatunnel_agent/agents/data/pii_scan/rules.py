@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PII rule catalog: category → name regexes + comment keywords.
 
 ``name_patterns`` match with high confidence; ``weak_patterns`` are

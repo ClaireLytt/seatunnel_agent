@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic PII scan core.
 
 Column inventory comes from two sources merged together:
@@ -15,12 +14,14 @@ masked / unmasked by its expression (``rules.expression_is_masked``).
 from __future__ import annotations
 
 import tempfile
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from seatunnel_agent.agents.data.data_lineage.graph import LineageGraph
 from seatunnel_agent.agents.data.data_lineage.loaders import from_sql_files
+
 from .rules import DEFAULT_RULES, PiiRule, expression_is_masked
 
 _SEV_RANK = {"low": 1, "medium": 2, "high": 3}

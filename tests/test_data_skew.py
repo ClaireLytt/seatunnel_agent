@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the Data Skew agent (static detector, report, LLM parsing)."""
 
 from __future__ import annotations
@@ -404,8 +403,8 @@ def test_heading_quoted_midline_not_a_section():
 # ---------------------------------------------------------------------------
 
 def test_agent_static_path(tmp_path):
-    from seatunnel_agent.common.config import Settings
     from seatunnel_agent.agents.data.data_skew.agent import DataSkewAgent
+    from seatunnel_agent.common.config import Settings
 
     agent = DataSkewAgent(Settings(api_key="x"), dialect="spark", lang="zh")
     result = agent.analyze("select count(distinct a) from t", use_llm=False)
@@ -416,8 +415,8 @@ def test_agent_static_path(tmp_path):
 
 
 def test_agent_empty_sql_raises():
-    from seatunnel_agent.common.config import Settings
     from seatunnel_agent.agents.data.data_skew.agent import DataSkewAgent
+    from seatunnel_agent.common.config import Settings
 
     agent = DataSkewAgent(Settings(api_key="x"))
     with pytest.raises(ValueError):
@@ -437,7 +436,7 @@ def test_write_optimized_adds_sql_suffix(tmp_path):
 # probe: target extraction
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.probe import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.probe import (
     ProbeResult,
     ProbeTarget,
     extract_probe_targets,
@@ -544,7 +543,10 @@ def test_extract_targets_cte_with_column_list_not_probed():
 def _sqlite_executor(tmp_path, setup_sql):
     import sqlite3
 
-    from seatunnel_agent.agents.data.text2sql.executor.base import DatabaseConfig, create_executor
+    from seatunnel_agent.agents.data.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
 
     db = tmp_path / "probe.db"
     conn = sqlite3.connect(db)
@@ -711,7 +713,11 @@ def test_remove_section_line_anchored():
 
 def test_remove_section_only_touches_its_own_section():
     from seatunnel_agent.agents.data.data_skew import consistency
-    from seatunnel_agent.agents.data.data_skew.ui import _CST_HEAD_RE, _PROBE_HEAD_RE, _remove_section
+    from seatunnel_agent.agents.data.data_skew.ui import (
+        _CST_HEAD_RE,
+        _PROBE_HEAD_RE,
+        _remove_section,
+    )
 
     probe_sec = render_probe_section([_fake_result()], "en")
     res = consistency.ConsistencyResult(comparable=True, orig_count=5, opt_count=5,
@@ -738,8 +744,8 @@ def test_probe_lines_for_prompt():
 
 
 def test_agent_probe_context_injected_into_prompt(tmp_path):
-    from seatunnel_agent.common.config import Settings
     from seatunnel_agent.agents.data.data_skew.agent import DataSkewAgent
+    from seatunnel_agent.common.config import Settings
 
     captured = {}
 
@@ -767,7 +773,7 @@ def test_agent_probe_context_injected_into_prompt(tmp_path):
 # probe: sampling (TABLESAMPLE)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.probe import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.probe import (
     _table_expr,
     effective_sample_pct,
     engine_params_for_results,
@@ -886,7 +892,7 @@ def test_probe_lines_balanced_target_has_no_hot_values():
 # consistency: extraction and comparison
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.consistency import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.consistency import (
     ConsistencyResult,
     check_consistency,
     extract_single_select,
@@ -1347,7 +1353,9 @@ def test_rewrite_templates_empty_when_nothing_confirmed():
 
 def test_consistency_agg_match_on_large_result(tmp_path):
     from seatunnel_agent.agents.data.data_skew.consistency import (
-        check_consistency, render_consistency_section)
+        check_consistency,
+        render_consistency_section,
+    )
 
     setup = ("CREATE TABLE big (k TEXT, v INTEGER); INSERT INTO big VALUES "
              + ",".join(f"('k{i}', {i})" for i in range(10)) + ";")
@@ -1457,7 +1465,9 @@ def test_cli_skew_stats(tmp_path, monkeypatch):
 # probe: storage/modeling-layer advice
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.probe import render_storage_advice  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.probe import (
+    render_storage_advice,
+)
 
 
 def _hot_result(table="orders", col="region", total=100, hot=80, nulls=0):
@@ -1509,7 +1519,7 @@ def test_storage_advice_in_probe_section():
 # SeaTunnel split-key check
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.splitkey import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.splitkey import (
     SourceSpec,
     SplitKeyError,
     SplitStat,
@@ -1905,8 +1915,8 @@ def test_mcp_split_key_end_to_end(monkeypatch, tmp_path):
 def test_cli_skew_splitkey(monkeypatch, tmp_path):
     from click.testing import CliRunner
 
-    from seatunnel_agent.cli import cli
     from seatunnel_agent.agents.data.text2sql.executor import base as exec_base
+    from seatunnel_agent.cli import cli
 
     db = _make_orders_db(tmp_path)
     monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
@@ -1940,8 +1950,8 @@ def test_cli_skew_splitkey_apply_closes_loop(monkeypatch, tmp_path):
     """check → --apply writes the fix back → re-check reports it resolved."""
     from click.testing import CliRunner
 
-    from seatunnel_agent.cli import cli
     from seatunnel_agent.agents.data.text2sql.executor import base as exec_base
+    from seatunnel_agent.cli import cli
 
     db = _make_orders_db(tmp_path)
     monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
@@ -2067,8 +2077,8 @@ def test_render_splitkey_multi_single_source_unchanged():
 def test_cli_skew_splitkey_apply_refuses_multi(monkeypatch, tmp_path):
     from click.testing import CliRunner
 
-    from seatunnel_agent.cli import cli
     from seatunnel_agent.agents.data.text2sql.executor import base as exec_base
+    from seatunnel_agent.cli import cli
 
     db = _make_two_table_db(tmp_path)
     monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
@@ -2132,7 +2142,7 @@ def test_mcp_split_key_apply(monkeypatch, tmp_path):
 # runtime diagnosis (Spark task metrics)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.runtime import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.runtime import (
     MIN_TASKS,
     RuntimeSkewError,
     StageSkew,
@@ -2309,8 +2319,8 @@ def test_runtime_history_server_fake_fetch():
 def test_cli_skew_runtime(monkeypatch, tmp_path):
     from click.testing import CliRunner
 
-    from seatunnel_agent.cli import cli
     from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.cli import cli
 
     monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
                        str(tmp_path / "hist.jsonl"))
@@ -2366,7 +2376,7 @@ def test_mcp_runtime_tools(monkeypatch, tmp_path):
 # split-key: directory patrol (batch mode) + metric trend / drift
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.splitkey import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.splitkey import (
     _recheck_line,
     batch_counts,
     render_splitkey_batch,
@@ -2430,10 +2440,10 @@ def test_run_split_key_batch_and_render(tmp_path):
 def test_cli_skew_splitkey_dir_patrol(monkeypatch, tmp_path):
     from click.testing import CliRunner
 
-    from seatunnel_agent.cli import cli
     from seatunnel_agent.agents.data.data_skew import notify
     from seatunnel_agent.agents.data.data_skew.history import default_history
     from seatunnel_agent.agents.data.text2sql.executor import base as exec_base
+    from seatunnel_agent.cli import cli
 
     db = _make_two_table_db(tmp_path)
     monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
@@ -2523,7 +2533,7 @@ def test_recheck_drift_line():
 # sink-side key check
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.data_skew.splitkey import (  # noqa: E402
+from seatunnel_agent.agents.data.data_skew.splitkey import (
     parse_seatunnel_sinks,
     render_sinkkey_section,
     run_sink_keys,
@@ -2605,8 +2615,8 @@ def test_run_sink_keys_and_render(tmp_path):
 def test_cli_skew_stats_splitkey_trend(monkeypatch, tmp_path):
     from click.testing import CliRunner
 
-    from seatunnel_agent.cli import cli
     from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.cli import cli
 
     monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
                        str(tmp_path / "hist.jsonl"))

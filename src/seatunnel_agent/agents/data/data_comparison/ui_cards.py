@@ -7,10 +7,9 @@ import re
 from datetime import datetime, timezone
 
 from seatunnel_agent.agents.data.text2sql.differ import ResultDiff
+
 from .comparator import (
     GINI_SKEW_THRESHOLD,
-    ThresholdConfig,
-    check_row_count_threshold,
     AggregateResult,
     BatchFullItem,
     CompareReport,
@@ -21,7 +20,9 @@ from .comparator import (
     RowCountResult,
     SchemaDiffResult,
     SkewResult,
+    ThresholdConfig,
     TrendAlert,
+    check_row_count_threshold,
     skew_side_verdict,
 )
 from .i18n import dc

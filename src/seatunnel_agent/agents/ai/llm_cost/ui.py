@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for LLM cost observability.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -8,12 +7,18 @@ no LLM call is ever made from this page.
 
 from __future__ import annotations
 
+from typing import Any
+
 import gradio as gr
 
-from seatunnel_agent.agents.ai.llm_cost import merged_prices, override_path, render_markdown, summarize_cost
+from seatunnel_agent.agents.ai.llm_cost import (
+    merged_prices,
+    override_path,
+    render_markdown,
+    summarize_cost,
+)
 from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
-from seatunnel_agent.common.utils import normalize_lang
-from seatunnel_agent.common.utils import cjk_font_family
+from seatunnel_agent.common.utils import cjk_font_family, normalize_lang
 
 _DAY_CHOICES = [7, 14, 30, 90]
 
@@ -86,7 +91,7 @@ def _cost_figure(summary: dict, lang: str, budget: float | None = None):
         bottom = [b + v for b, v in zip(bottom, vals)]
     ax.set_ylabel("USD")
     fam = cjk_font_family()
-    font_kw = {"fontfamily": fam} if fam else {}
+    font_kw: dict[str, Any] = {"fontfamily": fam} if fam else {}
     if budget and budget > 0 and summary.get("days"):
         daily = budget / summary["days"]
         ax.axhline(daily, color="#9ca3af", linestyle="--", linewidth=1)
@@ -97,7 +102,7 @@ def _cost_figure(summary: dict, lang: str, budget: float | None = None):
     ax.legend(fontsize=7)
     for lbl in ax.get_xticklabels():
         lbl.set_rotation(30)
-        lbl.set_ha("right")
+        lbl.set_horizontalalignment("right")
         lbl.set_fontsize(7)
     fig.tight_layout()
     return fig
@@ -118,12 +123,12 @@ def _tokens_figure(summary: dict, lang: str):
     ax.bar(models, out, bottom=inp, color="#f59e0b", label="output")
     ax.set_ylabel("tokens")
     fam = cjk_font_family()
-    ax.set_title(_t(lang, "chart_tokens"),
-                 **({"fontfamily": fam} if fam else {}))
+    font_kw: dict[str, Any] = {"fontfamily": fam} if fam else {}
+    ax.set_title(_t(lang, "chart_tokens"), **font_kw)
     ax.legend(fontsize=8)
     for lbl in ax.get_xticklabels():
         lbl.set_rotation(20)
-        lbl.set_ha("right")
+        lbl.set_horizontalalignment("right")
         lbl.set_fontsize(7)
     fig.tight_layout()
     return fig
@@ -147,7 +152,7 @@ def _price_table_md(lang: str) -> str:
 
 def render_llm_cost_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -221,9 +226,9 @@ def render_llm_cost_page(app: gr.Blocks) -> None:
         try:
             fig_cost = _cost_figure(s, lang, budget)
             fig_tok = _tokens_figure(s, lang)
-        except Exception:  # noqa: BLE001 — charts are optional (matplotlib)
+        except Exception:
             fig_cost = fig_tok = None
-        upd = lambda f: (gr.update(value=f, visible=True) if f is not None  # noqa: E731
+        upd = lambda f: (gr.update(value=f, visible=True) if f is not None
                          else gr.update(visible=False))
         csv_path = _csv_file(s)
         csv_upd = (gr.update(visible=True, value=csv_path,
@@ -243,7 +248,7 @@ def render_llm_cost_page(app: gr.Blocks) -> None:
             gr.update(label=_t(lang, "price_acc")),
         )
 
-    _refresh_io = {
+    _refresh_io: dict[str, Any] = {
         "inputs": [days_dd, budget_num, lang_state],
         "outputs": [summary_md, cost_plot, tokens_plot, price_md, csv_btn],
     }

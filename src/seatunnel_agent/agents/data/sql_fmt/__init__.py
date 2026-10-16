@@ -13,8 +13,8 @@ one makes every script look the same. No database, no LLM.
 from .formatter import (
     FmtFileResult,
     FmtResult,
-    format_text,
     fmt_dir,
+    format_text,
 )
 from .report import render_batch_markdown, render_markdown, result_to_dict
 

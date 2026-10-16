@@ -1,12 +1,12 @@
-# -*- coding: utf-8 -*-
 """Render PiiReport as markdown or a JSON-ready dict."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from .i18n import category_label, tp
 from seatunnel_agent.common.utils import normalize_lang
+
+from .i18n import category_label, tp
 from .scanner import PiiFinding, PiiReport
 
 _LEVEL_MARK = {"high": "⛔", "medium": "⚠️", "low": "🔵"}

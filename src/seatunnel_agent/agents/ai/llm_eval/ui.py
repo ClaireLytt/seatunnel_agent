@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the LLM eval harness.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -12,7 +11,13 @@ from pathlib import Path
 
 import gradio as gr
 
-from seatunnel_agent.agents.ai.llm_eval import RunLogger, compare, parse_suite, render_markdown, run_suite
+from seatunnel_agent.agents.ai.llm_eval import (
+    RunLogger,
+    compare,
+    parse_suite,
+    render_markdown,
+    run_suite,
+)
 from seatunnel_agent.agents.ai.llm_eval.report import normalize_lang
 from seatunnel_agent.common.page_scaffold import make_page_t, scroll_marker, title_row
 
@@ -100,7 +105,7 @@ def _trend_figure(runs: list[dict]):
 
 def render_llm_eval_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -140,7 +145,7 @@ def render_llm_eval_page(app: gr.Blocks) -> None:
             return _t(lang, "empty_suite")
         try:
             suite = parse_suite(suite_yaml)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
         agents = ", ".join(sorted({c.agent for c in suite.cases}))
         return _t(lang, "valid_ok").format(n=len(suite.cases), agents=agents)
@@ -155,7 +160,7 @@ def render_llm_eval_page(app: gr.Blocks) -> None:
             result = run_suite(suite, judge=judge)
             regression = compare(result, baseline)
             return render_markdown(result, lang, regression)
-        except Exception as exc:  # noqa: BLE001 — never crash the page
+        except Exception as exc:
             return f"⚠️ {type(exc).__name__}: {exc}"
 
     def do_trend(lang: str):
@@ -165,7 +170,7 @@ def render_llm_eval_page(app: gr.Blocks) -> None:
             return gr.update(visible=False)
         try:
             fig = _trend_figure(runs)
-        except Exception:  # noqa: BLE001 — chart is optional (matplotlib)
+        except Exception:
             fig = None
         return (gr.update(value=fig, visible=True) if fig is not None
                 else gr.update(visible=False))

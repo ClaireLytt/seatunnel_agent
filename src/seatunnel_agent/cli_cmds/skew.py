@@ -45,6 +45,7 @@ def skew(
 
     from seatunnel_agent.agents.data.data_skew.history import default_history
     from seatunnel_agent.agents.data.data_skew.report import Severity, render_report
+
     from ..common.utils import collect_sql_files
 
     # ── collect analysis targets ──
@@ -78,8 +79,9 @@ def skew(
     results = []  # (label, SkewReport, markdown)
     for label, text in sources:
         if use_llm:
-            from ..common.config import load_settings
             from seatunnel_agent.agents.data.data_skew.agent import DataSkewAgent
+
+            from ..common.config import load_settings
             try:
                 settings = load_settings()
             except RuntimeError as e:
@@ -277,7 +279,7 @@ def skew_splitkey(
     pct = effective_sample_pct(ds_type, sample)
     try:
         executor = create_executor(cfg)
-    except Exception as exc:  # noqa: BLE001 — connection failures
+    except Exception as exc:
         raise click.ClickException(f"连接失败: {exc}")
     history = default_history()
 
@@ -330,7 +332,7 @@ def skew_splitkey(
             executor, conf_text, ds_type=ds_type, sample_pct=pct)
     except SplitKeyError as exc:
         raise click.ClickException(_dsk(lang, exc.key).format(err=exc.arg))
-    except Exception as exc:  # noqa: BLE001 — query failures
+    except Exception as exc:
         raise click.ClickException(f"体检失败: {exc}")
 
     # previous checks of the same tables BEFORE logging this run — feeds

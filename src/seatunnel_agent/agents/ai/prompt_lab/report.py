@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Markdown rendering for prompt-lab matrices: metrics table, side-by-side
 outputs, and a unified diff between two cells."""
 
@@ -6,10 +5,9 @@ from __future__ import annotations
 
 import difflib
 
-from .runner import CellResult, MatrixResult
-
 from seatunnel_agent.common.utils import normalize_lang
 
+from .runner import CellResult, MatrixResult
 
 _I18N = {
     "en": {

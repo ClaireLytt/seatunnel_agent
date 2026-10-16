@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """LLM cost observability: pricing, aggregation, CLI gate, API.
 
 Fully offline — reads the committed demo fixture or tmp files only.
@@ -12,7 +11,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.ai.llm_cost import (
     builtin_prices,
     check_budget,
@@ -24,6 +22,7 @@ from seatunnel_agent.agents.ai.llm_cost import (
     summarize_cost,
 )
 from seatunnel_agent.agents.ai.llm_cost.aggregate import _find_anomalies
+from seatunnel_agent.cli import cli
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "llmcost_demo"
 USAGE = DEMO / "llm_usage_sample.jsonl"

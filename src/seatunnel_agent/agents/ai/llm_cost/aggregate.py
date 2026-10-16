@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Cost aggregation over the cross-agent LLM usage log.
 
 Reads the same JSONL that :mod:`seatunnel_agent.common.llm_usage` appends to
@@ -21,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from seatunnel_agent.common.llm_usage import usage_path
+
 from .pricing import PriceEntry, cost_usd, merged_prices
 
 ANOMALY_FACTOR = 2.0

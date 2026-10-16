@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """CI log triage core — cluster failures, spot flaky jobs, duration drift.
 
 Deterministic and offline.  Two independent inputs:

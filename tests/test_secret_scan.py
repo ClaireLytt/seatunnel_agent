@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Secret scanner: rules, masking, suppression, dir walk, CLI gate, API."""
 
 from __future__ import annotations
@@ -9,7 +8,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.devops.secret_scan import (
     ScanConfig,
     check_fail,
@@ -21,6 +19,7 @@ from seatunnel_agent.agents.devops.secret_scan import (
     scan_text,
 )
 from seatunnel_agent.agents.devops.secret_scan.rules import entropy_hit, is_placeholder
+from seatunnel_agent.cli import cli
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "secretscan_demo"
 

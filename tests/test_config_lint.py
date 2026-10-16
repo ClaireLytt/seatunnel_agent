@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the SeaTunnel config deep linter (config_lint).
 
 Deterministic only — no SeaTunnel installation, no database, no LLM.
@@ -12,7 +11,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.config_lint import (
     lint_dir,
     lint_file,
@@ -21,6 +19,7 @@ from seatunnel_agent.agents.data.config_lint import (
     render_markdown,
     result_to_dict,
 )
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 

@@ -1,12 +1,13 @@
-# -*- coding: utf-8 -*-
 """Render LintResult(s) as markdown or JSON-ready dicts."""
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
+
+from seatunnel_agent.common.utils import normalize_lang
 
 from .i18n import finding_message, tp
-from seatunnel_agent.common.utils import normalize_lang
 from .linter import LintFinding, LintResult
 
 _LEVEL_MARK = {"error": "⛔", "warn": "⚠️", "info": "ℹ️"}

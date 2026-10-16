@@ -5,6 +5,8 @@ name: tests
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -30,7 +32,7 @@ jobs:
         run: >
           python -m pytest tests/ -q
           --cov=seatunnel_agent --cov-report=term-missing:skip-covered
-          --cov-fail-under=63
+          --cov-fail-under=68
 
       # Retrieval regression gate (PRD §5.3): hybrid must never rank worse
       # than keyword-only on the labeled bench set.

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unit tests for the UI testing agent framework (no browser, no tokens)."""
 
 from __future__ import annotations
@@ -19,7 +18,6 @@ from seatunnel_agent.agents.devops.ui_testing.loader import (
 )
 from seatunnel_agent.agents.devops.ui_testing.models import Assertion, Step
 from seatunnel_agent.agents.devops.ui_testing.seed_sqlite import SEED, seed_sqlite
-
 
 # ── loader ──
 
@@ -300,7 +298,10 @@ class TestAgentLoop:
         assert not log.ok and "找不到按钮" in log.detail
 
     def test_round_cap(self):
-        from seatunnel_agent.agents.devops.ui_testing.agent import MAX_ROUNDS, run_ai_step
+        from seatunnel_agent.agents.devops.ui_testing.agent import (
+            MAX_ROUNDS,
+            run_ai_step,
+        )
         llm = self._llm([
             self._resp([self._tc("read_page", {})])] * (MAX_ROUNDS + 1))
         dc = MagicMock()
@@ -350,7 +351,7 @@ class TestCoverage:
         assert counts["missing"] <= 8
         # beyond-checklist extras never collide with checklist ids
         checklist_ids = {r.item_id.upper() for r in cov.rows}
-        assert not (set(x.upper() for x in cov.extra_case_ids) & checklist_ids)
+        assert not ({x.upper() for x in cov.extra_case_ids} & checklist_ids)
         assert "SR1" in cov.extra_case_ids       # sanity: SR group is extra
 
     def test_absent_checklist_returns_none(self, tmp_path):
@@ -580,12 +581,17 @@ class TestSelfHeal:
         self._reset()
 
     def test_digest_gate_blocks_hallucination(self):
-        from seatunnel_agent.agents.devops.ui_testing.diagnose import suggest_locator_struct
+        from seatunnel_agent.agents.devops.ui_testing.diagnose import (
+            suggest_locator_struct,
+        )
         llm = self._llm(label="Ghost Button")   # not in the digest below
         assert suggest_locator_struct("旧按钮", "[BUTTONS] New Label", llm) is None
 
     def test_labels_patch_lines(self):
-        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.agents.devops.ui_testing.models import (
+            CaseResult,
+            RunResult,
+        )
         from seatunnel_agent.agents.devops.ui_testing.report import _labels_patch_lines
         rr = RunResult(started_at="t", suite="smoke", cases=[
             CaseResult("H1", "t", "HEALED", healed=["连接 -> Connect Now"]),
@@ -595,7 +601,10 @@ class TestSelfHeal:
         assert "healed: H1" in line
 
     def test_labels_patch_escapes_quotes(self):
-        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.agents.devops.ui_testing.models import (
+            CaseResult,
+            RunResult,
+        )
         from seatunnel_agent.agents.devops.ui_testing.report import _labels_patch_lines
         rr = RunResult(started_at="t", suite="smoke", cases=[
             CaseResult("H1", "t", "HEALED", healed=['连接 -> Say "Hi"']),
@@ -648,8 +657,14 @@ class TestSelfHeal:
         self._reset()
 
     def test_healed_counts_and_flaky_normalization(self):
-        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
-        from seatunnel_agent.agents.devops.ui_testing.rundiff import CaseDelta, flaky_trend
+        from seatunnel_agent.agents.devops.ui_testing.models import (
+            CaseResult,
+            RunResult,
+        )
+        from seatunnel_agent.agents.devops.ui_testing.rundiff import (
+            CaseDelta,
+            flaky_trend,
+        )
         rr = RunResult(started_at="t", suite="smoke", cases=[
             CaseResult("H1", "t", "HEALED")])
         assert rr.counts()["HEALED"] == 1
@@ -680,10 +695,15 @@ class TestFlakyTrend:
             "\n".join(json.dumps(r) for r in rows), encoding="utf-8")
 
     def test_history_roundtrip_and_trend(self, tmp_path):
-        from seatunnel_agent.agents.devops.ui_testing.models import CaseResult, RunResult
+        from seatunnel_agent.agents.devops.ui_testing.models import (
+            CaseResult,
+            RunResult,
+        )
         from seatunnel_agent.agents.devops.ui_testing.report import append_history
         from seatunnel_agent.agents.devops.ui_testing.rundiff import (
-            flaky_trend, load_history)
+            flaky_trend,
+            load_history,
+        )
         rr = RunResult(started_at="20260101_000000", suite="smoke")
         rr.cases = [CaseResult("A1", "t", "PASS"),
                     CaseResult("B1", "t", "FAIL"),
@@ -713,7 +733,10 @@ class TestFlakyTrend:
 
     def test_format_trend_marks_flaky(self, tmp_path):
         from seatunnel_agent.agents.devops.ui_testing.rundiff import (
-            flaky_trend, format_trend, load_history)
+            flaky_trend,
+            format_trend,
+            load_history,
+        )
         self._hist(tmp_path, [
             {"ts": "1", "suite": "s", "verdicts": {"A1": "PASS", "B1": "PASS"}},
             {"ts": "2", "suite": "s", "verdicts": {"A1": "ERROR", "B1": "PASS"}},
@@ -779,3 +802,97 @@ def test_expand_assert_remaps_yaml_on_key():
     a = _expand_assert({"enabled": {"target": "x", True: False}}, "ctx")
     assert a.args.get("on") is False
     assert True not in a.args
+
+
+# ── click_css / click_cell actions ──
+
+class TestClickCssCell:
+    def test_shorthand_click_css(self):
+        steps = ldr._expand_step({"click_css": ".st-hist tbody td"}, {}, "t")
+        assert steps[0].action == "click_css"
+        assert steps[0].args == {"target": ".st-hist tbody td"}
+
+    def test_shorthand_click_cell_text(self):
+        steps = ldr._expand_step({"click_cell": "orders"}, {}, "t")
+        assert steps[0].action == "click_cell"
+        assert steps[0].args == {"target": "orders"}
+
+    def test_click_cell_mapping(self):
+        steps = ldr._expand_step(
+            {"click_cell": {"table": "#hist-table", "text": "orders"}}, {}, "t")
+        assert steps[0].args == {"table": "#hist-table", "text": "orders"}
+
+    def test_dispatch_click_css(self):
+        from seatunnel_agent.agents.devops.ui_testing.actions import (
+            run_script_step,
+        )
+        dc = MagicMock()
+        log = run_script_step(
+            Step(action="click_css", args={"target": ".x button"}), dc)
+        assert log.ok
+        dc.click_css.assert_called_once_with(".x button")
+
+    def test_dispatch_click_cell(self):
+        from seatunnel_agent.agents.devops.ui_testing.actions import (
+            run_script_step,
+        )
+        dc = MagicMock()
+        log = run_script_step(
+            Step(action="click_cell",
+                 args={"text": "orders", "table": "#t"}), dc)
+        assert log.ok
+        dc.click_cell.assert_called_once_with("orders", "#t")
+
+    def test_dispatch_click_cell_shorthand_target(self):
+        from seatunnel_agent.agents.devops.ui_testing.actions import (
+            run_script_step,
+        )
+        dc = MagicMock()
+        log = run_script_step(
+            Step(action="click_cell", args={"target": "orders"}), dc)
+        assert log.ok
+        dc.click_cell.assert_called_once_with("orders", None)
+
+    def _dcp(self, page):
+        from seatunnel_agent.agents.devops.ui_testing.page import DCPage
+        return DCPage(page, "http://x")
+
+    def test_page_click_css_filters_visible(self):
+        page = MagicMock()
+        loc = page.locator.return_value
+        loc.count.return_value = 1
+        self._dcp(page).click_css("tbody tr")
+        # must append visible=true so Gradio 6 Dataframe's hidden
+        # measurement rows are skipped (docs/pitfalls.md)
+        page.locator.assert_called_once_with("tbody tr >> visible=true")
+        loc.first.click.assert_called_once()
+
+    def test_page_click_css_not_found(self):
+        page = MagicMock()
+        page.locator.return_value.count.return_value = 0
+        with pytest.raises(LookupError, match="no visible element"):
+            self._dcp(page).click_css(".nope")
+
+    def test_page_click_cell_clicks_match(self):
+        page = MagicMock()
+        cells = page.locator.return_value
+        hit = cells.filter.return_value
+        hit.count.return_value = 1
+        self._dcp(page).click_cell("orders")
+        cells.filter.assert_called_once_with(has_text="orders")
+        hit.first.click.assert_called_once()
+
+    def test_page_click_cell_not_found(self):
+        page = MagicMock()
+        page.locator.return_value.filter.return_value.count.return_value = 0
+        with pytest.raises(LookupError, match="no visible cell"):
+            self._dcp(page).click_cell("nope")
+
+    def test_page_click_cell_scoped_to_table(self):
+        page = MagicMock()
+        scope = page.locator.return_value.first
+        scope.locator.return_value.filter.return_value.count.return_value = 1
+        self._dcp(page).click_cell("orders", "#hist")
+        page.locator.assert_called_once_with("#hist >> visible=true")
+        scope.locator.return_value.filter.assert_called_once_with(
+            has_text="orders")

@@ -6,7 +6,8 @@ import json
 import re
 import threading
 import time as _time
-from dataclasses import asdict, dataclass, field, fields as dc_fields
+from dataclasses import asdict, dataclass, field
+from dataclasses import fields as dc_fields
 from pathlib import Path
 from typing import Any
 

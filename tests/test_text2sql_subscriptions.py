@@ -113,6 +113,63 @@ def test_store_validation(tmp_path) -> None:
         store.add(name="x", cron="0 9 * * *", source_type="weird")
 
 
+def test_store_refuses_to_overwrite_corrupt_file(tmp_path) -> None:
+    path = tmp_path / "subs.json"
+    corrupt = '{"broken": [truncated'
+    path.write_text(corrupt, encoding="utf-8")
+    store = SubscriptionStore(path)
+    with pytest.raises(ValueError, match="subs.json"):
+        store.add(name="x", cron="0 9 * * *", source_type="metric", metric="m")
+    # the corrupt file must not have been overwritten
+    assert path.read_text(encoding="utf-8") == corrupt
+    # read-only access stays lenient
+    assert store.list() == []
+
+
+_INTERLEAVE_WORKER = """
+import sys
+from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore
+store = SubscriptionStore(sys.argv[1])
+for i in range(int(sys.argv[3])):
+    store.add(name=f"sub-{sys.argv[2]}-{i}", cron="0 9 * * *",
+              source_type="metric", metric="m")
+"""
+
+
+def test_store_interleaved_cross_process_writes_lose_nothing(tmp_path) -> None:
+    """Two real processes hammering add() concurrently: without a
+    cross-process lock the read-modify-write races drop entries."""
+    import subprocess
+    import sys
+
+    path = str(tmp_path / "subs.json")
+    n = 25
+    procs = [
+        subprocess.Popen([sys.executable, "-c", _INTERLEAVE_WORKER,
+                          path, tag, str(n)])
+        for tag in ("a", "b")
+    ]
+    for p in procs:
+        assert p.wait(timeout=120) == 0
+    names = {e["name"] for e in SubscriptionStore(path).list()}
+    assert len(names) == 2 * n, f"lost {2 * n - len(names)} entries"
+
+
+def test_store_write_lock_timeout_raises(tmp_path) -> None:
+    from seatunnel_agent.common.filelock import FileLockTimeout, file_lock
+
+    path = tmp_path / "subs.json"
+    store = SubscriptionStore(path, lock_timeout=0.3)
+    with file_lock(path):  # simulate another process holding the lock
+        with pytest.raises(FileLockTimeout, match="file lock"):
+            store.add(name="x", cron="0 9 * * *",
+                      source_type="metric", metric="m")
+    # lock released -> write succeeds again
+    entry = store.add(name="x", cron="0 9 * * *",
+                      source_type="metric", metric="m")
+    assert store.get(entry["id"]) is not None
+
+
 def test_store_env_path(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("T2S_SUBSCRIPTIONS_PATH", str(tmp_path / "env.json"))
     store = SubscriptionStore()
@@ -419,6 +476,74 @@ def test_scheduler_fires_once_per_minute(tmp_path) -> None:
     assert runs == [entry["id"], entry["id"]]
     assert store.get(entry["id"])["last_status"] == "success"
     assert off_id not in runs
+
+
+def test_scheduler_catches_up_minutes_missed_by_slow_run(tmp_path) -> None:
+    """A slow run_fn can push the next tick past a whole minute; the cron
+    fire due in that skipped minute must be made up on the next check."""
+    store = SubscriptionStore(tmp_path / "subs.json")
+    slow = store.add(name="slow", cron="30 9 * * *", source_type="metric",
+                     metric="gmv")
+    missed = store.add(name="missed", cron="31 9 * * *", source_type="metric",
+                       metric="gmv")
+
+    runs: list[str] = []
+
+    def fake_run(sub):
+        runs.append(sub["id"])
+        return {"status": "success", "error": ""}
+
+    sched = Scheduler(store=store, run_fn=fake_run)
+    assert sched.check_once(datetime(2026, 3, 2, 9, 30, 10)) == [slow["id"]]
+    # the slow run stalled the loop: the next tick lands at 9:32, having
+    # never observed any 9:31 timestamp
+    fired = sched.check_once(datetime(2026, 3, 2, 9, 32, 10))
+    assert missed["id"] in fired, "9:31 cron silently dropped"
+    # the catch-up must not double-fire anything
+    assert runs.count(missed["id"]) == 1
+    assert runs.count(slow["id"]) == 1
+    assert sched.check_once(datetime(2026, 3, 2, 9, 32, 30)) == []
+
+
+def test_scheduler_catchup_window_param(tmp_path) -> None:
+    """catchup_minutes=2 replays only the 2 most recent missed minutes."""
+    store = SubscriptionStore(tmp_path / "subs.json")
+    store.add(name="every", cron="* * * * *", source_type="metric", metric="gmv")
+
+    runs: list[str] = []
+
+    def fake_run(sub):
+        runs.append(sub["id"])
+        return {"status": "success", "error": ""}
+
+    sched = Scheduler(store=store, run_fn=fake_run, catchup_minutes=2)
+    sched.check_once(datetime(2026, 3, 2, 9, 0, 10))
+    runs.clear()
+    # stall: next tick is 6 minutes later → 5 missed minutes + current;
+    # only 2 missed + current may fire
+    sched.check_once(datetime(2026, 3, 2, 9, 6, 10))
+    assert len(runs) == 3
+
+
+def test_scheduler_catchup_window_env(tmp_path, monkeypatch) -> None:
+    """SEATUNNEL_SUB_CATCHUP_MINUTES overrides the default; bad/out-of-range
+    values are clamped or fall back to the default."""
+    store = SubscriptionStore(tmp_path / "subs.json")
+    monkeypatch.setenv("SEATUNNEL_SUB_CATCHUP_MINUTES", "1")
+    sched = Scheduler(store=store, run_fn=lambda s: {"status": "success"})
+    assert sched.catchup_minutes == 1
+    # explicit constructor arg wins over env
+    assert Scheduler(store=store, catchup_minutes=5).catchup_minutes == 5
+    # clamping: below 0 → 0, above 1440 → 1440
+    monkeypatch.setenv("SEATUNNEL_SUB_CATCHUP_MINUTES", "-3")
+    assert Scheduler(store=store).catchup_minutes == 0
+    monkeypatch.setenv("SEATUNNEL_SUB_CATCHUP_MINUTES", "99999")
+    assert Scheduler(store=store).catchup_minutes == 1440
+    # non-numeric → default 10
+    monkeypatch.setenv("SEATUNNEL_SUB_CATCHUP_MINUTES", "oops")
+    assert Scheduler(store=store).catchup_minutes == 10
+    monkeypatch.delenv("SEATUNNEL_SUB_CATCHUP_MINUTES")
+    assert Scheduler(store=store).catchup_minutes == 10
 
 
 def test_scheduler_survives_bad_cron(tmp_path) -> None:

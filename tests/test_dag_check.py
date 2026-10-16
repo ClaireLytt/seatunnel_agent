@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the scheduling DAG health checker (dag_check).
 
 Deterministic only — no scheduler, no database, no LLM.
@@ -12,7 +11,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
 from seatunnel_agent.agents.data.dag_check import (
     check_graph,
     check_sql_dir,
@@ -21,6 +19,7 @@ from seatunnel_agent.agents.data.dag_check import (
 )
 from seatunnel_agent.agents.data.dag_check.checker import _layer_of
 from seatunnel_agent.agents.data.data_lineage.graph import LineageGraph
+from seatunnel_agent.cli import cli
 
 runner = CliRunner()
 

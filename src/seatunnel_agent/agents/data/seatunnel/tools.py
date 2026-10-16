@@ -22,8 +22,9 @@ MAX_BATCH_CONFIGS = env_int("MAX_BATCH_CONFIGS", 20)
 # Tool JSON schemas (sent to Claude)
 # ---------------------------------------------------------------------------
 
-from seatunnel_agent.agents.data.seatunnel.tool_schemas import TOOL_DEFINITIONS  # noqa: F401 — re-exported
-
+from seatunnel_agent.agents.data.seatunnel.tool_schemas import (
+    TOOL_DEFINITIONS,  # noqa: F401 — re-exported
+)
 
 # ---------------------------------------------------------------------------
 # Tool executor functions
@@ -400,7 +401,7 @@ def _test_connection(settings: Settings, host: str, port: int, service_type: str
             "latency_ms": latency_ms,
             "message": f"{label}{host}:{port} is reachable ({latency_ms}ms)",
         })
-    except (socket.timeout, socket.error, OSError) as e:
+    except (TimeoutError, OSError) as e:
         return safe_json({
             "reachable": False,
             "host": host,

@@ -5,10 +5,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from seatunnel_agent.common.config import Settings
-from seatunnel_agent.common.llm import LLMClient, LLMResponse, ToolCall, _convert_tools_to_openai
 from seatunnel_agent.agents.data.seatunnel.tools import TOOL_DEFINITIONS
-
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import (
+    LLMClient,
+    LLMResponse,
+    ToolCall,
+    _convert_tools_to_openai,
+)
 
 ANTHROPIC_SETTINGS = Settings(
     api_key="sk-test",
@@ -197,8 +201,7 @@ class TestCallOpenAI:
     def _make_client(self):
         mock_openai = MagicMock()
         with patch.dict("sys.modules", {"openai": mock_openai}):
-            client = LLMClient(OPENAI_SETTINGS)
-        return client
+            return LLMClient(OPENAI_SETTINGS)
 
     def test_plain_response(self):
         client = self._make_client()
@@ -267,8 +270,7 @@ class TestConvertMessage:
     def _make_client(self):
         mock_openai = MagicMock()
         with patch.dict("sys.modules", {"openai": mock_openai}):
-            client = LLMClient(OPENAI_SETTINGS)
-        return client
+            return LLMClient(OPENAI_SETTINGS)
 
     def test_user_message(self):
         client = self._make_client()
@@ -314,6 +316,32 @@ class TestLLMResponseUsage:
         result = client._call_anthropic("system", [{"role": "user", "content": "hi"}])
         assert result.usage["input_tokens"] == 100
         assert result.usage["output_tokens"] == 50
+
+    def test_anthropic_multiple_text_blocks_accumulated(self):
+        mock_anthropic = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": mock_anthropic}):
+            client = LLMClient(ANTHROPIC_SETTINGS)
+
+        think1 = MagicMock()
+        think1.type = "thinking"
+        think1.thinking = "step one. "
+        think2 = MagicMock()
+        think2.type = "thinking"
+        think2.thinking = "step two."
+        text1 = MagicMock()
+        text1.type = "text"
+        text1.text = "Part one. "
+        text2 = MagicMock()
+        text2.type = "text"
+        text2.text = "Part two."
+        response = MagicMock()
+        response.content = [think1, think2, text1, text2]
+        response.stop_reason = "end_turn"
+        client._client.messages.create = MagicMock(return_value=response)
+
+        result = client._call_anthropic("system", [{"role": "user", "content": "hi"}])
+        assert result.reply_text == "Part one. Part two."
+        assert result.thinking_text == "step one. step two."
 
     def test_usage_from_openai(self):
         mock_openai = MagicMock()

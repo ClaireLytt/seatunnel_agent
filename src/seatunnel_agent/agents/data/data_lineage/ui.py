@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the data lineage agent.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -15,7 +14,6 @@ import time
 
 import gradio as gr
 
-from seatunnel_agent.common.config import load_settings
 from seatunnel_agent.agents.data.data_lineage import (
     LineageAgent,
     LineageGraph,
@@ -31,8 +29,6 @@ from seatunnel_agent.agents.data.data_lineage import (
     render_sla_impact,
     static_lineage,
 )
-from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import SQL_DIALECTS
-from seatunnel_agent.common.page_scaffold import title_row
 from seatunnel_agent.agents.data.data_lineage.snapshot import (
     diff_graphs,
     list_snapshots,
@@ -40,6 +36,9 @@ from seatunnel_agent.agents.data.data_lineage.snapshot import (
     render_diff_markdown,
     save_snapshot,
 )
+from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import SQL_DIALECTS
+from seatunnel_agent.common.config import load_settings
+from seatunnel_agent.common.page_scaffold import title_row
 from seatunnel_agent.hub.ui import EventCollector
 
 _logger = LineageLogger()
@@ -282,7 +281,7 @@ def _fmt_agent_events(events: list[dict], lang: str) -> str:
 
 def render_lineage_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _lt(lang0, k)  # noqa: E731
+    t = lambda k: _lt(lang0, k)
 
     lang_state = gr.State(lang0)
     graph_state = gr.State(None)  # LineageGraph | None
@@ -399,7 +398,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
                 seatunnel_dir=st_dir or None,
                 sql_dialect=sql_dialect or "hive",
             )
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return None, _err_md(exc, lang), gr.update(), gr.update()
         stats = graph.stats()
         lines = [_lt(lang, "built_stats").format(
@@ -449,7 +448,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
                 graph, table, direction, int(depth),
                 (column or "").strip() or None, lang,
             )
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return _no_graph_html(lang), _err_md(exc, lang), ""
 
     def do_node_jump(graph: LineageGraph | None, table: str, direction: str,
@@ -462,7 +461,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
             frame, report, src = _query_core(
                 graph, table, direction, int(depth), None, lang,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return gr.update(value=table), gr.update(), _err_md(exc, lang), gr.update()
         return gr.update(value=table), frame, report, src
 
@@ -526,7 +525,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
             return _lt(lang, "need_graph"), gr.update()
         try:
             path = save_snapshot(graph, name=(name or "").strip())
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return _err_md(exc, lang), gr.update()
         return (
             _lt(lang, "snap_saved").format(file=path.name),
@@ -544,7 +543,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
             if old is None:
                 return _lt(lang, "snap_not_found").format(snap=snap)
             return render_diff_markdown(diff_graphs(old, graph))
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return _err_md(exc, lang)
 
     def do_search(graph: LineageGraph | None, keyword: str, lang: str):
@@ -591,7 +590,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
                 )
                 result["answer"] = agent.analyze(question)
                 result["mermaid"] = agent.runtime.last_mermaid
-            except Exception as exc:  # noqa: BLE001 — surfaced in the UI below
+            except Exception as exc:
                 result["error"] = exc
             finally:
                 done.set()
@@ -615,7 +614,7 @@ def render_lineage_page(app: gr.Blocks) -> None:
 
     def switch_lang(choice: str, direction_value: str):
         lang = "zh" if choice == "中文" else "en"
-        s = lambda k: _lt(lang, k)  # noqa: E731
+        s = lambda k: _lt(lang, k)
         return (
             lang,
             gr.update(value=s("title")),

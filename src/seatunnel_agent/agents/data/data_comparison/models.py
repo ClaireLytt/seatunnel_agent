@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Result dataclasses for the data comparison engine.
 
 Moved verbatim out of comparator.py; comparator re-exports every name so
@@ -10,7 +9,6 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, field
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -275,7 +273,7 @@ class CompareReport:
         return container_cls(**d, items=items)
 
     @classmethod
-    def from_dict(cls, d: dict) -> "CompareReport":
+    def from_dict(cls, d: dict) -> CompareReport:
         """Reconstruct from a dict produced by ``to_dict``.
 
         Safe to call multiple times on the same dict — input is never mutated.

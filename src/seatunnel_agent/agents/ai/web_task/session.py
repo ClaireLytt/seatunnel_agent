@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Browser session for the web-task agent.
 
 Wraps Playwright behind the four primitives the agent needs — snapshot /
@@ -10,6 +9,8 @@ caller explicitly allows external sites.
 
 from __future__ import annotations
 
+import ipaddress
+import socket
 from typing import Any
 from urllib.parse import urlparse
 
@@ -24,13 +25,67 @@ def _origin(url: str) -> str:
     return f"{p.scheme}://{p.netloc}".lower()
 
 
+def validate_start_url(url: str, allow_private: bool = False) -> None:
+    """Guard the session's first navigation: http/https only, and private /
+    loopback / link-local targets are rejected unless the caller explicitly
+    opts in. Literal IP hosts are judged directly; domain names are resolved
+    once via ``socket.getaddrinfo`` and rejected if ANY resolved address is
+    private. Resolution failures (NXDOMAIN, timeout) do NOT reject — the
+    browser will surface its own error, and offline scenarios must not be
+    blocked here.
+
+    Known TOCTOU limitation: DNS can change between this check and the
+    browser's own resolution (rebinding), so this is best-effort hardening,
+    not a complete SSRF guarantee. Raises ValueError."""
+    p = urlparse(url)
+    if p.scheme.lower() not in ("http", "https"):
+        raise ValueError(
+            f"start URL must be http(s), got scheme {p.scheme or '(none)'!r}"
+        )
+    host = p.hostname or ""
+    if not host:
+        raise ValueError("start URL has no host")
+    if allow_private:
+        return
+
+    def _reject_if_private(ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+                           label: str) -> None:
+        if (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_reserved or ip.is_unspecified):
+            raise ValueError(
+                f"start URL points at a private/loopback address ({label}); "
+                "pass allow_private=True to permit it explicitly"
+            )
+
+    try:
+        literal = ipaddress.ip_address(host)
+    except ValueError:
+        pass  # a domain name — resolve it below
+    else:
+        _reject_if_private(literal, host)
+        return
+    try:
+        infos = socket.getaddrinfo(host, p.port or 80,
+                                   proto=socket.IPPROTO_TCP)
+    except OSError:
+        return  # unresolvable here — let the browser report it
+    for info in infos:
+        addr = info[4][0]
+        try:
+            resolved = ipaddress.ip_address(addr)
+        except ValueError:
+            continue
+        _reject_if_private(resolved, f"{host} -> {addr}")
+
+
 class PlaywrightSession:
     """Real browser; create via ``start()``, always ``close()``."""
 
     def __init__(self, allow_external: bool = False,
-                 headed: bool = False) -> None:
+                 headed: bool = False, allow_private: bool = False) -> None:
         self.allow_external = allow_external
         self.headed = headed
+        self.allow_private = allow_private
         self._pw: Any = None
         self._browser: Any = None
         self.page: Any = None
@@ -38,6 +93,7 @@ class PlaywrightSession:
         self.origin = ""
 
     def start(self, url: str) -> None:
+        validate_start_url(url, allow_private=self.allow_private)
         from playwright.sync_api import sync_playwright
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(headless=not self.headed)
@@ -50,7 +106,7 @@ class PlaywrightSession:
                        lambda: self._pw.stop()):
             try:
                 closer()
-            except Exception:  # noqa: BLE001 — teardown is best-effort
+            except Exception:
                 pass
 
     # ── agent primitives ────────────────────────────────────────────────
@@ -63,7 +119,7 @@ class PlaywrightSession:
             try:
                 if not el.is_visible():
                     continue
-            except Exception:  # noqa: BLE001 — detached node
+            except Exception:
                 continue
             idx = len(self._handles)
             self._handles.append(el)

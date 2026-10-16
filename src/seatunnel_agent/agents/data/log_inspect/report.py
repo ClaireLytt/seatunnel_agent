@@ -1,13 +1,13 @@
-# -*- coding: utf-8 -*-
 """Render InspectReport as markdown or a JSON-ready dict."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from seatunnel_agent.common.utils import normalize_lang
+
 from .clusterer import InspectReport, LogCluster
 from .i18n import tp
-from seatunnel_agent.common.utils import normalize_lang
 
 _LEVEL_MARK = {"error": "⛔", "warn": "⚠️"}
 

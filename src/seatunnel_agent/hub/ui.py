@@ -8,16 +8,9 @@ from __future__ import annotations
 
 import gradio as gr
 
-from seatunnel_agent.hub.pages import (  # noqa: F401 — re-exported for back-compat
-    _build_ai_hub_html,
-    _build_data_hub_html,
-    _build_devops_hub_html,
-    _build_landing_html,
-    _mount_hub,
-)
 from seatunnel_agent.agents.data.seatunnel.ui import (  # noqa: F401 — re-exported for back-compat
-    EventCollector,
     _TOOL_EMOJI,
+    EventCollector,
     _build_template_choices,
     _export_session,
     _format_events_as_chat,
@@ -25,8 +18,16 @@ from seatunnel_agent.agents.data.seatunnel.ui import (  # noqa: F401 — re-expo
     _render_seatunnel_page,
     _template_to_prompt,
 )
-from seatunnel_agent.hub.css import _CUSTOM_CSS  # noqa: F401 — re-exported for back-compat
-
+from seatunnel_agent.hub.css import (
+    _CUSTOM_CSS,
+)
+from seatunnel_agent.hub.pages import (
+    _build_ai_hub_html,
+    _build_data_hub_html,
+    _build_devops_hub_html,
+    _build_landing_html,
+    _mount_hub,
+)
 
 # Drag-to-resize for the left sidebar: restores the saved width, appends a
 # handle to .st-page-row (not inside .st-sidebar — sidebar_fix.js forces
@@ -106,12 +107,6 @@ def create_ui() -> gr.Blocks:
     from seatunnel_agent.common import settings_store
     settings_store.apply_to_env()
 
-    from seatunnel_agent.agents.data.text2sql.ui import render_text2sql_page, render_history_page, render_favorites_page, render_schema_browser_page
-    from seatunnel_agent.agents.data.data_comparison.ui import render_data_comparison_page
-    from seatunnel_agent.agents.data.sql_review.ui import render_sql_review_page
-    from seatunnel_agent.agents.data.data_skew.ui import render_data_skew_page
-    from seatunnel_agent.agents.data.mcp_toolbox.ui import render_mcp_page
-
     _hide_sub_nav_js = """
     () => {
         function hide() {
@@ -163,104 +158,26 @@ def create_ui() -> gr.Blocks:
     with app.route("DevOps", "/devops"):
         _mount_hub(app, _build_devops_hub_html)
 
-    with app.route("SeaTunnel", "/seatunnel"):
-        _render_seatunnel_page(app)
-        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
-
-    with app.route("Text2SQL", "/text2sql"):
-        render_text2sql_page(app)
-        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
-
-    with app.route("Query History", "/history"):
-        render_history_page(app)
-
-    with app.route("SQL Favorites", "/favorites"):
-        render_favorites_page(app)
-
-    with app.route("Schema Browser", "/schema-browser"):
-        render_schema_browser_page(app)
-
-    with app.route("Data Comparison", "/datacompare"):
-        render_data_comparison_page(app)
-        app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
-
-    with app.route("SQL Review", "/sqlreview"):
-        render_sql_review_page(app)
-
-    with app.route("Lineage", "/lineage"):
-        from seatunnel_agent.agents.data.data_lineage.ui import render_lineage_page
-        render_lineage_page(app)
-
-    with app.route("SQL Transpile", "/transpile"):
-        from seatunnel_agent.agents.data.sql_transpile.ui import render_sql_transpile_page
-        render_sql_transpile_page(app)
-
-    with app.route("Change Impact", "/impact"):
-        from seatunnel_agent.agents.data.data_lineage.ui_impact import render_impact_page
-        render_impact_page(app)
-
-    with app.route("Config Migrate", "/migrate"):
-        from seatunnel_agent.agents.data.config_migrate.ui import render_config_migrate_page
-        render_config_migrate_page(app)
-
-    with app.route("UI Testing", "/uitest"):
-        from seatunnel_agent.agents.devops.ui_testing.gradio_page import render_uitest_page
-        render_uitest_page(app)
-
     with app.route("Settings", "/settings"):
         from seatunnel_agent.hub.settings_ui import render_settings_page
         render_settings_page(app)
 
-    with app.route("Data Skew", "/dataskew"):
-        render_data_skew_page(app)
-
-    with app.route("PII Scan", "/pii"):
-        from seatunnel_agent.agents.data.pii_scan.ui import render_pii_page
-        render_pii_page(app)
-
-    with app.route("Log Inspect", "/loginspect"):
-        from seatunnel_agent.agents.data.log_inspect.ui import render_log_inspect_page
-        render_log_inspect_page(app)
-
-    with app.route("Schema Drift", "/schemadrift"):
-        from seatunnel_agent.agents.data.schema_drift.ui import render_schema_drift_page
-        render_schema_drift_page(app)
-
-    with app.route("Test Data", "/testgen"):
-        from seatunnel_agent.agents.data.sql_testgen.ui import render_sql_testgen_page
-        render_sql_testgen_page(app)
-
-    with app.route("Config Lint", "/conflint"):
-        from seatunnel_agent.agents.data.config_lint.ui import render_config_lint_page
-        render_config_lint_page(app)
-
-    with app.route("DAG Check", "/dagcheck"):
-        from seatunnel_agent.agents.data.dag_check.ui import render_dag_check_page
-        render_dag_check_page(app)
-
-    with app.route("Metric Diff", "/metricdiff"):
-        from seatunnel_agent.agents.data.metric_diff.ui import render_metric_diff_page
-        render_metric_diff_page(app)
-
-    with app.route("SQL Format", "/sqlfmt"):
-        from seatunnel_agent.agents.data.sql_fmt.ui import render_sql_fmt_page
-        render_sql_fmt_page(app)
-
-    with app.route("MCP Toolbox", "/mcp"):
-        render_mcp_page(app)
-
     # plugin pages: every seatunnel_agent.<pkg>.manifest registers itself
     from seatunnel_agent.hub.registry import discover, resolve
+    sidebar_resize = {"/seatunnel", "/text2sql", "/datacompare"}
     for mf in discover():
         with app.route(mf.page_title, mf.route):
             resolve(mf.render)(app)
+            if mf.route in sidebar_resize:
+                app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
 
     return app
 
 
 def _kill_port(port: int) -> bool:
     """Kill whatever process is listening on *port*. Returns True if killed."""
-    import subprocess, sys
+    import subprocess
+    import sys
     if sys.platform != "win32":
         r = subprocess.run(
             ["lsof", "-ti", f":{port}"], capture_output=True, text=True,
@@ -283,7 +200,8 @@ def _kill_port(port: int) -> bool:
 
 def _port_has_listener(port: int) -> bool:
     """Check if a process is actually LISTENING on *port* (not TIME_WAIT)."""
-    import subprocess, sys
+    import subprocess
+    import sys
     if sys.platform == "win32":
         r = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
         return any(f":{port}" in ln and "LISTENING" in ln for ln in r.stdout.splitlines())
@@ -292,13 +210,52 @@ def _port_has_listener(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
-def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False) -> None:
+_LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
+
+def _resolve_ui_auth(host: str, share: bool, insecure: bool) -> tuple[str, str] | None:
+    """Credentials for a non-loopback/share launch, or None for no auth.
+
+    Loopback without --share never requires auth. Otherwise the UI is
+    reachable from the network, so require SEATUNNEL_UI_AUTH (``user:pass``)
+    unless --insecure explicitly waives it.
+    """
+    if host in _LOOPBACK_HOSTS and not share:
+        return None
+    import os
+    cred = os.getenv("SEATUNNEL_UI_AUTH", "").strip()
+    if cred:
+        user, sep, pwd = cred.partition(":")
+        if not sep or not user or not pwd:
+            raise SystemExit(
+                "[ui] SEATUNNEL_UI_AUTH must be in 'user:pass' format."
+            )
+        return (user, pwd)
+    if insecure:
+        print(
+            "[ui] ⚠️  WARNING: UI is exposed on the network WITHOUT authentication "
+            "(--insecure). Anyone who can reach this host can use the agents. "
+            "Set SEATUNNEL_UI_AUTH=user:pass to enable login."
+        )
+        return None
+    raise SystemExit(
+        f"[ui] Refusing to launch without authentication: host={host!r} share={share} "
+        "exposes the UI beyond this machine.\n"
+        "Set SEATUNNEL_UI_AUTH=user:pass to enable login, "
+        "or pass --insecure to launch without auth (not recommended)."
+    )
+
+
+def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False, insecure: bool = False) -> None:
+    ui_auth = _resolve_ui_auth(host, share, insecure)
     if _port_has_listener(port):
         import os
         if os.getenv("SEATUNNEL_UI_KILL_PORT", "").lower() in ("1", "true", "yes"):
             print(f"[ui] Port {port} in use — killing old process (SEATUNNEL_UI_KILL_PORT is set)...")
             _kill_port(port)
-            import time; time.sleep(0.5)
+            import time
+
+            time.sleep(0.5)
         else:
             raise SystemExit(
                 f"[ui] Port {port} is already in use. Stop the process using it, "
@@ -313,48 +270,45 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         server_name=host,
         server_port=port,
         share=share,
+        auth=ui_auth,
         inbrowser=True,
         css=_CUSTOM_CSS,
         prevent_thread_lock=True,
     )
 
+    # UI testing backend + React page: part of the web UI itself, so mounted
+    # unconditionally (not gated by --api / API key) on the served instance.
+    from seatunnel_agent.agents.devops.ui_testing.api import (
+        FRONTEND_DIST,
+    )
+    from seatunnel_agent.agents.devops.ui_testing.api import (
+        router as uitest_api_router,
+    )
+    app.app.include_router(uitest_api_router)
+    if (FRONTEND_DIST / "index.html").is_file():
+        from fastapi.staticfiles import StaticFiles
+        app.app.mount("/uitest", StaticFiles(directory=FRONTEND_DIST, html=True),
+                      name="uitest-frontend")
+    else:
+        # dist never built — a hint page beats a 404, and the hub still boots
+        from fastapi.responses import HTMLResponse
+
+        @app.app.get("/uitest", include_in_schema=False)
+        @app.app.get("/uitest/", include_in_schema=False)
+        def _uitest_unbuilt() -> HTMLResponse:
+            return HTMLResponse(
+                "<pre style='margin:40px;font-size:15px'>UI Testing frontend "
+                "is not built.\n\n  cd frontend/uitest &amp;&amp; npm ci "
+                "&amp;&amp; npm run build\n\nthen restart the UI.</pre>")
+
     if api:
         from fastapi import Depends
 
         from seatunnel_agent.common.api_auth import require_api_key
-        from seatunnel_agent.agents.data.config_lint.api import router as conflint_api_router
-        from seatunnel_agent.agents.data.dag_check.api import router as dagcheck_api_router
-        from seatunnel_agent.agents.data.data_lineage.api import router as lineage_api_router
-        from seatunnel_agent.agents.data.data_skew.api import router as skew_api_router
-        from seatunnel_agent.agents.data.log_inspect.api import router as loginspect_api_router
-        from seatunnel_agent.agents.data.metric_diff.api import router as metricdiff_api_router
-        from seatunnel_agent.agents.data.pii_scan.api import router as pii_api_router
-        from seatunnel_agent.agents.data.schema_drift.api import router as schemadrift_api_router
-        from seatunnel_agent.agents.data.sql_fmt.api import router as sqlfmt_api_router
-        from seatunnel_agent.agents.data.sql_review.api import router as sql_review_api_router
-        from seatunnel_agent.agents.data.sql_testgen.api import router as testgen_api_router
-        from seatunnel_agent.agents.data.sql_transpile.api import router as transpile_api_router
-        from seatunnel_agent.agents.data.text2sql.api import router as t2s_api_router
         fastapi_app = app.app  # the served instance, now that launch() ran
         # SEATUNNEL_API_KEY (optional) gates every /api route via X-API-Key.
         auth = [Depends(require_api_key)]
-        for router in (
-            t2s_api_router,
-            sql_review_api_router,
-            lineage_api_router,
-            transpile_api_router,
-            skew_api_router,
-            pii_api_router,
-            loginspect_api_router,
-            schemadrift_api_router,
-            testgen_api_router,
-            conflint_api_router,
-            dagcheck_api_router,
-            metricdiff_api_router,
-            sqlfmt_api_router,
-        ):
-            fastapi_app.include_router(router, dependencies=auth)
-        # plugin routers come from the manifests (see seatunnel_agent.hub.registry)
+        # every REST router comes from the manifests (hub.registry)
         from seatunnel_agent.hub.registry import discover, resolve
         for mf in discover():
             if mf.api:

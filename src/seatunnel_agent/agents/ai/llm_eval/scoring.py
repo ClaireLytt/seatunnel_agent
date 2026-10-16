@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic checkers for eval outputs.
 
 Every check returns ``(passed, detail)``.  The optional LLM judge lives in
@@ -54,7 +53,7 @@ def run_check(check: Check, output: str) -> tuple[bool, str]:
             return True, f"sql_valid ({check.dialect})"
         except ImportError:
             return False, "sql_valid 需要 sqlglot: pip install sqlglot"
-        except Exception as exc:  # noqa: BLE001 — sqlglot raises ParseError subclasses
+        except Exception as exc:
             return False, f"sql_valid ({check.dialect}): {exc}"
     raise ValueError(f"unknown check type: {t}")  # judge handled by runner
 

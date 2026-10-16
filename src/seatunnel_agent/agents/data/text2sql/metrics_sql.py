@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic SQL expansion for metric definitions.
 
 Moved verbatim out of metrics.py, which forwards the public names via a
@@ -113,9 +112,9 @@ def _build_additive_sql(
         fact_cols = {
             c.name.lower() for c in table.columns + table.partition_columns
         }
-        qualify = lambda e: _qualify_columns(e, fact_cols, FACT_ALIAS)  # noqa: E731
+        qualify = lambda e: _qualify_columns(e, fact_cols, FACT_ALIAS)
     else:
-        qualify = lambda e: e  # noqa: E731
+        qualify = lambda e: e
 
     conditions: list[str] = []
     tf = _time_filter(metric, table, time_range, max_partition)

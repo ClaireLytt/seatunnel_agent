@@ -1,12 +1,13 @@
-# -*- coding: utf-8 -*-
 """Web-task agent: fake-session loop, origin guard, success heuristic."""
 
 from __future__ import annotations
 
-from seatunnel_agent.common.config import Settings
-from seatunnel_agent.common.llm import LLMResponse, ToolCall
+import pytest
+
 from seatunnel_agent.agents.ai.web_task import run_task
 from seatunnel_agent.agents.ai.web_task.session import _origin
+from seatunnel_agent.common.config import Settings
+from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 SETTINGS = Settings(api_key="sk-test")
 
@@ -109,6 +110,84 @@ class TestLoop:
                           client=client)
         assert result.steps[0].error
         assert result.success
+
+
+class TestStartUrlGuard:
+    def test_rejects_non_http_schemes(self):
+        from seatunnel_agent.agents.ai.web_task.session import validate_start_url
+        for url in ("file:///etc/passwd", "ftp://host/x", "javascript:alert(1)",
+                    "about:blank", "example.com"):
+            with pytest.raises(ValueError):
+                validate_start_url(url)
+
+    def test_rejects_literal_private_ips_by_default(self):
+        from seatunnel_agent.agents.ai.web_task.session import validate_start_url
+        for url in ("http://127.0.0.1:7860/", "https://10.0.0.8/x",
+                    "http://192.168.1.1/", "http://169.254.169.254/meta",
+                    "http://[::1]/", "http://0.0.0.0/"):
+            with pytest.raises(ValueError):
+                validate_start_url(url)
+
+    def test_allow_private_and_public_hosts_pass(self, monkeypatch):
+        import socket
+
+        from seatunnel_agent.agents.ai.web_task import session as mod
+
+        def fake_gai(host, port, *a, **k):  # hermetic: no real DNS
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                     ("93.184.216.34", 80))]
+        monkeypatch.setattr(mod.socket, "getaddrinfo", fake_gai)
+        mod.validate_start_url("https://example.com/page")    # public domain
+        mod.validate_start_url("http://93.184.216.34/")       # public IP
+        mod.validate_start_url("http://127.0.0.1:7860/", allow_private=True)
+
+    def test_hostname_resolving_to_private_ip_is_rejected(self, monkeypatch):
+        import socket
+
+        from seatunnel_agent.agents.ai.web_task import session as mod
+
+        def fake_gai(host, port, *a, **k):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                     ("169.254.169.254", 80)),
+                    (socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                     ("93.184.216.34", 80))]
+        monkeypatch.setattr(mod.socket, "getaddrinfo", fake_gai)
+        # any private/loopback/link-local resolution rejects the URL
+        with pytest.raises(ValueError):
+            mod.validate_start_url("http://metadata.internal/latest")
+        # allow_private still bypasses the resolution check
+        mod.validate_start_url("http://metadata.internal/latest",
+                               allow_private=True)
+
+    def test_hostname_resolving_to_public_ip_passes(self, monkeypatch):
+        import socket
+
+        from seatunnel_agent.agents.ai.web_task import session as mod
+
+        def fake_gai(host, port, *a, **k):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "",
+                     ("93.184.216.34", 80))]
+        monkeypatch.setattr(mod.socket, "getaddrinfo", fake_gai)
+        mod.validate_start_url("https://example.com/page")
+
+    def test_hostname_resolution_failure_is_allowed(self, monkeypatch):
+        import socket
+
+        from seatunnel_agent.agents.ai.web_task import session as mod
+
+        def fake_gai(host, port, *a, **k):
+            raise socket.gaierror("NXDOMAIN")
+        monkeypatch.setattr(mod.socket, "getaddrinfo", fake_gai)
+        # NXDOMAIN/timeout must not reject — the browser will surface the
+        # error itself (offline scenarios must not be blocked here)
+        mod.validate_start_url("https://no-such-host.example/")
+
+    def test_session_start_validates_before_browser_launch(self):
+        from seatunnel_agent.agents.ai.web_task.session import PlaywrightSession
+        s = PlaywrightSession()
+        with pytest.raises(ValueError):
+            s.start("http://127.0.0.1:9/")
+        assert s._pw is None  # no Playwright driver was started
 
 
 class TestOriginGuard:

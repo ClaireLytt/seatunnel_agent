@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Export the lineage graph as an OpenLineage RunEvent.
 
 Pure functions, no network I/O — the produced dict follows the OpenLineage

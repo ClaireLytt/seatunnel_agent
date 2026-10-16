@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """EN/ZH strings for PII scan reports and the /pii page.
 
 Same pattern as ``sql_transpile.i18n``: one flat dict per language looked up

@@ -6,13 +6,13 @@ import json
 import tempfile as _tempfile
 from pathlib import Path
 
+from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.connector_docs import (
     CONNECTOR_DOCS,
     list_documented_connectors,
     query_connector,
 )
-from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
 
 _tmp = _tempfile.gettempdir()
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Split-key column measurement + candidate ranking (live SQL probes).
 
 Moved verbatim out of splitkey.py, which re-exports the public names.
@@ -123,7 +122,7 @@ def measure_column(executor, table: str, column: str,
                 s.top1_value = "NULL" if tq.rows[0][0] is None else str(tq.rows[0][0])
                 s.top1_count = int(tq.rows[0][1] or 0)
             s.elapsed_ms += tq.elapsed_ms
-    except Exception as exc:  # noqa: BLE001 — per-column failure stays local
+    except Exception as exc:
         s.error = str(exc)
     return s
 

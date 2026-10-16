@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """LLM prompts for the transpile advisor (fallback suggestions only)."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """JSONL analysis history for the Data Skew agent (``logs/data_skew.jsonl``).
 
 Same best-effort semantics as the impact/lineage loggers: logging never
@@ -13,12 +12,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from seatunnel_agent.common.jsonl_log import JsonlLog
+
 from .report import Severity, SkewReport
 
 _MAX_SQL_CHARS = 20_000
 
 
-def default_history() -> "SkewHistory":
+def default_history() -> SkewHistory:
     """History at logs/data_skew.jsonl, or wherever
     ``SEATUNNEL_SKEW_HISTORY_PATH`` points (test isolation, like the
     settings-store override)."""

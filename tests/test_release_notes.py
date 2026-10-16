@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Release-notes helper: parsing, bump logic, rendering, polish, CLI, API."""
 
 from __future__ import annotations
@@ -9,8 +8,6 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
-from seatunnel_agent.cli import cli
-from seatunnel_agent.common.llm import LLMResponse
 from seatunnel_agent.agents.devops.release_notes import (
     build_notes,
     next_semver,
@@ -19,6 +16,8 @@ from seatunnel_agent.agents.devops.release_notes import (
     render_markdown,
     suggest_bump,
 )
+from seatunnel_agent.cli import cli
+from seatunnel_agent.common.llm import LLMResponse
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "release_demo"
 LOG = (DEMO / "commits.txt").read_text(encoding="utf-8")
@@ -73,8 +72,8 @@ class TestNotes:
     def test_demo_grouping(self):
         notes = build_notes(LOG, "0.2.0")
         assert notes.bump == "major" and notes.next_version == "1.0.0"
-        groups = dict((k, [c.sha for c in cs])
-                      for k, _label, cs in notes.grouped())
+        groups = {k: [c.sha for c in cs]
+                      for k, _label, cs in notes.grouped()}
         assert len(groups["feat"]) == 3
         assert "other" in groups  # "update web link"
         assert [c.sha for c in notes.breaking] == ["d4e5f6a"]

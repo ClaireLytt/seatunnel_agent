@@ -21,7 +21,7 @@ def run_assert(a: Assertion, dc: DCPage) -> StepLog:
     try:
         ok, detail = _check(a, dc)
         return StepLog(a.desc, ok, _ms(t0), detail)
-    except Exception as e:  # noqa: BLE001 — assertion errors become FAIL logs
+    except Exception as e:
         return StepLog(a.desc, False, _ms(t0),
                        f"{type(e).__name__}: {e}")
 

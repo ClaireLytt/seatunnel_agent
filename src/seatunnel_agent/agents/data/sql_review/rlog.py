@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from seatunnel_agent.common.jsonl_log import JsonlLog
+
 from .report import CHECK_CATALOG, Finding
 
 _SQL_PREVIEW_CHARS = 300

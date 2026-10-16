@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deterministic schema parsing and drift detection.
 
 Type-change classification: a *widening* change within the same family
@@ -65,7 +64,7 @@ class DriftReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = {level: 0 for level in SEVERITIES}
+        out = dict.fromkeys(SEVERITIES, 0)
         for f in self.findings:
             out[f.severity] += 1
         out["total"] = len(self.findings)
@@ -94,7 +93,9 @@ def parse_schema_script(sql_text: str, dialect: str = "hive",
     import sqlglot
     from sqlglot import exp
 
-    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import resolve_sqlglot_dialect
+    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import (
+        resolve_sqlglot_dialect,
+    )
 
     read = resolve_sqlglot_dialect(dialect)
     tables: dict[str, TableSchema] = {}
@@ -131,7 +132,7 @@ def parse_schema_script(sql_text: str, dialect: str = "hive",
             try:
                 col_type = (kind.sql(dialect=read).upper()
                             if kind is not None else "")
-            except Exception:  # noqa: BLE001 — type rendering is best-effort
+            except Exception:
                 col_type = str(kind or "").upper()
             comment = ""
             for c in cd.args.get("constraints") or []:

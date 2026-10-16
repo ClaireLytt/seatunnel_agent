@@ -8,6 +8,7 @@ from typing import Any
 from .i18n import t2s as _t2s
 from .schema import SchemaStore
 
+
 def _esc_html(s: str) -> str:
     # quote=False + manual &quot;: escape & < > " but keep ' intact —
     # several cards embed single-quoted JS in onclick attributes.
@@ -416,7 +417,10 @@ def _md_table(columns: list[str], rows: list[list[Any]], max_rows: int = 20, lan
 
 
 def _build_csv_data_uri(columns: list[str], rows: list) -> str:
-    import csv as _csv, io as _io, base64 as _b64
+    import base64 as _b64
+    import csv as _csv
+    import io as _io
+
     from .masking import apply_masking
     rows, _masked = apply_masking(columns, rows)
     buf = _io.StringIO()

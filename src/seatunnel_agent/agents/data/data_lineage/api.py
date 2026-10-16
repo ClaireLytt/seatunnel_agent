@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import ms_since
 from seatunnel_agent.common.config import load_settings
+
 from .agent import LineageAgent, static_lineage
 from .config import DEFAULT_DEPTH, DIRECTIONS, MAX_DEPTH, load_lineage_config
 from .loaders import build_graph
@@ -351,7 +352,7 @@ def change_impact(req: ImpactRequest) -> dict[str, Any]:
                                        context_dir=req.context_dir)
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001 — mirror _build: fail as a clean 400
+    except Exception as exc:
         raise HTTPException(status_code=400,
                             detail=f"变更影响分析失败: {exc}")
     data = impact_to_dict(result, req.lang)

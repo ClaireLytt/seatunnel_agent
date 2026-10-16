@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
 """Bilingual markdown report for CI triage."""
 
 from __future__ import annotations
 
-from .core import CiReport
-
 from seatunnel_agent.common.utils import normalize_lang
 
+from .core import CiReport
 
 _I18N = {
     "en": {

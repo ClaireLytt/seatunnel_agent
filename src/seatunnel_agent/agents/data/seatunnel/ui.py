@@ -9,20 +9,28 @@ import tempfile
 import threading
 import time
 import zipfile
+from collections.abc import MutableMapping
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import gradio as gr
 
-from seatunnel_agent.common.config import Settings, env_float, load_settings
 from seatunnel_agent.agents.data.seatunnel.agent import SeaTunnelAgent
-from seatunnel_agent.hub.pages import _DOCS_URL
-from seatunnel_agent.common.history import (
-    Session, delete_session, extract_title, list_sessions,
-    load_session, new_session_id, rename_session, save_session,
-)
 from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
+from seatunnel_agent.common.config import Settings, env_float, load_settings
+from seatunnel_agent.common.history import (
+    Session,
+    delete_session,
+    extract_title,
+    list_sessions,
+    load_session,
+    new_session_id,
+    rename_session,
+    save_session,
+)
+from seatunnel_agent.common.session_scope import SessionScopedDict
+from seatunnel_agent.hub.pages import _DOCS_URL
 
 _EVENT_POLL_INTERVAL = env_float("UI_EVENT_POLL_INTERVAL", 0.3)
 _DEMO_STEP_DELAY = env_float("UI_DEMO_STEP_DELAY", 0.35)
@@ -282,7 +290,8 @@ def _run_demo(
     config_path: str,
     lang: str,
 ) -> list[dict[str, str]]:
-    import tempfile, os
+    import os
+    import tempfile
 
     fake_settings = Settings(
         api_key="demo", seatunnel_home=".", seatunnel_bin="", max_retries=3,
@@ -645,7 +654,7 @@ def _build_history_choices() -> list[tuple[str, str]]:
 def _save_current_session(
     session_id: str,
     chat_history: list[dict[str, str]],
-    agent_holder: dict[str, Any],
+    agent_holder: MutableMapping[str, Any],
 ) -> str:
     chat_history = _normalize_chat(chat_history)
     if not chat_history:
@@ -760,9 +769,11 @@ _MODE_MAP = {
 
 
 def _render_seatunnel_page(app: gr.Blocks) -> None:
-    settings_holder: dict[str, Settings | None] = {"current": None}
-    agent_holder: dict[str, SeaTunnelAgent | None] = {"agent": None}
-    collector_holder: dict[str, EventCollector | None] = {"current": None}
+    # Per-browser-session state: plain dicts here would be shared by every
+    # browser session (one user's Connect/agent overwrites another's).
+    settings_holder = SessionScopedDict(lambda: {"current": None})
+    agent_holder = SessionScopedDict(lambda: {"agent": None})
+    collector_holder = SessionScopedDict(lambda: {"current": None})
 
     lang = "en"
 
@@ -1080,11 +1091,11 @@ def _render_seatunnel_page(app: gr.Blocks) -> None:
     def _show_stop():
         return gr.update(visible=False), gr.update(visible=True)
 
-    submit_io = dict(
-        fn=_handle_submit,
-        inputs=[user_input, chatbot, mode, config_path, lang_state, session_state],
-        outputs=[chatbot, session_state, history_dd],
-    )
+    submit_io = {
+        "fn": _handle_submit,
+        "inputs": [user_input, chatbot, mode, config_path, lang_state, session_state],
+        "outputs": [chatbot, session_state, history_dd],
+    }
     def _post_submit():
         return "", gr.update(value=""), gr.update(visible=True), gr.update(visible=False)
 

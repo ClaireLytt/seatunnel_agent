@@ -5,8 +5,9 @@ report; optional LLM advice on top (never overwrites the deterministic
 output). No database connection, no SQL execution.
 """
 
-from .i18n import tp
 from seatunnel_agent.common.utils import normalize_lang
+
+from .i18n import tp
 from .report import (
     batch_to_dict,
     render_batch_markdown,

@@ -1,12 +1,12 @@
-# -*- coding: utf-8 -*-
 """Render TranspileResult / BatchResult as markdown or JSON-ready dicts."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from .i18n import issue_message, issue_suggestion, tp
 from seatunnel_agent.common.utils import normalize_lang
+
+from .i18n import issue_message, issue_suggestion, tp
 from .transpiler import BatchResult, Issue, TranspileResult
 
 _LEVEL_MARK = {"error": "❌", "warn": "⚠️", "info": "ℹ️"}

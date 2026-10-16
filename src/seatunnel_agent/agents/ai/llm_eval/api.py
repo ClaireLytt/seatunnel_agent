@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """REST API for LLM eval — FastAPI router.
 
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
@@ -18,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
+
 from .baseline import RunLogger, compare
 from .report import normalize_lang, render_markdown
 from .runner import run_suite

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Doctor agent — "the UI won't start": read-only diagnosis loop.
 
 Tools are strictly read-only (ports, installed packages, LLM config with
@@ -57,8 +56,8 @@ def check_env() -> str:
 
 
 def check_llm_config() -> str:
-    from seatunnel_agent.common.settings_store import mask_secret
     from seatunnel_agent.common.config import env_api_key
+    from seatunnel_agent.common.settings_store import mask_secret
     key = env_api_key()
     return "\n".join([
         f"LLM_PROVIDER = {os.getenv('LLM_PROVIDER', 'anthropic')}",

@@ -50,7 +50,7 @@ def record(provider: str, model: str, usage: dict[str, Any] | None,
         }
         if agent:
             rec["agent"] = agent
-    except Exception:  # noqa: BLE001 — usage logging is best-effort
+    except Exception:
         return
     _log.append(rec)
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Generic bounded tool-use loop — the skeleton every true agent shares.
 
 Generalized from the orchestrator engine: an LLM with a custom tool set and
@@ -13,8 +12,9 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 from ..common.config import Settings
 
@@ -148,7 +148,7 @@ class ToolLoopAgent:
                 tool_input = json.loads(str(tool_input))
             output = str(spec.run(**tool_input))
             error = False
-        except Exception as exc:  # noqa: BLE001 — errors go back to the model
+        except Exception as exc:
             output = f"tool failed: {type(exc).__name__}: {exc}"
             error = True
         if len(output) > _MAX_RESULT_CHARS:

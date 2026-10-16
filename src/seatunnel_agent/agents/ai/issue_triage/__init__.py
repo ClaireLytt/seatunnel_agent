@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Issue-triage agent — dedupe via BM25, locate via git grep, label + draft."""
 
 from .engine import TriageResult, build_tools, load_issues, triage

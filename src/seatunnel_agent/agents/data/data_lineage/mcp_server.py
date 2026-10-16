@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """MCP server exposing lineage tools over stdio (install extras: ``mcp``).
 
 Start with ``seatunnel-agent lineage-mcp --sql-dir ...`` and register it in an
@@ -11,7 +10,8 @@ into a FastMCP instance.
 from __future__ import annotations
 
 import json
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from .agent import static_lineage
 from .config import DIRECTIONS, MAX_DEPTH, load_lineage_config
@@ -108,7 +108,9 @@ def build_tool_functions(
         import shutil
 
         from .impact import (
-            analyze_dirs, materialize_git_ref, render_impact_markdown,
+            analyze_dirs,
+            materialize_git_ref,
+            render_impact_markdown,
         )
 
         if bool(old_dir) == bool(base):

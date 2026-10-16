@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """MCP server exposing Chat BI's deterministic primitives over stdio.
 
 Start with ``seatunnel-agent t2s-mcp`` and register it in an MCP client
@@ -18,8 +17,9 @@ from environment variables / the sqlite path — never from MCP arguments.
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 _INSTRUCTIONS = (
     "Chat BI（Text2SQL）确定性原子能力：表结构查询、混合表检索（关键词+BM25"
@@ -251,7 +251,7 @@ def build_tool_functions(
         from .executor import DatabaseConfig, config_from_env, create_executor
         from .validator import enforce_limit, validate_sql
 
-        def _db_config() -> "DatabaseConfig | None":
+        def _db_config() -> DatabaseConfig | None:
             if ds_type == "sqlite":
                 return DatabaseConfig(
                     ds_type="sqlite", host="", port=0, database=database,

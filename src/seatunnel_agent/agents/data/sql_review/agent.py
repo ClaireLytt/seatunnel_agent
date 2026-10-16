@@ -8,25 +8,27 @@ and event protocol so the existing UI streaming machinery works unchanged.
 from __future__ import annotations
 
 import os
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 
 from seatunnel_agent.agent_core.display import display_tool_call, display_tool_result
+from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.context import truncate_messages
 from seatunnel_agent.common.llm import LLMClient
-from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
-from seatunnel_agent.common.utils import truncate
+from seatunnel_agent.common.utils import normalize_lang, truncate
+
 from .config import ReviewConfig
 from .i18n import sr
-from seatunnel_agent.common.utils import normalize_lang
 from .lineage import extract_table_lineage
 from .linter import lint_sql, normalize_dialect
 from .prompts import build_review_prompt
 from .report import ReviewReport, render_report
 from .tools import TOOL_DEFINITIONS, SQLReviewRuntime, execute_review_tool
+
 
 def _max_iterations() -> int:
     try:

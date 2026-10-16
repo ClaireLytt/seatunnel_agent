@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-
 from seatunnel_agent.agents.data.seatunnel.agent import STOPPED_MESSAGE, SeaTunnelAgent
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.context import truncate_messages

@@ -71,7 +71,13 @@ def diagnose(ctx: click.Context, log: str, output: str | None) -> None:
 @click.pass_context
 def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
     """Start an interactive multi-turn chat session with the Agent."""
-    from ..common.history import load_session, save_session, new_session_id, now_iso, Session
+    from ..common.history import (
+        Session,
+        load_session,
+        new_session_id,
+        now_iso,
+        save_session,
+    )
     from ..common.history import list_sessions as _list_sessions
 
     if list_sessions:
@@ -144,11 +150,16 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
 @click.option("--host", "-h", type=str, default="127.0.0.1", help="Host to bind (0.0.0.0 for LAN access)")
 @click.option("--share", is_flag=True, help="Create a public Gradio link")
 @click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/, /api/skew/)")
-def ui(port: int, host: str, share: bool, api: bool) -> None:
+@click.option("--insecure", is_flag=True, help="Allow a non-loopback/share launch without SEATUNNEL_UI_AUTH (not recommended)")
+def ui(port: int, host: str, share: bool, api: bool, insecure: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     try:
-        from ..ui import create_ui, launch_app
-    except ImportError:
+        from ..hub.ui import create_ui, launch_app
+    except ModuleNotFoundError as exc:
+        # only a missing gradio means "not installed" — anything else
+        # (e.g. a broken internal import) must surface, not be masked
+        if exc.name is None or not exc.name.startswith("gradio"):
+            raise
         console.print(
             "[red]Gradio is not installed.[/red]\n"
             'Install it with: pip install "seatunnel-agent[ui]"'
@@ -159,7 +170,7 @@ def ui(port: int, host: str, share: bool, api: bool) -> None:
     if api:
         console.print(f"[green]REST API enabled at http://{host}:{port}/api/text2sql/[/green]")
     console.print(f"[green]Starting web UI on http://{host}:{port}[/green]")
-    launch_app(app, port=port, host=host, share=share, api=api)
+    launch_app(app, port=port, host=host, share=share, api=api, insecure=insecure)
 
 
 @click.command()
@@ -169,6 +180,7 @@ def ui(port: int, host: str, share: bool, api: bool) -> None:
 def batch(ctx: click.Context, configs: tuple[str, ...], stop_on_failure: bool) -> None:
     """Run multiple SeaTunnel configs sequentially."""
     from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
+
     from ..common.config import load_settings
 
     if ctx.obj.get("model"):
@@ -186,8 +198,9 @@ def batch(ctx: click.Context, configs: tuple[str, ...], stop_on_failure: bool) -
 
 
 def _make_agent(model: str | None = None, provider: str | None = None):
-    from ..common.config import load_settings
     from seatunnel_agent.agents.data.seatunnel.agent import SeaTunnelAgent
+
+    from ..common.config import load_settings
 
     old_model = os.environ.get("MODEL_NAME")
     old_provider = os.environ.get("LLM_PROVIDER")

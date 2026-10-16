@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Code-fix agent: tool safety, loop skeleton, end-to-end fix with FakeLLM."""
 
 from __future__ import annotations

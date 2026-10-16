@@ -156,7 +156,10 @@ def test_schema_hash_stable_and_sensitive(bench_store) -> None:
 
 
 def test_tool_match_tables_uses_hybrid(bench_store) -> None:
-    from seatunnel_agent.agents.data.text2sql.tools import Text2SQLRuntime, execute_text2sql_tool
+    from seatunnel_agent.agents.data.text2sql.tools import (
+        Text2SQLRuntime,
+        execute_text2sql_tool,
+    )
 
     rt = Text2SQLRuntime(store=bench_store)
     out = json.loads(execute_text2sql_tool(

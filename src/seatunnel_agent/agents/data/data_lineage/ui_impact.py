@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Gradio page for the change impact analysis agent.
 
 Rendered inside the multipage app built by ``ui.create_ui`` via
@@ -80,7 +79,7 @@ _t = make_page_t(_I18N)
 
 def render_impact_page(app: gr.Blocks) -> None:
     lang0 = "en"
-    t = lambda k: _t(lang0, k)  # noqa: E731
+    t = lambda k: _t(lang0, k)
 
     lang_state = gr.State(lang0)
 
@@ -123,7 +122,9 @@ def render_impact_page(app: gr.Blocks) -> None:
     def _graph_iframe(result) -> str:
         import html as _html
 
-        from seatunnel_agent.agents.data.data_lineage.impact import render_impact_mermaid
+        from seatunnel_agent.agents.data.data_lineage.impact import (
+            render_impact_mermaid,
+        )
         from seatunnel_agent.agents.data.data_lineage.render import mermaid_html
 
         src = render_impact_mermaid(result)
@@ -141,7 +142,10 @@ def render_impact_page(app: gr.Blocks) -> None:
                    lang: str):
         from pathlib import Path
 
-        from seatunnel_agent.agents.data.data_lineage.impact import analyze_dirs, render_impact_markdown
+        from seatunnel_agent.agents.data.data_lineage.impact import (
+            analyze_dirs,
+            render_impact_markdown,
+        )
 
         old_dir = (old_dir or "").strip()
         new_dir = (new_dir or "").strip()
@@ -153,7 +157,7 @@ def render_impact_page(app: gr.Blocks) -> None:
         try:
             result = analyze_dirs(old_dir, new_dir, depth=int(depth),
                                   sql_dialect=dialect or "hive")
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return "", _t(lang, "fail").format(exc=exc)
         from seatunnel_agent.agents.data.data_lineage.impact import ImpactLogger
         ImpactLogger().log_impact(result, mode="dirs", source="ui",
@@ -165,7 +169,9 @@ def render_impact_page(app: gr.Blocks) -> None:
         from pathlib import Path
 
         from seatunnel_agent.agents.data.data_lineage.impact import (
-            analyze_sql_texts, render_impact_markdown, render_text_diff,
+            analyze_sql_texts,
+            render_impact_markdown,
+            render_text_diff,
         )
 
         if not (old_sql or "").strip() or not (new_sql or "").strip():
@@ -177,7 +183,7 @@ def render_impact_page(app: gr.Blocks) -> None:
             result = analyze_sql_texts(old_sql, new_sql, depth=int(depth),
                                        sql_dialect=dialect or "hive",
                                        context_dir=ctx_dir)
-        except Exception as exc:  # noqa: BLE001 — surface any failure in the UI
+        except Exception as exc:
             return "", _t(lang, "fail").format(exc=exc)
         from seatunnel_agent.agents.data.data_lineage.impact import ImpactLogger
         ImpactLogger().log_impact(result, mode="text", source="ui",

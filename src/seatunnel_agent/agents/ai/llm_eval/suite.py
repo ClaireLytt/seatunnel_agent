@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Eval suite loading & validation.
 
 A suite is YAML::

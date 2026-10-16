@@ -16,16 +16,7 @@ from typing import Any
 
 import gradio as gr
 
-from seatunnel_agent.common.config import load_settings
-from seatunnel_agent.agents.data.text2sql.executor import (
-    DS_DEFAULTS,
-    DS_TYPES,
-    DIALECT_NAMES,
-    DatabaseConfig,
-    config_from_env,
-    create_executor,
-    schema_ddl_path_from_env,
-)
+from seatunnel_agent.agents.data.text2sql.boards import BoardStore, render_board
 from seatunnel_agent.agents.data.text2sql.chat_history import (
     Text2SQLSession,
     extract_title,
@@ -34,17 +25,26 @@ from seatunnel_agent.agents.data.text2sql.chat_history import (
     now_iso,
     save_t2s_session,
 )
-from seatunnel_agent.agents.data.text2sql.boards import BoardStore, render_board
+from seatunnel_agent.agents.data.text2sql.executor import (
+    DIALECT_NAMES,
+    DS_DEFAULTS,
+    DS_TYPES,
+    DatabaseConfig,
+    config_from_env,
+    create_executor,
+    schema_ddl_path_from_env,
+)
 from seatunnel_agent.agents.data.text2sql.favorites import FavoritesStore
-from seatunnel_agent.agents.data.text2sql.templates import SQL_TEMPLATES, template_choices, template_description
 from seatunnel_agent.agents.data.text2sql.i18n import (
     t2s as _t2s,
 )
 from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
-
-
-
+from seatunnel_agent.agents.data.text2sql.templates import (
+    SQL_TEMPLATES,
+    template_choices,
+    template_description,
+)
 from seatunnel_agent.agents.data.text2sql.ui_cards import (  # noqa: F401 — re-exported for tests/back-compat
     _DL_BTN_STYLE,
     _MAX_REVIEW_URL_SQL,
@@ -61,7 +61,6 @@ from seatunnel_agent.agents.data.text2sql.ui_cards import (  # noqa: F401 — re
 )
 from seatunnel_agent.agents.data.text2sql.ui_format import (  # noqa: F401 — re-exported for tests/back-compat
     _CHART_CACHE_MAX,
-    _IncrementalFormatter,
     _chart_cache,
     _chart_cache_lock,
     _chart_cache_put,
@@ -69,11 +68,14 @@ from seatunnel_agent.agents.data.text2sql.ui_format import (  # noqa: F401 — r
     _format_events,
     _format_tool_result,
     _history_rows,
+    _IncrementalFormatter,
     _placeholder,
     _session_choices_global,
     _shared_holder,
     _shared_holder_lock,
 )
+from seatunnel_agent.common.config import load_settings
+from seatunnel_agent.common.session_scope import SessionScopedDict
 
 
 def render_schema_browser_page(app=None) -> None:
@@ -186,32 +188,6 @@ def render_history_page(app=None) -> None:
     logger = QueryLogger()
     fav_store = FavoritesStore()
 
-    _HIST_ROW_HL_JS = """
-    () => {
-      requestAnimationFrame(() => {
-        document.querySelectorAll('.st-hist-table table tbody tr').forEach(tr => {
-          if (tr.dataset._hlBound) return;
-          tr.dataset._hlBound = '1';
-          tr.style.cursor = 'pointer';
-          tr.addEventListener('click', () => {
-            const wasSelected = tr.classList.contains('st-row-selected');
-            const idx = Array.from(tr.parentNode.children).indexOf(tr);
-            document.querySelectorAll('.st-hist-table table tbody tr').forEach(r => {
-              r.classList.remove('st-row-selected');
-            });
-            const tb = document.querySelector('#hist-sel-idx textarea, #hist-sel-idx input');
-            if (wasSelected) {
-              if (tb) { tb.value = '-1'; tb.dispatchEvent(new Event('input', {bubbles:true})); }
-            } else {
-              tr.classList.add('st-row-selected');
-              if (tb) { tb.value = String(idx); tb.dispatchEvent(new Event('input', {bubbles:true})); }
-            }
-          });
-        });
-      });
-    }
-    """
-
     with gr.Column(elem_classes=["st-history-page"]):
         lang_state = gr.State("en")
         with gr.Row(elem_classes=["st-topbar-row"]):
@@ -254,7 +230,6 @@ def render_history_page(app=None) -> None:
 
         selected_state = gr.State([])
         selected_info = gr.Markdown("", elem_classes=["st-hist-sel-info"])
-        selected_idx_box = gr.Textbox(visible=False, elem_id="hist-sel-idx")
 
         history_table = gr.Dataframe(
             headers=["#", "Time", "Question", "", "Elapsed", "SQL"],
@@ -269,14 +244,6 @@ def render_history_page(app=None) -> None:
 
         gr.HTML(
             '<style>'
-            '.st-hist-table table tbody tr.st-row-selected,'
-            '.st-fav-table table tbody tr.st-row-selected'
-            ' { background: var(--color-accent-soft, #dbeafe) !important; }'
-            '@media (prefers-color-scheme: dark) {'
-            '  .st-hist-table table tbody tr.st-row-selected,'
-            '  .st-fav-table table tbody tr.st-row-selected'
-            '  { background: #1e3a5f !important; }'
-            '}'
             '.st-hist-detail { padding: 0 8px; }'
             '</style>'
         )
@@ -293,7 +260,7 @@ def render_history_page(app=None) -> None:
         elapsed = rec.get("exec_time_ms")
         badge = "✅" if status == "success" else "❌" if status == "error" else "⏳"
         elapsed_str = f"{elapsed}ms" if elapsed is not None else ""
-        html = (
+        return (
             f'<div style="border:1px solid var(--border-color-primary, #e5e7eb);'
             f'border-radius:8px;padding:12px;margin:8px 0;'
             f'background:var(--background-fill-secondary, #f9fafb);font-size:13px;">'
@@ -307,7 +274,6 @@ def render_history_page(app=None) -> None:
             f'{sql}</pre>'
             f'</div>'
         )
-        return html
 
     def _on_select(evt: gr.SelectData, current: list):
         row = evt.index[0]
@@ -315,22 +281,6 @@ def render_history_page(app=None) -> None:
             return [], "", ""
         question = ""
         records = list(reversed(logger.recent(100)))
-        if 0 <= row < len(records):
-            question = records[row].get("user_query", "")
-            if len(question) > 60:
-                question = question[:60] + "..."
-        info = f"**Selected row #{row}:** {question}"
-        return [row], info, _build_detail(row)
-
-    def _on_js_select(idx_str: str):
-        try:
-            row = int(idx_str)
-        except (ValueError, TypeError):
-            return [], "", ""
-        if row < 0:
-            return [], "", ""
-        records = list(reversed(logger.recent(100)))
-        question = ""
         if 0 <= row < len(records):
             question = records[row].get("user_query", "")
             if len(question) > 60:
@@ -376,6 +326,7 @@ def render_history_page(app=None) -> None:
         if not records:
             raise gr.Error(_t2s(lang, "hist_no_selection"))
         import tempfile
+
         from seatunnel_agent.agents.data.text2sql.exporter import export_csv
         out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
         out_dir.mkdir(exist_ok=True)
@@ -390,6 +341,7 @@ def render_history_page(app=None) -> None:
         if not records:
             raise gr.Error(_t2s(lang, "hist_empty"))
         import tempfile
+
         from seatunnel_agent.agents.data.text2sql.exporter import export_csv
         out_dir = Path(tempfile.gettempdir()) / "text2sql_exports"
         out_dir.mkdir(exist_ok=True)
@@ -444,11 +396,6 @@ def render_history_page(app=None) -> None:
         inputs=[selected_state],
         outputs=_sel_outputs,
     )
-    selected_idx_box.input(
-        fn=_on_js_select,
-        inputs=[selected_idx_box],
-        outputs=_sel_outputs,
-    )
     def _resume_set(choice: str):
         if not choice:
             return
@@ -482,32 +429,11 @@ def render_history_page(app=None) -> None:
 
     if app is not None:
         app.load(fn=_refresh, outputs=_refresh_outputs)
-        app.load(fn=None, js=_HIST_ROW_HL_JS)
-
-    history_table.change(fn=None, js=_HIST_ROW_HL_JS)
 
 
 def render_favorites_page(app=None) -> None:
     """Full-page SQL favorites viewer."""
     store = FavoritesStore()
-
-    _ROW_HL_JS = """
-    () => {
-      requestAnimationFrame(() => {
-        document.querySelectorAll('.st-fav-table table tbody tr').forEach(tr => {
-          if (tr.dataset._hlBound) return;
-          tr.dataset._hlBound = '1';
-          tr.style.cursor = 'pointer';
-          tr.addEventListener('click', () => {
-            tr.classList.toggle('st-row-selected');
-            document.querySelectorAll('.st-fav-table table tbody tr').forEach(r => {
-              if (r !== tr) r.classList.remove('st-row-selected');
-            });
-          });
-        });
-      });
-    }
-    """
 
     with gr.Column(elem_classes=["st-history-page"]):
         lang_state = gr.State("en")
@@ -552,13 +478,6 @@ def render_favorites_page(app=None) -> None:
             wrap=True,
             column_widths=["30px", "15%", "50px", "55%", "100px"],
             elem_classes=["st-fav-table"],
-        )
-
-        gr.HTML(
-            '<style>'
-            '.st-fav-table table tbody tr.st-row-selected { background: var(--color-accent-soft, #dbeafe) !important; }'
-            '@media (prefers-color-scheme: dark) { .st-fav-table table tbody tr.st-row-selected { background: #1e3a5f !important; } }'
-            '</style>'
         )
 
     def _filtered_rows(query: str = "") -> list[list[str]]:
@@ -688,9 +607,6 @@ def render_favorites_page(app=None) -> None:
     if app is not None:
         app.load(fn=_refresh, inputs=[search_state],
                  outputs=[fav_table, selected_state, selected_info, rename_input])
-        app.load(fn=None, js=_ROW_HL_JS)
-
-    fav_table.change(fn=None, js=_ROW_HL_JS)
 
 
 def render_text2sql_page(app=None) -> None:
@@ -701,7 +617,9 @@ def render_text2sql_page(app=None) -> None:
     # Subscription scheduler rides along with the web UI (idempotent daemon
     # thread; `seatunnel-agent t2s-cron --serve` covers UI-less deployments).
     try:
-        from seatunnel_agent.agents.data.text2sql.subscriptions import start_global_scheduler
+        from seatunnel_agent.agents.data.text2sql.subscriptions import (
+            start_global_scheduler,
+        )
         start_global_scheduler()
     except Exception:
         pass  # subscriptions are optional — never block the page
@@ -709,16 +627,21 @@ def render_text2sql_page(app=None) -> None:
     lang = "en"
     t = lambda k: _t2s(lang, k)
 
-    holder: dict[str, Any] = {
-        "agent": None,
-        "collector": None,
-        "settings": None,
-        "store": None,
-        "full_store": None,
-        "ds_type": "hive",
-        "db_config": None,
-        "session_id": None,
-    }
+    # Per-browser-session state: a plain dict here would be shared by every
+    # browser session (user B's Connect overwrites user A's agent/db_config).
+    def _fresh_holder() -> dict[str, Any]:
+        return {
+            "agent": None,
+            "collector": None,
+            "settings": None,
+            "store": None,
+            "full_store": None,
+            "ds_type": "hive",
+            "db_config": None,
+            "session_id": None,
+        }
+
+    holder = SessionScopedDict(_fresh_holder)
     holder_lock = threading.Lock()
 
     def _table_choices(store, lang="zh"):
@@ -736,7 +659,9 @@ def render_text2sql_page(app=None) -> None:
         """Update agent's runtime store AND rebuild its system prompt."""
         agent = holder.get("agent")
         if agent is not None:
-            from seatunnel_agent.agents.data.text2sql.prompts import build_text2sql_prompt
+            from seatunnel_agent.agents.data.text2sql.prompts import (
+                build_text2sql_prompt,
+            )
             agent.runtime.store = new_store
             ds_type = holder.get("ds_type", "hive")
             agent._system_prompt = build_text2sql_prompt(new_store, dialect=ds_type)
@@ -1180,6 +1105,11 @@ def render_text2sql_page(app=None) -> None:
             _shared_holder["db_config"] = db_config
             _shared_holder["ds_type"] = ds_type
 
+        # Pin this session's bucket before spawning the thread: the request
+        # contextvar is not inherited by threads, so `holder[...]` inside the
+        # worker would resolve to the wrong (default) bucket.
+        _h = holder.resolve()
+
         def _warmup():
             try:
                 from seatunnel_agent.agents.data.text2sql.agent import Text2SQLAgent
@@ -1188,23 +1118,23 @@ def render_text2sql_page(app=None) -> None:
                     metric_store=metric_store,
                 )
                 with holder_lock:
-                    if holder.get("agent") is None:
-                        holder["agent"] = agent
-                    resume_msgs = holder.pop("_resume_agent_msgs", None)
+                    if _h.get("agent") is None:
+                        _h["agent"] = agent
+                    resume_msgs = _h.pop("_resume_agent_msgs", None)
                     if resume_msgs:
                         agent.messages = resume_msgs
-                    holder["llm_status"] = f"✅ LLM {settings.model_name}"
+                    _h["llm_status"] = f"✅ LLM {settings.model_name}"
             except Exception as e:
                 e_msg = str(e)
                 with holder_lock:
                     if "timeout" in e_msg.lower() or "timed out" in e_msg.lower():
-                        holder["llm_status"] = f"⚠️ LLM timeout ({settings.llm_base_url or 'default'})"
+                        _h["llm_status"] = f"⚠️ LLM timeout ({settings.llm_base_url or 'default'})"
                     elif "auth" in e_msg.lower() or "api key" in e_msg.lower() or "401" in e_msg:
-                        holder["llm_status"] = "❌ LLM auth fail — check API_KEY"
+                        _h["llm_status"] = "❌ LLM auth fail — check API_KEY"
                     elif "connect" in e_msg.lower():
-                        holder["llm_status"] = f"❌ LLM unreachable ({settings.llm_base_url or 'default'})"
+                        _h["llm_status"] = f"❌ LLM unreachable ({settings.llm_base_url or 'default'})"
                     else:
-                        holder["llm_status"] = f"⚠️ LLM: {e_msg[:80]}"
+                        _h["llm_status"] = f"⚠️ LLM: {e_msg[:80]}"
 
         threading.Thread(target=_warmup, daemon=True).start()
 
@@ -1256,9 +1186,14 @@ def render_text2sql_page(app=None) -> None:
         return None
 
     def _run_streaming(msg: str, history: list, lang: str, chart_pref: str = "Auto"):
-        from seatunnel_agent.hub.ui import EventCollector, _normalize_chat
-        from seatunnel_agent.agents.data.text2sql.chart import detect_chart_type, build_chart, fig_to_base64
         import matplotlib.pyplot as plt
+
+        from seatunnel_agent.agents.data.text2sql.chart import (
+            build_chart,
+            detect_chart_type,
+            fig_to_base64,
+        )
+        from seatunnel_agent.hub.ui import EventCollector, _normalize_chat
 
         t = lambda k: _t2s(lang, k)
         history = _normalize_chat(history)
@@ -1274,7 +1209,9 @@ def render_text2sql_page(app=None) -> None:
             if (holder.get("settings") is not None
                     and holder.get("settings_version") != settings_store.get_version()):
                 try:
-                    from seatunnel_agent.common.config import load_settings as _load_settings
+                    from seatunnel_agent.common.config import (
+                        load_settings as _load_settings,
+                    )
                     holder["settings"] = _load_settings()
                     holder["settings_version"] = settings_store.get_version()
                     holder["agent"] = None
@@ -1546,7 +1483,9 @@ def render_text2sql_page(app=None) -> None:
         ex_store = getattr(agent, "example_store", None) or ExampleStore()
         try:
             if positive:
-                from seatunnel_agent.agents.data.text2sql.validator import extract_tables
+                from seatunnel_agent.agents.data.text2sql.validator import (
+                    extract_tables,
+                )
                 ex_store.add(
                     question=question, sql=sql,
                     tables=extract_tables(sql), source="feedback",
@@ -1759,7 +1698,7 @@ def render_text2sql_page(app=None) -> None:
             status_upd,
         )
 
-    submit_io = dict(fn=_handle_submit, inputs=[user_input, chatbot, lang_state, chart_type_radio], outputs=[chatbot, chart_plot])
+    submit_io = {"fn": _handle_submit, "inputs": [user_input, chatbot, lang_state, chart_type_radio], "outputs": [chatbot, chart_plot]}
     _post_outputs = [user_input, send_btn, stop_btn, page_nav_row, page_info_md, page_state, page_table_md, status_box]
     send_btn.click(fn=_show_stop, outputs=[send_btn, stop_btn]) \
         .then(**submit_io) \
@@ -1864,7 +1803,10 @@ def render_text2sql_page(app=None) -> None:
         return _sub_listing(lang)
 
     def _sub_run(sub_id: str, lang: str):
-        from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore, run_subscription
+        from seatunnel_agent.agents.data.text2sql.subscriptions import (
+            SubscriptionStore,
+            run_subscription,
+        )
 
         t = lambda k: _t2s(lang, k)
         if not sub_id:
@@ -2015,7 +1957,11 @@ def render_text2sql_page(app=None) -> None:
         except Exception:
             raise gr.Error(t("board_need_connect"))
 
-        from seatunnel_agent.agents.data.text2sql.chart import build_chart, detect_chart_type, fig_to_base64
+        from seatunnel_agent.agents.data.text2sql.chart import (
+            build_chart,
+            detect_chart_type,
+            fig_to_base64,
+        )
 
         entries = render_board(board, executor, store_ref, ds_type=ds_type)
         title = _t2s(lang, "board_title_fmt").format(name=board["name"])

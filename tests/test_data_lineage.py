@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Tests for the data lineage module (graph, loaders, render, tools, CLI)."""
 
 from __future__ import annotations
@@ -7,6 +6,7 @@ import json
 
 import pytest
 
+from seatunnel_agent.agents.data.data_lineage.agent import static_lineage
 from seatunnel_agent.agents.data.data_lineage.graph import (
     ColumnEdge,
     LineageGraph,
@@ -33,8 +33,6 @@ from seatunnel_agent.agents.data.data_lineage.tools import (
     LineageRuntime,
     execute_lineage_tool,
 )
-from seatunnel_agent.agents.data.data_lineage.agent import static_lineage
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -858,7 +856,10 @@ def test_render_health_sections():
 
 
 def test_render_path_and_mermaid():
-    from seatunnel_agent.agents.data.data_lineage.render import render_path, render_path_mermaid
+    from seatunnel_agent.agents.data.data_lineage.render import (
+        render_path,
+        render_path_mermaid,
+    )
 
     g = linear_graph("a", "b", "c")
     path = g.path_between("a", "c")
@@ -1147,7 +1148,9 @@ def test_build_graph_no_cache_forces_refresh(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 from seatunnel_agent.agents.data.data_lineage import sqlglot_lineage as _sgl
-from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import extract_column_edges
+from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import (
+    extract_column_edges,
+)
 
 needs_sqlglot = pytest.mark.skipif(
     _sgl.sqlglot is None, reason="sqlglot 未安装（pip install .[lineage]）"
@@ -1344,7 +1347,10 @@ def test_trace_carries_edge_meta_and_mermaid_dashes_low_confidence():
 
 
 def test_cache_roundtrip_preserves_edge_meta(tmp_path, monkeypatch):
-    from seatunnel_agent.agents.data.data_lineage.cache import graph_from_dict, graph_to_dict
+    from seatunnel_agent.agents.data.data_lineage.cache import (
+        graph_from_dict,
+        graph_to_dict,
+    )
 
     g = LineageGraph()
     g.add_edge("a", "b", source="seatunnel", confidence="medium")
@@ -1357,7 +1363,9 @@ def test_cache_roundtrip_preserves_edge_meta(tmp_path, monkeypatch):
 
 
 def test_seatunnel_loader_marks_medium_confidence(tmp_path):
-    from seatunnel_agent.agents.data.data_lineage.seatunnel_loader import from_seatunnel_files
+    from seatunnel_agent.agents.data.data_lineage.seatunnel_loader import (
+        from_seatunnel_files,
+    )
 
     conf = tmp_path / "job.conf"
     conf.write_text(
