@@ -289,6 +289,14 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         from fastapi.staticfiles import StaticFiles
         app.app.mount("/uitest", StaticFiles(directory=FRONTEND_DIST, html=True),
                       name="uitest-frontend")
+    # Text2SQL React rebuild (#62): dev route until the route swap (#67).
+    from pathlib import Path as _Path
+    t2s_dist = _Path("frontend") / "text2sql" / "dist"
+    if (t2s_dist / "index.html").is_file():
+        from fastapi.staticfiles import StaticFiles
+        app.app.mount("/text2sql-next",
+                      StaticFiles(directory=t2s_dist, html=True),
+                      name="text2sql-frontend")
     else:
         # dist never built — a hint page beats a 404, and the hub still boots
         from fastapi.responses import HTMLResponse

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import threading
 import time
+import uuid
 from collections import OrderedDict
 from typing import Any
 
@@ -147,6 +148,42 @@ def _build_agent(
     )
     agent.runtime.source = "api"  # qlog audit tag
     return agent
+
+
+class ConnectRequest(BaseModel):
+    ds_type: str
+    db_config: dict[str, Any] | None = None
+    schema_ddl: str | None = None
+    metrics_yaml: str | None = None
+
+
+def _session_meta(session_id: str, agent: Text2SQLAgent) -> dict[str, Any]:
+    tables = [t.full_name for t in agent.runtime.store.tables]
+    return {
+        "session_id": session_id,
+        "ds_type": agent.runtime.ds_type,
+        "table_count": len(tables),
+        "tables": tables,
+    }
+
+
+@router.post("/connect")
+def connect(req: ConnectRequest) -> dict[str, Any]:
+    """Create a server-held session: validate the connection, load schema
+    (+ metrics) and keep the agent; credentials travel only on this call."""
+    agent = _build_agent(req.ds_type, req.db_config, req.schema_ddl,
+                         req.metrics_yaml)
+    session_id = uuid.uuid4().hex
+    _sessions.put(session_id, agent)
+    return _session_meta(session_id, agent)
+
+
+@router.get("/session/{session_id}")
+def session_status(session_id: str) -> dict[str, Any]:
+    agent = _sessions.get(session_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="unknown session")
+    return _session_meta(session_id, agent)
 
 
 @router.post("/query", response_model=QueryResponse)
