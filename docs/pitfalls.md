@@ -10,3 +10,8 @@
 | 2026-10-15 | AI 代理提交 commit 时误加 `Co-Authored-By: Claude ...` 署名,同日发生 2 次(validator 修复、ruff 规则 commit),均事后 amend 移除 | 代理运行环境默认附加 AI 署名,与本项目 CLAUDE.md 第 1 节"不添加 AI 署名"冲突,代理首次提交时未复核 | 2026-10-15 两个子任务汇报中的 amend 记录(最终 hash 0793415、2f23203 均已无署名) | 每次 commit 前在提交信息中显式不含署名行;提交后用 `git log -1 --format=%B` 复核;发现即 amend |
 | 2026-10-15 | pip-audit 硬门禁被 CI runner 环境自带工具的漏洞误触发,同日 2 次:先是 pip 26.0.1(本地预判),后是 setuptools 79.0.1(PYSEC-2026-3447,PR #50 CI 实际变红);两者都不是项目依赖 | pip-audit 审计整个环境,runner 预装的 pip/setuptools 版本滞后带已知 advisory | CI run 38756203384 日志:`setuptools 79.0.1 PYSEC-2026-3447 Fix 83.0.0`,ruff/mypy 同 run 均绿 | 审计前先 `python -m pip install --upgrade pip setuptools`;以后 runner 环境工具再误红,优先升级该工具而不是放宽门禁 |
 | 2026-10-15 | 子代理只给进度汇报,未按阶段二第 6 步交付固定格式的结果报告 | 结果报告的格式和"每次修改后必须交付"当时未写入 CLAUDE.md,仅存在于口头需求 | 2026-10-15 批次 1-3 的汇报形式 | 已将结果报告固定格式(已完成/验证结果/前后差异/未解决问题)写入 CLAUDE.md 第 7 节;每次代码修改验证完成后必须立即交付 |
+
+## 后台 hub 任务"无故"退出(exit 1/127)
+- **问题**:后台起的 `python -m seatunnel_agent.hub.ui` 任务在数十分钟后报 failed,日志为空,看似崩溃。会话内已出现 ≥3 次误判。
+- **根因**:带 `SEATUNNEL_UI_KILL_PORT=1` 起新实例时会杀掉占用 7860 的旧实例 —— 被杀的就是上一个后台任务,其退出被任务系统报告为 failed。
+- **规避**:起新 hub 前先显式停掉旧后台任务(TaskStop);或看到此类 failed 通知时,先确认是否刚启动过新实例,再按故障排查。
