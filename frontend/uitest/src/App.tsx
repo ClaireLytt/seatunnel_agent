@@ -3,12 +3,14 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import {
   fetchMeta,
+  fetchRuns,
   reportDownloadUrl,
   reportUrl,
   runSuite,
   saveCase,
   type Meta,
   type RunCounts,
+  type RunEntry,
 } from '@/api'
 import { CountsChart } from '@/components/CountsChart'
 import { SpotlightCard } from '@/components/ui/spotlight-card'
@@ -36,6 +38,8 @@ export default function App() {
   const [runId, setRunId] = useState('')
   const progressRef = useRef<HTMLPreElement>(null)
 
+  const [history, setHistory] = useState<RunEntry[]>([])
+
   const [caseYaml, setCaseYaml] = useState('')
   const [caseStatus, setCaseStatus] = useState('')
   const [editorOpen, setEditorOpen] = useState(false)
@@ -44,6 +48,7 @@ export default function App() {
     fetchMeta()
       .then(setMeta)
       .catch((e) => setLines([`❌ ${e}`]))
+    fetchRuns().then(setHistory).catch(console.error)
   }, [])
 
   useEffect(() => {
@@ -69,6 +74,7 @@ export default function App() {
       setLines((ls) => [...ls, '', `❌ ${e}`])
     } finally {
       setRunning(false)
+      fetchRuns().then(setHistory).catch(console.error)
     }
   }
 
@@ -247,6 +253,63 @@ export default function App() {
           </motion.section>
         )}
       </AnimatePresence>
+
+      {history.length > 0 && (
+        <section className="st-history mt-8">
+          <h2 className="mb-2 font-display text-xl font-bold text-ink">{t('history')}</h2>
+          <SpotlightCard className="p-0">
+            <table className="w-full font-mono text-[13px]">
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.run_id} className="border-b border-line last:border-b-0">
+                    <td className="px-4 py-2 text-fg">{h.run_id}</td>
+                    <td className="px-2 py-2 text-muted">{h.suite}</td>
+                    <td className="px-2 py-2">
+                      {(['PASS', 'HEALED', 'FAIL', 'ERROR', 'SKIP', 'MANUAL'] as const)
+                        .filter((k) => (h.counts[k] ?? 0) > 0)
+                        .map((k) => (
+                          <span
+                            key={k}
+                            className="mr-3"
+                            style={{
+                              color:
+                                k === 'PASS'
+                                  ? 'var(--ok)'
+                                  : k === 'FAIL' || k === 'ERROR'
+                                    ? 'var(--accent)'
+                                    : 'var(--muted)',
+                            }}
+                          >
+                            {k} {h.counts[k]}
+                          </span>
+                        ))}
+                    </td>
+                    <td className="px-2 py-2 text-muted">{(h.elapsed_ms / 1000).toFixed(0)}s</td>
+                    <td className="px-4 py-2 text-right">
+                      {h.has_report && (
+                        <>
+                          <button
+                            onClick={() => setRunId(h.run_id)}
+                            className="mr-3 text-ink underline-offset-4 hover:underline"
+                          >
+                            {t('view')}
+                          </button>
+                          <a
+                            href={reportDownloadUrl(h.run_id)}
+                            className="text-ink underline-offset-4 hover:underline"
+                          >
+                            {t('download')}
+                          </a>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </SpotlightCard>
+        </section>
+      )}
 
       <section className="mt-8">
         <button

@@ -49,6 +49,8 @@ const resources = {
       editorSaved: 'Saved: {{ids}} → {{path}} — run it via "Specific cases" above',
       editorPh: EDITOR_PH_EN,
       home: 'Home',
+      history: 'Past runs',
+      view: 'View',
     },
   },
   zh: {
@@ -73,6 +75,8 @@ const resources = {
       editorSaved: '已保存: {{ids}} → {{path}} — 在上方"指定用例"里填 id 即可运行',
       editorPh: EDITOR_PH_ZH,
       home: '首页',
+      history: '历史运行',
+      view: '查看',
     },
   },
 }

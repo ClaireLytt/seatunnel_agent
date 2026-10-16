@@ -55,6 +55,34 @@ def meta() -> dict:
     }
 
 
+@router.get("/runs")
+def runs() -> dict:
+    """History: one entry per runs/<ts>/ with a result.json, newest first."""
+    from .runner import RUNS_DIR
+    out = []
+    if RUNS_DIR.is_dir():
+        for d in sorted(RUNS_DIR.iterdir(), reverse=True):
+            rj = d / "result.json"
+            if not (_RUN_ID_RE.match(d.name) and rj.is_file()):
+                continue
+            try:
+                data = json.loads(rj.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            counts: dict[str, int] = {}
+            for c in data.get("cases", []):
+                v = c.get("verdict", "")
+                counts[v] = counts.get(v, 0) + 1
+            out.append({
+                "run_id": d.name,
+                "suite": data.get("suite", ""),
+                "elapsed_ms": data.get("elapsed_ms", 0),
+                "counts": counts,
+                "has_report": (d / "report.html").is_file(),
+            })
+    return {"runs": out}
+
+
 def _sse(obj: dict) -> str:
     return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 

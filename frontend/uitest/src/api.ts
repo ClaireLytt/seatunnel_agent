@@ -18,7 +18,21 @@ export type RunEvent =
   | { type: 'error'; message: string }
   | { type: 'done'; run_id: string; counts: RunCounts; elapsed_ms: number }
 
+export interface RunEntry {
+  run_id: string
+  suite: string
+  elapsed_ms: number
+  counts: RunCounts
+  has_report: boolean
+}
+
 const BASE = '/api/uitest'
+
+export async function fetchRuns(): Promise<RunEntry[]> {
+  const r = await fetch(`${BASE}/runs`)
+  if (!r.ok) throw new Error(`runs: HTTP ${r.status}`)
+  return (await r.json()).runs
+}
 
 export async function fetchMeta(): Promise<Meta> {
   const r = await fetch(`${BASE}/meta`)
