@@ -41,7 +41,7 @@ jobs:
 
       # Build the React /uitest page so the app under test serves it (and the
       # browser smoke tests target the real frontend, not a fallback).
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: npm
