@@ -115,3 +115,47 @@ export const filterTables = (sid: string, tables: string[]): Promise<SessionMeta
 
 export const reloadSchema = (sid: string): Promise<SessionMeta> =>
   fetch(`${BASE}/session/${sid}/schema/reload`, { method: 'POST' }).then(j)
+
+export interface QlogRecord {
+  timestamp: string
+  user_query: string
+  generated_sql: string
+  status: string
+  exec_time_ms?: number
+  row_count?: number
+}
+
+export interface SavedSession {
+  id: string
+  title: string
+  updated_at: string
+  ds_type: string
+}
+
+export const fetchQlog = (n = 100): Promise<{ records: QlogRecord[] }> =>
+  fetch(`${BASE}/history/qlog?n=${n}`).then(j)
+
+export const deleteQlog = (indices: number[]): Promise<{ deleted: number }> =>
+  fetch(`${BASE}/history/qlog/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ indices }),
+  }).then(j)
+
+export const clearQlog = (): Promise<{ cleared: boolean }> =>
+  fetch(`${BASE}/history/qlog/clear`, { method: 'POST' }).then(j)
+
+export const qlogExportUrl = `${BASE}/history/qlog/export`
+
+export const fetchSavedSessions = (): Promise<{ sessions: SavedSession[] }> =>
+  fetch(`${BASE}/history/sessions`).then(j)
+
+export const resumeSaved = (
+  sid: string,
+  savedId: string,
+): Promise<{ title: string; chat: { role: string; content: string }[] }> =>
+  fetch(`${BASE}/session/${sid}/resume`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ saved_id: savedId }),
+  }).then(j)

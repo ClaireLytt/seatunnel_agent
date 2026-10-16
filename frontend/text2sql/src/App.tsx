@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { ChatPanel } from '@/ChatPanel'
+import { HistoryView } from '@/HistoryView'
 import { SchemaBrowser } from '@/SchemaBrowser'
 import { SchemaPanel } from '@/SchemaPanel'
 import { ConnectPanel } from '@/ConnectPanel'
@@ -11,10 +12,13 @@ export default function App() {
   const { t } = useTranslation()
   const [session, setSession] = useState<SessionMeta | null>(null)
   const [fullTables, setFullTables] = useState<string[]>([])
-  const [view, setView] = useState(location.hash === '#schema' ? 'schema' : 'chat')
+  const viewFromHash = () =>
+    location.hash === '#schema' ? 'schema' : location.hash === '#history' ? 'history' : 'chat'
+  const [view, setView] = useState(viewFromHash())
+  const [seed, setSeed] = useState<{ role: string; content: string }[] | undefined>()
 
   useEffect(() => {
-    const onHash = () => setView(location.hash === '#schema' ? 'schema' : 'chat')
+    const onHash = () => setView(viewFromHash())
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
@@ -48,6 +52,12 @@ export default function App() {
             onFullTables={setFullTables}
           />
         )}
+        <a
+          href="#history"
+          className="mr-4 font-mono text-sm text-ink underline-offset-4 hover:underline"
+        >
+          {t('history')}
+        </a>
         {session && (
           <a
             href={view === 'schema' ? '#' : '#schema'}
@@ -83,10 +93,18 @@ export default function App() {
       </motion.aside>
 
       <main className="min-h-[70vh] flex-1">
-        {session && view === 'schema' ? (
+        {view === 'history' ? (
+          <HistoryView
+            session={session}
+            onResume={(_title, chat) => {
+              setSeed([...chat])
+              location.hash = ''
+            }}
+          />
+        ) : session && view === 'schema' ? (
           <SchemaBrowser session={session} />
         ) : session ? (
-          <ChatPanel session={session} onSessionReset={setSession} />
+          <ChatPanel session={session} onSessionReset={setSession} seed={seed} />
         ) : (
           <div className="st-session rounded border border-line bg-card p-4 font-mono text-sm text-muted">
             —

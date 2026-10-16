@@ -227,3 +227,31 @@ def test_t2s_schema_filter_and_browser(page_url):
         expect(page.locator(".st-table-detail")).to_contain_text("amount")
 
         browser.close()
+
+
+@pytest.mark.uitest
+def test_t2s_history_view_qlog(chat_page_url, tmp_path, monkeypatch):
+    """Ticket #69: the #history view lists seeded qlog records and clears."""
+    from playwright.sync_api import expect, sync_playwright
+
+    from seatunnel_agent.agents.data.text2sql import api as t2s_api
+    from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
+
+    logger = QueryLogger(log_dir=tmp_path)
+    logger.log("how many orders", "SELECT count(*) FROM orders", "ok",
+               exec_time_ms=7)
+    monkeypatch.setattr(t2s_api, "_query_logger", lambda: logger)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(chat_page_url + "#history", wait_until="networkidle")
+
+        view = page.locator(".st-history-view")
+        expect(view).to_contain_text("how many orders", timeout=15000)
+        view.get_by_text("how many orders").click()
+        expect(page.locator(".st-qlog-detail")).to_contain_text("count(*)")
+        view.get_by_role("button", name="Clear all").click()
+        expect(view).not_to_contain_text("how many orders")
+
+        browser.close()

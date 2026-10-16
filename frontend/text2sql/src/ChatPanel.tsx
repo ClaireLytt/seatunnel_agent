@@ -14,9 +14,11 @@ type Item =
 export function ChatPanel({
   session,
   onSessionReset,
+  seed,
 }: {
   session: SessionMeta
   onSessionReset: (s: SessionMeta) => void
+  seed?: { role: string; content: string }[]
 }) {
   const { t } = useTranslation()
   const [items, setItems] = useState<Item[]>([])
@@ -27,6 +29,16 @@ export function ChatPanel({
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight)
   }, [items])
+
+  // resumed transcript replaces the current conversation display
+  useEffect(() => {
+    if (seed)
+      setItems(
+        seed.map((m) =>
+          m.role === 'user' ? { kind: 'user', text: m.content } : { kind: 'text', text: m.content },
+        ),
+      )
+  }, [seed])
 
   const send = async () => {
     const q = input.trim()
