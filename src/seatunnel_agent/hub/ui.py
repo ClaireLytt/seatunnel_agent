@@ -217,11 +217,15 @@ def create_ui() -> gr.Blocks:
         )
         render_config_migrate_page(app)
 
-    with app.route("UI Testing", "/uitest"):
-        from seatunnel_agent.agents.devops.ui_testing.gradio_page import (
-            render_uitest_page,
-        )
-        render_uitest_page(app)
+    # /uitest is the React app (frontend/uitest, mounted in launch_app);
+    # the Gradio page is only a fallback when the dist was never built.
+    from seatunnel_agent.agents.devops.ui_testing.api import FRONTEND_DIST
+    if not (FRONTEND_DIST / "index.html").is_file():
+        with app.route("UI Testing", "/uitest"):
+            from seatunnel_agent.agents.devops.ui_testing.gradio_page import (
+                render_uitest_page,
+            )
+            render_uitest_page(app)
 
     with app.route("Settings", "/settings"):
         from seatunnel_agent.hub.settings_ui import render_settings_page
@@ -375,6 +379,20 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         css=_CUSTOM_CSS,
         prevent_thread_lock=True,
     )
+
+    # UI testing backend + React page: part of the web UI itself, so mounted
+    # unconditionally (not gated by --api / API key) on the served instance.
+    from seatunnel_agent.agents.devops.ui_testing.api import (
+        FRONTEND_DIST,
+    )
+    from seatunnel_agent.agents.devops.ui_testing.api import (
+        router as uitest_api_router,
+    )
+    app.app.include_router(uitest_api_router)
+    if (FRONTEND_DIST / "index.html").is_file():
+        from fastapi.staticfiles import StaticFiles
+        app.app.mount("/uitest", StaticFiles(directory=FRONTEND_DIST, html=True),
+                      name="uitest-frontend")
 
     if api:
         from fastapi import Depends
