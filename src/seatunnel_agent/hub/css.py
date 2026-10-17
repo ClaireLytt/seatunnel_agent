@@ -47,13 +47,11 @@ footer { display: none !important; }
    scrolling. Only the outermost .gradio-container scrolls; everything
    inside is visible. */
 body:has(.st-history-page),
-body:has(.st-review-page),
 body:has(.st-uitest-page),
 body:has(.st-scroll-page) {
     overflow: hidden !important;
 }
 body:has(.st-history-page) .gradio-container,
-body:has(.st-review-page) .gradio-container,
 body:has(.st-uitest-page) .gradio-container,
 body:has(.st-scroll-page) .gradio-container {
     overflow-y: auto !important;
@@ -62,8 +60,6 @@ body:has(.st-scroll-page) .gradio-container {
 }
 body:has(.st-history-page) .gradio-container > .main,
 body:has(.st-history-page) .gradio-container > .main > .wrap,
-body:has(.st-review-page) .gradio-container > .main,
-body:has(.st-review-page) .gradio-container > .main > .wrap,
 body:has(.st-uitest-page) .gradio-container > .main,
 body:has(.st-uitest-page) .gradio-container > .main > .wrap,
 body:has(.st-scroll-page) .gradio-container > .main,
@@ -94,65 +90,6 @@ body:has(.st-hub) .gradio-container > .main > .wrap {
     overflow: visible !important;
     height: auto !important;
     min-height: auto !important;
-}
-
-/* ══════════════════════════════════════════
-   SQL Review page polish
-   ══════════════════════════════════════════ */
-body:has(.st-review-page) .gradio-container > .main > .wrap {
-    max-width: 1500px !important;
-    width: 100% !important;
-    margin: 0 auto !important;
-    padding: 14px 28px 48px !important;
-}
-/* SQL input box: fixed height with a visible vertical scrollbar
-   (max_lines pins the textarea; long SQL scrolls inside the box) */
-#sr-sql-box textarea {
-    overflow-y: auto !important;
-    scrollbar-width: thin;
-}
-/* Keep the SQL input visible while scrolling a long report
-   (pairs with the "行 N" line-jump links) */
-body:has(.st-review-page) .sr-input-col {
-    position: sticky !important;
-    top: 12px !important;
-    align-self: flex-start !important;
-}
-/* Report as a card */
-.gradio-container .sr-report-card {
-    border: 1px solid #e5e7eb !important;
-    border-radius: 10px !important;
-    background: #fff !important;
-    padding: 14px 18px !important;
-    min-height: 320px !important;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
-}
-.sr-report-card h2 { margin-top: 0 !important; }
-.sr-report-card h3 { margin: 16px 0 6px !important; }
-/* Report tables: bordered, striped, comfortable padding */
-.sr-report-card table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    margin: 6px 0 !important;
-}
-.sr-report-card th, .sr-report-card td {
-    border: 1px solid #e5e7eb !important;
-    padding: 6px 10px !important;
-    text-align: left !important;
-    vertical-align: top !important;
-    line-height: 1.5 !important;
-}
-.sr-report-card th { background: #f3f4f6 !important; }
-.sr-report-card tbody tr:nth-child(even) td { background: #fafafa !important; }
-/* Line-jump links: dashed underline, no visited-color drift */
-.sr-report-card a[href*="#srline-"] {
-    color: #2563eb !important;
-    text-decoration: none !important;
-    border-bottom: 1px dashed #93c5fd !important;
-    cursor: pointer !important;
-}
-.sr-report-card a[href*="#srline-"]:hover {
-    border-bottom-style: solid !important;
 }
 
 /* ══════════════════════════════════════════

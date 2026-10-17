@@ -103,6 +103,24 @@ def test_sql_review_page_smoke(page_url):
 
 
 @pytest.mark.uitest
+def test_sql_review_page_dataskew_bridge(page_url):
+    # replaces uitest case DSK17: SQL rides to /dataskew via localStorage
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        page.locator("#sql").fill("SELECT count(distinct uid) FROM ods.t")
+        with page.expect_popup() as popup_info:
+            page.get_by_role("button", name="→ Skew Analysis").click()
+        assert popup_info.value.url.endswith("/dataskew")
+        stored = page.evaluate("() => localStorage.getItem('st_dataskew_sql')")
+        assert stored == "SELECT count(distinct uid) FROM ods.t"
+        browser.close()
+
+
+@pytest.mark.uitest
 def test_sql_review_page_language_follows_cookie(page_url):
     from urllib.parse import urlparse
 

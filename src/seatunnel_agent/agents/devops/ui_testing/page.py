@@ -114,20 +114,11 @@ LABELS: dict[str, tuple[str, ...]] = {
     "加载报告":   ("加载报告", "Load Report"),
     "血缘SQL":    ("用于溯源的SQL语句（每行一条）",
                    "SQL statements to trace lineage from (one per line)"),
-    # ── SQL Review page (/sqlreview) ──
+    # ── shared with several SQL pages ──
     "SQL":        ("SQL",),
-    "开始审查":   ("开始审查", "Start Review"),
-    "生成修复 SQL": ("生成修复 SQL（LLM）", "Generate Fixed SQL (LLM)"),
     "清空":       ("清空", "Clear"),
     "下载报告":   ("下载报告（.md）", "Download Report (.md)"),
     "SQL 方言":   ("SQL 方言", "SQL Dialect"),
-    "审查模式":   ("审查模式", "Review Mode"),
-    "表结构 DDL": ("表结构 DDL（可选，用于 schema 校验）",
-                   "Table DDL (optional, for schema checks)"),
-    "DDL 输入":   ("CREATE TABLE 语句", "CREATE TABLE statements"),
-    "审查规则":   ("规则配置（可选，.sqlreview.yaml 格式）",
-                   "Rule config (optional, .sqlreview.yaml format)"),
-    "规则输入":   ("YAML 规则", "YAML rules"),
     # ── Data Skew page (/dataskew) — labels from data_skew/i18n.py ──
     "开始分析":   ("开始分析", "Analyze Skew"),
     "分析模式":   ("分析模式", "Analysis Mode"),
@@ -139,7 +130,6 @@ LABELS: dict[str, tuple[str, ...]] = {
                    "Measure Consistency (runs both SQLs)"),
     "下载优化 SQL": ("下载优化后 SQL（.sql）", "Download Optimized SQL (.sql)"),
     "上传 SQL 文件": ("上传 SQL 文件", "Upload SQL file"),
-    "倾斜分析":   ("→ 倾斜分析", "→ Skew Analysis"),
     "已保存连接": ("已保存连接", "Saved connection"),
     "读取已保存连接": ("读取已保存连接", "Load saved connections"),
     # ── MCP Toolbox page (/mcp) ──
@@ -237,7 +227,6 @@ class DCPage:
     # per-route "page is ready" selector (default: body)
     READY = {
         "/datacompare": ".st-dc-sidebar",
-        "/sqlreview": "#sr-sql-box textarea",
         "/lineage": ".st-lin-side",
         "/text2sql": ".st-sidebar-status",
         "/transpile": ".st-trp-side",
@@ -615,7 +604,7 @@ class DCPage:
         loc = self.page.locator(".dsk-report-card")
         if loc.count():
             return loc.first
-        return self.page.locator(".sr-report-card").last
+        return self.page.locator(".prose").last
 
     def result_text(self) -> str:
         # text_content, not inner_text: result cards hold row previews in
@@ -670,7 +659,7 @@ class DCPage:
         """Poll until *text* appears in the page body (or result area) —
         replaces fragile fixed waits for slow-rendering side effects."""
         target = ("document.body" if where == "body"
-                  else "document.querySelector('.st-main .st-schema-card, .st-lin-main, .sr-report-card')")
+                  else "document.querySelector('.st-main .st-schema-card, .st-lin-main')")
         self.page.wait_for_function(
             f"t => (({target})?.textContent || '').includes(t)",
             arg=text, timeout=timeout_ms)
@@ -837,7 +826,7 @@ _DIGEST_JS = r"""
       if (t && t.length < 40) btns.push(t);
     });
     lines.push('[BUTTONS] ' + btns.join(' | '));
-    const reps = document.querySelectorAll('.sr-report-card, .prose');
+    const reps = document.querySelectorAll('.prose');
     const rep = reps.length ? reps[reps.length - 1] : null;
     if (rep) {
       let txt = (rep.innerText || '').replace(/\n{2,}/g, '\n').trim();

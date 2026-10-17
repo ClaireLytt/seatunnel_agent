@@ -46,15 +46,7 @@
   expect:
     - scrollable: {selector: .st-dc-sidebar}
 
-- id: SCR5
-  title: SQL Review 页整体可滚动
-  tags: [smoke, sqlite]
-  page: /sqlreview
-  steps:
-    - wait: 500
-      note: 纯断言用例,等页面水合完成即可
-  expect:
-    - scrollable: {selector: .gradio-container}
+# SCR5 retired: /sqlreview is the React page; it scrolls natively.
 
 # SCR6 retired: text2sql-legacy page deleted; React app scrolls natively.
 

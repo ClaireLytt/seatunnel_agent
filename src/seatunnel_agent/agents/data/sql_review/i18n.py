@@ -32,52 +32,8 @@ CHECK_CATALOG_EN: dict[str, str] = {
 
 SR_I18N: dict[str, dict[str, str]] = {
     "en": {
-        # --- UI chrome ---
-        "sr_title": "## 🔍 SQL Code Review",
-        "sr_subtitle": (
-            "Static rules + LLM semantic review. Supports Hive / Spark / Flink / "
-            "MaxCompute / MySQL / PostgreSQL / SQL Server / ClickHouse / Doris / "
-            "SQLite. Pure static analysis — the SQL is never executed."
-        ),
-        "sr_sql_placeholder": "Paste the SQL to review…",
-        "sr_dialect": "SQL Dialect",
-        "sr_mode": "Review Mode",
-        "sr_mode_static": "Static review (fast, no LLM)",
-        "sr_mode_llm": "LLM deep review",
-        "sr_ddl_accordion": "Table DDL (optional, for schema checks)",
-        "sr_ddl_label": "CREATE TABLE statements",
-        "sr_rules_accordion": "Rule config (optional, .sqlreview.yaml format)",
-        "sr_rules_label": "YAML rules",
-        "sr_rules_placeholder": (
-            "partition_columns: [dt, ds]\nthresholds:\n  max_joins: 5"
-        ),
-        "sr_rules_invalid": "❌ **Invalid rule config**",
-        "sr_download_report": "Download Report (.md)",
-        "sr_review_btn": "Start Review",
-        "sr_fix_btn": "Generate Fixed SQL (LLM)",
-        "sr_transpile_btn": "→ Transpile",
-        "sr_skew_btn": "→ Skew Analysis",
-        "sr_clear_btn": "Clear",
-        "sr_report_placeholder": "*The review report will appear here*",
-        "sr_fixed_sql": "Fixed SQL",
-        "sr_stats_accordion": "📈 Review History Stats",
-        "sr_stats_placeholder": "*Click refresh to load*",
-        "sr_refresh": "Refresh Stats",
-        # --- UI dynamic messages ---
-        "sr_input_sql_first": "Please enter SQL first.",
-        "sr_review_failed": "❌ **Review failed**",
-        "sr_fix_need_review": "-- Run a review first",
-        "sr_fix_generating": "-- Calling the LLM to generate fixed SQL, please wait…",
-        "sr_fix_failed": "-- Fix failed",
-        "sr_fix_none_static": "-- No mechanically fixable issue found; switch to LLM review mode for a full rewrite",
+        # --- backend messages (agent / fixer / cache) ---
         "sr_cache_hit": "Review cache hit (same SQL / dialect / rules) — skipping the LLM call",
-        "sr_no_records": "No review records yet.",
-        "sr_stat_reviews": "Reviews",
-        "sr_stat_findings": "Total findings",
-        "sr_sev_critical": "🔴 Critical",
-        "sr_sev_risk": "🟡 Risk",
-        "sr_sev_suggestion": "🟢 Suggestion",
-        "sr_top_categories": "**Top issue categories**",
         # --- CR report ---
         "sr_report_title": "## CR Report",
         "sr_sec_critical": "### 🔴 Critical Issues (must fix)",
@@ -117,52 +73,8 @@ SR_I18N: dict[str, dict[str, str]] = {
         "sr_fix_no_sql": "The model returned no usable fixed SQL",
     },
     "zh": {
-        # --- UI chrome ---
-        "sr_title": "## 🔍 SQL 代码审查",
-        "sr_subtitle": (
-            "静态规则 + LLM 语义审查，支持 Hive / Spark / Flink / MaxCompute / "
-            "MySQL / PostgreSQL / SQL Server / ClickHouse / Doris / SQLite。"
-            "纯静态分析，不执行 SQL。"
-        ),
-        "sr_sql_placeholder": "粘贴要审查的 SQL……",
-        "sr_dialect": "SQL 方言",
-        "sr_mode": "审查模式",
-        "sr_mode_static": "静态审查（快速，无需 LLM）",
-        "sr_mode_llm": "LLM 深度审查",
-        "sr_ddl_accordion": "表结构 DDL（可选，用于 schema 校验）",
-        "sr_ddl_label": "CREATE TABLE 语句",
-        "sr_rules_accordion": "规则配置（可选，.sqlreview.yaml 格式）",
-        "sr_rules_label": "YAML 规则",
-        "sr_rules_placeholder": (
-            "partition_columns: [dt, ds]\nthresholds:\n  max_joins: 5"
-        ),
-        "sr_rules_invalid": "❌ **规则配置无效**",
-        "sr_download_report": "下载报告（.md）",
-        "sr_review_btn": "开始审查",
-        "sr_fix_btn": "生成修复 SQL（LLM）",
-        "sr_transpile_btn": "→ 方言翻译",
-        "sr_skew_btn": "→ 倾斜分析",
-        "sr_clear_btn": "清空",
-        "sr_report_placeholder": "*审查报告将显示在这里*",
-        "sr_fixed_sql": "修复后 SQL",
-        "sr_stats_accordion": "📈 审查历史统计",
-        "sr_stats_placeholder": "*点击刷新查看*",
-        "sr_refresh": "刷新统计",
-        # --- UI dynamic messages ---
-        "sr_input_sql_first": "请先输入 SQL。",
-        "sr_review_failed": "❌ **审查失败**",
-        "sr_fix_need_review": "-- 请先完成一次审查",
-        "sr_fix_generating": "-- 正在调用 LLM 生成修复 SQL，请稍候……",
-        "sr_fix_failed": "-- 修复失败",
-        "sr_fix_none_static": "-- 没有可静态自动修复的问题；如需完整改写请切换到 LLM 审查模式",
+        # --- backend messages (agent / fixer / cache) ---
         "sr_cache_hit": "命中审查缓存（相同 SQL/方言/规则），跳过 LLM 调用",
-        "sr_no_records": "暂无审查记录。",
-        "sr_stat_reviews": "审查次数",
-        "sr_stat_findings": "发现问题总数",
-        "sr_sev_critical": "🔴 严重",
-        "sr_sev_risk": "🟡 风险",
-        "sr_sev_suggestion": "🟢 建议",
-        "sr_top_categories": "**高频问题类别**",
         # --- CR report ---
         "sr_report_title": "## CR 报告",
         "sr_sec_critical": "### 🔴 严重问题（必须修复）",
