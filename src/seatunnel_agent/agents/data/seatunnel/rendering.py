@@ -1,10 +1,15 @@
 """Non-Gradio rendering helpers for the SeaTunnel page.
 
 Extracted verbatim from the legacy Gradio ui.py on its retirement:
-the event->markdown chat formatter, the Python i18n dict (source of
-truth for the React page's wording, see tests/test_seatunnel_i18n.py),
+the event->markdown chat formatter, the backend-facing i18n strings,
 and the demo-mode scripts/config used by the /api/seatunnel/demo SSE
 endpoint.
+
+I18N holds only keys the backend itself renders (mode labels, SSE
+error/stop messages, demo wording). The legacy page's UI-chrome wording
+lives as inline literals in tests/test_seatunnel_i18n.py, which checks
+the React i18n.ts against it (react_migration.md item 6: prune
+UI-chrome keys on retirement; parity truth moves to the test).
 """
 
 from __future__ import annotations
@@ -15,28 +20,17 @@ import time
 from typing import Any
 
 # ------------------------------------------------------------------
-# i18n
+# i18n (backend-rendered strings only; wording verbatim from legacy ui.py)
 # ------------------------------------------------------------------
 
-_I18N: dict[str, dict[str, str]] = {
+I18N: dict[str, dict[str, str]] = {
     "en": {
-        "title": "SeaTunnel Pipeline Builder",
-        "subtitle": "AI Agent · ReAct Pattern · Auto-diagnose & Fix",
-        "mode": "MODE",
         "mode_nl": "Natural Language",
         "mode_run": "Run Config",
         "mode_validate": "Validate Config",
         "mode_diagnose": "Diagnose Log",
-        "config_path": "CONFIG / LOG PATH",
-        "config_placeholder": "examples/fake_to_console.conf",
-        "connect": "Connect",
-        "status": "STATUS",
-        "status_default": "Not connected",
-        "input_placeholder": "Message SeaTunnel Agent...",
-        "submit": "Send",
-        "demo": "Demo",
         "no_settings": "Settings not loaded. Click **Connect** first and make sure `.env` is configured.",
-        "demo_default_msg": "Generate a FakeSource to Console config",
+        "stopped": "Agent stopped by user.",
         "demo_validate_done": "**Validation complete!** Config file `{path}` has correct syntax with required source and sink sections.",
         "demo_general_done": (
             "**Config generated and validated!**\n\n"
@@ -45,41 +39,14 @@ _I18N: dict[str, dict[str, str]] = {
             "- **Sink**: Console (print to stdout)\n\n"
             "Ready to run if SeaTunnel is installed."
         ),
-        "new_chat": "+ New Chat",
-        "history": "History",
-        "no_history": "No conversations yet",
-        "placeholder_title": "How can I help you build a pipeline?",
-        "placeholder_hint1": "Generate 10 fake rows to console",
-        "placeholder_hint2": "Sync MySQL users table to Console",
-        "placeholder_hint3": "Validate examples/fake_to_console.conf",
-        "export": "Export",
-        "export_empty": "No conversation to export",
-        "templates": "TEMPLATES",
-        "tpl_none": "-- Select a template --",
-        "stop": "Stop",
-        "stopped": "Agent stopped by user.",
-        "rename": "Rename",
-        "delete": "Delete",
-        "rename_placeholder": "New name...",
     },
     "zh": {
-        "title": "SeaTunnel 数据管道构建器",
-        "subtitle": "AI 智能代理 · ReAct 推理模式 · 自动诊断修复",
-        "mode": "运行模式",
         "mode_nl": "自然语言描述",
         "mode_run": "运行配置文件",
         "mode_validate": "验证配置",
         "mode_diagnose": "诊断日志",
-        "config_path": "配置 / 日志路径",
-        "config_placeholder": "examples/fake_to_console.conf",
-        "connect": "连接",
-        "status": "状态",
-        "status_default": "未连接",
-        "input_placeholder": "输入你的数据管道任务...",
-        "submit": "发送",
-        "demo": "演示",
         "no_settings": "未加载配置。请先点击 **连接**，确保 `.env` 已配置。",
-        "demo_default_msg": "帮我生成一个 FakeSource 到 Console 的配置",
+        "stopped": "已被用户中断。",
         "demo_validate_done": "**验证完成！** 配置文件 `{path}` 语法正确，包含必要的 source 和 sink 部分。",
         "demo_general_done": (
             "**配置已生成并验证通过！**\n\n"
@@ -88,35 +55,19 @@ _I18N: dict[str, dict[str, str]] = {
             "- **Sink**: Console（输出到控制台）\n\n"
             "如果安装了 SeaTunnel，可以直接运行此配置。"
         ),
-        "new_chat": "+ 新建对话",
-        "history": "历史记录",
-        "no_history": "暂无历史记录",
-        "placeholder_title": "我能帮你构建什么管道？",
-        "placeholder_hint1": "生成 10 条假数据到控制台",
-        "placeholder_hint2": "同步 MySQL 用户表到 Console",
-        "placeholder_hint3": "验证 examples/fake_to_console.conf",
-        "export": "导出",
-        "export_empty": "没有可导出的对话",
-        "templates": "配置模板",
-        "tpl_none": "-- 选择模板 --",
-        "stop": "停止",
-        "stopped": "已被用户中断。",
-        "rename": "重命名",
-        "delete": "删除",
-        "rename_placeholder": "新名称...",
     },
 }
 
 
-def _t(lang: str, key: str) -> str:
-    return _I18N.get(lang, _I18N["en"]).get(key, _I18N["en"].get(key, key))
+def translate(lang: str, key: str) -> str:
+    return I18N.get(lang, I18N["en"]).get(key, I18N["en"].get(key, key))
 
 
 # ------------------------------------------------------------------
 # Demo mode scripts
 # ------------------------------------------------------------------
 
-_DEMO_STEPS: dict[str, list[dict[str, Any]]] = {
+DEMO_STEPS: dict[str, list[dict[str, Any]]] = {
     "validate": [
         {"type": "thinking", "text": "I need to read the config file first, then validate its structure."},
         {"type": "tool_call", "name": "read_config"},
@@ -141,7 +92,7 @@ _DEMO_STEPS: dict[str, list[dict[str, Any]]] = {
     ],
 }
 
-_DEMO_CONFIG = """\
+DEMO_CONFIG = """\
 env {
   parallelism = 1
   job.mode = "BATCH"
@@ -208,7 +159,7 @@ class EventCollector:
 # Format events -> chat messages
 # ------------------------------------------------------------------
 
-_TOOL_EMOJI = {
+TOOL_EMOJI = {
     "run_seatunnel_job": "\U0001f680",
     "write_config": "✏️",
     "read_config": "\U0001f4d6",
@@ -228,15 +179,18 @@ _TOOL_EMOJI = {
 }
 
 
-def _format_events_as_chat(events: list[dict[str, Any]], start_time: float | None = None) -> list[dict[str, str]]:
+def format_events_as_chat(events: list[dict[str, Any]], start_time: float | None = None) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
     delta_buffer: list[str] = []
 
     def _flush_delta() -> None:
+        # No " ▌" suffix: the legacy Gradio formatter baked the streaming
+        # cursor into flushed history (a rendering bug); the live cursor now
+        # lives only on the React page's in-flight bubble (Chat.tsx).
         if delta_buffer:
             accumulated = "".join(delta_buffer)
             if accumulated.strip():
-                messages.append({"role": "assistant", "content": accumulated + " ▌"})
+                messages.append({"role": "assistant", "content": accumulated})
             delta_buffer.clear()
 
     for ev in events:
@@ -278,7 +232,7 @@ def _format_events_as_chat(events: list[dict[str, Any]], start_time: float | Non
         elif t == "tool_call":
             name = ev.get("name", "?")
             inp = ev.get("input", {})
-            emoji = _TOOL_EMOJI.get(name, "\U0001f527")
+            emoji = TOOL_EMOJI.get(name, "\U0001f527")
             args_lines = "\n".join(f"  {k}: {repr(v)[:120]}" for k, v in inp.items() if k != "content")
             if "content" in inp:
                 args_lines += f"\n  content: ({len(inp['content'])} chars)"

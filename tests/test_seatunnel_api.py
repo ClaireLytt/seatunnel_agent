@@ -82,6 +82,9 @@ class _FakeAgent:
         self.chat_calls: list[str] = []
         type(self).instances.append(self)
 
+    def set_event_callback(self, on_event) -> None:
+        self._on_event = on_event
+
     def _emit_turn(self, text: str) -> None:
         import json as _json
 
@@ -500,6 +503,20 @@ def test_upload_requires_file_part(client: TestClient) -> None:
     assert resp.status_code == 422
 
 
+def test_upload_rejects_oversized_file(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uploads over the 1 MB cap are rejected with 413 and nothing is saved."""
+    monkeypatch.chdir(tmp_path)
+    big = b"x" * (1024 * 1024 + 1)
+    resp = client.post(
+        "/api/seatunnel/upload",
+        files={"file": ("huge.conf", big, "text/plain")},
+    )
+    assert resp.status_code == 413
+    assert not (tmp_path / "configs" / "huge.conf").exists()
+
+
 # ── Demo ─────────────────────────────────────────────────────────────
 
 
@@ -538,10 +555,10 @@ def test_demo_streams_validate_script_for_existing_config(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("UI_DEMO_STEP_DELAY", "0")
-    from seatunnel_agent.agents.data.seatunnel.rendering import _DEMO_CONFIG
+    from seatunnel_agent.agents.data.seatunnel.rendering import DEMO_CONFIG
 
     cfg = tmp_path / "pipe.conf"
-    cfg.write_text(_DEMO_CONFIG, encoding="utf-8")
+    cfg.write_text(DEMO_CONFIG, encoding="utf-8")
     resp = client.post(
         "/api/seatunnel/demo", json={"config_path": str(cfg), "lang": "zh"}
     )

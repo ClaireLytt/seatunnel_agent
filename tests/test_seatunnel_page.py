@@ -36,6 +36,9 @@ class _FakePageAgent:
         self._on_event = on_event
         self.stop_event = _threading.Event()
 
+    def set_event_callback(self, on_event) -> None:
+        self._on_event = on_event
+
     def _turn(self, text: str) -> None:
         for chunk in (text[: len(text) // 2], text[len(text) // 2:]):
             self._on_event("text_delta", {"text": chunk})

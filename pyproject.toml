@@ -135,6 +135,8 @@ files = [
     "src/seatunnel_agent/agents/data/pii_scan",
     "src/seatunnel_agent/agents/data/dag_check",
     "src/seatunnel_agent/common/llm.py",
+    "src/seatunnel_agent/agents/data/seatunnel/api.py",
+    "src/seatunnel_agent/agents/data/seatunnel/rendering.py",
 ]
 ignore_missing_imports = true
 check_untyped_defs = true

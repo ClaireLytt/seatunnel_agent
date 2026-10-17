@@ -2,9 +2,13 @@
 
 ## 批准依据
 
-> 规划链路批准：`.scratch/seatunnel-react-migration/spec.md` 与 `issues/01..08` 全部标记
-> ready-for-agent，由协调者按 ticket 分派实现（本批 = ticket 08 退役 + ticket 07 遗留的
-> 占位区 parity 恢复）。
+用户批准原话（逐字引用）：
+
+- 对提出 4 批次迁移方案的 grilling 轮，用户回答：「yes」。
+- 随后用户依次调用斜杠命令：「/to-spec」、「/to-tickets」、「/implement-spec」，
+  即批准规划链路产物（`.scratch/seatunnel-react-migration/spec.md` 与 `issues/01..08`，
+  全部标记 ready-for-agent）并授权按 ticket 分派实现（本批 = ticket 08 退役 +
+  ticket 07 遗留的占位区 parity 恢复）。
 
 ## 已完成
 
@@ -70,13 +74,44 @@ python scripts/check_workflow.py              -> 三项全 PASS（见附录）
     seatunnel-react-{light,dark}-zh-full.png（zh 全页可见恢复后的占位区：ST logo + 标题 +
     3 个提示卡 + Docs 链接，与 before 截图一致）。
 
+## 修正批（code-review 跟进，2026-10-18）
+
+评审发现 → 处理结果（S=标准项，P=规格项）：
+
+| 项 | 结论 | 处理 / 证据 |
+| --- | --- | --- |
+| S1 api.py `_MSG`/`_MODES` 与 rendering 重复 | 已修 | api.py 删除两份本地副本，改用 `rendering.translate` + `I18N` mode_*/no_settings/stopped 键；删除"页面稍后退役"过期注释 |
+| S2 rendering._I18N 保留仅 parity 测试消费的 UI-chrome 键 | 已修 | rendering.I18N 只留后端渲染键（mode_*、no_settings、stopped、demo_*_done）；旧页措辞以内联字面量移入 tests/test_seatunnel_i18n.py（parity 真值随之移入测试，文件头有注明），新增 test_backend_i18n_holds_only_backend_rendered_keys 锁定键集 |
+| S3 Chat.tsx 流冲洗三元重复 + ▌ 永久残留 | 已修 | 抽出 `flushStream` helper；确认 ▌ 残留为真（旧页 formatter ui.py:415 同样把 " ▌" 烙进冲洗历史，属沿袭的渲染 bug）：Chat.tsx 冲洗不再带 ▌（光标只在实时气泡渲染期后缀），rendering.py `_flush_delta` 同步去掉，test_ui_format 断言改为 `"▌" not in` |
+| S4 私有名跨模块引用 / 直接赋值 `agent._on_event` | 已修 | rendering 公有化：`I18N`/`translate`/`format_events_as_chat`/`DEMO_STEPS`/`DEMO_CONFIG`/`TOOL_EMOJI`（仓库内引用全部就地改名，无别名）；SeaTunnelAgent 新增最小公有 setter `set_event_callback`，api.py 改用之 |
+| S5 upload 无大小上限 / _CONVERSATIONS 无界 | 已修 | upload 超 1 MB 返回 413（新增 test_upload_rejects_oversized_file）；`_get_conversation` 超过 100 条时逐出最旧的空闲会话（已完成轮次均已持久化到 history，无数据丢失） |
+| P1 uitest smoke 未覆盖 /seatunnel | 误报（按设计排除，证据如下） | /seatunnel 在 Gradio 时代就从未进 catalog/用例（`git show 5b42cf0:...catalog.py` 无 seatunnel；全历史 `git log -S "/seatunnel" -- cases/` 零命中）。迁移先例即如此：aux_pages.yaml/extended.yaml/scroll.yaml 注释明确 React 页退出 YAML 用例、浏览器覆盖移入 pytest Playwright（react_migration.md 第 9-10 条）；/seatunnel 的真浏览器覆盖 = tests/test_seatunnel_page.py（5 passed）。smoke 仍整体重跑通过（见修正批验证） |
+| P2 localStorage 跨页桥 | 误报（无桥） | `git show 5b42cf0:...seatunnel/ui.py \| grep -n localStorage` 零命中（st_ 前缀仅 CSS class 名）；旧页无跨页 localStorage 桥，无需恢复 |
+| P3 批准引用非用户原话 | 已修 | 本报告"批准依据"改为逐字引用：「yes」+「/to-spec」「/to-tickets」「/implement-spec」 |
+| P4 新后端模块未进 mypy 白名单 | 已修 | pyproject [tool.mypy] files 加入 agents/data/seatunnel/{api,rendering}.py；修复暴露的 1 处 arg-type（settings 判空收窄）→ mypy Success: no issues found in 105 source files |
+| P5 i18n verbatim 覆盖缺口 | 已修 | test_seatunnel_i18n.py 内联字面量扩到 connected/connectFailed/templatePrompt/errorLabel/completedIn/docsLink；确认 errorLabel/completedIn 旧页双语言均为英文（ui.py:632-633 f-string 无语言分支）、newChat 的"+"落在按钮字形（Sessions.tsx，新增 test_new_chat_plus_glyph_lives_on_button 锁定）；upload/collapse/expand 旧页无文字（仅 +/☰ 字形），测试文件头已注明 |
+
+### 修正批验证（PYTHONPATH=工作树 src）
+
+```
+ruff check src tests                          -> All checks passed!
+mypy                                          -> Success: no issues found in 105 source files
+pytest -q（全量）                              -> 2998 passed, 1 skipped, 104 deselected, 2 warnings in 136.63s
+pytest -m uitest tests/test_seatunnel_page.py -> 5 passed in 26.59s
+python -m ...ui_testing run --suite smoke --no-llm
+                                              -> PASS 83 · FAIL 0 · ERROR 0 · SKIP 2 · MANUAL 4 · 耗时 447s
+                                                 报告: runs/20261018_022433/report.html
+npm run lint --workspace seatunnel            -> eslint src（无输出，通过）
+npm run build --workspace seatunnel           -> ✓ built in 3.14s
+python scripts/check_workflow.py              -> <CHECK_TAIL>
+```
+
 ## 未解决问题 / 遗留清单
 
 | 优先级 | 问题 | 证据 | 原因 | 影响 | 建议处理方式 |
 | --- | --- | --- | --- | --- | --- |
 | 中 | `config/t2s_examples.json` 测试运行后漂移，需人工还原 | 本批全量 pytest 后 `git status` 出现 M；pitfalls 2026-10-17/18 两行 | text2sql 示例库写回仓库内文件 | 易混入无关提交 | 加 fixture 把 `T2S_EXAMPLES_PATH` 重定向 tmp_path（测试隔离） |
 | 低 | catalog.py AGENT_ROUTES 仍含 text2sql（React 页，引擎驱动 Gradio） | catalog.py:14 | 迁移时未同步 | uitest 引擎目录与现状不一致 | 用户圈选后单独清理 |
-| 低 | rendering.py 未纳入 mypy files 白名单 | pyproject [tool.mypy] files 无 agents/data/seatunnel | 渐进式 typing 策略 | 该模块不受 mypy 门禁 | 后续补注解后加入白名单 |
 
 ## 未执行的步骤
 

@@ -3,9 +3,21 @@ import { useTranslation } from 'react-i18next'
 import { chatStream, demoStream, stopChat, uploadFile, type ChatEvent } from '@/api'
 
 // Chat round-trip: message in, SSE event stream out, Stop interrupts.
-// Delta/flush semantics mirror the legacy ui.py _format_events_as_chat:
-// deltas accumulate into a trailing streaming bubble (▌ cursor); a `text`
-// event replaces the buffer, any other event flushes it as its own message.
+// Delta/flush semantics mirror the legacy ui.py format_events_as_chat:
+// deltas accumulate into a trailing streaming bubble; a `text` event
+// replaces the buffer, any other event flushes it as its own message.
+// The ▌ cursor is a render-time suffix on the live streaming bubble only
+// (the legacy formatter baked it into flushed history — a rendering bug,
+// fixed both here and in rendering.py's format_events_as_chat).
+
+// Flush the trailing streaming bubble into a permanent message.
+// `replaced` drops it instead (a `text` event carries the full reply).
+function flushStream(xs: Item[], replaced = false): Item[] {
+  const last = xs[xs.length - 1]
+  if (!last || last.kind !== 'stream') return xs
+  const head = xs.slice(0, -1)
+  return replaced ? head : [...head, { kind: 'event', text: last.text }]
+}
 
 type Item =
   | { kind: 'user'; text: string }
@@ -67,23 +79,10 @@ export function Chat({
         return [...xs, { kind: 'stream', text: e.text }]
       })
     } else if (e.type === 'event') {
-      setItems((xs) => {
-        const last = xs[xs.length - 1]
-        const head =
-          last && last.kind === 'stream'
-            ? e.kind === 'text'
-              ? xs.slice(0, -1) // text replaces the streamed buffer
-              : [...xs.slice(0, -1), { kind: 'event' as const, text: last.text + ' ▌' }]
-            : xs
-        return [...head, { kind: 'event', text: e.markdown }]
-      })
+      setItems((xs) => [...flushStream(xs, e.kind === 'text'), { kind: 'event', text: e.markdown }])
     } else if (e.type === 'final') {
       setItems((xs) => {
-        const last = xs[xs.length - 1]
-        const head =
-          last && last.kind === 'stream'
-            ? [...xs.slice(0, -1), { kind: 'event' as const, text: last.text + ' ▌' }]
-            : xs
+        const head = flushStream(xs)
         const tail: Item[] = []
         if (e.error) tail.push({ kind: 'error', text: t('errorLabel', { msg: e.error }) })
         if (e.elapsed !== undefined)

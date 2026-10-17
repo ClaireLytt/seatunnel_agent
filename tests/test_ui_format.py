@@ -8,14 +8,14 @@ import time
 
 from seatunnel_agent.agents.data.seatunnel.rendering import (
     EventCollector,
-    _format_events_as_chat,
+    format_events_as_chat,
 )
 
 
 class TestFormatEvents:
     def test_step_event(self):
         events = [{"type": "step", "iteration": 1, "max": 20, "phase": "thinking"}]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 1
         assert "Step 1" in msgs[0]["content"]
         assert "/20" not in msgs[0]["content"]
@@ -23,7 +23,7 @@ class TestFormatEvents:
 
     def test_step_executing_tools(self):
         events = [{"type": "step", "iteration": 2, "max": 20, "phase": "executing_tools"}]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "Step 2" in msgs[0]["content"]
         assert "Executing tools" in msgs[0]["content"]
 
@@ -32,17 +32,19 @@ class TestFormatEvents:
             {"type": "text_delta", "text": "Hello "},
             {"type": "text_delta", "text": "world"},
         ]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 1
         assert "Hello world" in msgs[0]["content"]
-        assert "▌" in msgs[0]["content"]
+        # flushed history carries no streaming cursor (the ▌ lives only on
+        # the React page's live bubble, see Chat.tsx)
+        assert "▌" not in msgs[0]["content"]
 
     def test_text_delta_replaced_by_text(self):
         events = [
             {"type": "text_delta", "text": "partial"},
             {"type": "text", "text": "Full complete text"},
         ]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 1
         assert msgs[0]["content"] == "Full complete text"
 
@@ -52,7 +54,7 @@ class TestFormatEvents:
             "name": "test_connection",
             "result": json.dumps({"reachable": True, "message": "localhost:3306 is reachable (5ms)"}),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "✅" in msgs[0]["content"]
         assert "reachable" in msgs[0]["content"]
 
@@ -62,7 +64,7 @@ class TestFormatEvents:
             "name": "test_connection",
             "result": json.dumps({"reachable": False, "message": "Cannot reach host"}),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "❌" in msgs[0]["content"]
 
     def test_diff_in_write_config_result(self):
@@ -75,7 +77,7 @@ class TestFormatEvents:
                 "had_changes": True,
             }),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "diff" in msgs[0]["content"].lower()
         assert "old line" in msgs[0]["content"]
 
@@ -90,13 +92,13 @@ class TestFormatEvents:
                 "count": 1,
             }),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "fake_to_console" in msgs[0]["content"]
 
     def test_tool_call_new_emojis(self):
         for tool_name in ("test_connection", "list_templates", "use_template"):
             events = [{"type": "tool_call", "name": tool_name, "input": {}}]
-            msgs = _format_events_as_chat(events)
+            msgs = format_events_as_chat(events)
             assert len(msgs) == 1
             assert tool_name in msgs[0]["content"]
 
@@ -104,24 +106,24 @@ class TestFormatEvents:
 class TestFormatEventsThinkingAndFinal:
     def test_thinking_event(self):
         events = [{"type": "thinking", "text": "Analyzing the config..."}]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 1
         assert "Analyzing" in msgs[0]["content"]
 
     def test_final_answer_event_not_rendered(self):
         events = [{"type": "final_answer", "text": "The config is valid."}]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 0
 
     def test_tool_call_event(self):
         events = [{"type": "tool_call", "name": "write_config", "input": {"config_path": "/tmp/x.conf"}}]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 1
         assert "write_config" in msgs[0]["content"]
 
     def test_generic_tool_result(self):
         events = [{"type": "tool_result", "name": "read_config", "result": json.dumps({"content": "env{}"})}]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 1
 
 
@@ -188,7 +190,7 @@ class TestFormatEventsNewTools:
                 "notes": [],
             }),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 1
         assert "Jdbc" in msgs[0]["content"]
         assert "url" in msgs[0]["content"]
@@ -208,7 +210,7 @@ class TestFormatEventsNewTools:
                 },
             }),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "topic" in msgs[0]["content"]
         assert "string" in msgs[0]["content"]
 
@@ -225,7 +227,7 @@ class TestFormatEventsNewTools:
                 "count": 2,
             }),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "2 version" in msgs[0]["content"]
         assert "v1" in msgs[0]["content"]
 
@@ -235,7 +237,7 @@ class TestFormatEventsNewTools:
             "name": "list_config_versions",
             "result": json.dumps({"versions": [], "count": 0, "message": "No version history found"}),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "No version history" in msgs[0]["content"]
 
     def test_metrics_in_run_result(self):
@@ -248,7 +250,7 @@ class TestFormatEventsNewTools:
                 "metrics": {"total_read_count": 100, "total_write_count": 100, "duration_ms": 2500},
             }),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "100" in msgs[0]["content"]
         assert "Metrics" in msgs[0]["content"]
 
@@ -265,7 +267,7 @@ class TestFormatEventsNewTools:
                 ],
             }),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "1/2 passed" in msgs[0]["content"]
         assert "a.conf" in msgs[0]["content"]
 
@@ -282,7 +284,7 @@ class TestFormatEventsNewTools:
                 ],
             }),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         content = msgs[0]["content"]
         assert "2/2 passed" in content
 
@@ -295,7 +297,7 @@ class TestFormatEventsNewTools:
                 "message": "written", "version": 3,
             }),
         }]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert "version 3" in msgs[0]["content"]
 
 
@@ -304,13 +306,13 @@ class TestElapsedTimeDisplay:
         import time as _time
         start = _time.time() - 5.0
         events = [{"type": "step", "iteration": 1, "max": 20, "phase": "thinking"}]
-        msgs = _format_events_as_chat(events, start_time=start)
+        msgs = format_events_as_chat(events, start_time=start)
         assert len(msgs) == 1
         assert "s)" in msgs[0]["content"]
 
     def test_step_no_elapsed_without_start(self):
         events = [{"type": "step", "iteration": 1, "max": 20, "phase": "thinking"}]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 1
         assert "s)" not in msgs[0]["content"]
 
@@ -318,21 +320,21 @@ class TestElapsedTimeDisplay:
 class TestTokenUsageDisplay:
     def test_usage_event_rendered(self):
         events = [{"type": "usage", "input_tokens": 1500, "output_tokens": 300}]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 1
         assert "1,500" in msgs[0]["content"]
         assert "300" in msgs[0]["content"]
 
     def test_usage_event_zero_skipped(self):
         events = [{"type": "usage", "input_tokens": 0, "output_tokens": 0}]
-        msgs = _format_events_as_chat(events)
+        msgs = format_events_as_chat(events)
         assert len(msgs) == 0
 
 
 class TestNewToolEmojis:
     def test_restore_config_emoji(self):
-        from seatunnel_agent.agents.data.seatunnel.rendering import _TOOL_EMOJI
-        assert "restore_config_version" in _TOOL_EMOJI
-        assert "delete_config" in _TOOL_EMOJI
-        assert "compare_config_versions" in _TOOL_EMOJI
-        assert "explain_config" in _TOOL_EMOJI
+        from seatunnel_agent.agents.data.seatunnel.rendering import TOOL_EMOJI
+        assert "restore_config_version" in TOOL_EMOJI
+        assert "delete_config" in TOOL_EMOJI
+        assert "compare_config_versions" in TOOL_EMOJI
+        assert "explain_config" in TOOL_EMOJI

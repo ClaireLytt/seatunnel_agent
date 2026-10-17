@@ -28,18 +28,16 @@ from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from seatunnel_agent.agents.data.seatunnel.agent import SeaTunnelAgent
+from seatunnel_agent.agents.data.seatunnel.rendering import (
+    format_events_as_chat,
+    translate,
+)
 from seatunnel_agent.common.config import load_settings
 
 router = APIRouter(prefix="/api/seatunnel", tags=["seatunnel"])
 
-# the four legacy agent modes; labels mirror the Gradio page's i18n dict
-# (rendering._I18N mode_* keys) so the React page loses no wording
-_MODES: list[dict[str, str]] = [
-    {"key": "nl", "en": "Natural Language", "zh": "自然语言描述"},
-    {"key": "run", "en": "Run Config", "zh": "运行配置文件"},
-    {"key": "validate", "en": "Validate Config", "zh": "验证配置"},
-    {"key": "diagnose", "en": "Diagnose Log", "zh": "诊断日志"},
-]
+# the four legacy agent modes; labels come from rendering.I18N (mode_* keys)
+_MODE_KEYS = ("nl", "run", "validate", "diagnose")
 
 
 @router.get("/meta")
@@ -48,7 +46,11 @@ def get_meta() -> dict[str, Any]:
     from seatunnel_agent.agents.data.seatunnel.templates import TEMPLATES
 
     return {
-        "modes": _MODES,
+        "modes": [
+            {"key": k, "en": translate("en", f"mode_{k}"),
+             "zh": translate("zh", f"mode_{k}")}
+            for k in _MODE_KEYS
+        ],
         "templates": [
             {
                 "name": t.name,
@@ -63,20 +65,6 @@ def get_meta() -> dict[str, Any]:
 
 
 # ── Chat SSE ─────────────────────────────────────────────────────────
-
-# mirrors the legacy Gradio page's _I18N strings (ui.py) 1:1; the page
-# itself retires in a later ticket, so the API keeps its own copy
-_MSG: dict[str, dict[str, str]] = {
-    "no_settings": {
-        "en": "Settings not loaded. Click **Connect** first and make sure "
-              "`.env` is configured.",
-        "zh": "未加载配置。请先点击 **连接**，确保 `.env` 已配置。",
-    },
-    "stopped": {
-        "en": "Agent stopped by user.",
-        "zh": "已被用户中断。",
-    },
-}
 
 
 @dataclass
@@ -118,6 +106,20 @@ def _persist_session(cid: str, conv: _Conversation) -> None:
 
 
 _CONVERSATIONS: dict[str, _Conversation] = {}
+_MAX_CONVERSATIONS = 100
+
+
+def _get_conversation(cid: str) -> _Conversation:
+    """Fetch/create the conversation, evicting the oldest idle ones over the
+    cap (completed turns are already persisted to history by _persist_session)."""
+    conv = _CONVERSATIONS.setdefault(cid, _Conversation())
+    if len(_CONVERSATIONS) > _MAX_CONVERSATIONS:
+        for key in list(_CONVERSATIONS):
+            if len(_CONVERSATIONS) <= _MAX_CONVERSATIONS:
+                break
+            if key != cid and _CONVERSATIONS[key].queue is None:
+                del _CONVERSATIONS[key]
+    return conv
 
 
 class ChatRequest(BaseModel):
@@ -139,9 +141,7 @@ def _sse(obj: dict[str, Any]) -> str:
 
 def _render_event(ev: dict[str, Any], start_time: float) -> str | None:
     """Render one agent event to the legacy chat markdown (rendering.py)."""
-    from seatunnel_agent.agents.data.seatunnel.rendering import _format_events_as_chat
-
-    msgs = _format_events_as_chat([ev], start_time)
+    msgs = format_events_as_chat([ev], start_time)
     return msgs[0]["content"] if msgs else None
 
 
@@ -156,7 +156,7 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
         raise HTTPException(status_code=400, detail="empty message")
 
     cid = req.conversation_id or uuid.uuid4().hex[:12]
-    conv = _CONVERSATIONS.setdefault(cid, _Conversation())
+    conv = _get_conversation(cid)
 
     with conv.lock:
         if conv.queue is not None:
@@ -189,8 +189,7 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
             def no_settings_stream():
                 yield _sse({"type": "conversation", "id": cid})
                 yield _sse({"type": "event", "kind": "text",
-                            "markdown": _MSG["no_settings"].get(
-                                req.lang, _MSG["no_settings"]["en"])})
+                            "markdown": translate(req.lang, "no_settings")})
                 yield _sse({"type": "final"})
 
             return StreamingResponse(no_settings_stream(),
@@ -204,11 +203,12 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
     cfg = req.config_path.strip()
 
     if is_first:
+        assert settings is not None  # loaded above, or no_settings_stream returned
         agent = SeaTunnelAgent(settings, on_event=on_event)
         conv.agent = agent
     else:
         agent = conv.agent
-        agent._on_event = on_event
+        agent.set_event_callback(on_event)
 
     def work() -> None:
         try:
@@ -262,14 +262,10 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
             with conv.lock:
                 conv.queue = None
             if conv.agent is not None:
-                conv.agent._on_event = None
+                conv.agent.set_event_callback(None)
             # persist the completed exchange (legacy _handle_submit parity)
-            from seatunnel_agent.agents.data.seatunnel.rendering import (
-                _format_events_as_chat,
-            )
-
             conv.messages.append({"role": "user", "content": req.message})
-            conv.messages.extend(_format_events_as_chat(events_log, start_time))
+            conv.messages.extend(format_events_as_chat(events_log, start_time))
             _persist_session(cid, conv)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
@@ -289,8 +285,7 @@ def chat_stop(req: StopRequest) -> dict[str, Any]:
         # mirrors ui.py _handle_stop: inject a final_answer so the stream
         # ends immediately, leaving the partial reply visible
         q.put(("final_answer",
-               {"text": _MSG["stopped"].get(req.lang, _MSG["stopped"]["en"]),
-                "stopped": True}))
+               {"text": translate(req.lang, "stopped"), "stopped": True}))
     return {"stopped": True}
 
 
@@ -361,7 +356,7 @@ def session_load(session_id: str) -> dict[str, Any]:
     if session is None:
         raise HTTPException(status_code=404, detail="unknown session")
 
-    conv = _CONVERSATIONS.setdefault(session_id, _Conversation())
+    conv = _get_conversation(session_id)
     conv.messages = list(session.chat_messages)
     conv.agent = None
     if session.agent_messages:
@@ -468,6 +463,8 @@ def session_delete(session_id: str) -> dict[str, Any]:
 
 # ── Upload ───────────────────────────────────────────────────────────
 
+_MAX_UPLOAD_BYTES = 1024 * 1024  # 1 MB; config/log files are small text
+
 
 @router.post("/upload")
 async def upload_file(file: UploadFile) -> dict[str, str]:
@@ -475,15 +472,20 @@ async def upload_file(file: UploadFile) -> dict[str, str]:
 
     The sanitized relative path is returned for the page to put into the
     config-path field, exactly as the Gradio UploadButton handler did.
+    Uploads over 1 MB are rejected (413) — config/log snippets are small.
     """
     import re
     from pathlib import Path
 
+    content = await file.read(_MAX_UPLOAD_BYTES + 1)
+    if len(content) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413,
+                            detail="file too large (limit 1 MB)")
     safe_name = re.sub(r"[^\w.\-]", "_", file.filename or "upload.conf")
     dest_dir = Path("configs")
     dest_dir.mkdir(exist_ok=True)
     dest = dest_dir / safe_name
-    dest.write_bytes(await file.read())
+    dest.write_bytes(content)
     return {"path": str(dest)}
 
 
@@ -499,7 +501,7 @@ class DemoRequest(BaseModel):
 def demo_stream(req: DemoRequest) -> StreamingResponse:
     """Stream the scripted demo over the same SSE frames as /chat.
 
-    1:1 with legacy ui.py _run_demo: same _DEMO_STEPS scripts, real
+    1:1 with legacy ui.py _run_demo: same DEMO_STEPS scripts, real
     execute_tool calls against a fake Settings, UI_DEMO_STEP_DELAY pause
     between steps, demo config written to the temp dir when no real
     config path is given.
@@ -508,9 +510,8 @@ def demo_stream(req: DemoRequest) -> StreamingResponse:
     import tempfile
 
     from seatunnel_agent.agents.data.seatunnel.rendering import (
-        _DEMO_CONFIG,
-        _DEMO_STEPS,
-        _t,
+        DEMO_CONFIG,
+        DEMO_STEPS,
     )
     from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
     from seatunnel_agent.common.config import Settings, env_float
@@ -523,16 +524,16 @@ def demo_stream(req: DemoRequest) -> StreamingResponse:
     config_path = req.config_path.strip()
     has_config = bool(config_path) and os.path.isfile(config_path)
     key = "validate" if has_config else "general"
-    steps = _DEMO_STEPS[key]
+    steps = DEMO_STEPS[key]
 
     if not has_config:
         config_path = os.path.join(tempfile.gettempdir(), "demo_fake_to_console.conf")
         with open(config_path, "w", encoding="utf-8") as f:
-            f.write(_DEMO_CONFIG)
+            f.write(DEMO_CONFIG)
 
     def _tool_input(name: str) -> dict[str, Any]:
         if name == "write_config":
-            return {"config_path": config_path, "content": _DEMO_CONFIG}
+            return {"config_path": config_path, "content": DEMO_CONFIG}
         if name in ("read_config", "validate_config"):
             return {"config_path": config_path}
         return {}
@@ -562,7 +563,7 @@ def demo_stream(req: DemoRequest) -> StreamingResponse:
             else:  # text
                 tkey = "demo_validate_done" if key == "validate" else "demo_general_done"
                 ev = {"type": "text",
-                      "text": _t(req.lang, tkey).format(path=config_path)}
+                      "text": translate(req.lang, tkey).format(path=config_path)}
 
             markdown = _render_event(ev, start_time)
             if markdown is not None:
