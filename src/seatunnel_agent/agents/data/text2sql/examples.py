@@ -18,13 +18,10 @@ prompt) so they adapt per question. Storage style/limits mirror
 from __future__ import annotations
 
 import os
-import threading
-import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from seatunnel_agent.common.utils import read_json_list, write_json_atomic
+from seatunnel_agent.common.json_file_store import JsonFileStore
 
 _MAX_EXAMPLES = 500
 _MAX_SQL_CHARS = 4000
@@ -32,27 +29,23 @@ _MAX_SQL_CHARS = 4000
 _DEFAULT_EXAMPLES_PATH = os.getenv("T2S_EXAMPLES_PATH", "config/t2s_examples.json")
 
 
-class ExampleStore:
+class ExampleStore(JsonFileStore):
     """JSON-file-backed store of verified question→SQL pairs."""
 
     def __init__(self, path: str | Path | None = None) -> None:
-        self.path = Path(path if path is not None else _DEFAULT_EXAMPLES_PATH)
-        self._lock = threading.Lock()
+        super().__init__(
+            path if path is not None else _DEFAULT_EXAMPLES_PATH,
+            max_items=_MAX_EXAMPLES,
+        )
 
-    # -- persistence ---------------------------------------------------
+    # -- persistence override -------------------------------------------
 
     def _read(self) -> list[dict[str, Any]]:
         # The file is hand-editable — drop malformed entries instead of
         # letting them crash retrieval/augmentation later.
-        return [it for it in read_json_list(self.path) if isinstance(it, dict)]
-
-    def _write(self, items: list[dict[str, Any]]) -> None:
-        write_json_atomic(self.path, items)
+        return [it for it in super()._read() if isinstance(it, dict)]
 
     # -- CRUD ----------------------------------------------------------
-
-    def list(self) -> list[dict[str, Any]]:
-        return self._read()
 
     def add(
         self,
@@ -66,37 +59,31 @@ class ExampleStore:
         sql = sql.strip()[:_MAX_SQL_CHARS]
         if not question or not sql:
             raise ValueError("question 和 sql 都不能为空")
+        entry = {
+            "id": self._make_id(),
+            "question": question,
+            "sql": sql,
+            "tables": list(tables or []),
+            "source": source,
+            "verified": bool(verified),
+            "created_at": self._now_iso(),
+        }
+        # Same question -> replace (latest confirmation wins), so a
+        # re-verified pair never duplicates.
         with self._lock:
             items = self._read()
-            # Same question -> replace (latest confirmation wins), so a
-            # re-verified pair never duplicates.
             items = [
                 it for it in items
                 if it.get("question", "").strip() != question
             ]
-            entry = {
-                "id": uuid.uuid4().hex[:12],
-                "question": question,
-                "sql": sql,
-                "tables": list(tables or []),
-                "source": source,
-                "verified": bool(verified),
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            }
             items.append(entry)
-            if len(items) > _MAX_EXAMPLES:
-                items = items[-_MAX_EXAMPLES:]
+            if len(items) > self.max_items:
+                items = items[-self.max_items:]
             self._write(items)
             return entry
 
     def remove(self, example_id: str) -> bool:
-        with self._lock:
-            items = self._read()
-            kept = [it for it in items if it.get("id") != example_id]
-            if len(kept) == len(items):
-                return False
-            self._write(kept)
-            return True
+        return self._delete_by_id(example_id)
 
     def remove_by_question(self, question: str) -> bool:
         """Drop the pair for ``question`` (👎 on a previously-verified answer)."""
@@ -111,9 +98,6 @@ class ExampleStore:
                 return False
             self._write(kept)
             return True
-
-    def __len__(self) -> int:
-        return len(self._read())
 
     # -- retrieval -----------------------------------------------------
 

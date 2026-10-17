@@ -1177,7 +1177,7 @@ class TestLogRotationSuffix:
     def test_rotated_filename(self, tmp_path):
         from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
         logger = QueryLogger(log_dir=str(tmp_path))
-        logger._MAX_LOG_BYTES = 10
+        logger._log.max_bytes = 10
         logger.log(user_query="q" * 50, generated_sql="s", status="ok")
         logger.log(user_query="q2", generated_sql="s2", status="ok")
         rotated = tmp_path / "text2sql_queries.1.jsonl"

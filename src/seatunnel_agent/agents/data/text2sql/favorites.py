@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import os
 import re
-import threading
-import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from seatunnel_agent.common.utils import read_json_list, write_json_atomic
+from seatunnel_agent.common.json_file_store import JsonFileStore
 
 _MAX_FAVORITES = 200
 _PARAM_RE = re.compile(r"\$\{(\w+)\}")
@@ -51,20 +48,12 @@ _DEFAULT_FAVORITES_PATH = os.getenv(
 )
 
 
-class FavoritesStore:
+class FavoritesStore(JsonFileStore):
     def __init__(self, path: str | Path | None = None) -> None:
-        self.path = Path(path if path is not None else _DEFAULT_FAVORITES_PATH)
-        self._lock = threading.Lock()
-
-    def _read(self) -> list[dict[str, Any]]:
-        return read_json_list(self.path)
-
-    def _write(self, data: list[dict[str, Any]]) -> None:
-        write_json_atomic(self.path, data)
-
-    def list(self) -> list[dict[str, Any]]:
-        with self._lock:
-            return self._read()
+        super().__init__(
+            path if path is not None else _DEFAULT_FAVORITES_PATH,
+            max_items=_MAX_FAVORITES,
+        )
 
     def save(
         self,
@@ -74,38 +63,18 @@ class FavoritesStore:
         ds_type: str = "",
     ) -> dict[str, Any]:
         entry: dict[str, Any] = {
-            "id": uuid.uuid4().hex[:12],
+            "id": self._make_id(),
             "name": name,
             "sql": sql,
             "question": question,
             "ds_type": ds_type,
             "params": extract_params(sql),
-            "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "created_at": self._now_iso(),
         }
-        with self._lock:
-            data = self._read()
-            data.append(entry)
-            if len(data) > _MAX_FAVORITES:
-                data = data[-_MAX_FAVORITES:]
-            self._write(data)
-        return entry
+        return self._append(entry)
 
     def rename(self, fav_id: str, new_name: str) -> bool:
-        with self._lock:
-            data = self._read()
-            for entry in data:
-                if entry.get("id") == fav_id:
-                    entry["name"] = new_name
-                    self._write(data)
-                    return True
-            return False
+        return self._update_by_id(fav_id, name=new_name)
 
     def delete(self, fav_id: str) -> bool:
-        with self._lock:
-            data = self._read()
-            before = len(data)
-            data = [e for e in data if e.get("id") != fav_id]
-            if len(data) < before:
-                self._write(data)
-                return True
-            return False
+        return self._delete_by_id(fav_id)

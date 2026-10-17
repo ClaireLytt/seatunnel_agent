@@ -3,24 +3,32 @@
 Every executed query is appended as one JSON object per line with the
 fields required by the PRD: timestamp, user question, matched tables,
 generated SQL, execution time, row count, status.
+
+Backed by ``common.jsonl_log.JsonlLog`` for append/rotate/tail-read.
 """
 
 from __future__ import annotations
 
-import json
 import os
 import tempfile
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from seatunnel_agent.common.jsonl_log import JsonlLog
 
 
 class QueryLogger:
     def __init__(self, log_dir: str | Path = "logs") -> None:
         self.log_dir = Path(log_dir)
-        self.log_file = self.log_dir / "text2sql_queries.jsonl"
-        self._lock = threading.Lock()
+        self._log = JsonlLog(
+            self.log_dir / "text2sql_queries.jsonl",
+            rotate="rename",
+        )
+
+    @property
+    def log_file(self) -> Path:
+        return self._log.path
 
     def log(
         self,
@@ -46,56 +54,20 @@ class QueryLogger:
             record["error"] = error
         if extra:
             record.update(extra)
-        self.log_dir.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(record, ensure_ascii=False) + "\n"
-        with self._lock:
-            self._rotate_if_needed()
-            with open(self.log_file, "a", encoding="utf-8") as f:
-                f.write(line)
-
-    _MAX_LOG_BYTES = 10 * 1024 * 1024  # 10 MB
-
-    @property
-    def _rotated_path(self) -> Path:
-        return self.log_file.with_name(self.log_file.stem + ".1.jsonl")
-
-    def _rotate_if_needed(self) -> None:
-        if self.log_file.is_file() and self.log_file.stat().st_size > self._MAX_LOG_BYTES:
-            rotated = self._rotated_path
-            if rotated.exists():
-                rotated.unlink()
-            self.log_file.rename(rotated)
+        self._log.append(record)
 
     def recent(self, n: int = 20) -> list[dict[str, Any]]:
-        with self._lock:
-            if not self.log_file.is_file():
-                return []
-            size = self.log_file.stat().st_size
-            if size == 0:
-                return []
-            chunk_size = min(size, n * 2048)
-            with open(self.log_file, "rb") as f:
-                f.seek(max(0, size - chunk_size))
-                data = f.read().decode("utf-8", errors="replace")
-        lines = data.splitlines()
-        if chunk_size < size:
-            lines = lines[1:]
-        tail = lines[-n:] if len(lines) > n else lines
-        records: list[dict[str, Any]] = []
-        for line in tail:
-            try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-        return records
+        return self._log.recent(n)
 
     def clear(self) -> None:
         """Remove all log entries (including rotated file)."""
-        with self._lock:
-            if self.log_file.is_file():
-                self.log_file.write_text("", encoding="utf-8")
-            if self._rotated_path.is_file():
-                self._rotated_path.unlink()
+        path = self._log.path
+        rotated = path.with_name(path.stem + ".1.jsonl")
+        with self._log._lock:
+            if path.is_file():
+                path.write_text("", encoding="utf-8")
+            if rotated.is_file():
+                rotated.unlink()
 
     def delete(self, indices_from_newest: list[int]) -> int:
         """Delete records by display index (0 = newest line in file).
@@ -104,21 +76,22 @@ class QueryLogger:
         """
         if not indices_from_newest:
             return 0
-        with self._lock:
-            if not self.log_file.is_file():
+        path = self._log.path
+        with self._log._lock:
+            if not path.is_file():
                 return 0
-            lines = self.log_file.read_text(encoding="utf-8").splitlines()
+            lines = path.read_text(encoding="utf-8").splitlines()
             total = len(lines)
             abs_indices = {total - 1 - i for i in indices_from_newest if 0 <= i < total}
             if not abs_indices:
                 return 0
             remaining = [l for i, l in enumerate(lines) if i not in abs_indices]
             content = "\n".join(remaining) + ("\n" if remaining else "")
-            fd, tmp = tempfile.mkstemp(dir=str(self.log_file.parent), suffix=".tmp")
+            fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     f.write(content)
-                os.replace(tmp, str(self.log_file))
+                os.replace(tmp, str(path))
             except BaseException:
                 try:
                     os.unlink(tmp)
