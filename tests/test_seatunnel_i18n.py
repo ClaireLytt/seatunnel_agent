@@ -43,6 +43,9 @@ LEGACY_MAP = {
     "chatEmpty": "placeholder_title",
     "demoDefaultMsg": "demo_default_msg",
     "renamePlaceholder": "rename_placeholder",
+    "placeholderHint1": "placeholder_hint1",
+    "placeholderHint2": "placeholder_hint2",
+    "placeholderHint3": "placeholder_hint3",
 }
 
 

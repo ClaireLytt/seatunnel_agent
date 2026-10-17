@@ -115,6 +115,27 @@ def test_seatunnel_page_smoke(page_url):
 
 
 @pytest.mark.uitest
+def test_seatunnel_empty_placeholder_hints(page_url):
+    """Legacy _build_placeholder parity: hint cards render in the empty
+    chat and clicking one fills the input (ui.py hint-card delegation)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        expect(page.locator(".st-empty-state")).to_be_visible()
+        expect(page.locator(".st-hint-card")).to_have_count(3)
+        expect(page.locator(".st-docs-link")).to_be_visible()
+
+        page.locator(".st-hint-card").first.click()
+        expect(page.locator(".st-chat input:not([type=file])")).to_have_value(
+            "Generate 10 fake rows to console")
+        browser.close()
+
+
+@pytest.mark.uitest
 def test_seatunnel_chat_roundtrip(page_url):
     from playwright.sync_api import expect, sync_playwright
 

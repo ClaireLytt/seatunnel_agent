@@ -40,6 +40,10 @@ const resources = {
       templatePrompt: 'Create a pipeline config using the {{name}} template ({{params}})',
       errorLabel: '⚠️ **Error**: {{msg}}',
       completedIn: '⏱️ Completed in {{s}}s',
+      placeholderHint1: 'Generate 10 fake rows to console',
+      placeholderHint2: 'Sync MySQL users table to Console',
+      placeholderHint3: 'Validate examples/fake_to_console.conf',
+      docsLink: '📖 Docs — View documentation',
     },
   },
   zh: {
@@ -78,6 +82,10 @@ const resources = {
       templatePrompt: '使用 {{name}} 模板创建管道配置（{{params}}）',
       errorLabel: '⚠️ **Error**: {{msg}}',
       completedIn: '⏱️ Completed in {{s}}s',
+      placeholderHint1: '生成 10 条假数据到控制台',
+      placeholderHint2: '同步 MySQL 用户表到 Console',
+      placeholderHint3: '验证 examples/fake_to_console.conf',
+      docsLink: '📖 Docs — 查看使用文档',
     },
   },
 }

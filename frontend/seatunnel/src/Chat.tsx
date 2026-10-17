@@ -156,8 +156,34 @@ export function Chat({
     <>
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pr-1">
         {items.length === 0 && (
-          <div className="flex h-full items-center justify-center font-mono text-sm text-muted">
-            {emptyHint}
+          // legacy ui.py _build_placeholder: logo, title, three hint cards
+          // (click fills the input — ui.py hint-card delegation JS), docs link
+          <div className="st-empty-state flex h-full flex-col items-center justify-center gap-4">
+            <div className="st-empty-logo flex h-12 w-12 items-center justify-center rounded border-[1.5px] border-ink font-mono text-lg font-bold text-ink">
+              ST
+            </div>
+            <div className="st-empty-title font-mono text-sm text-muted">{emptyHint}</div>
+            <div className="st-empty-hints flex flex-wrap justify-center gap-2">
+              {(['placeholderHint1', 'placeholderHint2', 'placeholderHint3'] as const).map(
+                (k) => (
+                  <button
+                    key={k}
+                    onClick={() => setInput(t(k))}
+                    className="st-hint-card rounded border border-line bg-card px-3 py-2 font-mono text-xs text-fg transition hover:border-ink"
+                  >
+                    {t(k)}
+                  </button>
+                ),
+              )}
+            </div>
+            <a
+              href="https://github.com/ClaireLytt/seatunnel_agent#readme"
+              target="_blank"
+              rel="noreferrer"
+              className="st-docs-link font-mono text-xs text-muted underline hover:text-ink"
+            >
+              {t('docsLink')}
+            </a>
           </div>
         )}
         {items.map((it, i) => (
