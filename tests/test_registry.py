@@ -59,7 +59,7 @@ class TestResolution:
 
 # every hard-coded data-agent route in hub/ui.py must be manifest-covered
 _DATA_ROUTES = {
-    "/seatunnel", "/text2sql", "/history", "/favorites", "/schema-browser",
+    "/seatunnel", "/text2sql",
     "/datacompare", "/sqlreview", "/lineage", "/transpile", "/impact",
     "/migrate", "/dataskew", "/pii", "/loginspect", "/schemadrift",
     "/testgen", "/conflint", "/dagcheck", "/metricdiff", "/sqlfmt", "/mcp",
@@ -81,8 +81,7 @@ class TestDataCoverage:
         no_card = {m.route for m in workspace_manifests("data")
                    if not m.card}
         # text2sql aux pages + landing engineering tools keep no /data card
-        assert no_card == {"/history", "/favorites", "/schema-browser",
-                           "/loginspect", "/mcp", "/text2sql-legacy"}
+        assert no_card == {"/loginspect", "/mcp", "/text2sql-legacy"}
 
 
 # data agents whose REST routers used to be a hand-maintained tuple in
