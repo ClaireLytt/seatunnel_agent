@@ -72,6 +72,11 @@ export async function renameSession(id: string, title: string): Promise<void> {
   if (!resp.ok) throw new Error(`rename: HTTP ${resp.status}`)
 }
 
+// Export downloads via a plain navigation (no fetch/stream logic needed).
+export function exportSessionUrl(id: string): string {
+  return `/api/seatunnel/sessions/${encodeURIComponent(id)}/export`
+}
+
 export async function deleteSession(id: string): Promise<void> {
   const resp = await fetch(`/api/seatunnel/sessions/${id}`, { method: 'DELETE' })
   if (!resp.ok) throw new Error(`delete: HTTP ${resp.status}`)

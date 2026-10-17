@@ -6,6 +6,7 @@ uitest / sql_review page API tests.
 
 from __future__ import annotations
 
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -571,3 +572,78 @@ def test_demo_honours_step_delay_env_var(
     _sse_events(resp)
     # 10 steps x 0.05s >= 0.5s lower bound
     assert _time.time() - t0 >= 0.5
+
+
+# ── Export (legacy ui.py _export_session parity) ─────────────────────
+
+
+def _read_zip(resp) -> zipfile.ZipFile:
+    import io
+
+    return zipfile.ZipFile(io.BytesIO(resp.content))
+
+
+def test_export_in_memory_conversation_returns_zip(
+    client: TestClient, fake_agent,
+) -> None:
+    from seatunnel_agent.agents.data.seatunnel import api
+
+    first = _sse_events(client.post("/api/seatunnel/chat", json={"message": "hi"}))
+    cid = first[0]["id"]
+    assert api._CONVERSATIONS[cid].messages  # precondition: chat is recorded
+
+    resp = client.get(f"/api/seatunnel/sessions/{cid}/export")
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/zip"
+    disp = resp.headers["content-disposition"]
+    assert "attachment" in disp
+    assert f"seatunnel_session_{cid}_" in disp
+    assert ".zip" in disp
+
+    zf = _read_zip(resp)
+    assert zf.testzip() is None  # well-formed archive
+    report = zf.read("report.md").decode("utf-8")
+    assert "# SeaTunnel Agent Session Report" in report
+    assert f"- **Session ID**: {cid}" in report
+    assert "## User\n\nhi" in report
+    assert "## Assistant" in report
+
+
+def test_export_persisted_session_returns_zip(
+    client: TestClient, history_dir,
+) -> None:
+    _write_session("abc123")
+    resp = client.get("/api/seatunnel/sessions/abc123/export")
+    assert resp.status_code == 200
+    report = _read_zip(resp).read("report.md").decode("utf-8")
+    assert "restore me" in report
+    assert "restored reply" in report
+
+
+def test_export_includes_created_config_files(
+    client: TestClient, fake_agent, tmp_path,
+) -> None:
+    from seatunnel_agent.agents.data.seatunnel import api
+
+    first = _sse_events(client.post("/api/seatunnel/chat", json={"message": "hi"}))
+    cid = first[0]["id"]
+    cfg = tmp_path / "job.conf"
+    cfg.write_text("env {}\n", encoding="utf-8")
+    api._CONVERSATIONS[cid].agent.context = {"created_configs": [str(cfg)]}
+
+    zf = _read_zip(client.get(f"/api/seatunnel/sessions/{cid}/export"))
+    assert "configs/job.conf" in zf.namelist()
+    assert zf.read("configs/job.conf").decode("utf-8").strip() == "env {}"
+    assert "## Generated Config Files" in zf.read("report.md").decode("utf-8")
+
+
+def test_export_unknown_session_404(client: TestClient) -> None:
+    assert client.get("/api/seatunnel/sessions/nope/export").status_code == 404
+
+
+def test_export_empty_conversation_404(client: TestClient) -> None:
+    from seatunnel_agent.agents.data.seatunnel import api
+
+    api._CONVERSATIONS.clear()
+    api._CONVERSATIONS["emptyc"] = api._Conversation()
+    assert client.get("/api/seatunnel/sessions/emptyc/export").status_code == 404

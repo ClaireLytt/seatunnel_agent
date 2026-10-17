@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { SessionSummary } from '@/api'
+import { exportSessionUrl, type SessionSummary } from '@/api'
 
 // Sidebar session list: new chat, load, inline rename, delete.
 // Buttons/icons over explanatory text (project UI rules).
@@ -35,14 +35,35 @@ export function Sessions({
         <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
           {t('sessions')}
         </h2>
-        <button
-          onClick={onNew}
-          aria-label={t('newChat')}
-          title={t('newChat')}
-          className="st-new-chat rounded border-[1.5px] border-ink bg-ink px-2 py-0.5 font-mono text-sm leading-none text-paper transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
-        >
-          +
-        </button>
+        <div className="flex items-center gap-1">
+          {activeId ? (
+            <a
+              href={exportSessionUrl(activeId)}
+              download
+              aria-label={t('export')}
+              title={t('export')}
+              className="st-export rounded border-[1.5px] border-line px-2 py-0.5 font-mono text-sm leading-none text-ink transition hover:border-ink"
+            >
+              ↓
+            </a>
+          ) : (
+            <span
+              aria-disabled="true"
+              title={t('export')}
+              className="st-export rounded border-[1.5px] border-line px-2 py-0.5 font-mono text-sm leading-none text-muted opacity-50"
+            >
+              ↓
+            </span>
+          )}
+          <button
+            onClick={onNew}
+            aria-label={t('newChat')}
+            title={t('newChat')}
+            className="st-new-chat rounded border-[1.5px] border-ink bg-ink px-2 py-0.5 font-mono text-sm leading-none text-paper transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+          >
+            +
+          </button>
+        </div>
       </div>
       {sessions.length === 0 && (
         <p className="font-mono text-sm text-muted">{t('noSessions')}</p>

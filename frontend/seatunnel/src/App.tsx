@@ -242,7 +242,11 @@ export default function App() {
               onConfigPath={setConfigPath}
               initialConversationId={chat.id}
               initialMessages={chat.messages}
-              onTurnEnd={refreshSessions}
+              onTurnEnd={(id) => {
+                // track the server-side conversation id so Export targets it
+                if (id) setChat((c) => (c.id === id ? c : { ...c, id }))
+                refreshSessions()
+              }}
             />
           </Card>
         </main>

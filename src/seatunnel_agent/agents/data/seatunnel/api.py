@@ -3,12 +3,14 @@
 Mounted unconditionally on the served FastAPI instance after hub launch
 (see seatunnel_agent.hub.ui), like the uitest / sql_review routers.
 
-Endpoints (sessions persistence/export land in later tickets):
+Endpoints:
   GET  /api/seatunnel/meta      — static page metadata: modes, templates
   POST /api/seatunnel/chat      — one chat turn as SSE (drives SeaTunnelAgent)
   POST /api/seatunnel/chat/stop — interrupt the running turn
   POST /api/seatunnel/upload    — attach a config file (saved under configs/)
   POST /api/seatunnel/demo      — scripted demo run streamed as chat SSE
+  GET/PATCH/DELETE /api/seatunnel/sessions[...] — session list/load/rename/delete
+  GET  /api/seatunnel/sessions/{id}/export — download the chat as a zip
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
 from seatunnel_agent.agents.data.seatunnel.agent import SeaTunnelAgent
@@ -382,6 +384,78 @@ def session_rename(session_id: str, req: RenameRequest) -> dict[str, Any]:
     if not history.rename_session(session_id, req.title):
         raise HTTPException(status_code=404, detail="unknown session")
     return {"ok": True}
+
+
+@router.get("/sessions/{session_id}/export")
+def session_export(session_id: str) -> Response:
+    """Download the session's chat as a zip (legacy ui.py _export_session 1:1).
+
+    Zip layout: report.md (title / id / timestamp / model lines + the chat
+    transcript) plus configs/<name> for each created config file. 404 for an
+    unknown or empty session, matching the legacy page's export_empty error.
+    """
+    import io
+    import zipfile
+    from datetime import datetime
+    from pathlib import Path
+
+    from seatunnel_agent.common import history
+
+    conv = _CONVERSATIONS.get(session_id)
+    messages: list[dict[str, str]] = list(conv.messages) if conv else []
+    created_configs: list[str] = []
+    if conv is not None and conv.agent is not None:
+        created_configs = list(
+            (getattr(conv.agent, "context", None) or {}).get("created_configs", []))
+    if not messages:
+        session = history.load_session(session_id)
+        if session is not None:
+            messages = list(session.chat_messages)
+            if not created_configs:
+                created_configs = list(
+                    (session.agent_context or {}).get("created_configs", []))
+    if not messages:
+        raise HTTPException(status_code=404, detail="unknown or empty session")
+
+    title = history.extract_title(messages)
+    now = datetime.now()
+    md_lines = [
+        "# SeaTunnel Agent Session Report",
+        "",
+        f"- **Title**: {title}",
+        f"- **Session ID**: {session_id}",
+        f"- **Exported at**: {now.strftime('%Y-%m-%d %H:%M:%S')}",
+    ]
+    settings = CONNECTION.get("settings")
+    if settings is not None:
+        md_lines.append(f"- **Model**: {settings.model_name}")
+        md_lines.append(f"- **Provider**: {settings.llm_provider}")
+    md_lines += ["", "---", ""]
+
+    for msg in messages:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+        header = "## User" if role == "user" else "## Assistant"
+        md_lines.append(f"{header}\n\n{content}\n")
+
+    config_files = [fp for fp in (Path(p) for p in created_configs) if fp.is_file()]
+    if config_files:
+        md_lines.append("\n---\n\n## Generated Config Files\n")
+        for fp in config_files:
+            md_lines.append(f"- `{fp.name}`")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("report.md", "\n".join(md_lines))
+        for fp in config_files:
+            zf.write(fp, f"configs/{fp.name}")
+
+    zip_name = f"seatunnel_session_{session_id}_{now.strftime('%Y%m%d_%H%M%S')}.zip"
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_name}"'},
+    )
 
 
 @router.delete("/sessions/{session_id}")
