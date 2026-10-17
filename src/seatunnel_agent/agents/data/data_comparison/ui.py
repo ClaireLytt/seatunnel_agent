@@ -70,6 +70,7 @@ from seatunnel_agent.agents.data.data_comparison.comparator import (
     parse_threshold,
     run_parallel,
 )
+from seatunnel_agent.agents.data.data_comparison.connect import connect_side
 from seatunnel_agent.agents.data.data_comparison.i18n import dc
 from seatunnel_agent.agents.data.data_comparison.registry import get_registry
 from seatunnel_agent.agents.data.data_comparison.ui_cards import (  # noqa: F401
@@ -147,7 +148,6 @@ from seatunnel_agent.agents.data.text2sql.differ import diff_results
 from seatunnel_agent.agents.data.text2sql.executor import (
     DIALECT_NAMES,
     DS_DEFAULTS,
-    ENV_PREFIX,
     DatabaseConfig,
     config_from_env,
     create_executor,
@@ -171,80 +171,30 @@ def render_data_comparison_page(app=None) -> None:
     session = get_registry().create()
 
     # ── Connection helper (shared by A / B) ──
+    # Core logic lives in connect.connect_side (Gradio-free, shared with the
+    # REST layer in api.py); this wrapper maps the dialect label to the
+    # datasource key and the result to Gradio updates.
     def _do_connect(ds_label, host, port, db, username, password, lang_val, side):
-        t_fn = lambda k: dc(lang_val, k)
-
         def _err(msg):
             return msg, gr.update(), gr.update(), gr.update(), gr.update()
 
         ds_type = _DS_LABEL_TO_KEY.get(ds_label)
         if ds_type is None:
-            return _err(f"❌ {t_fn('dc_error')}: unknown datasource {_esc_html(str(ds_label))}")
+            return _err(f"❌ {dc(lang_val, 'dc_error')}: "
+                        f"unknown datasource {_esc_html(str(ds_label))}")
         # Hidden Gradio textboxes (auth/host fields for engines that don't
-        # need them) submit None from the browser, not "".
-        h = (host or "").strip()
-        p = (port or "").strip()
-        d = (db or "").strip()
-        u = (username or "").strip() or None
-        pw = (password or "").strip() or None
-        defaults = DS_DEFAULTS[ds_type]
-        default_port = str(defaults["port"])
-        default_db = defaults["database"]
-
-        if ds_type == "sqlite":
-            cfg = DatabaseConfig(
-                ds_type="sqlite", host="", port=0,
-                database=d or str(default_db),
-            )
-        else:
-            if not h:
-                fallback = config_from_env(ds_type)
-                if fallback:
-                    h, p, d = fallback.host, str(fallback.port), fallback.database
-                    u, pw = fallback.username, fallback.password
-
-            if not h:
-                var = f"{ENV_PREFIX.get(ds_type, ds_type.upper())}_HOST"
-                return _err(f"❌ {t_fn('dc_host_required').format(var=var)}")
-
-            try:
-                port_int = int(p or default_port)
-            except ValueError:
-                return _err(f"❌ {t_fn('dc_port_not_number')}")
-
-            cfg = DatabaseConfig(
-                ds_type=ds_type,
-                host=h,
-                port=port_int,
-                database=d or str(default_db),
-                username=u,
-                password=pw,
-            )
-        try:
-            executor = create_executor(cfg)
-        except Exception as e:
-            return _err(f"❌ {_esc_html(str(e))}")
-        ok, msg = executor.test_connection()
-        if not ok:
-            return _err(f"❌ {_esc_html(msg)}")
-
-        try:
-            tables = executor.show_tables()
-        except Exception as e:
-            return _err(f"❌ {_esc_html(str(e))}")
-
-        with session.lock:
-            setattr(session, f"executor_{side}", executor)
-            setattr(session, f"tables_{side}", tables)
-
-        dialect = DIALECT_NAMES.get(ds_type, ds_type)
-        status = f"✅ {dialect} {msg} · {t_fn('dc_tables_loaded').format(n=len(tables))}"
+        # need them) submit None from the browser, not "" — connect_side strips.
+        result = connect_side(session, side, ds_type,
+                              host, port, db, username, password, lang_val)
+        if not result.ok:
+            return _err(result.error)
+        cfg = result.resolved
         # Backfill connection fields so env/default fallbacks are visible
         if ds_type == "sqlite":
             host_upd, port_upd = gr.update(), gr.update()
         else:
             host_upd, port_upd = gr.update(value=cfg.host), gr.update(value=str(cfg.port))
-        return (status, gr.update(choices=tables, value=None),
+        return (result.status, gr.update(choices=result.tables, value=None),
                 host_upd, port_upd, gr.update(value=cfg.database))
 
     # ── Inner comparison logic (no validation — used by both single + all) ──
