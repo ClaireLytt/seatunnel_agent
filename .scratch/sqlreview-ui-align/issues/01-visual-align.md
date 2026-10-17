@@ -4,12 +4,12 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Trend chart severities use theme tokens (critical→accent, suggestion→ok, risk→neutral soft-ink); correct in light and dark
-- [ ] Report heading + card absent until a review produces a report; placeholder i18n strings removed from both locales
-- [ ] Error messages (review error and stats error) rendered with ❌ prefix
-- [ ] SQL input label served from i18n in zh and en
-- [ ] Playwright page test extended: report section absent before review
-- [ ] Before/after screenshots under docs/reports/shots/
-- [ ] ruff/pytest + sql_review workspace lint/build green
+- [x] Trend chart severities use theme tokens (critical→accent, suggestion→ok, risk→neutral soft-ink); correct in light and dark
+- [x] Report heading + card absent until a review produces a report; placeholder i18n strings removed from both locales
+- [x] Error messages (review error and stats error) rendered with ❌ prefix
+- [x] SQL input label served from i18n in zh and en
+- [x] Playwright page test extended: report section absent before review
+- [x] Before/after screenshots under docs/reports/shots/
+- [x] ruff/pytest + sql_review workspace lint/build green
