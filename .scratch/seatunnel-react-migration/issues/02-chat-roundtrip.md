@@ -4,9 +4,9 @@
 
 **Blocked by:** 01 — Walking skeleton
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Sending a message renders a streaming assistant reply in the chat area
-- [ ] Stop interrupts the stream and leaves the partial reply visible
-- [ ] In-process API test asserts the SSE event stream shape
-- [ ] ruff/mypy/pytest + workspace lint/build green
+- [x] Sending a message renders a streaming assistant reply in the chat area
+- [x] Stop interrupts the stream and leaves the partial reply visible
+- [x] In-process API test asserts the SSE event stream shape
+- [x] ruff/mypy/pytest + workspace lint/build green

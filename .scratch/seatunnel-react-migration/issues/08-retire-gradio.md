@@ -4,10 +4,10 @@
 
 **Blocked by:** 07 — i18n full parity
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Legacy UI module deleted; no dangling imports, CSS, i18n keys, or case refs
-- [ ] New Playwright page test passes; uitest smoke suite (no-LLM) green
-- [ ] Before/after screenshots saved under the reports shots directory
-- [ ] Batch report written per the reports template; workflow check script passes
-- [ ] ruff/mypy/pytest + workspace lint/build green
+- [x] Legacy UI module deleted; no dangling imports, CSS, i18n keys, or case refs
+- [x] New Playwright page test passes; uitest smoke suite (no-LLM) green
+- [x] Before/after screenshots saved under the reports shots directory
+- [x] Batch report written per the reports template; workflow check script passes
+- [x] ruff/mypy/pytest + workspace lint/build green

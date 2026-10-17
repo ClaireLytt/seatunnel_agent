@@ -4,9 +4,9 @@
 
 **Blocked by:** 01 — Walking skeleton
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Mode/template options come from the meta API; config path is editable
-- [ ] Connect calls the backend and the status box shows the genuine result (success and failure)
-- [ ] In-process API test covers connect success/failure contract
-- [ ] ruff/mypy/pytest + workspace lint/build green
+- [x] Mode/template options come from the meta API; config path is editable
+- [x] Connect calls the backend and the status box shows the genuine result (success and failure)
+- [x] In-process API test covers connect success/failure contract
+- [x] ruff/mypy/pytest + workspace lint/build green

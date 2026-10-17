@@ -4,9 +4,9 @@
 
 **Blocked by:** 02 — Chat round-trip
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Uploaded file reaches the agent and is referenced in the conversation
-- [ ] Demo button streams the demo steps into the chat exactly as the legacy page did
-- [ ] In-process API tests cover upload and demo endpoints
-- [ ] ruff/mypy/pytest + workspace lint/build green
+- [x] Uploaded file reaches the agent and is referenced in the conversation
+- [x] Demo button streams the demo steps into the chat exactly as the legacy page did
+- [x] In-process API tests cover upload and demo endpoints
+- [x] ruff/mypy/pytest + workspace lint/build green

@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Browser at the /seatunnel route renders the React shell (shared theme, dark variant OK)
-- [ ] Meta API returns modes + templates; in-process API test passes
-- [ ] Playwright smoke: page loads, no console errors
-- [ ] Legacy Gradio render no longer serves the route (its code remains until ticket 08)
-- [ ] ruff/mypy/pytest + workspace lint/build green
+- [x] Browser at the /seatunnel route renders the React shell (shared theme, dark variant OK)
+- [x] Meta API returns modes + templates; in-process API test passes
+- [x] Playwright smoke: page loads, no console errors
+- [x] Legacy Gradio render no longer serves the route (its code remains until ticket 08)
+- [x] ruff/mypy/pytest + workspace lint/build green

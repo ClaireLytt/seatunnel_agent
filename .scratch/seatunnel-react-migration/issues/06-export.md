@@ -4,8 +4,8 @@
 
 **Blocked by:** 04 — Session management
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Export downloads a valid zip containing the current session's chat content
-- [ ] In-process API test asserts the zip is well-formed and non-empty for a session with messages
-- [ ] ruff/mypy/pytest + workspace lint/build green
+- [x] Export downloads a valid zip containing the current session's chat content
+- [x] In-process API test asserts the zip is well-formed and non-empty for a session with messages
+- [x] ruff/mypy/pytest + workspace lint/build green

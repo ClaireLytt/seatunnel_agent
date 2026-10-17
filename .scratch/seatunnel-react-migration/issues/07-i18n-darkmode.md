@@ -4,9 +4,9 @@
 
 **Blocked by:** 03, 04, 05, 06
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] zh/en switch via language cookie covers all sidebar + chat + control strings
-- [ ] No hardcoded display strings remain in the workspace
-- [ ] Dark variant verified on all sections (screenshots)
-- [ ] ruff/mypy/pytest + workspace lint/build green
+- [x] zh/en switch via language cookie covers all sidebar + chat + control strings
+- [x] No hardcoded display strings remain in the workspace
+- [x] Dark variant verified on all sections (screenshots)
+- [x] ruff/mypy/pytest + workspace lint/build green

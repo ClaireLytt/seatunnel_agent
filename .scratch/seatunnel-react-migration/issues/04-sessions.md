@@ -4,10 +4,10 @@
 
 **Blocked by:** 02 — Chat round-trip
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] New chat resets the conversation and appears in history after first exchange
-- [ ] Selecting a history entry restores its messages into the chat area
-- [ ] Rename and delete round-trip through the API and update the list
-- [ ] In-process API tests cover session CRUD
-- [ ] ruff/mypy/pytest + workspace lint/build green
+- [x] New chat resets the conversation and appears in history after first exchange
+- [x] Selecting a history entry restores its messages into the chat area
+- [x] Rename and delete round-trip through the API and update the list
+- [x] In-process API tests cover session CRUD
+- [x] ruff/mypy/pytest + workspace lint/build green
