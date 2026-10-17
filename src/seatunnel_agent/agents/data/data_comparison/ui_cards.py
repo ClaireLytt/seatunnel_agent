@@ -1,4 +1,8 @@
-"""Module-level HTML card builders for the Data Comparison UI."""
+"""Module-level HTML card builders for the Data Comparison UI.
+
+Gradio-free by design: pure functions returning HTML strings, safe to import
+from a REST layer (verified -- no ``gradio`` import here).
+"""
 
 from __future__ import annotations
 

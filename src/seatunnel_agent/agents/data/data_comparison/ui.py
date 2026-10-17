@@ -71,6 +71,7 @@ from seatunnel_agent.agents.data.data_comparison.comparator import (
     run_parallel,
 )
 from seatunnel_agent.agents.data.data_comparison.i18n import dc
+from seatunnel_agent.agents.data.data_comparison.registry import get_registry
 from seatunnel_agent.agents.data.data_comparison.ui_cards import (  # noqa: F401
     _threshold_badge,
     build_aggregate_card,
@@ -164,17 +165,10 @@ def render_data_comparison_page(app=None) -> None:
     lang = _DEFAULT_LANG
     t = lambda k: dc(lang, k)
 
-    holder: dict[str, Any] = {
-        "executor_a": None,
-        "executor_b": None,
-        "tables_a": [],
-        "tables_b": [],
-        "last_report": None,
-        "schedule_timer": None,
-        "schedule_active": False,
-        "schedule_last_run": None,
-    }
-    holder_lock = threading.Lock()
+    # One registry session per page render. The hub renders this page once
+    # per process, so this preserves the previous process-global semantics of
+    # the module-closure state dict while keying state through the registry.
+    session = get_registry().create()
 
     # ── Connection helper (shared by A / B) ──
     def _do_connect(ds_label, host, port, db, username, password, lang_val, side):
@@ -239,9 +233,9 @@ def render_data_comparison_page(app=None) -> None:
         except Exception as e:
             return _err(f"❌ {_esc_html(str(e))}")
 
-        with holder_lock:
-            holder[f"executor_{side}"] = executor
-            holder[f"tables_{side}"] = tables
+        with session.lock:
+            setattr(session, f"executor_{side}", executor)
+            setattr(session, f"tables_{side}", tables)
 
         dialect = DIALECT_NAMES.get(ds_type, ds_type)
         status = f"✅ {dialect} {msg} · {t_fn('dc_tables_loaded').format(n=len(tables))}"
@@ -256,8 +250,8 @@ def render_data_comparison_page(app=None) -> None:
     # ── Inner comparison logic (no validation — used by both single + all) ──
 
     def _snap_executors():
-        with holder_lock:
-            return holder["executor_a"], holder["executor_b"]
+        with session.lock:
+            return session.executor_a, session.executor_b
 
     def _schema_inner(table_a, table_b, lang_val, where_val="", desc_a=None, desc_b=None):
         ex_a, ex_b = _snap_executors()
@@ -423,10 +417,10 @@ def render_data_comparison_page(app=None) -> None:
 
     def _store_partial(key: str, value: Any) -> None:
         """Store a single comparison result into the report."""
-        with holder_lock:
-            if holder["last_report"] is None:
-                holder["last_report"] = CompareReport()
-            setattr(holder["last_report"], key, value)
+        with session.lock:
+            if session.last_report is None:
+                session.last_report = CompareReport()
+            setattr(session.last_report, key, value)
 
     def _compare_schema_fn(table_a, table_b, lang_val, where_val):
         ok, msg = _validate_where(where_val, lang_val)
@@ -533,12 +527,12 @@ def render_data_comparison_page(app=None) -> None:
         _store_partial("skew", result)
         return html
 
-    _compare_schema = _with_validation(holder, holder_lock, _compare_schema_fn)
-    _compare_count = _with_validation(holder, holder_lock, _compare_count_fn)
-    _compare_sample = _with_validation(holder, holder_lock, _compare_sample_fn)
-    _compare_agg = _with_validation(holder, holder_lock, _compare_agg_fn)
-    _compare_profile = _with_validation(holder, holder_lock, _compare_profile_fn)
-    _compare_skew = _with_validation(holder, holder_lock, _compare_skew_fn)
+    _compare_schema = _with_validation(session, _compare_schema_fn)
+    _compare_count = _with_validation(session, _compare_count_fn)
+    _compare_sample = _with_validation(session, _compare_sample_fn)
+    _compare_agg = _with_validation(session, _compare_agg_fn)
+    _compare_profile = _with_validation(session, _compare_profile_fn)
+    _compare_skew = _with_validation(session, _compare_skew_fn)
 
     # ── Checksum comparison (CC) ──
 
@@ -572,7 +566,7 @@ def render_data_comparison_page(app=None) -> None:
         _store_partial("checksum", result)
         return html
 
-    _compare_checksum = _with_validation(holder, holder_lock, _compare_checksum_fn)
+    _compare_checksum = _with_validation(session, _compare_checksum_fn)
 
     # ── Chunked (blocked) verification for large tables ──
 
@@ -631,7 +625,7 @@ def render_data_comparison_page(app=None) -> None:
             _store_partial("chunked", result)
         return html
 
-    _compare_chunked_btn_fn = _with_validation(holder, holder_lock, _compare_chunked_fn)
+    _compare_chunked_btn_fn = _with_validation(session, _compare_chunked_fn)
 
     # ── Partition comparison (DD) ──
 
@@ -662,7 +656,7 @@ def render_data_comparison_page(app=None) -> None:
         _store_partial("partition", result)
         return html
 
-    _compare_partition = _with_validation(holder, holder_lock, _compare_partition_fn)
+    _compare_partition = _with_validation(session, _compare_partition_fn)
 
     # ── Custom aggregates (EE) ──
 
@@ -693,13 +687,13 @@ def render_data_comparison_page(app=None) -> None:
         _store_partial("custom_agg", result)
         return html
 
-    _compare_custom_agg = _with_validation(holder, holder_lock, _compare_custom_agg_fn)
+    _compare_custom_agg = _with_validation(session, _compare_custom_agg_fn)
 
     # ── Custom SQL comparison (B) ──
 
     def _compare_sql(sql_a_text, sql_b_text, lang_val):
-        with holder_lock:
-            if holder.get("executor_a") is None or holder.get("executor_b") is None:
+        with session.lock:
+            if session.executor_a is None or session.executor_b is None:
                 return dc(lang_val, "dc_connect_both")
         if not sql_a_text.strip() or not sql_b_text.strip():
             return dc(lang_val, "dc_sql_readonly_only")
@@ -712,8 +706,8 @@ def render_data_comparison_page(app=None) -> None:
                 return dc(lang_val, "dc_sql_readonly_only")
 
         try:
-            with holder_lock:
-                ex_a, ex_b = holder["executor_a"], holder["executor_b"]
+            with session.lock:
+                ex_a, ex_b = session.executor_a, session.executor_b
             ra, rb = run_parallel(
                 lambda: ex_a.run(sql_a_text.strip(), max_rows=200),
                 lambda: ex_b.run(sql_b_text.strip(), max_rows=200),
@@ -733,8 +727,8 @@ def render_data_comparison_page(app=None) -> None:
                      checksum_cols_str="", partition_col="", custom_agg_str="",
                      progress=gr.Progress()):
         _log.info("compare_all start: tables=%r/%r lang=%r", table_a, table_b, lang_val)
-        with holder_lock:
-            if holder.get("executor_a") is None or holder.get("executor_b") is None:
+        with session.lock:
+            if session.executor_a is None or session.executor_b is None:
                 _log.info("compare_all early-return: executors not connected")
                 return dc(lang_val, "dc_connect_both")
         if not table_a or not table_b:
@@ -841,8 +835,8 @@ def render_data_comparison_page(app=None) -> None:
                 custom_agg=custom_agg_result,
                 elapsed_ms=elapsed,
             )
-            with holder_lock:
-                holder["last_report"] = report
+            with session.lock:
+                session.last_report = report
 
             has_diffs = (
                 (schema_result and schema_result.has_changes)
@@ -903,12 +897,12 @@ def render_data_comparison_page(app=None) -> None:
     # ── Batch count (H — progress) ──
 
     def _batch_count(lang_val, where_val, progress=gr.Progress()):
-        with holder_lock:
-            if holder.get("executor_a") is None or holder.get("executor_b") is None:
+        with session.lock:
+            if session.executor_a is None or session.executor_b is None:
                 return dc(lang_val, "dc_connect_both")
-            tables_a = list(holder["tables_a"])
-            tables_b = list(holder["tables_b"])
-            ex_a, ex_b = holder["executor_a"], holder["executor_b"]
+            tables_a = list(session.tables_a)
+            tables_b = list(session.tables_b)
+            ex_a, ex_b = session.executor_a, session.executor_b
 
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
@@ -947,8 +941,8 @@ def render_data_comparison_page(app=None) -> None:
     # ── Report persistence (E) ──
 
     def _save_report(table_a, table_b, lang_val):
-        with holder_lock:
-            report = holder.get("last_report")
+        with session.lock:
+            report = session.last_report
         if not report:
             return dc(lang_val, "dc_error"), gr.update()
         try:
@@ -994,8 +988,8 @@ def render_data_comparison_page(app=None) -> None:
             with open(fpath, encoding="utf-8") as f:
                 data = json.load(f)
             report = CompareReport.from_dict(data)
-            with holder_lock:
-                holder["last_report"] = report
+            with session.lock:
+                session.last_report = report
 
             parts: list[str] = []
             parts.append(f'<div style="color:#16a34a;font-weight:600;margin-bottom:8px;">'
@@ -1029,8 +1023,8 @@ def render_data_comparison_page(app=None) -> None:
     # ── Export ──
 
     def _export_csv(lang_val):
-        with holder_lock:
-            report = holder.get("last_report")
+        with session.lock:
+            report = session.last_report
         if not report:
             raise gr.Error(dc(lang_val, "dc_no_reports"))
         try:
@@ -1040,8 +1034,8 @@ def render_data_comparison_page(app=None) -> None:
             raise gr.Error(f"{dc(lang_val, 'dc_error')}: {e}") from e
 
     def _export_excel(lang_val):
-        with holder_lock:
-            report = holder.get("last_report")
+        with session.lock:
+            report = session.last_report
         if not report:
             raise gr.Error(dc(lang_val, "dc_no_reports"))
         try:
@@ -1114,11 +1108,11 @@ def render_data_comparison_page(app=None) -> None:
     # ── Batch full comparison (F) ──
 
     def _batch_full(lang_val, where_val, threshold_str, progress=gr.Progress()):
-        with holder_lock:
-            if holder.get("executor_a") is None or holder.get("executor_b") is None:
+        with session.lock:
+            if session.executor_a is None or session.executor_b is None:
                 return dc(lang_val, "dc_connect_both")
-            tables_a = list(holder["tables_a"])
-            tables_b = list(holder["tables_b"])
+            tables_a = list(session.tables_a)
+            tables_b = list(session.tables_b)
 
         ok, msg = _validate_where(where_val, lang_val)
         if not ok:
@@ -1172,9 +1166,9 @@ def render_data_comparison_page(app=None) -> None:
     # ── SeaTunnel sync config (C) ──
 
     def _gen_sync_config(table_a, table_b, col_mapping_str, lang_val):
-        with holder_lock:
-            ex_a = holder.get("executor_a")
-            ex_b = holder.get("executor_b")
+        with session.lock:
+            ex_a = session.executor_a
+            ex_b = session.executor_b
         if not ex_a or not ex_b:
             return dc(lang_val, "dc_connect_both"), gr.update(visible=False)
         if not table_a or not table_b:
@@ -1220,21 +1214,21 @@ def render_data_comparison_page(app=None) -> None:
                          webhook_url=webhook_url,
                          notify_on_fail=bool(notify_on_fail))
             _save_report(lang_val)
-            with holder_lock:
-                holder["schedule_last_run"] = datetime.now(timezone.utc).strftime("%H:%M:%S")
-                holder["schedule_last_error"] = None
+            with session.lock:
+                session.schedule_last_run = datetime.now(timezone.utc).strftime("%H:%M:%S")
+                session.schedule_last_error = None
         except Exception as exc:
             _log.warning("Scheduled comparison failed", exc_info=True)
-            with holder_lock:
-                holder["schedule_last_error"] = str(exc)
+            with session.lock:
+                session.schedule_last_error = str(exc)
             if webhook_url and webhook_url.strip():
                 _send_webhook(webhook_url.strip(), {
                     "event": "scheduled_comparison_error",
                     "table_a": table_a, "table_b": table_b,
                     "error": str(exc),
                 })
-        with holder_lock:
-            if holder["schedule_active"]:
+        with session.lock:
+            if session.schedule_active:
                 t = threading.Timer(
                     float(interval_min) * 60,
                     _schedule_tick,
@@ -1242,7 +1236,7 @@ def render_data_comparison_page(app=None) -> None:
                           interval_min, threshold_str, webhook_url, notify_on_fail),
                 )
                 t.daemon = True
-                holder["schedule_timer"] = t
+                session.schedule_timer = t
                 t.start()
 
     def _schedule_start(table_a, table_b, lang_val, where_val, key_cols_str, interval_str,
@@ -1254,10 +1248,10 @@ def render_data_comparison_page(app=None) -> None:
         except (ValueError, TypeError):
             interval_min = _DEFAULT_SCHEDULE_MIN
         interval_min = max(1, interval_min)
-        with holder_lock:
-            if holder["schedule_active"]:
+        with session.lock:
+            if session.schedule_active:
                 return dc(lang_val, "dc_schedule_running").format(m=interval_min)
-            holder["schedule_active"] = True
+            session.schedule_active = True
         t = threading.Timer(
             float(interval_min) * 60,
             _schedule_tick,
@@ -1265,18 +1259,18 @@ def render_data_comparison_page(app=None) -> None:
                   interval_min, threshold_str, webhook_url, notify_on_fail),
         )
         t.daemon = True
-        with holder_lock:
-            holder["schedule_timer"] = t
+        with session.lock:
+            session.schedule_timer = t
         t.start()
         return f'✅ {dc(lang_val, "dc_schedule_running").format(m=interval_min)}'
 
     def _schedule_stop(lang_val):
-        with holder_lock:
-            holder["schedule_active"] = False
-            timer = holder.get("schedule_timer")
+        with session.lock:
+            session.schedule_active = False
+            timer = session.schedule_timer
             if timer:
                 timer.cancel()
-                holder["schedule_timer"] = None
+                session.schedule_timer = None
         return dc(lang_val, "dc_schedule_stopped")
 
     # ── History trends (H) ──
@@ -1386,8 +1380,8 @@ def render_data_comparison_page(app=None) -> None:
     def _incremental_fn(table_a, table_b, lang_val, where_val,
                         watermark_col, watermark_val, key_cols_str,
                         col_mapping_str, masking_on):
-        with holder_lock:
-            if holder.get("executor_a") is None or holder.get("executor_b") is None:
+        with session.lock:
+            if session.executor_a is None or session.executor_b is None:
                 return dc(lang_val, "dc_connect_both")
         if not table_a or not table_b:
             return dc(lang_val, "dc_select_tables")
@@ -1397,7 +1391,7 @@ def render_data_comparison_page(app=None) -> None:
         if not ok:
             return msg
         try:
-            ex_a, ex_b = holder["executor_a"], holder["executor_b"]
+            ex_a, ex_b = session.executor_a, session.executor_b
             last_val = watermark_val.strip()
             sql_a = build_incremental_sql(table_a, watermark_col.strip(), last_val,
                                          _INCREMENTAL_LIMIT, where_val,
@@ -1433,8 +1427,8 @@ def render_data_comparison_page(app=None) -> None:
     # ── Feature B — Quality rules ──
 
     def _check_quality_fn(table_a, table_b, lang_val, where_val, quality_rules_str):
-        with holder_lock:
-            if holder.get("executor_a") is None or holder.get("executor_b") is None:
+        with session.lock:
+            if session.executor_a is None or session.executor_b is None:
                 return dc(lang_val, "dc_connect_both")
         if not table_a or not table_b:
             return dc(lang_val, "dc_select_tables")
@@ -1455,13 +1449,13 @@ def render_data_comparison_page(app=None) -> None:
     # ── Feature C — Diff SQL generation ──
 
     def _gen_diff_sql_fn(table_a, table_b, lang_val):
-        with holder_lock:
-            report = holder.get("last_report")
+        with session.lock:
+            report = session.last_report
         if not report or not report.keyed_diff:
             return dc(lang_val, "dc_diff_sql_no_diff")
         try:
-            with holder_lock:
-                ex_b = holder.get("executor_b")
+            with session.lock:
+                ex_b = session.executor_b
             ds_type = ex_b.config.ds_type if ex_b else "mysql"
             sql = generate_diff_sql(report.keyed_diff, table_b, ds_type)
             return build_diff_sql_card(sql, lang_val)
@@ -1532,9 +1526,9 @@ def render_data_comparison_page(app=None) -> None:
     def _batch_templates_fn(selected_names, lang_val):
         if not selected_names:
             return dc(lang_val, "dc_batch_templates_hint")
-        with holder_lock:
-            ex_a = holder.get("executor_a")
-            ex_b = holder.get("executor_b")
+        with session.lock:
+            ex_a = session.executor_a
+            ex_b = session.executor_b
         if ex_a is None or ex_b is None:
             return dc(lang_val, "dc_connect_both")
         results = []
@@ -2361,8 +2355,8 @@ def render_data_comparison_page(app=None) -> None:
 
     # View Report — open in new tab
     def _build_report_page(lang_val):
-        with holder_lock:
-            report = holder.get("last_report")
+        with session.lock:
+            report = session.last_report
         if not report:
             return dc(lang_val, "dc_no_report")
         return build_standalone_report(report, lang_val)
