@@ -103,6 +103,35 @@ def test_sql_review_page_smoke(page_url):
 
 
 @pytest.mark.uitest
+def test_sql_review_page_language_follows_cookie(page_url):
+    from urllib.parse import urlparse
+
+    from playwright.sync_api import expect, sync_playwright
+
+    host = urlparse(page_url).hostname
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+
+        # default (no cookie) → English chrome
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        expect(page.get_by_role("button", name="Start Review")).to_be_visible()
+
+        # st-lang=zh cookie (set by the hub) → Chinese chrome, zh placeholder
+        ctx = browser.new_context()
+        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
+                          "domain": host, "path": "/"}])
+        zh_page = ctx.new_page()
+        zh_page.goto(page_url, wait_until="networkidle")
+        expect(zh_page.get_by_role("button", name="开始审查")).to_be_visible()
+        expect(zh_page.locator("#sql")).to_have_attribute(
+            "placeholder", "粘贴要审查的 SQL……")
+
+        browser.close()
+
+
+@pytest.mark.uitest
 def test_sql_review_page_prefill_and_line_jump(page_url):
     from playwright.sync_api import expect, sync_playwright
 
