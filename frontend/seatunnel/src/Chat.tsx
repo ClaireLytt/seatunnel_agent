@@ -85,9 +85,9 @@ export function Chat({
             ? [...xs.slice(0, -1), { kind: 'event' as const, text: last.text + ' ▌' }]
             : xs
         const tail: Item[] = []
-        if (e.error) tail.push({ kind: 'error', text: `⚠️ **Error**: ${e.error}` })
+        if (e.error) tail.push({ kind: 'error', text: t('errorLabel', { msg: e.error }) })
         if (e.elapsed !== undefined)
-          tail.push({ kind: 'event', text: `⏱️ Completed in ${e.elapsed.toFixed(1)}s` })
+          tail.push({ kind: 'event', text: t('completedIn', { s: e.elapsed.toFixed(1) }) })
         return [...head, ...tail]
       })
     }

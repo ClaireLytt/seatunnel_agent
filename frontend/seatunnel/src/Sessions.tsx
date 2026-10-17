@@ -83,6 +83,7 @@ export function Sessions({
                     if (e.key === 'Escape') setEditingId(null)
                   }}
                   aria-label={t('rename')}
+                  placeholder={t('renamePlaceholder')}
                 />
                 <button
                   onClick={confirmRename}

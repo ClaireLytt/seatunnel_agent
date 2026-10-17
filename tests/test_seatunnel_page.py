@@ -177,3 +177,61 @@ def test_seatunnel_sessions_sidebar(page_url):
         page.locator(".st-sidebar-toggle").click()
         expect(page.locator(".st-sidebar")).to_be_visible()
         browser.close()
+
+
+SHOTS = Path(__file__).resolve().parents[1] / "docs" / "reports" / "shots"
+
+
+@pytest.mark.uitest
+def test_seatunnel_i18n_and_dark_screenshots(page_url):
+    """zh via st-lang cookie covers sidebar/chat/controls; light+dark shots."""
+    from urllib.parse import urlparse
+
+    from playwright.sync_api import expect, sync_playwright
+
+    SHOTS.mkdir(parents=True, exist_ok=True)
+    host = urlparse(page_url).hostname
+
+    def shot(page, name):
+        page.screenshot(path=str(SHOTS / f"seatunnel-react-{name}.png"),
+                        full_page=True)
+
+    def element_shot(page, selector, name):
+        page.locator(selector).screenshot(
+            path=str(SHOTS / f"seatunnel-react-{name}.png"))
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        page.goto(page_url, wait_until="networkidle")
+
+        # populate the chat so message bubbles appear in the shots
+        chat_input = page.locator(".st-chat input:not([type=file])")
+        chat_input.fill("show me streaming output")
+        chat_input.press("Enter")
+        expect(page.locator(".st-msg-bot").last).to_contain_text(
+            "Completed in", timeout=20000)
+
+        for scheme in ("light", "dark"):
+            page.emulate_media(color_scheme=scheme)
+            shot(page, f"{scheme}-full")
+            element_shot(page, ".st-sidebar", f"{scheme}-sidebar")
+            element_shot(page, ".st-chat", f"{scheme}-chat")
+
+        # zh: language follows the st-lang cookie (shared lang.ts)
+        page.context.add_cookies(
+            [{"name": "st-lang", "value": "zh", "domain": host, "path": "/"}])
+        page.emulate_media(color_scheme="light")
+        page.goto(page_url, wait_until="networkidle")
+        expect(page.get_by_role("heading",
+                                name="SeaTunnel \u6570\u636e\u7ba1\u9053\u6784\u5efa\u5668")).to_be_visible()
+        expect(page.locator(".st-sidebar")).to_contain_text("\u5386\u53f2\u8bb0\u5f55")
+        expect(page.locator(".st-sidebar")).to_contain_text("\u8fd0\u884c\u6a21\u5f0f")
+        expect(page.locator(".st-sidebar")).to_contain_text("\u672a\u8fde\u63a5")
+        expect(page.locator(".st-chat input:not([type=file])")
+               ).to_have_attribute("placeholder",
+                                   "\u8f93\u5165\u4f60\u7684\u6570\u636e\u7ba1\u9053\u4efb\u52a1...")
+        shot(page, "light-zh-full")
+        page.emulate_media(color_scheme="dark")
+        shot(page, "dark-zh-full")
+        browser.close()
