@@ -3,10 +3,12 @@
 Mounted unconditionally on the served FastAPI instance after hub launch
 (see seatunnel_agent.hub.ui), like the uitest / sql_review routers.
 
-Endpoints (sessions persistence/upload/demo/export land in later tickets):
+Endpoints (sessions persistence/export land in later tickets):
   GET  /api/seatunnel/meta      — static page metadata: modes, templates
   POST /api/seatunnel/chat      — one chat turn as SSE (drives SeaTunnelAgent)
   POST /api/seatunnel/chat/stop — interrupt the running turn
+  POST /api/seatunnel/upload    — attach a config file (saved under configs/)
+  POST /api/seatunnel/demo      — scripted demo run streamed as chat SSE
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -389,3 +391,104 @@ def session_delete(session_id: str) -> dict[str, Any]:
     history.delete_session(session_id)
     _CONVERSATIONS.pop(session_id, None)
     return {"ok": True}
+
+# ── Upload ───────────────────────────────────────────────────────────
+
+
+@router.post("/upload")
+async def upload_file(file: UploadFile) -> dict[str, str]:
+    """Save an uploaded config into configs/ (legacy _handle_file_upload parity).
+
+    The sanitized relative path is returned for the page to put into the
+    config-path field, exactly as the Gradio UploadButton handler did.
+    """
+    import re
+    from pathlib import Path
+
+    safe_name = re.sub(r"[^\w.\-]", "_", file.filename or "upload.conf")
+    dest_dir = Path("configs")
+    dest_dir.mkdir(exist_ok=True)
+    dest = dest_dir / safe_name
+    dest.write_bytes(await file.read())
+    return {"path": str(dest)}
+
+
+# ── Demo ─────────────────────────────────────────────────────────────
+
+
+class DemoRequest(BaseModel):
+    config_path: str = ""
+    lang: str = "en"
+
+
+@router.post("/demo")
+def demo_stream(req: DemoRequest) -> StreamingResponse:
+    """Stream the scripted demo over the same SSE frames as /chat.
+
+    1:1 with legacy ui.py _run_demo: same _DEMO_STEPS scripts, real
+    execute_tool calls against a fake Settings, UI_DEMO_STEP_DELAY pause
+    between steps, demo config written to the temp dir when no real
+    config path is given.
+    """
+    import os
+    import tempfile
+
+    from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
+    from seatunnel_agent.agents.data.seatunnel.ui import _DEMO_CONFIG, _DEMO_STEPS, _t
+    from seatunnel_agent.common.config import Settings, env_float
+
+    delay = env_float("UI_DEMO_STEP_DELAY", 0.35)
+    fake_settings = Settings(
+        api_key="demo", seatunnel_home=".", seatunnel_bin="", max_retries=3,
+    )
+
+    config_path = req.config_path.strip()
+    has_config = bool(config_path) and os.path.isfile(config_path)
+    key = "validate" if has_config else "general"
+    steps = _DEMO_STEPS[key]
+
+    if not has_config:
+        config_path = os.path.join(tempfile.gettempdir(), "demo_fake_to_console.conf")
+        with open(config_path, "w", encoding="utf-8") as f:
+            f.write(_DEMO_CONFIG)
+
+    def _tool_input(name: str) -> dict[str, Any]:
+        if name == "write_config":
+            return {"config_path": config_path, "content": _DEMO_CONFIG}
+        if name in ("read_config", "validate_config"):
+            return {"config_path": config_path}
+        return {}
+
+    cid = uuid.uuid4().hex[:12]
+    start_time = time.time()
+
+    def stream():
+        yield _sse({"type": "conversation", "id": cid})
+        for step in steps:
+            t = step["type"]
+            time.sleep(delay)
+
+            if t == "final_answer":
+                yield _sse({"type": "final", "elapsed": time.time() - start_time})
+                break
+
+            if t == "thinking":
+                ev: dict[str, Any] = {"type": "thinking", "text": step["text"]}
+            elif t == "tool_call":
+                ev = {"type": "tool_call", "name": step["name"],
+                      "input": _tool_input(step["name"])}
+            elif t == "tool_result":
+                result = execute_tool(step["name"], _tool_input(step["name"]),
+                                      fake_settings)
+                ev = {"type": "tool_result", "name": step["name"], "result": result}
+            else:  # text
+                tkey = "demo_validate_done" if key == "validate" else "demo_general_done"
+                ev = {"type": "text",
+                      "text": _t(req.lang, tkey).format(path=config_path)}
+
+            markdown = _render_event(ev, start_time)
+            if markdown is not None:
+                yield _sse({"type": "event", "kind": ev["type"],
+                            "markdown": markdown})
+
+    return StreamingResponse(stream(), media_type="text/event-stream")

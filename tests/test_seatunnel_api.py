@@ -6,6 +6,8 @@ uitest / sql_review page API tests.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -472,3 +474,100 @@ def test_session_delete(client: TestClient, fake_agent, history_dir) -> None:
     assert history.load_session("abc123") is None
     assert "abc123" not in api._CONVERSATIONS
     assert client.get("/api/seatunnel/sessions").json()["sessions"] == []
+
+# ── Upload ───────────────────────────────────────────────────────────
+
+
+def test_upload_saves_file_and_returns_config_path(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uploaded file lands in configs/ with a sanitized name (legacy parity)."""
+    monkeypatch.chdir(tmp_path)
+    resp = client.post(
+        "/api/seatunnel/upload",
+        files={"file": ("my pipe#line.conf", b"env { }\n", "text/plain")},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["path"] == str(Path("configs") / "my_pipe_line.conf")
+    saved = tmp_path / "configs" / "my_pipe_line.conf"
+    assert saved.read_bytes() == b"env { }\n"
+
+
+def test_upload_requires_file_part(client: TestClient) -> None:
+    resp = client.post("/api/seatunnel/upload")
+    assert resp.status_code == 422
+
+
+# ── Demo ─────────────────────────────────────────────────────────────
+
+
+def test_demo_streams_general_script(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No config path -> 'general' script streamed over the chat SSE frames."""
+    monkeypatch.setenv("UI_DEMO_STEP_DELAY", "0")
+    resp = client.post("/api/seatunnel/demo", json={"config_path": "", "lang": "en"})
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/event-stream")
+
+    events = _sse_events(resp)
+    assert events[0]["type"] == "conversation"
+    kinds = [e["kind"] for e in events if e["type"] == "event"]
+    # legacy _DEMO_STEPS["general"] order; final_answer becomes the final frame
+    assert kinds == [
+        "thinking", "tool_call", "tool_result",
+        "thinking", "tool_call", "tool_result",
+        "tool_call", "tool_result", "text",
+    ]
+    assert events[-1]["type"] == "final"
+    assert "elapsed" in events[-1]
+
+    # real execute_tool ran: list_connectors result rendered as markdown
+    mds = [e["markdown"] for e in events if e["type"] == "event"]
+    assert any("list_connectors" in m for m in mds)
+    # text step carries the localized completion message with the demo path
+    text_md = next(
+        e["markdown"] for e in events if e["type"] == "event" and e["kind"] == "text"
+    )
+    assert "demo_fake_to_console.conf" in text_md
+
+
+def test_demo_streams_validate_script_for_existing_config(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("UI_DEMO_STEP_DELAY", "0")
+    from seatunnel_agent.agents.data.seatunnel.ui import _DEMO_CONFIG
+
+    cfg = tmp_path / "pipe.conf"
+    cfg.write_text(_DEMO_CONFIG, encoding="utf-8")
+    resp = client.post(
+        "/api/seatunnel/demo", json={"config_path": str(cfg), "lang": "zh"}
+    )
+    assert resp.status_code == 200
+    events = _sse_events(resp)
+    kinds = [e["kind"] for e in events if e["type"] == "event"]
+    assert kinds == [
+        "thinking", "tool_call", "tool_result",
+        "thinking", "tool_call", "tool_result", "text",
+    ]
+    text_md = next(
+        e["markdown"] for e in events if e["type"] == "event" and e["kind"] == "text"
+    )
+    assert "验证完成" in text_md
+    assert str(cfg) in text_md
+
+
+def test_demo_honours_step_delay_env_var(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """UI_DEMO_STEP_DELAY paces the stream (legacy ui.py:36 behaviour kept)."""
+    import time as _time
+
+    monkeypatch.setenv("UI_DEMO_STEP_DELAY", "0.05")
+    t0 = _time.time()
+    resp = client.post("/api/seatunnel/demo", json={"config_path": "", "lang": "en"})
+    assert resp.status_code == 200
+    _sse_events(resp)
+    # 10 steps x 0.05s >= 0.5s lower bound
+    assert _time.time() - t0 >= 0.5

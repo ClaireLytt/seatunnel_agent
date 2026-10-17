@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
-import { chatStream, stopChat, type ChatEvent } from '@/api'
+import { chatStream, demoStream, stopChat, uploadFile, type ChatEvent } from '@/api'
 
 // Chat round-trip: message in, SSE event stream out, Stop interrupts.
 // Delta/flush semantics mirror the legacy ui.py _format_events_as_chat:
@@ -17,6 +17,8 @@ export function Chat({
   emptyHint,
   mode = 'nl',
   configPath = '',
+  templatePrompt = '',
+  onConfigPath,
   initialConversationId = null,
   initialMessages = [],
   onTurnEnd,
@@ -24,6 +26,8 @@ export function Chat({
   emptyHint: string
   mode?: string
   configPath?: string
+  templatePrompt?: string
+  onConfigPath?: (path: string) => void
   // session restore: remount (via key) with the loaded session's id + messages
   initialConversationId?: string | null
   initialMessages?: { role: string; content: string }[]
@@ -41,6 +45,12 @@ export function Chat({
   const [running, setRunning] = useState(false)
   const convRef = useRef<string | null>(initialConversationId)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  // template selection fills the input (legacy template_dd.change behaviour)
+  useEffect(() => {
+    setInput(templatePrompt)
+  }, [templatePrompt])
 
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight)
@@ -112,6 +122,36 @@ export function Chat({
     if (convRef.current) void stopChat(convRef.current, i18n.language)
   }
 
+  const runDemo = async () => {
+    if (running) return
+    const msg = input.trim() || t('demoDefaultMsg')
+    setInput('')
+    setRunning(true)
+    setItems((xs) => [...xs, { kind: 'user', text: msg }])
+    try {
+      await demoStream({ config_path: configPath, lang: i18n.language }, onEvent)
+    } catch (e) {
+      setItems((xs) => [...xs, { kind: 'error', text: e instanceof Error ? e.message : String(e) }])
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  const onUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const path = await uploadFile(file)
+      onConfigPath?.(path)
+    } catch (err) {
+      setItems((xs) => [
+        ...xs,
+        { kind: 'error', text: err instanceof Error ? err.message : String(err) },
+      ])
+    }
+  }
+
   return (
     <>
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pr-1">
@@ -137,6 +177,22 @@ export function Chat({
       </div>
       <div className="mt-4 flex gap-2 border-t border-line pt-4">
         <input
+          ref={fileRef}
+          type="file"
+          accept=".conf,.hocon,.config,.json"
+          className="hidden"
+          onChange={onUpload}
+          aria-label={t('upload')}
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          aria-label={t('upload')}
+          title={t('upload')}
+          className="st-btn-upload rounded border-[1.5px] border-line px-4 py-2 font-mono text-sm text-ink transition hover:border-ink"
+        >
+          +
+        </button>
+        <input
           className="flex-1 rounded border border-line bg-card px-3 py-2 font-mono text-sm text-fg outline-none focus:border-ink"
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -144,6 +200,13 @@ export function Chat({
           placeholder={t('inputPlaceholder')}
           aria-label={t('inputPlaceholder')}
         />
+        <button
+          onClick={runDemo}
+          disabled={running}
+          className="st-btn-demo rounded border-[1.5px] border-line px-4 py-2 font-mono text-sm text-ink transition enabled:hover:border-ink disabled:opacity-50"
+        >
+          {t('demo')}
+        </button>
         {running ? (
           <button
             onClick={stop}

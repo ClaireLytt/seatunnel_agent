@@ -93,6 +93,18 @@ export default function App() {
     [refreshSessions],
   )
 
+  // legacy ui.py _template_to_prompt: selecting a template fills the input
+  const selectedTpl = meta?.templates.find((tp) => tp.name === template)
+  const templatePrompt = selectedTpl
+    ? t('templatePrompt', {
+        name: selectedTpl.name,
+        params: selectedTpl.parameters
+          .filter((p) => p.default)
+          .map((p) => `${p.name}=${p.default}`)
+          .join(', '),
+      })
+    : ''
+
   const onConnect = async () => {
     setConnecting(true)
     try {
@@ -226,6 +238,8 @@ export default function App() {
               emptyHint={error ? error : t('chatEmpty')}
               mode={mode}
               configPath={configPath}
+              templatePrompt={templatePrompt}
+              onConfigPath={setConfigPath}
               initialConversationId={chat.id}
               initialMessages={chat.messages}
               onTurnEnd={refreshSessions}

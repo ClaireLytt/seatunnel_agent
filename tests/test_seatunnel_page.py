@@ -107,7 +107,7 @@ def test_seatunnel_page_smoke(page_url):
         expect(page.get_by_role("heading",
                                 name="SeaTunnel Pipeline Builder")).to_be_visible()
         expect(page.locator(".st-sidebar")).to_be_visible()
-        expect(page.locator(".st-chat input")).to_be_visible()
+        expect(page.locator(".st-chat input:not([type=file])")).to_be_visible()
         expect(page.locator("header")).to_contain_text("×4")
 
         assert not console_errors, f"console errors: {console_errors}"
@@ -123,7 +123,7 @@ def test_seatunnel_chat_roundtrip(page_url):
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
-        chat_input = page.locator(".st-chat input")
+        chat_input = page.locator(".st-chat input:not([type=file])")
         chat_input.fill("build me a pipeline")
         chat_input.press("Enter")
 
@@ -151,7 +151,7 @@ def test_seatunnel_sessions_sidebar(page_url):
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
-        chat_input = page.locator(".st-chat input")
+        chat_input = page.locator(".st-chat input:not([type=file])")
         chat_input.fill("remember this chat")
         chat_input.press("Enter")
         expect(page.locator(".st-msg-bot").last).to_contain_text(
