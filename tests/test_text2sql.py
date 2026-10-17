@@ -1764,7 +1764,9 @@ class TestRestApi:
         mock_agent.runtime = mock_rt
 
         import seatunnel_agent.agents.data.text2sql.api as api_mod
-        monkeypatch.setattr(api_mod, "_build_agent", lambda *a, **kw: mock_agent)
+        import seatunnel_agent.agents.data.text2sql.api_shared as api_shared
+        monkeypatch.setattr(api_shared, "build_agent", lambda *a, **kw: mock_agent)
+        monkeypatch.setattr(api_mod, "build_agent", lambda *a, **kw: mock_agent)
 
         resp = client.post("/api/text2sql/query", json={
             "question": "show all students",

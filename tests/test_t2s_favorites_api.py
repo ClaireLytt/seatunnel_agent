@@ -6,14 +6,15 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from seatunnel_agent.agents.data.text2sql.api import _fav_store, router
+from seatunnel_agent.agents.data.text2sql.api import router
+from seatunnel_agent.agents.data.text2sql.api_shared import fav_store
 
 
 @pytest.fixture()
 def client(tmp_path) -> TestClient:
     app = FastAPI()
     app.include_router(router)
-    _fav_store.path = tmp_path / "favs.json"
+    fav_store.path = tmp_path / "favs.json"
     return TestClient(app)
 
 

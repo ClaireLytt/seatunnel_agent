@@ -102,6 +102,7 @@ def chat_page_url(tmp_path, monkeypatch):
     from fastapi.staticfiles import StaticFiles
 
     from seatunnel_agent.agents.data.text2sql import api as t2s_api
+    from seatunnel_agent.agents.data.text2sql import api_shared as t2s_shared
 
     if not (Path(DIST) / "index.html").is_file():
         pytest.skip("text2sql dist not built")
@@ -127,7 +128,7 @@ def chat_page_url(tmp_path, monkeypatch):
             self._on_event("final_answer", {"text": "orders has 42 rows"})
             return "orders has 42 rows"
 
-    monkeypatch.setattr(t2s_api, "_build_agent", lambda *a, **k: FakeAgent())
+    monkeypatch.setattr(t2s_shared, "build_agent", lambda *a, **k: FakeAgent())
 
     app = FastAPI()
     app.include_router(t2s_api.router)
@@ -234,13 +235,13 @@ def test_t2s_history_view_qlog(chat_page_url, tmp_path, monkeypatch):
     """Ticket #69: the #history view lists seeded qlog records and clears."""
     from playwright.sync_api import expect, sync_playwright
 
-    from seatunnel_agent.agents.data.text2sql import api as t2s_api
+    from seatunnel_agent.agents.data.text2sql import api_qlog as t2s_qlog
     from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
 
     logger = QueryLogger(log_dir=tmp_path)
     logger.log("how many orders", "SELECT count(*) FROM orders", "ok",
                exec_time_ms=7)
-    monkeypatch.setattr(t2s_api, "_query_logger", lambda: logger)
+    monkeypatch.setattr(t2s_qlog, "_query_logger", lambda: logger)
 
     with sync_playwright() as p:
         browser = p.chromium.launch()

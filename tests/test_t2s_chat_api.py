@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from seatunnel_agent.agents.data.text2sql import api as t2s_api
+from seatunnel_agent.agents.data.text2sql import api_shared as t2s_shared
 
 
 class FakeAgent:
@@ -59,7 +60,8 @@ def client() -> TestClient:
 
 
 def _connect_fake(client, monkeypatch, agent) -> str:
-    monkeypatch.setattr(t2s_api, "_build_agent", lambda *a, **k: agent)
+    monkeypatch.setattr(t2s_shared, "build_agent", lambda *a, **k: agent)
+    monkeypatch.setattr(t2s_api, "build_agent", lambda *a, **k: agent)
     r = client.post("/api/text2sql/connect",
                     json={"ds_type": "sqlite", "db_config": {"database": "x"}})
     assert r.status_code == 200
@@ -231,7 +233,8 @@ def test_reset_rebuilds_agent(client, monkeypatch):
         calls.append(a)
         return FakeAgent()
 
-    monkeypatch.setattr(t2s_api, "_build_agent", fake_build)
+    monkeypatch.setattr(t2s_shared, "build_agent", fake_build)
+    monkeypatch.setattr(t2s_api, "build_agent", fake_build)
     r = client.post("/api/text2sql/connect",
                     json={"ds_type": "sqlite", "db_config": {"database": "x"}})
     sid = r.json()["session_id"]

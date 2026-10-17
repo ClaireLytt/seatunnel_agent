@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from seatunnel_agent.agents.data.text2sql import api as t2s_api
+from seatunnel_agent.agents.data.text2sql import api_qlog as t2s_qlog
 from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
 
 
@@ -22,7 +23,7 @@ def client() -> TestClient:
 @pytest.fixture()
 def qlog(tmp_path, monkeypatch) -> QueryLogger:
     logger = QueryLogger(log_dir=tmp_path)
-    monkeypatch.setattr(t2s_api, "_query_logger", lambda: logger)
+    monkeypatch.setattr(t2s_qlog, "_query_logger", lambda: logger)
     logger.log("q1", "SELECT 1", "ok", exec_time_ms=10)
     logger.log("q2", "SELECT 2", "error", exec_time_ms=20)
     return logger
@@ -90,7 +91,8 @@ def test_saved_sessions_list_and_resume(client, tmp_path, monkeypatch):
     chat = rr.json()["chat"]
     assert chat[0]["content"] == "how much?"
     # the live agent carries the restored conversation
-    entry = t2s_api._sessions.get(live)
+    from seatunnel_agent.agents.data.text2sql.api_shared import sessions as _sessions
+    entry = _sessions.get(live)
     assert entry.agent.messages and \
         entry.agent.messages[0]["content"] == "how much?"
 
