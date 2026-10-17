@@ -597,7 +597,6 @@ def test_api_metrics_query_bad_dimension() -> None:
 
 def test_api_metrics_query_execute(monkeypatch) -> None:
     pytest.importorskip("fastapi")
-    import seatunnel_agent.agents.data.text2sql.api as api_mod
     from seatunnel_agent.agents.data.text2sql.executor import QueryResult
 
     class _FakeExecutor:

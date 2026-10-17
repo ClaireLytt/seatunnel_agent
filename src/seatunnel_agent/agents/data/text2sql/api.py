@@ -33,10 +33,12 @@ router = APIRouter(prefix="/api/text2sql", tags=["text2sql"])
 from .api_favorites import router as _fav_router
 from .api_metrics import router as _metrics_router
 from .api_qlog import router as _qlog_router
+from .api_templates import router as _tmpl_router
 
 router.include_router(_fav_router)
 router.include_router(_qlog_router)
 router.include_router(_metrics_router)
+router.include_router(_tmpl_router)
 
 # ── Datasources & connect ────────────────────────────────────────────
 

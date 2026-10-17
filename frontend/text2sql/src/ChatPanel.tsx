@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { chatStream, resetSession, stopChat, type ChatEvent, type SessionMeta } from '@/api'
 import { ResultBlock, type ResultData } from '@/ResultBlock'
+import { TemplateBar } from '@/TemplateBar'
 
 type Item =
   | { kind: 'user'; text: string }
@@ -15,10 +16,14 @@ export function ChatPanel({
   session,
   onSessionReset,
   seed,
+  prefill,
+  onPrefillUsed,
 }: {
   session: SessionMeta
   onSessionReset: (s: SessionMeta) => void
   seed?: { role: string; content: string }[]
+  prefill?: string
+  onPrefillUsed?: () => void
 }) {
   const { t } = useTranslation()
   const [items, setItems] = useState<Item[]>([])
@@ -29,6 +34,14 @@ export function ChatPanel({
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight)
   }, [items])
+
+  // prefill from metrics/templates
+  useEffect(() => {
+    if (prefill) {
+      setInput(prefill)
+      onPrefillUsed?.()
+    }
+  }, [prefill])
 
   // resumed transcript replaces the current conversation display
   useEffect(() => {
@@ -109,6 +122,7 @@ export function ChatPanel({
           ),
         )}
       </div>
+      <TemplateBar onSelect={(hint) => setInput(hint)} />
       <div className="mt-3 flex gap-2">
         <input
           className="flex-1 rounded border border-line bg-card px-3 py-2 text-sm text-fg outline-none focus:border-ink"

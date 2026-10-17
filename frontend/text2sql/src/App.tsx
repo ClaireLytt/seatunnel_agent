@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { ChatPanel } from '@/ChatPanel'
 import { FavoritesView } from '@/FavoritesView'
 import { HistoryView } from '@/HistoryView'
+import { MetricsView } from '@/MetricsView'
 import { SchemaBrowser } from '@/SchemaBrowser'
 import { SchemaPanel } from '@/SchemaPanel'
 import { ConnectPanel } from '@/ConnectPanel'
@@ -20,9 +21,12 @@ export default function App() {
         ? 'history'
         : location.hash === '#favorites'
           ? 'favorites'
-          : 'chat'
+          : location.hash === '#metrics'
+            ? 'metrics'
+            : 'chat'
   const [view, setView] = useState(viewFromHash())
   const [seed, setSeed] = useState<{ role: string; content: string }[] | undefined>()
+  const [prefill, setPrefill] = useState('')
 
   useEffect(() => {
     const onHash = () => setView(viewFromHash())
@@ -72,6 +76,12 @@ export default function App() {
           >
             ⭐ {t('favorites')}
           </a>
+          <a
+            href="#metrics"
+            className="font-mono text-sm text-ink underline-offset-4 hover:underline"
+          >
+            📊 {t('metricsCatalog')}
+          </a>
         </div>
         {session && (
           <a
@@ -84,7 +94,7 @@ export default function App() {
         <div className="st-legacy-links rounded border border-line bg-card p-3 font-mono text-[12px]">
           <div className="mb-1 uppercase tracking-[0.18em] text-ink-soft">{t('pending')}</div>
           <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {['templates', 'metrics', 'subscriptions', 'boards'].map(
+            {['subscriptions', 'boards'].map(
               (k) => (
                 <a
                   key={k}
@@ -110,6 +120,13 @@ export default function App() {
       <main className="min-h-[70vh] flex-1">
         {view === 'favorites' ? (
           <FavoritesView />
+        ) : view === 'metrics' ? (
+          <MetricsView
+            onUse={(text) => {
+              setPrefill(text)
+              location.hash = ''
+            }}
+          />
         ) : view === 'history' ? (
           <HistoryView
             session={session}
@@ -121,7 +138,7 @@ export default function App() {
         ) : session && view === 'schema' ? (
           <SchemaBrowser session={session} />
         ) : session ? (
-          <ChatPanel session={session} onSessionReset={setSession} seed={seed} />
+          <ChatPanel session={session} onSessionReset={setSession} seed={seed} prefill={prefill} onPrefillUsed={() => setPrefill('')} />
         ) : (
           <div className="st-session rounded border border-line bg-card p-4 font-mono text-sm text-muted">
             —

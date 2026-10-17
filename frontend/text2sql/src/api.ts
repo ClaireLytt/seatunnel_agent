@@ -116,6 +116,42 @@ export const filterTables = (sid: string, tables: string[]): Promise<SessionMeta
 export const reloadSchema = (sid: string): Promise<SessionMeta> =>
   fetch(`${BASE}/session/${sid}/schema/reload`, { method: 'POST' }).then(j)
 
+// ── Templates ───────────────────────────────────────────────────────
+
+export interface Template {
+  id: string
+  name_en: string
+  name_zh: string
+  description_en: string
+  description_zh: string
+  pattern: string
+}
+
+export const fetchTemplates = (): Promise<{ templates: Template[] }> =>
+  fetch(`${BASE}/templates`).then(j)
+
+// ── Metrics catalog ─────────────────────────────────────────────────
+
+export interface MetricInfo {
+  name: string
+  display_name: string
+  aliases: string[]
+  description: string
+  type: string
+  table: string
+  expression: string
+  numerator: string
+  denominator: string
+  time_column: string
+  dimensions: string[]
+  default_filters: string[]
+  unit: string
+  owner: string
+}
+
+export const fetchMetrics = (): Promise<{ count: number; metrics: MetricInfo[] }> =>
+  fetch(`${BASE}/metrics`).then(j)
+
 export interface QlogRecord {
   timestamp: string
   user_query: string
