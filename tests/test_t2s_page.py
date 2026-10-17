@@ -256,3 +256,82 @@ def test_t2s_history_view_qlog(chat_page_url, tmp_path, monkeypatch):
         expect(view).not_to_contain_text("how many orders")
 
         browser.close()
+
+
+@pytest.mark.uitest
+def test_t2s_favorites_view(page_url):
+    from playwright.sync_api import expect, sync_playwright
+
+    from seatunnel_agent.agents.data.text2sql.api_shared import fav_store
+
+    fav_store.save("top orders", "SELECT * FROM orders LIMIT 10", "show top orders")
+
+    url, _ = page_url
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(url + "#favorites", wait_until="networkidle")
+
+        view = page.locator(".st-favorites-view")
+        expect(view).to_contain_text("top orders", timeout=15000)
+        # search filters
+        page.get_by_placeholder("Search").fill("nonexistent")
+        expect(view).not_to_contain_text("top orders")
+        page.get_by_placeholder("Search").fill("")
+        expect(view).to_contain_text("top orders")
+
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_t2s_metrics_view(chat_page_url):
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(chat_page_url + "#metrics", wait_until="networkidle")
+
+        view = page.locator(".st-metrics-view")
+        expect(view).to_contain_text("Metrics", timeout=15000)
+
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_t2s_boards_view(page_url):
+    from playwright.sync_api import expect, sync_playwright
+
+    url, _ = page_url
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(url + "#boards", wait_until="networkidle")
+
+        view = page.locator(".st-boards-view")
+        expect(view).to_contain_text("Boards", timeout=15000)
+        # create a board
+        page.get_by_placeholder("New board").fill("test board")
+        page.get_by_role("button", name="Create").click()
+        expect(view).to_contain_text("test board", timeout=10000)
+
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_t2s_subscriptions_view(page_url):
+    from playwright.sync_api import expect, sync_playwright
+
+    url, _ = page_url
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(url + "#subscriptions", wait_until="networkidle")
+
+        view = page.locator(".st-subscriptions-view")
+        expect(view).to_contain_text("Subscriptions", timeout=15000)
+        # open create form
+        page.get_by_role("button", name="New").click()
+        expect(view.get_by_placeholder("Name")).to_be_visible()
+
+        browser.close()

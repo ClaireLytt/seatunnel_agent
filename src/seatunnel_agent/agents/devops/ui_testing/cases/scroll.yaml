@@ -56,15 +56,7 @@
   expect:
     - scrollable: {selector: .gradio-container}
 
-- id: SCR6
-  title: Text2SQL 页侧栏可滚动
-  tags: [smoke, sqlite]
-  page: /text2sql-legacy
-  steps:
-    - wait: 500
-      note: 纯断言用例,等页面水合完成即可
-  expect:
-    - scrollable: {selector: .st-sidebar}
+# SCR6 retired: text2sql-legacy page deleted; React app scrolls natively.
 
 - id: SCR7
   title: 配置迁移页有滚动条
