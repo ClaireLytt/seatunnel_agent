@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { load as parseYaml } from 'js-yaml'
@@ -23,11 +23,46 @@ export default function App() {
   const [ddl, setDdl] = useState('')
   const [rulesText, setRulesText] = useState('')
 
+  const sqlRef = useRef<HTMLTextAreaElement>(null)
+
   const [reviewing, setReviewing] = useState(false)
   const [fixing, setFixing] = useState(false)
   const [report, setReport] = useState('')
   const [fixedSql, setFixedSql] = useState('')
   const [error, setError] = useState('')
+
+  // URL prefill: /sqlreview?sql=...&dialect=... (used by the Text2SQL
+  // inline review card's "full review" link)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const urlSql = (params.get('sql') || '').trim()
+    if (urlSql) setSql(urlSql.slice(0, 20000))
+    const urlDialect = (params.get('dialect') || '').trim().toLowerCase()
+    if ((DIALECTS as readonly string[]).includes(urlDialect)) setDialect(urlDialect)
+  }, [])
+
+  // report locations link to #srline-N: select + scroll to that SQL line
+  const jumpToLine = (line: number) => {
+    const box = sqlRef.current
+    if (!box) return
+    const rows = box.value.split('\n')
+    if (line > rows.length) return
+    let start = 0
+    for (let i = 0; i < line - 1; i++) start += rows[i].length + 1
+    box.focus()
+    box.setSelectionRange(start, start + rows[line - 1].length)
+    const lh = parseFloat(getComputedStyle(box).lineHeight) || 20
+    box.scrollTop = Math.max(0, (line - 3) * lh)
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  // hand the current SQL to the transpile / data-skew pages via localStorage
+  // (survives the new tab; query params would hit the header-size cap)
+  const sendTo = (storageKey: string, route: string) => {
+    if (!sql.trim()) return
+    localStorage.setItem(storageKey, sql)
+    window.open(route, '_blank')
+  }
 
   // YAML rules → inline dict for the API (the legacy page parsed server-side)
   const parseRules = (): Record<string, unknown> | undefined => {
@@ -64,6 +99,7 @@ export default function App() {
         lang,
         rules,
         schema_ddl: ddl.trim() || undefined,
+        line_links: true,
       })
       setReport(r.report)
     } catch (e) {
@@ -150,6 +186,7 @@ export default function App() {
         </label>
         <textarea
           id="sql"
+          ref={sqlRef}
           className={`${inputCls} min-h-[260px]`}
           value={sql}
           onChange={(e) => setSql(e.target.value)}
@@ -213,6 +250,18 @@ export default function App() {
             >
               {t('clearBtn')}
             </button>
+            <button
+              onClick={() => sendTo('st_transpile_sql', '/transpile')}
+              className="rounded border-[1.5px] border-line px-3 py-2 font-mono text-[13px] text-muted transition hover:border-ink hover:text-ink"
+            >
+              {t('transpileBtn')}
+            </button>
+            <button
+              onClick={() => sendTo('st_dataskew_sql', '/dataskew')}
+              className="rounded border-[1.5px] border-line px-3 py-2 font-mono text-[13px] text-muted transition hover:border-ink hover:text-ink"
+            >
+              {t('skewBtn')}
+            </button>
           </div>
         </div>
         <Collapsible title={t('ddlAccordion')}>
@@ -270,7 +319,7 @@ export default function App() {
         </div>
         <Card>
           {report ? (
-            <ReportView markdown={report} />
+            <ReportView markdown={report} onLineClick={jumpToLine} />
           ) : (
             <p className="italic text-muted">{t('reportPlaceholder')}</p>
           )}

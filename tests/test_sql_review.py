@@ -1918,6 +1918,15 @@ def test_api_fix_with_given_report(monkeypatch, api_client):
     assert r.json()["report"] == "my custom report"
 
 
+def test_api_review_line_links_opt_in(api_client):
+    body = {"sql": "select * from t where a = NULL", "mode": "static"}
+    plain = api_client.post("/api/sql_review/review", json=body).json()["report"]
+    linked = api_client.post("/api/sql_review/review",
+                             json={**body, "line_links": True}).json()["report"]
+    assert "#srline-" not in plain
+    assert "#srline-" in linked
+
+
 def test_api_fix_static_mode_no_llm(api_client):
     # deterministic autofix path: NULL comparison rewritten, no LLM touched
     r = api_client.post("/api/sql_review/fix", json={

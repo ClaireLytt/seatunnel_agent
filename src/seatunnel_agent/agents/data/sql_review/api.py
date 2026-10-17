@@ -56,6 +56,9 @@ class ReviewRequest(BaseModel):
     rules: dict[str, Any] | None = Field(
         None, description="Inline rule config (same schema as .sqlreview.yaml)"
     )
+    line_links: bool = Field(
+        False, description="Render finding locations as #srline-N markdown links"
+    )
 
 
 class ReviewResponse(BaseModel):
@@ -170,7 +173,7 @@ def review(req: ReviewRequest) -> ReviewResponse:
         from .agent import static_review_report
         from .report import render_report
         rep = static_review_report(req.sql, dialect, store=store, config=config)
-        report_md = render_report(rep, lang=lang)
+        report_md = render_report(rep, lang=lang, line_links=req.line_links)
         raw_findings = rep.findings
         findings = [f.to_dict() for f in raw_findings]
         stats = rep.stats()

@@ -100,3 +100,30 @@ def test_sql_review_page_smoke(page_url):
         expect(page.locator(".sr-report")).to_have_count(0)
 
         browser.close()
+
+
+@pytest.mark.uitest
+def test_sql_review_page_prefill_and_line_jump(page_url):
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+
+        # ?sql=&dialect= prefill (Text2SQL "full review" deep link)
+        page.goto(f"{page_url}?sql=select+1+from+t+where+a+%3D+NULL&dialect=mysql",
+                  wait_until="networkidle")
+        expect(page.locator("#sql")).to_have_value("select 1 from t where a = NULL")
+        expect(page.locator("#dialect")).to_have_value("mysql")
+
+        # line links render in the report; clicking selects the SQL line
+        page.get_by_role("button", name="Start Review").click()
+        link = page.locator('.sr-report a[href*="#srline-"]').first
+        expect(link).to_be_visible(timeout=15000)
+        link.click()
+        sel = page.evaluate(
+            "() => { const b = document.querySelector('#sql');"
+            " return b.value.substring(b.selectionStart, b.selectionEnd); }")
+        assert "a = NULL" in sel
+
+        browser.close()

@@ -36,6 +36,7 @@ export interface ReviewRequest {
   schema_ddl?: string
   rules?: Record<string, unknown>
   lang: 'zh' | 'en'
+  line_links?: boolean
 }
 
 export interface FixRequest {
