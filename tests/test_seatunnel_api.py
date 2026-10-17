@@ -321,3 +321,154 @@ def test_connect_failure_clears_stored_settings(
     monkeypatch.setattr(config, "load_settings", _boom)
     assert client.post("/api/seatunnel/connect").json()["ok"] is False
     assert st_api.CONNECTION["settings"] is None
+
+
+# ── Sessions (ticket 04) ─────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def history_dir(monkeypatch, tmp_path):
+    """Keep every test's history writes (chat persistence) off the real home dir."""
+    from seatunnel_agent.common import history
+
+    monkeypatch.setattr(history, "HISTORY_DIR", tmp_path)
+    monkeypatch.setattr(history, "_OLD_HISTORY_DIR", tmp_path / "_old")
+    return tmp_path
+
+
+def _write_session(sid: str, title: str = "Old chat") -> None:
+    from seatunnel_agent.common import history
+
+    history.save_session(history.Session(
+        session_id=sid,
+        title=title,
+        created_at="2026-01-01T00:00:00",
+        updated_at="2026-01-01T00:00:00",
+        chat_messages=[
+            {"role": "user", "content": "restore me"},
+            {"role": "assistant", "content": "restored reply"},
+        ],
+        agent_messages=[{"role": "user", "content": "restore me"},
+                        {"role": "assistant", "content": "restored reply"}],
+        agent_context={"k": "v"},
+    ))
+
+
+def test_sessions_list_empty(client: TestClient, history_dir) -> None:
+    resp = client.get("/api/seatunnel/sessions")
+    assert resp.status_code == 200
+    assert resp.json() == {"sessions": []}
+
+
+def test_sessions_listed_after_save(client: TestClient, history_dir) -> None:
+    _write_session("abc123", title="My pipeline")
+    data = client.get("/api/seatunnel/sessions").json()
+    assert len(data["sessions"]) == 1
+    s = data["sessions"][0]
+    assert s["id"] == "abc123"
+    assert s["title"] == "My pipeline"
+    assert s["msg_count"] == 2
+    assert s["updated_at"]
+
+
+def test_chat_turn_persists_session(client: TestClient, fake_agent,
+                                    history_dir) -> None:
+    """A completed exchange saves to history like legacy ui.py (parity)."""
+    from seatunnel_agent.common import history
+
+    resp = client.post("/api/seatunnel/chat", json={"message": "build a pipeline"})
+    cid = _sse_events(resp)[0]["id"]
+
+    session = history.load_session(cid)
+    assert session is not None
+    assert session.title.startswith("build a pipeline")
+    assert session.chat_messages[0] == {"role": "user", "content": "build a pipeline"}
+    contents = [m["content"] for m in session.chat_messages]
+    assert "Hello" in contents  # the final text event, legacy-rendered
+    # a second turn extends the same session file
+    client.post("/api/seatunnel/chat",
+                json={"message": "more", "conversation_id": cid})
+    session = history.load_session(cid)
+    assert [m for m in session.chat_messages if m["role"] == "user"] == [
+        {"role": "user", "content": "build a pipeline"},
+        {"role": "user", "content": "more"},
+    ]
+    assert session.created_at  # preserved across saves
+
+
+def test_session_load_returns_messages(client: TestClient, history_dir) -> None:
+    _write_session("abc123")
+    resp = client.get("/api/seatunnel/sessions/abc123")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["id"] == "abc123"
+    assert data["title"] == "Old chat"
+    assert data["messages"] == [
+        {"role": "user", "content": "restore me"},
+        {"role": "assistant", "content": "restored reply"},
+    ]
+
+
+def test_session_load_unknown_404(client: TestClient, history_dir) -> None:
+    assert client.get("/api/seatunnel/sessions/nope").status_code == 404
+
+
+def test_session_load_restores_agent_for_continuation(
+    client: TestClient, fake_agent, history_dir,
+) -> None:
+    """After loading, a chat turn continues the restored conversation."""
+    from seatunnel_agent.agents.data.seatunnel import api
+    from seatunnel_agent.common import settings_store
+
+    api.CONNECTION.update({"settings": object(),
+                           "version": settings_store.get_version()})
+    _write_session("abc123")
+    assert client.get("/api/seatunnel/sessions/abc123").status_code == 200
+
+    resp = client.post("/api/seatunnel/chat",
+                       json={"message": "continue", "conversation_id": "abc123"})
+    events = _sse_events(resp)
+    assert events[0]["id"] == "abc123"
+    # restored agent got the history and the follow-up went through chat()
+    assert len(fake_agent.instances) == 1
+    agent = fake_agent.instances[0]
+    assert agent.chat_calls == ["continue"]
+    assert agent.messages[0] == {"role": "user", "content": "restore me"}
+    assert agent.context == {"k": "v"}
+
+    # the continued exchange persisted onto the same session
+    from seatunnel_agent.common import history
+
+    session = history.load_session("abc123")
+    assert {"role": "user", "content": "continue"} in session.chat_messages
+    assert session.created_at == "2026-01-01T00:00:00"
+
+
+def test_session_rename_roundtrip(client: TestClient, history_dir) -> None:
+    from seatunnel_agent.common import history
+
+    _write_session("abc123")
+    resp = client.patch("/api/seatunnel/sessions/abc123",
+                        json={"title": "Renamed"})
+    assert resp.status_code == 200
+    assert history.load_session("abc123").title == "Renamed"
+    listed = client.get("/api/seatunnel/sessions").json()["sessions"]
+    assert listed[0]["title"] == "Renamed"
+
+
+def test_session_rename_unknown_404(client: TestClient, history_dir) -> None:
+    resp = client.patch("/api/seatunnel/sessions/nope", json={"title": "x"})
+    assert resp.status_code == 404
+
+
+def test_session_delete(client: TestClient, fake_agent, history_dir) -> None:
+    from seatunnel_agent.agents.data.seatunnel import api
+    from seatunnel_agent.common import history
+
+    _write_session("abc123")
+    api._CONVERSATIONS["abc123"] = api._Conversation()
+    resp = client.delete("/api/seatunnel/sessions/abc123")
+    assert resp.status_code == 200
+    assert history.load_session("abc123") is None
+    assert "abc123" not in api._CONVERSATIONS
+    assert client.get("/api/seatunnel/sessions").json()["sessions"] == []

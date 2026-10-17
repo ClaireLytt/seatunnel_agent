@@ -53,14 +53,17 @@ class _FakePageAgent:
 
 
 @pytest.fixture()
-def page_url(monkeypatch):
+def page_url(monkeypatch, tmp_path):
     import uvicorn
     from fastapi import FastAPI
     from fastapi.staticfiles import StaticFiles
 
     from seatunnel_agent.agents.data.seatunnel import api
     from seatunnel_agent.agents.data.seatunnel.api import router
+    from seatunnel_agent.common import history
 
+    monkeypatch.setattr(history, "HISTORY_DIR", tmp_path)
+    monkeypatch.setattr(history, "_OLD_HISTORY_DIR", tmp_path / "_old")
     monkeypatch.setattr(api, "SeaTunnelAgent", _FakePageAgent)
     monkeypatch.setattr(api, "load_settings", lambda: object())
     api._CONVERSATIONS.clear()
@@ -135,4 +138,42 @@ def test_seatunnel_chat_roundtrip(page_url):
             "Completed in", timeout=20000)
         # Send button is back after the stream ends
         expect(page.locator(".st-btn-send")).to_be_visible()
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_seatunnel_sessions_sidebar(page_url):
+    """Exchange persists to the sidebar; new chat resets; clicking restores."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        chat_input = page.locator(".st-chat input")
+        chat_input.fill("remember this chat")
+        chat_input.press("Enter")
+        expect(page.locator(".st-msg-bot").last).to_contain_text(
+            "Completed in", timeout=20000)
+
+        # the completed exchange shows up in the session list
+        item = page.locator(".st-session-item")
+        expect(item.first).to_contain_text("remember this chat", timeout=10000)
+
+        # new chat clears the conversation
+        page.locator(".st-new-chat").click()
+        expect(page.locator(".st-msg-user")).to_have_count(0)
+
+        # selecting the history entry restores its messages
+        item.first.click()
+        expect(page.locator(".st-msg-user")).to_contain_text("remember this chat")
+        expect(page.locator(".st-msg-bot").first).to_contain_text(
+            "Streamed hello from the agent")
+
+        # sidebar collapse/expand toggle
+        page.locator(".st-sidebar-toggle").click()
+        expect(page.locator(".st-sidebar")).to_be_hidden()
+        page.locator(".st-sidebar-toggle").click()
+        expect(page.locator(".st-sidebar")).to_be_visible()
         browser.close()

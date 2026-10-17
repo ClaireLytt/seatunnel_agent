@@ -17,16 +17,29 @@ export function Chat({
   emptyHint,
   mode = 'nl',
   configPath = '',
+  initialConversationId = null,
+  initialMessages = [],
+  onTurnEnd,
 }: {
   emptyHint: string
   mode?: string
   configPath?: string
+  // session restore: remount (via key) with the loaded session's id + messages
+  initialConversationId?: string | null
+  initialMessages?: { role: string; content: string }[]
+  onTurnEnd?: (conversationId: string | null) => void
 }) {
   const { t, i18n } = useTranslation()
-  const [items, setItems] = useState<Item[]>([])
+  const [items, setItems] = useState<Item[]>(() =>
+    initialMessages.map((m) =>
+      m.role === 'user'
+        ? { kind: 'user' as const, text: m.content }
+        : { kind: 'event' as const, text: m.content },
+    ),
+  )
   const [input, setInput] = useState('')
   const [running, setRunning] = useState(false)
-  const convRef = useRef<string | null>(null)
+  const convRef = useRef<string | null>(initialConversationId)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -91,6 +104,7 @@ export function Chat({
       setItems((xs) => [...xs, { kind: 'error', text: e instanceof Error ? e.message : String(e) }])
     } finally {
       setRunning(false)
+      onTurnEnd?.(convRef.current)
     }
   }
 

@@ -82,6 +82,35 @@ class _Conversation:
     agent: Any = None
     queue: queue.Queue[tuple[str, dict[str, Any]] | None] | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
+    # accumulated rendered chat (user + legacy-rendered assistant messages);
+    # what _persist_session writes to the history file, legacy ui.py parity
+    messages: list[dict[str, str]] = field(default_factory=list)
+
+
+def _persist_session(cid: str, conv: _Conversation) -> None:
+    """Save the conversation to history like legacy ui.py _save_current_session."""
+    from seatunnel_agent.common import history
+
+    if not conv.messages:
+        return
+    try:
+        existing = history.load_session(cid)
+        created = existing.created_at if existing else history.now_iso()
+        agent = conv.agent
+        history.save_session(history.Session(
+            session_id=cid,
+            title=history.extract_title(conv.messages),
+            created_at=created,
+            updated_at=history.now_iso(),
+            chat_messages=list(conv.messages),
+            agent_messages=list(getattr(agent, "messages", None) or []),
+            agent_context=dict(getattr(agent, "context", None) or {}),
+        ))
+    except Exception:  # pragma: no cover - persistence must not kill the stream
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "failed to persist seatunnel session %s", cid, exc_info=True)
 
 
 _CONVERSATIONS: dict[str, _Conversation] = {}
@@ -198,6 +227,8 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
     threading.Thread(target=work, daemon=True).start()
     start_time = time.time()
 
+    events_log: list[dict[str, Any]] = []
+
     def stream():
         try:
             yield _sse({"type": "conversation", "id": cid})
@@ -206,6 +237,7 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
                 if item is None:
                     break
                 etype, data = item
+                events_log.append({"type": etype, **data})
                 if etype == "text_delta":
                     yield _sse({"type": "delta", "text": data.get("text", "")})
                 elif etype == "final_answer":
@@ -227,6 +259,14 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
                 conv.queue = None
             if conv.agent is not None:
                 conv.agent._on_event = None
+            # persist the completed exchange (legacy _handle_submit parity)
+            from seatunnel_agent.agents.data.seatunnel.ui import (
+                _format_events_as_chat,
+            )
+
+            conv.messages.append({"role": "user", "content": req.message})
+            conv.messages.extend(_format_events_as_chat(events_log, start_time))
+            _persist_session(cid, conv)
 
     return StreamingResponse(stream(), media_type="text/event-stream")
 
@@ -288,3 +328,64 @@ def connect() -> dict[str, Any]:
     CONNECTION["version"] = settings_store.get_version()
     threading.Thread(target=_warmup_llm, args=(settings.llm_provider,), daemon=True).start()
     return {"ok": True, "model": settings.model_name}
+
+
+# ── Sessions ─────────────────────────────────────────────────────────
+# Backed by seatunnel_agent.common.history — storage format unchanged
+# (legacy parity with the Gradio page's session sidebar handlers).
+
+
+class RenameRequest(BaseModel):
+    title: str
+
+
+@router.get("/sessions")
+def sessions_list() -> dict[str, Any]:
+    """List saved sessions, newest first (title / updated_at / msg_count)."""
+    from seatunnel_agent.common import history
+
+    return {"sessions": history.list_sessions()}
+
+
+@router.get("/sessions/{session_id}")
+def session_load(session_id: str) -> dict[str, Any]:
+    """Load a session: return its chat messages and restore the agent state
+    so follow-up chat turns continue that conversation (legacy _load_history)."""
+    from seatunnel_agent.common import history
+
+    session = history.load_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="unknown session")
+
+    conv = _CONVERSATIONS.setdefault(session_id, _Conversation())
+    conv.messages = list(session.chat_messages)
+    conv.agent = None
+    if session.agent_messages:
+        settings = CONNECTION.get("settings")
+        if settings is not None:
+            agent = SeaTunnelAgent(settings, on_event=None)
+            agent.messages = list(session.agent_messages)
+            if session.agent_context:
+                agent.context = dict(session.agent_context)
+            conv.agent = agent
+
+    return {"id": session_id, "title": session.title,
+            "messages": session.chat_messages}
+
+
+@router.patch("/sessions/{session_id}")
+def session_rename(session_id: str, req: RenameRequest) -> dict[str, Any]:
+    from seatunnel_agent.common import history
+
+    if not history.rename_session(session_id, req.title):
+        raise HTTPException(status_code=404, detail="unknown session")
+    return {"ok": True}
+
+
+@router.delete("/sessions/{session_id}")
+def session_delete(session_id: str) -> dict[str, Any]:
+    from seatunnel_agent.common import history
+
+    history.delete_session(session_id)
+    _CONVERSATIONS.pop(session_id, None)
+    return {"ok": True}

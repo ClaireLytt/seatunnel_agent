@@ -1,17 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
-import { connect, fetchMeta, type Meta } from '@/api'
+import {
+  connect,
+  deleteSession,
+  fetchMeta,
+  listSessions,
+  loadSession,
+  renameSession,
+  type Meta,
+  type SessionMessage,
+  type SessionSummary,
+} from '@/api'
 import { Chat } from '@/Chat'
+import { Sessions } from '@/Sessions'
 
 const inputCls =
   'w-full rounded border border-line bg-card px-3 py-2 font-mono text-sm text-fg ' +
   'outline-none focus:border-ink'
 const labelCls = 'mb-1 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft'
 
-// Shell: header/topbar + sidebar placeholder + chat.
-// Shell: header + sidebar (sessions placeholder, connect controls) + chat.
-// Sessions persistence lands in a later ticket.
+// Shell: header + sidebar (sessions, connect controls) + chat.
 export default function App() {
   const { t, i18n } = useTranslation()
   const zh = i18n.language.startsWith('zh')
@@ -24,11 +33,65 @@ export default function App() {
   const [connecting, setConnecting] = useState(false)
   const [status, setStatus] = useState('')
 
+  // sessions sidebar: list + the chat mount (remounted via key on new/load)
+  const [sessions, setSessions] = useState<SessionSummary[]>([])
+  const [collapsed, setCollapsed] = useState(false)
+  const [chat, setChat] = useState<{
+    key: number
+    id: string | null
+    messages: SessionMessage[]
+  }>({ key: 0, id: null, messages: [] })
+
+  const refreshSessions = useCallback(() => {
+    listSessions()
+      .then(setSessions)
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     fetchMeta()
       .then(setMeta)
       .catch((e) => setError(String(e)))
-  }, [])
+    refreshSessions()
+  }, [refreshSessions])
+
+  const onNewChat = useCallback(() => {
+    setChat((c) => ({ key: c.key + 1, id: null, messages: [] }))
+    refreshSessions()
+  }, [refreshSessions])
+
+  const onLoadSession = useCallback(async (id: string) => {
+    try {
+      const d = await loadSession(id)
+      setChat((c) => ({ key: c.key + 1, id: d.id, messages: d.messages }))
+    } catch {
+      /* stale entry: refresh the list */
+      refreshSessions()
+    }
+  }, [refreshSessions])
+
+  const onRenameSession = useCallback(
+    async (id: string, title: string) => {
+      try {
+        await renameSession(id, title)
+      } finally {
+        refreshSessions()
+      }
+    },
+    [refreshSessions],
+  )
+
+  const onDeleteSession = useCallback(
+    async (id: string) => {
+      try {
+        await deleteSession(id)
+      } finally {
+        refreshSessions()
+      }
+      setChat((c) => (c.id === id ? { key: c.key + 1, id: null, messages: [] } : c))
+    },
+    [refreshSessions],
+  )
 
   const onConnect = async () => {
     setConnecting(true)
@@ -66,13 +129,30 @@ export default function App() {
         </nav>
       </header>
 
-      <div className="flex flex-1 gap-4">
-        <aside className="st-sidebar flex w-[280px] shrink-0 flex-col gap-4">
+      <div className="flex flex-1 gap-2">
+        <button
+          onClick={() => setCollapsed((v) => !v)}
+          aria-label={collapsed ? t('expandSidebar') : t('collapseSidebar')}
+          aria-expanded={!collapsed}
+          title={collapsed ? t('expandSidebar') : t('collapseSidebar')}
+          className="st-sidebar-toggle h-8 shrink-0 self-start rounded border border-line bg-card px-2 font-mono text-sm text-ink-soft transition hover:border-ink hover:text-ink"
+        >
+          {collapsed ? '»' : '«'}
+        </button>
+        <aside
+          className={
+            'st-sidebar flex w-[280px] shrink-0 flex-col gap-4' + (collapsed ? ' hidden' : '')
+          }
+        >
           <Card>
-            <h2 className="mb-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
-              {t('sessions')}
-            </h2>
-            <p className="font-mono text-sm text-muted">{t('noSessions')}</p>
+            <Sessions
+              sessions={sessions}
+              activeId={chat.id}
+              onNew={onNewChat}
+              onLoad={onLoadSession}
+              onRename={onRenameSession}
+              onDelete={onDeleteSession}
+            />
           </Card>
 
           <Card className="st-config space-y-3">
@@ -141,7 +221,15 @@ export default function App() {
 
         <main className="st-chat flex min-h-[60vh] flex-1 flex-col">
           <Card className="flex flex-1 flex-col">
-            <Chat emptyHint={error ? error : t('chatEmpty')} mode={mode} configPath={configPath} />
+            <Chat
+              key={chat.key}
+              emptyHint={error ? error : t('chatEmpty')}
+              mode={mode}
+              configPath={configPath}
+              initialConversationId={chat.id}
+              initialMessages={chat.messages}
+              onTurnEnd={refreshSessions}
+            />
           </Card>
         </main>
       </div>

@@ -31,6 +31,52 @@ export async function fetchMeta(): Promise<Meta> {
   return resp.json()
 }
 
+// ── Sessions ─────────────────────────────────────────────────────────
+
+export interface SessionSummary {
+  id: string
+  title: string
+  updated_at: string
+  msg_count: number
+}
+
+export interface SessionMessage {
+  role: string
+  content: string
+}
+
+export interface SessionDetail {
+  id: string
+  title: string
+  messages: SessionMessage[]
+}
+
+export async function listSessions(): Promise<SessionSummary[]> {
+  const resp = await fetch('/api/seatunnel/sessions')
+  if (!resp.ok) throw new Error(`sessions: HTTP ${resp.status}`)
+  return (await resp.json()).sessions
+}
+
+export async function loadSession(id: string): Promise<SessionDetail> {
+  const resp = await fetch(`/api/seatunnel/sessions/${id}`)
+  if (!resp.ok) throw new Error(`session: HTTP ${resp.status}`)
+  return resp.json()
+}
+
+export async function renameSession(id: string, title: string): Promise<void> {
+  const resp = await fetch(`/api/seatunnel/sessions/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title }),
+  })
+  if (!resp.ok) throw new Error(`rename: HTTP ${resp.status}`)
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  const resp = await fetch(`/api/seatunnel/sessions/${id}`, { method: 'DELETE' })
+  if (!resp.ok) throw new Error(`delete: HTTP ${resp.status}`)
+}
+
 // ── Chat SSE ─────────────────────────────────────────────────────────
 
 export type ChatEvent =
