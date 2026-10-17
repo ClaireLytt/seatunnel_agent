@@ -103,7 +103,7 @@ python -m ...ui_testing run --suite smoke --no-llm
                                                  报告: runs/20261018_022433/report.html
 npm run lint --workspace seatunnel            -> eslint src（无输出，通过）
 npm run build --workspace seatunnel           -> ✓ built in 3.14s
-python scripts/check_workflow.py              -> <CHECK_TAIL>
+python scripts/check_workflow.py              -> [PASS] AI 署名 / [PASS] 工作区 / [PASS] 报告落盘（三项全 PASS）
 ```
 
 ## 未解决问题 / 遗留清单
