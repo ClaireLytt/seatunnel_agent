@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
+import { BoardsView } from '@/BoardsView'
 import { ChatPanel } from '@/ChatPanel'
 import { FavoritesView } from '@/FavoritesView'
 import { HistoryView } from '@/HistoryView'
 import { MetricsView } from '@/MetricsView'
 import { SchemaBrowser } from '@/SchemaBrowser'
+import { SubscriptionsView } from '@/SubscriptionsView'
 import { SchemaPanel } from '@/SchemaPanel'
 import { ConnectPanel } from '@/ConnectPanel'
 import type { SessionMeta } from '@/api'
@@ -23,7 +25,11 @@ export default function App() {
           ? 'favorites'
           : location.hash === '#metrics'
             ? 'metrics'
-            : 'chat'
+            : location.hash === '#boards'
+              ? 'boards'
+              : location.hash === '#subscriptions'
+                ? 'subscriptions'
+                : 'chat'
   const [view, setView] = useState(viewFromHash())
   const [seed, setSeed] = useState<{ role: string; content: string }[] | undefined>()
   const [prefill, setPrefill] = useState('')
@@ -82,6 +88,18 @@ export default function App() {
           >
             📊 {t('metricsCatalog')}
           </a>
+          <a
+            href="#boards"
+            className="font-mono text-sm text-ink underline-offset-4 hover:underline"
+          >
+            📋 {t('boardsTitle')}
+          </a>
+          <a
+            href="#subscriptions"
+            className="font-mono text-sm text-ink underline-offset-4 hover:underline"
+          >
+            🔔 {t('subsTitle')}
+          </a>
         </div>
         {session && (
           <a
@@ -91,22 +109,6 @@ export default function App() {
             {view === 'schema' ? t('backToChat') : t('schemaBrowser')}
           </a>
         )}
-        <div className="st-legacy-links rounded border border-line bg-card p-3 font-mono text-[12px]">
-          <div className="mb-1 uppercase tracking-[0.18em] text-ink-soft">{t('pending')}</div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {['subscriptions', 'boards'].map(
-              (k) => (
-                <a
-                  key={k}
-                  href="/text2sql-legacy"
-                  className="text-muted underline-offset-4 hover:underline"
-                >
-                  {t(k)}
-                </a>
-              ),
-            )}
-          </div>
-        </div>
         <div className="flex gap-4 font-mono text-sm">
           <a href="/" className="text-ink underline-offset-4 hover:underline">
             {t('home')}
@@ -118,7 +120,11 @@ export default function App() {
       </motion.aside>
 
       <main className="min-h-[70vh] flex-1">
-        {view === 'favorites' ? (
+        {view === 'boards' ? (
+          <BoardsView session={session} />
+        ) : view === 'subscriptions' ? (
+          <SubscriptionsView />
+        ) : view === 'favorites' ? (
           <FavoritesView />
         ) : view === 'metrics' ? (
           <MetricsView

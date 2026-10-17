@@ -152,6 +152,95 @@ export interface MetricInfo {
 export const fetchMetrics = (): Promise<{ count: number; metrics: MetricInfo[] }> =>
   fetch(`${BASE}/metrics`).then(j)
 
+// ── Boards ──────────────────────────────────────────────────────────
+
+export interface BoardItem {
+  id: string
+  title: string
+  sql: string
+  ds_type: string
+  pinned_at: string
+}
+
+export interface Board {
+  id: string
+  name: string
+  items: BoardItem[]
+  created_at: string
+}
+
+export const fetchBoards = (): Promise<{ boards: Board[] }> =>
+  fetch(`${BASE}/boards`).then(j)
+
+export const createBoard = (name: string): Promise<{ board: Board }> =>
+  fetch(`${BASE}/boards`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  }).then(j)
+
+export const deleteBoard = (id: string): Promise<{ deleted: boolean }> =>
+  fetch(`${BASE}/boards/${id}`, { method: 'DELETE' }).then(j)
+
+export const pinToBoard = (
+  boardId: string,
+  title: string,
+  sql: string,
+  ds_type = '',
+): Promise<{ item: BoardItem }> =>
+  fetch(`${BASE}/boards/${boardId}/pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, sql, ds_type }),
+  }).then(j)
+
+export const renderBoard = (
+  boardId: string,
+  sessionId: string,
+): Promise<{ results: { id: string; title: string; sql: string; columns?: string[]; rows?: unknown[][]; row_count?: number; error?: string }[] }> =>
+  fetch(`${BASE}/boards/${boardId}/render?session_id=${sessionId}`).then(j)
+
+// ── Subscriptions ───────────────────────────────────────────────────
+
+export interface Subscription {
+  id: string
+  name: string
+  cron: string
+  source_type: string
+  metric: string
+  favorite_id: string
+  webhook_url: string
+  enabled: boolean
+  last_run_at: string
+  last_status: string
+  last_error: string
+}
+
+export const fetchSubscriptions = (): Promise<{ subscriptions: Subscription[] }> =>
+  fetch(`${BASE}/subscriptions`).then(j)
+
+export const createSubscription = (
+  data: { name: string; cron: string; source_type: string; metric?: string; favorite_id?: string; ds_type?: string; connection?: string; database?: string; webhook_url?: string; lang?: string },
+): Promise<{ subscription: Subscription }> =>
+  fetch(`${BASE}/subscriptions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  }).then(j)
+
+export const deleteSubscription = (id: string): Promise<{ deleted: boolean }> =>
+  fetch(`${BASE}/subscriptions/${id}`, { method: 'DELETE' }).then(j)
+
+export const patchSubscription = (id: string, enabled: boolean): Promise<{ enabled: boolean }> =>
+  fetch(`${BASE}/subscriptions/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled }),
+  }).then(j)
+
+export const runSubscription = (id: string): Promise<{ status: string }> =>
+  fetch(`${BASE}/subscriptions/${id}/run`, { method: 'POST' }).then(j)
+
 export interface QlogRecord {
   timestamp: string
   user_query: string
