@@ -111,6 +111,7 @@ def fake_agent(monkeypatch):
     monkeypatch.setattr(api, "SeaTunnelAgent", _FakeAgent)
     monkeypatch.setattr(api, "load_settings", lambda: object())
     api._CONVERSATIONS.clear()
+    api.CONNECTION.update({"settings": None, "version": None})
     return _FakeAgent
 
 
@@ -164,11 +165,34 @@ def test_chat_without_settings_reports_no_settings(
 
     monkeypatch.setattr(api, "load_settings", _boom)
     api._CONVERSATIONS.clear()
+    api.CONNECTION.update({"settings": None, "version": None})
     resp = client.post("/api/seatunnel/chat", json={"message": "hi"})
     events = _sse_events(resp)
     assert events[-1]["type"] == "final"
     msgs = [e for e in events if e["type"] == "event"]
     assert any("Settings not loaded" in e["markdown"] for e in msgs)
+
+
+def test_chat_uses_connected_settings(client: TestClient, monkeypatch) -> None:
+    """After Connect, chat must not need load_settings (ticket 03 handoff)."""
+    from seatunnel_agent.agents.data.seatunnel import api
+    from seatunnel_agent.common import settings_store
+
+    _FakeAgent.instances = []
+    monkeypatch.setattr(api, "SeaTunnelAgent", _FakeAgent)
+
+    def _boom():
+        raise RuntimeError("must not be called")
+
+    monkeypatch.setattr(api, "load_settings", _boom)
+    api._CONVERSATIONS.clear()
+    api.CONNECTION.update({"settings": object(),
+                           "version": settings_store.get_version()})
+    resp = client.post("/api/seatunnel/chat", json={"message": "hi"})
+    events = _sse_events(resp)
+    assert events[-1]["type"] == "final"
+    assert "error" not in events[-1]
+    assert len(_FakeAgent.instances) == 1
 
 
 def test_chat_empty_message_rejected(client: TestClient, fake_agent) -> None:
@@ -197,6 +221,7 @@ def test_stop_interrupts_stream_and_keeps_partial(monkeypatch) -> None:
     monkeypatch.setattr(api, "SeaTunnelAgent", _BlockingAgent)
     monkeypatch.setattr(api, "load_settings", lambda: object())
     api._CONVERSATIONS.clear()
+    api.CONNECTION.update({"settings": None, "version": None})
 
     resp = api.chat_stream(api.ChatRequest(message="hi"))
     assert resp.media_type == "text/event-stream"
@@ -245,3 +270,54 @@ def test_stop_unknown_conversation_404(client: TestClient, fake_agent) -> None:
     resp = client.post("/api/seatunnel/chat/stop",
                        json={"conversation_id": "nope"})
     assert resp.status_code == 404
+
+
+# ── Connect (ticket 03) ────────────────────────────────────────────────────
+
+
+def test_connect_success_returns_model(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from seatunnel_agent.common import config
+
+    settings = config.Settings(api_key="k", model_name="claude-test-model")
+    monkeypatch.setattr(config, "load_settings", lambda: settings)
+
+    resp = client.post("/api/seatunnel/connect")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is True
+    assert data["model"] == "claude-test-model"
+
+
+def test_connect_failure_returns_error(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from seatunnel_agent.common import config
+
+    def _boom() -> config.Settings:
+        raise ValueError("no API key configured")
+
+    monkeypatch.setattr(config, "load_settings", _boom)
+
+    resp = client.post("/api/seatunnel/connect")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ok"] is False
+    assert "no API key configured" in data["error"]
+
+
+def test_connect_failure_clears_stored_settings(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed connect must not leave stale settings behind (legacy parity)."""
+    from seatunnel_agent.agents.data.seatunnel import api as st_api
+    from seatunnel_agent.common import config
+
+    settings = config.Settings(api_key="k", model_name="m")
+    monkeypatch.setattr(config, "load_settings", lambda: settings)
+    assert client.post("/api/seatunnel/connect").json()["ok"] is True
+    assert st_api.CONNECTION["settings"] is settings
+
+    def _boom() -> config.Settings:
+        raise ValueError("gone")
+
+    monkeypatch.setattr(config, "load_settings", _boom)
+    assert client.post("/api/seatunnel/connect").json()["ok"] is False
+    assert st_api.CONNECTION["settings"] is None

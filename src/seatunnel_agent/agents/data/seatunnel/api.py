@@ -132,8 +132,22 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
         q: queue.Queue[tuple[str, dict[str, Any]] | None] = queue.Queue()
         conv.queue = q
 
+    # settings come from Connect when available (with a stale-version reload,
+    # legacy ui.py _handle_submit parity), else a direct load
+    from seatunnel_agent.common import settings_store
+
+    settings = CONNECTION.get("settings")
+    if settings is not None and CONNECTION.get("version") != settings_store.get_version():
+        try:
+            settings = load_settings()
+            CONNECTION["settings"] = settings
+            CONNECTION["version"] = settings_store.get_version()
+            conv.agent = None  # drop the cached agent so the new key/model applies
+        except Exception:
+            pass  # keep the old settings; the run itself surfaces errors
+
     is_first = conv.agent is None
-    if is_first:
+    if is_first and settings is None:
         try:
             settings = load_settings()
         except Exception:
@@ -234,3 +248,43 @@ def chat_stop(req: StopRequest) -> dict[str, Any]:
                {"text": _MSG["stopped"].get(req.lang, _MSG["stopped"]["en"]),
                 "stopped": True}))
     return {"stopped": True}
+
+
+# ── Connect ──────────────────────────────────────────────────────────
+
+# Connection state shared with the chat endpoints. Mirrors the
+# legacy page's settings_holder: holds the loaded Settings plus the
+# settings_store version seen at connect time, so a stale-settings reload can
+# be detected before each run (legacy ui.py _handle_submit parity).
+CONNECTION: dict[str, Any] = {"settings": None, "version": None}
+
+
+def _warmup_llm(provider: str) -> None:
+    """Pre-import the LLM SDK so the first chat doesn't pay the import cost."""
+    try:
+        if provider == "anthropic":
+            import anthropic  # noqa: F401
+        else:
+            import openai  # noqa: F401
+    except Exception:
+        pass
+
+
+@router.post("/connect")
+def connect() -> dict[str, Any]:
+    """Load settings and report the genuine connect result (success or failure)."""
+    import threading
+
+    from seatunnel_agent.common import config, settings_store
+
+    try:
+        settings = config.load_settings()
+    except Exception as e:
+        CONNECTION["settings"] = None
+        CONNECTION["version"] = None
+        return {"ok": False, "error": str(e)}
+
+    CONNECTION["settings"] = settings
+    CONNECTION["version"] = settings_store.get_version()
+    threading.Thread(target=_warmup_llm, args=(settings.llm_provider,), daemon=True).start()
+    return {"ok": True, "model": settings.model_name}

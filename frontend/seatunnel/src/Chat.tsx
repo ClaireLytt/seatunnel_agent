@@ -13,7 +13,15 @@ type Item =
   | { kind: 'event'; text: string }
   | { kind: 'error'; text: string }
 
-export function Chat({ emptyHint }: { emptyHint: string }) {
+export function Chat({
+  emptyHint,
+  mode = 'nl',
+  configPath = '',
+}: {
+  emptyHint: string
+  mode?: string
+  configPath?: string
+}) {
   const { t, i18n } = useTranslation()
   const [items, setItems] = useState<Item[]>([])
   const [input, setInput] = useState('')
@@ -70,7 +78,13 @@ export function Chat({ emptyHint }: { emptyHint: string }) {
     setItems((xs) => [...xs, { kind: 'user', text: msg }])
     try {
       await chatStream(
-        { message: msg, conversation_id: convRef.current, lang: i18n.language },
+        {
+          message: msg,
+          conversation_id: convRef.current,
+          mode,
+          config_path: configPath,
+          lang: i18n.language,
+        },
         onEvent,
       )
     } catch (e) {

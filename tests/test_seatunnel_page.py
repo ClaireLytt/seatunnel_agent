@@ -64,6 +64,7 @@ def page_url(monkeypatch):
     monkeypatch.setattr(api, "SeaTunnelAgent", _FakePageAgent)
     monkeypatch.setattr(api, "load_settings", lambda: object())
     api._CONVERSATIONS.clear()
+    api.CONNECTION.update({"settings": None, "version": None})
 
     if not (FRONTEND_DIST / "index.html").is_file():
         pytest.skip("frontend dist not built (cd frontend && npm run build --workspace seatunnel)")
