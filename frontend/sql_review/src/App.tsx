@@ -14,6 +14,7 @@ import {
   type TopCategory,
 } from '@/api'
 import { CHECK_CATALOG_EN } from '@/i18n'
+import { DATASKEW_SQL_KEY, TRANSPILE_SQL_KEY } from '@shared/bridge'
 import { Collapsible } from '@/components/Collapsible'
 import { ReportView } from '@/components/ReportView'
 import { TrendChart } from '@/components/TrendChart'
@@ -280,13 +281,13 @@ export default function App() {
               {t('clearBtn')}
             </button>
             <button
-              onClick={() => sendTo('st_transpile_sql', '/transpile')}
+              onClick={() => sendTo(TRANSPILE_SQL_KEY, '/transpile')}
               className="rounded border-[1.5px] border-line px-3 py-2 font-mono text-[13px] text-muted transition hover:border-ink hover:text-ink"
             >
               {t('transpileBtn')}
             </button>
             <button
-              onClick={() => sendTo('st_dataskew_sql', '/dataskew')}
+              onClick={() => sendTo(DATASKEW_SQL_KEY, '/dataskew')}
               className="rounded border-[1.5px] border-line px-3 py-2 font-mono text-[13px] text-muted transition hover:border-ink hover:text-ink"
             >
               {t('skewBtn')}

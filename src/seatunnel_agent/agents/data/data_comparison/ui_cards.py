@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timezone
 
 from seatunnel_agent.agents.data.text2sql.differ import ResultDiff
+from seatunnel_agent.common.bridge import DATASKEW_SQL_KEY
 
 from .comparator import (
     GINI_SKEW_THRESHOLD,
@@ -695,7 +696,7 @@ def build_skew_card(result: SkewResult, lang: str = "en",
                     + ") + '; path=/; max-age=180';"
                 )
             onclick = esc(
-                "localStorage.setItem('st_dataskew_sql', "
+                f"localStorage.setItem('{DATASKEW_SQL_KEY}', "
                 + json.dumps(handoff_sql, ensure_ascii=False)
                 + "); " + conn_js + " window.open('/dataskew', '_blank');"
             )

@@ -213,18 +213,6 @@ def render_sql_transpile_page(app: gr.Blocks) -> None:
               [lang_state, title_md, src_dd, dst_dd, sql_box,
                translate_btn, batch_acc, dir_box, out_box, batch_btn,
                out_code, advice_acc, advice_btn])
-    # SQL handed over from the review page (localStorage bridge): fill the
-    # box and fire an input event so gradio picks the value up.
-    app.load(fn=None, js="""
-        () => setTimeout(() => {
-            const v = localStorage.getItem('st_transpile_sql');
-            if (!v) return;
-            const t = document.querySelector('#trp-sql-box textarea');
-            if (t) {
-                // remove only after successful delivery: if the textarea
-                // is not hydrated yet, the payload survives for a reload
-                localStorage.removeItem('st_transpile_sql');
-                t.value = v;
-                t.dispatchEvent(new Event('input', {bubbles: true}));
-            }
-        }, 600)""")
+    # SQL handed over from the review page (localStorage bridge).
+    from seatunnel_agent.common.bridge import TRANSPILE_SQL_KEY, pickup_js
+    app.load(fn=None, js=pickup_js(TRANSPILE_SQL_KEY, "#trp-sql-box textarea"))
