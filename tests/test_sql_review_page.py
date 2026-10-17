@@ -174,3 +174,23 @@ def test_sql_review_page_prefill_and_line_jump(page_url):
         assert "a = NULL" in sel
 
         browser.close()
+
+
+@pytest.mark.uitest
+def test_sql_review_page_report_hidden_before_review(page_url):
+    # the report section (heading + card) only appears once a review ran
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        expect(page.get_by_role("heading", name="Report", exact=True)).to_have_count(0)
+
+        page.locator("#sql").fill("SELECT * FROM ods.user_log WHERE a = NULL")
+        page.get_by_role("button", name="Start Review").click()
+        expect(page.get_by_role("heading", name="Report", exact=True)).to_be_visible(
+            timeout=15000)
+
+        browser.close()
