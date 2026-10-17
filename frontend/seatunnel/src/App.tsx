@@ -110,10 +110,10 @@ export default function App() {
     try {
       const res = await connect()
       setStatus(
-        res.ok ? t('connected', { model: res.model }) : t('connectFailed', { error: res.error }),
+        res.ok ? t('connected', { model: res.model }) : `❌ ${t('connectFailed', { error: res.error })}`,
       )
     } catch (e) {
-      setStatus(t('connectFailed', { error: e instanceof Error ? e.message : String(e) }))
+      setStatus(`❌ ${t('connectFailed', { error: e instanceof Error ? e.message : String(e) })}`)
     } finally {
       setConnecting(false)
     }

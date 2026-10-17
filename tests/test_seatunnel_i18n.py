@@ -70,7 +70,8 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
     "connected": {"en": "✅ Connected, Model: {{model}}",
                   "zh": "✅ 连接成功，模型: {{model}}"},
     # ui.py:807-809 _handle_connect failure f-strings
-    "connectFailed": {"en": "❌ Failed: {{error}}", "zh": "❌ 连接失败: {{error}}"},
+    # Glyph moved out of the string: ❌ is prepended at render time (uitest/sql_review convention).
+    "connectFailed": {"en": "Failed: {{error}}", "zh": "连接失败: {{error}}"},
     # ui.py:226-227 _template_to_prompt f-strings
     "templatePrompt": {
         "en": "Create a pipeline config using the {{name}} template ({{params}})",
