@@ -12,6 +12,7 @@
 - 禁止使用蓝紫色及相关渐变。
 - 保持整体视觉风格一致。
 - 在可以用图形和按钮说明操作的情况下，不要添加多余的解释性文字
+- 迁移/退役 Gradio 页到 React 前,先读 `docs/react_migration.md`(触点清单与先例)。
 
 ## 3. 工作原则
 
@@ -71,5 +72,6 @@ Before asking the user a question, first investigate whether the answer can be d
 - `mypy`(按 pyproject.toml `[tool.mypy]` files 白名单检查)
 - `pytest`(默认跳过 uitest,见 pyproject 的 `addopts = "-v -m 'not uitest'"`)
 - UI 相关改动:`python -m seatunnel_agent.agents.devops.ui_testing run --suite smoke --no-llm`
+- 前端(frontend/)改动:`npm run lint --workspace <name>` + `npm run build --workspace <name>`(在 frontend/ 下执行)。
 - 纯文档改动(docs/、*.md):至少跑 `ruff check src tests` + `pytest --collect-only -q` 确认仓库未损坏;不要求全量 pytest/uitest。
 - 批次收尾:`python scripts/check_workflow.py`(工作流机械核对,FAIL 则本批次不得标记完成)。

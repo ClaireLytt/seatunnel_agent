@@ -352,7 +352,10 @@ class TestCoverage:
         # beyond-checklist extras never collide with checklist ids
         checklist_ids = {r.item_id.upper() for r in cov.rows}
         assert not ({x.upper() for x in cov.extra_case_ids} & checklist_ids)
-        assert "DAG1" in cov.extra_case_ids      # sanity: DAG group is extra
+        # structural sanity: extras exist, without pinning a case id that a
+        # future page migration may retire (SR1 bit us when /sqlreview moved
+        # to React)
+        assert cov.extra_case_ids
 
     def test_absent_checklist_returns_none(self, tmp_path):
         from seatunnel_agent.agents.devops.ui_testing.coverage import compute_coverage
