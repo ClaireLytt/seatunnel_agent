@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "shared",
+    "seatunnel",
     "sql_review",
     "uitest",
     "text2sql"
