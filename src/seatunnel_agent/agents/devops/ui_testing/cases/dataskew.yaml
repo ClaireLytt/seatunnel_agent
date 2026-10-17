@@ -219,16 +219,8 @@
   expect:
     - value_contains: {of: SQL, value: "count(distinct user_id)"}
 
-- id: DSK17
-  title: 审查页一键跳转倾斜分析并带入 SQL (localStorage 桥)
-  tags: [full, sqlite]
-  page: /sqlreview
-  steps:
-    - fill: {SQL: "SELECT count(distinct uid) FROM ods.t"}
-    - popup_click: {target: 倾斜分析}
-  expect:
-    - popup_contains: {text: 数据倾斜分析}
-    - popup_contains: {text: "count(distinct uid)"}
+# DSK17 retired: /sqlreview is the React page now; the localStorage bridge
+# is covered by tests/test_sql_review_page.py (browser smoke).
 
 - id: DSK18
   title: 上传 SQL 文件填入编辑框并可直接分析

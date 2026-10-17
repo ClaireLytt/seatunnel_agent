@@ -1,0 +1,72 @@
+@import '@shared/theme.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Server-rendered review report (markdown → marked) */
+.sr-report {
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.sr-report h2,
+.sr-report h3 {
+  font-family: 'Space Grotesk', 'Noto Sans SC', sans-serif;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 1.2em 0 0.5em;
+}
+.sr-report h2 {
+  font-size: 1.25rem;
+}
+.sr-report h3 {
+  font-size: 1.05rem;
+}
+.sr-report p,
+.sr-report ul {
+  margin: 0.5em 0;
+}
+.sr-report ul {
+  padding-left: 1.3em;
+  list-style: disc;
+}
+.sr-report code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.92em;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+.sr-report pre code {
+  display: block;
+  padding: 0.8em 1em;
+  overflow-x: auto;
+}
+.sr-report table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6em 0 1em;
+  font-size: 13px;
+}
+.sr-report th,
+.sr-report td {
+  border: 1px solid var(--line);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.sr-report th {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+.sr-report a {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+

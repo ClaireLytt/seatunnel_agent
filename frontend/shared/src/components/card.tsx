@@ -1,8 +1,7 @@
 import { type ReactNode } from 'react'
-import { cn } from '@/lib/utils'
+import { cn } from '../utils'
 
 // Static panel card: bordered, with the engineering-paper top rule.
-// (The former mouse-following spotlight effect was removed by request.)
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return (
     <div

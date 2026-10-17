@@ -13,8 +13,10 @@ MANIFEST = AgentManifest(
     title_zh="SQL 代码审查",
     desc_en="Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality & standards",
     desc_zh="Hive / Spark / Flink / MaxCompute SQL 静态 + LLM 审查 — 性能、质量与规范",
-    api="seatunnel_agent.agents.data.sql_review.api:router",
-    render="seatunnel_agent.agents.data.sql_review.ui:render_sql_review_page",
+    # api intentionally unset: the router is mounted unconditionally by the
+    # launcher (the React page depends on it), not behind --api.
+    render="",  # React static mount serves this route (frontend/sql_review)
     group="quality",
     order=10,
+    external=True,
 )

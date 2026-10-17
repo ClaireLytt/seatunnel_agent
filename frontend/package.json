@@ -1,0 +1,10 @@
+{
+  "name": "seatunnel-frontend",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "sql_review",
+    "uitest",
+    "text2sql"
+  ]
+}

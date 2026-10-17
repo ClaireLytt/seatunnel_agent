@@ -46,7 +46,8 @@ class TestDiscovery:
 class TestResolution:
     def test_every_render_and_api_resolves(self):
         for mf in discover():
-            assert callable(resolve(mf.render)), mf.name
+            if not mf.external:
+                assert callable(resolve(mf.render)), mf.name
             if mf.api:
                 router = resolve(mf.api)
                 assert hasattr(router, "routes"), mf.name
@@ -58,7 +59,7 @@ class TestResolution:
 
 # every hard-coded data-agent route in hub/ui.py must be manifest-covered
 _DATA_ROUTES = {
-    "/seatunnel", "/text2sql", "/history", "/favorites", "/schema-browser",
+    "/seatunnel", "/text2sql",
     "/datacompare", "/sqlreview", "/lineage", "/transpile", "/impact",
     "/migrate", "/dataskew", "/pii", "/loginspect", "/schemadrift",
     "/testgen", "/conflint", "/dagcheck", "/metricdiff", "/sqlfmt", "/mcp",
@@ -80,14 +81,15 @@ class TestDataCoverage:
         no_card = {m.route for m in workspace_manifests("data")
                    if not m.card}
         # text2sql aux pages + landing engineering tools keep no /data card
-        assert no_card == {"/history", "/favorites", "/schema-browser",
-                           "/loginspect", "/mcp"}
+        assert no_card == {"/loginspect", "/mcp"}
 
 
 # data agents whose REST routers used to be a hand-maintained tuple in
-# launch_app — they must now declare api= so the manifest loop mounts them
+# launch_app — they must now declare api= so the manifest loop mounts them.
+# sql_review is not listed: its router is mounted unconditionally by the
+# launcher (the React page depends on it), same as uitest.
 _DATA_API_NAMES = {
-    "text2sql", "sql_review", "data_lineage", "sql_transpile", "data_skew",
+    "text2sql", "data_lineage", "sql_transpile", "data_skew",
     "pii_scan", "log_inspect", "schema_drift", "sql_testgen", "config_lint",
     "dag_check", "metric_diff", "sql_fmt",
 }
@@ -98,6 +100,32 @@ class TestDataApiRouters:
         by_name = {m.name: m for m in workspace_manifests("data")}
         missing = [n for n in _DATA_API_NAMES if not by_name[n].api]
         assert not missing, missing
+
+
+class TestExternalManifest:
+    def test_external_entry_keeps_card_but_no_render(self):
+        # /text2sql is served by the React static mount (#67): its manifest
+        # entry is external — card on the hub, no Gradio route/render
+        from seatunnel_agent.hub.registry import discover
+        by_route = {m.route: m for m in discover()}
+        main = by_route["/text2sql"]
+        assert main.external is True
+        assert main.card is True
+        assert "/text2sql-legacy" not in by_route  # legacy retired
+
+class TestExternalMounting:
+    def test_external_apps_follow_dist_convention(self):
+        from pathlib import Path
+
+        from seatunnel_agent.hub.registry import frontend_dist
+        ext = {m.name: m for m in discover() if m.external}
+        # every rebuilt React app registers an external manifest
+        assert {"uitest", "text2sql"} <= set(ext)
+        assert frontend_dist(ext["text2sql"]) == Path("frontend") / "text2sql" / "dist"
+        assert frontend_dist(ext["uitest"]) == Path("frontend") / "uitest" / "dist"
+        # hint page may link a legacy route when one exists
+        assert ext["text2sql"].legacy is None or ext["text2sql"].legacy == "/text2sql-legacy"  # may still carry the hint
+        assert ext["uitest"].legacy is None
 
 
 class TestCardHtml:

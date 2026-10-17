@@ -164,8 +164,10 @@ def create_ui() -> gr.Blocks:
 
     # plugin pages: every seatunnel_agent.<pkg>.manifest registers itself
     from seatunnel_agent.hub.registry import discover, resolve
-    sidebar_resize = {"/seatunnel", "/text2sql", "/datacompare"}
+    sidebar_resize = {"/seatunnel", "/datacompare"}
     for mf in discover():
+        if mf.external:
+            continue  # route served outside Gradio (React static mount)
         with app.route(mf.page_title, mf.route):
             resolve(mf.render)(app)
             if mf.route in sidebar_resize:
@@ -279,27 +281,46 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     # UI testing backend + React page: part of the web UI itself, so mounted
     # unconditionally (not gated by --api / API key) on the served instance.
     from seatunnel_agent.agents.devops.ui_testing.api import (
-        FRONTEND_DIST,
-    )
-    from seatunnel_agent.agents.devops.ui_testing.api import (
         router as uitest_api_router,
     )
     app.app.include_router(uitest_api_router)
-    if (FRONTEND_DIST / "index.html").is_file():
-        from fastapi.staticfiles import StaticFiles
-        app.app.mount("/uitest", StaticFiles(directory=FRONTEND_DIST, html=True),
-                      name="uitest-frontend")
-    else:
-        # dist never built — a hint page beats a 404, and the hub still boots
-        from fastapi.responses import HTMLResponse
 
-        @app.app.get("/uitest", include_in_schema=False)
-        @app.app.get("/uitest/", include_in_schema=False)
-        def _uitest_unbuilt() -> HTMLResponse:
-            return HTMLResponse(
-                "<pre style='margin:40px;font-size:15px'>UI Testing frontend "
-                "is not built.\n\n  cd frontend/uitest &amp;&amp; npm ci "
-                "&amp;&amp; npm run build\n\nthen restart the UI.</pre>")
+    # SQL Review backend: same deal — the React page calls it directly.
+    from seatunnel_agent.agents.data.sql_review.api import (
+        router as sql_review_api_router,
+    )
+    app.app.include_router(sql_review_api_router)
+
+    # Rebuilt React pages: every external manifest mounts from the
+    # frontend/<name>/dist convention; unbuilt bundles get a hint page.
+    from fastapi.responses import HTMLResponse
+    from fastapi.staticfiles import StaticFiles
+
+    from seatunnel_agent.hub.registry import discover, frontend_dist
+
+    def _register_hint(route: str, name: str, legacy: str | None) -> None:
+        legacy_html = (
+            f" Legacy page: <a href='{legacy}'>{legacy}</a>" if legacy else "")
+        body = (
+            f"<pre style='margin:40px;font-size:15px'>{name} frontend is "
+            f"not built.\n\n  cd frontend &amp;&amp; npm ci &amp;&amp; "
+            f"npm run build --workspace {name}\n\nthen restart the UI."
+            f"{legacy_html}</pre>")
+
+        @app.app.get(route, include_in_schema=False)
+        @app.app.get(route + "/", include_in_schema=False)
+        def _unbuilt() -> HTMLResponse:
+            return HTMLResponse(body)
+
+    for mf in discover():
+        if not mf.external:
+            continue
+        dist = frontend_dist(mf)
+        if (dist / "index.html").is_file():
+            app.app.mount(mf.route, StaticFiles(directory=dist, html=True),
+                          name=f"{mf.name}-frontend")
+        else:
+            _register_hint(mf.route, mf.name, mf.legacy)
 
     if api:
         from fastapi import Depends

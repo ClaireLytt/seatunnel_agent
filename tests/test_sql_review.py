@@ -1918,6 +1918,67 @@ def test_api_fix_with_given_report(monkeypatch, api_client):
     assert r.json()["report"] == "my custom report"
 
 
+def test_api_review_line_links_opt_in(api_client):
+    body = {"sql": "select * from t where a = NULL", "mode": "static"}
+    plain = api_client.post("/api/sql_review/review", json=body).json()["report"]
+    linked = api_client.post("/api/sql_review/review",
+                             json={**body, "line_links": True}).json()["report"]
+    assert "#srline-" not in plain
+    assert "#srline-" in linked
+
+
+def test_api_fix_static_mode_no_llm(api_client):
+    # deterministic autofix path: NULL comparison rewritten, no LLM touched
+    r = api_client.post("/api/sql_review/fix", json={
+        "sql": "select 1 from t where a = NULL", "mode": "static",
+    })
+    assert r.status_code == 200
+    assert "IS NULL" in r.json()["fixed_sql"]
+
+
+def test_api_fix_static_mode_nothing_fixable_422(api_client):
+    r = api_client.post("/api/sql_review/fix", json={
+        "sql": "select id from t", "mode": "static",
+    })
+    assert r.status_code == 422
+    assert "no mechanically fixable" in r.json()["detail"]
+
+
+def test_api_review_source_tag(api_client):
+    # the React page tags its reviews source="ui"; anything else is rejected
+    ok = api_client.post("/api/sql_review/review", json={
+        "sql": "select 1", "mode": "static", "source": "ui",
+    })
+    assert ok.status_code == 200
+    bad = api_client.post("/api/sql_review/review", json={
+        "sql": "select 1", "mode": "static", "source": "cron",
+    })
+    assert bad.status_code == 422
+
+
+def test_api_stats_empty(api_client):
+    r = api_client.get("/api/sql_review/stats")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["summary"]["reviews"] == 0
+    assert data["daily"] == []
+
+
+def test_api_stats_after_reviews(api_client):
+    api_client.post("/api/sql_review/review", json={
+        "sql": "select * from t where a = NULL", "mode": "static",
+    })
+    r = api_client.get("/api/sql_review/stats")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["summary"]["reviews"] == 1
+    assert data["summary"]["findings"] > 0
+    assert len(data["daily"]) == 1
+    day = data["daily"][0]
+    assert set(day) == {"day", "critical", "risk", "suggestion"}
+    assert day["critical"] + day["risk"] + day["suggestion"] > 0
+
+
 def test_api_env_db_defaults(monkeypatch):
     import importlib
     monkeypatch.setenv("SQLREVIEW_DB_HOST", "envhost")

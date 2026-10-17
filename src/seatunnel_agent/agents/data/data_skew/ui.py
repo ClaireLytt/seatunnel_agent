@@ -842,21 +842,9 @@ def render_data_skew_page(app: gr.Blocks) -> None:
         ],
     )
     # SQL handed over from the review page (localStorage bridge, same
-    # mechanism as review → transpile): fill the box and fire an input
-    # event so gradio picks the value up.
-    app.load(fn=None, js="""
-        () => setTimeout(() => {
-            const v = localStorage.getItem('st_dataskew_sql');
-            if (!v) return;
-            const t = document.querySelector('#dsk-sql-box textarea');
-            if (t) {
-                // remove only after successful delivery: if the textarea
-                // is not hydrated yet, the payload survives for a reload
-                localStorage.removeItem('st_dataskew_sql');
-                t.value = v;
-                t.dispatchEvent(new Event('input', {bubbles: true}));
-            }
-        }, 600)""")
+    # mechanism as review → transpile).
+    from seatunnel_agent.common.bridge import DATASKEW_SQL_KEY, pickup_js
+    app.load(fn=None, js=pickup_js(DATASKEW_SQL_KEY, "#dsk-sql-box textarea"))
 
     # Connection handed over from Data Comparison (short-lived cookie set by
     # the skew card's goto button; no password travels): pre-fill the form

@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -56,6 +56,12 @@ class ReviewRequest(BaseModel):
     rules: dict[str, Any] | None = Field(
         None, description="Inline rule config (same schema as .sqlreview.yaml)"
     )
+    line_links: bool = Field(
+        False, description="Render finding locations as #srline-N markdown links"
+    )
+    source: Literal["api", "ui"] = Field(
+        "api", description="Review-log source tag; the React page sends 'ui'"
+    )
 
 
 class ReviewResponse(BaseModel):
@@ -71,6 +77,10 @@ class ReviewResponse(BaseModel):
 class FixRequest(BaseModel):
     sql: str = Field(..., min_length=1, description="SQL to fix")
     dialect: str = Field("hive", description=_DIALECT_DESC)
+    mode: Literal["agent", "static"] = Field(
+        "agent",
+        description="'agent' (LLM rewrite) or 'static' (deterministic autofixes only)",
+    )
     report: str | None = Field(
         None, description="Review report markdown; when omitted a static review runs first"
     )
@@ -166,7 +176,7 @@ def review(req: ReviewRequest) -> ReviewResponse:
         from .agent import static_review_report
         from .report import render_report
         rep = static_review_report(req.sql, dialect, store=store, config=config)
-        report_md = render_report(rep, lang=lang)
+        report_md = render_report(rep, lang=lang, line_links=req.line_links)
         raw_findings = rep.findings
         findings = [f.to_dict() for f in raw_findings]
         stats = rep.stats()
@@ -193,7 +203,8 @@ def review(req: ReviewRequest) -> ReviewResponse:
     elapsed_ms = ms_since(start)
     ReviewLogger().log(
         sql=req.sql, dialect=dialect, mode=req.mode,
-        findings=raw_findings, stats=stats, source="api", elapsed_ms=elapsed_ms,
+        findings=raw_findings, stats=stats, source=req.source,
+        elapsed_ms=elapsed_ms,
     )
 
     return ReviewResponse(
@@ -218,6 +229,23 @@ def fix(req: FixRequest) -> FixResponse:
     dialect = normalize_dialect(req.dialect)
     lang = normalize_lang(req.lang)
 
+    # static mode: deterministic autofixes, no LLM (mirrors the UI's
+    # static-review Fix path) — 422 when nothing is mechanically fixable
+    if req.mode == "static":
+        from .autofix import apply_static_fixes
+        config = _parse_rules(req.rules)
+        fixed_sql, applied = apply_static_fixes(req.sql, dialect, config=config)
+        if not applied:
+            raise HTTPException(
+                status_code=422, detail="no mechanically fixable issue found"
+            )
+        return FixResponse(
+            fixed_sql=fixed_sql,
+            report=(req.report or "").strip(),
+            dialect=dialect,
+            elapsed_ms=ms_since(start),
+        )
+
     report_md = (req.report or "").strip()
     if not report_md:
         from .agent import static_review_report
@@ -241,6 +269,30 @@ def fix(req: FixRequest) -> FixResponse:
         dialect=dialect,
         elapsed_ms=ms_since(start),
     )
+
+
+@router.get("/stats")
+def stats() -> dict[str, Any]:
+    """Read-only review-history stats for the page's trend chart.
+
+    ``summary`` mirrors ReviewLogger.summarize(); ``daily`` buckets the
+    recent records' severity counts per day (the legacy page did this in
+    its matplotlib figure).
+    """
+    rlogger = ReviewLogger()
+    by_day: dict[str, dict[str, int]] = {}
+    for r in rlogger.recent(500):
+        day = (r.get("timestamp") or "")[:10]
+        if not day:
+            continue
+        bucket = by_day.setdefault(day, {"critical": 0, "risk": 0, "suggestion": 0})
+        for sev, cnt in (r.get("severities") or {}).items():
+            if sev in bucket:
+                bucket[sev] += cnt
+    return {
+        "summary": rlogger.summarize(),
+        "daily": [{"day": d, **by_day[d]} for d in sorted(by_day)],
+    }
 
 
 @router.get("/health")

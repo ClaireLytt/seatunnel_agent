@@ -597,7 +597,6 @@ def test_api_metrics_query_bad_dimension() -> None:
 
 def test_api_metrics_query_execute(monkeypatch) -> None:
     pytest.importorskip("fastapi")
-    import seatunnel_agent.agents.data.text2sql.api as api_mod
     from seatunnel_agent.agents.data.text2sql.executor import QueryResult
 
     class _FakeExecutor:
@@ -609,7 +608,8 @@ def test_api_metrics_query_execute(monkeypatch) -> None:
                 row_count=1, truncated=False, elapsed_ms=3,
             )
 
-    monkeypatch.setattr(api_mod, "create_executor", lambda cfg: _FakeExecutor())
+    import seatunnel_agent.agents.data.text2sql.api_metrics as api_metrics_mod
+    monkeypatch.setattr(api_metrics_mod, "create_executor", lambda cfg: _FakeExecutor())
     # bypass from_db by giving schema_ddl AND no db introspection:
     # _load_schema_store only calls from_db when db_config is set, so patch
     # SchemaStore.from_db too.

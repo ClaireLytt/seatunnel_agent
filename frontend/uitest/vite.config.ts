@@ -7,7 +7,10 @@ export default defineConfig({
   base: '/uitest/',
   plugins: [react()],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@shared': fileURLToPath(new URL('../shared/src', import.meta.url)),
+    },
   },
   server: {
     proxy: {

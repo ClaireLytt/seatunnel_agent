@@ -8,7 +8,6 @@ SUITES = ["smoke", "full", "sqlite", "hive", "slow"]
 AGENT_ROUTES: dict[str, tuple[str, ...]] = {
     "all": (),
     "datacompare": ("/datacompare",),
-    "sqlreview": ("/sqlreview",),
     "lineage": ("/lineage",),
     "text2sql": ("/text2sql", "/history", "/favorites", "/schema-browser"),
     "transpile": ("/transpile",),
@@ -21,7 +20,7 @@ AGENT_ROUTES: dict[str, tuple[str, ...]] = {
 
 AGENT_LABELS = {
     "en": {"all": "All agents", "datacompare": "Data Comparison",
-           "sqlreview": "SQL Review", "lineage": "Data Lineage",
+           "lineage": "Data Lineage",
            "text2sql": "Text2SQL & aux pages",
            "transpile": "SQL Dialect Translation",
            "impact": "Change Impact Analysis",
@@ -30,7 +29,7 @@ AGENT_LABELS = {
            "mcp": "MCP Toolbox",
            "settings": "Settings"},
     "zh": {"all": "全部 Agent", "datacompare": "数据对比",
-           "sqlreview": "SQL Review", "lineage": "数据血缘",
+           "lineage": "数据血缘",
            "text2sql": "Text2SQL 与辅助页",
            "transpile": "SQL 方言翻译",
            "impact": "变更影响分析",

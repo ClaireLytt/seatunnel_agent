@@ -45,10 +45,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: frontend/uitest/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
       - name: Build /uitest frontend
-        run: npm ci && npm run build
-        working-directory: frontend/uitest
+        run: npm ci && npm run build --workspace uitest-frontend
+        working-directory: frontend
 
       - name: Run UI smoke suite (no LLM)
         run: python -m seatunnel_agent.agents.devops.ui_testing run --suite smoke --no-llm

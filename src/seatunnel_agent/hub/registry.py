@@ -44,6 +44,15 @@ class AgentManifest:
     order: int = 100     # card order within the workspace
     group: str | None = None  # workspace section key (display text lives in the hub)
     card: bool = True    # False: route only, no card on the workspace page
+    external: bool = False  # True: card only — the route is served outside
+                            # Gradio (e.g. a React static mount); render unused
+    legacy: str | None = None  # external only: legacy route linked from the
+                               # unbuilt-bundle hint page
+
+
+def frontend_dist(mf: AgentManifest) -> Path:
+    """Bundle location convention for external (React) manifests."""
+    return Path("frontend") / mf.name / "dist"
 
 
 def resolve(target: str) -> Any:
