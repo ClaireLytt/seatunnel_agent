@@ -3,13 +3,24 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Card } from '@shared/components/card'
 
 // Accordion in the uitest editor style: mono toggle line + sliding card.
-export function Collapsible({ title, children }: { title: string; children: ReactNode }) {
+export function Collapsible({
+  title,
+  children,
+  onOpen,
+}: {
+  title: string
+  children: ReactNode
+  onOpen?: () => void
+}) {
   const [open, setOpen] = useState(false)
   return (
     <div className="mt-3">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => {
+          if (!open) onOpen?.()
+          setOpen((o) => !o)
+        }}
         className="font-mono text-sm text-ink-soft underline-offset-4 hover:underline"
       >
         {open ? '▾' : '▸'} {title}

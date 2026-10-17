@@ -2,9 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { load as parseYaml } from 'js-yaml'
-import { DIALECT_NAMES, DIALECTS, fix, review } from '@/api'
+import {
+  DIALECT_NAMES,
+  DIALECTS,
+  fetchStats,
+  fix,
+  review,
+  type StatsResponse,
+  type TopCategory,
+} from '@/api'
+import { CHECK_CATALOG_EN } from '@/i18n'
 import { Collapsible } from '@/components/Collapsible'
 import { ReportView } from '@/components/ReportView'
+import { TrendChart } from '@/components/TrendChart'
 import { Card } from '@shared/components/card'
 
 const inputCls =
@@ -12,6 +22,11 @@ const inputCls =
   'outline-none focus:border-ink'
 
 const labelCls = 'mb-1 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft'
+
+// top_categories labels come back Chinese (report.CHECK_CATALOG); map the
+// category key to English when the page language is en
+const categoryLabel = (c: TopCategory, lang: 'zh' | 'en') =>
+  lang === 'en' && c.category ? (CHECK_CATALOG_EN[c.category] ?? c.category) : c.label
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -30,6 +45,16 @@ export default function App() {
   const [report, setReport] = useState('')
   const [fixedSql, setFixedSql] = useState('')
   const [error, setError] = useState('')
+
+  const [stats, setStats] = useState<StatsResponse | null>(null)
+  const [statsError, setStatsError] = useState('')
+
+  const loadStats = () => {
+    setStatsError('')
+    fetchStats()
+      .then(setStats)
+      .catch((e) => setStatsError(`${e instanceof Error ? e.message : e}`))
+  }
 
   // URL prefill: /sqlreview?sql=...&dialect=... (used by the Text2SQL
   // inline review card's "full review" link)
@@ -340,6 +365,61 @@ export default function App() {
           </motion.section>
         )}
       </AnimatePresence>
+      <section className="mt-8">
+        <Collapsible title={t('statsAccordion')} onOpen={loadStats}>
+          <div className="flex items-start justify-between gap-4">
+            <div className="font-mono text-sm text-fg">
+              {statsError && <p className="text-[var(--accent)]">{statsError}</p>}
+              {!stats && !statsError && <p className="italic text-muted">{t('statsPlaceholder')}</p>}
+              {stats && stats.summary.reviews === 0 && (
+                <p className="text-muted">{t('noRecords')}</p>
+              )}
+              {stats && stats.summary.reviews > 0 && (
+                <>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1">
+                    <span className="text-muted">
+                      {t('statReviews')} <b className="text-fg">{stats.summary.reviews}</b>
+                    </span>
+                    <span className="text-muted">
+                      {t('statFindings')} <b className="text-fg">{stats.summary.findings}</b>
+                    </span>
+                    {(['critical', 'risk', 'suggestion'] as const).map((sev) => (
+                      <span key={sev} className="text-muted">
+                        {t(`sev_${sev}`)}{' '}
+                        <b className="text-fg">{stats.summary.severities[sev] ?? 0}</b>
+                      </span>
+                    ))}
+                  </div>
+                  {stats.summary.top_categories.length > 0 && (
+                    <div className="mt-3">
+                      <p className="font-bold text-ink">{t('topCategories')}</p>
+                      <ul className="mt-1 list-disc pl-5 text-muted">
+                        {stats.summary.top_categories.slice(0, 5).map((c) => (
+                          <li key={c.category || c.label}>
+                            {categoryLabel(c, lang)} ({c.count})
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            <button
+              onClick={loadStats}
+              className="shrink-0 rounded border-[1.5px] border-ink px-3 py-1.5 font-mono text-[13px] text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+            >
+              {t('refresh')}
+            </button>
+          </div>
+          {stats && stats.daily.length > 0 && (
+            <div className="mt-4">
+              <TrendChart daily={stats.daily} />
+            </div>
+          )}
+        </Collapsible>
+      </section>
+
     </div>
   )
 }

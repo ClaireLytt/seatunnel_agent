@@ -267,6 +267,30 @@ def fix(req: FixRequest) -> FixResponse:
     )
 
 
+@router.get("/stats")
+def stats() -> dict[str, Any]:
+    """Read-only review-history stats for the page's trend chart.
+
+    ``summary`` mirrors ReviewLogger.summarize(); ``daily`` buckets the
+    recent records' severity counts per day (the legacy page did this in
+    its matplotlib figure).
+    """
+    rlogger = ReviewLogger()
+    by_day: dict[str, dict[str, int]] = {}
+    for r in rlogger.recent(500):
+        day = (r.get("timestamp") or "")[:10]
+        if not day:
+            continue
+        bucket = by_day.setdefault(day, {"critical": 0, "risk": 0, "suggestion": 0})
+        for sev, cnt in (r.get("severities") or {}).items():
+            if sev in bucket:
+                bucket[sev] += cnt
+    return {
+        "summary": rlogger.summarize(),
+        "daily": [{"day": d, **by_day[d]} for d in sorted(by_day)],
+    }
+
+
 @router.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}

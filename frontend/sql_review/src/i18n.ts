@@ -43,6 +43,16 @@ const resources = {
         '-- No mechanically fixable issue found; switch to LLM review mode for a full rewrite',
       home: 'Home',
       report: 'Report',
+      statsAccordion: '📈 Review History Stats',
+      statsPlaceholder: 'Click refresh to load',
+      refresh: 'Refresh Stats',
+      noRecords: 'No review records yet.',
+      statReviews: 'Reviews',
+      statFindings: 'Total findings',
+      sev_critical: '🔴 Critical',
+      sev_risk: '🟡 Risk',
+      sev_suggestion: '🟢 Suggestion',
+      topCategories: 'Top issue categories',
     },
   },
   zh: {
@@ -80,8 +90,40 @@ const resources = {
       fixNoneStatic: '-- 没有可静态自动修复的问题；如需完整改写请切换到 LLM 审查模式',
       home: '首页',
       report: '报告',
+      statsAccordion: '📈 审查历史统计',
+      statsPlaceholder: '点击刷新查看',
+      refresh: '刷新统计',
+      noRecords: '暂无审查记录。',
+      statReviews: '审查次数',
+      statFindings: '发现问题总数',
+      sev_critical: '🔴 严重',
+      sev_risk: '🟡 风险',
+      sev_suggestion: '🟢 建议',
+      topCategories: '高频问题类别',
     },
   },
+}
+
+// English labels for report.CHECK_CATALOG (ported verbatim from the legacy
+// Python CHECK_CATALOG_EN); the API's top_categories labels are Chinese.
+export const CHECK_CATALOG_EN: Record<string, string> = {
+  syntax: 'SQL syntax validity (dialect parse)',
+  schema_ref: 'Table/column existence (schema check)',
+  join_condition: 'JOIN condition & key accuracy',
+  join_cartesian: 'JOIN type consistency / many-to-many & cartesian product',
+  where_syntax: 'WHERE syntax & NULL comparison',
+  where_partition: 'Time range & partition predicate style',
+  groupby_completeness: 'GROUP BY completeness',
+  aggregate_functions: 'Aggregate function correctness',
+  calculation: 'Calculation logic (NULL / div-zero / money precision / ratio)',
+  null_handling: 'NULL handling (COALESCE / NVL / empty string)',
+  dedup: 'Deduplication & primary-key uniqueness',
+  type_cast: 'Type conversion & comparison',
+  partition_pruning: 'Partition pruning & granularity',
+  data_skew: 'Data skew (hot keys / large-table JOIN)',
+  resource_usage: 'Resource usage (full scan / temp tables / incremental)',
+  readability: 'Code style & readability',
+  time_boundary: 'Time boundary logic (cross-day / timezone / month-end / leap year)',
 }
 
 i18n.use(initReactI18next).init({

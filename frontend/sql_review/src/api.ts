@@ -64,6 +64,31 @@ export interface ReviewResponse {
   warnings: string[]
 }
 
+export interface TopCategory {
+  category: string
+  label: string
+  count: number
+}
+
+export interface StatsSummary {
+  reviews: number
+  findings: number
+  severities: Record<string, number>
+  top_categories: TopCategory[]
+}
+
+export interface DailyStat {
+  day: string
+  critical: number
+  risk: number
+  suggestion: number
+}
+
+export interface StatsResponse {
+  summary: StatsSummary
+  daily: DailyStat[]
+}
+
 const BASE = '/api/sql_review'
 
 async function post<T>(path: string, body: unknown): Promise<T> {
@@ -81,3 +106,9 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 export const review = (req: ReviewRequest) => post<ReviewResponse>('/review', req)
 export const fix = (req: FixRequest) => post<FixResponse>('/fix', req)
+
+export async function fetchStats(): Promise<StatsResponse> {
+  const r = await fetch(`${BASE}/stats`)
+  if (!r.ok) throw new Error(`stats: HTTP ${r.status}`)
+  return r.json()
+}
