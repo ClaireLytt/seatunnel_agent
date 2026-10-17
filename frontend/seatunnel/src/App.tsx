@@ -30,6 +30,18 @@ export default function App() {
       .catch((e) => setError(String(e)))
   }, [])
 
+  // legacy ui.py _template_to_prompt: selecting a template fills the input
+  const selectedTpl = meta?.templates.find((tp) => tp.name === template)
+  const templatePrompt = selectedTpl
+    ? t('templatePrompt', {
+        name: selectedTpl.name,
+        params: selectedTpl.parameters
+          .filter((p) => p.default)
+          .map((p) => `${p.name}=${p.default}`)
+          .join(', '),
+      })
+    : ''
+
   const onConnect = async () => {
     setConnecting(true)
     try {
@@ -141,7 +153,13 @@ export default function App() {
 
         <main className="st-chat flex min-h-[60vh] flex-1 flex-col">
           <Card className="flex flex-1 flex-col">
-            <Chat emptyHint={error ? error : t('chatEmpty')} mode={mode} configPath={configPath} />
+            <Chat
+              emptyHint={error ? error : t('chatEmpty')}
+              mode={mode}
+              configPath={configPath}
+              templatePrompt={templatePrompt}
+              onConfigPath={setConfigPath}
+            />
           </Card>
         </main>
       </div>

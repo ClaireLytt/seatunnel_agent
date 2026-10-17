@@ -25,6 +25,10 @@ const resources = {
       tplNone: '-- Select a template --',
       connected: '✅ Connected, Model: {{model}}',
       connectFailed: '❌ Failed: {{error}}',
+      demo: 'Demo',
+      demoDefaultMsg: 'Generate a FakeSource to Console config',
+      upload: 'Upload config file',
+      templatePrompt: 'Create a pipeline config using the {{name}} template ({{params}})',
     },
   },
   zh: {
@@ -48,6 +52,10 @@ const resources = {
       tplNone: '-- 选择模板 --',
       connected: '✅ 连接成功，模型: {{model}}',
       connectFailed: '❌ 连接失败: {{error}}',
+      demo: '演示',
+      demoDefaultMsg: '帮我生成一个 FakeSource 到 Console 的配置',
+      upload: '上传配置文件',
+      templatePrompt: '使用 {{name}} 模板创建管道配置（{{params}}）',
     },
   },
 }

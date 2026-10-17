@@ -55,6 +55,23 @@ export async function chatStream(
   await postSSE<ChatEvent>('/api/seatunnel/chat', params, onEvent)
 }
 
+export async function demoStream(
+  params: { config_path?: string; lang?: string },
+  onEvent: (e: ChatEvent) => void,
+): Promise<void> {
+  const { postSSE } = await import('@shared/sse')
+  await postSSE<ChatEvent>('/api/seatunnel/demo', params, onEvent)
+}
+
+export async function uploadFile(file: File): Promise<string> {
+  const form = new FormData()
+  form.append('file', file)
+  const resp = await fetch('/api/seatunnel/upload', { method: 'POST', body: form })
+  if (!resp.ok) throw new Error(`upload: HTTP ${resp.status}`)
+  const data = (await resp.json()) as { path: string }
+  return data.path
+}
+
 export async function stopChat(conversationId: string, lang?: string): Promise<void> {
   const resp = await fetch('/api/seatunnel/chat/stop', {
     method: 'POST',
