@@ -147,6 +147,55 @@ export const clearQlog = (): Promise<{ cleared: boolean }> =>
 
 export const qlogExportUrl = `${BASE}/history/qlog/export`
 
+// ── Favorites ───────────────────────────────────────────────────────
+
+export interface Favorite {
+  id: string
+  name: string
+  sql: string
+  question: string
+  ds_type: string
+  params: string[]
+  created_at: string
+}
+
+export const fetchFavorites = (): Promise<{ favorites: Favorite[] }> =>
+  fetch(`${BASE}/favorites`).then(j)
+
+export const saveFavorite = (
+  name: string,
+  sql: string,
+  question = '',
+  ds_type = '',
+): Promise<{ favorite: Favorite }> =>
+  fetch(`${BASE}/favorites`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, sql, question, ds_type }),
+  }).then(j)
+
+export const renameFavorite = (id: string, name: string): Promise<{ renamed: boolean }> =>
+  fetch(`${BASE}/favorites/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  }).then(j)
+
+export const deleteFavorite = (id: string): Promise<{ deleted: boolean }> =>
+  fetch(`${BASE}/favorites/${id}`, { method: 'DELETE' }).then(j)
+
+export const sendFeedback = (
+  sessionId: string,
+  question: string,
+  sql: string,
+  positive: boolean,
+): Promise<{ ok: boolean; positive: boolean }> =>
+  fetch(`${BASE}/feedback`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: sessionId, question, sql, positive }),
+  }).then(j)
+
 export const fetchSavedSessions = (): Promise<{ sessions: SavedSession[] }> =>
   fetch(`${BASE}/history/sessions`).then(j)
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { ChatPanel } from '@/ChatPanel'
+import { FavoritesView } from '@/FavoritesView'
 import { HistoryView } from '@/HistoryView'
 import { SchemaBrowser } from '@/SchemaBrowser'
 import { SchemaPanel } from '@/SchemaPanel'
@@ -13,7 +14,13 @@ export default function App() {
   const [session, setSession] = useState<SessionMeta | null>(null)
   const [fullTables, setFullTables] = useState<string[]>([])
   const viewFromHash = () =>
-    location.hash === '#schema' ? 'schema' : location.hash === '#history' ? 'history' : 'chat'
+    location.hash === '#schema'
+      ? 'schema'
+      : location.hash === '#history'
+        ? 'history'
+        : location.hash === '#favorites'
+          ? 'favorites'
+          : 'chat'
   const [view, setView] = useState(viewFromHash())
   const [seed, setSeed] = useState<{ role: string; content: string }[] | undefined>()
 
@@ -52,12 +59,20 @@ export default function App() {
             onFullTables={setFullTables}
           />
         )}
-        <a
-          href="#history"
-          className="mr-4 font-mono text-sm text-ink underline-offset-4 hover:underline"
-        >
-          {t('history')}
-        </a>
+        <div className="flex gap-4">
+          <a
+            href="#history"
+            className="font-mono text-sm text-ink underline-offset-4 hover:underline"
+          >
+            {t('history')}
+          </a>
+          <a
+            href="#favorites"
+            className="font-mono text-sm text-ink underline-offset-4 hover:underline"
+          >
+            ⭐ {t('favorites')}
+          </a>
+        </div>
         {session && (
           <a
             href={view === 'schema' ? '#' : '#schema'}
@@ -69,7 +84,7 @@ export default function App() {
         <div className="st-legacy-links rounded border border-line bg-card p-3 font-mono text-[12px]">
           <div className="mb-1 uppercase tracking-[0.18em] text-ink-soft">{t('pending')}</div>
           <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {['templates', 'metrics', 'favoritesF', 'feedback', 'subscriptions', 'boards'].map(
+            {['templates', 'metrics', 'subscriptions', 'boards'].map(
               (k) => (
                 <a
                   key={k}
@@ -93,7 +108,9 @@ export default function App() {
       </motion.aside>
 
       <main className="min-h-[70vh] flex-1">
-        {view === 'history' ? (
+        {view === 'favorites' ? (
+          <FavoritesView />
+        ) : view === 'history' ? (
           <HistoryView
             session={session}
             onResume={(_title, chat) => {

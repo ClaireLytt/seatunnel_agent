@@ -1,5 +1,6 @@
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { sendFeedback } from '@/api'
 import {
   Bar,
   BarChart,
@@ -123,13 +124,35 @@ function ChartView({ data, type }: { data: ResultData; type: (typeof CHART_TYPES
   )
 }
 
-export function ResultBlock({ data }: { data: ResultData }) {
+export function ResultBlock({
+  data,
+  sessionId,
+  question,
+}: {
+  data: ResultData
+  sessionId?: string
+  question?: string
+}) {
   const { t } = useTranslation()
   const [page, setPage] = useState(0)
   const [chartType, setChartType] = useState<(typeof CHART_TYPES)[number]>(
     (data.chart_type as (typeof CHART_TYPES)[number]) ?? 'none',
   )
   const chartRef = useRef<HTMLDivElement>(null)
+  const [fb, setFb] = useState<'up' | 'down' | null>(null)
+
+  const onFeedback = useCallback(
+    async (positive: boolean) => {
+      if (!sessionId || !question || fb) return
+      try {
+        await sendFeedback(sessionId, question, data.sql, positive)
+        setFb(positive ? 'up' : 'down')
+      } catch {
+        /* best-effort */
+      }
+    },
+    [sessionId, question, data.sql, fb],
+  )
 
   const paged = data.rows.length > 20
   const pages = Math.max(1, Math.ceil(data.rows.length / PAGE))
@@ -224,6 +247,39 @@ export function ResultBlock({ data }: { data: ResultData }) {
           <button onClick={exportPng} className="rounded border border-ink px-2 text-ink">
             PNG
           </button>
+        )}
+        {sessionId && question && (
+          <span className="ml-auto flex items-center gap-1">
+            <button
+              onClick={() => onFeedback(true)}
+              disabled={fb !== null}
+              className={
+                'rounded border px-1.5 transition ' +
+                (fb === 'up'
+                  ? 'border-ink bg-ink text-paper'
+                  : 'border-line text-muted hover:text-ink disabled:opacity-40')
+              }
+              title={t('thumbsUp')}
+            >
+              👍
+            </button>
+            <button
+              onClick={() => onFeedback(false)}
+              disabled={fb !== null}
+              className={
+                'rounded border px-1.5 transition ' +
+                (fb === 'down'
+                  ? 'border-accent bg-accent text-paper'
+                  : 'border-line text-muted hover:text-accent disabled:opacity-40')
+              }
+              title={t('thumbsDown')}
+            >
+              👎
+            </button>
+            {fb && (
+              <span className="text-[11px] text-muted">{t('feedbackSent')}</span>
+            )}
+          </span>
         )}
       </div>
       {chartType !== 'none' && data.rows.length > 1 && (

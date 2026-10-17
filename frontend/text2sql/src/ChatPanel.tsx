@@ -7,7 +7,7 @@ import { ResultBlock, type ResultData } from '@/ResultBlock'
 type Item =
   | { kind: 'user'; text: string }
   | { kind: 'text'; text: string }
-  | ({ kind: 'result' } & ResultData)
+  | ({ kind: 'result'; question: string } & ResultData)
   | { kind: 'final'; text: string; stopped?: boolean }
   | { kind: 'error'; text: string }
 
@@ -46,6 +46,7 @@ export function ChatPanel({
     setInput('')
     setRunning(true)
     setItems((xs) => [...xs, { kind: 'user', text: q }])
+    const currentQ = q
     try {
       await chatStream(session.session_id, q, (e: ChatEvent) => {
         if (e.type === 'text') setItems((xs) => [...xs, { kind: 'text', text: e.text }])
@@ -61,6 +62,7 @@ export function ChatPanel({
             ...xs,
             {
               kind: 'result',
+              question: currentQ,
               sql: e.sql,
               columns: e.columns,
               rows: e.rows,
@@ -89,7 +91,7 @@ export function ChatPanel({
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pr-1">
         {items.map((it, i) =>
           it.kind === 'result' ? (
-            <ResultBlock key={i} data={it} />
+            <ResultBlock key={i} data={it} sessionId={session.session_id} question={it.question} />
           ) : (
             <div
               key={i}
