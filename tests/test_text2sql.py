@@ -1803,7 +1803,7 @@ class TestSchemaBrowser:
         )
 
     def test_basic_card(self):
-        from seatunnel_agent.agents.data.text2sql.ui import build_schema_card
+        from seatunnel_agent.agents.data.text2sql.ui_cards import build_schema_card
         table = self._make_table()
         html = build_schema_card(table)
         assert "test_db.users" in html
@@ -1816,7 +1816,7 @@ class TestSchemaBrowser:
 
     def test_partitioned_card(self):
         from seatunnel_agent.agents.data.text2sql.schema import ColumnSchema
-        from seatunnel_agent.agents.data.text2sql.ui import build_schema_card
+        from seatunnel_agent.agents.data.text2sql.ui_cards import build_schema_card
         table = self._make_table(
             partition_columns=[
                 ColumnSchema(name="dt", dtype="string", comment="Date partition"),
@@ -1830,14 +1830,14 @@ class TestSchemaBrowser:
         assert "3 columns" in html
 
     def test_empty_comment(self):
-        from seatunnel_agent.agents.data.text2sql.ui import build_schema_card
+        from seatunnel_agent.agents.data.text2sql.ui_cards import build_schema_card
         table = self._make_table(comment="")
         html = build_schema_card(table)
         assert "test_db.users" in html
         assert "bigint" in html
 
     def test_zh_labels(self):
-        from seatunnel_agent.agents.data.text2sql.ui import build_schema_card
+        from seatunnel_agent.agents.data.text2sql.ui_cards import build_schema_card
         table = self._make_table()
         html = build_schema_card(table, lang="zh")
         assert "test_db.users" in html
@@ -1846,7 +1846,7 @@ class TestSchemaBrowser:
 
     def test_xss_escape(self):
         from seatunnel_agent.agents.data.text2sql.schema import ColumnSchema
-        from seatunnel_agent.agents.data.text2sql.ui import build_schema_card
+        from seatunnel_agent.agents.data.text2sql.ui_cards import build_schema_card
         table = self._make_table(
             comment="<script>alert(1)</script>",
             columns=[ColumnSchema(name="x", dtype="string", comment="a&b")],
@@ -1961,7 +1961,7 @@ class TestDataLineage:
 
     def test_lineage_card_basic(self):
         from seatunnel_agent.agents.data.text2sql.lineage import trace_lineage
-        from seatunnel_agent.agents.data.text2sql.ui import build_lineage_card
+        from seatunnel_agent.agents.data.text2sql.ui_cards import build_lineage_card
         sql = (
             "SELECT o.id, c.name "
             "FROM orders o "
@@ -1976,7 +1976,7 @@ class TestDataLineage:
 
     def test_lineage_card_zh(self):
         from seatunnel_agent.agents.data.text2sql.lineage import trace_lineage
-        from seatunnel_agent.agents.data.text2sql.ui import build_lineage_card
+        from seatunnel_agent.agents.data.text2sql.ui_cards import build_lineage_card
         sql = "SELECT id, name FROM users WHERE age > 18"
         lineage = trace_lineage(sql)
         html = build_lineage_card(lineage, lang="zh")
@@ -2157,7 +2157,7 @@ class TestMdTableXss:
     """Tests for XSS escaping in markdown table output."""
 
     def test_html_in_cell_escaped(self):
-        from seatunnel_agent.agents.data.text2sql.ui import _md_table
+        from seatunnel_agent.agents.data.text2sql.ui_cards import _md_table
         cols = ["name"]
         rows = [["<script>alert(1)</script>"]]
         result = _md_table(cols, rows)
@@ -2165,7 +2165,7 @@ class TestMdTableXss:
         assert "&lt;script&gt;" in result
 
     def test_html_in_header_escaped(self):
-        from seatunnel_agent.agents.data.text2sql.ui import _md_table
+        from seatunnel_agent.agents.data.text2sql.ui_cards import _md_table
         cols = ["<b>name</b>"]
         rows = [["value"]]
         result = _md_table(cols, rows)
@@ -2340,7 +2340,7 @@ class TestProfiler:
             ColumnProfile,
             TableProfile,
         )
-        from seatunnel_agent.agents.data.text2sql.ui import build_profile_card
+        from seatunnel_agent.agents.data.text2sql.ui_cards import build_profile_card
         profile = TableProfile(
             table_name="db.t",
             row_count=50,
@@ -2425,7 +2425,7 @@ class TestResultDiff:
         assert diff.columns_removed == ["b"]
 
     def test_diff_card_html(self):
-        from seatunnel_agent.agents.data.text2sql.ui import build_diff_card
+        from seatunnel_agent.agents.data.text2sql.ui_cards import build_diff_card
         diff_data = {"added_count": 3, "removed_count": 1, "cols_added": ["c"],
                      "cols_removed": [], "old_count": 10, "new_count": 12}
         html = build_diff_card(diff_data, "en")
@@ -2541,7 +2541,7 @@ class TestQualityCheck:
         assert "duplicate_rows" in types
 
     def test_quality_card_html(self):
-        from seatunnel_agent.agents.data.text2sql.ui import build_quality_card
+        from seatunnel_agent.agents.data.text2sql.ui_cards import build_quality_card
         warnings = [{"column": "x", "warning_type": "high_null", "detail": "8/10 (80%)"}]
         html = build_quality_card(warnings, "en")
         assert "Data Quality" in html
@@ -2608,14 +2608,14 @@ class TestXssEscaping:
     """Dynamic HTML in _format_tool_result must be escaped."""
 
     def test_error_result_escapes_html(self):
-        from seatunnel_agent.agents.data.text2sql.ui import _format_tool_result
+        from seatunnel_agent.agents.data.text2sql.ui_format import _format_tool_result
         raw = json.dumps({"error": "<script>alert(1)</script>"})
         out = _format_tool_result("execute_sql", raw, "en")
         assert "<script>" not in out
         assert "&lt;script&gt;" in out
 
     def test_match_tables_fields_escaped(self):
-        from seatunnel_agent.agents.data.text2sql.ui import _format_tool_result
+        from seatunnel_agent.agents.data.text2sql.ui_format import _format_tool_result
         raw = json.dumps({
             "count": 1,
             "candidates": [{
@@ -2632,7 +2632,7 @@ class TestXssEscaping:
         assert "<svg>" not in out
 
     def test_schema_comment_escaped(self):
-        from seatunnel_agent.agents.data.text2sql.ui import _format_tool_result
+        from seatunnel_agent.agents.data.text2sql.ui_format import _format_tool_result
         raw = json.dumps({
             "table": "t",
             "comment": "<svg onload=alert(1)>",

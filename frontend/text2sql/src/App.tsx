@@ -113,9 +113,6 @@ export default function App() {
           <a href="/" className="text-ink underline-offset-4 hover:underline">
             {t('home')}
           </a>
-          <a href="/text2sql-legacy" className="text-muted underline-offset-4 hover:underline">
-            {t('legacy')}
-          </a>
         </div>
       </motion.aside>
 

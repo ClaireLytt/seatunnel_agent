@@ -164,7 +164,7 @@ def create_ui() -> gr.Blocks:
 
     # plugin pages: every seatunnel_agent.<pkg>.manifest registers itself
     from seatunnel_agent.hub.registry import discover, resolve
-    sidebar_resize = {"/seatunnel", "/text2sql-legacy", "/datacompare"}
+    sidebar_resize = {"/seatunnel", "/datacompare"}
     for mf in discover():
         if mf.external:
             continue  # route served outside Gradio (React static mount)

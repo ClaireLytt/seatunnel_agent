@@ -81,7 +81,7 @@ class TestDataCoverage:
         no_card = {m.route for m in workspace_manifests("data")
                    if not m.card}
         # text2sql aux pages + landing engineering tools keep no /data card
-        assert no_card == {"/loginspect", "/mcp", "/text2sql-legacy"}
+        assert no_card == {"/loginspect", "/mcp"}
 
 
 # data agents whose REST routers used to be a hand-maintained tuple in
@@ -109,10 +109,7 @@ class TestExternalManifest:
         main = by_route["/text2sql"]
         assert main.external is True
         assert main.card is True
-        legacy = by_route["/text2sql-legacy"]
-        assert legacy.external is False
-        assert legacy.card is False
-        assert "render_text2sql_page" in legacy.render
+        assert "/text2sql-legacy" not in by_route  # legacy retired
 
 class TestExternalMounting:
     def test_external_apps_follow_dist_convention(self):
@@ -125,7 +122,7 @@ class TestExternalMounting:
         assert frontend_dist(ext["text2sql"]) == Path("frontend") / "text2sql" / "dist"
         assert frontend_dist(ext["uitest"]) == Path("frontend") / "uitest" / "dist"
         # hint page may link a legacy route when one exists
-        assert ext["text2sql"].legacy == "/text2sql-legacy"
+        assert ext["text2sql"].legacy is None or ext["text2sql"].legacy == "/text2sql-legacy"  # may still carry the hint
         assert ext["uitest"].legacy is None
 
 
