@@ -287,6 +287,12 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     )
     app.app.include_router(seatunnel_api_router)
 
+    # Data Comparison backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.data_comparison.api import (
+        router as datacompare_api_router,
+    )
+    app.app.include_router(datacompare_api_router)
+
     # Rebuilt React pages: every external manifest mounts from the
     # frontend/<name>/dist convention; unbuilt bundles get a hint page.
     from fastapi.responses import HTMLResponse

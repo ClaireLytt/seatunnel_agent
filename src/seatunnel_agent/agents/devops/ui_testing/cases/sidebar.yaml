@@ -2,7 +2,8 @@
 
 - id: B3
   title: 下拉框内模糊搜索 (子串过滤)
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: connect_a_sqlite
   steps:
@@ -13,7 +14,8 @@
 
 - id: B4
   title: 完整表名精确匹配并选中
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: connect_a_sqlite
   steps:
@@ -23,7 +25,8 @@
 
 - id: B5
   title: 清空搜索恢复全部选项且选中值保留
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: connect_a_sqlite
     - select: {of: 选择表, value: dc_test_orders_a, side: A}

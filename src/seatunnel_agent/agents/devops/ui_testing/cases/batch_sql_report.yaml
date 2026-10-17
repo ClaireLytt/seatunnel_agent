@@ -49,7 +49,8 @@
 
 - id: P2
   title: 自定义 SQL 只读限制拦截 DELETE
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: connect_both_sqlite
     - open_accordion: 自定义 SQL

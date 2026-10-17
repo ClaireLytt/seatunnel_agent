@@ -173,7 +173,8 @@
 
 - id: W1
   title: 中文界面文案齐全
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   steps:
     - wait: 300
       note: runner 已切中文,等 i18n 重渲染完成
@@ -197,7 +198,8 @@
 
 - id: X2
   title: 连接后未选表被拦截
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: connect_both_sqlite
   steps:
@@ -208,7 +210,8 @@
 
 - id: X3
   title: 刷新后全流程正常 (无残留状态)
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - goto: /datacompare
     - use: select_orders
@@ -221,7 +224,8 @@
 
 - id: X4
   title: SQLite 分支隐藏字段回归 (浏览器提交 None)
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   steps:
     - select_ds: {value: SQLite, side: A}
     - fill: {数据库: config/uitest_demo.db, side: A}
@@ -236,7 +240,8 @@
 # 重置选项:一键取消所有已选功能 —— 之前只能逐个手动清空十几个输入框。
 - id: R3
   title: 重置选项一键清空全部对比选项
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: select_orders
     - fill: {WHERE 条件: "id > 1"}

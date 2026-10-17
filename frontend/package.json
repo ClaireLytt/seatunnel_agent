@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "shared",
+    "datacompare",
     "seatunnel",
     "sql_review",
     "uitest",

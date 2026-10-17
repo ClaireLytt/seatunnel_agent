@@ -2,7 +2,8 @@
 
 - id: C1
   title: 结构对比一致 (orders 对 9 列相同)
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: select_orders
   steps:
@@ -14,7 +15,8 @@
 
 - id: C2
   title: 结构对比差异 (schema 对列名/类型不同)
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: select_schema
   steps:
@@ -27,7 +29,8 @@
 
 - id: C3
   title: 行数对比呈现 10 vs 9 差异
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: select_orders
   steps:
@@ -41,7 +44,8 @@
 
 - id: C4
   title: 行数对比一致 (same 对 5 = 5)
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: select_same
   steps:
@@ -53,7 +57,8 @@
 
 - id: C5
   title: 样本数据差异高亮 (id=3 amount / id=5 status)
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: select_orders
     - fill: {主键列: id}
@@ -101,7 +106,8 @@
 
 - id: D2
   title: 百分比阈值 5% 未通过 (差异 10%)
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: select_orders
   steps:
@@ -167,7 +173,8 @@
 
 - id: E4
   title: WHERE 防注入拦截禁止关键字
-  tags: [smoke, sqlite]
+  # TODO(ticket-11): legacy Gradio case — /datacompare now serves the React page; replaced by the datacompare Playwright/API tests in ticket 11
+  tags: [smoke, sqlite, manual]
   setup:
     - use: select_orders
     - fill: {WHERE: "1=1; drop table x"}
