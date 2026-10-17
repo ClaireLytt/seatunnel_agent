@@ -27,13 +27,43 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+class _FakePageAgent:
+    """Scripted agent for browser tests: streams a short reply via on_event."""
+
+    def __init__(self, settings, on_event=None):
+        import threading as _threading
+
+        self._on_event = on_event
+        self.stop_event = _threading.Event()
+
+    def _turn(self, text: str) -> None:
+        for chunk in (text[: len(text) // 2], text[len(text) // 2:]):
+            self._on_event("text_delta", {"text": chunk})
+            time.sleep(0.05)
+        self._on_event("text", {"text": text})
+        self._on_event("final_answer", {"text": text})
+
+    def run(self, task: str) -> str:
+        self._turn("Streamed hello from the agent")
+        return ""
+
+    def chat(self, message: str) -> str:
+        self._turn("Second turn reply")
+        return ""
+
+
 @pytest.fixture()
-def page_url():
+def page_url(monkeypatch):
     import uvicorn
     from fastapi import FastAPI
     from fastapi.staticfiles import StaticFiles
 
+    from seatunnel_agent.agents.data.seatunnel import api
     from seatunnel_agent.agents.data.seatunnel.api import router
+
+    monkeypatch.setattr(api, "SeaTunnelAgent", _FakePageAgent)
+    monkeypatch.setattr(api, "load_settings", lambda: object())
+    api._CONVERSATIONS.clear()
 
     if not (FRONTEND_DIST / "index.html").is_file():
         pytest.skip("frontend dist not built (cd frontend && npm run build --workspace seatunnel)")
@@ -77,4 +107,31 @@ def test_seatunnel_page_smoke(page_url):
         expect(page.locator("header")).to_contain_text("×4")
 
         assert not console_errors, f"console errors: {console_errors}"
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_seatunnel_chat_roundtrip(page_url):
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        chat_input = page.locator(".st-chat input")
+        chat_input.fill("build me a pipeline")
+        chat_input.press("Enter")
+
+        # user bubble + streamed assistant reply + completion trailer
+        # generous timeouts: the first rendered event lazily imports the
+        # legacy ui module (gradio) in this bare test server; the real hub
+        # imports it at startup
+        expect(page.locator(".st-msg-user")).to_contain_text("build me a pipeline")
+        expect(page.locator(".st-msg-bot").first).to_contain_text(
+            "Streamed hello from the agent", timeout=20000)
+        expect(page.locator(".st-msg-bot").last).to_contain_text(
+            "Completed in", timeout=20000)
+        # Send button is back after the stream ends
+        expect(page.locator(".st-btn-send")).to_be_visible()
         browser.close()
