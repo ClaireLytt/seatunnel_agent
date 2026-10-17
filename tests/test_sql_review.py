@@ -1944,6 +1944,18 @@ def test_api_fix_static_mode_nothing_fixable_422(api_client):
     assert "no mechanically fixable" in r.json()["detail"]
 
 
+def test_api_review_source_tag(api_client):
+    # the React page tags its reviews source="ui"; anything else is rejected
+    ok = api_client.post("/api/sql_review/review", json={
+        "sql": "select 1", "mode": "static", "source": "ui",
+    })
+    assert ok.status_code == 200
+    bad = api_client.post("/api/sql_review/review", json={
+        "sql": "select 1", "mode": "static", "source": "cron",
+    })
+    assert bad.status_code == 422
+
+
 def test_api_stats_empty(api_client):
     r = api_client.get("/api/sql_review/stats")
     assert r.status_code == 200

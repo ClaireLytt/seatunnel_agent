@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -59,6 +59,9 @@ class ReviewRequest(BaseModel):
     line_links: bool = Field(
         False, description="Render finding locations as #srline-N markdown links"
     )
+    source: Literal["api", "ui"] = Field(
+        "api", description="Review-log source tag; the React page sends 'ui'"
+    )
 
 
 class ReviewResponse(BaseModel):
@@ -74,7 +77,7 @@ class ReviewResponse(BaseModel):
 class FixRequest(BaseModel):
     sql: str = Field(..., min_length=1, description="SQL to fix")
     dialect: str = Field("hive", description=_DIALECT_DESC)
-    mode: str = Field(
+    mode: Literal["agent", "static"] = Field(
         "agent",
         description="'agent' (LLM rewrite) or 'static' (deterministic autofixes only)",
     )
@@ -200,7 +203,8 @@ def review(req: ReviewRequest) -> ReviewResponse:
     elapsed_ms = ms_since(start)
     ReviewLogger().log(
         sql=req.sql, dialect=dialect, mode=req.mode,
-        findings=raw_findings, stats=stats, source="api", elapsed_ms=elapsed_ms,
+        findings=raw_findings, stats=stats, source=req.source,
+        elapsed_ms=elapsed_ms,
     )
 
     return ReviewResponse(

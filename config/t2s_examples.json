@@ -1,6 +1,6 @@
 [
   {
-    "id": "16cd5b3f5b3e",
+    "id": "ab64047866d2",
     "question": "top orders",
     "sql": "SELECT * FROM orders LIMIT 10",
     "tables": [
@@ -8,6 +8,6 @@
     ],
     "source": "feedback",
     "verified": true,
-    "created_at": "2026-10-17T08:35:34+00:00"
+    "created_at": "2026-10-17T12:42:46+00:00"
   }
 ]

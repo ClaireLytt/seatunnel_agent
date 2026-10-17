@@ -37,6 +37,7 @@ export interface ReviewRequest {
   rules?: Record<string, unknown>
   lang: 'zh' | 'en'
   line_links?: boolean
+  source?: 'api' | 'ui'
 }
 
 export interface FixRequest {
@@ -89,7 +90,30 @@ export interface StatsResponse {
   daily: DailyStat[]
 }
 
+// Dialect aliases accepted in ?dialect= deep links (mirrors linter._DIALECT_ALIASES)
+export const DIALECT_ALIASES: Record<string, Dialect> = {
+  odps: 'maxcompute',
+  sparksql: 'spark',
+  flinksql: 'flink',
+  hivesql: 'hive',
+  postgres: 'postgresql',
+  pg: 'postgresql',
+  mssql: 'sqlserver',
+  tsql: 'sqlserver',
+  ck: 'clickhouse',
+}
+
 const BASE = '/api/sql_review'
+
+// carries the HTTP status so callers can branch on it instead of matching
+// the detail wording
+export class ApiError extends Error {
+  status: number
+  constructor(status: number, detail: string) {
+    super(detail)
+    this.status = status
+  }
+}
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
@@ -99,7 +123,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   })
   if (!r.ok) {
     const data = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))
-    throw new Error(typeof data.detail === 'string' ? data.detail : `HTTP ${r.status}`)
+    throw new ApiError(
+      r.status,
+      typeof data.detail === 'string' ? data.detail : `HTTP ${r.status}`,
+    )
   }
   return r.json()
 }

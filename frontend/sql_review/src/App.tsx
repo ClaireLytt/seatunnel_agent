@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import { load as parseYaml } from 'js-yaml'
 import {
+  ApiError,
+  DIALECT_ALIASES,
   DIALECT_NAMES,
   DIALECTS,
   fetchStats,
@@ -62,7 +64,8 @@ export default function App() {
     const params = new URLSearchParams(window.location.search)
     const urlSql = (params.get('sql') || '').trim()
     if (urlSql) setSql(urlSql.slice(0, 20000))
-    const urlDialect = (params.get('dialect') || '').trim().toLowerCase()
+    const raw = (params.get('dialect') || '').trim().toLowerCase()
+    const urlDialect = DIALECT_ALIASES[raw] ?? raw
     if ((DIALECTS as readonly string[]).includes(urlDialect)) setDialect(urlDialect)
   }, [])
 
@@ -95,7 +98,7 @@ export default function App() {
     if (!text) return undefined
     const parsed = parseYaml(text)
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error(text.slice(0, 80))
+      throw new Error('rules must be a YAML mapping (key: value)')
     }
     return parsed as Record<string, unknown>
   }
@@ -125,6 +128,7 @@ export default function App() {
         rules,
         schema_ddl: ddl.trim() || undefined,
         line_links: true,
+        source: 'ui',
       })
       setReport(r.report)
     } catch (e) {
@@ -151,21 +155,21 @@ export default function App() {
       const r = await fix({ sql, dialect, mode, report, rules, lang })
       setFixedSql(r.fixed_sql)
     } catch (e) {
-      const msg = e instanceof Error ? e.message : `${e}`
-      setFixedSql(
-        msg.includes('no mechanically fixable')
-          ? t('fixNoneStatic')
-          : `${t('fixFailed')}: ${msg}`,
-      )
+      // static mode's "nothing mechanically fixable" comes back as 422
+      if (e instanceof ApiError && e.status === 422 && mode === 'static') {
+        setFixedSql(t('fixNoneStatic'))
+      } else {
+        setFixedSql(`${t('fixFailed')}: ${e instanceof Error ? e.message : e}`)
+      }
     } finally {
       setFixing(false)
     }
   }
 
+  // DDL / rules survive Clear, matching the legacy page (they are session
+  // context the user set up, not per-review input)
   const onClear = () => {
     setSql('')
-    setDdl('')
-    setRulesText('')
     setReport('')
     setFixedSql('')
     setError('')
