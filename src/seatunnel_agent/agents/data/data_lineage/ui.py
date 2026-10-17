@@ -37,9 +37,9 @@ from seatunnel_agent.agents.data.data_lineage.snapshot import (
     save_snapshot,
 )
 from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import SQL_DIALECTS
+from seatunnel_agent.agents.data.seatunnel.rendering import EventCollector
 from seatunnel_agent.common.config import load_settings
 from seatunnel_agent.common.page_scaffold import title_row
-from seatunnel_agent.hub.ui import EventCollector
 
 _logger = LineageLogger()
 

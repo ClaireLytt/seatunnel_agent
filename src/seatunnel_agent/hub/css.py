@@ -202,9 +202,7 @@ body:has(.st-dc-page) .st-main.st-main.st-main.st-main {
 .st-sidebar .row,
 .st-sidebar .st-sidebar-row,
 .st-sidebar .st-filter-actions,
-.st-sidebar .st-filter-confirm-row,
-.st-sidebar .st-action-row,
-.st-sidebar .st-rename-row {
+.st-sidebar .st-filter-confirm-row {
     flex-direction: row !important;
     flex-wrap: nowrap !important;
 }
@@ -215,35 +213,7 @@ body:has(.st-dc-page) .st-main.st-main.st-main.st-main {
     align-items: center !important;
     gap: 0 !important;
 }
-.st-sidebar-toggle {
-    width: 32px !important;
-    min-width: 32px !important;
-    max-width: 32px !important;
-    height: 32px !important;
-    padding: 0 !important;
-    border: 1px solid #e5e7eb !important;
-    border-radius: 6px !important;
-    background: #fff !important;
-    font-size: 14px !important;
-    cursor: pointer !important;
-    margin-bottom: 6px !important;
-}
-.st-sidebar-toggle:hover { background: #f3f4f6 !important; }
-/* Open sidebar button (visible when sidebar hidden) */
-.st-sidebar-open-btn {
-    width: 32px !important;
-    min-width: 32px !important;
-    max-width: 32px !important;
-    height: 28px !important;
-    padding: 0 !important;
-    border: 1px solid #e5e7eb !important;
-    border-radius: 6px !important;
-    background: #fff !important;
-    font-size: 14px !important;
-    cursor: pointer !important;
-    flex-shrink: 0 !important;
-}
-.st-sidebar-open-btn:hover { background: #f3f4f6 !important; }
+
 /* Data Comparison sidebar: wider, user-resizable via right-edge drag,
    horizontal scrollbar when content overflows */
 .st-sidebar.st-dc-sidebar {
@@ -783,109 +753,6 @@ a.st-hub-bad:hover { text-decoration: underline; }
     background: var(--background-fill-primary, #eee) !important;
 }
 
-/* ── Input row — pinned to bottom of viewport ── */
-.st-input-row,
-.st-input-row.row {
-    padding: 6px 20px 10px !important;
-    gap: 6px !important;
-    align-items: flex-end !important;
-    border-top: 1px solid #f0f0f0;
-    flex: 0 0 auto !important;
-    flex-shrink: 0 !important;
-    flex-grow: 0 !important;
-    height: auto !important;
-    max-height: 60px !important;
-    min-height: 44px !important;
-    background: #fff !important;
-    overflow: visible !important;
-    flex-direction: row !important;
-}
-.st-input textarea {
-    border-radius: 20px !important;
-    padding: 8px 14px !important;
-    font-size: 11px !important;
-    border: 1px solid #d1d5db !important;
-    background: #fff !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,.04) !important;
-    transition: border-color .15s, box-shadow .15s !important;
-}
-.st-input textarea:focus {
-    border-color: #f76707 !important;
-    box-shadow: 0 0 0 2px rgba(247,103,7,.12) !important;
-}
-
-/* ── Buttons ── */
-.st-btn-send {
-    border-radius: 50% !important;
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
-    max-width: 34px !important;
-    background: #f76707 !important;
-    color: #fff !important;
-    border: none !important;
-    font-size: 14px !important;
-    padding: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex-shrink: 0 !important;
-}
-.st-btn-send:hover { background: #e8590c !important; }
-.st-btn-stop {
-    border-radius: 50% !important;
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
-    max-width: 34px !important;
-    background: #dc2626 !important;
-    color: #fff !important;
-    border: none !important;
-    font-size: 12px !important;
-    padding: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex-shrink: 0 !important;
-}
-.st-btn-stop:hover { background: #b91c1c !important; }
-.st-btn-upload {
-    border-radius: 50% !important;
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
-    max-width: 34px !important;
-    background: #f3f4f6 !important;
-    color: #374151 !important;
-    border: 1px solid #d1d5db !important;
-    font-size: 16px !important;
-    padding: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    flex-shrink: 0 !important;
-}
-.st-btn-upload:hover {
-    background: #e5e7eb !important;
-    border-color: #f76707 !important;
-    color: #f76707 !important;
-}
-.st-btn-demo {
-    background: #fff !important;
-    border: 1.5px solid #e5e7eb !important;
-    color: #374151 !important;
-    font-weight: 500 !important;
-    border-radius: 20px !important;
-    font-size: 10px !important;
-    height: 34px !important;
-    padding: 0 12px !important;
-}
-.st-btn-demo:hover {
-    border-color: #f76707 !important;
-    color: #f76707 !important;
-    background: #fffbf5 !important;
-}
-
 /* ── Placeholder (empty state) ── */
 .st-empty-state {
     display: flex;
@@ -936,59 +803,7 @@ a.st-hub-bad:hover { text-decoration: underline; }
     border-color: #f76707;
     color: #f76707;
 }
-.st-docs-link {
-    display: inline-block;
-    margin-top: 16px;
-    padding: 7px 16px;
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 11px;
-    color: #6b7280;
-    text-decoration: none;
-    transition: border-color .15s, color .15s, background .15s;
-}
-.st-docs-link:hover {
-    border-color: #f76707;
-    color: #f76707;
-    background: #fffbf5;
-}
 
-/* ── Sidebar ── */
-.st-new-chat-btn {
-    width: 100% !important;
-    margin-bottom: 6px !important;
-    border-radius: 8px !important;
-}
-.st-action-row {
-    gap: 6px !important;
-    margin-top: 4px !important;
-}
-.st-action-btn {
-    font-size: 10px !important;
-    border-radius: 6px !important;
-    padding: 3px 6px !important;
-}
-.st-rename-row {
-    gap: 4px !important;
-    margin-top: 4px !important;
-    align-items: flex-end !important;
-}
-.st-rename-input textarea {
-    font-size: 10px !important;
-    padding: 4px 8px !important;
-    border-radius: 6px !important;
-}
-.st-rename-ok, .st-rename-cancel {
-    font-size: 12px !important;
-    border-radius: 6px !important;
-    min-width: 32px !important;
-    height: 30px !important;
-}
-.st-delete-btn {
-    border-radius: 6px !important;
-}
-.st-history-dd { font-size: 10px !important; }
 .st-connect-btn {
     width: 100% !important;
     border-radius: 8px !important;
@@ -1191,7 +1006,6 @@ a.st-hub-bad:hover { text-decoration: underline; }
     color: #f76707;
     background: #fff7ed;
 }
-
 
 /* ── History / Favorites page ── */
 .st-history-page {

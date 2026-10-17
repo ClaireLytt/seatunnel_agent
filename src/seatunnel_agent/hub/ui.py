@@ -8,16 +8,6 @@ from __future__ import annotations
 
 import gradio as gr
 
-from seatunnel_agent.agents.data.seatunnel.ui import (  # noqa: F401 — re-exported for back-compat
-    _TOOL_EMOJI,
-    EventCollector,
-    _build_template_choices,
-    _export_session,
-    _format_events_as_chat,
-    _normalize_chat,
-    _render_seatunnel_page,
-    _template_to_prompt,
-)
 from seatunnel_agent.hub.css import (
     _CUSTOM_CSS,
 )
@@ -164,7 +154,7 @@ def create_ui() -> gr.Blocks:
 
     # plugin pages: every seatunnel_agent.<pkg>.manifest registers itself
     from seatunnel_agent.hub.registry import discover, resolve
-    sidebar_resize = {"/seatunnel", "/datacompare"}
+    sidebar_resize = {"/datacompare"}
     for mf in discover():
         if mf.external:
             continue  # route served outside Gradio (React static mount)

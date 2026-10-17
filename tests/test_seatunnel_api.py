@@ -538,7 +538,7 @@ def test_demo_streams_validate_script_for_existing_config(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("UI_DEMO_STEP_DELAY", "0")
-    from seatunnel_agent.agents.data.seatunnel.ui import _DEMO_CONFIG
+    from seatunnel_agent.agents.data.seatunnel.rendering import _DEMO_CONFIG
 
     cfg = tmp_path / "pipe.conf"
     cfg.write_text(_DEMO_CONFIG, encoding="utf-8")

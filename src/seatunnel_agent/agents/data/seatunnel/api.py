@@ -33,7 +33,7 @@ from seatunnel_agent.common.config import load_settings
 router = APIRouter(prefix="/api/seatunnel", tags=["seatunnel"])
 
 # the four legacy agent modes; labels mirror the Gradio page's i18n dict
-# (seatunnel.ui._I18N mode_* keys) so the React page loses no wording
+# (rendering._I18N mode_* keys) so the React page loses no wording
 _MODES: list[dict[str, str]] = [
     {"key": "nl", "en": "Natural Language", "zh": "自然语言描述"},
     {"key": "run", "en": "Run Config", "zh": "运行配置文件"},
@@ -138,8 +138,8 @@ def _sse(obj: dict[str, Any]) -> str:
 
 
 def _render_event(ev: dict[str, Any], start_time: float) -> str | None:
-    """Render one agent event to the legacy chat markdown (ui.py renderer)."""
-    from seatunnel_agent.agents.data.seatunnel.ui import _format_events_as_chat
+    """Render one agent event to the legacy chat markdown (rendering.py)."""
+    from seatunnel_agent.agents.data.seatunnel.rendering import _format_events_as_chat
 
     msgs = _format_events_as_chat([ev], start_time)
     return msgs[0]["content"] if msgs else None
@@ -264,7 +264,7 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
             if conv.agent is not None:
                 conv.agent._on_event = None
             # persist the completed exchange (legacy _handle_submit parity)
-            from seatunnel_agent.agents.data.seatunnel.ui import (
+            from seatunnel_agent.agents.data.seatunnel.rendering import (
                 _format_events_as_chat,
             )
 
@@ -507,8 +507,12 @@ def demo_stream(req: DemoRequest) -> StreamingResponse:
     import os
     import tempfile
 
+    from seatunnel_agent.agents.data.seatunnel.rendering import (
+        _DEMO_CONFIG,
+        _DEMO_STEPS,
+        _t,
+    )
     from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
-    from seatunnel_agent.agents.data.seatunnel.ui import _DEMO_CONFIG, _DEMO_STEPS, _t
     from seatunnel_agent.common.config import Settings, env_float
 
     delay = env_float("UI_DEMO_STEP_DELAY", 0.35)

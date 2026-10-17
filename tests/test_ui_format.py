@@ -1,21 +1,14 @@
-"""Tests for UI event formatting and export."""
+"""Tests for the SeaTunnel event->chat rendering helpers (rendering.py)."""
 
 from __future__ import annotations
 
 import json
 import threading
 import time
-import zipfile
-from pathlib import Path
 
-from seatunnel_agent.common.config import Settings
-from seatunnel_agent.hub.ui import (
+from seatunnel_agent.agents.data.seatunnel.rendering import (
     EventCollector,
-    _build_template_choices,
-    _export_session,
     _format_events_as_chat,
-    _normalize_chat,
-    _template_to_prompt,
 )
 
 
@@ -108,99 +101,6 @@ class TestFormatEvents:
             assert tool_name in msgs[0]["content"]
 
 
-class TestExportSession:
-    def test_export_generates_zip(self):
-        history = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there"},
-        ]
-        path = _export_session(history, "test123")
-        assert path is not None
-        assert Path(path).exists()
-        with zipfile.ZipFile(path) as zf:
-            assert "report.md" in zf.namelist()
-            content = zf.read("report.md").decode()
-            assert "Hello" in content
-            assert "Hi there" in content
-            assert "test123" in content
-        Path(path).unlink()
-
-    def test_export_includes_config_files(self, tmp_path):
-        conf = tmp_path / "job.conf"
-        conf.write_text('source { FakeSource {} }\nsink { Console {} }')
-        history = [
-            {"role": "user", "content": "Create a pipeline"},
-            {"role": "assistant", "content": "Done"},
-        ]
-        path = _export_session(history, "sid1", created_configs=[str(conf)])
-        assert path is not None
-        with zipfile.ZipFile(path) as zf:
-            names = zf.namelist()
-            assert "configs/job.conf" in names
-            assert "FakeSource" in zf.read("configs/job.conf").decode()
-            report = zf.read("report.md").decode()
-            assert "job.conf" in report
-        Path(path).unlink()
-
-    def test_export_empty_history(self):
-        assert _export_session([], "x") is None
-
-
-class TestNormalizeChat:
-    def test_plain_dicts_unchanged(self):
-        history = [{"role": "user", "content": "hello"}]
-        result = _normalize_chat(history)
-        assert result == [{"role": "user", "content": "hello"}]
-
-    def test_unwraps_single_nested_textmsg(self):
-        history = [{"role": "user", "content": "{'text': 'actual text', 'type': 'text'}"}]
-        result = _normalize_chat(history)
-        assert result[0]["content"] == "actual text"
-
-    def test_unwraps_double_nested_textmsg(self):
-        inner = "{'text': 'deep content', 'type': 'text'}"
-        outer = "{'text': \"" + inner + "\", 'type': 'text'}"
-        history = [{"role": "assistant", "content": outer}]
-        result = _normalize_chat(history)
-        assert result[0]["content"] == "deep content"
-
-    def test_dict_content_list(self):
-        history = [{"role": "user", "content": [{"text": "from dict", "type": "text"}]}]
-        result = _normalize_chat(history)
-        assert result[0]["content"] == "from dict"
-
-    def test_chatmessage_objects(self):
-        from unittest.mock import MagicMock
-        msg = MagicMock()
-        msg.role = "assistant"
-        tm = MagicMock()
-        tm.text = "response text"
-        msg.content = [tm]
-        result = _normalize_chat([msg])
-        assert result[0]["content"] == "response text"
-
-    def test_content_with_newlines(self):
-        text = "line1\nline2\nline3"
-        wrapped = str({"text": text, "type": "text"})
-        history = [{"role": "assistant", "content": wrapped}]
-        result = _normalize_chat(history)
-        assert result[0]["content"] == text
-
-    def test_export_unwraps_textmsg_in_report(self):
-        history = [
-            {"role": "user", "content": "{'text': 'my question', 'type': 'text'}"},
-            {"role": "assistant", "content": "{'text': 'my answer', 'type': 'text'}"},
-        ]
-        path = _export_session(history, "unwrap-test")
-        assert path is not None
-        with zipfile.ZipFile(path) as zf:
-            report = zf.read("report.md").decode()
-            assert "my question" in report
-            assert "my answer" in report
-            assert "{'text':" not in report
-        Path(path).unlink()
-
-
 class TestFormatEventsThinkingAndFinal:
     def test_thinking_event(self):
         events = [{"type": "thinking", "text": "Analyzing the config..."}]
@@ -223,26 +123,6 @@ class TestFormatEventsThinkingAndFinal:
         events = [{"type": "tool_result", "name": "read_config", "result": json.dumps({"content": "env{}"})}]
         msgs = _format_events_as_chat(events)
         assert len(msgs) == 1
-
-
-class TestExportWithSettings:
-    def test_report_includes_model_and_provider(self):
-        settings = Settings(
-            api_key="sk-test",
-            model_name="deepseek-chat",
-            llm_provider="openai",
-        )
-        history = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi"},
-        ]
-        path = _export_session(history, "settings-test", settings=settings)
-        assert path is not None
-        with zipfile.ZipFile(path) as zf:
-            report = zf.read("report.md").decode()
-            assert "deepseek-chat" in report
-            assert "openai" in report
-        Path(path).unlink()
 
 
 class TestEventCollector:
@@ -419,35 +299,6 @@ class TestFormatEventsNewTools:
         assert "version 3" in msgs[0]["content"]
 
 
-class TestTemplateHelpers:
-    def test_build_template_choices_en(self):
-        choices = _build_template_choices("en")
-        assert len(choices) >= 7
-        assert choices[0][1] == ""
-        names = [c[1] for c in choices]
-        assert "fake_to_console" in names
-
-    def test_build_template_choices_zh(self):
-        choices = _build_template_choices("zh")
-        assert len(choices) >= 7
-
-    def test_template_to_prompt_en(self):
-        result = _template_to_prompt("fake_to_console", "en")
-        assert "fake_to_console" in result
-        assert "template" in result.lower()
-
-    def test_template_to_prompt_zh(self):
-        result = _template_to_prompt("fake_to_console", "zh")
-        assert "fake_to_console" in result
-        assert "模板" in result
-
-    def test_template_to_prompt_empty_name(self):
-        assert _template_to_prompt("", "en") == ""
-
-    def test_template_to_prompt_nonexistent(self):
-        assert _template_to_prompt("no_such", "en") == ""
-
-
 class TestElapsedTimeDisplay:
     def test_step_shows_elapsed(self):
         import time as _time
@@ -480,7 +331,7 @@ class TestTokenUsageDisplay:
 
 class TestNewToolEmojis:
     def test_restore_config_emoji(self):
-        from seatunnel_agent.hub.ui import _TOOL_EMOJI
+        from seatunnel_agent.agents.data.seatunnel.rendering import _TOOL_EMOJI
         assert "restore_config_version" in _TOOL_EMOJI
         assert "delete_config" in _TOOL_EMOJI
         assert "compare_config_versions" in _TOOL_EMOJI

@@ -1,7 +1,7 @@
 """i18n parity for the React /seatunnel workspace (ticket 07).
 
 Checks frontend/seatunnel/src/i18n.ts against the legacy Gradio page's
-Python i18n dict (seatunnel.ui._I18N) — the source of truth for wording:
+Python i18n dict (seatunnel.rendering._I18N) — the source of truth for wording:
 
 - en and zh expose identical key sets;
 - every t('key') used in the workspace .tsx files is defined;
@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from seatunnel_agent.agents.data.seatunnel.ui import _I18N
+from seatunnel_agent.agents.data.seatunnel.rendering import _I18N
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "frontend" / "seatunnel" / "src"
