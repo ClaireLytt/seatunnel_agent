@@ -1918,6 +1918,23 @@ def test_api_fix_with_given_report(monkeypatch, api_client):
     assert r.json()["report"] == "my custom report"
 
 
+def test_api_fix_static_mode_no_llm(api_client):
+    # deterministic autofix path: NULL comparison rewritten, no LLM touched
+    r = api_client.post("/api/sql_review/fix", json={
+        "sql": "select 1 from t where a = NULL", "mode": "static",
+    })
+    assert r.status_code == 200
+    assert "IS NULL" in r.json()["fixed_sql"]
+
+
+def test_api_fix_static_mode_nothing_fixable_422(api_client):
+    r = api_client.post("/api/sql_review/fix", json={
+        "sql": "select id from t", "mode": "static",
+    })
+    assert r.status_code == 422
+    assert "no mechanically fixable" in r.json()["detail"]
+
+
 def test_api_env_db_defaults(monkeypatch):
     import importlib
     monkeypatch.setenv("SQLREVIEW_DB_HOST", "envhost")

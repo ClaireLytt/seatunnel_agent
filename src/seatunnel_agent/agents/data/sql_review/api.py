@@ -71,6 +71,10 @@ class ReviewResponse(BaseModel):
 class FixRequest(BaseModel):
     sql: str = Field(..., min_length=1, description="SQL to fix")
     dialect: str = Field("hive", description=_DIALECT_DESC)
+    mode: str = Field(
+        "agent",
+        description="'agent' (LLM rewrite) or 'static' (deterministic autofixes only)",
+    )
     report: str | None = Field(
         None, description="Review report markdown; when omitted a static review runs first"
     )
@@ -217,6 +221,23 @@ def fix(req: FixRequest) -> FixResponse:
         )
     dialect = normalize_dialect(req.dialect)
     lang = normalize_lang(req.lang)
+
+    # static mode: deterministic autofixes, no LLM (mirrors the UI's
+    # static-review Fix path) — 422 when nothing is mechanically fixable
+    if req.mode == "static":
+        from .autofix import apply_static_fixes
+        config = _parse_rules(req.rules)
+        fixed_sql, applied = apply_static_fixes(req.sql, dialect, config=config)
+        if not applied:
+            raise HTTPException(
+                status_code=422, detail="no mechanically fixable issue found"
+            )
+        return FixResponse(
+            fixed_sql=fixed_sql,
+            report=(req.report or "").strip(),
+            dialect=dialect,
+            elapsed_ms=ms_since(start),
+        )
 
     report_md = (req.report or "").strip()
     if not report_md:

@@ -38,6 +38,22 @@ export interface ReviewRequest {
   lang: 'zh' | 'en'
 }
 
+export interface FixRequest {
+  sql: string
+  dialect: string
+  mode: 'static' | 'agent'
+  report?: string
+  rules?: Record<string, unknown>
+  lang: 'zh' | 'en'
+}
+
+export interface FixResponse {
+  fixed_sql: string
+  report: string
+  dialect: string
+  elapsed_ms: number
+}
+
 export interface ReviewResponse {
   report: string
   findings: Record<string, unknown>[]
@@ -63,3 +79,4 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const review = (req: ReviewRequest) => post<ReviewResponse>('/review', req)
+export const fix = (req: FixRequest) => post<FixResponse>('/fix', req)

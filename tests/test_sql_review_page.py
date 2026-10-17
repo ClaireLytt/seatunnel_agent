@@ -75,10 +75,28 @@ def test_sql_review_page_smoke(page_url):
         expect(page.locator("#dialect option")).to_have_count(10)
 
         # static review round-trip: SELECT * triggers at least one finding
-        page.locator("#sql").fill("SELECT * FROM ods.user_log")
+        page.locator("#sql").fill("SELECT * FROM ods.user_log WHERE a = NULL")
         page.get_by_role("button", name="Start Review").click()
         report = page.locator(".sr-report")
         expect(report).to_be_visible(timeout=15000)
         expect(report).to_contain_text("CR Report")
+
+        # download button appears once a report exists
+        expect(page.get_by_role("button", name="Download Report (.md)")).to_be_visible()
+
+        # static fix round-trip: a = NULL is mechanically fixable, no LLM
+        page.get_by_role("button", name="Generate Fixed SQL (LLM)").click()
+        expect(page.get_by_text("IS NULL").first).to_be_visible(timeout=15000)
+
+        # DDL / rules collapsibles open and accept input
+        page.get_by_role("button", name="Table DDL").click()
+        expect(page.locator("#ddl")).to_be_visible()
+        page.get_by_role("button", name="Rule config").click()
+        expect(page.locator("#rules")).to_be_visible()
+
+        # clear resets form and report
+        page.get_by_role("button", name="Clear").click()
+        expect(page.locator("#sql")).to_have_value("")
+        expect(page.locator(".sr-report")).to_have_count(0)
 
         browser.close()
