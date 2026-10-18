@@ -1,31 +1,20 @@
-# Ticket 01: React workspace + lint 全功能 + cutover 退役
+# 01: Config Lint React workspace + lint 全功能 + cutover 退役
 
-## 范围
+**What to build:** 用户打开 `/conflint` 看到与其他 React 页同一设计语言的
+Config Lint 页：粘贴 HOCON 配置点"Lint 配置"得到 Markdown 报告；展开
+"目录批量 Lint"输入目录（默认示例目录）得到批量报告；空输入/坏目录给出
+本地化提示；zh/en 切换与暗色模式全程正确。旧 Gradio 页随 cutover 退役，
+路由与 REST 契约不变。
 
-1. **前置截图**：迁移前用脚本对 Gradio `/conflint` 截 before 截图（zh/en、亮/暗），
-   存 `.scratch/conflint-react/screenshots/`（参照 config_migrate 的 shot_old.py）。
-2. **新建 workspace** `frontend/config_lint/`（目录名 = manifest.name）：
-   复制 uitest 骨架，vite `base: '/conflint/'`，dev proxy 到 `/api/conflint`，
-   加入 `frontend/package.json` workspaces；复用 `@shared`（theme.css、
-   tailwind-preset、card、lang.ts）。
-3. **页面功能 1:1**（对照 `agents/data/config_lint/ui.py:67-137`）：
-   - HOCON 配置多行输入 + "Lint 配置" 主按钮 → `POST /api/conflint/lint`
-     （`config` + `lang` + `report=true`），渲染 markdown 报告；
-   - "目录批量 Lint" 折叠区：目录输入（默认 `examples/conflint_demo`）+ 按钮 →
-     同端点 `dir` 字段；空输入/坏目录的警告文案与 Gradio 版对等；
-   - i18n dict 从 `ui.py:26-61` 原样搬到 i18next；暗色模式走 @shared theme。
-4. **REST 挂载核对**：现有 router 经 manifest `api=` 挂载；按触点清单第 4 点
-   确认 external 切换后 API 仍可达（必要时在 hub/ui.py 无条件挂载并清 manifest api=，
-   与先例一致）。
-5. **Cutover**：manifest `external=True`、`render=""`；删除 `config_lint/ui.py`；
-   `seatunnel-agent ui --build` 构建验证页面可用；after 截图（zh/en、亮/暗）。
+**Blocked by:** None (can start immediately)
 
-## 验证
+**Status:** ready-for-agent
 
-- ruff check src tests、mypy、定向测试（config_lint 相关 + test_registry）
-- `cd frontend && npm run lint --workspace config_lint && npm run build --workspace config_lint`
-- 手动/脚本截图对比 before/after
-
-## 不做
-
-- 不改 linter.py/report.py 后端逻辑；不加新功能；不动其他页面。
+- [ ] 迁移前截取 Gradio 版 before 截图（zh/en × 亮/暗）存入 spec 目录
+- [ ] 新建 React workspace（目录名 = manifest.name），复用 @shared 主题/卡片/语言桥，加入 workspaces
+- [ ] 单配置 lint 往返：输入 → 调既有 lint REST → 渲染 Markdown 报告；空输入提示与 Gradio 版对等
+- [ ] 目录批量 lint 往返：折叠面板 + 默认示例目录；坏目录本地化错误与 Gradio 版对等
+- [ ] i18n 字典原样搬入 i18next；暗色模式走共享主题
+- [ ] cutover：manifest 切 external、删除 Gradio ui 模块；REST 挂载核对无双挂载
+- [ ] `seatunnel-agent ui --build` 构建后页面可用，截取 after 截图（zh/en × 亮/暗）
+- [ ] ruff / mypy / 定向测试通过；workspace lint + build 通过
