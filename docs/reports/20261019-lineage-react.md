@@ -30,7 +30,7 @@ npm run build --workspace data_lineage -> ✓ built(mermaid chunk 体积告警,�
 uitest smoke (--no-llm) -> PASS 39 · FAIL 0 · ERROR 0 · SKIP 0 · MANUAL 0 · 耗时 148s
                            报告: runs/20261019_031152/report.html
                            (42→39:LIN/SCR1 smoke YAML 退役;IMP 用例保持通过)
-python scripts/check_workflow.py -> (报告落盘提交后补记,见文末)
+python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / [PASS] 报告落盘(全 PASS)
 ```
 
 手工验证:hub 启动后 `GET /lineage/` 200、`GET /impact` 200(Gradio 页不受损);
