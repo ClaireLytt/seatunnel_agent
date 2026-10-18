@@ -80,5 +80,47 @@ def test_datacompare_page_smoke(page_url):
         # results panel placeholder present
         expect(page.get_by_role("heading", name="Results")).to_be_visible()
 
+        # ticket 03: core action buttons present and disabled until ready
+        for action in ("schema", "count", "sample", "aggregate"):
+            btn = page.locator(f"[data-testid=action-{action}]")
+            expect(btn).to_be_visible()
+            expect(btn).to_be_disabled()
+
         assert not console_errors, f"console errors: {console_errors}"
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_core_action_renders_cards(page_url, tmp_path):
+    """Connect two SQLite fixtures, run Schema Diff, see the server card."""
+    import sqlite3
+
+    from playwright.sync_api import expect, sync_playwright
+
+    for name in ("a.db", "b.db"):
+        conn = sqlite3.connect(tmp_path / name)
+        conn.execute("CREATE TABLE orders (id INTEGER, val TEXT)")
+        conn.execute("INSERT INTO orders VALUES (1, 'x')")
+        conn.commit()
+        conn.close()
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        for side, name in (("a", "a.db"), ("b", "b.db")):
+            form = page.locator(f"[data-testid=connect-{side}]")
+            form.locator(f"#ds-{side}").select_option(label="SQLite")
+            form.locator(f"#db-{side}").fill(str(tmp_path / name))
+            form.get_by_role("button", name="Connect").click()
+            expect(page.locator(f"[data-testid=status-{side}]")).to_contain_text("✅")
+            form.locator(f"#table-{side}").select_option("orders")
+
+        schema_btn = page.locator("[data-testid=action-schema]")
+        expect(schema_btn).to_be_enabled()
+        schema_btn.click()
+        cards = page.locator("[data-testid=result-cards]")
+        expect(cards).to_contain_text("Schema Comparison")
+        expect(cards).to_contain_text("Schemas are identical")
         browser.close()

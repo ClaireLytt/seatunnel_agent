@@ -161,3 +161,95 @@ def test_tables_unknown_session_404(client):
     r = client.get("/api/datacompare/tables",
                    params={"session_id": "nope", "side": "a"})
     assert r.status_code == 404
+
+
+# ── ticket 03: core comparison actions ──────────────────────────────
+
+
+@pytest.fixture()
+def connected(client, db_a, db_b) -> str:
+    """Session with both sides connected to the SQLite fixtures."""
+    sid = _session(client)
+    assert _connect(client, sid, "a", db=db_a).json()["ok"] is True
+    assert _connect(client, sid, "b", db=db_b).json()["ok"] is True
+    return sid
+
+
+def _action(client, sid, action, **kw):
+    body = {"session_id": sid, "table_a": "orders", "table_b": "orders",
+            "lang": "en"}
+    body.update(kw)
+    return client.post(f"/api/datacompare/compare/{action}", json=body)
+
+
+def test_compare_schema_identical_card(client, connected):
+    r = _action(client, connected, "schema")
+    assert r.status_code == 200
+    html = r.json()["html"]
+    assert "Schema Comparison" in html
+    assert "Schemas are identical" in html
+
+
+def test_compare_schema_diff_card(client, connected, tmp_path):
+    # side B gets a table with an extra column -> "added" row in the card
+    db_c = tmp_path / "c.db"
+    conn = sqlite3.connect(db_c)
+    conn.execute("CREATE TABLE orders (id INTEGER, val TEXT, extra REAL)")
+    conn.commit()
+    conn.close()
+    assert _connect(client, connected, "b", db=str(db_c)).json()["ok"] is True
+    html = _action(client, connected, "schema").json()["html"]
+    assert "Added" in html
+    assert "extra" in html
+
+
+def test_compare_count_card_with_threshold(client, connected):
+    # a.orders=2 rows, b.orders=1 row -> delta -1 (-50%)
+    html = _action(client, connected, "count", threshold="10%").json()["html"]
+    assert "Row Count Comparison" in html
+    assert "<b>2</b>" in html and "<b>1</b>" in html
+    assert "Delta: +1 (+50.0%)" in html
+    assert "FAIL" in html
+
+    html2 = _action(client, connected, "count", threshold="60%").json()["html"]
+    assert "PASS" in html2
+
+
+def test_compare_sample_keyed_card(client, connected):
+    html = _action(client, connected, "sample",
+                   key_columns="id").json()["html"]
+    assert "Key-Based Diff" in html
+    assert "Removed rows" in html and "-1" in html
+
+
+def test_compare_aggregate_card(client, connected):
+    html = _action(client, connected, "aggregate").json()["html"]
+    assert "Aggregate Comparison" in html
+
+
+def test_compare_guard_not_connected(client):
+    sid = _session(client)
+    html = _action(client, sid, "schema").json()["html"]
+    assert html == "Please connect both data sources first"
+
+
+def test_compare_guard_tables_missing(client, connected):
+    html = _action(client, connected, "schema", table_a="").json()["html"]
+    assert html == "Please select tables on both sides"
+
+
+def test_compare_guard_where_ddl(client, connected):
+    html = _action(client, connected, "count",
+                   where="1=1; DROP TABLE x").json()["html"]
+    assert "forbidden keyword" in html
+
+
+def test_compare_unknown_session_404(client):
+    r = _action(client, "nope", "schema")
+    assert r.status_code == 404
+
+
+def test_compare_error_is_card_not_500(client, connected):
+    html = _action(client, connected, "count",
+                   table_b="no_such_table").json()["html"]
+    assert "❌" in html

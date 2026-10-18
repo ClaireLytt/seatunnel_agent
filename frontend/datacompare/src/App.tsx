@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createSession, fetchMeta, type Meta } from '@/api'
+import { createSession, defaultCompareOptions, fetchMeta, type Meta } from '@/api'
+import { ActionRow } from '@/components/ActionRow'
 import { ConnectForm } from '@/components/ConnectForm'
 import { Card } from '@shared/components/card'
 
@@ -12,6 +13,10 @@ export default function App() {
   const [error, setError] = useState('')
   const [tableA, setTableA] = useState('')
   const [tableB, setTableB] = useState('')
+  const [resultHtml, setResultHtml] = useState('')
+
+  // Ticket 05 (options block) replaces this constant with live form state.
+  const options = defaultCompareOptions
 
   useEffect(() => {
     fetchMeta()
@@ -66,6 +71,13 @@ export default function App() {
                 table={tableB}
                 onTable={setTableB}
               />
+              <ActionRow
+                sessionId={sessionId}
+                tableA={tableA}
+                tableB={tableB}
+                options={options}
+                onResult={setResultHtml}
+              />
             </>
           )}
         </aside>
@@ -73,16 +85,27 @@ export default function App() {
         {/* Results panel (actions land here from ticket 03 on) */}
         <main className="min-w-0 flex-1">
           <h2 className="mb-2 font-display text-xl font-bold text-ink">{t('results')}</h2>
-          <Card className="flex min-h-[420px] items-center justify-center">
-            <div className="text-center">
-              <div aria-hidden className="font-mono text-3xl text-ink-soft">
-                A ⇄ B
+          {resultHtml ? (
+            <Card className="min-h-[420px]">
+              {/* Server-rendered comparison cards (inline-styled, 1:1 legacy) */}
+              <div
+                data-testid="result-cards"
+                className="overflow-x-auto"
+                dangerouslySetInnerHTML={{ __html: resultHtml }}
+              />
+            </Card>
+          ) : (
+            <Card className="flex min-h-[420px] items-center justify-center">
+              <div className="text-center">
+                <div aria-hidden className="font-mono text-3xl text-ink-soft">
+                  A ⇄ B
+                </div>
+                <p className="mt-3 max-w-[360px] font-mono text-[13px] text-muted">
+                  {t('resultsEmpty')}
+                </p>
               </div>
-              <p className="mt-3 max-w-[360px] font-mono text-[13px] text-muted">
-                {t('resultsEmpty')}
-              </p>
-            </div>
-          </Card>
+            </Card>
+          )}
         </main>
       </div>
     </div>

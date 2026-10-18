@@ -58,6 +58,50 @@ export async function createSession(): Promise<string> {
   return data.session_id
 }
 
+// Global comparison options. Defaults mirror the legacy page; the options
+// block UI (ticket 05) plugs real values into the same object.
+export interface CompareOptions {
+  where: string
+  threshold: string
+  key_columns: string
+  strategy: string
+  column_mapping: string
+  masking: boolean
+  stratified_col: string
+}
+
+export const defaultCompareOptions: CompareOptions = {
+  where: '',
+  threshold: '',
+  key_columns: '',
+  strategy: 'TOP N',
+  column_mapping: '',
+  masking: true,
+  stratified_col: '',
+}
+
+export type CoreAction = 'schema' | 'count' | 'sample' | 'aggregate'
+
+export async function compareAction(
+  action: CoreAction,
+  params: {
+    session_id: string
+    table_a: string
+    table_b: string
+    lang: string
+  } & CompareOptions,
+): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(`${BASE}/compare/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    action,
+  )
+  return data.html
+}
+
 export async function connectSide(params: ConnectParams): Promise<ConnectResult> {
   return json(
     await fetch(`${BASE}/connect`, {
