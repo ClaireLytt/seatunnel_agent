@@ -533,7 +533,7 @@ class DCPage:
         loc = self.page.locator(".st-main .st-schema-card")
         if loc.count():
             return loc.first
-        for cls in (".st-pii-main", ".st-lgi-main", ".st-sdf-main",
+        for cls in (".st-pii-main", ".st-lgi-main",
                     ".st-dag-main", ".st-mdf-main"):
             loc = self.page.locator(cls)
             if loc.count():
