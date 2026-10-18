@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   compareEnvironments,
@@ -19,12 +19,14 @@ export function GenerationCard({
   tableB,
   options,
   onResult,
+  resetSeq,
 }: {
   sessionId: string
   tableA: string
   tableB: string
   options: CompareOptions
   onResult: (html: string) => void
+  resetSeq: number
 }) {
   const { t, i18n } = useTranslation()
   const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
@@ -34,6 +36,17 @@ export function GenerationCard({
   const [envA, setEnvA] = useState('')
   const [envB, setEnvB] = useState('')
   const [envTable, setEnvTable] = useState('')
+
+  // options reset also clears lineage SQL + env A/B/table (legacy
+  // 27-output reset, inventory ui.py:2142-2151)
+  useEffect(() => {
+    if (resetSeq > 0) {
+      setLineageSql('')
+      setEnvA('')
+      setEnvB('')
+      setEnvTable('')
+    }
+  }, [resetSeq])
 
   const guard = async (fn: () => Promise<void>) => {
     setBusy(true)

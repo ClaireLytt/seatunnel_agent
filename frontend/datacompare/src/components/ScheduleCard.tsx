@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '@/i18n'
 import {
@@ -26,6 +26,7 @@ export function ScheduleCard({
   webhook,
   onWebhook,
   featureFields,
+  resetSeq,
 }: {
   sessionId: string
   tableA: string
@@ -35,9 +36,17 @@ export function ScheduleCard({
   webhook: WebhookOptions
   onWebhook: (w: WebhookOptions) => void
   featureFields?: () => FeatureFields
+  resetSeq: number
 }) {
   const { t } = useTranslation()
   const [interval, setInterval] = useState('15')
+
+  // options reset restores the interval default (legacy 27-output reset,
+  // inventory ui.py:2142-2151: schedule_interval→"15"); the running
+  // schedule itself is untouched, like legacy.
+  useEffect(() => {
+    if (resetSeq > 0) setInterval('15')
+  }, [resetSeq])
   const [status, setStatus] = useState<ScheduleStatus | null>(null)
   const [message, setMessage] = useState('')
 

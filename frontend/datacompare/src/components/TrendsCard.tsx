@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bar,
@@ -20,6 +20,9 @@ const lang = () => (i18n.language.startsWith('zh') ? 'zh' : 'en')
 // History trends (legacy accordion H, ui.py:818): the matplotlib PNG is
 // replaced by recharts panels fed by GET /trends; alert evaluation stays
 // server-side and its card arrives as HTML.
+// Accepted presentational deviation: the legacy figure drew mismatches and
+// schema_changes as two separate subplots; here they are one grouped
+// BarChart (same data, same series labels).
 const axisTick = { fill: 'var(--muted)', fontSize: 10, fontFamily: 'IBM Plex Mono' }
 const axisLine = { stroke: 'var(--line)' }
 const tooltipStyle = {
@@ -44,9 +47,15 @@ function Panel({ label, children }: { label: string; children: React.ReactElemen
   )
 }
 
-export function TrendsCard() {
+export function TrendsCard({ resetSeq }: { resetSeq: number }) {
   const { t } = useTranslation()
   const [rules, setRules] = useState('')
+
+  // options reset also clears the alert rules (legacy 27-output reset,
+  // inventory ui.py:2142-2151)
+  useEffect(() => {
+    if (resetSeq > 0) setRules('')
+  }, [resetSeq])
   const [entries, setEntries] = useState<TrendEntry[] | null>(null)
   const [alertsHtml, setAlertsHtml] = useState('')
   const [error, setError] = useState('')

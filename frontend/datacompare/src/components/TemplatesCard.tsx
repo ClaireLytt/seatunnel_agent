@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   batchRunTemplates,
@@ -19,11 +19,13 @@ export function TemplatesCard({
   getTemplate,
   onApply,
   onResult,
+  resetSeq,
 }: {
   sessionId: string
   getTemplate: () => Omit<ComparisonTemplate, 'name'>
   onApply: (tmpl: ComparisonTemplate) => void
   onResult: (html: string) => void
+  resetSeq: number
 }) {
   const { t, i18n } = useTranslation()
   const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
@@ -35,6 +37,13 @@ export function TemplatesCard({
   const [busy, setBusy] = useState(false)
 
   const fail = (e: unknown) => setStatus(`❌ ${e instanceof Error ? e.message : e}`)
+
+  // options reset also clears the template name input (legacy 27-output
+  // reset, inventory ui.py:2142-2151); the template dropdowns stay, like
+  // legacy's "don't reset dropdowns with .change handlers" rule.
+  useEffect(() => {
+    if (resetSeq > 0) setName('')
+  }, [resetSeq])
 
   const refresh = () =>
     listTemplates()

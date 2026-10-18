@@ -24,10 +24,15 @@ import { ScheduleCard } from '@/components/ScheduleCard'
 import { TemplatesCard } from '@/components/TemplatesCard'
 import { TrendsCard } from '@/components/TrendsCard'
 import { ResultsToolbar } from '@/components/ResultsToolbar'
+import { useTabFill } from '@/tabFill'
 import { Card } from '@shared/components/card'
 
+// NOTE (accepted, ticket 10/11): each card takes the same ~5-prop bundle
+// (sessionId/tableA/tableB/options/onResult). Consolidating that into a
+// context or a props object is deferred to the cleanup tickets.
 export default function App() {
   const { t } = useTranslation()
+  useTabFill()
 
   const [meta, setMeta] = useState<Meta | null>(null)
   const [sessionId, setSessionId] = useState('')
@@ -53,9 +58,16 @@ export default function App() {
   const [presetB, setPresetB] = useState<{ seq: number; conn: PresetConnection }>()
   const presetSeq = useRef(0)
 
-  // Feature-accordion fields that compare-all's optional stages consume;
-  // a ref so accordion keystrokes don't re-render the whole page.
+  // Feature-accordion fields that compare-all's optional stages and the
+  // template snapshot consume; a ref so accordion keystrokes don't
+  // re-render the whole page. applyTemplate writes back through the
+  // seq'd featureApply prop (the applyPreset mechanism).
   const featureFieldsRef = useRef<FeatureFields>({})
+  const [featureApply, setFeatureApply] = useState<{
+    seq: number
+    fields: FeatureFields
+  }>()
+  const featureApplySeq = useRef(0)
 
   useEffect(() => {
     fetchMeta()
@@ -66,8 +78,13 @@ export default function App() {
       .catch((e) => setError(String(e)))
   }, [])
 
+  // Legacy _reset_options (inventory ui.py:2142-2151, 27 outputs): options
+  // block + accordion fields (resetSeq consumers) + webhook url/on-fail
+  // here. Deliberately NOT reset, like legacy: dropdowns with .change
+  // handlers (report/template/preset selects) and connections/table picks.
   const resetOptions = () => {
     setOptions(OPTIONS_DEFAULTS)
+    setWebhook(WEBHOOK_DEFAULTS)
     setResetSeq((s) => s + 1)
   }
 
@@ -88,9 +105,8 @@ export default function App() {
     ;(side === 'a' ? setPresetA : setPresetB)({ seq: presetSeq.current, conn })
   }
 
-  // Templates: snapshot and restore of tables + options (fields owned by
-  // other feature cards — watermark/quality/webhook — ride along empty
-  // until those cards land and wire in).
+  // Templates: snapshot and restore of tables + options + the accordion
+  // fields the template schema carries (watermark column, quality rules).
   const getTemplate = () => ({
     table_a: tableA,
     table_b: tableB,
@@ -99,8 +115,8 @@ export default function App() {
     threshold: options.threshold,
     column_mapping: options.column_mapping,
     sample_strategy: options.strategy,
-    watermark_column: '',
-    quality_rules: '',
+    watermark_column: featureFieldsRef.current.watermark_col ?? '',
+    quality_rules: featureFieldsRef.current.quality_rules ?? '',
     webhook_url: webhook.webhook_url,
     notify_on_fail: webhook.notify_on_fail,
     masking_enabled: options.masking,
@@ -121,6 +137,14 @@ export default function App() {
     setWebhook({
       webhook_url: tmpl.webhook_url,
       notify_on_fail: tmpl.notify_on_fail,
+    })
+    featureApplySeq.current += 1
+    setFeatureApply({
+      seq: featureApplySeq.current,
+      fields: {
+        watermark_col: tmpl.watermark_column,
+        quality_rules: tmpl.quality_rules,
+      },
     })
   }
 
@@ -187,6 +211,7 @@ export default function App() {
                 onResult={setResultHtml}
                 resetSeq={resetSeq}
                 onFields={(f) => (featureFieldsRef.current = f)}
+                apply={featureApply}
               />
               <ActionRow
                 sessionId={sessionId}
@@ -216,12 +241,14 @@ export default function App() {
                 tableB={tableB}
                 options={options}
                 onResult={setResultHtml}
+                resetSeq={resetSeq}
               />
               <TemplatesCard
                 sessionId={sessionId}
                 getTemplate={getTemplate}
                 onApply={applyTemplate}
                 onResult={setResultHtml}
+                resetSeq={resetSeq}
               />
               <ScheduleCard
                 sessionId={sessionId}
@@ -232,8 +259,9 @@ export default function App() {
                 webhook={webhook}
                 onWebhook={setWebhook}
                 featureFields={() => featureFieldsRef.current}
+                resetSeq={resetSeq}
               />
-              <TrendsCard />
+              <TrendsCard resetSeq={resetSeq} />
             </>
           )}
         </aside>

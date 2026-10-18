@@ -69,3 +69,18 @@ Migrate the Data Comparison page to a standalone React SPA following the establi
 - Biggest risks, called out during grilling: the process-global connection holder → per-session registry refactor, and keeping scheduler/webhook server-side semantics identical.
 - The hub CSS classes shared with this page were deliberately kept during the seatunnel retirement; after this migration they become unreferenced and should be pruned (verify by grep at retirement time).
 - Scale reference: ~4200 lines of UI code replaced; ~2000 lines of logic untouched.
+- Fix-up pass (post ticket 09) notes:
+  - Accepted presentational deviation (P4): TrendsCard merges the legacy
+    figure's two subplots (mismatches / schema_changes) into one grouped
+    recharts BarChart — same data and series labels.
+  - Accepted for now (S3, ticket 10/11): App.tsx passes the same ~5-prop
+    bundle (sessionId/tableA/tableB/options/onResult) to six cards;
+    consolidation is deferred to the cleanup tickets.
+  - Shared backend bases now live in data_comparison/deps.py
+    (get_session_or_404 + SessionTablesRequest/OptionsRequest); input
+    validation errors are uniformly 422.
+  - ConnectionRegistry is capped (100, evict oldest idle; scheduled
+    sessions protected); the scheduled tick shares the compound
+    per-session running guard (skips with last_error="busy").
+  - Tab-fills-placeholder reimplemented as a React document-level hook
+    (frontend/datacompare/src/tabFill.ts).

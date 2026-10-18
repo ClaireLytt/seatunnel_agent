@@ -16,6 +16,7 @@ export function FeatureAccordions({
   onResult,
   resetSeq,
   onFields,
+  apply,
 }: {
   sessionId: string
   tableA: string
@@ -23,8 +24,10 @@ export function FeatureAccordions({
   options: CompareOptions
   onResult: (html: string) => void
   resetSeq: number
-  // reports the optional compare-all stage fields up (CompoundRow sends them)
+  // reports the optional compare-all stage fields + the template fields up
   onFields?: (f: FeatureFields) => void
+  // writes template fields back into the accordions (applyPreset mechanism)
+  apply?: { seq: number; fields: FeatureFields }
 }) {
   const { t, i18n } = useTranslation()
   const [busy, setBusy] = useState<string | null>(null)
@@ -46,8 +49,18 @@ export function FeatureAccordions({
       checksum_columns: checksumCols,
       partition_col: partitionCol,
       expressions: customAgg,
+      // template snapshot fields (TemplatesCard save reads these live)
+      watermark_col: watermarkCol,
+      quality_rules: qualityRules,
     })
-  }, [skewCols, checksumCols, partitionCol, customAgg, onFields])
+  }, [skewCols, checksumCols, partitionCol, customAgg, watermarkCol, qualityRules, onFields])
+
+  // applyTemplate writes watermark/quality back into the accordions
+  useEffect(() => {
+    if (!apply) return
+    setWatermarkCol(apply.fields.watermark_col ?? '')
+    setQualityRules(apply.fields.quality_rules ?? '')
+  }, [apply])
 
   useEffect(() => {
     if (resetSeq === 0) return

@@ -34,17 +34,25 @@ def page_url(tmp_path, monkeypatch):
     from fastapi.staticfiles import StaticFiles
 
     from seatunnel_agent.agents.data.data_comparison import api as api_mod
+    from seatunnel_agent.agents.data.data_comparison import (
+        generation as gen_mod,
+    )
     from seatunnel_agent.agents.data.data_comparison import presets as presets_mod
     from seatunnel_agent.agents.data.data_comparison.api import router
     from seatunnel_agent.agents.data.data_comparison.presets import (
         ConnectionPresetsStore,
     )
+    from seatunnel_agent.agents.data.data_comparison.templates_store import (
+        ComparisonTemplatesStore,
+    )
 
-    # isolate the presets store (and its key file) from the user's home
+    # isolate the presets + templates stores (and key file) from the user's home
     monkeypatch.setattr(presets_mod, "_KEY_PATH", tmp_path / "dc_secret.key")
     monkeypatch.setattr(presets_mod, "_cached_key", None)
     monkeypatch.setattr(api_mod, "_PRESETS_STORE",
                         ConnectionPresetsStore(tmp_path / "dc_connections.json"))
+    monkeypatch.setattr(gen_mod, "_TEMPLATES_STORE",
+                        ComparisonTemplatesStore(tmp_path / "dc_templates.json"))
 
     if not (FRONTEND_DIST / "index.html").is_file():
         pytest.skip(
@@ -128,6 +136,110 @@ def test_datacompare_options_reset(page_url):
         expect(card.locator("#opt-strategy")).to_have_value("TOP N")
         expect(card.locator("#opt-stratified")).to_have_count(0)
         expect(card.locator("#opt-masking")).to_be_checked()
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_options_reset_covers_legacy_targets(page_url):
+    """Reset Options also clears webhook / alert rules / template name /
+    schedule interval / lineage SQL / env fields (legacy 27-output reset,
+    inventory ui.py:2142-2151)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        def open_card(testid):
+            page.locator(f"[data-testid={testid}] > button").click()
+
+        open_card("webhook-card")
+        page.locator("[data-testid=webhook-url]").fill("https://x.example/h")
+        page.locator("[data-testid=webhook-on-fail]").check()
+        open_card("trends-card")
+        page.locator("[data-testid=alert-rules]").fill("delta>100:3")
+        open_card("templates-card")
+        page.locator("#template-name").fill("tmp-name")
+        open_card("schedule-card")
+        page.locator("[data-testid=schedule-interval]").select_option("5")
+        open_card("lineage-card")
+        page.locator("#lineage-sql").fill("SELECT * FROM t")
+        open_card("env-card")
+        page.locator("#env-a").fill("dev")
+        page.locator("#env-b").fill("prod")
+        page.locator("#env-table").fill("orders")
+
+        page.get_by_role("button", name="Reset Options").click()
+
+        expect(page.locator("[data-testid=webhook-url]")).to_have_value("")
+        expect(page.locator("[data-testid=webhook-on-fail]")).not_to_be_checked()
+        expect(page.locator("[data-testid=alert-rules]")).to_have_value("")
+        expect(page.locator("#template-name")).to_have_value("")
+        expect(page.locator("[data-testid=schedule-interval]")).to_have_value("15")
+        expect(page.locator("#lineage-sql")).to_have_value("")
+        expect(page.locator("#env-a")).to_have_value("")
+        expect(page.locator("#env-b")).to_have_value("")
+        expect(page.locator("#env-table")).to_have_value("")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_template_saves_feature_fields(page_url):
+    """watermark_column + quality_rules round-trip through a template
+    (save reads the live accordion values; load restores them)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("[data-testid=accordion-incremental] > button").click()
+        watermark = page.locator("[data-testid=accordion-incremental] input").first
+        watermark.fill("updated_at")
+        page.locator("[data-testid=accordion-quality] > button").click()
+        quality = page.locator("[data-testid=accordion-quality] input").first
+        quality.fill("name:not_null>95")
+
+        page.locator("[data-testid=templates-card] > button").click()
+        page.locator("#template-name").fill("t-fields")
+        page.get_by_role("button", name="Save Template").click()
+        expect(page.locator("[data-testid=template-status]")).to_contain_text(
+            "Template saved")
+
+        # reset wipes the accordion fields; the template must restore them
+        page.get_by_role("button", name="Reset Options").click()
+        expect(watermark).to_have_value("")
+
+        page.locator("#template-load").select_option("t-fields")
+        page.get_by_role("button", name="Load Template").click()
+        expect(watermark).to_have_value("updated_at")
+        expect(quality).to_have_value("name:not_null>95")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_tab_fills_placeholder(page_url):
+    """Tab on an empty input fills in its placeholder (legacy tab_fill.js)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        where = page.locator("#opt-where")
+        where.click()
+        page.keyboard.press("Tab")
+        expect(where).to_have_value("e.g. date > '2024-01-01'")
+
+        # a non-empty input keeps normal Tab behavior
+        threshold = page.locator("#opt-threshold")
+        threshold.fill("5%")
+        threshold.click()
+        page.keyboard.press("Tab")
+        expect(threshold).to_have_value("5%")
         browser.close()
 
 
