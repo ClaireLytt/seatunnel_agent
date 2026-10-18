@@ -28,7 +28,7 @@ npm run build --workspace sql_transpile -> ✓ built in 2.95s
 uitest smoke (--no-llm) -> PASS 50 · FAIL 0 · ERROR 0 · SKIP 0 · MANUAL 1 · 耗时 197s
                            报告: runs/20261019_010126/report.html
                            (53→50:TRP1/TRP2/SCR2 smoke YAML 退役,等价覆盖移入页测)
-python scripts/check_workflow.py -> (报告落盘提交后补记,见文末)
+python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / [PASS] 报告落盘(全 PASS)
 ```
 
 手工验证:hub 启动后 `GET /transpile/` 200;
