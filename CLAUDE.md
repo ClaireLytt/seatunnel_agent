@@ -23,20 +23,11 @@
 - **优先复用现有代码**:对于确实需要重复使用的逻辑,抽象为可复用函数,避免重复造轮子。
 
 
-## 4. Evidence-First Problem Solving
-Before asking the user a question, first investigate whether the answer can be derived from available evidence.
-1. Inspect before asking. Read relevant source files, configuration, tests, documentation, logs, Git history, and available tool outputs.
-2. Verify assumptions. Reproduce the issue or run targeted tests when feasible. Do not treat an untested hypothesis as a confirmed root cause.
-3. Cite evidence. Support factual claims with file paths, line references, command output, test results, or other verifiable sources.
-4. Separate facts from hypotheses. Clearly label confirmed facts, plausible explanations, and unknowns.
-5. Never fabricate evidence. If evidence is unavailable or verification fails, state what is missing and what was attempted.
-6. Ask only when necessary. Ask the user only when the decision depends on their intent, preferences, authorization, or information that cannot reasonably be obtained from available sources.
-7. Minimize interruptions. When safe, proceed with a reversible, evidence-supported default. State the assumption and verify the result.
-8. Verify completion. After making changes, run the relevant checks and report actual results. Never claim a check passed unless it was executed successfully.
-9. Failure attribution (three steps):
-   - step1: After a failure, first read CLAUDE.md and docs/pitfalls.md for prior evidence and lessons.
-   - step2: Every conclusion must carry evidence (file path / command output / test result).
-   - step3: When evidence is insufficient, design a minimal experiment yourself (minimal repro script, extra logging, bisection) to locate the cause before concluding.
+## 4. 证据先行(Evidence-First)
+
+- **先查再问**:先读代码/配置/测试/日志/git 历史/docs(失败后必查 `docs/pitfalls.md`);只在决策依赖用户意图、偏好或授权时提问,否则带着可回退的默认方案继续并说明假设。
+- **结论必须带证据**:文件:行号 / 命令输出 / 测试结果;区分已证实的事实与假设;证据不足就自己设计最小实验(最小复现、加日志、二分)定位,不得虚构。
+- **诚实汇报**:改完跑相关检查并报告真实结果;未执行的步骤标注"未执行",未跑的测试不得报为通过。
 
 ## 5. 验证闭环
 
@@ -74,4 +65,6 @@ Before asking the user a question, first investigate whether the answer can be d
 - UI 相关改动:`python -m seatunnel_agent.agents.devops.ui_testing run --suite smoke --no-llm`
 - 前端(frontend/)改动:`npm run lint --workspace <name>` + `npm run build --workspace <name>`(在 frontend/ 下执行)。
 - 纯文档改动(docs/、*.md):至少跑 `ruff check src tests` + `pytest --collect-only -q` 确认仓库未损坏;不要求全量 pytest/uitest。
+- 多代理编排(spec→tickets 流程):票级实现只跑 ruff/mypy + 与本票相关的定向测试;全量 pytest、uitest smoke 与批次报告由编排会话在批次收尾统一执行一次,票级子代理不写报告。
+- 前端改动后页面验证:`seatunnel-agent ui --build`(一步构建全部 workspace 并启动 hub)。
 - 批次收尾:`python scripts/check_workflow.py`(工作流机械核对,FAIL 则本批次不得标记完成)。

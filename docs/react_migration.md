@@ -45,3 +45,22 @@
     / uitest smoke / 截图前后对比(`docs/reports/shots/`,旧页截图用
     `git worktree add` 到迁移前 commit 起服务,Gradio 页 Playwright 要用
     `wait_until="load"`,networkidle 因长连接不触发)/ check_workflow.py。
+
+## 先例速查(2026-10 三轮迁移沉淀,免重复探索)
+
+- 聊天式页(会话+SSE 流):照 `agents/data/seatunnel/api.py`
+  (queue+worker SSE、`_CONVERSATIONS` 会话字典、`/export` FileResponse)
+  + `frontend/seatunnel/src/Chat.tsx`;表单→仪表盘页:照
+  `agents/data/data_comparison/`(deps.py 的 get_session_or_404 与
+  OptionsRequest 基类、registry.py 会话注册表 cap+evict)+
+  `frontend/data_comparison/`。
+- i18n parity 测试模式:`tests/test_seatunnel_i18n.py` /
+  `tests/test_datacompare_i18n.py`(期望字面量内联在测试里,解析
+  i18n.ts 逐键比对;后端渲染 key 留 Python 侧)。
+- 暗色/双语截图:`.scratch/<feature>/shoot.py` 先例(in-process uvicorn
+  + color_scheme + st-lang cookie)。
+- 大页拆票先例:datacompare 11 票(01 预重构先行;并行票各占独立后端
+  router 模块 + 独立前端组件文件,api.py/api.ts/i18n.ts 只做追加,
+  冲突可机械合并)。
+- 票级验证:只跑定向测试;全量 pytest/uitest smoke 由编排收尾统一跑
+  (CLAUDE.md §8)。
