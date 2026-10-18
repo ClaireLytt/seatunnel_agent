@@ -56,11 +56,20 @@ export default function App() {
 
   const showError = (e: unknown) => {
     if (e instanceof ApiError) {
-      if (e.code === 'need_graph') setNotice(t('need_graph'))
-      else {
+      if (e.code === 'need_graph') {
+        setNotice(t('need_graph'))
+      } else if (e.code === 'not_found') {
+        // localized not_found + similar-table list (legacy _not_found_md)
+        const missing = /'([^']+)'/.exec(e.message)?.[1] ?? ''
+        let msg = t('not_found', { table: missing })
+        if (e.suggestions.length) {
+          msg += `\n${t('similar')}\n` + e.suggestions.map((s) => `- ${s}`).join('\n')
+        }
+        setNotice(msg)
+      } else {
         let msg = e.message
         if (e.suggestions.length) {
-          msg += '\n' + e.suggestions.map((s) => `- \`${s}\``).join('\n')
+          msg += '\n' + e.suggestions.map((s) => `- ${s}`).join('\n')
         }
         setNotice(msg)
       }
