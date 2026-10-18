@@ -8,8 +8,18 @@ export interface MigrateResponse {
 }
 
 export interface BatchResponse {
-  stats: { files: number; ok: number; failed: number }
   report: string
+}
+
+/** Structured API error (e.g. {code: 'bad_dir', path}) the UI can localize. */
+export class ApiError extends Error {
+  code: string
+  path: string
+  constructor(code: string, path: string) {
+    super(`${code}: ${path}`)
+    this.code = code
+    this.path = path
+  }
 }
 
 export async function migrateText(text: string, lang: string): Promise<MigrateResponse> {
@@ -35,9 +45,13 @@ export async function migrateBatch(
   if (!r.ok) {
     const detail = await r
       .json()
-      .then((d) => d.detail as string)
+      .then((d) => d.detail as unknown)
       .catch(() => '')
-    throw new Error(detail || `batch: HTTP ${r.status}`)
+    if (detail && typeof detail === 'object' && 'code' in detail) {
+      const d = detail as { code: string; path?: string }
+      throw new ApiError(d.code, d.path ?? '')
+    }
+    throw new Error((detail as string) || `batch: HTTP ${r.status}`)
   }
   return r.json()
 }

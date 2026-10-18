@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
-import { migrateBatch, migrateText, type MigrateResponse } from '@/api'
+import { ApiError, migrateBatch, migrateText, type MigrateResponse } from '@/api'
 import { ConfView } from '@/components/ConfView'
 import { ReportView } from '@/components/ReportView'
 
@@ -43,7 +43,11 @@ export default function App() {
       setResult({ ok: true, source_kind: 'batch', conf: '', report: res.report })
     } catch (e) {
       setResult(null)
-      setError(String(e))
+      if (e instanceof ApiError && e.code === 'bad_dir') {
+        setError(t('bad_dir') + e.path)
+      } else {
+        setError(String(e))
+      }
     } finally {
       setBusy(false)
     }
@@ -141,7 +145,7 @@ export default function App() {
               </div>
             )}
             {result && result.conf && <ConfView conf={result.conf} />}
-            {result && <div className="mt-4">{<ReportView markdown={result.report} />}</div>}
+            {result && <div className="mt-4"><ReportView markdown={result.report} /></div>}
             {!result && !error && (
               <p className="text-sm text-muted">{t('job_ph')}</p>
             )}

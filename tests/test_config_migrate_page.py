@@ -22,8 +22,11 @@ import pytest
 
 pytestmark = pytest.mark.uitest
 
+from seatunnel_agent.agents.data.config_migrate.manifest import MANIFEST
+from seatunnel_agent.hub.registry import frontend_dist
+
 ROOT = Path(__file__).resolve().parents[1]
-FRONTEND_DIST = ROOT / "frontend" / "config_migrate" / "dist"
+FRONTEND_DIST = ROOT / frontend_dist(MANIFEST)
 DEMO_DIR = ROOT / "examples" / "migrate_demo"
 
 DATAX_JOB = (
@@ -185,6 +188,33 @@ def test_config_migrate_unrecognized_input(page_url):
         expect(report).to_contain_text("Unrecognized file")
         body = page.locator("body")
         expect(body).not_to_contain_text("Traceback")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_config_migrate_batch_bad_dir_zh(page_url):
+    """Batch with a non-directory path shows the localized bad_dir error."""
+    from urllib.parse import urlparse
+
+    from playwright.sync_api import expect, sync_playwright
+
+    host = urlparse(page_url).hostname
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        ctx = browser.new_context()
+        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
+                          "domain": host, "path": "/"}])
+        page = ctx.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.get_by_text("批量迁移目录").click()
+        page.get_by_placeholder("包含 *.json / sqoop 脚本的目录（递归）").fill(
+            str(ROOT / "no_such_dir_xyz"))
+        page.get_by_role("button", name="批量迁移", exact=True).click()
+
+        expect(page.get_by_text("不是有效目录")).to_be_visible()
+        expect(page.get_by_text("no_such_dir_xyz")).to_be_visible()
         browser.close()
 
 

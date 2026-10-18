@@ -61,8 +61,9 @@ def batch(req: BatchRequest) -> dict[str, Any]:
     if not jobs_dir:
         raise HTTPException(status_code=422, detail="empty jobs_dir")
     if not Path(jobs_dir).is_dir():
-        raise HTTPException(status_code=404,
-                            detail=f"not a directory: {jobs_dir}")
+        # structured detail: the frontend localizes it (i18n `bad_dir`)
+        raise HTTPException(status_code=400,
+                            detail={"code": "bad_dir", "path": jobs_dir})
     try:
         res = migrate_dir(jobs_dir, out_dir=req.out_dir.strip() or None)
     except ValueError as exc:

@@ -120,11 +120,13 @@ def test_batch_migrate_partial_failure(client: TestClient, tmp_path) -> None:
     assert "bad.json" in data["report"]
 
 
-def test_batch_migrate_missing_dir_404(client: TestClient,
+def test_batch_migrate_missing_dir_400(client: TestClient,
                                        tmp_path) -> None:
+    bad = str(tmp_path / "nope")
     r = client.post("/api/config_migrate/batch",
-                    json={"jobs_dir": str(tmp_path / "nope"), "lang": "en"})
-    assert r.status_code == 404
+                    json={"jobs_dir": bad, "lang": "en"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == {"code": "bad_dir", "path": bad}
 
 
 def test_batch_migrate_blank_dir_422(client: TestClient) -> None:
