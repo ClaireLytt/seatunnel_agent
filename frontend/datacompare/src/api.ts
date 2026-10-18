@@ -317,3 +317,155 @@ export async function compareProfile(params: CompoundParams): Promise<string> {
   )
   return data.html
 }
+
+// ── Generation features (ticket 08) ──
+
+export interface SyncConfigResult {
+  html: string
+  download_id: string | null
+}
+
+export async function generateSyncConfig(params: {
+  session_id: string
+  table_a: string
+  table_b: string
+  column_mapping: string
+  lang: string
+}): Promise<SyncConfigResult> {
+  return json(
+    await fetch(`${BASE}/generate/sync-config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    'sync config',
+  )
+}
+
+// GET FileResponse carrying the real passwords — used as a plain link href.
+export function syncConfigDownloadUrl(downloadId: string): string {
+  return `${BASE}/generate/sync-config/download?id=${encodeURIComponent(downloadId)}`
+}
+
+export async function generateDiffSql(params: {
+  session_id: string
+  table_a: string
+  table_b: string
+  lang: string
+}): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(`${BASE}/generate/diff-sql`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    'diff sql',
+  )
+  return data.html
+}
+
+export async function traceLineage(params: {
+  table: string
+  sqls: string
+  lang: string
+}): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(`${BASE}/lineage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    'lineage',
+  )
+  return data.html
+}
+
+export async function compareEnvironments(params: {
+  env_a: string
+  env_b: string
+  table: string
+  where: string
+  lang: string
+}): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(`${BASE}/compare/environments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    'environments',
+  )
+  return data.html
+}
+
+// ── Comparison templates (ticket 08) ──
+
+export interface TemplateSummary {
+  id: string
+  name: string
+  table_a: string
+  table_b: string
+  created_at: string
+}
+
+export interface ComparisonTemplate {
+  name: string
+  table_a: string
+  table_b: string
+  where_clause: string
+  key_columns: string
+  threshold: string
+  column_mapping: string
+  sample_strategy: string
+  watermark_column: string
+  quality_rules: string
+  webhook_url: string
+  notify_on_fail: boolean
+  masking_enabled: boolean
+}
+
+export async function listTemplates(): Promise<TemplateSummary[]> {
+  const data = await json<{ templates: TemplateSummary[] }>(
+    await fetch(`${BASE}/templates`),
+    'templates',
+  )
+  return data.templates
+}
+
+export async function saveTemplate(t: ComparisonTemplate): Promise<void> {
+  await json(
+    await fetch(`${BASE}/templates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(t),
+    }),
+    'save template',
+  )
+}
+
+export async function loadTemplate(name: string): Promise<ComparisonTemplate> {
+  return json(await fetch(`${BASE}/templates/${encodeURIComponent(name)}`), 'load template')
+}
+
+export async function deleteTemplate(name: string): Promise<void> {
+  await json(
+    await fetch(`${BASE}/templates/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    'delete template',
+  )
+}
+
+export async function batchRunTemplates(params: {
+  session_id: string
+  names: string[]
+  lang: string
+}): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(`${BASE}/templates/batch-run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    'batch run',
+  )
+  return data.html
+}

@@ -5,6 +5,7 @@ import {
   fetchMeta,
   OPTIONS_DEFAULTS,
   type CompareOptions,
+  type ComparisonTemplate,
   type FeatureFields,
   type Meta,
   type PresetConnection,
@@ -13,9 +14,11 @@ import { ActionRow } from '@/components/ActionRow'
 import { CompoundRow } from '@/components/CompoundRow'
 import { ConnectForm, type ConnFields } from '@/components/ConnectForm'
 import { FeatureAccordions } from '@/components/FeatureAccordions'
+import { GenerationCard } from '@/components/GenerationCard'
 import { OptionsCard } from '@/components/OptionsCard'
 import { PresetsCard } from '@/components/PresetsCard'
 import { ReportsCard } from '@/components/ReportsCard'
+import { TemplatesCard } from '@/components/TemplatesCard'
 import { ResultsToolbar } from '@/components/ResultsToolbar'
 import { Card } from '@shared/components/card'
 
@@ -76,6 +79,38 @@ export default function App() {
   const applyPreset = (side: 'a' | 'b', conn: PresetConnection) => {
     presetSeq.current += 1
     ;(side === 'a' ? setPresetA : setPresetB)({ seq: presetSeq.current, conn })
+  }
+
+  // Templates: snapshot and restore of tables + options (fields owned by
+  // other feature cards — watermark/quality/webhook — ride along empty
+  // until those cards land and wire in).
+  const getTemplate = () => ({
+    table_a: tableA,
+    table_b: tableB,
+    where_clause: options.where,
+    key_columns: options.key_columns,
+    threshold: options.threshold,
+    column_mapping: options.column_mapping,
+    sample_strategy: options.strategy,
+    watermark_column: '',
+    quality_rules: '',
+    webhook_url: '',
+    notify_on_fail: false,
+    masking_enabled: options.masking,
+  })
+
+  const applyTemplate = (tmpl: ComparisonTemplate) => {
+    setTableA(tmpl.table_a)
+    setTableB(tmpl.table_b)
+    setOptions({
+      where: tmpl.where_clause,
+      threshold: tmpl.threshold,
+      key_columns: tmpl.key_columns,
+      column_mapping: tmpl.column_mapping,
+      strategy: tmpl.sample_strategy,
+      stratified_col: '',
+      masking: tmpl.masking_enabled,
+    })
   }
 
   return (
@@ -161,6 +196,19 @@ export default function App() {
                 sessionId={sessionId}
                 tableA={tableA}
                 tableB={tableB}
+                onResult={setResultHtml}
+              />
+              <GenerationCard
+                sessionId={sessionId}
+                tableA={tableA}
+                tableB={tableB}
+                options={options}
+                onResult={setResultHtml}
+              />
+              <TemplatesCard
+                sessionId={sessionId}
+                getTemplate={getTemplate}
+                onApply={applyTemplate}
                 onResult={setResultHtml}
               />
             </>

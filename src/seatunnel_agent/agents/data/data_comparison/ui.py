@@ -8,9 +8,7 @@ deterministic comparison of two data sources.
 from __future__ import annotations
 
 import json
-import os
 import re
-import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -19,27 +17,23 @@ from typing import Any
 
 import gradio as gr
 
-from seatunnel_agent.agents.data.data_comparison import actions, features
+from seatunnel_agent.agents.data.data_comparison import (
+    actions,
+    features,
+    generation,
+)
 from seatunnel_agent.agents.data.data_comparison.comparator import (
     BatchFullItem,
     CompareReport,
     KeyedDiffResult,
     RowCountResult,
-    build_aggregate_sql,
     build_count_sql,
     build_row_count_result,
     build_trend_data,
     check_trend_alerts,
-    compare_aggregates,
-    compare_schemas,
     diff_reports,
     find_common_tables,
-    generate_diff_sql,
-    generate_sync_config,
-    get_upstream_tables,
-    is_numeric_type,
     parse_alert_rules,
-    parse_column_mapping,
     parse_threshold,
     run_parallel,
 )
@@ -120,9 +114,7 @@ from seatunnel_agent.agents.data.data_comparison.ui_shared import (  # noqa: F40
 from seatunnel_agent.agents.data.text2sql.executor import (
     DIALECT_NAMES,
     DS_DEFAULTS,
-    DatabaseConfig,
     config_from_env,
-    create_executor,
 )
 
 # ---------------------------------------------------------------------------
@@ -745,42 +737,11 @@ def render_data_comparison_page(app=None) -> None:
     # ── SeaTunnel sync config (C) ──
 
     def _gen_sync_config(table_a, table_b, col_mapping_str, lang_val):
-        with session.lock:
-            ex_a = session.executor_a
-            ex_b = session.executor_b
-        if not ex_a or not ex_b:
-            return dc(lang_val, "dc_connect_both"), gr.update(visible=False)
-        if not table_a or not table_b:
-            return dc(lang_val, "dc_select_tables"), gr.update(visible=False)
-        try:
-            cfg_a, cfg_b = ex_a.config, ex_b.config
-            mapping = parse_column_mapping(col_mapping_str) if col_mapping_str else None
-
-            def _gen(pwd_a, pwd_b):
-                return generate_sync_config(
-                    cfg_a.ds_type, cfg_a.host, cfg_a.port, cfg_a.database,
-                    cfg_a.username, pwd_a, table_a,
-                    cfg_b.ds_type, cfg_b.host, cfg_b.port, cfg_b.database,
-                    cfg_b.username, pwd_b, table_b,
-                    column_mapping=mapping,
-                )
-
-            # Page shows a masked config; the real passwords only go to the
-            # downloadable file so they never land in the rendered HTML.
-            masked_text = _gen(
-                "******" if cfg_a.password else None,
-                "******" if cfg_b.password else None,
-            )
-            full_text = _gen(cfg_a.password, cfg_b.password)
-            fd, tmp_path = tempfile.mkstemp(prefix="seatunnel_sync_", suffix=".conf")
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(full_text)
-
-            header = f'<div style="color:#16a34a;font-weight:600;margin-bottom:8px;">✅ {dc(lang_val, "dc_sync_generated")}</div>'
-            code_block = f'<pre style="background:#1e293b;color:#e2e8f0;padding:16px;border-radius:8px;overflow-x:auto;font-size:12px;">{_esc_html(masked_text)}</pre>'
-            return header + code_block, gr.update(value=tmp_path, visible=True)
-        except Exception as e:
-            return _error_html(lang_val, e), gr.update(visible=False)
+        html, tmp_path = generation.gen_sync_config(
+            session, table_a, table_b, col_mapping_str, lang_val)
+        if tmp_path is None:
+            return html, gr.update(visible=False)
+        return html, gr.update(value=tmp_path, visible=True)
 
     # ── Scheduled comparison (E) ──
 
@@ -943,16 +904,7 @@ def render_data_comparison_page(app=None) -> None:
     # ── Data lineage (Phase 5C) ──
 
     def _show_lineage_fn(table_a, lang_val, lineage_sql_str):
-        if not table_a:
-            return dc(lang_val, "dc_select_tables")
-        if not lineage_sql_str or not lineage_sql_str.strip():
-            return dc(lang_val, "dc_lineage_hint")
-        try:
-            sqls = [s.strip() for s in lineage_sql_str.strip().split("\n") if s.strip()]
-            upstream = get_upstream_tables(table_a, sqls)
-            return build_lineage_card(table_a, upstream, lang_val)
-        except Exception as e:
-            return _error_html(lang_val, e)
+        return generation.lineage_html(table_a, lineage_sql_str, lang_val)
 
     # ── Feature A — Incremental comparison ──
 
@@ -973,18 +925,7 @@ def render_data_comparison_page(app=None) -> None:
     # ── Feature C — Diff SQL generation ──
 
     def _gen_diff_sql_fn(table_a, table_b, lang_val):
-        with session.lock:
-            report = session.last_report
-        if not report or not report.keyed_diff:
-            return dc(lang_val, "dc_diff_sql_no_diff")
-        try:
-            with session.lock:
-                ex_b = session.executor_b
-            ds_type = ex_b.config.ds_type if ex_b else "mysql"
-            sql = generate_diff_sql(report.keyed_diff, table_b, ds_type)
-            return build_diff_sql_card(sql, lang_val)
-        except Exception as e:
-            return _error_html(lang_val, e)
+        return generation.gen_diff_sql_html(session, table_b, lang_val)
 
     # ── Feature D — Templates ──
 
@@ -1048,173 +989,13 @@ def render_data_comparison_page(app=None) -> None:
     # ── Feature F6 — Batch template orchestration ──
 
     def _batch_templates_fn(selected_names, lang_val):
-        if not selected_names:
-            return dc(lang_val, "dc_batch_templates_hint")
-        with session.lock:
-            ex_a = session.executor_a
-            ex_b = session.executor_b
-        if ex_a is None or ex_b is None:
-            return dc(lang_val, "dc_connect_both")
-        results = []
-        for name in selected_names:
-            tmpl = _TEMPLATES_STORE.get_by_name(name)
-            if not tmpl:
-                results.append({"name": name, "status": "skip", "detail": "not found"})
-                continue
-            try:
-                ta = tmpl.get("table_a", "")
-                tb = tmpl.get("table_b", "")
-                wh = tmpl.get("where_clause", "")
-
-                # Count comparison
-                count_sql_a = build_count_sql(ta, wh)
-                count_sql_b = build_count_sql(tb, wh)
-                ra, rb = run_parallel(
-                    lambda s=count_sql_a: ex_a.run(s, max_rows=1),
-                    lambda s=count_sql_b: ex_b.run(s, max_rows=1),
-                )
-                cnt_a = int(ra.rows[0][0]) if ra.rows else 0
-                cnt_b = int(rb.rows[0][0]) if rb.rows else 0
-
-                # Schema comparison
-                schema_changes = 0
-                try:
-                    desc_a, desc_b = run_parallel(
-                        lambda t=ta: ex_a.describe_table(t),
-                        lambda t=tb: ex_b.describe_table(t),
-                    )
-                    ca_list = [{"name": c.name, "type": c.dtype} for c in desc_a.columns]
-                    cb_list = [{"name": c.name, "type": c.dtype} for c in desc_b.columns]
-                    schema_result = compare_schemas(ca_list, cb_list, ta, tb)
-                    schema_changes = len(schema_result.items) if schema_result.has_changes else 0
-                except Exception:
-                    _log.warning("Batch template %r: schema comparison failed",
-                                 name, exc_info=True)
-                    desc_a = desc_b = None
-
-                # Aggregate comparison on shared numeric columns
-                agg_mismatches = 0
-                try:
-                    if desc_a and desc_b:
-                        names_b = {c.name.lower() for c in desc_b.columns}
-                        shared_num = [
-                            c.name for c in desc_a.columns
-                            if is_numeric_type(c.dtype) and c.name.lower() in names_b
-                        ]
-                        if shared_num:
-                            agg_sql_a = build_aggregate_sql(
-                                ta, shared_num[:_MAX_AGG_COLUMNS], wh,
-                                ds_type=ex_a.config.ds_type)
-                            agg_sql_b = build_aggregate_sql(
-                                tb, shared_num[:_MAX_AGG_COLUMNS], wh,
-                                ds_type=ex_b.config.ds_type)
-                            agg_ra, agg_rb = run_parallel(
-                                lambda s=agg_sql_a: ex_a.run(s, max_rows=200),
-                                lambda s=agg_sql_b: ex_b.run(s, max_rows=200),
-                            )
-                            agg_result = compare_aggregates(
-                                ta, agg_ra.rows[0] if agg_ra.rows else (),
-                                tb, agg_rb.rows[0] if agg_rb.rows else (),
-                                shared_num[:_MAX_AGG_COLUMNS],
-                            )
-                            agg_mismatches = agg_result.mismatches
-                except Exception:
-                    _log.warning("Batch template %r: aggregate comparison failed",
-                                 name, exc_info=True)
-
-                passed = cnt_a == cnt_b and schema_changes == 0 and agg_mismatches == 0
-                results.append({
-                    "name": name, "table_a": ta, "table_b": tb,
-                    "count_a": cnt_a, "count_b": cnt_b,
-                    "schema_changes": schema_changes,
-                    "agg_mismatches": agg_mismatches,
-                    "status": "pass" if passed else "fail",
-                })
-            except Exception as exc:
-                results.append({"name": name, "status": "fail", "detail": str(exc)})
-        return build_batch_template_card(results, lang_val)
+        return generation.batch_templates_html(session, selected_names, lang_val)
 
     # ── Feature H — Multi-environment ──
 
     def _compare_environments_fn(env_a, env_b, table_name, lang_val, where_val):
-        if not env_a.strip() or not env_b.strip():
-            return dc(lang_val, "dc_env_hint")
-        if not table_name.strip():
-            return dc(lang_val, "dc_select_tables")
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        presets = _PRESETS_STORE.list()
-        pa = next((p for p in presets if p.get("environment", "") == env_a.strip()), None)
-        pb = next((p for p in presets if p.get("environment", "") == env_b.strip()), None)
-        if not pa or not pb:
-            return dc(lang_val, "dc_env_hint")
-        try:
-            cfg_a = DatabaseConfig(
-                ds_type=pa["ds_type"], host=pa["host"], port=pa["port"],
-                database=pa["database"], username=pa.get("username"),
-                password=pa.get("password"),
-            )
-            cfg_b = DatabaseConfig(
-                ds_type=pb["ds_type"], host=pb["host"], port=pb["port"],
-                database=pb["database"], username=pb.get("username"),
-                password=pb.get("password"),
-            )
-            ex_a = create_executor(cfg_a)
-            ex_b = create_executor(cfg_b)
-            tbl = table_name.strip()
-            cards: list[str] = []
-            label_a = f"{tbl} ({env_a})"
-            label_b = f"{tbl} ({env_b})"
-
-            # Schema comparison
-            desc_a, desc_b = run_parallel(
-                lambda: ex_a.describe_table(tbl),
-                lambda: ex_b.describe_table(tbl),
-            )
-            ca_list = [{"name": c.name, "type": c.dtype} for c in desc_a.columns]
-            cb_list = [{"name": c.name, "type": c.dtype} for c in desc_b.columns]
-            schema_result = compare_schemas(ca_list, cb_list, label_a, label_b)
-            cards.append(build_schema_diff_card(schema_result, lang_val))
-
-            # Count comparison
-            sql_ca = build_count_sql(tbl, where_val)
-            sql_cb = build_count_sql(tbl, where_val)
-            ra, rb = run_parallel(
-                lambda: ex_a.run(sql_ca, max_rows=1),
-                lambda: ex_b.run(sql_cb, max_rows=1),
-            )
-            ca = int(ra.rows[0][0]) if ra.rows else 0
-            cb = int(rb.rows[0][0]) if rb.rows else 0
-            count_result = build_row_count_result(label_a, ca, label_b, cb)
-            cards.append(build_count_card(count_result, lang_val))
-
-            # Aggregate comparison on shared numeric columns
-            names_b = {c.name.lower() for c in desc_b.columns}
-            shared_num = [
-                c.name for c in desc_a.columns
-                if is_numeric_type(c.dtype) and c.name.lower() in names_b
-            ]
-            if shared_num:
-                agg_sql_a = build_aggregate_sql(tbl, shared_num[:_MAX_AGG_COLUMNS],
-                                                where_val, ds_type=ex_a.config.ds_type)
-                agg_sql_b = build_aggregate_sql(tbl, shared_num[:_MAX_AGG_COLUMNS],
-                                                where_val, ds_type=ex_b.config.ds_type)
-                agg_ra, agg_rb = run_parallel(
-                    lambda: ex_a.run(agg_sql_a, max_rows=200),
-                    lambda: ex_b.run(agg_sql_b, max_rows=200),
-                )
-                agg_result = compare_aggregates(
-                    label_a, agg_ra.rows[0] if agg_ra.rows else (),
-                    label_b, agg_rb.rows[0] if agg_rb.rows else (),
-                    shared_num[:_MAX_AGG_COLUMNS],
-                )
-                cards.append(build_aggregate_card(agg_result, lang_val))
-
-            header = f'<h4 style="color:#6366f1;">{dc(lang_val, "dc_env_compare_result")}</h4>'
-            return header + "\n".join(cards)
-        except Exception as e:
-            return _error_html(lang_val, e)
+        return generation.compare_environments_html(
+            env_a, env_b, table_name, lang_val, where_val)
 
     # ── DS type change handler ──
     def _on_ds_change(ds_label: str):

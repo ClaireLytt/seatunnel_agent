@@ -21,6 +21,9 @@ from seatunnel_agent.agents.data.data_comparison.compound import (
     router as compound_router,
 )
 from seatunnel_agent.agents.data.data_comparison.connect import connect_side
+from seatunnel_agent.agents.data.data_comparison.generation import (
+    router as generation_router,
+)
 from seatunnel_agent.agents.data.data_comparison.registry import (
     SessionState,
     get_registry,
@@ -42,6 +45,7 @@ from seatunnel_agent.agents.data.text2sql.executor import (
 
 router = APIRouter(prefix="/api/datacompare", tags=["datacompare"])
 router.include_router(features.router)
+router.include_router(generation_router)
 router.include_router(_reports_router)
 router.include_router(compound_router)
 
