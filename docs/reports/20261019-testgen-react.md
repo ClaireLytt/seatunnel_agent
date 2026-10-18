@@ -26,7 +26,7 @@ npm run build --workspace sql_testgen -> ✓ built in 3.25s
 uitest smoke (--no-llm) -> PASS 42 · FAIL 0 · ERROR 0 · SKIP 0 · MANUAL 1 · 耗时 164s
                            报告: runs/20261019_023021/report.html
                            (44→42:TGN1/TGN2 smoke YAML 退役,等价覆盖移入页测)
-python scripts/check_workflow.py -> (报告落盘提交后补记,见文末)
+python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / [PASS] 报告落盘(全 PASS)
 ```
 
 手工验证:hub 启动后 `GET /testgen/` 200;中文往返截图(demo JOIN 生成双表
