@@ -13,8 +13,10 @@ MANIFEST = AgentManifest(
     title_zh="SQL 测试数据生成",
     desc_en="Join-aware datasets that exercise a query, validated on in-memory SQLite",
     desc_zh="关联感知造数，让查询真正跑通 — 内存 SQLite 一键验证",
-    api="seatunnel_agent.agents.data.sql_testgen.api:router",
-    render="seatunnel_agent.agents.data.sql_testgen.ui:render_sql_testgen_page",
+    # api intentionally unset: the router is mounted unconditionally by the
+    # launcher (the React page depends on it), not behind --api.
+    render="",  # React static mount serves this route (frontend/sql_testgen)
     group="quality",
     order=50,
+    external=True,
 )
