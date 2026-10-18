@@ -88,3 +88,46 @@ def test_migrate_empty_input_422(client: TestClient) -> None:
     r = client.post("/api/config_migrate/migrate",
                     json={"text": "   ", "lang": "en"})
     assert r.status_code == 422
+
+
+# ── batch endpoint (ticket 02) ──
+
+def test_batch_migrate_success(client: TestClient, tmp_path) -> None:
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    (jobs / "a.json").write_text(json.dumps(_DATAX_JOB), encoding="utf-8")
+    out = tmp_path / "out"
+    r = client.post("/api/config_migrate/batch",
+                    json={"jobs_dir": str(jobs), "out_dir": str(out),
+                          "lang": "en"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["stats"] == {"files": 1, "ok": 1, "failed": 0}
+    assert (out / "a.conf").is_file()
+    assert "`" in data["report"] and "a.json" in data["report"]
+
+
+def test_batch_migrate_partial_failure(client: TestClient, tmp_path) -> None:
+    jobs = tmp_path / "jobs"
+    jobs.mkdir()
+    (jobs / "good.json").write_text(json.dumps(_DATAX_JOB), encoding="utf-8")
+    (jobs / "bad.json").write_text("{not valid json", encoding="utf-8")
+    r = client.post("/api/config_migrate/batch",
+                    json={"jobs_dir": str(jobs), "lang": "en"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["stats"] == {"files": 2, "ok": 1, "failed": 1}
+    assert "bad.json" in data["report"]
+
+
+def test_batch_migrate_missing_dir_404(client: TestClient,
+                                       tmp_path) -> None:
+    r = client.post("/api/config_migrate/batch",
+                    json={"jobs_dir": str(tmp_path / "nope"), "lang": "en"})
+    assert r.status_code == 404
+
+
+def test_batch_migrate_blank_dir_422(client: TestClient) -> None:
+    r = client.post("/api/config_migrate/batch",
+                    json={"jobs_dir": "   ", "lang": "en"})
+    assert r.status_code == 422

@@ -7,6 +7,11 @@ export interface MigrateResponse {
   report: string
 }
 
+export interface BatchResponse {
+  stats: { files: number; ok: number; failed: number }
+  report: string
+}
+
 export async function migrateText(text: string, lang: string): Promise<MigrateResponse> {
   const r = await fetch(`${BASE}/migrate`, {
     method: 'POST',
@@ -14,5 +19,25 @@ export async function migrateText(text: string, lang: string): Promise<MigrateRe
     body: JSON.stringify({ text, lang }),
   })
   if (!r.ok) throw new Error(`migrate: HTTP ${r.status}`)
+  return r.json()
+}
+
+export async function migrateBatch(
+  jobsDir: string,
+  outDir: string,
+  lang: string,
+): Promise<BatchResponse> {
+  const r = await fetch(`${BASE}/batch`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jobs_dir: jobsDir, out_dir: outDir, lang }),
+  })
+  if (!r.ok) {
+    const detail = await r
+      .json()
+      .then((d) => d.detail as string)
+      .catch(() => '')
+    throw new Error(detail || `batch: HTTP ${r.status}`)
+  }
   return r.json()
 }
