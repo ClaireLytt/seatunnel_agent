@@ -1,4 +1,5 @@
-"""EN/ZH strings for config lint reports and the /conflint page."""
+"""EN/ZH strings for config lint reports (the /conflint page is React —
+UI chrome lives in frontend/config_lint/src/i18n.ts)."""
 
 from __future__ import annotations
 

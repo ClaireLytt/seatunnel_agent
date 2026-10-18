@@ -47,7 +47,11 @@ def lint(req: LintRequest) -> LintResponse:
     if (req.dir or "").strip():
         from pathlib import Path
 
-        # structured detail: the frontend localizes it (i18n `bad_dir`)
+        from seatunnel_agent.common.api_guard import check_path_allowed
+
+        # whitelist first (403 for out-of-scope paths — no existence probing),
+        # then a structured detail the frontend localizes (i18n `bad_dir`)
+        check_path_allowed(req.dir.strip(), "CONFLINT_API_ALLOWED_DIRS")
         if not Path(req.dir.strip()).is_dir():
             raise HTTPException(status_code=400,
                                 detail={"code": "bad_dir", "path": req.dir})
