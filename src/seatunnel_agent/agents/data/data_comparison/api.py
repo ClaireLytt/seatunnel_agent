@@ -22,6 +22,9 @@ from seatunnel_agent.agents.data.data_comparison.registry import (
     SessionState,
     get_registry,
 )
+from seatunnel_agent.agents.data.data_comparison.reports_api import (
+    router as _reports_router,
+)
 from seatunnel_agent.agents.data.data_comparison.ui_shared import (
     _NEEDS_AUTH,
     _NEEDS_HOST,
@@ -35,6 +38,7 @@ from seatunnel_agent.agents.data.text2sql.executor import (
 )
 
 router = APIRouter(prefix="/api/datacompare", tags=["datacompare"])
+router.include_router(_reports_router)
 
 _SCHEDULE_INTERVALS = ["1", "5", "15", "30", "60"]
 
