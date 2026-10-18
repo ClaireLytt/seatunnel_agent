@@ -140,19 +140,6 @@ body:has(.st-scroll-page) .dsk-input-col {
 .dsk-report-card th { background: #f3f4f6 !important; }
 .dsk-report-card tbody tr:nth-child(even) td { background: #fafafa !important; }
 
-/* Data Comparison keeps the fixed sidebar+main layout, so the page itself
-   cannot scroll — let the main result panel scroll internally instead.
-   The .st-main class is repeated to outrank Gradio's auto-prefixed copy of
-   the base .st-main rule (.gradio-container-X .contain .st-main, four
-   classes): Gradio duplicates custom CSS under that prefix, and the
-   prefixed `body:has(...)` variant can never match (body is not inside
-   .contain), so without the repetition this override silently loses and
-   the result panel gets no scrollbar. */
-body:has(.st-dc-page) .st-main.st-main.st-main.st-main {
-    overflow-y: auto !important;
-    overflow-x: hidden !important;
-}
-
 /* ══════════════════════════════════════════════
    Sidebar — Claude-style push layout (Column)
    ══════════════════════════════════════════════ */
@@ -170,7 +157,7 @@ body:has(.st-dc-page) .st-main.st-main.st-main.st-main {
 }
 /* Left sidebar column (width adjustable via drag handle, see _SIDEBAR_RESIZE_JS).
    The Data Comparison sidebar is excluded: it has its own width + CSS resize. */
-.st-sidebar:not(.st-dc-sidebar) {
+.st-sidebar {
     width: var(--st-sidebar-w, 260px) !important;
     min-width: var(--st-sidebar-w, 260px) !important;
     max-width: var(--st-sidebar-w, 260px) !important;
@@ -212,25 +199,6 @@ body:has(.st-dc-page) .st-main.st-main.st-main.st-main {
     flex-direction: row !important;
     align-items: center !important;
     gap: 0 !important;
-}
-
-/* Data Comparison sidebar: wider, user-resizable via right-edge drag,
-   horizontal scrollbar when content overflows */
-.st-sidebar.st-dc-sidebar {
-    /* flex-basis auto lets `width` control the size (Gradio columns default
-       to flex-basis 0%, which ignores width and collapses to min-width);
-       width stays non-!important so the browser's drag-resize inline style
-       can override it */
-    flex: 0 0 auto !important;
-    width: 720px;
-    min-width: 360px !important;
-    max-width: 85vw !important;
-    resize: horizontal !important;
-    overflow-x: auto !important;
-    overflow-y: auto !important;
-}
-.st-sidebar.st-dc-sidebar > * {
-    min-width: 640px !important;
 }
 
 /* Right main content: fill remaining width, flex column to pin input at bottom.
@@ -804,11 +772,6 @@ a.st-hub-bad:hover { text-decoration: underline; }
     color: #f76707;
 }
 
-.st-connect-btn {
-    width: 100% !important;
-    border-radius: 8px !important;
-    margin-top: 2px !important;
-}
 .st-sidebar-row {
     display: flex !important;
     flex-direction: row !important;
@@ -930,37 +893,6 @@ a.st-hub-bad:hover { text-decoration: underline; }
     padding: 4px 10px !important;
     border-radius: 6px !important;
     min-width: 0 !important;
-    flex: 1 !important;
-}
-.st-sidebar-control label {
-    font-size: 10px !important;
-    font-weight: 600 !important;
-    color: #6b7280 !important;
-}
-.st-sidebar-control input,
-.st-sidebar-control select { font-size: 10px !important; }
-.st-sidebar-status input { font-size: 10px !important; }
-
-/* ── Top bar with language switcher ── */
-.st-topbar-row,
-.st-topbar-row.row {
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
-    padding: 6px 16px !important;
-    margin: 0 !important;
-    gap: 8px !important;
-    min-height: 36px !important;
-    max-height: 36px !important;
-    height: 36px !important;
-    flex: 0 0 36px !important;
-    background: #fff !important;
-    border-bottom: 1px solid #f0f0f0 !important;
-    overflow: visible !important;
-    flex-wrap: nowrap !important;
-}
-.st-topbar-spacer {
     flex: 1 !important;
 }
 /* ── Home button in topbar ── */

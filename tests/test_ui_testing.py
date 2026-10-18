@@ -92,8 +92,8 @@ class TestLoader:
 
     def test_filter_by_case_id(self):
         cases = load_cases()
-        picked = filter_cases(cases, "", ["a4", "B3"])
-        assert {c.id for c in picked} == {"A4", "B3"}
+        picked = filter_cases(cases, "", ["dska1", "AIP1"])
+        assert {c.id for c in picked} == {"DSKA1", "AIP1"}
 
     def test_filter_unknown_id_raises(self):
         with pytest.raises(CaseLoadError, match="unknown case id"):
@@ -347,11 +347,12 @@ class TestCoverage:
         # double-click-guard and report-search features
         assert len(cov.rows) == 80
         assert counts["runner"] == 3            # P0-1/2/3
-        # TODO(ticket-11): was >= 55 — the /datacompare YAML cases are tagged
-        # manual while the page is React (they target the retired Gradio DOM);
-        # ticket 11 replaces them and restores the threshold
-        assert counts["auto"] >= 52             # PRD acceptance threshold
-        assert counts["missing"] <= 8
+        # ticket-11: the checklist is the datacompare Gradio page's manual
+        # acceptance matrix; that page is retired and its YAML cases deleted,
+        # so YAML-automated coverage is 0 by design. The acceptance now lives
+        # in tests/test_datacompare_api.py and tests/test_datacompare_page.py
+        # (React page). The checklist stays parseable for historical reports.
+        assert counts["auto"] == 0
         # beyond-checklist extras never collide with checklist ids
         checklist_ids = {r.item_id.upper() for r in cov.rows}
         assert not ({x.upper() for x in cov.extra_case_ids} & checklist_ids)

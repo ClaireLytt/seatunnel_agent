@@ -520,6 +520,16 @@ class TestCards:
         html = build_summary_card(report, "en")
         assert "elapsed" not in html
 
+    def test_card_builders_never_emit_indigo(self):
+        # UI rule (CLAUDE.md §2): no blue/purple. The legacy cards used
+        # #6366f1 for <summary> headers; ticket 11 recolored them to the
+        # ink token. Guard the whole card module source, not one builder.
+        import inspect
+
+        import seatunnel_agent.agents.data.data_comparison.ui_cards as ui_cards
+
+        assert "#6366f1" not in inspect.getsource(ui_cards)
+
 
 # ── TestQuoteIdentifier ──
 
