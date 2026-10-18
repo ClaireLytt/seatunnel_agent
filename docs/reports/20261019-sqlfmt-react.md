@@ -56,3 +56,25 @@ python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / 
 ## 未执行的步骤
 
 - 无。
+
+## Code-review fix-up(同批次追加)
+
+双轴 code-review(Standards/Spec,范围 aba306d..HEAD)后的修复:
+
+| 发现 | 修复 |
+| --- | --- |
+| api.py dir 分支:`require_dir` 重复白名单+is_dir 校验(死分支),路径 strip 计算 4 次 | 删除 `require_dir` 调用,`sql`/`target` 各 bind 一次 |
+| spec 要求 sql/dir 二选一,但两者同传时 dir 静默胜出 | 恰好一个:`bool(sql) == bool(target)` → 400,新增测试 |
+| aiplatform.yaml:130 核对未记录 | 已核对:该断言检查 orchestrator 可路由 agent 列表(来自 catalog 路由表,`sql_fmt → /sqlfmt` 未变),与退役的 Gradio 页无关,不受影响 |
+
+未修复的判断项(有先例/文档依据):hub include_router 第 7 份拷贝
+(react_migration.md 第 4 点即此模式)、App.tsx run/runDir 重复形状与
+sql_ph 空态复用(config_lint/config_migrate 先例一致)、新增 running/home
+键与 title 拆分(先例一致,parity 测试已注明)。
+
+```
+ruff check src tests -> All checks passed!
+mypy                 -> Success: no issues found in 115 source files
+pytest tests/test_sql_fmt.py -> 28 passed(新增二选一测试)
+pytest -m uitest tests/test_sqlfmt_page.py -> 9 passed
+```

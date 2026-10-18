@@ -236,3 +236,9 @@ def test_api_format_dir_whitelist_403(api_client, tmp_path, monkeypatch):
 def test_api_format_requires_sql_or_dir(api_client):
     r = api_client.post("/api/sqlfmt/format", json={})
     assert r.status_code == 400
+
+
+def test_api_format_rejects_both_sql_and_dir(api_client):
+    r = api_client.post("/api/sqlfmt/format", json={
+        "sql": "SELECT 1", "dir": "examples/sqlfmt_demo"})
+    assert r.status_code == 400
