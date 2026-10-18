@@ -89,58 +89,25 @@ def _err_md(exc: Exception, lang: str) -> str:
     return f"❌ **{dsk(lang, 'dsk_error')}**{sep}{exc}"
 
 
-def _head_re(*heads: str) -> re.Pattern[str]:
-    # Line-anchored so a report merely *quoting* the heading mid-sentence
-    # is not matched there.
-    return re.compile(
-        r"(?m)^[ \t]{0,3}#{2,3}\s*(?:"
-        + "|".join(re.escape(h.lstrip("# ")) for h in heads)
-        + r")\s*$"
-    )
-
-
-_PROBE_HEAD_RE = _head_re(dsk("zh", "prb_section"), dsk("en", "prb_section"))
-_CST_HEAD_RE = _head_re(dsk("zh", "cst_section"), dsk("en", "cst_section"))
-_SPK_HEAD_RE = _head_re(dsk("zh", "spk_section"), dsk("en", "spk_section"))
-_RT_HEAD_RE = _head_re(dsk("zh", "rt_section"), dsk("en", "rt_section"))
-_NEXT_H2_RE = re.compile(r"(?m)^[ \t]{0,3}#{1,2}\s")
-
-# Cookie the Data Comparison page sets alongside the SQL handoff so the
-# user lands here with side B's connection pre-filled (no password).
-CONN_HANDOFF_COOKIE = "st_dataskew_conn"
-
-
-def parse_conn_handoff(raw: str | None) -> dict | None:
-    """Decode the ``st_dataskew_conn`` cookie into a connection dict, or
-    None when absent/garbled. Pure so it is unit-testable."""
-    import json
-    from urllib.parse import unquote
-
-    if not raw:
-        return None
-    try:
-        data = json.loads(unquote(raw))
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    return {
-        "ds_type": str(data.get("ds_type") or "").lower(),
-        "host": str(data.get("host") or ""),
-        "port": str(data.get("port") or ""),
-        "database": str(data.get("database") or ""),
-        "username": str(data.get("username") or ""),
-    }
-
-
-def _remove_section(report: str, head_re: re.Pattern[str]) -> str:
-    """Drop one appended '## …' section (up to the next h1/h2) from the report."""
-    m = head_re.search(report)
-    if not m:
-        return report
-    nxt = _NEXT_H2_RE.search(report, m.end())
-    end = nxt.start() if nxt else len(report)
-    return (report[: m.start()].rstrip() + "\n\n" + report[end:].lstrip()).strip()
+from seatunnel_agent.agents.data.data_skew.sections import (
+    CONN_HANDOFF_COOKIE,
+    parse_conn_handoff,
+)
+from seatunnel_agent.agents.data.data_skew.sections import (
+    CST_HEAD_RE as _CST_HEAD_RE,
+)
+from seatunnel_agent.agents.data.data_skew.sections import (
+    PROBE_HEAD_RE as _PROBE_HEAD_RE,
+)
+from seatunnel_agent.agents.data.data_skew.sections import (
+    RT_HEAD_RE as _RT_HEAD_RE,
+)
+from seatunnel_agent.agents.data.data_skew.sections import (
+    SPK_HEAD_RE as _SPK_HEAD_RE,
+)
+from seatunnel_agent.agents.data.data_skew.sections import (
+    remove_section as _remove_section,
+)
 
 
 def render_data_skew_page(app: gr.Blocks) -> None:
