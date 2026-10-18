@@ -43,7 +43,7 @@ footer { display: none !important; }
 }
 
 /* Standalone pages (history, favorites, schema, sql review, and any page
-   carrying the generic .st-scroll-page marker — e.g. data skew) need
+   carrying the generic .st-scroll-page marker) need
    scrolling. Only the outermost .gradio-container scrolls; everything
    inside is visible. */
 body:has(.st-history-page),

@@ -32,8 +32,8 @@ from seatunnel_agent.agents.data.data_skew.manifest import MANIFEST
 from seatunnel_agent.hub.registry import frontend_dist
 
 ROOT = Path(__file__).resolve().parents[1]
+_DEMO_DB = ""  # set by the page_url fixture (seeded per-test)
 FRONTEND_DIST = ROOT / frontend_dist(MANIFEST)
-DEMO_DB = ROOT / "config" / "uitest_demo.db"
 
 DISTINCT_SQL = "SELECT COUNT(DISTINCT user_id) FROM ods.user_log"
 GROUP_SQL = "SELECT status, COUNT(*) FROM dc_test_orders_a GROUP BY status"
@@ -59,6 +59,11 @@ def page_url(monkeypatch, tmp_path):
 
     monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
                        str(tmp_path / "history.jsonl"))
+    # seeded SQLite demo db (the repo copy is gitignored; CI builds it)
+    from seatunnel_agent.agents.devops.ui_testing.seed_sqlite import seed_sqlite
+
+    global _DEMO_DB
+    _DEMO_DB = str(seed_sqlite(tmp_path / "uitest_demo.db"))
 
     app = FastAPI()
     app.include_router(router)
@@ -87,7 +92,7 @@ def _connect_sqlite(page):
     # selects: 0=dialect 1=mode 2=preset 3=ds_type 4=sample
     page.locator("select").nth(3).select_option("sqlite")
     page.get_by_text("Database").locator("xpath=following-sibling::input").fill(
-        str(DEMO_DB))
+        _DEMO_DB)
     page.get_by_role("button", name="Connect", exact=True).click()
     expect(page.get_by_text("Connected", exact=False)).to_be_visible(
         timeout=10000)
@@ -214,8 +219,6 @@ def test_dataskew_sqlite_connect_and_probe(page_url):
     """DSK12/DSK13: SQLite connect, then a live probe appends the measured
     section to the report."""
     from playwright.sync_api import expect, sync_playwright
-
-    assert DEMO_DB.is_file(), f"demo db missing: {DEMO_DB}"
 
     with sync_playwright() as p:
         browser = p.chromium.launch()

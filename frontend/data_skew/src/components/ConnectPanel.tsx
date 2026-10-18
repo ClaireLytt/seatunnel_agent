@@ -25,10 +25,10 @@ const DS_CHOICES: [string, string][] = [
 // Port/database placeholders per datasource (legacy DS_DEFAULTS subset).
 const DS_PLACEHOLDERS: Record<string, { port: string; db: string }> = {
   hive: { port: '10000', db: 'default' },
-  sparksql: { port: '10000', db: 'default' },
+  sparksql: { port: '10001', db: 'default' },
   mysql: { port: '3306', db: '' },
-  postgresql: { port: '5432', db: '' },
-  sqlite: { port: '', db: 'path/to/db.sqlite' },
+  postgresql: { port: '5432', db: 'postgres' },
+  sqlite: { port: '', db: 'config/demo.db' },
 }
 
 /** Fields the Data Comparison page hands over via the st_dataskew_conn

@@ -85,6 +85,16 @@ add_health(router, "data_skew")
 _PROBE_DS = ("hive", "sparksql", "mysql", "postgresql", "sqlite")
 
 
+def _err_400(lang: str, exc: Exception) -> HTTPException:
+    """Localized catch-all for probe/DB/LLM failures (legacy _err_md path)."""
+    from .i18n import dsk
+
+    sep = ": " if lang == "en" else "："
+    return HTTPException(status_code=400, detail={
+        "code": "dsk_error",
+        "message": f"❌ **{dsk(lang, 'dsk_error')}**{sep}{exc}"})
+
+
 def _guard(lang: str, code: str, **fmt: Any) -> HTTPException:
     from .i18n import dsk
 
@@ -161,6 +171,8 @@ def connect(req: ConnectRequest) -> dict[str, Any]:
     session = _get_session(req.session_id)
     lang = normalize_lang(req.lang)
     ds = (req.ds_type or "").strip().lower()
+    if ds not in _PROBE_DS:  # whitelist first (transpile fix-up precedent)
+        raise _guard(lang, "dsk_preset_unsupported", t=ds)
     defaults = DS_DEFAULTS.get(ds, {})
     host = (req.host or "").strip()
     db = (req.database or "").strip() or str(defaults.get("database", ""))
@@ -170,10 +182,7 @@ def connect(req: ConnectRequest) -> dict[str, Any]:
         elif not host:
             cfg = config_from_env(ds)
             if cfg is None:
-                raise RuntimeError(
-                    "host is empty and no .env config found" if lang == "en"
-                    else "主机为空且 .env 中未配置该数据源"
-                )
+                raise RuntimeError(dsk(lang, "dsk_conn_no_env"))
         else:
             try:
                 port_n = int((req.port or "").strip() or defaults.get("port", 0))
@@ -293,7 +302,11 @@ def analyze(req: AnalyzeRequest) -> dict[str, Any]:
                     except Exception:  # probe is best-effort context
                         probe_ctx = probe_section = ""
             agent = DataSkewAgent(settings, dialect=dialect, lang=lang)
-            result = agent.analyze(sql, use_llm=True, probe_context=probe_ctx)
+            try:
+                result = agent.analyze(sql, use_llm=True,
+                                       probe_context=probe_ctx)
+            except Exception as exc:  # legacy do_analyze caught Exception
+                raise _err_400(lang, exc)
             report = result.markdown
             if probe_section:
                 report = report.rstrip() + "\n\n" + probe_section
@@ -329,9 +342,13 @@ def verify(req: VerifyRequest) -> dict[str, Any]:
     if not sql:
         raise _guard(lang, "dsk_empty_sql")
     pct = effective_sample_pct(session.ds_type, int(req.sample or 0))
-    results = _cached_probes(session, sql, pct)
-    section = render_probe_section(
-        results, lang, dialect=normalize_dialect(req.dialect), sample_pct=pct)
+    try:
+        results = _cached_probes(session, sql, pct)
+        section = render_probe_section(
+            results, lang, dialect=normalize_dialect(req.dialect),
+            sample_pct=pct)
+    except Exception as exc:  # legacy do_verify caught Exception → _err_md
+        raise _err_400(lang, exc)
     default_history().log_verify(
         sql, targets=len(extract_probe_targets(sql)),
         confirmed=sum(1 for r in results if r.verdict == "confirmed"),
@@ -361,8 +378,11 @@ def consistency(req: ConsistencyRequest) -> dict[str, Any]:
         raise _guard(lang, "dsk_empty_sql")
     if not (req.optimized or "").strip():
         raise _guard(lang, "cst_need_opt")
-    res = check_consistency(session.executor, sql, req.optimized)
-    section = render_consistency_section(res, lang)
+    try:
+        res = check_consistency(session.executor, sql, req.optimized)
+        section = render_consistency_section(res, lang)
+    except Exception as exc:  # legacy do_consistency caught Exception
+        raise _err_400(lang, exc)
     return {"report": append_section(req.report, section, CST_HEAD_RE),
             "status": session.status}
 
@@ -419,6 +439,8 @@ def splitkey(req: SplitKeyRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail={
             "code": exc.key,
             "message": dsk(lang, exc.key).format(err=exc.arg)})
+    except Exception as exc:  # legacy do_splitkey caught Exception
+        raise _err_400(lang, exc)
     for spec, configured, candidates in results:
         history.log_splitkey(
             spec.table, spec.partition_column,
@@ -487,6 +509,7 @@ async def runtime_eventlog(file: UploadFile, report: str = "",
                            lang: str = "en",
                            session_id: str = "") -> dict[str, Any]:
     """Multipart Spark event-log upload (legacy do_runtime_file)."""
+    import shutil
     import tempfile
     from pathlib import Path
 
@@ -494,8 +517,8 @@ async def runtime_eventlog(file: UploadFile, report: str = "",
     from .runtime import RuntimeSkewError, parse_eventlog
 
     lang = normalize_lang(lang)
-    tmp = Path(tempfile.mkdtemp(prefix="dataskew_rt_")) / (
-        file.filename or "eventlog")
+    tmp_dir = Path(tempfile.mkdtemp(prefix="dataskew_rt_"))
+    tmp = tmp_dir / (file.filename or "eventlog")
     tmp.write_bytes(await file.read())
     try:
         stages, label = parse_eventlog(str(tmp))
@@ -504,10 +527,7 @@ async def runtime_eventlog(file: UploadFile, report: str = "",
             "code": exc.key,
             "message": dsk(lang, exc.key).format(err=exc.arg)})
     finally:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
+        shutil.rmtree(tmp_dir, ignore_errors=True)
     if str(label).startswith("tmp"):
         label = "event log"
     status_line = ""

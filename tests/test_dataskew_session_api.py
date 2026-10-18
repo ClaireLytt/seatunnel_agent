@@ -14,7 +14,6 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-DEMO_DB = ROOT / "config" / "uitest_demo.db"
 
 GROUP_SQL = "SELECT status, COUNT(*) FROM dc_test_orders_a GROUP BY status"
 
@@ -42,11 +41,18 @@ def session_id(api_client) -> str:
 
 
 @pytest.fixture()
-def connected(api_client, session_id) -> str:
-    assert DEMO_DB.is_file(), f"demo db missing: {DEMO_DB}"
+def demo_db(tmp_path) -> str:
+    """Seeded SQLite demo db (the repo copy is gitignored; CI builds it)."""
+    from seatunnel_agent.agents.devops.ui_testing.seed_sqlite import seed_sqlite
+
+    return str(seed_sqlite(tmp_path / "uitest_demo.db"))
+
+
+@pytest.fixture()
+def connected(api_client, session_id, demo_db) -> str:
     r = api_client.post("/api/skew/connect", json={
         "session_id": session_id, "ds_type": "sqlite",
-        "database": str(DEMO_DB), "lang": "en"})
+        "database": demo_db, "lang": "en"})
     assert r.status_code == 200, r.text
     assert r.json()["connected"] is True
     return session_id

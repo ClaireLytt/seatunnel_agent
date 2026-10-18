@@ -9,6 +9,7 @@ sessions (the React page stores the id in sessionStorage).
 from __future__ import annotations
 
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any
@@ -29,6 +30,7 @@ class SkewSession:
     ds_type: str = ""
     status: str = ""
     cache: ProbeCache = field(default_factory=ProbeCache)
+    last_used: float = field(default_factory=time.time)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     @property
@@ -40,6 +42,11 @@ class SkewSession:
 #: DB executor, so an unbounded registry leaks connections.
 _DEFAULT_MAX_SESSIONS = 100
 
+#: Idle TTL: a session untouched this long is swept on the next create/get
+#: — an abandoned tab must not pin a DB executor until 100 newer sessions
+#: push it out.
+_DEFAULT_TTL_SECONDS = 4 * 3600
+
 
 class SkewRegistry:
     """Thread-safe map of session id -> :class:`SkewSession`.
@@ -49,13 +56,22 @@ class SkewRegistry:
     background work, so plain FIFO eviction is safe.
     """
 
-    def __init__(self, max_sessions: int = _DEFAULT_MAX_SESSIONS) -> None:
+    def __init__(self, max_sessions: int = _DEFAULT_MAX_SESSIONS,
+                 ttl_seconds: float = _DEFAULT_TTL_SECONDS) -> None:
         self._sessions: dict[str, SkewSession] = {}
         self._lock = threading.Lock()
         self._max_sessions = max_sessions
+        self._ttl = ttl_seconds
+
+    def _sweep_locked(self) -> None:
+        cutoff = time.time() - self._ttl
+        for sid in [sid for sid, s in self._sessions.items()
+                    if s.last_used < cutoff]:
+            self._sessions.pop(sid, None)
 
     def create(self) -> SkewSession:
         with self._lock:
+            self._sweep_locked()
             while len(self._sessions) >= self._max_sessions:
                 victim = next(iter(self._sessions))
                 self._sessions.pop(victim, None)
@@ -65,7 +81,11 @@ class SkewRegistry:
 
     def get(self, session_id: str) -> SkewSession | None:
         with self._lock:
-            return self._sessions.get(session_id)
+            self._sweep_locked()
+            session = self._sessions.get(session_id)
+            if session is not None:
+                session.last_used = time.time()
+            return session
 
     def remove(self, session_id: str) -> None:
         with self._lock:

@@ -60,3 +60,33 @@ python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / 
 ## 未执行的步骤
 
 - 无。
+
+## Code-review fix-up(同批次追加)
+
+双轴 code-review(Standards/Spec,范围 8d43cbc..HEAD)+ CI 失败修复:
+
+| 发现 | 修复 |
+| --- | --- |
+| CI pytest 失败:config/uitest_demo.db 被 gitignore,CI 无此文件 | 测试 fixture 改用 seed_sqlite() 现场种子(API 测试与页测都改) |
+| /connect 未前置 ds 白名单(transpile fix-up 先例) | ds ∉ _PROBE_DS → 400 结构化 dsk_preset_unsupported |
+| 内联双语字面量绕过 i18n 字典 | 新增 dsk_conn_no_env 键,走 dsk() |
+| /analyze /verify /consistency /splitkey 缺通用异常兜底(旧页有 _err_md) | 新增 _err_400(localized dsk_error),四处包裹,不再裸 500 |
+| 票 01 写明 TTL 但注册表只有 FIFO 上限 | 加 4h 空闲 TTL 清扫(create/get 时触发,get 刷新 last_used) |
+| ConnectPanel 占位符漂移(sparksql 10001、postgresql postgres、sqlite config/demo.db) | 对齐 DS_DEFAULTS 实际值 |
+| /runtime/eventlog 临时目录缓漏 | finally shutil.rmtree |
+| css.py 过时注释("e.g. data skew") | 删去示例引用 |
+
+未修复的判断项(有依据):会话 id 走 JSON body/query 而非 X-Session-Id 头
+(datacompare 现状亦为 body 传递,spec 文字偏差,功能等价);/history/load
+端点省略(前端从 GET /history 原始记录本地载入,功能等价);
+parse_conn_handoff 保留在 sections.py(钉 cookie 契约的唯一 Python 侧测试
+锚点);spk/rt 错误显示在主错误槽而非连接状态行(颜色语义更清晰);
+presets 明文密码与 conn_fail 原始错误文本(与旧页 1:1,已在遗留清单)。
+
+```
+ruff check src tests -> All checks passed!
+mypy                 -> Success: no issues found in 115 source files
+pytest(skew 定向 199 条) -> 199 passed
+pytest -m uitest tests/test_dataskew_page.py -> 12 passed
+npm run build --workspace data_skew -> ✓ built
+```
