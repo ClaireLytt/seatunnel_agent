@@ -8,7 +8,9 @@ file-backed SQLite fixtures.
 
 from __future__ import annotations
 
+import json
 import sqlite3
+import threading
 
 import pytest
 from fastapi import FastAPI
@@ -520,3 +522,148 @@ def test_standalone_without_report_409(client, connected, reports_tmp):
     r = client.get("/api/datacompare/report/standalone",
                    params={"session_id": connected, "lang": "en"})
     assert r.status_code == 409
+
+
+# ── ticket 04: compound actions with progress ───────────────────────
+
+
+def _frames(text: str) -> list[dict]:
+    """Parse SSE 'data: {json}' frames from a buffered response body."""
+    return [json.loads(line[6:]) for line in text.splitlines()
+            if line.startswith("data: ")]
+
+
+def _compound(client, sid, action, **kw):
+    body = {"session_id": sid, "table_a": "orders", "table_b": "orders",
+            "lang": "en"}
+    body.update(kw)
+    return client.post(f"/api/datacompare/compare/{action}", json=body)
+
+
+def test_compare_all_streams_progress_then_done(client, connected):
+    r = _compound(client, connected, "all")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/event-stream")
+    frames = _frames(r.text)
+    progress = [f for f in frames if f["event"] == "progress"]
+    assert progress, "expected at least one progress frame"
+    for f in progress:
+        assert 0 < f["value"] <= 1
+        assert isinstance(f["desc"], str)
+    assert frames[-1]["event"] == "done"
+    html = frames[-1]["html"]
+    assert "Comparison Summary" in html
+    assert "Schema Comparison" in html
+    assert "Row Count Comparison" in html
+    assert "Column Profile Comparison" in html
+
+
+def test_compare_all_stores_last_report(client, connected):
+    from seatunnel_agent.agents.data.data_comparison.registry import (
+        get_registry,
+    )
+
+    _compound(client, connected, "all")
+    session = get_registry().get(connected)
+    assert session is not None and session.last_report is not None
+    assert session.last_report.schema is not None
+    assert session.last_report.row_count is not None
+
+
+def test_compare_all_guard_not_connected(client):
+    sid = _session(client)
+    frames = _frames(_compound(client, sid, "all").text)
+    assert frames == [
+        {"event": "done",
+         "html": "Please connect both data sources first"}]
+
+
+def test_compare_all_guard_where_ddl(client, connected):
+    frames = _frames(_compound(client, connected, "all",
+                               where="1=1; DROP TABLE x").text)
+    assert frames[-1]["event"] == "done"
+    assert "forbidden keyword" in frames[-1]["html"]
+
+
+def test_compare_all_409_when_running(client, connected, monkeypatch):
+    from seatunnel_agent.agents.data.data_comparison import compound
+
+    started = threading.Event()
+    release = threading.Event()
+    orig = compound.profile_inner
+
+    def slow(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return orig(*args, **kwargs)
+
+    monkeypatch.setattr(compound, "profile_inner", slow)
+
+    result: dict = {}
+
+    def run() -> None:
+        result["r"] = _compound(client, connected, "all")
+
+    th = threading.Thread(target=run)
+    th.start()
+    try:
+        assert started.wait(10), "first run never started"
+        r2 = _compound(client, connected, "all")
+        assert r2.status_code == 409
+        # the guard also covers the other compound actions of the session
+        r3 = _compound(client, connected, "batch-count")
+        assert r3.status_code == 409
+    finally:
+        release.set()
+        th.join(30)
+    assert result["r"].status_code == 200
+    assert _frames(result["r"].text)[-1]["event"] == "done"
+
+
+def test_compare_all_unknown_session_404(client):
+    assert _compound(client, "nope", "all").status_code == 404
+
+
+def test_batch_count_progress_per_table_and_card(client, connected):
+    r = _compound(client, connected, "batch-count")
+    assert r.status_code == 200
+    frames = _frames(r.text)
+    progress = [f for f in frames if f["event"] == "progress"]
+    # one common table (orders) -> one per-table progress frame
+    assert len(progress) == 1
+    assert "orders" in progress[0]["desc"]
+    assert progress[0]["value"] == 1.0
+    assert frames[-1]["event"] == "done"
+    assert "Batch Row Count" in frames[-1]["html"]
+
+
+def test_batch_full_streams_and_renders_card(client, connected):
+    r = _compound(client, connected, "batch-full", threshold="60%")
+    assert r.status_code == 200
+    frames = _frames(r.text)
+    assert any(f["event"] == "progress" for f in frames)
+    assert frames[-1]["event"] == "done"
+    html = frames[-1]["html"]
+    assert "Batch Full Comparison" in html
+    assert "orders" in html
+
+
+def test_batch_guard_not_connected(client):
+    sid = _session(client)
+    frames = _frames(_compound(client, sid, "batch-count").text)
+    assert frames == [
+        {"event": "done",
+         "html": "Please connect both data sources first"}]
+
+
+def test_profile_card(client, connected):
+    r = _compound(client, connected, "profile")
+    assert r.status_code == 200
+    html = r.json()["html"]
+    assert "Column Profile Comparison" in html
+
+
+def test_profile_guard_not_connected(client):
+    sid = _session(client)
+    html = _compound(client, sid, "profile").json()["html"]
+    assert html == "Please connect both data sources first"
