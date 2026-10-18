@@ -19,6 +19,9 @@
 
 5. manifest:`external=True`,`render=""`;静态挂载走
    `registry.frontend_dist` 约定,未 build 自动出提示页。
+   **workspace 目录名必须等于 manifest.name**(datacompare 曾因目录名用了
+   路由名而挂载落空);页面测试取 dist 路径用 `registry.frontend_dist()`。
+   前端改动后必须重建 dist 并重启 hub:`seatunnel-agent ui --build` 一步完成。
 
 ## 退役旧页(爆炸半径,逐项核对)
 
