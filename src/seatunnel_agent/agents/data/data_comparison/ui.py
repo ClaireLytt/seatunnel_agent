@@ -19,8 +19,8 @@ from typing import Any
 
 import gradio as gr
 
+from seatunnel_agent.agents.data.data_comparison import actions
 from seatunnel_agent.agents.data.data_comparison.comparator import (
-    AggregateResult,
     BatchFullItem,
     ChecksumResult,
     CompareReport,
@@ -39,11 +39,8 @@ from seatunnel_agent.agents.data.data_comparison.comparator import (
     build_incremental_sql,
     build_partition_count_sql,
     build_profile_sql,
-    build_random_sample_sql,
     build_row_count_result,
-    build_sample_sql,
     build_skew_sql,
-    build_stratified_sample_sql,
     build_trend_data,
     check_quality_rules,
     check_trend_alerts,
@@ -203,136 +200,25 @@ def render_data_comparison_page(app=None) -> None:
         with session.lock:
             return session.executor_a, session.executor_b
 
+    # Core schema/count/sample/aggregate logic lives in actions.py
+    # (Gradio-free, shared with api.py); these wrappers bind the session.
     def _schema_inner(table_a, table_b, lang_val, where_val="", desc_a=None, desc_b=None):
-        ex_a, ex_b = _snap_executors()
-        if desc_a is None and desc_b is None:
-            desc_a, desc_b = run_parallel(
-                lambda: ex_a.describe_table(table_a),
-                lambda: ex_b.describe_table(table_b),
-            )
-        else:
-            if desc_a is None:
-                desc_a = ex_a.describe_table(table_a)
-            if desc_b is None:
-                desc_b = ex_b.describe_table(table_b)
-        cols_a = [{"name": c.name, "type": c.dtype} for c in desc_a.columns]
-        cols_b = [{"name": c.name, "type": c.dtype} for c in desc_b.columns]
-        result = compare_schemas(cols_a, cols_b, table_a, table_b)
-        return result, build_schema_diff_card(result, lang_val)
+        return actions.schema_inner(session, table_a, table_b, lang_val,
+                                    where_val, desc_a, desc_b)
 
     def _count_inner(table_a, table_b, lang_val, where_val=""):
-        ex_a, ex_b = _snap_executors()
-        sql_a = build_count_sql(table_a, where_val)
-        sql_b = build_count_sql(table_b, where_val)
-        ra, rb = run_parallel(
-            lambda: ex_a.run(sql_a, max_rows=1),
-            lambda: ex_b.run(sql_b, max_rows=1),
-        )
-        ca = int(ra.rows[0][0]) if ra.rows else 0
-        cb = int(rb.rows[0][0]) if rb.rows else 0
-        result = build_row_count_result(table_a, ca, table_b, cb)
-        return result, build_count_card(result, lang_val)
+        return actions.count_inner(session, table_a, table_b, lang_val, where_val)
 
     def _sample_inner(table_a, table_b, lang_val, where_val="", key_cols_str="",
                       strategy="TOP N", col_mapping_str="", masking_on=True,
                       stratified_col=""):
-        ex_a, ex_b = _snap_executors()
-        limit = _SAMPLE_LIMIT
-        stratified_col = stratified_col or ""  # hidden textbox submits None
-        if strategy == "STRATIFIED" and stratified_col.strip():
-            sql_a = build_stratified_sample_sql(table_a, stratified_col.strip(),
-                                                _STRATIFIED_PER_GROUP,
-                                                ex_a.config.ds_type, where_val)
-            sql_b = build_stratified_sample_sql(table_b, stratified_col.strip(),
-                                                _STRATIFIED_PER_GROUP,
-                                                ex_b.config.ds_type, where_val)
-        elif strategy == "RANDOM":
-            sql_a = build_random_sample_sql(table_a, limit, ex_a.config.ds_type, where_val)
-            sql_b = build_random_sample_sql(table_b, limit, ex_b.config.ds_type, where_val)
-        else:
-            sql_a = build_sample_sql(table_a, limit, where_val, ds_type=ex_a.config.ds_type)
-            sql_b = build_sample_sql(table_b, limit, where_val, ds_type=ex_b.config.ds_type)
-        ra, rb = run_parallel(
-            lambda: ex_a.run(sql_a, max_rows=limit),
-            lambda: ex_b.run(sql_b, max_rows=limit),
-        )
-
-        mapping = parse_column_mapping(col_mapping_str) if col_mapping_str else {}
-        if mapping:
-            rb_cols = apply_column_mapping(rb.columns, mapping)
-        else:
-            rb_cols = rb.columns
-
-        rows_a = list(ra.rows)
-        rows_b = list(rb.rows)
-
-        if masking_on:
-            sens_a = detect_sensitive_columns(ra.columns, rows_a)
-            sens_b = detect_sensitive_columns(rb_cols, rows_b)
-            if sens_a:
-                rows_a = mask_rows(ra.columns, rows_a, sens_a)
-            if sens_b:
-                rows_b = mask_rows(rb_cols, rows_b, sens_b)
-
-        key_cols = [k.strip() for k in key_cols_str.split(",") if k.strip()] if key_cols_str else []
-
-        fallback_notice = ""
-        if key_cols:
-            try:
-                kd_result = diff_by_key(ra.columns, rows_a, rb_cols, rows_b, key_cols)
-                return kd_result, build_keyed_diff_card(kd_result, lang_val)
-            except (ValueError, IndexError) as exc:
-                _log.warning("Keyed diff failed for %s / %s, falling back to "
-                             "positional diff", table_a, table_b, exc_info=True)
-                fallback_notice = (
-                    '<div style="border:1px solid #fde68a;border-radius:8px;'
-                    'padding:8px 12px;background:#fffbeb;margin-bottom:8px;'
-                    'color:#d97706;font-size:12px;">⚠️ '
-                    f'{dc(lang_val, "dc_keyed_diff_fallback").format(err=_esc_html(str(exc)))}'
-                    '</div>'
-                )
-
-        diff = diff_results(ra.columns, rows_a, rb_cols, rows_b)
-        cols = ra.columns or rb_cols
-        return diff, fallback_notice + build_sample_diff_card(diff, lang_val, columns=cols)
+        return actions.sample_inner(session, table_a, table_b, lang_val,
+                                    where_val, key_cols_str, strategy,
+                                    col_mapping_str, masking_on, stratified_col)
 
     def _agg_inner(table_a, table_b, lang_val, where_val="", desc_a=None, desc_b=None):
-        ex_a, ex_b = _snap_executors()
-        if desc_a is None and desc_b is None:
-            desc_a, desc_b = run_parallel(
-                lambda: ex_a.describe_table(table_a),
-                lambda: ex_b.describe_table(table_b),
-            )
-        else:
-            if desc_a is None:
-                desc_a = ex_a.describe_table(table_a)
-            if desc_b is None:
-                desc_b = ex_b.describe_table(table_b)
-        names_a = {c.name.lower(): c for c in desc_a.columns}
-        names_b = {c.name.lower(): c for c in desc_b.columns}
-        shared_numeric = [
-            c.name for key, c in names_a.items()
-            if key in names_b and is_numeric_type(c.dtype)
-        ]
-        if not shared_numeric:
-            return AggregateResult(table_a, table_b), (
-                '<div style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;'
-                'background:#f9fafb;margin-bottom:8px;">'
-                f'<b style="color:#6b7280;">{dc(lang_val, "dc_agg_result")}</b> — '
-                f'{dc(lang_val, "dc_no_numeric")}</div>'
-            )
-        sql_a = build_aggregate_sql(table_a, shared_numeric, where_val,
-                                    ds_type=ex_a.config.ds_type)
-        sql_b = build_aggregate_sql(table_b, shared_numeric, where_val,
-                                    ds_type=ex_b.config.ds_type)
-        ra, rb = run_parallel(
-            lambda: ex_a.run(sql_a, max_rows=1),
-            lambda: ex_b.run(sql_b, max_rows=1),
-        )
-        row_a = ra.rows[0] if ra.rows else ()
-        row_b = rb.rows[0] if rb.rows else ()
-        result = compare_aggregates(table_a, row_a, table_b, row_b, shared_numeric)
-        return result, build_aggregate_card(result, lang_val)
+        return actions.agg_inner(session, table_a, table_b, lang_val,
+                                 where_val, desc_a, desc_b)
 
     def _profile_inner(table_a, table_b, lang_val, where_val=""):
         ex_a, ex_b = _snap_executors()
@@ -367,51 +253,26 @@ def render_data_comparison_page(app=None) -> None:
 
     def _store_partial(key: str, value: Any) -> None:
         """Store a single comparison result into the report."""
-        with session.lock:
-            if session.last_report is None:
-                session.last_report = CompareReport()
-            setattr(session.last_report, key, value)
+        actions.store_partial(session, key, value)
 
-    def _compare_schema_fn(table_a, table_b, lang_val, where_val):
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        result, html = _schema_inner(table_a, table_b, lang_val, where_val)
-        _store_partial("schema", result)
-        return html
+    # Validated core actions (guards + error card + report storage) live in
+    # actions.py; these wrappers bind the session for Gradio wiring.
+    def _compare_schema(table_a, table_b, lang_val, where_val):
+        return actions.compare_schema(session, table_a, table_b, lang_val, where_val)
 
-    def _compare_count_fn(table_a, table_b, lang_val, where_val, threshold_str=""):
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        threshold = parse_threshold(threshold_str)
-        result, html = _count_inner(table_a, table_b, lang_val, where_val)
-        html = build_count_card(result, lang_val, threshold)
-        _store_partial("row_count", result)
-        return html
+    def _compare_count(table_a, table_b, lang_val, where_val, threshold_str=""):
+        return actions.compare_count(session, table_a, table_b, lang_val,
+                                     where_val, threshold_str)
 
-    def _compare_sample_fn(table_a, table_b, lang_val, where_val, key_cols_str,
-                           strategy="TOP N", col_mapping_str="", masking_on=True,
-                           stratified_col=""):
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        result, html = _sample_inner(
-            table_a, table_b, lang_val, where_val, key_cols_str,
-            strategy, col_mapping_str, masking_on, stratified_col)
-        if isinstance(result, KeyedDiffResult):
-            _store_partial("keyed_diff", result)
-        else:
-            _store_partial("sample", result)
-        return html
+    def _compare_sample(table_a, table_b, lang_val, where_val, key_cols_str,
+                        strategy="TOP N", col_mapping_str="", masking_on=True,
+                        stratified_col=""):
+        return actions.compare_sample(session, table_a, table_b, lang_val,
+                                      where_val, key_cols_str, strategy,
+                                      col_mapping_str, masking_on, stratified_col)
 
-    def _compare_agg_fn(table_a, table_b, lang_val, where_val):
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        result, html = _agg_inner(table_a, table_b, lang_val, where_val)
-        _store_partial("aggregate", result)
-        return html
+    def _compare_agg(table_a, table_b, lang_val, where_val):
+        return actions.compare_aggregate(session, table_a, table_b, lang_val, where_val)
 
     def _compare_profile_fn(table_a, table_b, lang_val, where_val):
         ok, msg = _validate_where(where_val, lang_val)
@@ -477,10 +338,6 @@ def render_data_comparison_page(app=None) -> None:
         _store_partial("skew", result)
         return html
 
-    _compare_schema = _with_validation(session, _compare_schema_fn)
-    _compare_count = _with_validation(session, _compare_count_fn)
-    _compare_sample = _with_validation(session, _compare_sample_fn)
-    _compare_agg = _with_validation(session, _compare_agg_fn)
     _compare_profile = _with_validation(session, _compare_profile_fn)
     _compare_skew = _with_validation(session, _compare_skew_fn)
 

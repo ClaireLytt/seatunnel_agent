@@ -82,10 +82,10 @@ export function OptionsCard({
           <select
             id="opt-strategy"
             className={inputCls}
-            value={options.sample_strategy}
+            value={options.strategy}
             onChange={(e) =>
               set({
-                sample_strategy: e.target.value,
+                strategy: e.target.value,
                 // legacy hides AND ignores the column outside STRATIFIED
                 ...(e.target.value !== 'STRATIFIED' ? { stratified_col: '' } : {}),
               })
@@ -99,7 +99,7 @@ export function OptionsCard({
           </select>
         </div>
 
-        {options.sample_strategy === 'STRATIFIED' && (
+        {options.strategy === 'STRATIFIED' && (
           <div>
             <label className={labelCls} htmlFor="opt-stratified">
               {t('stratifiedCol')}

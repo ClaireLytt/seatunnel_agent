@@ -58,6 +58,28 @@ export async function createSession(): Promise<string> {
   return data.session_id
 }
 
+export type CoreAction = 'schema' | 'count' | 'sample' | 'aggregate'
+
+export async function compareAction(
+  action: CoreAction,
+  params: {
+    session_id: string
+    table_a: string
+    table_b: string
+    lang: string
+  } & CompareOptions,
+): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(`${BASE}/compare/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    action,
+  )
+  return data.html
+}
+
 export async function connectSide(params: ConnectParams): Promise<ConnectResult> {
   return json(
     await fetch(`${BASE}/connect`, {
@@ -70,13 +92,14 @@ export async function connectSide(params: ConnectParams): Promise<ConnectResult>
 }
 
 // ── Global comparison options (frontend state; rides on action calls) ──
+// Field names match the backend CompareRequest model (api.py).
 
 export interface CompareOptions {
   where: string
   threshold: string
   key_columns: string
   column_mapping: string
-  sample_strategy: string
+  strategy: string
   stratified_col: string
   masking: boolean
 }
@@ -86,7 +109,7 @@ export const OPTIONS_DEFAULTS: CompareOptions = {
   threshold: '',
   key_columns: '',
   column_mapping: '',
-  sample_strategy: 'TOP N',
+  strategy: 'TOP N',
   stratified_col: '',
   masking: true,
 }

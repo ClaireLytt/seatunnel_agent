@@ -8,6 +8,7 @@ import {
   type Meta,
   type PresetConnection,
 } from '@/api'
+import { ActionRow } from '@/components/ActionRow'
 import { ConnectForm, type ConnFields } from '@/components/ConnectForm'
 import { OptionsCard } from '@/components/OptionsCard'
 import { PresetsCard } from '@/components/PresetsCard'
@@ -21,6 +22,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [tableA, setTableA] = useState('')
   const [tableB, setTableB] = useState('')
+  const [resultHtml, setResultHtml] = useState('')
 
   // Global comparison options — ride on every action request (tickets 03+).
   const [options, setOptions] = useState<CompareOptions>(OPTIONS_DEFAULTS)
@@ -122,6 +124,13 @@ export default function App() {
                 onChange={setOptions}
                 onReset={resetOptions}
               />
+              <ActionRow
+                sessionId={sessionId}
+                tableA={tableA}
+                tableB={tableB}
+                options={options}
+                onResult={setResultHtml}
+              />
             </>
           )}
         </aside>
@@ -129,16 +138,27 @@ export default function App() {
         {/* Results panel (actions land here from ticket 03 on) */}
         <main className="min-w-0 flex-1">
           <h2 className="mb-2 font-display text-xl font-bold text-ink">{t('results')}</h2>
-          <Card className="flex min-h-[420px] items-center justify-center">
-            <div className="text-center">
-              <div aria-hidden className="font-mono text-3xl text-ink-soft">
-                A ⇄ B
+          {resultHtml ? (
+            <Card className="min-h-[420px]">
+              {/* Server-rendered comparison cards (inline-styled, 1:1 legacy) */}
+              <div
+                data-testid="result-cards"
+                className="overflow-x-auto"
+                dangerouslySetInnerHTML={{ __html: resultHtml }}
+              />
+            </Card>
+          ) : (
+            <Card className="flex min-h-[420px] items-center justify-center">
+              <div className="text-center">
+                <div aria-hidden className="font-mono text-3xl text-ink-soft">
+                  A ⇄ B
+                </div>
+                <p className="mt-3 max-w-[360px] font-mono text-[13px] text-muted">
+                  {t('resultsEmpty')}
+                </p>
               </div>
-              <p className="mt-3 max-w-[360px] font-mono text-[13px] text-muted">
-                {t('resultsEmpty')}
-              </p>
-            </div>
-          </Card>
+            </Card>
+          )}
         </main>
       </div>
     </div>

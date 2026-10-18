@@ -137,6 +137,7 @@ files = [
     "src/seatunnel_agent/common/llm.py",
     "src/seatunnel_agent/agents/data/seatunnel/api.py",
     "src/seatunnel_agent/agents/data/seatunnel/rendering.py",
+    "src/seatunnel_agent/agents/data/data_comparison/actions.py",
     "src/seatunnel_agent/agents/data/data_comparison/api.py",
     "src/seatunnel_agent/agents/data/data_comparison/connect.py",
     "src/seatunnel_agent/agents/data/data_comparison/registry.py",

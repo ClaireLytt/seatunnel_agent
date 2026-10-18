@@ -16,6 +16,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from seatunnel_agent.agents.data.data_comparison import actions
 from seatunnel_agent.agents.data.data_comparison.connect import connect_side
 from seatunnel_agent.agents.data.data_comparison.registry import (
     SessionState,
@@ -105,6 +106,63 @@ def connect(req: ConnectRequest) -> dict[str, Any]:
             "database": cfg.database,
         },
     }
+
+
+class CompareRequest(BaseModel):
+    """Core comparison action request.
+
+    The option fields default to the legacy page's defaults; ticket 05
+    (options block) plugs real values into the same fields.
+    """
+
+    session_id: str
+    table_a: str = ""
+    table_b: str = ""
+    lang: str = "en"
+    where: str = ""
+    # count
+    threshold: str = ""
+    # sample
+    key_columns: str = ""
+    strategy: str = "TOP N"
+    column_mapping: str = ""
+    masking: bool = True
+    stratified_col: str = ""
+
+
+@router.post("/compare/schema")
+def compare_schema(req: CompareRequest) -> dict[str, str]:
+    """Schema diff card (HTML fragment; guards return their message as html)."""
+    session = _get_session(req.session_id)
+    return {"html": actions.compare_schema(
+        session, req.table_a, req.table_b, req.lang, req.where)}
+
+
+@router.post("/compare/count")
+def compare_count(req: CompareRequest) -> dict[str, str]:
+    """Row-count comparison card, with optional threshold badge."""
+    session = _get_session(req.session_id)
+    return {"html": actions.compare_count(
+        session, req.table_a, req.table_b, req.lang, req.where,
+        req.threshold)}
+
+
+@router.post("/compare/sample")
+def compare_sample(req: CompareRequest) -> dict[str, str]:
+    """Sample-data diff card (keyed diff when key columns are given)."""
+    session = _get_session(req.session_id)
+    return {"html": actions.compare_sample(
+        session, req.table_a, req.table_b, req.lang, req.where,
+        req.key_columns, req.strategy, req.column_mapping, req.masking,
+        req.stratified_col)}
+
+
+@router.post("/compare/aggregate")
+def compare_aggregate(req: CompareRequest) -> dict[str, str]:
+    """Aggregate comparison card over shared numeric columns."""
+    session = _get_session(req.session_id)
+    return {"html": actions.compare_aggregate(
+        session, req.table_a, req.table_b, req.lang, req.where)}
 
 
 @router.get("/tables")
