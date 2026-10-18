@@ -1,6 +1,6 @@
 """i18n parity for the React /datacompare workspace (ticket 10).
 
-Checks frontend/datacompare/src/i18n.ts:
+Checks frontend/data_comparison/src/i18n.ts:
 
 - en and zh expose identical key sets;
 - every t('key') used in the workspace .tsx files (plus the labelKey
@@ -41,7 +41,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "frontend" / "datacompare" / "src"
+SRC = ROOT / "frontend" / "data_comparison" / "src"
 I18N_TS = SRC / "i18n.ts"
 
 # React key -> {en, zh} legacy wording, verbatim from DC_I18N

@@ -18,7 +18,7 @@ import pytest
 
 pytestmark = pytest.mark.uitest
 
-FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "datacompare" / "dist"
+FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "data_comparison" / "dist"
 
 
 def _free_port() -> int:
@@ -56,7 +56,7 @@ def page_url(tmp_path, monkeypatch):
 
     if not (FRONTEND_DIST / "index.html").is_file():
         pytest.skip(
-            "frontend dist not built (cd frontend && npm run build --workspace datacompare)")
+            "frontend dist not built (cd frontend && npm run build --workspace data_comparison)")
 
     app = FastAPI()
     app.include_router(router)

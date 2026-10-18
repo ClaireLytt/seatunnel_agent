@@ -48,7 +48,7 @@ db_b = make_db(tmp / "b.db", extra_col=True)
 app = FastAPI()
 app.include_router(router)
 app.mount("/datacompare",
-          StaticFiles(directory=ROOT / "frontend" / "datacompare" / "dist", html=True))
+          StaticFiles(directory=ROOT / "frontend" / "data_comparison" / "dist", html=True))
 
 with socket.socket() as s:
     s.bind(("127.0.0.1", 0))

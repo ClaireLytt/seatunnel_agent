@@ -15,7 +15,7 @@ MANIFEST = AgentManifest(
     desc_zh="跨数据源比对表结构、行数、数据差异",
     # api intentionally unset: the router is mounted unconditionally by the
     # launcher (the React page depends on it), not behind --api.
-    render="",  # React static mount serves this route (frontend/datacompare)
+    render="",  # React static mount serves this route (frontend/data_comparison)
     group="build",
     order=30,
     external=True,
