@@ -143,6 +143,7 @@ files = [
     "src/seatunnel_agent/agents/data/data_comparison/connect.py",
     "src/seatunnel_agent/agents/data/data_comparison/features.py",
     "src/seatunnel_agent/agents/data/data_comparison/registry.py",
+    "src/seatunnel_agent/agents/data/data_comparison/reports_api.py",
 ]
 ignore_missing_imports = true
 check_untyped_defs = true

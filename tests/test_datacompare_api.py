@@ -521,6 +521,172 @@ def test_feature_unknown_session_404(client):
     assert r.status_code == 404
 
 
+# ── ticket 07: report save / list / load / diff / export / standalone ──
+
+
+@pytest.fixture()
+def reports_tmp(tmp_path, monkeypatch):
+    """Point the reports API at a temp reports directory."""
+    from seatunnel_agent.agents.data.data_comparison import reports_api
+    rdir = tmp_path / "reports"
+    monkeypatch.setattr(reports_api, "_REPORTS_DIR", rdir)
+    return rdir
+
+
+@pytest.fixture()
+def compared(client, connected, reports_tmp) -> str:
+    """Connected session with a report populated via count + schema."""
+    assert _action(client, connected, "count").status_code == 200
+    assert _action(client, connected, "schema").status_code == 200
+    return connected
+
+
+def _save_report(client, sid, **kw):
+    body = {"session_id": sid, "table_a": "orders", "table_b": "orders",
+            "lang": "en"}
+    body.update(kw)
+    return client.post("/api/datacompare/reports", json=body)
+
+
+def test_report_save_list_load_round_trip(client, compared, reports_tmp):
+    r = _save_report(client, compared)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    fname = data["filename"]
+    assert fname.startswith("compare_orders_vs_orders_")
+    assert fname.endswith(".json")
+    assert (reports_tmp / fname).is_file()
+
+    files = client.get("/api/datacompare/reports").json()["files"]
+    assert files == [fname]
+
+    # load into a FRESH session restores the report view
+    sid2 = _session(client)
+    r = client.get(f"/api/datacompare/reports/{fname}",
+                   params={"session_id": sid2, "lang": "en"})
+    assert r.status_code == 200
+    html = r.json()["html"]
+    assert "Report loaded" in html
+    assert "Row Count Comparison" in html
+    assert "Schema Comparison" in html
+
+    # ...and the loaded report is now the session's last_report:
+    # exports work from the fresh session
+    rr = client.get("/api/datacompare/export/csv",
+                    params={"session_id": sid2, "lang": "en"})
+    assert rr.status_code == 200
+
+
+def test_report_save_without_report_is_error(client, connected, reports_tmp):
+    data = _save_report(client, connected).json()
+    assert data["ok"] is False
+
+
+def test_report_list_empty(client, reports_tmp):
+    assert client.get("/api/datacompare/reports").json()["files"] == []
+
+
+def test_report_load_unknown_404(client, compared):
+    r = client.get("/api/datacompare/reports/compare_nope.json",
+                   params={"session_id": compared, "lang": "en"})
+    assert r.status_code == 404
+
+
+def test_report_load_rejects_traversal(client, compared):
+    r = client.get("/api/datacompare/reports/..%2Fsecrets.json",
+                   params={"session_id": compared, "lang": "en"})
+    assert r.status_code == 404
+
+
+def test_report_diff_contract(client, compared):
+    f1 = _save_report(client, compared).json()["filename"]
+    # change the data so the second report differs
+    assert _action(client, compared, "count", table_a="users",
+                   table_b="orders").status_code == 200
+    f2 = _save_report(client, compared, table_a="users").json()["filename"]
+    assert f1 != f2
+
+    r = client.post("/api/datacompare/reports/diff",
+                    json={"old": f1, "new": f2, "lang": "en"})
+    assert r.status_code == 200
+    html = r.json()["html"]
+    assert "Report Diff Result" in html
+    assert "row_count" in html
+
+
+def test_report_diff_unknown_404(client, compared, reports_tmp):
+    r = client.post("/api/datacompare/reports/diff",
+                    json={"old": "compare_a.json", "new": "compare_b.json",
+                          "lang": "en"})
+    assert r.status_code == 404
+
+
+def test_export_csv_valid(client, compared):
+    r = client.get("/api/datacompare/export/csv",
+                   params={"session_id": compared, "lang": "en"})
+    assert r.status_code == 200
+    assert "text/csv" in r.headers["content-type"]
+    cd = r.headers["content-disposition"]
+    assert "data_comparison_" in cd and ".csv" in cd
+
+    import csv
+    import io
+    text = r.content.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(text)))
+    flat = [c for row in rows for c in row]
+    assert "[Row Count]" in flat
+    assert "[Schema Diff]" in flat
+
+
+def test_export_excel_valid(client, compared):
+    r = client.get("/api/datacompare/export/xlsx",
+                   params={"session_id": compared, "lang": "en"})
+    assert r.status_code == 200
+    cd = r.headers["content-disposition"]
+    assert "data_comparison_" in cd and ".xlsx" in cd
+
+    import io
+
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(r.content))
+    assert "Row Count" in wb.sheetnames
+    assert "Schema Diff" in wb.sheetnames
+    ws = wb["Row Count"]
+    assert ws.cell(row=1, column=1).value == "Table A"
+    assert ws.cell(row=2, column=2).value == 2  # count A (orders has 2 rows)
+
+
+def test_export_without_report_409(client, connected):
+    for fmt in ("csv", "xlsx"):
+        r = client.get(f"/api/datacompare/export/{fmt}",
+                       params={"session_id": connected, "lang": "en"})
+        assert r.status_code == 409
+
+
+def test_export_unknown_session_404(client):
+    r = client.get("/api/datacompare/export/csv",
+                   params={"session_id": "nope", "lang": "en"})
+    assert r.status_code == 404
+
+
+def test_standalone_report_html(client, compared):
+    r = client.get("/api/datacompare/report/standalone",
+                   params={"session_id": compared, "lang": "en"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    html = r.text
+    assert "<html" in html.lower()
+    assert "Row Count Comparison" in html
+    assert "Schema Comparison" in html
+
+
+def test_standalone_without_report_409(client, connected, reports_tmp):
+    r = client.get("/api/datacompare/report/standalone",
+                   params={"session_id": connected, "lang": "en"})
+    assert r.status_code == 409
+
+
 # ── ticket 04: compound actions with progress ───────────────────────
 
 
