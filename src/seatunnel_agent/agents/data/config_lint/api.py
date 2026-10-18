@@ -45,6 +45,12 @@ def lint(req: LintRequest) -> LintResponse:
                             detail="Provide 'config' or 'dir'")
     lang = normalize_lang(req.lang)
     if (req.dir or "").strip():
+        from pathlib import Path
+
+        # structured detail: the frontend localizes it (i18n `bad_dir`)
+        if not Path(req.dir.strip()).is_dir():
+            raise HTTPException(status_code=400,
+                                detail={"code": "bad_dir", "path": req.dir})
         target = require_dir(req.dir, "CONFLINT_API_ALLOWED_DIRS")
         results = lint_dir(target)
         report = render_batch_markdown(results, lang) if req.report else None

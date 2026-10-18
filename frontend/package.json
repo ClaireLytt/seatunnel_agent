@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "shared",
+    "config_lint",
     "config_migrate",
     "data_comparison",
     "seatunnel",
