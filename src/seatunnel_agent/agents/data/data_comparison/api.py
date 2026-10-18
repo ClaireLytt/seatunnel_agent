@@ -31,6 +31,9 @@ from seatunnel_agent.agents.data.data_comparison.registry import (
 from seatunnel_agent.agents.data.data_comparison.reports_api import (
     router as _reports_router,
 )
+from seatunnel_agent.agents.data.data_comparison.schedule_api import (
+    router as _schedule_router,
+)
 from seatunnel_agent.agents.data.data_comparison.ui_shared import (
     _NEEDS_AUTH,
     _NEEDS_HOST,
@@ -48,6 +51,7 @@ router.include_router(features.router)
 router.include_router(generation_router)
 router.include_router(_reports_router)
 router.include_router(compound_router)
+router.include_router(_schedule_router)
 
 _SCHEDULE_INTERVALS = ["1", "5", "15", "30", "60"]
 

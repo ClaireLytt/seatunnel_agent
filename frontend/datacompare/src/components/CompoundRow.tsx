@@ -6,6 +6,7 @@ import {
   type CompareOptions,
   type FeatureFields,
   type StreamAction,
+  type WebhookOptions,
 } from '@/api'
 import { Card } from '@shared/components/card'
 
@@ -25,6 +26,7 @@ export function CompoundRow({
   options,
   onResult,
   featureFields,
+  webhook,
 }: {
   sessionId: string
   tableA: string
@@ -33,6 +35,8 @@ export function CompoundRow({
   onResult: (html: string) => void
   // optional compare-all stages (skew/checksum/partition/custom agg)
   featureFields?: () => FeatureFields
+  // webhook fields ride on compare-all (ticket 09); posting is server-side
+  webhook?: WebhookOptions
 }) {
   const { t, i18n } = useTranslation()
   const [busy, setBusy] = useState<CompoundAction | null>(null)
@@ -50,6 +54,7 @@ export function CompoundRow({
         lang: i18n.language.startsWith('zh') ? 'zh' : 'en',
         ...options,
         ...(action === 'all' ? featureFields?.() : undefined),
+        ...(action === 'all' ? webhook : undefined),
       }
       const html =
         action === 'profile'

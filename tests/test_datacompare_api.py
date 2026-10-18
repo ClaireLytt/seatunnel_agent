@@ -1094,3 +1094,227 @@ def test_templates_batch_run_guards(client, templates_tmp, connected):
                        json={"session_id": sid, "names": ["t1"],
                              "lang": "en"}).json()["html"]
     assert html == "Please connect both data sources first"
+
+
+# ── ticket 09: schedule / webhook / trends ──────────────────────────
+
+
+@pytest.fixture()
+def webhook_server():
+    """Local capture endpoint for webhook POSTs."""
+    import http.server
+
+    received: list[dict] = []
+    event = threading.Event()
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0"))
+            received.append(json.loads(self.rfile.read(length)))
+            event.set()
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+    thread = threading.Thread(target=srv.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}/hook", received, event
+    srv.shutdown()
+
+
+def test_compare_all_posts_webhook(client, connected, webhook_server):
+    url, received, event = webhook_server
+    r = _compound(client, connected, "all", webhook_url=url)
+    assert r.status_code == 200
+    assert event.wait(10), "webhook never arrived"
+    payload = received[0]
+    assert payload["table_a"] == "orders"
+    assert payload["has_diffs"] is True  # 2 rows vs 1 row
+    assert "report_summary" in payload
+    assert payload["row_count_delta"] != 0
+
+
+def test_compare_all_notify_on_fail_suppresses_webhook(
+        client, db_a, webhook_server):
+    # both sides on the same db -> no diffs -> notify_on_fail suppresses
+    url, received, event = webhook_server
+    sid = _session(client)
+    assert _connect(client, sid, "a", db=db_a).json()["ok"] is True
+    assert _connect(client, sid, "b", db=db_a).json()["ok"] is True
+    r = _compound(client, sid, "all", webhook_url=url, notify_on_fail=True)
+    assert r.status_code == 200
+    assert not event.wait(2)
+    assert received == []
+
+
+def _schedule_start(client, sid, **kw):
+    body = {"session_id": sid, "table_a": "orders", "table_b": "orders",
+            "lang": "en", "interval": "15"}
+    body.update(kw)
+    return client.post("/api/datacompare/schedule/start", json=body)
+
+
+def _schedule_status(client, sid):
+    r = client.get("/api/datacompare/schedule/status",
+                   params={"session_id": sid})
+    assert r.status_code == 200
+    return r.json()
+
+
+def test_schedule_lifecycle_tick_saves_report(client, connected, reports_tmp):
+    from seatunnel_agent.agents.data.data_comparison import schedule_api
+    from seatunnel_agent.agents.data.data_comparison.registry import (
+        get_registry,
+    )
+
+    r = _schedule_start(client, connected)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    assert "15" in data["message"]
+
+    status = _schedule_status(client, connected)
+    assert status == {"active": True, "interval": 15,
+                      "last_run": None, "last_error": None}
+
+    session = get_registry().get(connected)
+    assert session is not None
+    with session.lock:
+        timer = session.schedule_timer
+    assert timer is not None  # server-side timer armed
+
+    # trigger the tick by hand (the timer fires this same function)
+    schedule_api.run_schedule_tick(session)
+
+    # the scheduled run saved its report (legacy arity bug fixed)
+    files = list(reports_tmp.glob("compare_orders_vs_orders_*.json"))
+    assert len(files) == 1
+    status = _schedule_status(client, connected)
+    assert status["active"] is True
+    assert status["last_run"] is not None
+    assert status["last_error"] is None
+    with session.lock:
+        assert session.schedule_timer is not None  # rescheduled
+
+    r = client.post("/api/datacompare/schedule/stop",
+                    json={"session_id": connected, "lang": "en"})
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    status = _schedule_status(client, connected)
+    assert status["active"] is False
+    with session.lock:
+        assert session.schedule_timer is None
+
+
+def test_schedule_start_requires_tables(client, connected):
+    r = _schedule_start(client, connected, table_a="", table_b="")
+    assert r.status_code == 200
+    assert r.json()["ok"] is False
+    assert _schedule_status(client, connected)["active"] is False
+
+
+def test_schedule_start_already_active(client, connected):
+    assert _schedule_start(client, connected).json()["ok"] is True
+    data = _schedule_start(client, connected, interval="5").json()
+    assert data["ok"] is True
+    assert "15" in data["message"]  # original interval kept
+    assert _schedule_status(client, connected)["interval"] == 15
+    client.post("/api/datacompare/schedule/stop",
+                json={"session_id": connected, "lang": "en"})
+
+
+def test_schedule_bad_interval_falls_back_to_default(client, connected):
+    data = _schedule_start(client, connected, interval="nope").json()
+    assert data["ok"] is True
+    assert _schedule_status(client, connected)["interval"] == 15
+    client.post("/api/datacompare/schedule/stop",
+                json={"session_id": connected, "lang": "en"})
+
+
+def test_schedule_tick_records_error_when_no_report(client, connected,
+                                                    reports_tmp):
+    from seatunnel_agent.agents.data.data_comparison import schedule_api
+    from seatunnel_agent.agents.data.data_comparison.registry import (
+        get_registry,
+    )
+
+    assert _schedule_start(client, connected,
+                           table_a="missing_table").json()["ok"] is True
+    session = get_registry().get(connected)
+    assert session is not None
+    schedule_api.run_schedule_tick(session)
+    status = _schedule_status(client, connected)
+    assert status["last_error"]
+    assert status["last_run"] is None
+    assert list(reports_tmp.glob("*.json")) == []
+    client.post("/api/datacompare/schedule/stop",
+                json={"session_id": connected, "lang": "en"})
+
+
+def test_schedule_unknown_session_404(client):
+    assert _schedule_start(client, "nope").status_code == 404
+    assert client.post("/api/datacompare/schedule/stop",
+                       json={"session_id": "nope"}).status_code == 404
+    assert client.get("/api/datacompare/schedule/status",
+                      params={"session_id": "nope"}).status_code == 404
+
+
+def test_registry_remove_cancels_schedule_timer():
+    from seatunnel_agent.agents.data.data_comparison.registry import (
+        ConnectionRegistry,
+    )
+
+    reg = ConnectionRegistry()
+    session = reg.create()
+    timer = threading.Timer(1000, lambda: None)
+    timer.daemon = True
+    timer.start()
+    with session.lock:
+        session.schedule_timer = timer
+        session.schedule_active = True
+    reg.remove(session.session_id)
+    timer.join(2)
+    assert not timer.is_alive()
+    assert session.schedule_active is False
+    assert session.schedule_timer is None
+
+
+# ── trends ──────────────────────────────────────────────────────────
+
+
+def test_trends_empty(client, reports_tmp):
+    r = client.get("/api/datacompare/trends")
+    assert r.status_code == 200
+    assert r.json() == {"entries": [], "alerts_html": ""}
+
+
+def test_trends_entries_and_alert_evaluation(client, compared, reports_tmp):
+    # one report via the API, then a second file with a later timestamp so
+    # the series has two points (filenames are second-resolution)
+    r = _save_report(client, compared)
+    assert r.json()["ok"] is True
+    src = next(iter(reports_tmp.glob("compare_*.json")))
+    data = json.loads(src.read_text(encoding="utf-8"))
+    (reports_tmp / "compare_orders_vs_orders_29991231_235959.json").write_text(
+        json.dumps(data), encoding="utf-8")
+
+    r = client.get("/api/datacompare/trends",
+                   params={"alert_rules": "delta>0:2", "lang": "en"})
+    assert r.status_code == 200
+    body = r.json()
+    entries = body["entries"]
+    assert len(entries) == 2
+    for key in ("timestamp", "delta", "delta_pct", "mismatches",
+                "schema_changes", "skew_top1"):
+        assert key in entries[0]
+    assert entries[0]["delta"] != 0  # 2 rows vs 1 row
+    # delta>0 held for both consecutive reports -> alert triggered
+    assert "TRIGGERED" in body["alerts_html"]
+
+    # a rule that cannot trigger stays OK
+    body = client.get("/api/datacompare/trends",
+                      params={"alert_rules": "delta>999:1"}).json()
+    assert "TRIGGERED" not in body["alerts_html"]

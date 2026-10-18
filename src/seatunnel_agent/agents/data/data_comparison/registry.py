@@ -35,6 +35,8 @@ class SessionState:
     last_report: Any | None = None
     schedule_timer: threading.Timer | None = None
     schedule_active: bool = False
+    schedule_interval: int = 0
+    schedule_request: Any | None = None
     schedule_last_run: str | None = None
     schedule_last_error: str | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -59,8 +61,21 @@ class ConnectionRegistry:
             return self._sessions.get(session_id)
 
     def remove(self, session_id: str) -> None:
+        """Drop a session, cancelling any scheduled-comparison timer.
+
+        A timer left behind by an evicted session would keep firing
+        against dead executors forever; eviction must cancel it.
+        """
         with self._lock:
-            self._sessions.pop(session_id, None)
+            session = self._sessions.pop(session_id, None)
+        if session is None:
+            return
+        with session.lock:
+            session.schedule_active = False
+            timer = session.schedule_timer
+            session.schedule_timer = None
+        if timer is not None:
+            timer.cancel()
 
 
 _registry = ConnectionRegistry()

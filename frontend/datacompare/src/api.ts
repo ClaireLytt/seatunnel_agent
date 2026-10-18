@@ -454,6 +454,83 @@ export async function deleteTemplate(name: string): Promise<void> {
   )
 }
 
+// ── Schedule / webhook / trends (ticket 09) ──
+
+export interface WebhookOptions {
+  webhook_url: string
+  notify_on_fail: boolean
+}
+
+export const WEBHOOK_DEFAULTS: WebhookOptions = {
+  webhook_url: '',
+  notify_on_fail: false,
+}
+
+export interface ScheduleResult {
+  ok: boolean
+  active: boolean
+  message: string
+}
+
+export interface ScheduleStatus {
+  active: boolean
+  interval: number
+  last_run: string | null
+  last_error: string | null
+}
+
+export async function scheduleStart(
+  params: CompoundParams & WebhookOptions & FeatureFields & { interval: string },
+): Promise<ScheduleResult> {
+  return json(
+    await fetch(`${BASE}/schedule/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    'schedule start',
+  )
+}
+
+export async function scheduleStop(sessionId: string, lang: string): Promise<ScheduleResult> {
+  return json(
+    await fetch(`${BASE}/schedule/stop`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, lang }),
+    }),
+    'schedule stop',
+  )
+}
+
+export async function scheduleStatus(sessionId: string): Promise<ScheduleStatus> {
+  return json(
+    await fetch(`${BASE}/schedule/status?session_id=${encodeURIComponent(sessionId)}`),
+    'schedule status',
+  )
+}
+
+export interface TrendEntry {
+  timestamp: string
+  table_a: string
+  table_b: string
+  delta: number
+  delta_pct: number
+  mismatches: number
+  schema_changes: number
+  skew_top1: number | null
+}
+
+export interface TrendsResult {
+  entries: TrendEntry[]
+  alerts_html: string
+}
+
+export async function fetchTrends(lang: string, alertRules: string): Promise<TrendsResult> {
+  const qs = new URLSearchParams({ lang, alert_rules: alertRules })
+  return json(await fetch(`${BASE}/trends?${qs}`), 'trends')
+}
+
 export async function batchRunTemplates(params: {
   session_id: string
   names: string[]

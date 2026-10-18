@@ -4,11 +4,13 @@ import {
   createSession,
   fetchMeta,
   OPTIONS_DEFAULTS,
+  WEBHOOK_DEFAULTS,
   type CompareOptions,
   type ComparisonTemplate,
   type FeatureFields,
   type Meta,
   type PresetConnection,
+  type WebhookOptions,
 } from '@/api'
 import { ActionRow } from '@/components/ActionRow'
 import { CompoundRow } from '@/components/CompoundRow'
@@ -18,7 +20,9 @@ import { GenerationCard } from '@/components/GenerationCard'
 import { OptionsCard } from '@/components/OptionsCard'
 import { PresetsCard } from '@/components/PresetsCard'
 import { ReportsCard } from '@/components/ReportsCard'
+import { ScheduleCard } from '@/components/ScheduleCard'
 import { TemplatesCard } from '@/components/TemplatesCard'
+import { TrendsCard } from '@/components/TrendsCard'
 import { ResultsToolbar } from '@/components/ResultsToolbar'
 import { Card } from '@shared/components/card'
 
@@ -35,6 +39,9 @@ export default function App() {
   // Global comparison options — ride on every action request (tickets 03+).
   const [options, setOptions] = useState<CompareOptions>(OPTIONS_DEFAULTS)
   const [resetSeq, setResetSeq] = useState(0)
+
+  // Webhook fields — ride on compare-all and schedule-start (ticket 09).
+  const [webhook, setWebhook] = useState<WebhookOptions>(WEBHOOK_DEFAULTS)
 
   // Current connect-form fields per side (for "save preset from side X");
   // a ref so keystrokes in the forms don't re-render the whole page.
@@ -94,8 +101,8 @@ export default function App() {
     sample_strategy: options.strategy,
     watermark_column: '',
     quality_rules: '',
-    webhook_url: '',
-    notify_on_fail: false,
+    webhook_url: webhook.webhook_url,
+    notify_on_fail: webhook.notify_on_fail,
     masking_enabled: options.masking,
   })
 
@@ -110,6 +117,10 @@ export default function App() {
       strategy: tmpl.sample_strategy,
       stratified_col: '',
       masking: tmpl.masking_enabled,
+    })
+    setWebhook({
+      webhook_url: tmpl.webhook_url,
+      notify_on_fail: tmpl.notify_on_fail,
     })
   }
 
@@ -191,6 +202,7 @@ export default function App() {
                 options={options}
                 onResult={setResultHtml}
                 featureFields={() => featureFieldsRef.current}
+                webhook={webhook}
               />
               <ReportsCard
                 sessionId={sessionId}
@@ -211,6 +223,17 @@ export default function App() {
                 onApply={applyTemplate}
                 onResult={setResultHtml}
               />
+              <ScheduleCard
+                sessionId={sessionId}
+                tableA={tableA}
+                tableB={tableB}
+                options={options}
+                intervals={meta.schedule_intervals}
+                webhook={webhook}
+                onWebhook={setWebhook}
+                featureFields={() => featureFieldsRef.current}
+              />
+              <TrendsCard />
             </>
           )}
         </aside>
