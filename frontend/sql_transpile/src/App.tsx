@@ -68,7 +68,9 @@ export default function App() {
     reset()
     try {
       const res = await translateSql(text, dst, src, i18n.language)
-      setOutputSql(res.output_sql ?? '')
+      // legacy parity: hide the code block when no statement translated OK
+      const anyOk = res.statements?.some((s) => s.ok === true)
+      setOutputSql(anyOk ? (res.output_sql ?? '') : '')
       setReport(res.report ?? '')
       setAdvised({ sql: text, to: dst, from: src })
     } catch (e) {

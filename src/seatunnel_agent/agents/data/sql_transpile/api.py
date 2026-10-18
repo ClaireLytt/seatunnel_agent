@@ -143,8 +143,10 @@ def advice_endpoint(req: AdviceRequest) -> dict[str, Any]:
         advice = generate_advice(settings, result, lang)
     except Exception as exc:  # LLM/transport failure — mirror the legacy
         logger.warning("transpile advice failed: %s", exc)  # UI's ⚠️ path
+        # generic detail only: raw exception text could leak endpoint/config
+        # internals over an unauthenticated REST surface
         return {"status": "error", "advice": None,
-                "detail": f"{type(exc).__name__}: {exc}"}
+                "detail": f"LLM advice failed ({type(exc).__name__})"}
     if not advice:
         return {"status": "none", "advice": None}
     return {"status": "ok", "advice": advice}

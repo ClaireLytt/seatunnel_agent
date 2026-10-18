@@ -245,7 +245,7 @@ body.st-sidebar-dragging {
    Lineage page — the global container is 100vh/overflow-hidden,
    so the page provides its own vertical scroll
    ══════════════════════════ */
-.st-lin-page, .st-trp-page, .st-imp-page, .st-set-page {
+.st-lin-page, .st-imp-page, .st-set-page {
     /* the navbar is hidden, so the page owns the full viewport; keep the
        explicit height so the page (not the clipped app root) scrolls */
     height: 100vh !important;
@@ -257,29 +257,26 @@ body.st-sidebar-dragging {
     scrollbar-width: thin;
     scrollbar-gutter: stable;
 }
-.st-lin-page::-webkit-scrollbar, .st-trp-page::-webkit-scrollbar,
-.st-imp-page::-webkit-scrollbar,
+.st-lin-page::-webkit-scrollbar, .st-imp-page::-webkit-scrollbar,
 .st-set-page::-webkit-scrollbar { width: 8px; }
-.st-lin-page::-webkit-scrollbar-thumb, .st-trp-page::-webkit-scrollbar-thumb,
-.st-imp-page::-webkit-scrollbar-thumb,
+.st-lin-page::-webkit-scrollbar-thumb, .st-imp-page::-webkit-scrollbar-thumb,
 .st-set-page::-webkit-scrollbar-thumb {
     background: #d1d5db;
     border-radius: 4px;
 }
 .st-lin-page::-webkit-scrollbar-thumb:hover,
-.st-trp-page::-webkit-scrollbar-thumb:hover,
 .st-imp-page::-webkit-scrollbar-thumb:hover,
 .st-set-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 /* Panels grow with their content (e.g. the expanded Hive advanced
    accordion); the page scrollbar above is the only vertical scroll. */
-.st-lin-side, .st-lin-main, .st-trp-side, .st-trp-main,
+.st-lin-side, .st-lin-main,
 .st-imp-side, .st-imp-main, .st-set-main {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
     align-self: flex-start !important;
 }
-.st-lin-side, .st-trp-side, .st-imp-side {
+.st-lin-side, .st-imp-side {
     padding-right: 6px !important;
     border-right: 1px solid #e5e7eb;
 }

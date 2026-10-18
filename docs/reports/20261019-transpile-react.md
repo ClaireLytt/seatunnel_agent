@@ -59,3 +59,27 @@ python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / 
 ## 未执行的步骤
 
 - 无。
+
+## Code-review fix-up(同批次追加)
+
+双轴 code-review(Standards/Spec,范围 11b86ad..HEAD)后的修复:
+
+| 发现 | 修复 |
+| --- | --- |
+| hub/css.py 残留 `.st-trp-*` 死选择器 6 处(触点清单第 7 点,硬违规) | 全部移除(lineage/impact/settings 选择器保留) |
+| /advice error 状态把原始异常文本回给未认证客户端,可能泄露内部信息 | detail 改为泛化消息 `LLM advice failed (<Type>)`,详情只进服务端日志 |
+| 全失败脚本时 React 仍显示 `-- transpile-error` 译文块,旧页为隐藏 | 前端按 `statements.some(ok)` 门控,恢复 1:1 |
+
+未修复的判断项(有先例/文档依据):api.ts post/ApiError 第 4 份拷贝(既有
+per-workspace 模式,收敛到 @shared 留待统一重构)、/translate /batch 的
+report 旗标与 /advice error 状态(向后兼容的必要扩展,spec 故事 8 允许)、
+i18n 冷启动读 cookie(sql_fmt 先例,切语言经刷新生效)、advice_none/no_key
+去掉 markdown 斜体包裹(parity 测试已注明)。
+
+```
+ruff check src tests -> All checks passed!
+mypy                 -> Success: no issues found in 115 source files
+pytest(定向 85 条)   -> 85 passed
+pytest -m uitest tests/test_transpile_page.py -> 11 passed
+npm run build --workspace sql_transpile -> ✓ built
+```
