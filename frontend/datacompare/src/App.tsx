@@ -9,6 +9,7 @@ import {
   type PresetConnection,
 } from '@/api'
 import { ActionRow } from '@/components/ActionRow'
+import { CompoundRow } from '@/components/CompoundRow'
 import { ConnectForm, type ConnFields } from '@/components/ConnectForm'
 import { OptionsCard } from '@/components/OptionsCard'
 import { PresetsCard } from '@/components/PresetsCard'
@@ -125,6 +126,13 @@ export default function App() {
                 onReset={resetOptions}
               />
               <ActionRow
+                sessionId={sessionId}
+                tableA={tableA}
+                tableB={tableB}
+                options={options}
+                onResult={setResultHtml}
+              />
+              <CompoundRow
                 sessionId={sessionId}
                 tableA={tableA}
                 tableB={tableB}

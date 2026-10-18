@@ -202,3 +202,41 @@ def test_datacompare_core_action_renders_cards(page_url, tmp_path):
         expect(cards).to_contain_text("Schema Comparison")
         expect(cards).to_contain_text("Schemas are identical")
         browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_compare_all_streams_to_cards(page_url, tmp_path):
+    """Compare All streams SSE progress and renders the summary card."""
+    import sqlite3
+
+    from playwright.sync_api import expect, sync_playwright
+
+    for name in ("a.db", "b.db"):
+        conn = sqlite3.connect(tmp_path / name)
+        conn.execute("CREATE TABLE orders (id INTEGER, val TEXT)")
+        conn.execute("INSERT INTO orders VALUES (1, 'x')")
+        conn.commit()
+        conn.close()
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        for side, name in (("a", "a.db"), ("b", "b.db")):
+            form = page.locator(f"[data-testid=connect-{side}]")
+            form.locator(f"#ds-{side}").select_option(label="SQLite")
+            form.locator(f"#db-{side}").fill(str(tmp_path / name))
+            form.get_by_role("button", name="Connect").click()
+            expect(page.locator(f"[data-testid=status-{side}]")).to_contain_text("✅")
+            form.locator(f"#table-{side}").select_option("orders")
+
+        all_btn = page.locator("[data-testid=action-all]")
+        expect(all_btn).to_be_enabled()
+        all_btn.click()
+        # while running, every compound button is disabled (double-trigger guard)
+        expect(page.locator("[data-testid=action-batch-count]")).to_be_disabled()
+        cards = page.locator("[data-testid=result-cards]")
+        expect(cards).to_contain_text("Comparison Summary")
+        expect(cards).to_contain_text("Column Profile Comparison")
+        browser.close()
