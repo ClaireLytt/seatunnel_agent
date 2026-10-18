@@ -145,14 +145,38 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
     console.print("\n[yellow]Chat session ended.[/yellow]")
 
 
+def _build_frontends() -> None:
+    """Build every React workspace under frontend/ (npm install first if needed)."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    frontend = Path(__file__).resolve().parents[3] / "frontend"
+    if not (frontend / "package.json").is_file():
+        console.print(f"[red]frontend/ not found at {frontend}; skipping build.[/red]")
+        sys.exit(1)
+    npm = shutil.which("npm")
+    if npm is None:
+        console.print("[red]npm not found on PATH; cannot build frontends.[/red]")
+        sys.exit(1)
+    if not (frontend / "node_modules").is_dir():
+        console.print("[yellow]node_modules missing — running npm install...[/yellow]")
+        subprocess.run([npm, "install"], cwd=frontend, check=True)
+    console.print("[green]Building React frontends (npm run build --workspaces)...[/green]")
+    subprocess.run([npm, "run", "build", "--workspaces", "--if-present"], cwd=frontend, check=True)
+
+
 @click.command()
 @click.option("--port", "-p", type=int, default=7860, help="Port for the web UI")
 @click.option("--host", "-h", type=str, default="127.0.0.1", help="Host to bind (0.0.0.0 for LAN access)")
 @click.option("--share", is_flag=True, help="Create a public Gradio link")
 @click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/, /api/skew/)")
 @click.option("--insecure", is_flag=True, help="Allow a non-loopback/share launch without SEATUNNEL_UI_AUTH (not recommended)")
-def ui(port: int, host: str, share: bool, api: bool, insecure: bool) -> None:
+@click.option("--build", "build_frontend", is_flag=True, help="Build the React frontends (npm run build) before launching")
+def ui(port: int, host: str, share: bool, api: bool, insecure: bool, build_frontend: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
+    if build_frontend:
+        _build_frontends()
     try:
         from ..hub.ui import create_ui, launch_app
     except ModuleNotFoundError as exc:
