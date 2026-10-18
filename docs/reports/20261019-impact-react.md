@@ -27,7 +27,7 @@ npm run build --workspace change_impact -> ✓ built in 51.89s
 uitest smoke (--no-llm) -> PASS 36 · FAIL 0 · ERROR 0 · SKIP 0 · MANUAL 0 · 耗时 132s
                            报告: runs/20261019_063659/report.html
                            (39→36:IMP/SCR3 smoke YAML 退役,等价覆盖移入页测)
-python scripts/check_workflow.py -> (报告落盘提交后补记,见文末)
+python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / [PASS] 报告落盘(全 PASS)
 ```
 
 手工验证:hub 启动后 `GET /impact/` 200、`GET /lineage/` 200;
