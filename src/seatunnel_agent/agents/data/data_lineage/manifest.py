@@ -17,10 +17,12 @@ MANIFESTS = [
         title_zh="数据血缘",
         desc_en="Table & column lineage from SQL files, SeaTunnel configs and Hive metadata — impact, SLA, health",
         desc_zh="从 SQL / SeaTunnel 配置 / Hive 元数据构建表级与字段级血缘 — 影响分析、SLA、治理体检",
-        api="seatunnel_agent.agents.data.data_lineage.api:router",
-        render="seatunnel_agent.agents.data.data_lineage.ui:render_lineage_page",
+        # api intentionally unset: the router is mounted unconditionally by
+        # the launcher (the React page depends on it), not behind --api.
+        render="",  # React static mount serves this route (frontend/data_lineage)
         group="governance",
         order=10,
+        external=True,
     ),
     AgentManifest(
         name="change_impact",

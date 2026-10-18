@@ -257,6 +257,13 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     )
     app.app.include_router(sql_testgen_api_router)
 
+    # Data Lineage backend: same deal — the React page calls it (the
+    # /impact Gradio page shares this router via its own manifest-free use).
+    from seatunnel_agent.agents.data.data_lineage.api import (
+        router as data_lineage_api_router,
+    )
+    app.app.include_router(data_lineage_api_router)
+
     # Rebuilt React pages: every external manifest mounts from the
     # frontend/<name>/dist convention; unbuilt bundles get a hint page.
     from fastapi.responses import HTMLResponse

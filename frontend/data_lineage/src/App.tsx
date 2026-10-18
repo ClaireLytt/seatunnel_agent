@@ -8,8 +8,10 @@ import {
   query,
   type SourceParams,
 } from '@/api'
+import { AgentPanel } from '@/components/AgentPanel'
 import { GraphView } from '@/components/GraphView'
 import { ReportView } from '@/components/ReportView'
+import { ToolsPanel } from '@/components/ToolsPanel'
 import { fieldCls, labelCls, smallBtnCls } from '@/ui'
 
 const SQL_DIALECTS = ['hive', 'spark', 'mysql', 'postgresql', 'clickhouse', 'doris', 'starrocks']
@@ -272,6 +274,19 @@ export default function App() {
               {t('query_btn')}
             </button>
           </Card>
+
+          <ToolsPanel
+            src={src}
+            table={table}
+            depth={depth}
+            tables={tables}
+            onResult={(md, mermaid) => {
+              setNotice('')
+              setReport(md)
+              if (mermaid !== undefined) setMermaidSrc(mermaid)
+            }}
+            onNotice={setNotice}
+          />
         </aside>
 
         <main className="st-lin-main flex min-w-0 flex-1 flex-col gap-4">
@@ -290,6 +305,7 @@ export default function App() {
               !notice && <p className="text-sm italic text-muted">{t('report_ph')}</p>
             )}
           </Card>
+          <AgentPanel src={src} onGraph={setMermaidSrc} />
           {mermaidSrc && (
             <Card>
               <details>
