@@ -233,6 +233,12 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     )
     app.app.include_router(config_lint_api_router)
 
+    # SQL Formatter backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.sql_fmt.api import (
+        router as sql_fmt_api_router,
+    )
+    app.app.include_router(sql_fmt_api_router)
+
     # Rebuilt React pages: every external manifest mounts from the
     # frontend/<name>/dist convention; unbuilt bundles get a hint page.
     from fastapi.responses import HTMLResponse

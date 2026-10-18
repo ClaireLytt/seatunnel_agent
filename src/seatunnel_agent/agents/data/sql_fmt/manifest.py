@@ -13,8 +13,10 @@ MANIFEST = AgentManifest(
     title_zh="SQL 格式化",
     desc_en="Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim",
     desc_zh="确定性排版，black 式 --check / --write — 解析失败原样保留",
-    api="seatunnel_agent.agents.data.sql_fmt.api:router",
-    render="seatunnel_agent.agents.data.sql_fmt.ui:render_sql_fmt_page",
+    # api intentionally unset: the router is mounted unconditionally by the
+    # launcher (the React page depends on it), not behind --api.
+    render="",  # React static mount serves this route (frontend/sql_fmt)
     group="quality",
     order=20,
+    external=True,
 )
