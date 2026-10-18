@@ -57,3 +57,27 @@ python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / 
 ## 未执行的步骤
 
 - 无。
+
+## Code-review fix-up(同批次追加)
+
+双轴 code-review(Standards/Spec,范围 4556ce2..HEAD):**零硬违规**。修复:
+
+| 发现 | 修复 |
+| --- | --- |
+| /impact 泛化失败 detail 为中文文本,英文用户见混语 | 结构化 {code:"analyze_failed",error:原始异常},前端套本地化 fail 模板(旧页语义);既有回归测试同步改断言 |
+| 守卫文案含 markdown(**/反引号)但通知槽纯文本直显 | 通知槽改 ReportView 渲染(旧页 gr.Markdown 同款) |
+| App.tsx 硬拷贝 SQL_DIALECTS 会随后端静默漂移 | 新增 parity 测试钉死 TS 列表 == sqlglot_lineage.SQL_DIALECTS |
+| ui.ts 死导出(smallBtnCls/downloadText)、settings_ui.py 过时 .st-imp 注释 | 删除/更正 |
+
+未修复的判断项:bad_dir 载荷 {code,path} 与 spec 文字 {code,message} 之差
+(实现更优——客户端本地化,与历批同形);marked 渲染无 sanitizer 为全部
+workspace 共性(ReportView 注释"trusted markdown"对粘贴 SQL 场景偏乐观),
+建议统一在 @shared 引入 DOMPurify——记入遗留清单。
+
+```
+ruff check src tests -> All checks passed!
+mypy                 -> Success: no issues found in 115 source files
+pytest(impact 定向 55 条) -> 55 passed
+pytest -m uitest tests/test_impact_page.py -> 9 passed
+npm run lint/build --workspace change_impact -> 通过 / ✓ built
+```

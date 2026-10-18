@@ -397,8 +397,10 @@ def change_impact(req: ImpactRequest) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as exc:
-        raise HTTPException(status_code=400,
-                            detail=f"变更影响分析失败: {exc}")
+        # structured: the frontend wraps the raw exception in its own
+        # localized `fail` template (legacy do_analyze parity)
+        raise HTTPException(status_code=400, detail={
+            "code": "analyze_failed", "error": str(exc)})
     data = impact_to_dict(result, req.lang)
     # additive fields for the React page: severity-coloured graph source
     # (always) and the unified SQL diff (paste mode, legacy do_analyze_sql)

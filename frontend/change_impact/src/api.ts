@@ -12,10 +12,12 @@ export interface ImpactResponse {
 export class ApiError extends Error {
   code: string
   path: string
-  constructor(code: string, message: string, path = '') {
+  error: string
+  constructor(code: string, message: string, path = '', error = '') {
     super(message)
     this.code = code
     this.path = path
+    this.error = error
   }
 }
 
@@ -40,8 +42,8 @@ export async function analyzeImpact(body: {
       .then((d) => d.detail as unknown)
       .catch(() => '')
     if (detail && typeof detail === 'object' && 'code' in (detail as object)) {
-      const d = detail as { code: string; message?: string; path?: string }
-      throw new ApiError(d.code, d.message ?? d.code, d.path ?? '')
+      const d = detail as { code: string; message?: string; path?: string; error?: string }
+      throw new ApiError(d.code, d.message ?? d.code, d.path ?? '', d.error ?? '')
     }
     throw new Error((detail as string) || `impact: HTTP ${r.status}`)
   }

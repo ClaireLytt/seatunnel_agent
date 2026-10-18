@@ -118,3 +118,17 @@ def test_i18n_initialized_from_lang_cookie() -> None:
     text = I18N_TS.read_text(encoding="utf-8")
     assert "langFromCookie" in text
     assert re.search(r"lng:\s*langFromCookie\(\)", text)
+
+
+def test_dialect_list_pinned_to_backend() -> None:
+    # App.tsx hardcodes the dialect list — pin it to sqlglot_lineage's
+    # SQL_DIALECTS so a backend change fails here instead of drifting
+    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import (
+        SQL_DIALECTS,
+    )
+
+    app = (SRC / "App.tsx").read_text(encoding="utf-8")
+    m = re.search(r"const SQL_DIALECTS = \[(.*?)\]", app, re.S)
+    assert m, "SQL_DIALECTS literal not found in App.tsx"
+    ts_list = re.findall(r"'([a-z]+)'", m.group(1))
+    assert ts_list == list(SQL_DIALECTS)

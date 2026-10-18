@@ -412,7 +412,10 @@ def test_api_impact_unreadable_dir_is_400(api_client, monkeypatch):
         "old_dir": str(OLD), "new_dir": str(NEW),
     })
     assert r.status_code == 400
-    assert "变更影响分析失败" in r.json()["detail"]
+    # structured since the React migration: {code, error(raw exc text)}
+    detail = r.json()["detail"]
+    assert detail["code"] == "analyze_failed"
+    assert "permission denied" in detail["error"]
 
 
 # ─────────────────────────── MCP tool ───────────────────────────

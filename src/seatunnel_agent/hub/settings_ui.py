@@ -310,7 +310,7 @@ def render_settings_page(app: gr.Blocks) -> None:
     with gr.Column(elem_classes=["st-set-page"]):
         title_md, home_btn = title_row(t("title"))
         # st-set-main breaks the fixed-height flex chain (same trick as
-        # .st-imp-main etc.): children grow naturally, the page scrolls.
+        # .st-set-main etc.): children grow naturally, the page scrolls.
         with gr.Column(elem_classes=["st-set-main"]):
             subtitle_md = gr.Markdown(t("subtitle"))
             current_md = gr.Markdown(_current_summary("en"))

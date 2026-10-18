@@ -66,6 +66,9 @@ export default function App() {
       setMermaidSrc('')
       if (e instanceof ApiError && e.code === 'bad_dir') {
         setNotice(t('bad_dir', { d: e.path }))
+      } else if (e instanceof ApiError && e.code === 'analyze_failed') {
+        // raw exception text inside the localized fail template (legacy)
+        setNotice(t('fail', { exc: e.error }))
       } else {
         setNotice(t('fail', { exc: e instanceof Error ? e.message : String(e) }))
       }
@@ -205,8 +208,9 @@ export default function App() {
         <main className="flex min-w-0 flex-1 flex-col gap-4">
           <Card>
             {notice && (
-              <div className="mb-3 whitespace-pre-wrap font-mono text-sm" style={{ color: 'var(--accent)' }}>
-                {notice}
+              <div className="mb-3 text-sm" style={{ color: 'var(--accent)' }}>
+                {/* legacy wrote guards into gr.Markdown — keep markdown */}
+                <ReportView markdown={notice} />
               </div>
             )}
             {mermaidSrc && <GraphView source={mermaidSrc} />}
