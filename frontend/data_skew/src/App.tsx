@@ -3,10 +3,13 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { DATASKEW_SQL_KEY } from '@shared/bridge'
 import { analyze, getSessionId } from '@/api'
+import { ConnectPanel } from '@/components/ConnectPanel'
 import { HistoryPanel } from '@/components/HistoryPanel'
-import { downloadText, fieldCls, labelCls, smallBtnCls } from '@/ui'
 import { ReportView } from '@/components/ReportView'
+import { RuntimePanel } from '@/components/RuntimePanel'
+import { SplitKeyPanel } from '@/components/SplitKeyPanel'
 import { SqlView } from '@/components/SqlView'
+import { downloadText, fieldCls, labelCls, smallBtnCls } from '@/ui'
 
 const DIALECTS: [string, string][] = [
   ['Spark SQL (Spark 3)', 'spark'],
@@ -26,6 +29,8 @@ export default function App() {
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
   const [optimized, setOptimized] = useState('')
+  const [sample, setSample] = useState(10)
+  const [connNote, setConnNote] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -53,7 +58,7 @@ export default function App() {
         sql,
         dialect,
         mode,
-        sample: 10,
+        sample,
         lang: i18n.language,
         session_id: sessionId,
       })
@@ -166,6 +171,34 @@ export default function App() {
             </div>
           </Card>
 
+          <ConnectPanel
+            sessionId={sessionId}
+            sql={sql}
+            dialect={dialect}
+            optimized={optimized}
+            report={report}
+            sample={sample}
+            setSample={setSample}
+            onReport={setReport}
+            onNote={setConnNote}
+          />
+
+          <SplitKeyPanel
+            sessionId={sessionId}
+            report={report}
+            sample={sample}
+            onReport={setReport}
+            onStatus={setError}
+          />
+
+          <RuntimePanel
+            sessionId={sessionId}
+            report={report}
+            onReport={setReport}
+            onStatus={setError}
+            onNote={setConnNote}
+          />
+
           <HistoryPanel
             onLoad={(s, d) => {
               setSql(s)
@@ -182,6 +215,7 @@ export default function App() {
               </div>
             )}
             {busy && runningNote && <p className="text-sm text-muted">⏳ {runningNote}</p>}
+            {!busy && connNote && <p className="text-sm text-muted">⏳ {connNote}</p>}
             {!busy && report && (
               <div className="dsk-report-card">
                 <div className="mb-3 flex gap-2">

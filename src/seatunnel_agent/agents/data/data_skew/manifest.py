@@ -13,8 +13,10 @@ MANIFEST = AgentManifest(
     title_zh="数据倾斜分析",
     desc_en="Detect SQL data-skew patterns statically and rewrite with LLM — Spark SQL / MaxCompute SQL",
     desc_zh="静态识别 SQL 数据倾斜写法并用 LLM 改写优化 —— 支持 Spark SQL / MaxCompute SQL",
-    api="seatunnel_agent.agents.data.data_skew.api:router",
-    render="seatunnel_agent.agents.data.data_skew.ui:render_data_skew_page",
+    # api intentionally unset: the router is mounted unconditionally by the
+    # launcher (the React page depends on it), not behind --api.
+    render="",  # React static mount serves this route (frontend/data_skew)
     group="quality",
     order=40,
+    external=True,
 )
