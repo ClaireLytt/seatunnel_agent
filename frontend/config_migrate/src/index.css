@@ -1,0 +1,41 @@
+@import '@shared/theme.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Server-rendered migration report markdown (report.render_migrate_markdown). */
+.cm-report {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.cm-report h2 {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 0.5rem;
+}
+.cm-report ul {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+.cm-report li {
+  margin: 0.2rem 0;
+}
+.cm-report code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  background: var(--grid);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+.cm-report pre {
+  display: none; /* conf block already shown highlighted above the report */
+}
+.cm-report blockquote {
+  margin: 0.75rem 0 0;
+  padding: 0.4rem 0.75rem;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
