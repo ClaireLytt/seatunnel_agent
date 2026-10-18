@@ -146,8 +146,13 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
     console.print("\n[yellow]Chat session ended.[/yellow]")
 
 
-def _hash_frontend_paths(paths: list[Path]) -> str:
-    """Content digest over the given files/directories (mtime/git independent)."""
+def _hash_frontend_paths(paths: list[Path], base: Path) -> str:
+    """Content digest over the given files/directories (mtime/git independent).
+
+    Each file contributes its POSIX-style path relative to ``base`` plus its
+    content, with unambiguous framing (NUL separator + content length prefix),
+    so renames/moves of identical content change the digest.
+    """
     import hashlib
 
     digest = hashlib.sha256()
@@ -157,9 +162,13 @@ def _hash_frontend_paths(paths: list[Path]) -> str:
             files.append(p)
         elif p.is_dir():
             files.extend(f for f in p.rglob("*") if f.is_file())
-    for f in sorted(files, key=lambda f: str(f).replace("\\", "/")):
-        digest.update(f.name.encode("utf-8"))
-        digest.update(f.read_bytes())
+    for f in sorted(files, key=lambda f: f.relative_to(base).as_posix()):
+        rel = f.relative_to(base).as_posix()
+        data = f.read_bytes()
+        digest.update(rel.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(len(data).to_bytes(8, "big"))
+        digest.update(data)
     return digest.hexdigest()
 
 
@@ -191,9 +200,15 @@ def _build_frontends(frontend: Path | None = None, force: bool = False) -> None:
         "workspaces", []
     )
     shared_hash = _hash_frontend_paths(
-        [p for p in (frontend / "shared").iterdir() if p.name != "node_modules"]
+        [
+            p
+            for p in (frontend / "shared").iterdir()
+            if p.name not in ("node_modules", "dist")
+            and not p.name.endswith(".tsbuildinfo")
+        ]
         if (frontend / "shared").is_dir()
-        else []
+        else [],
+        base=frontend,
     )
 
     for name in workspaces:
@@ -205,7 +220,7 @@ def _build_frontends(frontend: Path | None = None, force: bool = False) -> None:
             continue  # no build script (e.g. shared)
         inputs = [ws / "src", pkg_file, ws / "vite.config.ts"]
         inputs.extend(ws.glob("tsconfig*"))
-        ws_hash = _hash_frontend_paths(inputs) + ":" + shared_hash
+        ws_hash = _hash_frontend_paths(inputs, base=frontend) + ":" + shared_hash
         hash_file = ws / "dist" / ".build-hash"
         if (
             not force
@@ -217,7 +232,12 @@ def _build_frontends(frontend: Path | None = None, force: bool = False) -> None:
             continue
         console.print(f"[green]{name}: building (npm run build --workspace {name})...[/green]")
         subprocess.run([npm, "run", "build", "--workspace", name], cwd=frontend, check=True)
-        (ws / "dist").mkdir(parents=True, exist_ok=True)
+        if not (ws / "dist").is_dir():
+            console.print(
+                f"[yellow]{name}: build produced no dist/ — "
+                "not writing .build-hash (will rebuild next time)[/yellow]"
+            )
+            continue
         hash_file.write_text(ws_hash, encoding="utf-8")
         console.print(f"[green]{name}: built[/green]")
 
@@ -234,6 +254,8 @@ def ui(port: int, host: str, share: bool, api: bool, insecure: bool, build_front
     """Launch the Gradio web UI for interactive agent use."""
     if build_frontend:
         _build_frontends(force=force)
+    elif force:
+        console.print("[yellow]--force has no effect without --build[/yellow]")
     try:
         from ..hub.ui import create_ui, launch_app
     except ModuleNotFoundError as exc:
