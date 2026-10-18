@@ -26,7 +26,7 @@ npm run lint --workspace config_lint  -> 通过(无输出)
 npm run build --workspace config_lint -> ✓ built in 4.00s
 uitest smoke (--no-llm) -> PASS 55 · FAIL 0 · ERROR 0 · SKIP 0 · MANUAL 1 · 耗时 219s
                            报告: runs/20261018_235917/report.html
-python scripts/check_workflow.py -> (见报告落盘提交后输出,附于本节末尾)
+python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / [PASS] 报告落盘(全 PASS)
 ```
 
 手工验证:hub 启动后 `GET /conflint/` 200;
