@@ -53,3 +53,24 @@ python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / 
 ## 未执行的步骤
 
 - 无。
+
+## Code-review fix-up(同批次追加)
+
+双轴 code-review(Standards/Spec,范围 87efc05..HEAD)后的修复,commit 见下:
+
+| 发现 | 修复 |
+| --- | --- |
+| page.py 残留 `.st-cfl-main` 结果区选择器(触点清单第 8 点) | 从选择器级联中删除 |
+| api.py bad_dir 预检查先于白名单 → 白名单外路径可被探测存在性(400 vs 403) | `check_path_allowed` 前置,再做结构化 bad_dir |
+| 后端 i18n.py docstring 仍提及已退役的 /conflint Gradio 页 | 改为指向 frontend/config_lint/src/i18n.ts |
+
+未修复的判断项(有先例依据):App.tsx run/runDir 重复形状与 conf_ph 空态复用
+(与 config_migrate 先例一致)、hub include_router 第 6 份拷贝
+(react_migration.md 第 4 点即此模式,留待未来统一重构)。
+
+```
+ruff check src tests -> All checks passed!
+mypy                 -> Success: no issues found in 115 source files
+pytest(定向 100 条)  -> 100 passed
+pytest -m uitest tests/test_conflint_page.py -> 6 passed
+```
