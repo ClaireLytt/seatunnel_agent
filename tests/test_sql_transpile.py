@@ -6,6 +6,7 @@ Deterministic only — no LLM, no database, no network.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -413,3 +414,49 @@ def test_api_dialects_and_health(api_client):
     d = api_client.get("/api/transpile/dialects").json()
     assert d["dialects"] == ["hive", "spark", "doris", "starrocks",
                              "mysql", "presto", "clickhouse"]
+
+
+def test_api_batch_bad_dir_structured(api_client):
+    r = api_client.post("/api/transpile/batch", json={
+        "dir": "no/such/dir", "to": "doris"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == {"code": "bad_dir", "path": "no/such/dir"}
+
+
+def test_api_batch_out_dir_writes(api_client, tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "TRANSPILE_API_ALLOWED_DIRS",
+        str(Path("examples/transpile_demo").resolve()) + os.pathsep + str(tmp_path))
+    r = api_client.post("/api/transpile/batch", json={
+        "dir": "examples/transpile_demo", "to": "doris",
+        "out_dir": str(tmp_path / "out")})
+    assert r.status_code == 200
+    assert list((tmp_path / "out").rglob("*.sql")), "no translated files written"
+
+
+def test_api_batch_out_dir_whitelist_403(api_client, tmp_path, monkeypatch):
+    monkeypatch.setenv(
+        "TRANSPILE_API_ALLOWED_DIRS",
+        str(Path("examples/transpile_demo").resolve()))
+    r = api_client.post("/api/transpile/batch", json={
+        "dir": "examples/transpile_demo", "to": "doris",
+        "out_dir": str(tmp_path / "outside")})
+    assert r.status_code == 403
+
+
+def test_api_advice_none_for_clean_sql(api_client):
+    r = api_client.post("/api/transpile/advice", json={
+        "sql": "SELECT 1", "to": "doris"})
+    assert r.status_code == 200
+    assert r.json() == {"status": "none", "advice": None}
+
+
+def test_api_advice_structured_status(api_client):
+    # UDF triggers an advisable issue; whatever the local LLM config, the
+    # endpoint must answer 200 with a structured status (never a 500)
+    r = api_client.post("/api/transpile/advice", json={
+        "sql": "SELECT my_udf(x) FROM t", "to": "doris", "from": "hive"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["advice"] is None or data["status"] == "ok"
+    assert data["status"] in ("no_key", "none", "error", "ok")
