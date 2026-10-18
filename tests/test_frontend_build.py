@@ -122,3 +122,35 @@ def test_missing_node_modules_triggers_install(frontend: Path, built: list[str])
     _build_frontends(frontend=frontend)
     assert built[0] == "<install>"
     assert built[1:] == BUILDABLE
+
+
+class TestUiBuildForceFlag:
+    """`ui --build [--force]` passes force through to _build_frontends."""
+
+    def _invoke(self, monkeypatch: pytest.MonkeyPatch, args: list[str]) -> object:
+        import sys
+        import types
+
+        from click.testing import CliRunner
+
+        from seatunnel_agent.cli import cli
+
+        forced: list[bool] = []
+        monkeypatch.setattr(
+            "seatunnel_agent.cli_cmds.core._build_frontends",
+            lambda force=False: forced.append(force),
+        )
+        fake_ui = types.ModuleType("seatunnel_agent.hub.ui")
+        fake_ui.create_ui = lambda: object()  # type: ignore[attr-defined]
+        fake_ui.launch_app = lambda *a, **k: None  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "seatunnel_agent.hub.ui", fake_ui)
+
+        result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 0, result.output
+        return forced
+
+    def test_force_passed_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert self._invoke(monkeypatch, ["ui", "--build", "--force"]) == [True]
+
+    def test_default_is_not_forced(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert self._invoke(monkeypatch, ["ui", "--build"]) == [False]
