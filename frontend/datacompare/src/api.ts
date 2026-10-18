@@ -1,3 +1,5 @@
+import { postSSE } from '@shared/sse'
+
 export interface Datasource {
   key: string
   label: string
@@ -155,11 +157,119 @@ export async function loadPreset(name: string): Promise<PresetConnection & { nam
   return json(await fetch(`${BASE}/presets/${encodeURIComponent(name)}`), 'load preset')
 }
 
+// ── Report persistence (ticket 07) ──
+
+export interface ReportSaveResult {
+  ok: boolean
+  filename?: string
+  error?: string
+}
+
+export async function saveReport(params: {
+  session_id: string
+  table_a: string
+  table_b: string
+  lang: string
+}): Promise<ReportSaveResult> {
+  return json(
+    await fetch(`${BASE}/reports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    'save report',
+  )
+}
+
+export async function listReports(): Promise<string[]> {
+  const data = await json<{ files: string[] }>(await fetch(`${BASE}/reports`), 'reports')
+  return data.files
+}
+
+export async function loadReport(name: string, sessionId: string, lang: string): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(
+      `${BASE}/reports/${encodeURIComponent(name)}?session_id=${encodeURIComponent(sessionId)}&lang=${lang}`,
+    ),
+    'load report',
+  )
+  return data.html
+}
+
+export async function diffReports(oldName: string, newName: string, lang: string): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(`${BASE}/reports/diff`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ old: oldName, new: newName, lang }),
+    }),
+    'diff reports',
+  )
+  return data.html
+}
+
+// GET endpoints used as plain links (downloads / standalone view in new tab)
+export const exportUrl = (fmt: 'csv' | 'xlsx', sessionId: string, lang: string) =>
+  `${BASE}/export/${fmt}?session_id=${encodeURIComponent(sessionId)}&lang=${lang}`
+
+export const standaloneReportUrl = (sessionId: string, lang: string) =>
+  `${BASE}/report/standalone?session_id=${encodeURIComponent(sessionId)}&lang=${lang}`
+
 export async function deletePreset(name: string): Promise<void> {
   await json(
     await fetch(`${BASE}/presets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
     'delete preset',
   )
+}
+
+// ── Compound actions with progress (ticket 04) ──
+
+export interface ProgressEvent {
+  event: 'progress'
+  value: number
+  desc: string
+}
+
+export interface DoneEvent {
+  event: 'done'
+  html: string
+}
+
+export type CompoundEvent = ProgressEvent | DoneEvent
+
+export type StreamAction = 'all' | 'batch-count' | 'batch-full'
+
+export interface CompoundParams extends CompareOptions {
+  session_id: string
+  table_a: string
+  table_b: string
+  lang: string
+}
+
+// POST + SSE: progress frames feed onProgress, resolves with the final html.
+export async function compareStream(
+  action: StreamAction,
+  params: CompoundParams,
+  onProgress: (value: number, desc: string) => void,
+): Promise<string> {
+  let html = ''
+  await postSSE<CompoundEvent>(`${BASE}/compare/${action}`, params, (e) => {
+    if (e.event === 'progress') onProgress(e.value, e.desc)
+    else if (e.event === 'done') html = e.html
+  })
+  return html
+}
+
+export async function compareProfile(params: CompoundParams): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(`${BASE}/compare/profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    'profile',
+  )
+  return data.html
 }
 
 // ── Generation features (ticket 08) ──

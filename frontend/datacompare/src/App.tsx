@@ -10,11 +10,14 @@ import {
   type PresetConnection,
 } from '@/api'
 import { ActionRow } from '@/components/ActionRow'
+import { CompoundRow } from '@/components/CompoundRow'
 import { ConnectForm, type ConnFields } from '@/components/ConnectForm'
 import { GenerationCard } from '@/components/GenerationCard'
 import { OptionsCard } from '@/components/OptionsCard'
 import { PresetsCard } from '@/components/PresetsCard'
+import { ReportsCard } from '@/components/ReportsCard'
 import { TemplatesCard } from '@/components/TemplatesCard'
+import { ResultsToolbar } from '@/components/ResultsToolbar'
 import { Card } from '@shared/components/card'
 
 export default function App() {
@@ -166,6 +169,19 @@ export default function App() {
                 options={options}
                 onResult={setResultHtml}
               />
+              <CompoundRow
+                sessionId={sessionId}
+                tableA={tableA}
+                tableB={tableB}
+                options={options}
+                onResult={setResultHtml}
+              />
+              <ReportsCard
+                sessionId={sessionId}
+                tableA={tableA}
+                tableB={tableB}
+                onResult={setResultHtml}
+              />
               <GenerationCard
                 sessionId={sessionId}
                 tableA={tableA}
@@ -185,7 +201,10 @@ export default function App() {
 
         {/* Results panel (actions land here from ticket 03 on) */}
         <main className="min-w-0 flex-1">
-          <h2 className="mb-2 font-display text-xl font-bold text-ink">{t('results')}</h2>
+          <div className="mb-2 flex items-center justify-between gap-4">
+            <h2 className="font-display text-xl font-bold text-ink">{t('results')}</h2>
+            {resultHtml && <ResultsToolbar sessionId={sessionId} />}
+          </div>
           {resultHtml ? (
             <Card className="min-h-[420px]">
               {/* Server-rendered comparison cards (inline-styled, 1:1 legacy) */}

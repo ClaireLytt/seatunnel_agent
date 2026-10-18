@@ -8,7 +8,9 @@ file-backed SQLite fixtures.
 
 from __future__ import annotations
 
+import json
 import sqlite3
+import threading
 
 import pytest
 from fastapi import FastAPI
@@ -354,6 +356,317 @@ def test_compare_error_is_card_not_500(client, connected):
     html = _action(client, connected, "count",
                    table_b="no_such_table").json()["html"]
     assert "❌" in html
+
+
+# ── ticket 07: report save / list / load / diff / export / standalone ──
+
+
+@pytest.fixture()
+def reports_tmp(tmp_path, monkeypatch):
+    """Point the reports API at a temp reports directory."""
+    from seatunnel_agent.agents.data.data_comparison import reports_api
+    rdir = tmp_path / "reports"
+    monkeypatch.setattr(reports_api, "_REPORTS_DIR", rdir)
+    return rdir
+
+
+@pytest.fixture()
+def compared(client, connected, reports_tmp) -> str:
+    """Connected session with a report populated via count + schema."""
+    assert _action(client, connected, "count").status_code == 200
+    assert _action(client, connected, "schema").status_code == 200
+    return connected
+
+
+def _save_report(client, sid, **kw):
+    body = {"session_id": sid, "table_a": "orders", "table_b": "orders",
+            "lang": "en"}
+    body.update(kw)
+    return client.post("/api/datacompare/reports", json=body)
+
+
+def test_report_save_list_load_round_trip(client, compared, reports_tmp):
+    r = _save_report(client, compared)
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ok"] is True
+    fname = data["filename"]
+    assert fname.startswith("compare_orders_vs_orders_")
+    assert fname.endswith(".json")
+    assert (reports_tmp / fname).is_file()
+
+    files = client.get("/api/datacompare/reports").json()["files"]
+    assert files == [fname]
+
+    # load into a FRESH session restores the report view
+    sid2 = _session(client)
+    r = client.get(f"/api/datacompare/reports/{fname}",
+                   params={"session_id": sid2, "lang": "en"})
+    assert r.status_code == 200
+    html = r.json()["html"]
+    assert "Report loaded" in html
+    assert "Row Count Comparison" in html
+    assert "Schema Comparison" in html
+
+    # ...and the loaded report is now the session's last_report:
+    # exports work from the fresh session
+    rr = client.get("/api/datacompare/export/csv",
+                    params={"session_id": sid2, "lang": "en"})
+    assert rr.status_code == 200
+
+
+def test_report_save_without_report_is_error(client, connected, reports_tmp):
+    data = _save_report(client, connected).json()
+    assert data["ok"] is False
+
+
+def test_report_list_empty(client, reports_tmp):
+    assert client.get("/api/datacompare/reports").json()["files"] == []
+
+
+def test_report_load_unknown_404(client, compared):
+    r = client.get("/api/datacompare/reports/compare_nope.json",
+                   params={"session_id": compared, "lang": "en"})
+    assert r.status_code == 404
+
+
+def test_report_load_rejects_traversal(client, compared):
+    r = client.get("/api/datacompare/reports/..%2Fsecrets.json",
+                   params={"session_id": compared, "lang": "en"})
+    assert r.status_code == 404
+
+
+def test_report_diff_contract(client, compared):
+    f1 = _save_report(client, compared).json()["filename"]
+    # change the data so the second report differs
+    assert _action(client, compared, "count", table_a="users",
+                   table_b="orders").status_code == 200
+    f2 = _save_report(client, compared, table_a="users").json()["filename"]
+    assert f1 != f2
+
+    r = client.post("/api/datacompare/reports/diff",
+                    json={"old": f1, "new": f2, "lang": "en"})
+    assert r.status_code == 200
+    html = r.json()["html"]
+    assert "Report Diff Result" in html
+    assert "row_count" in html
+
+
+def test_report_diff_unknown_404(client, compared, reports_tmp):
+    r = client.post("/api/datacompare/reports/diff",
+                    json={"old": "compare_a.json", "new": "compare_b.json",
+                          "lang": "en"})
+    assert r.status_code == 404
+
+
+def test_export_csv_valid(client, compared):
+    r = client.get("/api/datacompare/export/csv",
+                   params={"session_id": compared, "lang": "en"})
+    assert r.status_code == 200
+    assert "text/csv" in r.headers["content-type"]
+    cd = r.headers["content-disposition"]
+    assert "data_comparison_" in cd and ".csv" in cd
+
+    import csv
+    import io
+    text = r.content.decode("utf-8-sig")
+    rows = list(csv.reader(io.StringIO(text)))
+    flat = [c for row in rows for c in row]
+    assert "[Row Count]" in flat
+    assert "[Schema Diff]" in flat
+
+
+def test_export_excel_valid(client, compared):
+    r = client.get("/api/datacompare/export/xlsx",
+                   params={"session_id": compared, "lang": "en"})
+    assert r.status_code == 200
+    cd = r.headers["content-disposition"]
+    assert "data_comparison_" in cd and ".xlsx" in cd
+
+    import io
+
+    from openpyxl import load_workbook
+    wb = load_workbook(io.BytesIO(r.content))
+    assert "Row Count" in wb.sheetnames
+    assert "Schema Diff" in wb.sheetnames
+    ws = wb["Row Count"]
+    assert ws.cell(row=1, column=1).value == "Table A"
+    assert ws.cell(row=2, column=2).value == 2  # count A (orders has 2 rows)
+
+
+def test_export_without_report_409(client, connected):
+    for fmt in ("csv", "xlsx"):
+        r = client.get(f"/api/datacompare/export/{fmt}",
+                       params={"session_id": connected, "lang": "en"})
+        assert r.status_code == 409
+
+
+def test_export_unknown_session_404(client):
+    r = client.get("/api/datacompare/export/csv",
+                   params={"session_id": "nope", "lang": "en"})
+    assert r.status_code == 404
+
+
+def test_standalone_report_html(client, compared):
+    r = client.get("/api/datacompare/report/standalone",
+                   params={"session_id": compared, "lang": "en"})
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/html")
+    html = r.text
+    assert "<html" in html.lower()
+    assert "Row Count Comparison" in html
+    assert "Schema Comparison" in html
+
+
+def test_standalone_without_report_409(client, connected, reports_tmp):
+    r = client.get("/api/datacompare/report/standalone",
+                   params={"session_id": connected, "lang": "en"})
+    assert r.status_code == 409
+
+
+# ── ticket 04: compound actions with progress ───────────────────────
+
+
+def _frames(text: str) -> list[dict]:
+    """Parse SSE 'data: {json}' frames from a buffered response body."""
+    return [json.loads(line[6:]) for line in text.splitlines()
+            if line.startswith("data: ")]
+
+
+def _compound(client, sid, action, **kw):
+    body = {"session_id": sid, "table_a": "orders", "table_b": "orders",
+            "lang": "en"}
+    body.update(kw)
+    return client.post(f"/api/datacompare/compare/{action}", json=body)
+
+
+def test_compare_all_streams_progress_then_done(client, connected):
+    r = _compound(client, connected, "all")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("text/event-stream")
+    frames = _frames(r.text)
+    progress = [f for f in frames if f["event"] == "progress"]
+    assert progress, "expected at least one progress frame"
+    for f in progress:
+        assert 0 < f["value"] <= 1
+        assert isinstance(f["desc"], str)
+    assert frames[-1]["event"] == "done"
+    html = frames[-1]["html"]
+    assert "Comparison Summary" in html
+    assert "Schema Comparison" in html
+    assert "Row Count Comparison" in html
+    assert "Column Profile Comparison" in html
+
+
+def test_compare_all_stores_last_report(client, connected):
+    from seatunnel_agent.agents.data.data_comparison.registry import (
+        get_registry,
+    )
+
+    _compound(client, connected, "all")
+    session = get_registry().get(connected)
+    assert session is not None and session.last_report is not None
+    assert session.last_report.schema is not None
+    assert session.last_report.row_count is not None
+
+
+def test_compare_all_guard_not_connected(client):
+    sid = _session(client)
+    frames = _frames(_compound(client, sid, "all").text)
+    assert frames == [
+        {"event": "done",
+         "html": "Please connect both data sources first"}]
+
+
+def test_compare_all_guard_where_ddl(client, connected):
+    frames = _frames(_compound(client, connected, "all",
+                               where="1=1; DROP TABLE x").text)
+    assert frames[-1]["event"] == "done"
+    assert "forbidden keyword" in frames[-1]["html"]
+
+
+def test_compare_all_409_when_running(client, connected, monkeypatch):
+    from seatunnel_agent.agents.data.data_comparison import compound
+
+    started = threading.Event()
+    release = threading.Event()
+    orig = compound.profile_inner
+
+    def slow(*args, **kwargs):
+        started.set()
+        assert release.wait(10)
+        return orig(*args, **kwargs)
+
+    monkeypatch.setattr(compound, "profile_inner", slow)
+
+    result: dict = {}
+
+    def run() -> None:
+        result["r"] = _compound(client, connected, "all")
+
+    th = threading.Thread(target=run)
+    th.start()
+    try:
+        assert started.wait(10), "first run never started"
+        r2 = _compound(client, connected, "all")
+        assert r2.status_code == 409
+        # the guard also covers the other compound actions of the session
+        r3 = _compound(client, connected, "batch-count")
+        assert r3.status_code == 409
+    finally:
+        release.set()
+        th.join(30)
+    assert result["r"].status_code == 200
+    assert _frames(result["r"].text)[-1]["event"] == "done"
+
+
+def test_compare_all_unknown_session_404(client):
+    assert _compound(client, "nope", "all").status_code == 404
+
+
+def test_batch_count_progress_per_table_and_card(client, connected):
+    r = _compound(client, connected, "batch-count")
+    assert r.status_code == 200
+    frames = _frames(r.text)
+    progress = [f for f in frames if f["event"] == "progress"]
+    # one common table (orders) -> one per-table progress frame
+    assert len(progress) == 1
+    assert "orders" in progress[0]["desc"]
+    assert progress[0]["value"] == 1.0
+    assert frames[-1]["event"] == "done"
+    assert "Batch Row Count" in frames[-1]["html"]
+
+
+def test_batch_full_streams_and_renders_card(client, connected):
+    r = _compound(client, connected, "batch-full", threshold="60%")
+    assert r.status_code == 200
+    frames = _frames(r.text)
+    assert any(f["event"] == "progress" for f in frames)
+    assert frames[-1]["event"] == "done"
+    html = frames[-1]["html"]
+    assert "Batch Full Comparison" in html
+    assert "orders" in html
+
+
+def test_batch_guard_not_connected(client):
+    sid = _session(client)
+    frames = _frames(_compound(client, sid, "batch-count").text)
+    assert frames == [
+        {"event": "done",
+         "html": "Please connect both data sources first"}]
+
+
+def test_profile_card(client, connected):
+    r = _compound(client, connected, "profile")
+    assert r.status_code == 200
+    html = r.json()["html"]
+    assert "Column Profile Comparison" in html
+
+
+def test_profile_guard_not_connected(client):
+    sid = _session(client)
+    html = _compound(client, sid, "profile").json()["html"]
+    assert html == "Please connect both data sources first"
 
 
 # ── ticket 08: generation + templates ───────────────────────────────
