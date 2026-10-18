@@ -51,24 +51,26 @@ export class ApiError extends Error {
   }
 }
 
+async function throwHttpError(r: Response, path: string): Promise<never> {
+  const detail = await r
+    .json()
+    .then((d) => d.detail as unknown)
+    .catch(() => '')
+  if (detail && typeof detail === 'object') {
+    const d = detail as { code?: string; message?: string; suggestions?: string[] }
+    throw new ApiError(d.code ?? 'error', d.message ?? d.code ?? `${path}: HTTP ${r.status}`,
+      d.suggestions ?? [])
+  }
+  throw new Error((detail as string) || `${path}: HTTP ${r.status}`)
+}
+
 async function request<T>(path: string, body?: Record<string, unknown>): Promise<T> {
   const r = await fetch(`${BASE}${path}`, body === undefined ? undefined : {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as unknown)
-      .catch(() => '')
-    if (detail && typeof detail === 'object') {
-      const d = detail as { code?: string; message?: string; suggestions?: string[] }
-      throw new ApiError(d.code ?? 'error', d.message ?? d.code ?? `${path}: HTTP ${r.status}`,
-        d.suggestions ?? [])
-    }
-    throw new Error((detail as string) || `${path}: HTTP ${r.status}`)
-  }
+  if (!r.ok) await throwHttpError(r, path)
   return r.json()
 }
 
@@ -104,7 +106,10 @@ export function query(
   })
 }
 
-export function search(src: SourceParams, keyword: string): Promise<{ matches: string[] }> {
+export function search(
+  src: SourceParams,
+  keyword: string,
+): Promise<{ matches: { name: string; layer: string }[] }> {
   return request('/search', { ...src, keyword })
 }
 
@@ -148,17 +153,8 @@ export async function analyzeStream(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...src, question }),
   })
-  if (!r.ok || !r.body) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as unknown)
-      .catch(() => '')
-    if (detail && typeof detail === 'object' && 'code' in (detail as object)) {
-      const d = detail as { code: string; message?: string }
-      throw new ApiError(d.code, d.message ?? d.code)
-    }
-    throw new Error((detail as string) || `analyze: HTTP ${r.status}`)
-  }
+  if (!r.ok || !r.body) await throwHttpError(r, '/analyze/stream')
+  if (!r.body) throw new Error('analyze: empty body')
   const reader = r.body.getReader()
   const decoder = new TextDecoder()
   let buf = ''

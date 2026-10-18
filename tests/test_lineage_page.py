@@ -76,8 +76,12 @@ def page_url(monkeypatch, tmp_path):
     t.join(timeout=5)
 
 
-def _build_demo(page):
-    """LIN1 fixture steps: fill the demo SQL dir and build the graph."""
+DEMO_TABLE = "dwd.orders_di"  # stable table in examples/lineage_demo
+
+
+def _build_demo(page, pick_table: bool = True):
+    """LIN1 fixture steps: fill the demo SQL dir, build, pick a table
+    (the legacy page also left the dropdown empty after build)."""
     from playwright.sync_api import expect
 
     page.get_by_placeholder(
@@ -85,6 +89,10 @@ def _build_demo(page):
     page.get_by_role("button", name="Build lineage graph", exact=True).click()
     expect(page.get_by_text("Lineage graph built", exact=False)).to_be_visible(
         timeout=15000)
+    if pick_table:
+        page.get_by_placeholder(
+            "Pick from loaded tables or type freely, e.g. zz.dwm_orders_df"
+        ).fill(DEMO_TABLE)
 
 
 @pytest.mark.uitest

@@ -62,3 +62,34 @@ python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / 
 ## 未执行的步骤
 
 - 无。
+
+## Code-review fix-up(同批次追加)
+
+双轴 code-review(Standards/Spec,范围 f538a8e..HEAD)后的修复:
+
+| 发现 | 修复 |
+| --- | --- |
+| css.py 残留孤立 CSS 花括号(st-lin-hidden 清理不净,硬违规) | 删除悬挂块 |
+| SSE error 帧回传原始异常文本(skew fix-up 先例要求泛化) | 服务端日志 + 泛化 `agent failed (<Type>)` |
+| 守卫未全结构化:need_source/build_failed/not_found/snap_not_found/快照保存 500 | 全部改为 {code,message} 结构化;快照保存失败 500→400 |
+| not_found/similar 仅中文、built_stats/sql_dialect_info/path_dst_info 等键漏搬 | 键回迁 i18n.ts,前端按 code 本地化(含相近表清单);built_stats 走 t() 插值 |
+| 节点点击带上当前 column(旧页 column=None) | node-click 以 noColumn 查询 |
+| 路径无 mermaid 时清空图(旧页保留) | 空 mermaid 保留现图 |
+| 快照保存后不自动选中(旧页选中新快照) | setSnapPick(res.file) |
+| 建图后自动选第一张表(旧页留空,属 scope creep) | 移除;页测改为显式填表 |
+| 暗色下 mermaid 不随主题、容器硬编码白底 | 渲染时按 data-theme 切 mermaid 主题;容器用 var(--paper) |
+| /search 丢失 layer 注记 | 响应含 {name,layer},前端按旧格式渲染 |
+| App.tsx 残留死代码(lines/void lines)、api.ts 错误解包重复 | 删除;抽 throwHttpError 复用 |
+
+未修复的判断项:注册表按创建序而非 LRU 逐出(超 100 会话才触发,影响极小)、
+mermaid securityLevel loose(后端全量 html.escape,仅 <b>/<br/> 可控)、
+SSE 解析未复用 @shared/sse.ts(该模块面向 EventSource GET,本端点为 POST)、
+`src` 形参与血缘 src/dst 词汇轻微撞名。
+
+```
+ruff check src tests -> All checks passed!
+mypy                 -> Success: no issues found in 115 source files
+pytest(lineage 定向 201 条) -> 201 passed, 1 skipped
+pytest -m uitest tests/test_lineage_page.py -> 11 passed
+npm run lint/build --workspace data_lineage -> 通过 / ✓ built
+```

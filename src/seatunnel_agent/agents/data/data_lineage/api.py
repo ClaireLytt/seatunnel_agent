@@ -112,9 +112,9 @@ def _check_dir_allowed(raw_dir: str) -> None:
 
 def _build(req: QueryRequest | AnalyzeRequest | SourceRequest):
     if not req.sql_dir and not req.seatunnel_dir and not req.use_hive:
-        raise HTTPException(
-            status_code=400, detail="至少指定一个血缘来源：sql_dir / seatunnel_dir 或 use_hive"
-        )
+        raise HTTPException(status_code=400, detail={
+            "code": "need_source",
+            "message": "至少指定一个血缘来源：sql_dir / seatunnel_dir 或 use_hive"})
     if req.sql_dir:
         _check_dir_allowed(req.sql_dir)
     if req.seatunnel_dir:
@@ -127,7 +127,8 @@ def _build(req: QueryRequest | AnalyzeRequest | SourceRequest):
             sql_dialect=req.sql_dialect,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"血缘图构建失败: {exc}")
+        raise HTTPException(status_code=400, detail={
+            "code": "build_failed", "message": f"血缘图构建失败: {exc}"})
 
 
 def _graph_for(req: SourceRequest):
@@ -150,6 +151,8 @@ def _missing_404(graph, name: str) -> HTTPException:
     return HTTPException(
         status_code=404,
         detail={
+            "code": "not_found",
+            "table": name,
             "message": f"表 '{name}' 不在血缘图中",
             "suggestions": graph.suggest(name),
         },
@@ -277,7 +280,8 @@ def save_snapshot_endpoint(req: SnapshotRequest) -> dict[str, Any]:
     try:
         path = save_snapshot(graph, name=req.name)
     except OSError as exc:
-        raise HTTPException(status_code=500, detail=f"快照保存失败: {exc}")
+        raise HTTPException(status_code=400, detail={
+            "code": "snap_save_failed", "message": f"快照保存失败: {exc}"})
     graph_stats = graph.stats()
     elapsed_ms = _log_elapsed(
         start, graph_stats, query=req.name or path.name, mode="snapshot",
@@ -298,9 +302,9 @@ def snapshot_diff(req: SnapshotDiffRequest) -> dict[str, Any]:
     graph, warnings = _graph_for(req)
     old_graph = load_snapshot(req.snapshot)
     if old_graph is None:
-        raise HTTPException(
-            status_code=404, detail=f"找不到快照 '{req.snapshot}'"
-        )
+        raise HTTPException(status_code=404, detail={
+            "code": "snap_not_found",
+            "message": f"找不到快照 '{req.snapshot}'"})
     diff = diff_graphs(old_graph, graph)
     elapsed_ms = _log_elapsed(
         start, graph.stats(), query=req.snapshot, mode="snapshot_diff",
@@ -435,7 +439,9 @@ class SearchRequest(SourceRequest):
 def search(req: SearchRequest) -> dict[str, Any]:
     """Fuzzy table-name search over the built graph (legacy do_search)."""
     graph, _ = _graph_for(req)
-    return {"matches": [n.name for n in graph.search(req.keyword, req.limit)]}
+    return {"matches": [
+        {"name": n.name, "layer": getattr(n, "layer", "") or ""}
+        for n in graph.search(req.keyword, req.limit)]}
 
 
 @router.get("/snapshots")
@@ -496,8 +502,13 @@ def analyze_stream(req: AnalyzeRequest):
             )
             result["answer"] = agent.analyze(req.question)
             result["mermaid"] = agent.runtime.last_mermaid
-        except Exception as exc:  # surfaced as a structured final frame
-            result["error"] = f"{type(exc).__name__}: {exc}"
+        except Exception as exc:  # structured final frame, generic detail
+            # (raw exception text could leak paths/conn strings over SSE)
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "lineage agent stream failed: %s", exc)
+            result["error"] = f"agent failed ({type(exc).__name__})"
         finally:
             done.set()
 

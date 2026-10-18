@@ -69,7 +69,7 @@ export function ToolsPanel({
     void guard(async () => {
       const res = await search(src(), keyword.trim())
       setSearchMd(res.matches.length
-        ? res.matches.map((m) => `• ${m}`).join('\n')
+        ? res.matches.map((m) => (m.layer ? `• ${m.name}（${m.layer}）` : `• ${m.name}`)).join('\n')
         : t('no_match', { kw: keyword.trim() }))
     })
   }
@@ -103,6 +103,7 @@ export function ToolsPanel({
       setSnapMd(t('snap_saved', { file: res.file }))
       const list = await listSnapshots()
       setSnaps(list.snapshots)
+      setSnapPick(res.file)  // legacy auto-selected the fresh snapshot
     })
 
   const doDiffSnap = () => {
@@ -139,7 +140,7 @@ export function ToolsPanel({
 
       <Card>
         <h2 className="mb-3 font-display text-base font-bold text-ink">{t('adv_heading')}</h2>
-        <label className={labelCls}>{t('path_dst_label')}</label>
+        <label className={labelCls} title={t('path_dst_info')}>{t('path_dst_label')}</label>
         <div className="flex gap-2">
           <input
             list="lin-tables-dst"

@@ -144,10 +144,14 @@ def test_ported_keys_match_legacy_verbatim() -> None:
 
 
 def test_built_stats_line_matches_legacy() -> None:
-    # built_stats is rebuilt in App.tsx's statsLine — pin both languages
-    app = (SRC / "App.tsx").read_text(encoding="utf-8")
-    assert "血缘图已构建：**${tables}** 表 · **${edges}** 边" in app
-    assert "Lineage graph built: **${tables}** tables · **${edges}** edges" in app
+    # built_stats lives in i18n.ts with {{var}} interpolation — pin both
+    res = _resources()
+    assert res["zh"]["built_stats"] == (
+        "✅ 血缘图已构建：**{{tables}}** 表 · **{{edges}}** 边 · "
+        "**{{col_edges}}** 字段边 · SLA 表 {{sla}} 张")
+    assert res["en"]["built_stats"] == (
+        "✅ Lineage graph built: **{{tables}}** tables · **{{edges}}** edges · "
+        "**{{col_edges}}** column edges · {{sla}} SLA tables")
 
 
 def test_i18n_initialized_from_lang_cookie() -> None:

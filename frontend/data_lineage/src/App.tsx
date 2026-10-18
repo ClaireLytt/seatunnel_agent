@@ -17,7 +17,7 @@ import { fieldCls, labelCls, smallBtnCls } from '@/ui'
 const SQL_DIALECTS = ['hive', 'spark', 'mysql', 'postgresql', 'clickhouse', 'doris', 'starrocks']
 
 export default function App() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [sessionId, setSessionId] = useState('')
   // data sources
   const [sqlDir, setSqlDir] = useState('')
@@ -78,16 +78,14 @@ export default function App() {
     try {
       const res = await build(src())
       const s = res.stats
-      const lines = [
-        `✅ ${t('title')}: **${s.tables}** · ${s.edges} edges · ${s.column_edges} column edges · SLA ${s.sla_tables}`,
-      ]
       setStats([
-        statsLine(i18n.language, s.tables, s.edges, s.column_edges, s.sla_tables),
+        t('built_stats', {
+          tables: s.tables, edges: s.edges,
+          col_edges: s.column_edges, sla: s.sla_tables,
+        }),
         ...res.warnings.map((w) => `⚠️ ${w}`),
       ].join('\n'))
-      void lines
       setTables(res.tables)
-      if (!table && res.tables.length) setTable(res.tables[0])
     } catch (e) {
       showError(e)
       setStats('')
@@ -96,7 +94,7 @@ export default function App() {
     }
   }
 
-  const runQuery = useCallback(async (target?: string) => {
+  const runQuery = useCallback(async (target?: string, noColumn = false) => {
     const tbl = (target ?? table).trim()
     setNotice('')
     if (!tbl) {
@@ -105,7 +103,8 @@ export default function App() {
     }
     setBusy(true)
     try {
-      const res = await query(src(), tbl, direction, depth, column.trim())
+      const res = await query(src(), tbl, direction, depth,
+        noColumn ? '' : column.trim())
       setReport(res.report)
       setMermaidSrc(res.mermaid)
     } catch (e) {
@@ -118,7 +117,8 @@ export default function App() {
 
   const onNodeClick = useCallback((name: string) => {
     setTable(name)
-    void runQuery(name)
+    // legacy do_node_jump queried with column=None
+    void runQuery(name, true)
   }, [runQuery])
 
   const copySrc = async () => {
@@ -162,7 +162,7 @@ export default function App() {
               spellCheck={false}
               className={fieldCls}
             />
-            <label className={`${labelCls} mt-3`}>{t('sql_dialect_label')}</label>
+            <label className={`${labelCls} mt-3`} title={t('sql_dialect_info')}>{t('sql_dialect_label')}</label>
             <select value={sqlDialect} onChange={(e) => setSqlDialect(e.target.value)} className={fieldCls}>
               {SQL_DIALECTS.map((d) => (
                 <option key={d} value={d}>
@@ -283,7 +283,8 @@ export default function App() {
             onResult={(md, mermaid) => {
               setNotice('')
               setReport(md)
-              if (mermaid !== undefined) setMermaidSrc(mermaid)
+              // empty mermaid keeps the prior graph (legacy gr.update())
+              if (mermaid) setMermaidSrc(mermaid)
             }}
             onNotice={setNotice}
           />
@@ -327,12 +328,4 @@ export default function App() {
       </div>
     </div>
   )
-}
-
-/** built_stats line, verbatim from the legacy dict (markdown bold kept). */
-function statsLine(lang: string, tables: number, edges: number,
-                   colEdges: number, sla: number): string {
-  return lang.startsWith('zh')
-    ? `✅ 血缘图已构建：**${tables}** 表 · **${edges}** 边 · **${colEdges}** 字段边 · SLA 表 ${sla} 张`
-    : `✅ Lineage graph built: **${tables}** tables · **${edges}** edges · **${colEdges}** column edges · ${sla} SLA tables`
 }

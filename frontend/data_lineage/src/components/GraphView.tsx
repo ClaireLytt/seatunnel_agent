@@ -1,8 +1,6 @@
 import { useEffect, useRef } from 'react'
 import mermaid from 'mermaid'
 
-mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' })
-
 let seq = 0
 
 /** Mermaid lineage graph; clicking a node reports its table name (legacy
@@ -20,6 +18,12 @@ export function GraphView({
     const el = ref.current
     if (!el || !source.trim()) return
     let cancelled = false
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark'
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'loose',
+      theme: dark ? 'dark' : 'default',
+    })
     mermaid
       .render(`lin-graph-${++seq}`, source)
       .then(({ svg }) => {
@@ -45,7 +49,7 @@ export function GraphView({
   return (
     <div
       ref={ref}
-      className="overflow-x-auto rounded border border-line bg-white p-2 text-center"
+      className="overflow-x-auto rounded border border-line bg-[var(--paper)] p-2 text-center"
     />
   )
 }

@@ -239,8 +239,6 @@ body.st-sidebar-dragging {
     max-width: 900px;
     margin: 0 auto !important;
 }
-    display: none !important;
-}
 
 /* ══════════════════════════
    Hub landing page — "The Almanac"
