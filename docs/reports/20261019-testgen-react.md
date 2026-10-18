@@ -50,3 +50,21 @@ CSV + SQLite 验证 ✅)见下。
 ## 未执行的步骤
 
 - 无。
+
+## Code-review fix-up(同批次追加)
+
+双轴 code-review(Standards/Spec,范围 5a3a37f..HEAD):**零硬违规**。
+判断项处理:
+
+| 发现 | 处理 |
+| --- | --- |
+| App.tsx 两个 textarea 重复内联同一 class 串 | 抽 textareaCls 复用 |
+| 页签标题 "Test Data" 截断 | 改为 "Test Data Generator" |
+| hub include_router 第 10 份拷贝 / manifest 注释第 8 份 | 不改(精准修改);已在遗留清单建议排期 registry 驱动挂载 |
+| 截图 PNG 在 .scratch 与 docs/reports/shots 重复入库 | 不改(历批先例);后续批次可只留 docs 侧 |
+| 400 detail 纯文本而非 Markdown 报告(Spec 低优先级备注) | 不改(票 01 明确允许该形式,本地化文案已展示) |
+
+```
+npm run lint/build --workspace sql_testgen -> 通过 / ✓ built
+pytest -m uitest tests/test_testgen_page.py -> 8 passed
+```

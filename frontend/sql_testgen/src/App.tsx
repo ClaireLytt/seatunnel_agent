@@ -24,6 +24,8 @@ GROUP BY u.user_id, u.user_name`
 
 const fieldCls =
   'w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink'
+const textareaCls =
+  'w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink'
 const labelCls =
   'mb-2 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft'
 
@@ -93,7 +95,7 @@ export default function App() {
               placeholder={t('sql_ph')}
               rows={8}
               spellCheck={false}
-              className="w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink"
+              className={textareaCls}
             />
             <label className={`${labelCls} mt-3`}>{t('ddl_label')}</label>
             <textarea
@@ -102,7 +104,7 @@ export default function App() {
               placeholder={t('ddl_ph')}
               rows={5}
               spellCheck={false}
-              className="w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink"
+              className={textareaCls}
             />
             <label className={`${labelCls} mt-3`}>{t('dialect_label')}</label>
             <select
