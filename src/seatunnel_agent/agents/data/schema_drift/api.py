@@ -69,10 +69,12 @@ def diff(req: DriftRequest) -> DriftResponse:
         result = diff_scripts(req.old_sql, req.new_sql, dialect=req.dialect)
     elif has_old_path:
         for raw in (req.old_path.strip(), req.new_path.strip()):
+            # whitelist first (403, no existence probing), then a structured
+            # detail the frontend localizes (i18n `bad_path`)
             _check_path_allowed(raw)
             if not Path(raw).exists():
                 raise HTTPException(status_code=400,
-                                    detail=f"路径不存在: {raw}")
+                                    detail={"code": "bad_path", "path": raw})
         result = diff_paths(req.old_path.strip(), req.new_path.strip(),
                             dialect=req.dialect)
     else:

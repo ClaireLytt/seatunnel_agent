@@ -264,6 +264,12 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     )
     app.app.include_router(data_lineage_api_router)
 
+    # Schema Drift backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.schema_drift.api import (
+        router as schema_drift_api_router,
+    )
+    app.app.include_router(schema_drift_api_router)
+
     # Rebuilt React pages: every external manifest mounts from the
     # frontend/<name>/dist convention; unbuilt bundles get a hint page.
     from fastapi.responses import HTMLResponse
