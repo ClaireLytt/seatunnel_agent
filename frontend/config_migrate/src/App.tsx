@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
-import { migrateText, type MigrateResponse } from '@/api'
+import { migrateBatch, migrateText, type MigrateResponse } from '@/api'
 import { ConfView } from '@/components/ConfView'
 import { ReportView } from '@/components/ReportView'
 
@@ -11,6 +11,8 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<MigrateResponse | null>(null)
+  const [jobsDir, setJobsDir] = useState('')
+  const [outDir, setOutDir] = useState('')
 
   const run = async () => {
     if (!text.trim()) {
@@ -21,6 +23,24 @@ export default function App() {
     setError('')
     try {
       setResult(await migrateText(text, i18n.language))
+    } catch (e) {
+      setResult(null)
+      setError(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const runBatch = async () => {
+    if (!jobsDir.trim()) {
+      setError(t('empty'))
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const res = await migrateBatch(jobsDir.trim(), outDir.trim(), i18n.language)
+      setResult({ ok: true, source_kind: 'batch', conf: '', report: res.report })
     } catch (e) {
       setResult(null)
       setError(String(e))
@@ -69,6 +89,47 @@ export default function App() {
             >
               {busy ? t('running') : t('migrate_btn')}
             </button>
+          </Card>
+
+          <Card>
+            <details>
+              <summary className="cursor-pointer select-none font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                {t('batch_acc')}
+              </summary>
+              <div className="mt-3 flex flex-col gap-3">
+                <div>
+                  <label className="mb-2 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                    {t('dir_label')}
+                  </label>
+                  <input
+                    value={jobsDir}
+                    onChange={(e) => setJobsDir(e.target.value)}
+                    placeholder={t('dir_ph')}
+                    spellCheck={false}
+                    className="w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                    {t('out_label')}
+                  </label>
+                  <input
+                    value={outDir}
+                    onChange={(e) => setOutDir(e.target.value)}
+                    placeholder={t('out_ph')}
+                    spellCheck={false}
+                    className="w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink"
+                  />
+                </div>
+                <button
+                  onClick={runBatch}
+                  disabled={busy}
+                  className="w-full rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm font-semibold text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard disabled:opacity-50"
+                >
+                  {busy ? t('running') : t('batch_btn')}
+                </button>
+              </div>
+            </details>
           </Card>
         </aside>
 
