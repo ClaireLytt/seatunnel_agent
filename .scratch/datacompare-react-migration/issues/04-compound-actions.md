@@ -4,9 +4,9 @@
 
 **Blocked by:** 03 — Core actions
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] All four compound actions complete and render cards; progress visible during the run
-- [ ] Double-click cannot start a second concurrent run
-- [ ] In-process API test covers compare-all contract incl. progress signal
-- [ ] Project verification commands green
+- [x] All four compound actions complete and render cards; progress visible during the run
+- [x] Double-click cannot start a second concurrent run
+- [x] In-process API test covers compare-all contract incl. progress signal
+- [x] Project verification commands green

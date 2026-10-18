@@ -4,9 +4,9 @@
 
 **Blocked by:** 02 — Walking skeleton
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Options affect comparison semantics as legacy (verified via API test with threshold/WHERE)
-- [ ] Reset restores all option defaults
-- [ ] Presets save/load/delete round-trip; load fills the connection form
-- [ ] Project verification commands green
+- [x] Options affect comparison semantics as legacy (verified via API test with threshold/WHERE)
+- [x] Reset restores all option defaults
+- [x] Presets save/load/delete round-trip; load fills the connection form
+- [x] Project verification commands green

@@ -4,8 +4,8 @@
 
 **Blocked by:** 02 — Walking skeleton
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Each action renders its legacy-equivalent card in the results panel
-- [ ] In-process API test: one representative action against temp SQLite A/B fixtures returns the expected card content
-- [ ] Project verification commands green
+- [x] Each action renders its legacy-equivalent card in the results panel
+- [x] In-process API test: one representative action against temp SQLite A/B fixtures returns the expected card content
+- [x] Project verification commands green

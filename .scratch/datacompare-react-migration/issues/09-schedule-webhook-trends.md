@@ -4,10 +4,10 @@
 
 **Blocked by:** 04 — Compound actions, 07 — Reports
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Schedule start/stop/status round-trips; a scheduled run saves its report server-side
-- [ ] Webhook fires per legacy semantics (testable via a local capture endpoint)
-- [ ] Trend chart renders from API data with theme tokens, correct in light and dark
-- [ ] In-process API tests for schedule lifecycle and trend data
-- [ ] Project verification commands green
+- [x] Schedule start/stop/status round-trips; a scheduled run saves its report server-side
+- [x] Webhook fires per legacy semantics (testable via a local capture endpoint)
+- [x] Trend chart renders from API data with theme tokens, correct in light and dark
+- [x] In-process API tests for schedule lifecycle and trend data
+- [x] Project verification commands green

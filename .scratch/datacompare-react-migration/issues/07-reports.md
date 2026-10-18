@@ -4,10 +4,10 @@
 
 **Blocked by:** 03 — Core actions
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Save → list → load round-trip restores the report view
-- [ ] Report-vs-report diff renders the legacy-equivalent diff card
-- [ ] CSV and Excel downloads are valid files; standalone view opens in a new tab
-- [ ] In-process API tests for the report lifecycle and export validity
-- [ ] Project verification commands green
+- [x] Save → list → load round-trip restores the report view
+- [x] Report-vs-report diff renders the legacy-equivalent diff card
+- [x] CSV and Excel downloads are valid files; standalone view opens in a new tab
+- [x] In-process API tests for the report lifecycle and export validity
+- [x] Project verification commands green

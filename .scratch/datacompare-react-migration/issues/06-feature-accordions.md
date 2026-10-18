@@ -4,8 +4,8 @@
 
 **Blocked by:** 03 — Core actions, 05 — Options + presets
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Each accordion action renders its card with options applied
-- [ ] In-process API tests for at least checksum (incl. chunked) and custom SQL contracts
-- [ ] Project verification commands green
+- [x] Each accordion action renders its card with options applied
+- [x] In-process API tests for at least checksum (incl. chunked) and custom SQL contracts
+- [x] Project verification commands green

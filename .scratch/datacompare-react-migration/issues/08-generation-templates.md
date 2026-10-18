@@ -4,9 +4,9 @@
 
 **Blocked by:** 05 — Options + presets
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Sync-config generates and downloads; diff-SQL renders; lineage renders; multi-env compare works
-- [ ] Templates CRUD + batch run over selected templates
-- [ ] In-process API tests for sync-config content and template batch contract
-- [ ] Project verification commands green
+- [x] Sync-config generates and downloads; diff-SQL renders; lineage renders; multi-env compare works
+- [x] Templates CRUD + batch run over selected templates
+- [x] In-process API tests for sync-config content and template batch contract
+- [x] Project verification commands green

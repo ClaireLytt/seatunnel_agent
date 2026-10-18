@@ -4,11 +4,11 @@
 
 **Blocked by:** 01 — Prefactor
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Browser renders the React shell; legacy Gradio no longer serves the route (code remains until ticket 11)
-- [ ] Connect A and B independently; statuses and table dropdowns reflect real connections
-- [ ] Field visibility follows datasource type like legacy
-- [ ] In-process API tests: connect success/failure per side, tables listing
-- [ ] Playwright smoke: page loads, no console errors
-- [ ] Project verification commands green
+- [x] Browser renders the React shell; legacy Gradio no longer serves the route (code remains until ticket 11)
+- [x] Connect A and B independently; statuses and table dropdowns reflect real connections
+- [x] Field visibility follows datasource type like legacy
+- [x] In-process API tests: connect success/failure per side, tables listing
+- [x] Playwright smoke: page loads, no console errors
+- [x] Project verification commands green

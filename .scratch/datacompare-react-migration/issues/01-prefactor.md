@@ -4,8 +4,8 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Card renderers importable without Gradio; Gradio page consumes them
-- [ ] Connection state keyed per session (registry), Gradio page behavior unchanged
-- [ ] Full test suite green; no behavior change observable in the browser
+- [x] Card renderers importable without Gradio; Gradio page consumes them
+- [x] Connection state keyed per session (registry), Gradio page behavior unchanged
+- [x] Full test suite green; no behavior change observable in the browser

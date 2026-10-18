@@ -4,9 +4,9 @@
 
 **Blocked by:** 04, 06, 07, 08, 09
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Verbatim-parity test against the legacy dictionary (inline literals per established pattern)
-- [ ] No hardcoded display strings in the workspace; language switch covers everything
-- [ ] Dark screenshots of all sections saved under the reports shots directory
-- [ ] Project verification commands green
+- [x] Verbatim-parity test against the legacy dictionary (inline literals per established pattern)
+- [x] No hardcoded display strings in the workspace; language switch covers everything
+- [x] Dark screenshots of all sections saved under the reports shots directory
+- [x] Project verification commands green
