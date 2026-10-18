@@ -1,7 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { connectSide, type Datasource } from '@/api'
+import { connectSide, type Datasource, type PresetConnection } from '@/api'
 import { Card } from '@shared/components/card'
+
+export interface ConnFields {
+  ds_type: string
+  host: string
+  port: string
+  db: string
+  username: string
+  password: string
+}
 
 const inputCls =
   'w-full rounded border border-line bg-card px-2.5 py-1.5 font-mono text-[13px] text-fg ' +
@@ -15,12 +24,18 @@ export function ConnectForm({
   sessionId,
   table,
   onTable,
+  applyPreset,
+  onFields,
 }: {
   side: 'a' | 'b'
   datasources: Datasource[]
   sessionId: string
   table: string
   onTable: (t: string) => void
+  /** Loading a preset fills the form (seq bumps on every load). */
+  applyPreset?: { seq: number; conn: PresetConnection }
+  /** Reports the current form fields so presets can be saved from them. */
+  onFields?: (f: ConnFields) => void
 }) {
   const { t, i18n } = useTranslation()
 
@@ -35,6 +50,24 @@ export function ConnectForm({
   const [tables, setTables] = useState<string[]>([])
 
   const ds = datasources.find((d) => d.key === dsKey)
+
+  // Auto-apply a loaded preset into the form (legacy preset_dd.change).
+  useEffect(() => {
+    if (!applyPreset) return
+    const c = applyPreset.conn
+    setDsKey(c.ds_type)
+    setHost(c.host)
+    setPort(c.port ? String(c.port) : '')
+    setDb(c.database)
+    setUsername(c.username)
+    setPassword(c.password)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyPreset?.seq])
+
+  useEffect(() => {
+    onFields?.({ ds_type: dsKey, host, port, db, username, password })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dsKey, host, port, db, username, password])
 
   const onConnect = async () => {
     setBusy(true)

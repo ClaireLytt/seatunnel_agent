@@ -161,3 +161,86 @@ def test_tables_unknown_session_404(client):
     r = client.get("/api/datacompare/tables",
                    params={"session_id": "nope", "side": "a"})
     assert r.status_code == 404
+
+
+# ── presets (ticket 05) ─────────────────────────────────────────────
+
+
+@pytest.fixture()
+def presets_tmp(tmp_path, monkeypatch):
+    """Point the API's presets store (and its key file) at tmp_path."""
+    from seatunnel_agent.agents.data.data_comparison import api as api_mod
+    from seatunnel_agent.agents.data.data_comparison import presets as presets_mod
+    from seatunnel_agent.agents.data.data_comparison.presets import (
+        ConnectionPresetsStore,
+    )
+
+    monkeypatch.setattr(presets_mod, "_KEY_PATH", tmp_path / "dc_secret.key")
+    monkeypatch.setattr(presets_mod, "_cached_key", None)
+    store = ConnectionPresetsStore(tmp_path / "dc_connections.json")
+    monkeypatch.setattr(api_mod, "_PRESETS_STORE", store)
+    return store
+
+
+def _save_preset(client, **kw):
+    body = {"name": "prod-mysql", "ds_type": "mysql", "host": "db.example",
+            "port": 3306, "database": "sales", "username": "u",
+            "password": "s3cret", "environment": "prod"}
+    body.update(kw)
+    return client.post("/api/datacompare/presets", json=body)
+
+
+def test_presets_list_empty(client, presets_tmp):
+    r = client.get("/api/datacompare/presets")
+    assert r.status_code == 200
+    assert r.json()["presets"] == []
+
+
+def test_presets_save_load_delete_round_trip(client, presets_tmp):
+    r = _save_preset(client)
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+
+    # list shows summary fields only — never the password
+    listed = client.get("/api/datacompare/presets").json()["presets"]
+    assert [(p["name"], p["environment"]) for p in listed] == [
+        ("prod-mysql", "prod")]
+    assert "password" not in listed[0]
+
+    # load returns the full connection (password decrypted to fill the form)
+    full = client.get("/api/datacompare/presets/prod-mysql").json()
+    assert full["ds_type"] == "mysql"
+    assert full["host"] == "db.example"
+    assert full["port"] == 3306
+    assert full["database"] == "sales"
+    assert full["username"] == "u"
+    assert full["password"] == "s3cret"
+    assert full["environment"] == "prod"
+
+    r = client.delete("/api/datacompare/presets/prod-mysql")
+    assert r.status_code == 200
+    assert r.json()["ok"] is True
+    assert client.get("/api/datacompare/presets").json()["presets"] == []
+
+
+def test_presets_save_same_name_replaces(client, presets_tmp):
+    _save_preset(client)
+    _save_preset(client, host="other.example", environment="staging")
+    listed = client.get("/api/datacompare/presets").json()["presets"]
+    assert len(listed) == 1
+    full = client.get("/api/datacompare/presets/prod-mysql").json()
+    assert full["host"] == "other.example"
+    assert full["environment"] == "staging"
+
+
+def test_presets_save_empty_name_rejected(client, presets_tmp):
+    r = _save_preset(client, name="   ")
+    assert r.status_code == 400
+
+
+def test_presets_load_unknown_404(client, presets_tmp):
+    assert client.get("/api/datacompare/presets/nope").status_code == 404
+
+
+def test_presets_delete_unknown_404(client, presets_tmp):
+    assert client.delete("/api/datacompare/presets/nope").status_code == 404

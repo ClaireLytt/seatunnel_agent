@@ -68,3 +68,73 @@ export async function connectSide(params: ConnectParams): Promise<ConnectResult>
     'connect',
   )
 }
+
+// ── Global comparison options (frontend state; rides on action calls) ──
+
+export interface CompareOptions {
+  where: string
+  threshold: string
+  key_columns: string
+  column_mapping: string
+  sample_strategy: string
+  stratified_col: string
+  masking: boolean
+}
+
+export const OPTIONS_DEFAULTS: CompareOptions = {
+  where: '',
+  threshold: '',
+  key_columns: '',
+  column_mapping: '',
+  sample_strategy: 'TOP N',
+  stratified_col: '',
+  masking: true,
+}
+
+// ── Connection presets ──
+
+export interface PresetSummary {
+  id: string
+  name: string
+  environment: string
+}
+
+export interface PresetConnection {
+  ds_type: string
+  host: string
+  port: number
+  database: string
+  username: string
+  password: string
+  environment: string
+}
+
+export async function listPresets(): Promise<PresetSummary[]> {
+  const data = await json<{ presets: PresetSummary[] }>(
+    await fetch(`${BASE}/presets`),
+    'presets',
+  )
+  return data.presets
+}
+
+export async function savePreset(p: PresetConnection & { name: string }): Promise<void> {
+  await json(
+    await fetch(`${BASE}/presets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(p),
+    }),
+    'save preset',
+  )
+}
+
+export async function loadPreset(name: string): Promise<PresetConnection & { name: string }> {
+  return json(await fetch(`${BASE}/presets/${encodeURIComponent(name)}`), 'load preset')
+}
+
+export async function deletePreset(name: string): Promise<void> {
+  await json(
+    await fetch(`${BASE}/presets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
+    'delete preset',
+  )
+}

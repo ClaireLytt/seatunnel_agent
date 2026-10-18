@@ -24,6 +24,7 @@ from seatunnel_agent.agents.data.data_comparison.registry import (
 from seatunnel_agent.agents.data.data_comparison.ui_shared import (
     _NEEDS_AUTH,
     _NEEDS_HOST,
+    _PRESETS_STORE,
     _SAMPLE_STRATEGIES,
 )
 from seatunnel_agent.agents.data.text2sql.executor import (
@@ -113,3 +114,76 @@ def list_tables(session_id: str, side: Literal["a", "b"]) -> dict[str, Any]:
     with session.lock:
         tables = list(getattr(session, f"tables_{side}"))
     return {"tables": tables}
+
+
+# ── connection presets (ticket 05) ──────────────────────────────────
+
+
+class PresetSaveRequest(BaseModel):
+    name: str
+    ds_type: str
+    host: str = ""
+    port: int = 0
+    database: str = ""
+    username: str = ""
+    password: str = ""
+    environment: str = ""
+
+
+@router.get("/presets")
+def list_presets() -> dict[str, Any]:
+    """Summaries for the preset dropdowns — never the password."""
+    return {
+        "presets": [
+            {
+                "id": p.get("id", ""),
+                "name": p.get("name", ""),
+                "environment": p.get("environment", ""),
+            }
+            for p in _PRESETS_STORE.list()
+        ]
+    }
+
+
+@router.post("/presets")
+def save_preset(req: PresetSaveRequest) -> dict[str, Any]:
+    """Save (upsert by name) a connection preset."""
+    if req.ds_type not in DS_TYPES:
+        raise HTTPException(status_code=400,
+                            detail=f"unknown datasource: {req.ds_type}")
+    try:
+        _PRESETS_STORE.save(
+            req.name, req.ds_type, req.host.strip(), req.port,
+            req.database.strip(), req.username.strip(),
+            req.password.strip(), environment=req.environment.strip(),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return {"ok": True, "name": req.name.strip()}
+
+
+@router.get("/presets/{name}")
+def load_preset(name: str) -> dict[str, Any]:
+    """Full preset (password decrypted) to fill the connect form."""
+    preset = _PRESETS_STORE.get_by_name(name)
+    if preset is None:
+        raise HTTPException(status_code=404, detail="unknown preset")
+    return {
+        "name": preset.get("name", ""),
+        "ds_type": preset.get("ds_type", ""),
+        "host": preset.get("host", ""),
+        "port": preset.get("port", 0),
+        "database": preset.get("database", ""),
+        "username": preset.get("username", ""),
+        "password": preset.get("password", ""),
+        "environment": preset.get("environment", ""),
+    }
+
+
+@router.delete("/presets/{name}")
+def delete_preset(name: str) -> dict[str, Any]:
+    """Delete a preset by name (legacy UI deletes by the selected name)."""
+    preset = _PRESETS_STORE.get_by_name(name)
+    if preset is None or not _PRESETS_STORE.delete(preset.get("id", "")):
+        raise HTTPException(status_code=404, detail="unknown preset")
+    return {"ok": True}

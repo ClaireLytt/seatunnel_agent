@@ -1,7 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createSession, fetchMeta, type Meta } from '@/api'
-import { ConnectForm } from '@/components/ConnectForm'
+import {
+  createSession,
+  fetchMeta,
+  OPTIONS_DEFAULTS,
+  type CompareOptions,
+  type Meta,
+  type PresetConnection,
+} from '@/api'
+import { ConnectForm, type ConnFields } from '@/components/ConnectForm'
+import { OptionsCard } from '@/components/OptionsCard'
+import { PresetsCard } from '@/components/PresetsCard'
 import { Card } from '@shared/components/card'
 
 export default function App() {
@@ -13,6 +22,20 @@ export default function App() {
   const [tableA, setTableA] = useState('')
   const [tableB, setTableB] = useState('')
 
+  // Global comparison options — ride on every action request (tickets 03+).
+  const [options, setOptions] = useState<CompareOptions>(OPTIONS_DEFAULTS)
+  const [resetSeq, setResetSeq] = useState(0)
+
+  // Current connect-form fields per side (for "save preset from side X");
+  // a ref so keystrokes in the forms don't re-render the whole page.
+  const fieldsRef = useRef<Record<'a' | 'b', ConnFields>>({
+    a: { ds_type: '', host: '', port: '', db: '', username: '', password: '' },
+    b: { ds_type: '', host: '', port: '', db: '', username: '', password: '' },
+  })
+  const [presetA, setPresetA] = useState<{ seq: number; conn: PresetConnection }>()
+  const [presetB, setPresetB] = useState<{ seq: number; conn: PresetConnection }>()
+  const presetSeq = useRef(0)
+
   useEffect(() => {
     fetchMeta()
       .then(setMeta)
@@ -21,6 +44,28 @@ export default function App() {
       .then(setSessionId)
       .catch((e) => setError(String(e)))
   }, [])
+
+  const resetOptions = () => {
+    setOptions(OPTIONS_DEFAULTS)
+    setResetSeq((s) => s + 1)
+  }
+
+  const presetFields = (side: 'a' | 'b') => {
+    const f = fieldsRef.current[side]
+    return {
+      ds_type: f.ds_type,
+      host: f.host,
+      port: Number(f.port) || 0,
+      database: f.db,
+      username: f.username,
+      password: f.password,
+    }
+  }
+
+  const applyPreset = (side: 'a' | 'b', conn: PresetConnection) => {
+    presetSeq.current += 1
+    ;(side === 'a' ? setPresetA : setPresetB)({ seq: presetSeq.current, conn })
+  }
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-8">
@@ -58,6 +103,8 @@ export default function App() {
                 sessionId={sessionId}
                 table={tableA}
                 onTable={setTableA}
+                applyPreset={presetA}
+                onFields={(f) => (fieldsRef.current.a = f)}
               />
               <ConnectForm
                 side="b"
@@ -65,6 +112,15 @@ export default function App() {
                 sessionId={sessionId}
                 table={tableB}
                 onTable={setTableB}
+                applyPreset={presetB}
+                onFields={(f) => (fieldsRef.current.b = f)}
+              />
+              <PresetsCard getFields={presetFields} onApply={applyPreset} resetSeq={resetSeq} />
+              <OptionsCard
+                strategies={meta.sample_strategies}
+                options={options}
+                onChange={setOptions}
+                onReset={resetOptions}
               />
             </>
           )}
