@@ -22,7 +22,10 @@ pytest -q              -> 3142 passed, 1 skipped, 88 deselected in 146.19s
 pytest tests/test_frontend_build.py -v -> 13 passed in 1.88s
 uitest smoke (--no-llm) -> PASS 60 · FAIL 0 · ERROR 0 · SKIP 0 · MANUAL 1 · 耗时 261s
   报告: runs/20261018_153458/report.html
-python scripts/check_workflow.py -> 见本报告提交前输出(随批次提交核对)
+python scripts/check_workflow.py ->
+  [PASS] AI 署名: 无 AI 署名(范围 HEAD~10..HEAD)
+  [PASS] 工作区: 工作区干净
+  [PASS] 报告落盘: 无远端分支,跳过报告落盘检查
 ```
 
 构建计时(_build_frontends 连跑两次,真实 npm 构建):
