@@ -87,12 +87,7 @@ from seatunnel_agent.agents.data.data_comparison.presets import ConnectionPreset
 from seatunnel_agent.agents.data.data_comparison.templates_store import (
     ComparisonTemplatesStore,
 )
-from seatunnel_agent.agents.data.data_comparison.ui import (
-    _error_html,
-    _esc_html,
-    _export_report_csv,
-    _send_webhook,
-    _validate_where,
+from seatunnel_agent.agents.data.data_comparison.ui_cards import (
     build_aggregate_card,
     build_batch_count_card,
     build_batch_full_card,
@@ -113,6 +108,15 @@ from seatunnel_agent.agents.data.data_comparison.ui import (
     build_standalone_report,
     build_summary_card,
     build_trend_alert_card,
+)
+from seatunnel_agent.agents.data.data_comparison.ui_reports import (
+    _export_report_csv,
+)
+from seatunnel_agent.agents.data.data_comparison.ui_shared import (
+    _error_html,
+    _esc_html,
+    _send_webhook,
+    _validate_where,
 )
 from seatunnel_agent.agents.data.text2sql.differ import ResultDiff
 from seatunnel_agent.agents.data.text2sql.executor.base import QueryResult
@@ -3326,7 +3330,7 @@ class TestDetailsCardHelper:
     """Verify the _details_card helper produces correct HTML."""
 
     def test_basic(self):
-        from seatunnel_agent.agents.data.data_comparison.ui import _details_card
+        from seatunnel_agent.agents.data.data_comparison.ui_shared import _details_card
         html = _details_card("<b>Title</b>", "<p>Body</p>")
         assert "<details open" in html
         assert "<b>Title</b>" in html
@@ -3334,7 +3338,7 @@ class TestDetailsCardHelper:
         assert "border:1px solid #e0e7ff" in html
 
     def test_custom_color(self):
-        from seatunnel_agent.agents.data.data_comparison.ui import _details_card
+        from seatunnel_agent.agents.data.data_comparison.ui_shared import _details_card
         html = _details_card("T", "B", border_color="#ff0000")
         assert "#ff0000" in html
 
@@ -3779,7 +3783,7 @@ class TestWebhookSummary:
     """_build_webhook_summary should extract top-10 items."""
 
     def test_schema_diffs_capped(self):
-        from seatunnel_agent.agents.data.data_comparison.ui import (
+        from seatunnel_agent.agents.data.data_comparison.ui_shared import (
             _build_webhook_summary,
         )
         items = [
@@ -3793,7 +3797,7 @@ class TestWebhookSummary:
         assert len(summary["schema_diffs"]) == 10
 
     def test_agg_mismatches_capped(self):
-        from seatunnel_agent.agents.data.data_comparison.ui import (
+        from seatunnel_agent.agents.data.data_comparison.ui_shared import (
             _build_webhook_summary,
         )
         items = [
@@ -3811,7 +3815,7 @@ class TestWebhookSummary:
         assert len(summary["agg_mismatches"]) == 10
 
     def test_no_diffs_returns_empty(self):
-        from seatunnel_agent.agents.data.data_comparison.ui import (
+        from seatunnel_agent.agents.data.data_comparison.ui_shared import (
             _build_webhook_summary,
         )
         report = CompareReport()
@@ -3987,7 +3991,9 @@ class TestFullReportExportExcelAllSheets:
     """Excel export should have all sheet names."""
 
     def test_sheet_names(self, tmp_path, monkeypatch):
-        from seatunnel_agent.agents.data.data_comparison.ui import _export_report_excel
+        from seatunnel_agent.agents.data.data_comparison.ui_reports import (
+            _export_report_excel,
+        )
         monkeypatch.setattr("seatunnel_agent.agents.data.data_comparison.ui_reports._download_dir", lambda: tmp_path)
         report = CompareReport(
             schema=SchemaDiffResult(
@@ -4262,7 +4268,7 @@ class TestWebhookPayloadStructure:
     """Webhook payload from _compare_all should have enhanced fields."""
 
     def test_build_webhook_summary_structure(self):
-        from seatunnel_agent.agents.data.data_comparison.ui import (
+        from seatunnel_agent.agents.data.data_comparison.ui_shared import (
             _build_webhook_summary,
         )
         report = CompareReport(
@@ -4545,7 +4551,7 @@ class TestSkewCardHandoff:
     """The both-skewed verdict offers a one-click handoff to /dataskew."""
 
     def _card(self, item):
-        from seatunnel_agent.agents.data.data_comparison.ui import build_skew_card
+        from seatunnel_agent.agents.data.data_comparison.ui_cards import build_skew_card
         res = SkewResult("ta", "tb", total_a=100, total_b=100, items=[item])
         return build_skew_card(res, "zh")
 
@@ -4575,7 +4581,7 @@ class TestSkewCardHandoff:
     def test_goto_button_carries_connection(self):
         """With side B's config the button also hands the connection over
         via a short-lived cookie — minus the password."""
-        from seatunnel_agent.agents.data.data_comparison.ui import build_skew_card
+        from seatunnel_agent.agents.data.data_comparison.ui_cards import build_skew_card
         from seatunnel_agent.agents.data.text2sql.executor.base import DatabaseConfig
 
         item = SkewItem(column="region", gini_a=0.8, gini_b=0.78,

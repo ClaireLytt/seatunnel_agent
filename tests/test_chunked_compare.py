@@ -216,7 +216,9 @@ class TestChunkedReportRoundTrip:
     def test_card_renders_restored_report(self):
         from seatunnel_agent.agents.data.data_comparison.chunked import ChunkedResult
         from seatunnel_agent.agents.data.data_comparison.comparator import CompareReport
-        from seatunnel_agent.agents.data.data_comparison.ui import build_chunked_card
+        from seatunnel_agent.agents.data.data_comparison.ui_cards import (
+            build_chunked_card,
+        )
         report = CompareReport(chunked=ChunkedResult(
             table_a="ta", table_b="tb", pk_column="id",
             chunk_count=2, total_a=5, total_b=5))

@@ -19,75 +19,6 @@ from seatunnel_agent.hub.pages import (
     _mount_hub,
 )
 
-# Drag-to-resize for the left sidebar: restores the saved width, appends a
-# handle to .st-page-row (not inside .st-sidebar — sidebar_fix.js forces
-# inline width on its direct div children) and drives --st-sidebar-w.
-_SIDEBAR_RESIZE_JS = """
-() => {
-    if (window.__stSidebarResize) return;
-    window.__stSidebarResize = true;
-    const MIN = 180, MAX = 520, KEY = 'stSidebarW';
-    try {
-        const saved = parseInt(localStorage.getItem(KEY), 10);
-        if (saved >= MIN && saved <= MAX) {
-            document.documentElement.style.setProperty('--st-sidebar-w', saved + 'px');
-        }
-    } catch (e) {}
-    let tries = 0;
-    const init = () => {
-        const row = document.querySelector('.st-page-row');
-        const sb = row && row.querySelector('.st-sidebar');
-        if (!row || !sb) {
-            if (tries++ < 50) setTimeout(init, 200);
-            return;
-        }
-        // The Data Comparison sidebar has its own CSS resize (720px wide);
-        // the fixed-position handle would float mid-sidebar and swallow
-        // clicks on anything underneath it.
-        if (sb.classList.contains('st-dc-sidebar')) return;
-        if (row.querySelector('.st-sidebar-resize')) return;
-        const handle = document.createElement('span');
-        handle.className = 'st-sidebar-resize';
-        handle.title = 'Drag to resize sidebar';
-        row.appendChild(handle);
-        const syncVisible = () => {
-            handle.style.display =
-                getComputedStyle(sb).display === 'none' ? 'none' : '';
-        };
-        syncVisible();
-        new MutationObserver(syncVisible)
-            .observe(sb, {attributes: true, attributeFilter: ['style', 'class']});
-        let startX = 0, startW = 0;
-        const onMove = (e) => {
-            const w = Math.min(MAX, Math.max(MIN, startW + e.clientX - startX));
-            document.documentElement.style.setProperty('--st-sidebar-w', w + 'px');
-        };
-        const onUp = () => {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            handle.classList.remove('st-resizing');
-            document.body.classList.remove('st-sidebar-dragging');
-            try {
-                const w = parseInt(
-                    getComputedStyle(document.documentElement)
-                        .getPropertyValue('--st-sidebar-w'), 10);
-                if (w) localStorage.setItem(KEY, String(w));
-            } catch (e) {}
-        };
-        handle.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            startX = e.clientX;
-            startW = sb.getBoundingClientRect().width;
-            handle.classList.add('st-resizing');
-            document.body.classList.add('st-sidebar-dragging');
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
-        });
-    };
-    init();
-}
-"""
-
 
 def create_ui() -> gr.Blocks:
     """Multipage app: hub landing page + one dedicated page per agent."""
@@ -154,14 +85,11 @@ def create_ui() -> gr.Blocks:
 
     # plugin pages: every seatunnel_agent.<pkg>.manifest registers itself
     from seatunnel_agent.hub.registry import discover, resolve
-    sidebar_resize = {"/datacompare"}
     for mf in discover():
         if mf.external:
             continue  # route served outside Gradio (React static mount)
         with app.route(mf.page_title, mf.route):
             resolve(mf.render)(app)
-            if mf.route in sidebar_resize:
-                app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
 
     return app
 
