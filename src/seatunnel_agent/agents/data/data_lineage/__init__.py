@@ -19,7 +19,6 @@ from .graph import (
 )
 from .loaders import build_graph, from_hive_meta, from_sql_dir, from_sql_files
 from .render import (
-    mermaid_html,
     render_column_mermaid,
     render_health,
     render_mermaid,
@@ -62,6 +61,5 @@ __all__ = [
     "render_path_mermaid",
     "render_sla_impact",
     "render_health",
-    "mermaid_html",
     "LineageLogger",
 ]

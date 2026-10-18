@@ -35,8 +35,11 @@ MANIFESTS = [
         title_zh="变更影响分析",
         desc_en="SQL diff × lineage — compare two SQL trees and report the release blast radius with severity levels",
         desc_zh="SQL 变更 × 血缘 — 对比两份 SQL 目录，输出上线影响面与严重度分级",
-        render="seatunnel_agent.agents.data.data_lineage.ui_impact:render_impact_page",
+        # api intentionally unset: the shared lineage router (incl.
+        # /api/lineage/impact) is mounted unconditionally by the launcher.
+        render="",  # React static mount serves this route (frontend/change_impact)
         group="governance",
         order=20,
+        external=True,
     ),
 ]

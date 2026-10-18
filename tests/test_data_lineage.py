@@ -20,7 +20,6 @@ from seatunnel_agent.agents.data.data_lineage.loaders import (
     resolve_partition,
 )
 from seatunnel_agent.agents.data.data_lineage.render import (
-    mermaid_html,
     mermaid_id,
     render_column_mermaid,
     render_mermaid,
@@ -546,17 +545,6 @@ def test_render_report_degraded_impact_disclosed():
     md = render_report(report)
     assert "降级为**表级**" in md
 
-
-def test_mermaid_html_escapes_source():
-    doc = mermaid_html('flowchart LR\n  a["<b>x</b>"]')
-    assert "mermaid.min.js" in doc
-    assert "<b>x</b>" not in doc
-    assert "&lt;b&gt;x&lt;/b&gt;" in doc
-
-
-# ---------------------------------------------------------------------------
-# LineageReport
-# ---------------------------------------------------------------------------
 
 def test_report_autofills_sla_and_baseline_nodes():
     g = linear_graph("a", "b")

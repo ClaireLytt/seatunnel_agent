@@ -370,16 +370,26 @@ def change_impact(req: ImpactRequest) -> dict[str, Any]:
             status_code=400,
             detail="请二选一：old_dir+new_dir（目录模式）或 old_sql+new_sql（文本模式）",
         )
+    from pathlib import Path
+
+    def _require_dir(d: str) -> None:
+        # whitelist first (403, no existence probing), then a structured
+        # detail the frontend localizes (i18n `bad_dir`)
+        _check_dir_allowed(d)
+        if not Path(d).is_dir():
+            raise HTTPException(status_code=400,
+                                detail={"code": "bad_dir", "path": d})
+
     start = time.time()
     try:
         if dir_mode:
-            _check_dir_allowed(req.old_dir)
-            _check_dir_allowed(req.new_dir)
+            _require_dir(req.old_dir)
+            _require_dir(req.new_dir)
             result = analyze_dirs(req.old_dir, req.new_dir, depth=req.depth,
                                   sql_dialect=req.sql_dialect)
         else:
             if req.context_dir:
-                _check_dir_allowed(req.context_dir)
+                _require_dir(req.context_dir)
             result = analyze_sql_texts(req.old_sql, req.new_sql,
                                        depth=req.depth,
                                        sql_dialect=req.sql_dialect,
@@ -390,6 +400,13 @@ def change_impact(req: ImpactRequest) -> dict[str, Any]:
         raise HTTPException(status_code=400,
                             detail=f"变更影响分析失败: {exc}")
     data = impact_to_dict(result, req.lang)
+    # additive fields for the React page: severity-coloured graph source
+    # (always) and the unified SQL diff (paste mode, legacy do_analyze_sql)
+    from .impact import render_impact_mermaid, render_text_diff
+
+    data["mermaid"] = render_impact_mermaid(result)
+    if text_mode:
+        data["sql_diff"] = render_text_diff(req.old_sql, req.new_sql)
     data["elapsed_ms"] = ms_since(start)
     from .impact import ImpactLogger
     ImpactLogger().log_impact(
