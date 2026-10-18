@@ -322,17 +322,6 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
         return found, (f"popup does{'' if found else ' not'} contain "
                        f"{needle!r}; text={snippet!r}")
 
-    if k == "sidebar_width":
-        width = dc.sidebar_width()
-        lo = int(args.get("min", 0))
-        hi = int(args.get("max", 10**9))
-        max_vw = args.get("max_vw")
-        if max_vw is not None:
-            inner = int(dc.page.evaluate("() => window.innerWidth"))
-            hi = min(hi, int(inner * float(max_vw) / 100) + 2)  # rounding slack
-        ok = lo <= width <= hi
-        return ok, f"sidebar width {width}px (expected {lo}..{hi}px)"
-
     raise ValueError(f"unhandled assertion kind: {k}")
 
 

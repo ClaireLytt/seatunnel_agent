@@ -56,7 +56,7 @@ class TestCase:
     id: str                            # matches the manual checklist: A1 / B3 / C3 ...
     title: str
     tags: list[str] = field(default_factory=list)   # smoke/full/hive/sqlite/slow/manual
-    page: str = "/datacompare"         # starting route
+    page: str = "/"                    # starting route
     lang: str = "zh"                   # UI language for the case (zh|en)
     setup: list[Step] = field(default_factory=list)
     steps: list[Step] = field(default_factory=list)

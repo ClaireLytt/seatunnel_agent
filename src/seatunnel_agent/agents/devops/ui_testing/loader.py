@@ -31,7 +31,7 @@ KNOWN_ACTIONS = frozenset({
     "goto", "click", "click_css", "click_cell", "fill", "clear", "press", "select_ds", "select",
     "select_index", "dropdown_type", "check", "slide", "open_accordion", "wait_status_ok",
     "wait_status_error", "wait_result", "wait_text", "wait", "screenshot", "set_language",
-    "download", "popup_click", "drag_sidebar", "upload_file",
+    "download", "popup_click", "upload_file",
 })
 
 KNOWN_ASSERTS = frozenset({
@@ -42,7 +42,7 @@ KNOWN_ASSERTS = frozenset({
     "result_stable",
     "visual_baseline",
     "ai_judge",
-    "download_ok", "popup_contains", "sidebar_width",
+    "download_ok", "popup_contains",
 })
 
 KNOWN_TAGS = frozenset({"smoke", "full", "hive", "sqlite", "slow", "manual",
@@ -219,7 +219,7 @@ def parse_case_list(raw_list, fixtures: dict, source: str,
             id=cid,
             title=str(raw.get("title", "")),
             tags=tags,
-            page=str(raw.get("page", "/datacompare")),
+            page=str(raw.get("page", "/")),
             lang=str(raw.get("lang", "zh")),
             setup=setup,
             steps=steps,

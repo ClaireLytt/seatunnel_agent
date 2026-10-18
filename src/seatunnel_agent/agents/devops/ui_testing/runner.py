@@ -62,9 +62,9 @@ _heal_failed: set[str] = set()
 def _parse_missing(detail: str) -> str:
     """Extract the element name from a '... not found: X (side=..)' detail.
 
-    Returns "" for CSS-selector style names (e.g. drag_sidebar's
-    '.st-dc-sidebar'): those are layout lookups, not LABELS entries — an
-    alias could never fix them, so healing would just waste an LLM call."""
+    Returns "" for CSS-selector style names: those are layout lookups, not
+    LABELS entries — an alias could never fix them, so healing would just
+    waste an LLM call."""
     name = detail.split("not found:")[-1].split("(side")[0].strip()[:60]
     if name.startswith((".", "#")):
         return ""

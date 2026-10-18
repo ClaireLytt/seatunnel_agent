@@ -51,7 +51,7 @@ def _dispatch(step: Step, dc: DCPage) -> str:
         return log.detail
 
     if a == "goto":
-        dc.goto(args.get("target", args.get("path", "/datacompare")))
+        dc.goto(args.get("target", args.get("path", "/")))
         return "navigated"
 
     if a == "click":
@@ -169,9 +169,5 @@ def _dispatch(step: Step, dc: DCPage) -> str:
         path = args.get("path", args.get("file", ""))
         dc.upload_file(args["target"], path, args.get("side"))
         return f"uploaded {path!r} via {args['target']!r}"
-
-    if a == "drag_sidebar":
-        width = dc.drag_sidebar_grip(int(args.get("dx", 0)))
-        return f"sidebar dragged dx={args.get('dx')} -> width {width}px"
 
     raise ValueError(f"unhandled action: {a}")

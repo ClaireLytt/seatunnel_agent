@@ -3,7 +3,7 @@
 Usage (AI 改完 UI 后快速验证,无需写正式用例文件)::
 
     seatunnel-agent uitest adhoc --steps /tmp/check.yaml [--url http://127.0.0.1:7860]
-        [--page /datacompare] [--screenshot-dir runs/adhoc/foo] [--headed]
+        [--page /lineage] [--screenshot-dir runs/adhoc/foo] [--headed]
 
 steps 文件与正式用例同格式: 既可以是完整用例 (带 id/steps/expect),
 也可以是裸的步骤列表 (``- click: 连接``),动作/断言语法与正式用例完全一致
@@ -79,7 +79,7 @@ def load_adhoc_case(path: str | Path, page: str = "") -> TestCase:
         id=str(raw.get("id", "ADHOC")),
         title=str(raw.get("title", f"ad-hoc: {p.name}")),
         tags=["sqlite"],
-        page=page or str(raw.get("page", "/datacompare")),
+        page=page or str(raw.get("page", "/")),
         lang=str(raw.get("lang", "zh")),
         steps=steps,
         expect=expect,
