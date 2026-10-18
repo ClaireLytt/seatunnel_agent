@@ -15,23 +15,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from seatunnel_agent.agents.data.text2sql.executor import DIALECT_NAMES, DS_TYPES
+from seatunnel_agent.agents.data.text2sql.executor import DS_TYPES
 
 from .comparator import CompareReport, skew_side_verdict
 from .i18n import dc
 from .presets import ConnectionPresetsStore
 from .templates_store import ComparisonTemplatesStore
-
-# ---------------------------------------------------------------------------
-# Matplotlib import (lazy — only used for trend charts)
-# ---------------------------------------------------------------------------
-
-def _get_matplotlib():
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    return plt
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -86,8 +75,6 @@ _SUMMARY_MAX_ITEMS = 10      # items shown in report summary sections
 _DELTA_WARN_PCT = 10         # row-count delta % below which it's a warning
 _DEFAULT_SCHEDULE_MIN = 15   # default scheduled-comparison interval (minutes)
 
-_DS_CHOICES = [DIALECT_NAMES[d] for d in DS_TYPES]
-_DS_LABEL_TO_KEY = {v: k for k, v in DIALECT_NAMES.items()}
 _NEEDS_AUTH = frozenset({"mysql", "sqlserver", "sparksql", "clickhouse", "doris", "postgresql"})
 _NEEDS_HOST = frozenset(DS_TYPES) - {"flinksql", "sqlite"}
 

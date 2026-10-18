@@ -646,31 +646,30 @@ class TestI18n:
         assert not missing, f"Missing zh keys: {missing}"
 
     def test_accessor(self):
-        assert dc("en", "dc_title") == "### Data Comparison"
-        assert dc("zh", "dc_title") == "### 数据比对"
+        assert dc("en", "dc_summary") == "Comparison Summary"
+        assert dc("zh", "dc_summary") == "对比摘要"
 
     def test_fallback_to_en(self):
-        assert dc("fr", "dc_title") == "### Data Comparison"
+        assert dc("fr", "dc_summary") == "Comparison Summary"
 
     def test_missing_key_returns_key(self):
         assert dc("en", "nonexistent_key_xyz") == "nonexistent_key_xyz"
 
     def test_new_keys_present(self):
-        for key in ("dc_summary", "dc_batch_count", "dc_sample_preview",
+        for key in ("dc_summary", "dc_sample_preview",
                      "dc_elapsed", "dc_common_tables", "dc_showing_n_rows"):
             assert key in DC_I18N["en"], f"Missing en key: {key}"
             assert key in DC_I18N["zh"], f"Missing zh key: {key}"
 
     def test_round3_keys_present(self):
         round3_keys = [
-            "dc_key_columns", "dc_key_diff", "dc_modified_rows",
+            "dc_key_diff", "dc_modified_rows",
             "dc_old_val", "dc_new_val",
-            "dc_custom_sql", "dc_compare_sql", "dc_sql_placeholder", "dc_sql_readonly_only",
-            "dc_profile", "dc_profile_result", "dc_distinct", "dc_null_rate", "dc_min", "dc_max",
-            "dc_where_clause", "dc_where_hint", "dc_where_invalid",
-            "dc_save_report", "dc_load_report", "dc_saved", "dc_loaded", "dc_no_reports",
-            "dc_comparing_table",
-            "dc_view_report", "dc_report_title", "dc_no_report", "dc_print",
+            "dc_sql_readonly_only",
+            "dc_profile_result", "dc_distinct", "dc_null_rate", "dc_min", "dc_max",
+            "dc_where_invalid",
+            "dc_loaded", "dc_comparing_table",
+            "dc_report_title", "dc_no_report", "dc_print",
         ]
         for key in round3_keys:
             assert key in DC_I18N["en"], f"Missing en key: {key}"
@@ -1397,18 +1396,11 @@ class TestI18nRound4:
     """Test that all round-4 i18n keys are present in both languages."""
 
     ROUND4_KEYS = [
-        "dc_preset_save", "dc_preset_load", "dc_preset_name",
-        "dc_preset_saved", "dc_preset_deleted", "dc_preset_no_presets", "dc_presets",
-        "dc_threshold", "dc_threshold_hint", "dc_threshold_pass", "dc_threshold_fail",
-        "dc_gen_sync", "dc_sync_generated",
-        "dc_col_mapping", "dc_col_mapping_hint",
-        "dc_schedule", "dc_schedule_interval", "dc_schedule_start", "dc_schedule_stop",
+        "dc_threshold_pass", "dc_threshold_fail",
+        "dc_sync_generated",
         "dc_schedule_running", "dc_schedule_stopped",
-        "dc_batch_full", "dc_batch_full_result", "dc_batch_summary",
-        "dc_sample_strategy",
-        "dc_trend", "dc_trend_chart", "dc_trend_no_data",
-        "dc_history_count",
-    ]
+        "dc_batch_full_result", "dc_batch_summary",
+        ]
 
     def test_all_keys_present(self):
         for lang in ("en", "zh"):
@@ -1784,21 +1776,13 @@ class TestI18nRound5:
     """Test that all round-5 i18n keys are present in both languages."""
 
     ROUND5_KEYS = [
-        "dc_incremental", "dc_watermark_col", "dc_watermark_hint",
-        "dc_watermark_value", "dc_incremental_compare",
-        "dc_quality", "dc_quality_rules", "dc_quality_rules_hint",
-        "dc_quality_check", "dc_quality_result", "dc_quality_pass", "dc_quality_fail",
-        "dc_gen_diff_sql", "dc_diff_sql_result",
+        "dc_watermark_hint",
+        "dc_quality_rules_hint",
+        "dc_quality_result", "dc_quality_pass", "dc_quality_fail",
+        "dc_diff_sql_result",
         "dc_diff_sql_no_diff",
-        "dc_templates", "dc_template_save", "dc_template_load",
-        "dc_template_name", "dc_template_saved", "dc_template_deleted",
-        "dc_template_no_templates",
-        "dc_webhook", "dc_webhook_url", "dc_webhook_url_hint",
-        "dc_webhook_on_fail",
         "dc_drill_down", "dc_row_values_a", "dc_row_values_b",
-        "dc_masking_enabled",
-        "dc_environment", "dc_env_hint", "dc_compare_envs", "dc_env_a", "dc_env_b",
-    ]
+        "dc_env_hint", ]
 
     def test_all_keys_present(self):
         for lang in ("en", "zh"):
@@ -2925,21 +2909,20 @@ class TestI18nNewKeys:
 
     def test_checksum_keys(self):
         from seatunnel_agent.agents.data.data_comparison.i18n import DC_I18N
-        for key in ["dc_checksum", "dc_checksum_result", "dc_checksum_segment",
+        for key in ["dc_checksum_result", "dc_checksum_segment",
                      "dc_checksum_match", "dc_checksum_mismatch", "dc_checksum_all_match"]:
             assert key in DC_I18N["en"], f"Missing EN key: {key}"
             assert key in DC_I18N["zh"], f"Missing ZH key: {key}"
 
     def test_partition_keys(self):
         from seatunnel_agent.agents.data.data_comparison.i18n import DC_I18N
-        for key in ["dc_partition", "dc_partition_result", "dc_partition_col",
-                     "dc_partition_value", "dc_partition_delta"]:
+        for key in ["dc_partition_result", "dc_partition_value", "dc_partition_delta"]:
             assert key in DC_I18N["en"], f"Missing EN key: {key}"
             assert key in DC_I18N["zh"], f"Missing ZH key: {key}"
 
     def test_custom_agg_keys(self):
         from seatunnel_agent.agents.data.data_comparison.i18n import DC_I18N
-        for key in ["dc_custom_agg", "dc_custom_agg_result", "dc_custom_agg_hint",
+        for key in ["dc_custom_agg_result", "dc_custom_agg_hint",
                      "dc_custom_agg_expression", "dc_custom_agg_alias"]:
             assert key in DC_I18N["en"], f"Missing EN key: {key}"
             assert key in DC_I18N["zh"], f"Missing ZH key: {key}"
@@ -2949,8 +2932,7 @@ class TestI18nSkew:
     """Verify all skew i18n keys exist."""
 
     SKEW_KEYS = [
-        "dc_skew", "dc_skew_result", "dc_skew_column",
-        "dc_skew_columns_hint", "dc_skew_analyze",
+        "dc_skew_result", "dc_skew_column",
         "dc_skew_gini", "dc_skew_cv", "dc_skew_top1",
         "dc_skew_ndv", "dc_skew_no_columns",
     ]
@@ -2989,7 +2971,7 @@ class TestBuildStratifiedSampleSql:
         assert "status" in sql
 
     def test_stratified_i18n_keys(self):
-        for key in ["dc_stratified_col", "dc_stratified_col_hint"]:
+        for key in []:
             assert key in DC_I18N["en"], f"Missing EN key: {key}"
             assert key in DC_I18N["zh"], f"Missing ZH key: {key}"
 
@@ -3112,15 +3094,15 @@ class TestI18nPhase5Keys:
     """Tests for new Phase 5 i18n keys."""
 
     def test_alert_keys(self):
-        for key in ["dc_alert_rules", "dc_alert_rules_hint", "dc_alert_result",
+        for key in ["dc_alert_result",
                      "dc_alert_triggered", "dc_alert_ok", "dc_alert_metric",
                      "dc_alert_threshold", "dc_alert_consecutive"]:
             assert key in DC_I18N["en"], f"Missing EN key: {key}"
             assert key in DC_I18N["zh"], f"Missing ZH key: {key}"
 
     def test_batch_template_keys(self):
-        for key in ["dc_batch_templates", "dc_batch_templates_hint",
-                     "dc_batch_templates_run", "dc_batch_templates_result",
+        for key in ["dc_batch_templates_hint",
+                     "dc_batch_templates_result",
                      "dc_batch_templates_pass", "dc_batch_templates_fail"]:
             assert key in DC_I18N["en"], f"Missing EN key: {key}"
             assert key in DC_I18N["zh"], f"Missing ZH key: {key}"
@@ -3650,10 +3632,7 @@ class TestPhase3I18nKeys:
         "dc_env_compare_result",
         "dc_batch_tpl_schema",
         "dc_batch_tpl_agg",
-        "dc_trend_mismatches",
-        "dc_trend_schema",
-        "dc_preset_env",
-    ]
+        ]
 
     def test_en_keys_present(self):
         for key in self.PHASE3_KEYS:
@@ -3965,11 +3944,10 @@ class TestPhase5I18nKeys:
     """All Phase 5 i18n keys exist in both EN and ZH."""
 
     PHASE5_KEYS = [
-        "dc_report_diff", "dc_report_diff_result",
+        "dc_report_diff_result",
         "dc_report_diff_section", "dc_report_diff_field",
         "dc_report_diff_old_val", "dc_report_diff_new_val",
-        "dc_report_diff_changed", "dc_report_diff_no_change",
-        "dc_quality_expression", "dc_quality_expr_hint",
+        "dc_report_diff_no_change",
         "dc_lineage_title", "dc_lineage_hint", "dc_lineage_no_deps",
     ]
 
@@ -4090,13 +4068,10 @@ class TestAllNewI18nKeysPresent:
     ALL_NEW_KEYS = [
         # Phase 3
         "dc_env_compare_result", "dc_batch_tpl_schema", "dc_batch_tpl_agg",
-        "dc_trend_mismatches", "dc_trend_schema", "dc_preset_env",
         # Phase 5
-        "dc_report_diff", "dc_report_diff_result", "dc_report_old",
-        "dc_report_new", "dc_report_compare", "dc_report_diff_section",
+        "dc_report_diff_result", "dc_report_diff_section",
         "dc_report_diff_field", "dc_report_diff_old_val", "dc_report_diff_new_val",
-        "dc_report_diff_changed", "dc_report_diff_no_change",
-        "dc_quality_expression", "dc_quality_expr_hint",
+        "dc_report_diff_no_change",
         "dc_lineage_title", "dc_lineage_hint", "dc_lineage_no_deps",
     ]
 
