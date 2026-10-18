@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 import click
 
@@ -145,13 +146,36 @@ def chat(ctx: click.Context, resume: str | None, list_sessions: bool) -> None:
     console.print("\n[yellow]Chat session ended.[/yellow]")
 
 
-def _build_frontends() -> None:
-    """Build every React workspace under frontend/ (npm install first if needed)."""
+def _hash_frontend_paths(paths: list[Path]) -> str:
+    """Content digest over the given files/directories (mtime/git independent)."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    files: list[Path] = []
+    for p in paths:
+        if p.is_file():
+            files.append(p)
+        elif p.is_dir():
+            files.extend(f for f in p.rglob("*") if f.is_file())
+    for f in sorted(files, key=lambda f: str(f).replace("\\", "/")):
+        digest.update(f.name.encode("utf-8"))
+        digest.update(f.read_bytes())
+    return digest.hexdigest()
+
+
+def _build_frontends(frontend: Path | None = None, force: bool = False) -> None:
+    """Incrementally build React workspaces under frontend/ (npm install first if needed).
+
+    Each workspace's sources/build config plus the shared package sources are
+    content-hashed and compared with ``<workspace>/dist/.build-hash``; unchanged
+    workspaces are skipped unless ``force`` is set.
+    """
+    import json
     import shutil
     import subprocess
-    from pathlib import Path
 
-    frontend = Path(__file__).resolve().parents[3] / "frontend"
+    if frontend is None:
+        frontend = Path(__file__).resolve().parents[3] / "frontend"
     if not (frontend / "package.json").is_file():
         console.print(f"[red]frontend/ not found at {frontend}; skipping build.[/red]")
         sys.exit(1)
@@ -162,8 +186,40 @@ def _build_frontends() -> None:
     if not (frontend / "node_modules").is_dir():
         console.print("[yellow]node_modules missing — running npm install...[/yellow]")
         subprocess.run([npm, "install"], cwd=frontend, check=True)
-    console.print("[green]Building React frontends (npm run build --workspaces)...[/green]")
-    subprocess.run([npm, "run", "build", "--workspaces", "--if-present"], cwd=frontend, check=True)
+
+    workspaces: list[str] = json.loads((frontend / "package.json").read_text("utf-8")).get(
+        "workspaces", []
+    )
+    shared_hash = _hash_frontend_paths(
+        [p for p in (frontend / "shared").iterdir() if p.name != "node_modules"]
+        if (frontend / "shared").is_dir()
+        else []
+    )
+
+    for name in workspaces:
+        ws = frontend / name
+        pkg_file = ws / "package.json"
+        if not pkg_file.is_file():
+            continue
+        if "build" not in json.loads(pkg_file.read_text("utf-8")).get("scripts", {}):
+            continue  # no build script (e.g. shared)
+        inputs = [ws / "src", pkg_file, ws / "vite.config.ts"]
+        inputs.extend(ws.glob("tsconfig*"))
+        ws_hash = _hash_frontend_paths(inputs) + ":" + shared_hash
+        hash_file = ws / "dist" / ".build-hash"
+        if (
+            not force
+            and (ws / "dist").is_dir()
+            and hash_file.is_file()
+            and hash_file.read_text("utf-8").strip() == ws_hash
+        ):
+            console.print(f"[cyan]{name}: skipped (unchanged)[/cyan]")
+            continue
+        console.print(f"[green]{name}: building (npm run build --workspace {name})...[/green]")
+        subprocess.run([npm, "run", "build", "--workspace", name], cwd=frontend, check=True)
+        (ws / "dist").mkdir(parents=True, exist_ok=True)
+        hash_file.write_text(ws_hash, encoding="utf-8")
+        console.print(f"[green]{name}: built[/green]")
 
 
 @click.command()
@@ -172,11 +228,12 @@ def _build_frontends() -> None:
 @click.option("--share", is_flag=True, help="Create a public Gradio link")
 @click.option("--api", is_flag=True, help="Enable REST API endpoints (/api/text2sql/, /api/sql_review/, /api/lineage/, /api/transpile/, /api/skew/)")
 @click.option("--insecure", is_flag=True, help="Allow a non-loopback/share launch without SEATUNNEL_UI_AUTH (not recommended)")
-@click.option("--build", "build_frontend", is_flag=True, help="Build the React frontends (npm run build) before launching")
-def ui(port: int, host: str, share: bool, api: bool, insecure: bool, build_frontend: bool) -> None:
+@click.option("--build", "build_frontend", is_flag=True, help="Build the React frontends (npm run build) before launching; unchanged workspaces are skipped")
+@click.option("--force", is_flag=True, help="With --build: rebuild all workspaces, ignoring the incremental cache")
+def ui(port: int, host: str, share: bool, api: bool, insecure: bool, build_frontend: bool, force: bool) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     if build_frontend:
-        _build_frontends()
+        _build_frontends(force=force)
     try:
         from ..hub.ui import create_ui, launch_app
     except ModuleNotFoundError as exc:
