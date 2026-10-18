@@ -92,8 +92,8 @@ class TestLoader:
 
     def test_filter_by_case_id(self):
         cases = load_cases()
-        picked = filter_cases(cases, "", ["dska1", "AIP1"])
-        assert {c.id for c in picked} == {"DSKA1", "AIP1"}
+        picked = filter_cases(cases, "", ["scr1", "AIP1"])
+        assert {c.id for c in picked} == {"SCR1", "AIP1"}
 
     def test_filter_unknown_id_raises(self):
         with pytest.raises(CaseLoadError, match="unknown case id"):
@@ -751,47 +751,6 @@ class TestFlakyTrend:
         out = format_trend(flaky_trend(load_history(tmp_path)), 2)
         assert "FLAKY" in out and "A1" in out
         assert "稳定 1 / 覆盖 2" in out
-
-
-class TestDskLabelSync:
-    """The DSK label registry must track the live i18n strings — an i18n
-    edit that silently breaks every DSK case lookup fails here instead."""
-
-    def test_dsk_labels_match_i18n(self):
-        from seatunnel_agent.agents.data.data_skew.i18n import dsk
-        from seatunnel_agent.agents.devops.ui_testing.page import LABELS
-
-        expected = {
-            "开始分析": "dsk_analyze_btn",
-            "分析模式": "dsk_mode",
-            "连接数据源": "dsk_conn_accordion",
-            "探查采样": "dsk_sample",
-            "验证倾斜（实测）": "dsk_verify_btn",
-            "一致性实测": "cst_btn",
-            "下载优化 SQL": "dsk_download_sql",
-            "上传 SQL 文件": "dsk_upload_btn",
-            "分析历史": "dsk_history_accordion",
-            "选择记录": "dsk_history_pick",
-            "历史刷新": "dsk_history_refresh",
-            "载入所选": "dsk_history_load",
-        }
-        for alias, key in expected.items():
-            zh, en = LABELS[alias][:2]
-            assert zh == dsk("zh", key), (alias, key, zh)
-            assert en == dsk("en", key), (alias, key, en)
-
-    def test_dsk_shared_label_aliases(self):
-        from seatunnel_agent.agents.data.data_skew.i18n import dsk
-        from seatunnel_agent.agents.devops.ui_testing.page import LABELS
-
-        # skew page labels that ride on keys shared with other pages
-        assert dsk("zh", "dsk_host") in LABELS["主机"]
-        assert dsk("en", "dsk_host") in LABELS["主机"]
-        assert dsk("en", "dsk_ds_type") in LABELS["数据源类型"]
-        assert dsk("zh", "dsk_download_report") in LABELS["下载报告"]
-        assert dsk("zh", "dsk_clear_btn") in LABELS["清空"]
-        assert dsk("zh", "dsk_dialect") in LABELS["SQL 方言"]
-
 
 
 def test_expand_assert_remaps_yaml_on_key():

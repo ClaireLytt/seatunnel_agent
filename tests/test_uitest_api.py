@@ -52,9 +52,11 @@ def test_meta_lists_suites_and_agents(client):
     # datacompare retired from the YAML engine (ticket 11): its coverage
     # lives in tests/test_datacompare_page.py / test_datacompare_api.py
     assert "datacompare" not in keys
-    assert "dataskew" in keys
+    # dataskew retired from the YAML engine too: its coverage lives in
+    # tests/test_dataskew_page.py / test_dataskew_session_api.py
+    assert "dataskew" not in keys
     zh = {a["key"]: a["label_zh"] for a in data["agents"]}
-    assert zh["dataskew"] == "数据倾斜分析"
+    assert zh["lineage"] == "数据血缘"
 
 
 def test_case_save_rejects_bad_yaml(client):

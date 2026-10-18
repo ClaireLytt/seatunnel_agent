@@ -10,7 +10,6 @@ AGENT_ROUTES: dict[str, tuple[str, ...]] = {
     "lineage": ("/lineage",),
     "text2sql": ("/text2sql", "/history", "/favorites", "/schema-browser"),
     "impact": ("/impact",),
-    "dataskew": ("/dataskew",),
     "mcp": ("/mcp",),
     "settings": ("/settings",),
 }
@@ -20,14 +19,12 @@ AGENT_LABELS = {
            "lineage": "Data Lineage",
            "text2sql": "Text2SQL & aux pages",
            "impact": "Change Impact Analysis",
-           "dataskew": "Data Skew Analyzer",
            "mcp": "MCP Toolbox",
            "settings": "Settings"},
     "zh": {"all": "全部 Agent",
            "lineage": "数据血缘",
            "text2sql": "Text2SQL 与辅助页",
            "impact": "变更影响分析",
-           "dataskew": "数据倾斜分析",
            "mcp": "MCP 工具箱",
            "settings": "设置"},
 }
