@@ -5,6 +5,12 @@ Endpoints:
   POST /api/lineage/query   — deterministic lineage query (no LLM)
   POST /api/lineage/analyze — natural-language question via the agent
   GET  /api/lineage/health  — health check
+
+plus the session surface the React page uses (build once, query many):
+POST /session, POST /build, POST /search, GET /snapshots, and SSE
+POST /analyze/stream. Every source-taking request also accepts an
+optional ``session_id`` — when set, the session's already-built graph is
+reused instead of rebuilding from the source params.
 """
 
 from __future__ import annotations
@@ -23,6 +29,7 @@ from .config import DEFAULT_DEPTH, DIRECTIONS, MAX_DEPTH, load_lineage_config
 from .loaders import build_graph
 from .render import (
     render_health,
+    render_mermaid,
     render_path,
     render_path_mermaid,
     render_report,
@@ -43,6 +50,8 @@ class SourceRequest(BaseModel):
     meta_table: str | None = Field(None, description="覆盖血缘元数据表名")
     partition: str | None = Field(None, description="覆盖 pt 分区（默认最新）")
     use_cache: bool = Field(True, description="使用 Hive 血缘图的本地 TTL 缓存")
+    session_id: str = Field(
+        "", description="可选：复用该会话里已构建的血缘图（POST /build）")
 
 
 class QueryRequest(SourceRequest):
@@ -121,6 +130,22 @@ def _build(req: QueryRequest | AnalyzeRequest | SourceRequest):
         raise HTTPException(status_code=400, detail=f"血缘图构建失败: {exc}")
 
 
+def _graph_for(req: SourceRequest):
+    """The session's built graph when ``session_id`` is set (structured
+    need_graph error if none built yet), else a fresh legacy build."""
+    if req.session_id:
+        from .registry import get_registry
+
+        session = get_registry().get(req.session_id)
+        if session is None:
+            raise HTTPException(status_code=404, detail="unknown session_id")
+        if not session.built:
+            raise HTTPException(status_code=400,
+                                detail={"code": "need_graph"})
+        return session.graph, list(session.warnings)
+    return _build(req)
+
+
 def _missing_404(graph, name: str) -> HTTPException:
     return HTTPException(
         status_code=404,
@@ -156,7 +181,7 @@ def query(req: QueryRequest) -> QueryResponse:
             status_code=400,
             detail=f"direction 必须是 {', '.join(DIRECTIONS)} 之一",
         )
-    graph, warnings = _build(req)
+    graph, warnings = _graph_for(req)
     config = load_lineage_config()
 
     report = static_lineage(
@@ -189,7 +214,7 @@ def query(req: QueryRequest) -> QueryResponse:
 @router.post("/path")
 def find_path(req: PathRequest) -> dict[str, Any]:
     start = time.time()
-    graph, warnings = _build(req)
+    graph, warnings = _graph_for(req)
     for name in (req.src, req.dst):
         if graph.get(name) is None:
             raise _missing_404(graph, name)
@@ -211,14 +236,19 @@ def find_path(req: PathRequest) -> dict[str, Any]:
 @router.post("/sla_impact")
 def sla_impact(req: SlaImpactRequest) -> dict[str, Any]:
     start = time.time()
-    graph, warnings = _build(req)
-    impact = graph.sla_impact(req.table, req.delay_hours, req.depth)
+    graph, warnings = _graph_for(req)
+    config = load_lineage_config()
+    # report and chain mermaid share one BFS (legacy UI do_sla parity)
+    chain = graph.downstream_of(req.table, req.depth, config.max_nodes)
+    impact = graph.sla_impact(req.table, req.delay_hours, depth=req.depth,
+                              max_nodes=config.max_nodes, chain=chain)
     if impact.missing_root:
         raise _missing_404(graph, req.table)
     elapsed_ms = _log_elapsed(start, graph.stats(), query=req.table, mode="sla")
     return {
         **impact.to_dict(),
         "markdown": render_sla_impact(impact),
+        "mermaid": render_mermaid(chain, config.max_mermaid_nodes),
         "warnings": warnings,
         "elapsed_ms": elapsed_ms,
     }
@@ -227,7 +257,7 @@ def sla_impact(req: SlaImpactRequest) -> dict[str, Any]:
 @router.post("/check")
 def health_check(req: SourceRequest) -> dict[str, Any]:
     start = time.time()
-    graph, warnings = _build(req)
+    graph, warnings = _graph_for(req)
     report = graph.health_check()
     elapsed_ms = _log_elapsed(start, graph.stats(), query="health_check", mode="health")
     return {
@@ -243,7 +273,7 @@ def save_snapshot_endpoint(req: SnapshotRequest) -> dict[str, Any]:
     from .snapshot import save_snapshot
 
     start = time.time()
-    graph, warnings = _build(req)
+    graph, warnings = _graph_for(req)
     try:
         path = save_snapshot(graph, name=req.name)
     except OSError as exc:
@@ -265,7 +295,7 @@ def snapshot_diff(req: SnapshotDiffRequest) -> dict[str, Any]:
     from .snapshot import diff_graphs, load_snapshot, render_diff_markdown
 
     start = time.time()
-    graph, warnings = _build(req)
+    graph, warnings = _graph_for(req)
     old_graph = load_snapshot(req.snapshot)
     if old_graph is None:
         raise HTTPException(
@@ -286,7 +316,7 @@ def snapshot_diff(req: SnapshotDiffRequest) -> dict[str, Any]:
 @router.post("/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     start = time.time()
-    graph, warnings = _build(req)
+    graph, warnings = _graph_for(req)
     settings = load_settings()
     agent = LineageAgent(
         settings, graph=graph, sql_dir=req.sql_dir,
@@ -362,6 +392,149 @@ def change_impact(req: ImpactRequest) -> dict[str, Any]:
         result, mode="dirs" if dir_mode else "text", source="api",
         baseline=req.old_dir or "<inline>")
     return data
+
+
+# ──────────────────── React-page session surface ────────────────────
+
+
+@router.post("/session")
+def create_session() -> dict[str, str]:
+    """Issue a new per-tab session in the lineage graph registry."""
+    from .registry import get_registry
+
+    return {"session_id": get_registry().create().session_id}
+
+
+@router.post("/build")
+def build(req: SourceRequest) -> dict[str, Any]:
+    """Build the lineage graph once and park it in the session (the Gradio
+    page's gr.State equivalent). Returns stats + the table list that fills
+    the query dropdowns."""
+    if not req.session_id:
+        raise HTTPException(status_code=400, detail="session_id required")
+    from .registry import get_registry
+
+    session = get_registry().get(req.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="unknown session_id")
+    graph, warnings = _build(req)
+    with session.lock:
+        session.graph = graph
+        session.warnings = list(warnings)
+    stats = graph.stats()
+    return {"stats": stats, "tables": sorted(graph.nodes),
+            "warnings": warnings}
+
+
+class SearchRequest(SourceRequest):
+    keyword: str = Field(..., min_length=1, description="表名模糊搜索关键词")
+    limit: int = Field(20, ge=1, le=100)
+
+
+@router.post("/search")
+def search(req: SearchRequest) -> dict[str, Any]:
+    """Fuzzy table-name search over the built graph (legacy do_search)."""
+    graph, _ = _graph_for(req)
+    return {"matches": [n.name for n in graph.search(req.keyword, req.limit)]}
+
+
+@router.get("/snapshots")
+def snapshots() -> dict[str, Any]:
+    """Saved snapshots for the diff dropdown (legacy _snapshot_choices)."""
+    from .snapshot import list_snapshots
+
+    return {"snapshots": list_snapshots()}
+
+
+def _sse(data: dict[str, Any]) -> str:
+    import json
+
+    return "data: " + json.dumps(data, ensure_ascii=False) + "\n\n"
+
+
+@router.post("/analyze/stream")
+def analyze_stream(req: AnalyzeRequest):
+    """SSE variant of /analyze streaming agent progress (legacy do_ask).
+
+    Frames: step {iteration, max, phase}, tool {name, input}, delta
+    {text}, final {answer, mermaid [, error]}. The blocking /analyze
+    endpoint is unchanged; "no_settings" comes back as a structured final
+    frame, never a 500.
+    """
+    import threading
+
+    from fastapi.responses import StreamingResponse
+
+    from seatunnel_agent.agents.data.seatunnel.rendering import EventCollector
+
+    graph, _warnings = _graph_for(req)
+    try:
+        settings = load_settings()
+    except Exception:
+        def no_settings_stream():
+            yield _sse({"type": "final", "answer": "",
+                        "mermaid": "", "error": "no_settings"})
+
+        return StreamingResponse(no_settings_stream(),
+                                 media_type="text/event-stream")
+
+    collector = EventCollector()
+    done = threading.Event()
+    result: dict[str, Any] = {}
+
+    def worker() -> None:
+        try:
+            agent = LineageAgent(
+                settings, graph=graph,
+                sql_dir=(req.sql_dir or "").strip() or None,
+                sql_dialect=req.sql_dialect,
+                seatunnel_dir=(req.seatunnel_dir or "").strip() or None,
+                hive_available=req.use_hive,
+                meta_table=(req.meta_table or "").strip() or None,
+                partition=(req.partition or "").strip() or None,
+                on_event=collector.on_event,
+            )
+            result["answer"] = agent.analyze(req.question)
+            result["mermaid"] = agent.runtime.last_mermaid
+        except Exception as exc:  # surfaced as a structured final frame
+            result["error"] = f"{type(exc).__name__}: {exc}"
+        finally:
+            done.set()
+
+    start = time.time()
+    threading.Thread(target=worker, daemon=True).start()
+
+    def stream():
+        sent = 0
+        while True:
+            finished = done.wait(0.3)
+            events = collector.snapshot()
+            for ev in events[sent:]:
+                t = ev.get("type")
+                if t == "text_delta":
+                    yield _sse({"type": "delta", "text": ev.get("text", "")})
+                elif t == "step":
+                    yield _sse({"type": "step",
+                                "iteration": ev.get("iteration"),
+                                "max": ev.get("max"),
+                                "phase": ev.get("phase", "")})
+                elif t == "tool_call":
+                    yield _sse({"type": "tool", "name": ev.get("name", "?"),
+                                "input": ev.get("input") or {}})
+            sent = len(events)
+            if finished:
+                break
+        final: dict[str, Any] = {"type": "final",
+                                 "answer": result.get("answer", ""),
+                                 "mermaid": result.get("mermaid", "")}
+        if "error" in result:
+            final["error"] = result["error"]
+        else:
+            _log_elapsed(start, graph.stats(), query=req.question,
+                         mode="agent")
+        yield _sse(final)
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 @router.get("/health")
