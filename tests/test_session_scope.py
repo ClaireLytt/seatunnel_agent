@@ -4,7 +4,6 @@ another session's agent/db_config/session_id."""
 
 from __future__ import annotations
 
-import inspect
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -89,11 +88,3 @@ def test_bucket_count_is_lru_capped():
     assert len(holder._buckets) == cap
     with _gradio_session("s0"):  # evicted → fresh bucket, not someone else's
         assert holder["agent"] is None
-
-
-def test_ui_pages_use_session_scoped_holders():
-    """Guard: chat pages must keep per-session (not shared) holders.
-    text2sql's Gradio page was retired; only seatunnel remains."""
-    from seatunnel_agent.agents.data.seatunnel import ui as st_ui
-
-    assert inspect.getsource(st_ui._render_seatunnel_page).count("SessionScopedDict(") == 3

@@ -21,7 +21,8 @@ class TestLoadAdhocCase:
         case = ah.load_adhoc_case(f)
         assert case.id == "ADHOC"
         assert [s.action for s in case.steps] == ["click", "wait_status_ok"]
-        assert case.page == "/datacompare"
+        # default page is "/" since the Gradio /datacompare page retired
+        assert case.page == "/"
 
     def test_mapping_with_page_and_expect(self, tmp_path):
         f = tmp_path / "s.yaml"
@@ -56,7 +57,7 @@ class TestLoadAdhocCase:
 
     def test_fixture_use_works(self, tmp_path):
         f = tmp_path / "s.yaml"
-        f.write_text("- use: connect_a_sqlite\n", encoding="utf-8")
+        f.write_text("- use: connect_skew_sqlite\n", encoding="utf-8")
         case = ah.load_adhoc_case(f)
         assert len(case.steps) >= 3          # fixture spliced in
 

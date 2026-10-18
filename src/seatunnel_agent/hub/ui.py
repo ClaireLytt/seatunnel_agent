@@ -8,16 +8,6 @@ from __future__ import annotations
 
 import gradio as gr
 
-from seatunnel_agent.agents.data.seatunnel.ui import (  # noqa: F401 — re-exported for back-compat
-    _TOOL_EMOJI,
-    EventCollector,
-    _build_template_choices,
-    _export_session,
-    _format_events_as_chat,
-    _normalize_chat,
-    _render_seatunnel_page,
-    _template_to_prompt,
-)
 from seatunnel_agent.hub.css import (
     _CUSTOM_CSS,
 )
@@ -28,75 +18,6 @@ from seatunnel_agent.hub.pages import (
     _build_landing_html,
     _mount_hub,
 )
-
-# Drag-to-resize for the left sidebar: restores the saved width, appends a
-# handle to .st-page-row (not inside .st-sidebar — sidebar_fix.js forces
-# inline width on its direct div children) and drives --st-sidebar-w.
-_SIDEBAR_RESIZE_JS = """
-() => {
-    if (window.__stSidebarResize) return;
-    window.__stSidebarResize = true;
-    const MIN = 180, MAX = 520, KEY = 'stSidebarW';
-    try {
-        const saved = parseInt(localStorage.getItem(KEY), 10);
-        if (saved >= MIN && saved <= MAX) {
-            document.documentElement.style.setProperty('--st-sidebar-w', saved + 'px');
-        }
-    } catch (e) {}
-    let tries = 0;
-    const init = () => {
-        const row = document.querySelector('.st-page-row');
-        const sb = row && row.querySelector('.st-sidebar');
-        if (!row || !sb) {
-            if (tries++ < 50) setTimeout(init, 200);
-            return;
-        }
-        // The Data Comparison sidebar has its own CSS resize (720px wide);
-        // the fixed-position handle would float mid-sidebar and swallow
-        // clicks on anything underneath it.
-        if (sb.classList.contains('st-dc-sidebar')) return;
-        if (row.querySelector('.st-sidebar-resize')) return;
-        const handle = document.createElement('span');
-        handle.className = 'st-sidebar-resize';
-        handle.title = 'Drag to resize sidebar';
-        row.appendChild(handle);
-        const syncVisible = () => {
-            handle.style.display =
-                getComputedStyle(sb).display === 'none' ? 'none' : '';
-        };
-        syncVisible();
-        new MutationObserver(syncVisible)
-            .observe(sb, {attributes: true, attributeFilter: ['style', 'class']});
-        let startX = 0, startW = 0;
-        const onMove = (e) => {
-            const w = Math.min(MAX, Math.max(MIN, startW + e.clientX - startX));
-            document.documentElement.style.setProperty('--st-sidebar-w', w + 'px');
-        };
-        const onUp = () => {
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            handle.classList.remove('st-resizing');
-            document.body.classList.remove('st-sidebar-dragging');
-            try {
-                const w = parseInt(
-                    getComputedStyle(document.documentElement)
-                        .getPropertyValue('--st-sidebar-w'), 10);
-                if (w) localStorage.setItem(KEY, String(w));
-            } catch (e) {}
-        };
-        handle.addEventListener('mousedown', (e) => {
-            e.preventDefault();
-            startX = e.clientX;
-            startW = sb.getBoundingClientRect().width;
-            handle.classList.add('st-resizing');
-            document.body.classList.add('st-sidebar-dragging');
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
-        });
-    };
-    init();
-}
-"""
 
 
 def create_ui() -> gr.Blocks:
@@ -164,14 +85,11 @@ def create_ui() -> gr.Blocks:
 
     # plugin pages: every seatunnel_agent.<pkg>.manifest registers itself
     from seatunnel_agent.hub.registry import discover, resolve
-    sidebar_resize = {"/seatunnel", "/datacompare"}
     for mf in discover():
         if mf.external:
             continue  # route served outside Gradio (React static mount)
         with app.route(mf.page_title, mf.route):
             resolve(mf.render)(app)
-            if mf.route in sidebar_resize:
-                app.load(fn=None, js=_SIDEBAR_RESIZE_JS)
 
     return app
 
@@ -290,6 +208,18 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         router as sql_review_api_router,
     )
     app.app.include_router(sql_review_api_router)
+
+    # SeaTunnel Pipeline Builder backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.seatunnel.api import (
+        router as seatunnel_api_router,
+    )
+    app.app.include_router(seatunnel_api_router)
+
+    # Data Comparison backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.data_comparison.api import (
+        router as datacompare_api_router,
+    )
+    app.app.include_router(datacompare_api_router)
 
     # Rebuilt React pages: every external manifest mounts from the
     # frontend/<name>/dist convention; unbuilt bundles get a hint page.

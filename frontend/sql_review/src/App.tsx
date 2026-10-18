@@ -212,7 +212,7 @@ export default function App() {
 
       <Card className="mt-8">
         <label className={labelCls} htmlFor="sql">
-          SQL
+          {t('sqlLabel')}
         </label>
         <textarea
           id="sql"
@@ -330,31 +330,27 @@ export default function App() {
             exit={{ opacity: 0 }}
             className="mt-4 font-mono text-sm text-[var(--accent)]"
           >
-            {error}
+            {`❌ ${error}`}
           </motion.p>
         )}
       </AnimatePresence>
 
-      <section className="mt-6">
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="font-display text-xl font-bold text-ink">{t('report')}</h2>
-          {report && (
+      {report && (
+        <section className="mt-6">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="font-display text-xl font-bold text-ink">{t('report')}</h2>
             <button
               onClick={onDownload}
               className="rounded border-[1.5px] border-ink px-3 py-1.5 font-mono text-[13px] text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
             >
               {t('downloadReport')}
             </button>
-          )}
-        </div>
-        <Card>
-          {report ? (
+          </div>
+          <Card>
             <ReportView markdown={report} onLineClick={jumpToLine} />
-          ) : (
-            <p className="italic text-muted">{t('reportPlaceholder')}</p>
-          )}
-        </Card>
-      </section>
+          </Card>
+        </section>
+      )}
 
       <AnimatePresence>
         {fixedSql && (
@@ -374,7 +370,7 @@ export default function App() {
         <Collapsible title={t('statsAccordion')} onOpen={loadStats}>
           <div className="flex items-start justify-between gap-4">
             <div className="font-mono text-sm text-fg">
-              {statsError && <p className="text-[var(--accent)]">{statsError}</p>}
+              {statsError && <p className="text-[var(--accent)]">{`❌ ${statsError}`}</p>}
               {!stats && !statsError && <p className="italic text-muted">{t('statsPlaceholder')}</p>}
               {stats && stats.summary.reviews === 0 && (
                 <p className="text-muted">{t('noRecords')}</p>

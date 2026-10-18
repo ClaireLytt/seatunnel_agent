@@ -127,6 +127,25 @@ class TestExternalMounting:
         assert ext["text2sql"].legacy is None or ext["text2sql"].legacy == "/text2sql-legacy"  # may still carry the hint
         assert ext["uitest"].legacy is None
 
+    def test_external_workspace_dir_matches_manifest_name(self):
+        # The hub mounts frontend/<manifest.name>/dist. A workspace created
+        # under any other directory name (e.g. the route name) silently never
+        # mounts and the page serves the "not built" hint forever — this bit
+        # /datacompare (frontend/datacompare vs name=data_comparison, fixed in
+        # 615482a). Guard: the workspace directory must exist for every
+        # external manifest.
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        for mf in discover():
+            if not mf.external:
+                continue
+            ws = root / "frontend" / mf.name
+            assert (ws / "package.json").is_file(), (
+                f"external manifest {mf.name!r} has no frontend/{mf.name}/ "
+                f"workspace — directory name must equal manifest.name"
+            )
+
 
 class TestCardHtml:
     def test_markup_shape_and_escaping(self):

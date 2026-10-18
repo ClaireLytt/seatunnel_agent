@@ -46,6 +46,10 @@ class SeaTunnelAgent:
             "last_batch_result": None,
         }
 
+    def set_event_callback(self, on_event: EventCallback | None) -> None:
+        """Attach or detach the UI event callback between turns (REST API use)."""
+        self._on_event = on_event
+
     def _emit(self, event_type: str, data: dict[str, Any]) -> None:
         if self._on_event:
             self._on_event(event_type, data)

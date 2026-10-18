@@ -1,4 +1,8 @@
-"""Module-level HTML card builders for the Data Comparison UI."""
+"""Module-level HTML card builders for the Data Comparison UI.
+
+Gradio-free by design: pure functions returning HTML strings, safe to import
+from a REST layer (verified -- no ``gradio`` import here).
+"""
 
 from __future__ import annotations
 
@@ -953,7 +957,7 @@ def build_batch_template_card(results: list[dict], lang: str = "en") -> str:
     return (
         '<details open style="border:1px solid #c7d2fe;border-radius:8px;padding:10px;'
         'background:#f8fafc;margin-bottom:8px;">'
-        f'<summary style="font-weight:600;font-size:13px;color:#6366f1;cursor:pointer;">'
+        f'<summary style="font-weight:600;font-size:13px;color:var(--ink,#334155);cursor:pointer;">'
         f'{t("dc_batch_templates_result")} — {summary}</summary>'
         f'<table style="width:100%;border-collapse:collapse;margin-top:8px;">'
         f'<tr><th {th}>Template</th><th {th}>Table A</th><th {th}>Table B</th>'
@@ -1020,7 +1024,7 @@ def build_report_diff_card(rdiff: ReportDiff, lang: str = "en") -> str:
     return (
         '<details open style="border:1px solid #c7d2fe;border-radius:8px;padding:10px;'
         'background:#f8fafc;margin-bottom:8px;">'
-        f'<summary style="font-weight:600;font-size:13px;color:#6366f1;cursor:pointer;">'
+        f'<summary style="font-weight:600;font-size:13px;color:var(--ink,#334155);cursor:pointer;">'
         f'{t("dc_report_diff_result")}</summary>'
         f'<table style="width:100%;border-collapse:collapse;margin-top:8px;">'
         f'<tr><th {th}>{t("dc_report_diff_section")}</th>'
@@ -1043,7 +1047,7 @@ def build_lineage_card(table: str, upstream: list[str], lang: str = "en") -> str
     return (
         '<details open style="border:1px solid #c7d2fe;border-radius:8px;padding:10px;'
         'background:#f8fafc;margin-bottom:8px;">'
-        f'<summary style="font-weight:600;font-size:13px;color:#6366f1;cursor:pointer;">'
+        f'<summary style="font-weight:600;font-size:13px;color:var(--ink,#334155);cursor:pointer;">'
         f'{dc(lang, "dc_lineage_title")} — {_esc_html(table)}</summary>'
         f'<ul style="margin:8px 0;padding-left:20px;">{items_html}</ul></details>'
     )

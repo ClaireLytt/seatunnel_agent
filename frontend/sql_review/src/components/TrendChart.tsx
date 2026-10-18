@@ -2,11 +2,12 @@ import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recha
 import type { DailyStat } from '@/api'
 
 // Findings per day, stacked by severity — replaces the legacy matplotlib
-// figure. Severity colors match the legacy palette (red/amber/green).
+// figure. Severity colors come from the theme tokens (same vocabulary as the
+// uitest counts chart): accent for bad, ok for good, neutral for middle.
 const SEVERITIES = [
-  { key: 'critical', color: '#dc2626' },
-  { key: 'risk', color: '#f59e0b' },
-  { key: 'suggestion', color: '#10b981' },
+  { key: 'critical', color: 'var(--accent)' },
+  { key: 'risk', color: 'var(--ink-soft)' },
+  { key: 'suggestion', color: 'var(--ok)' },
 ] as const
 
 export function TrendChart({ daily }: { daily: DailyStat[] }) {

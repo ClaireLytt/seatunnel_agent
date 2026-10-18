@@ -1,4 +1,8 @@
-"""Report export helpers (CSV / Excel) for the Data Comparison UI."""
+"""Report export helpers (CSV / Excel) for the Data Comparison UI.
+
+Gradio-free by design: pure render/export helpers, safe to import from a
+REST layer (verified -- no ``gradio`` import here).
+"""
 
 from __future__ import annotations
 

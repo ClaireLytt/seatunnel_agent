@@ -4,7 +4,7 @@
         [--headed] [--port 7912] [--no-llm] [--keep-app] [--base-url URL]
     python -m seatunnel_agent.agents.devops.ui_testing list [--suite full]
     python -m seatunnel_agent.agents.devops.ui_testing adhoc --steps check.yaml
-        [--url http://127.0.0.1:7860] [--page /datacompare]
+        [--url http://127.0.0.1:7860] [--page /lineage]
         [--screenshot-dir DIR] [--headed] [--port 7912]
 
 adhoc: 即席浏览器验证 — AI 改完 UI 后无需写正式用例文件,给一个临时
@@ -217,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
     pa.add_argument("--url", default="",
                     help="复用已启动的应用而非自起子进程")
     pa.add_argument("--page", default="",
-                    help="目标页路由 (默认取文件内 page 或 /datacompare)")
+                    help="目标页路由 (默认取文件内 page 或 /)")
     pa.add_argument("--screenshot-dir", default="",
                     help="截图输出目录 (默认 runs/adhoc/<时间戳>)")
     pa.add_argument("--headed", action="store_true", help="有头浏览器调试")

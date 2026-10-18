@@ -1,4 +1,8 @@
-"""Shared helpers and tunables for the Data Comparison UI."""
+"""Shared helpers and tunables for the Data Comparison UI.
+
+Gradio-free by design: webhook send, validation wrapper and HTML helpers are
+safe to import from a REST layer (verified -- no ``gradio`` import here).
+"""
 
 from __future__ import annotations
 
@@ -11,23 +15,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from seatunnel_agent.agents.data.text2sql.executor import DIALECT_NAMES, DS_TYPES
+from seatunnel_agent.agents.data.text2sql.executor import DS_TYPES
 
 from .comparator import CompareReport, skew_side_verdict
 from .i18n import dc
 from .presets import ConnectionPresetsStore
 from .templates_store import ComparisonTemplatesStore
-
-# ---------------------------------------------------------------------------
-# Matplotlib import (lazy — only used for trend charts)
-# ---------------------------------------------------------------------------
-
-def _get_matplotlib():
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    return plt
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,8 +75,6 @@ _SUMMARY_MAX_ITEMS = 10      # items shown in report summary sections
 _DELTA_WARN_PCT = 10         # row-count delta % below which it's a warning
 _DEFAULT_SCHEDULE_MIN = 15   # default scheduled-comparison interval (minutes)
 
-_DS_CHOICES = [DIALECT_NAMES[d] for d in DS_TYPES]
-_DS_LABEL_TO_KEY = {v: k for k, v in DIALECT_NAMES.items()}
 _NEEDS_AUTH = frozenset({"mysql", "sqlserver", "sparksql", "clickhouse", "doris", "postgresql"})
 _NEEDS_HOST = frozenset(DS_TYPES) - {"flinksql", "sqlite"}
 
@@ -177,12 +168,15 @@ def _validate_where(clause: str, lang: str) -> tuple[bool, str]:
     return True, ""
 
 
-def _with_validation(holder, holder_lock, fn):
-    """Wrap a compare callback with connection/table checks and error handling."""
+def _with_validation(session, fn):
+    """Wrap a compare callback with connection/table checks and error handling.
+
+    ``session`` is a ``registry.SessionState`` (per-session connection state).
+    """
     def wrapper(*args):
         lang_val = args[2] if len(args) > 2 else "en"
-        with holder_lock:
-            if holder.get("executor_a") is None or holder.get("executor_b") is None:
+        with session.lock:
+            if session.executor_a is None or session.executor_b is None:
                 return dc(lang_val, "dc_connect_both")
         table_a = args[0] if len(args) > 0 else ""
         table_b = args[1] if len(args) > 1 else ""

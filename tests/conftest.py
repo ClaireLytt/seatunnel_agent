@@ -2,7 +2,18 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+from pathlib import Path
+
 import pytest
+
+# Redirect the text2sql example store OUT of the repo before any test module
+# imports examples.py (its default path is read at import time). Without this,
+# every full pytest run rewrites config/t2s_examples.json (id/timestamp churn)
+# and dirties the working tree — see docs/pitfalls.md 2026-10-17/18.
+_T2S_TMP = Path(tempfile.mkdtemp(prefix="t2s_examples_")) / "t2s_examples.json"
+os.environ.setdefault("T2S_EXAMPLES_PATH", str(_T2S_TMP))
 
 
 @pytest.fixture(autouse=True)

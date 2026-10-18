@@ -49,9 +49,12 @@ def test_meta_lists_suites_and_agents(client):
     assert "smoke" in data["suites"]
     keys = [a["key"] for a in data["agents"]]
     assert keys[0] == "all"
-    assert "datacompare" in keys
+    # datacompare retired from the YAML engine (ticket 11): its coverage
+    # lives in tests/test_datacompare_page.py / test_datacompare_api.py
+    assert "datacompare" not in keys
+    assert "dataskew" in keys
     zh = {a["key"]: a["label_zh"] for a in data["agents"]}
-    assert zh["datacompare"] == "数据对比"
+    assert zh["dataskew"] == "数据倾斜分析"
 
 
 def test_case_save_rejects_bad_yaml(client):
@@ -67,7 +70,7 @@ def test_case_save_writes_user_case(client, tmp_path, monkeypatch):
         "- id: ZZ9\n"
         "  title: saved via api\n"
         "  tags: [full, sqlite]\n"
-        "  page: /datacompare\n"
+        "  page: /dataskew\n"
         "  steps:\n"
         "    - ai: click compare\n"
         "  expect:\n"

@@ -1,4 +1,4 @@
-"""Gradio page adapter for the Data Comparison page.
+"""Gradio page adapter for the hub's remaining Gradio pages.
 
 Every selector in the whole test framework lives in this file — nothing else
 is allowed to touch the DOM directly.  The locator strategies encode Gradio 6
@@ -213,7 +213,11 @@ def _texts(name: str) -> tuple[str, ...]:
 
 
 class DCPage:
-    """Adapter for the Data Comparison page.  side: 'A' | 'B' | None (global)."""
+    """Page adapter (named for the Data Comparison page it grew up on).
+
+    side: 'A' | 'B' | None (global) — kept for case compatibility; the
+    remaining Gradio pages have no A/B layout, so side only picks among
+    multiple status boxes."""
 
     def __init__(self, page: Page, base_url: str):
         self.page = page
@@ -226,7 +230,6 @@ class DCPage:
 
     # per-route "page is ready" selector (default: body)
     READY = {
-        "/datacompare": ".st-dc-sidebar",
         "/lineage": ".st-lin-side",
         "/text2sql": ".st-sidebar-status",
         "/transpile": ".st-trp-side",
@@ -237,27 +240,16 @@ class DCPage:
         "/mcp": ".st-mcp-tools",
     }
 
-    def goto(self, path: str = "/datacompare") -> None:
+    def goto(self, path: str = "/") -> None:
         self.page.goto(self.base + path, wait_until="domcontentloaded")
         self.page.wait_for_selector(self.READY.get(path, "body"),
                                     timeout=20_000)
 
     def _panel(self, side: str | None) -> Locator:
-        """A/B connection panel; None = whole page.
-
-        The two panels are the columns of the first Row inside the sidebar —
-        identified robustly as the ancestor columns of the two status boxes.
-        """
-        if side is None:
-            return self.page.locator("body")
-        if not self.page.locator(".st-dc-sidebar").count():
-            # pages without the A/B layout (e.g. /text2sql): whole page
-            return self.page.locator("body")
-        idx = 0 if str(side).upper() == "A" else 1
-        return (self.page
-                .locator(".st-dc-sidebar .st-sidebar-status")
-                .nth(idx)
-                .locator("xpath=ancestor::div[contains(@class,'column')][1]"))
+        """Search panel for *side*; the remaining Gradio pages have no A/B
+        layout (the datacompare page retired with ticket 11), so this is
+        always the whole page."""
+        return self.page.locator("body")
 
     def _scope(self, side: str | None) -> Locator:
         """Search scope: a panel for A/B, else the whole sidebar + main."""
@@ -559,11 +551,8 @@ class DCPage:
 
     def _status_box(self, side: str = "A"):
         idx = 0 if str(side).upper() == "A" else 1
-        loc = self.page.locator(".st-dc-sidebar .st-sidebar-status")
-        if not loc.count():
-            # other pages (e.g. /text2sql) have a single unscoped status box
-            loc = self.page.locator(".st-sidebar-status")
-            idx = min(idx, max(loc.count() - 1, 0))
+        loc = self.page.locator(".st-sidebar-status")
+        idx = min(idx, max(loc.count() - 1, 0))
         return loc.nth(idx).locator("textarea, input")
 
     def status_text(self, side: str = "A") -> str:
@@ -753,28 +742,6 @@ class DCPage:
         inp.first.set_input_files(str(p))
         self.page.wait_for_timeout(400)
 
-    def drag_sidebar_grip(self, dx: int) -> int:
-        """Drag the datacompare sidebar's native CSS resize grip by dx px (B2).
-
-        The grip is the bottom-right corner of .st-dc-sidebar
-        (resize: horizontal). Returns the resulting offsetWidth."""
-        sb = self.page.locator(".st-dc-sidebar").first
-        box = sb.bounding_box()
-        if not box:
-            raise LookupError("sidebar not found: .st-dc-sidebar")
-        gx = box["x"] + box["width"] - 4
-        gy = box["y"] + box["height"] - 4
-        self.page.mouse.move(gx, gy)
-        self.page.mouse.down()
-        self.page.mouse.move(gx + dx, gy, steps=10)
-        self.page.mouse.up()
-        self.page.wait_for_timeout(200)
-        return int(sb.evaluate("el => el.offsetWidth"))
-
-    def sidebar_width(self) -> int:
-        return int(self.page.locator(".st-dc-sidebar").first.evaluate(
-            "el => el.offsetWidth"))
-
     # ── element state (for visible/hidden asserts) ──
 
     def is_visible(self, name: str, side: str | None = None) -> bool:
@@ -797,137 +764,51 @@ class DCPage:
 # Structured text summary of the page (NOT raw DOM).  Passwords are masked.
 _DIGEST_JS = r"""
 (maxResult) => {
+  // Generic digest: visible labeled inputs, dropdowns, buttons, accordions
+  // and the result area. (The A/B-panel digest retired with the Gradio
+  // /datacompare page, ticket 11.)
   const lines = [];
-  const seen = new Set();
-  let sidebar = document.querySelector('.st-dc-sidebar');
-  if (!sidebar) {
-    // Non-DC pages (e.g. /sqlreview): generic digest — visible labeled
-    // inputs, dropdowns, buttons, and the report/result area.
-    const parts = [];
-    document.querySelectorAll('label').forEach(lb => {
-      const span = lb.querySelector("span[data-testid='block-info'], span");
-      const name = span ? span.textContent.trim() : '';
-      const ta = lb.querySelector('textarea, input');
-      if (!name || !ta || ta.type === 'checkbox') return;
-      if (ta.offsetParent === null) return;
-      const val = ta.type === 'password' ? '<masked>'
-                  : (ta.value.length > 200 ? ta.value.slice(0, 200) + '…' : ta.value);
-      parts.push(`${name}="${val}"`);
-    });
-    document.querySelectorAll("input[role='combobox']").forEach(inp => {
-      if (inp.offsetParent === null) return;
-      parts.push(`${inp.getAttribute('aria-label') || 'dropdown'}(dropdown)="${inp.value}"`);
-    });
-    if (parts.length) lines.push('[INPUTS] ' + parts.join(' | '));
-    const btns = [];
-    document.querySelectorAll('button').forEach(b => {
-      if (b.offsetParent === null || b.classList.contains('label-wrap')) return;
-      const t = b.textContent.trim().replace(/\s+/g, ' ');
-      if (t && t.length < 40) btns.push(t);
-    });
-    lines.push('[BUTTONS] ' + btns.join(' | '));
-    const reps = document.querySelectorAll('.prose');
-    const rep = reps.length ? reps[reps.length - 1] : null;
-    if (rep) {
-      let txt = (rep.innerText || '').replace(/\n{2,}/g, '\n').trim();
-      if (txt.length > maxResult) txt = txt.slice(0, maxResult) + ' …';
-      lines.push('[RESULT] ' + txt);
-    }
-    return lines.join('\n');
-  }
-
-  // A/B panels = ancestor columns of the two status boxes
-  const statuses = sidebar.querySelectorAll('.st-sidebar-status');
-  const panels = [];
-  statuses.forEach(st => {
-    let el = st;
-    while (el && !(el.classList && el.classList.contains('column'))) el = el.parentElement;
-    if (el) panels.push(el);
-  });
-  const collectInputs = (root, parts) => {
-    root.querySelectorAll('label').forEach(lb => {
-      const span = lb.querySelector("span[data-testid='block-info'], span");
-      const name = span ? span.textContent.trim() : '';
-      if (!name) return;
-      const ta = lb.querySelector('textarea, input');
-      if (!ta || ta.type === 'checkbox') return;
-      if (ta.offsetParent === null) return;   // hidden
-      const val = ta.type === 'password' ? '<masked>' : ta.value;
-      parts.push(`${name}="${val}"`);
-      seen.add(lb);
-    });
-    // Gradio 6 dropdowns: no <label>, aria-label on the combobox input
-    root.querySelectorAll("input[role='combobox']").forEach(inp => {
-      if (inp.offsetParent === null) return;
-      const name = inp.getAttribute('aria-label') || 'dropdown';
-      parts.push(`${name}(dropdown)="${inp.value}"`);
-      seen.add(inp);
-    });
-  };
-
-  panels.forEach((panel, pi) => {
-    const tag = pi === 0 ? 'PANEL A' : 'PANEL B';
-    const parts = [];
-    collectInputs(panel, parts);
-    lines.push(`[${tag}] ` + parts.join(' | '));
-  });
-
-  // global sidebar inputs (not inside panels)
-  const globalParts = [];
-  sidebar.querySelectorAll('label').forEach(lb => {
-    if (seen.has(lb)) return;
-    if (panels.some(p => p.contains(lb))) return;
+  const parts = [];
+  document.querySelectorAll('label').forEach(lb => {
     const span = lb.querySelector("span[data-testid='block-info'], span");
     const name = span ? span.textContent.trim() : '';
-    if (!name) return;
     const ta = lb.querySelector('textarea, input');
-    if (!ta) return;
+    if (!name || !ta || ta.type === 'checkbox') return;
     if (ta.offsetParent === null) return;
-    if (ta.type === 'checkbox') {
-      globalParts.push(`${name}=[${ta.checked ? 'x' : ' '}]`);
-    } else {
-      const val = ta.type === 'password' ? '<masked>' : ta.value;
-      globalParts.push(`${name}="${val}"`);
-    }
+    const val = ta.type === 'password' ? '<masked>'
+                : (ta.value.length > 200 ? ta.value.slice(0, 200) + '…' : ta.value);
+    parts.push(`${name}="${val}"`);
   });
-  sidebar.querySelectorAll("input[role='combobox']").forEach(inp => {
-    if (seen.has(inp)) return;
-    if (panels.some(p => p.contains(inp))) return;
+  document.querySelectorAll("input[role='combobox']").forEach(inp => {
     if (inp.offsetParent === null) return;
-    const name = inp.getAttribute('aria-label') || 'dropdown';
-    globalParts.push(`${name}(dropdown)="${inp.value}"`);
+    parts.push(`${inp.getAttribute('aria-label') || 'dropdown'}(dropdown)="${inp.value}"`);
   });
-  if (globalParts.length) lines.push('[INPUTS] ' + globalParts.join(' | '));
-
-  // visible buttons
+  if (parts.length) lines.push('[INPUTS] ' + parts.join(' | '));
   const btns = [];
-  sidebar.querySelectorAll('button').forEach(b => {
-    if (b.offsetParent === null) return;
+  document.querySelectorAll('button').forEach(b => {
+    if (b.offsetParent === null || b.classList.contains('label-wrap')) return;
     const t = b.textContent.trim().replace(/\s+/g, ' ');
-    if (t && t.length < 30 && !b.classList.contains('label-wrap')) btns.push(t);
+    if (t && t.length < 40) btns.push(t);
   });
   lines.push('[BUTTONS] ' + btns.join(' | '));
-
-  // accordions and open/closed state
   const accs = [];
-  sidebar.querySelectorAll('.label-wrap').forEach(a => {
+  document.querySelectorAll('.label-wrap').forEach(a => {
     const t = a.textContent.trim().replace(/\s+/g, ' ').replace(/[▼▲]/g, '').trim();
-    const open = a.classList.contains('open');
-    accs.push(`${t}(${open ? 'open' : 'closed'})`);
+    accs.push(`${t}(${a.classList.contains('open') ? 'open' : 'closed'})`);
   });
   if (accs.length) lines.push('[ACCORDIONS] ' + accs.join(' | '));
-
   // result area: visible text, plus the content of collapsed <details>
   // previews (row data hides in there — the judge must see it)
-  const res = document.querySelector('.st-main .st-schema-card');
-  if (res) {
-    let txt = res.innerText.replace(/\n{2,}/g, '\n').trim();
-    res.querySelectorAll('details:not([open])').forEach(d => {
+  const reps = document.querySelectorAll('.prose');
+  const rep = reps.length ? reps[reps.length - 1] : null;
+  if (rep) {
+    let txt = (rep.innerText || '').replace(/\n{2,}/g, '\n').trim();
+    rep.querySelectorAll('details:not([open])').forEach(d => {
       const inner = (d.textContent || '').replace(/\s+/g, ' ').trim();
       if (inner) txt += '\n[折叠预览] ' + inner;
     });
     if (txt.length > maxResult) txt = txt.slice(0, maxResult) + ' …';
-    lines.push(`[RESULT] ` + txt);
+    lines.push('[RESULT] ' + txt);
   }
   return lines.join('\n');
 }
