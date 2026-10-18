@@ -15,6 +15,7 @@ export function FeatureAccordions({
   options,
   onResult,
   resetSeq,
+  onFields,
 }: {
   sessionId: string
   tableA: string
@@ -22,6 +23,8 @@ export function FeatureAccordions({
   options: CompareOptions
   onResult: (html: string) => void
   resetSeq: number
+  // reports the optional compare-all stage fields up (CompoundRow sends them)
+  onFields?: (f: FeatureFields) => void
 }) {
   const { t, i18n } = useTranslation()
   const [busy, setBusy] = useState<string | null>(null)
@@ -36,6 +39,15 @@ export function FeatureAccordions({
   const [customAgg, setCustomAgg] = useState('')
   const [sqlA, setSqlA] = useState('')
   const [sqlB, setSqlB] = useState('')
+
+  useEffect(() => {
+    onFields?.({
+      skew_columns: skewCols,
+      checksum_columns: checksumCols,
+      partition_col: partitionCol,
+      expressions: customAgg,
+    })
+  }, [skewCols, checksumCols, partitionCol, customAgg, onFields])
 
   useEffect(() => {
     if (resetSeq === 0) return

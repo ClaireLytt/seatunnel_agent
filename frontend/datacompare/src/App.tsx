@@ -5,10 +5,12 @@ import {
   fetchMeta,
   OPTIONS_DEFAULTS,
   type CompareOptions,
+  type FeatureFields,
   type Meta,
   type PresetConnection,
 } from '@/api'
 import { ActionRow } from '@/components/ActionRow'
+import { CompoundRow } from '@/components/CompoundRow'
 import { ConnectForm, type ConnFields } from '@/components/ConnectForm'
 import { FeatureAccordions } from '@/components/FeatureAccordions'
 import { OptionsCard } from '@/components/OptionsCard'
@@ -38,6 +40,10 @@ export default function App() {
   const [presetA, setPresetA] = useState<{ seq: number; conn: PresetConnection }>()
   const [presetB, setPresetB] = useState<{ seq: number; conn: PresetConnection }>()
   const presetSeq = useRef(0)
+
+  // Feature-accordion fields that compare-all's optional stages consume;
+  // a ref so accordion keystrokes don't re-render the whole page.
+  const featureFieldsRef = useRef<FeatureFields>({})
 
   useEffect(() => {
     fetchMeta()
@@ -132,6 +138,7 @@ export default function App() {
                 options={options}
                 onResult={setResultHtml}
                 resetSeq={resetSeq}
+                onFields={(f) => (featureFieldsRef.current = f)}
               />
               <ActionRow
                 sessionId={sessionId}
@@ -139,6 +146,14 @@ export default function App() {
                 tableB={tableB}
                 options={options}
                 onResult={setResultHtml}
+              />
+              <CompoundRow
+                sessionId={sessionId}
+                tableA={tableA}
+                tableB={tableB}
+                options={options}
+                onResult={setResultHtml}
+                featureFields={() => featureFieldsRef.current}
               />
             </>
           )}

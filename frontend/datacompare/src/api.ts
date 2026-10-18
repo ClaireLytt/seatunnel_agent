@@ -1,3 +1,5 @@
+import { postSSE } from '@shared/sse'
+
 export interface Datasource {
   key: string
   label: string
@@ -206,4 +208,54 @@ export async function deletePreset(name: string): Promise<void> {
     await fetch(`${BASE}/presets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
     'delete preset',
   )
+}
+
+// ── Compound actions with progress (ticket 04) ──
+
+export interface ProgressEvent {
+  event: 'progress'
+  value: number
+  desc: string
+}
+
+export interface DoneEvent {
+  event: 'done'
+  html: string
+}
+
+export type CompoundEvent = ProgressEvent | DoneEvent
+
+export type StreamAction = 'all' | 'batch-count' | 'batch-full'
+
+export interface CompoundParams extends CompareOptions {
+  session_id: string
+  table_a: string
+  table_b: string
+  lang: string
+}
+
+// POST + SSE: progress frames feed onProgress, resolves with the final html.
+export async function compareStream(
+  action: StreamAction,
+  params: CompoundParams,
+  onProgress: (value: number, desc: string) => void,
+): Promise<string> {
+  let html = ''
+  await postSSE<CompoundEvent>(`${BASE}/compare/${action}`, params, (e) => {
+    if (e.event === 'progress') onProgress(e.value, e.desc)
+    else if (e.event === 'done') html = e.html
+  })
+  return html
+}
+
+export async function compareProfile(params: CompoundParams): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(`${BASE}/compare/profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    'profile',
+  )
+  return data.html
 }
