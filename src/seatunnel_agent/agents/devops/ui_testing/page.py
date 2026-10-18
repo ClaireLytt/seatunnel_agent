@@ -234,7 +234,6 @@ class DCPage:
         "/text2sql": ".st-sidebar-status",
         "/transpile": ".st-trp-side",
         "/impact": ".st-imp-side",
-        "/migrate": ".st-mig-side",
         "/settings": ".st-set-page",
         "/dataskew": "#dsk-sql-box textarea",
         "/mcp": ".st-mcp-tools",
@@ -579,9 +578,6 @@ class DCPage:
         if loc.count():
             return loc.first
         loc = self.page.locator(".st-imp-main")
-        if loc.count():
-            return loc.first
-        loc = self.page.locator(".st-mig-main")
         if loc.count():
             return loc.first
         for cls in (".st-pii-main", ".st-lgi-main", ".st-sdf-main",
