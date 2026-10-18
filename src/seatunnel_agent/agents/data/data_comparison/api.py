@@ -18,6 +18,9 @@ from pydantic import BaseModel
 
 from seatunnel_agent.agents.data.data_comparison import actions
 from seatunnel_agent.agents.data.data_comparison.connect import connect_side
+from seatunnel_agent.agents.data.data_comparison.generation import (
+    router as generation_router,
+)
 from seatunnel_agent.agents.data.data_comparison.registry import (
     SessionState,
     get_registry,
@@ -35,6 +38,7 @@ from seatunnel_agent.agents.data.text2sql.executor import (
 )
 
 router = APIRouter(prefix="/api/datacompare", tags=["datacompare"])
+router.include_router(generation_router)
 
 _SCHEDULE_INTERVALS = ["1", "5", "15", "30", "60"]
 
