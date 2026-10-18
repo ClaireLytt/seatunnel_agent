@@ -114,6 +114,52 @@ export const OPTIONS_DEFAULTS: CompareOptions = {
   masking: true,
 }
 
+// ── Feature accordions (ticket 06) ──
+// Field names match the backend FeatureRequest model (features.py).
+
+export type FeatureAction =
+  | 'incremental'
+  | 'quality'
+  | 'skew'
+  | 'checksum'
+  | 'chunked'
+  | 'partition'
+  | 'custom-agg'
+  | 'sql'
+
+export interface FeatureFields {
+  watermark_col?: string
+  watermark_val?: string
+  quality_rules?: string
+  skew_columns?: string
+  checksum_columns?: string
+  partition_col?: string
+  expressions?: string
+  sql_a?: string
+  sql_b?: string
+}
+
+export async function featureAction(
+  action: FeatureAction,
+  params: {
+    session_id: string
+    table_a: string
+    table_b: string
+    lang: string
+  } & CompareOptions &
+    FeatureFields,
+): Promise<string> {
+  const data = await json<{ html: string }>(
+    await fetch(`${BASE}/compare/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+    action,
+  )
+  return data.html
+}
+
 // ── Connection presets ──
 
 export interface PresetSummary {

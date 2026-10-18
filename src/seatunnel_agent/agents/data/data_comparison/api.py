@@ -16,7 +16,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from seatunnel_agent.agents.data.data_comparison import actions
+from seatunnel_agent.agents.data.data_comparison import actions, features
 from seatunnel_agent.agents.data.data_comparison.connect import connect_side
 from seatunnel_agent.agents.data.data_comparison.registry import (
     SessionState,
@@ -35,6 +35,7 @@ from seatunnel_agent.agents.data.text2sql.executor import (
 )
 
 router = APIRouter(prefix="/api/datacompare", tags=["datacompare"])
+router.include_router(features.router)
 
 _SCHEDULE_INTERVALS = ["1", "5", "15", "30", "60"]
 

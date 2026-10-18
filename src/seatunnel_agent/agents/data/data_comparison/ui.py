@@ -19,51 +19,27 @@ from typing import Any
 
 import gradio as gr
 
-from seatunnel_agent.agents.data.data_comparison import actions
+from seatunnel_agent.agents.data.data_comparison import actions, features
 from seatunnel_agent.agents.data.data_comparison.comparator import (
     BatchFullItem,
-    ChecksumResult,
     CompareReport,
-    CustomAggResult,
     KeyedDiffResult,
-    PartitionResult,
-    ProfileResult,
     RowCountResult,
-    SkewItem,
-    SkewResult,
-    apply_column_mapping,
     build_aggregate_sql,
-    build_checksum_sql,
     build_count_sql,
-    build_custom_agg_sql,
-    build_incremental_sql,
-    build_partition_count_sql,
-    build_profile_sql,
     build_row_count_result,
-    build_skew_sql,
     build_trend_data,
-    check_quality_rules,
     check_trend_alerts,
     compare_aggregates,
-    compare_checksums,
-    compare_custom_aggs,
-    compare_partitions,
-    compare_profiles,
     compare_schemas,
-    compare_skew,
-    detect_sensitive_columns,
-    diff_by_key,
     diff_reports,
     find_common_tables,
     generate_diff_sql,
     generate_sync_config,
     get_upstream_tables,
     is_numeric_type,
-    mask_rows,
     parse_alert_rules,
     parse_column_mapping,
-    parse_custom_agg_expressions,
-    parse_quality_rules,
     parse_threshold,
     run_parallel,
 )
@@ -141,7 +117,6 @@ from seatunnel_agent.agents.data.data_comparison.ui_shared import (  # noqa: F40
     _validate_where,
     _with_validation,
 )
-from seatunnel_agent.agents.data.text2sql.differ import diff_results
 from seatunnel_agent.agents.data.text2sql.executor import (
     DIALECT_NAMES,
     DS_DEFAULTS,
@@ -221,33 +196,8 @@ def render_data_comparison_page(app=None) -> None:
                                  where_val, desc_a, desc_b)
 
     def _profile_inner(table_a, table_b, lang_val, where_val=""):
-        ex_a, ex_b = _snap_executors()
-        desc_a, desc_b = run_parallel(
-            lambda: ex_a.describe_table(table_a),
-            lambda: ex_b.describe_table(table_b),
-        )
-        names_a = {c.name.lower(): c.name for c in desc_a.columns}
-        names_b = {c.name.lower(): c.name for c in desc_b.columns}
-        shared_cols = [names_a[k] for k in names_a if k in names_b]
-
-        if not shared_cols:
-            return ProfileResult(table_a, table_b), build_profile_card(
-                ProfileResult(table_a, table_b), lang_val)
-
-        sql_a = build_profile_sql(table_a, shared_cols, where_val,
-                                  ds_type=ex_a.config.ds_type)
-        sql_b = build_profile_sql(table_b, shared_cols, where_val,
-                                  ds_type=ex_b.config.ds_type)
-        ra, rb = run_parallel(
-            lambda: ex_a.run(sql_a, max_rows=1),
-            lambda: ex_b.run(sql_b, max_rows=1),
-        )
-        row_a = ra.rows[0] if ra.rows else ()
-        row_b = rb.rows[0] if rb.rows else ()
-        total_a = int(row_a[0]) if row_a else 0
-        total_b = int(row_b[0]) if row_b else 0
-        result = compare_profiles(table_a, row_a, total_a, table_b, row_b, total_b, shared_cols)
-        return result, build_profile_card(result, lang_val)
+        return features.profile_inner(session, table_a, table_b, lang_val,
+                                      where_val)
 
     # ── Wrapped callbacks ──
 
@@ -284,246 +234,68 @@ def render_data_comparison_page(app=None) -> None:
 
     # ── Skew analysis (BB) ──
 
+    # Feature-accordion logic lives in features.py (Gradio-free, shared with
+    # api.py); these wrappers bind the session for Gradio wiring. The
+    # *_inner wrappers stay because _compare_all composes them directly.
     def _skew_inner(table_a, table_b, lang_val, where_val="", skew_cols_str=""):
-        ex_a, ex_b = _snap_executors()
-        cols = [c.strip() for c in skew_cols_str.split(",") if c.strip()]
-        if not cols:
-            return SkewResult(table_a, table_b), build_skew_card(
-                SkewResult(table_a, table_b), lang_val)
-
-        cols = cols[:_SKEW_MAX_COLUMNS]
-        count_sql_a = build_count_sql(table_a, where_val)
-        count_sql_b = build_count_sql(table_b, where_val)
-        ra_cnt, rb_cnt = run_parallel(
-            lambda: ex_a.run(count_sql_a, max_rows=1),
-            lambda: ex_b.run(count_sql_b, max_rows=1),
-        )
-        total_a = int(ra_cnt.rows[0][0]) if ra_cnt.rows else 0
-        total_b = int(rb_cnt.rows[0][0]) if rb_cnt.rows else 0
-
-        from concurrent.futures import ThreadPoolExecutor as _LocalPool
-
-        def _process_skew_col(col):
-            sql_a = build_skew_sql(table_a, col, where_val, ds_type=ex_a.config.ds_type)
-            sql_b = build_skew_sql(table_b, col, where_val, ds_type=ex_b.config.ds_type)
-            ra, rb = run_parallel(
-                lambda s=sql_a: ex_a.run(s, max_rows=_SKEW_MAX_ROWS),
-                lambda s=sql_b: ex_b.run(s, max_rows=_SKEW_MAX_ROWS),
-            )
-            return compare_skew(
-                table_a, table_b, col,
-                ra.rows, total_a,
-                rb.rows, total_b,
-            )
-
-        with _LocalPool(max_workers=min(len(cols), 5)) as col_pool:
-            futures = [col_pool.submit(_process_skew_col, c) for c in cols]
-            items: list[SkewItem] = [f.result() for f in futures]
-
-        result = SkewResult(
-            table_a=table_a, table_b=table_b,
-            total_a=total_a, total_b=total_b,
-            items=items,
-        )
-        return result, build_skew_card(result, lang_val,
-                                       conn_b=ex_b.config)
-
-    def _compare_skew_fn(table_a, table_b, lang_val, where_val, skew_cols_str):
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        if not skew_cols_str or not skew_cols_str.strip():
-            return f'<div style="color:#dc2626;">{dc(lang_val, "dc_skew_no_columns")}</div>'
-        result, html = _skew_inner(table_a, table_b, lang_val, where_val, skew_cols_str)
-        _store_partial("skew", result)
-        return html
+        return features.skew_inner(session, table_a, table_b, lang_val,
+                                   where_val, skew_cols_str)
 
     _compare_profile = _with_validation(session, _compare_profile_fn)
-    _compare_skew = _with_validation(session, _compare_skew_fn)
+
+    def _compare_skew(table_a, table_b, lang_val, where_val, skew_cols_str):
+        return features.compare_skew_action(session, table_a, table_b,
+                                            lang_val, where_val, skew_cols_str)
 
     # ── Checksum comparison (CC) ──
 
     def _checksum_inner(table_a, table_b, lang_val, where_val="", checksum_cols_str=""):
-        ex_a, ex_b = _snap_executors()
-        cols = [c.strip() for c in checksum_cols_str.split(",") if c.strip()]
-        if not cols:
-            desc_a, desc_b = run_parallel(
-                lambda: ex_a.describe_table(table_a),
-                lambda: ex_b.describe_table(table_b),
-            )
-            names_b = {c.name.lower() for c in desc_b.columns}
-            cols = [c.name for c in desc_a.columns if c.name.lower() in names_b][:_MAX_AGG_COLUMNS]
-        if not cols:
-            return ChecksumResult(table_a, table_b), build_checksum_card(
-                ChecksumResult(table_a, table_b), lang_val)
-        sql_a = build_checksum_sql(table_a, cols, ex_a.config.ds_type, where_val)
-        sql_b = build_checksum_sql(table_b, cols, ex_b.config.ds_type, where_val)
-        ra, rb = run_parallel(
-            lambda: ex_a.run(sql_a, max_rows=_CHECKSUM_MAX_ROWS),
-            lambda: ex_b.run(sql_b, max_rows=_CHECKSUM_MAX_ROWS),
-        )
-        result = compare_checksums(table_a, table_b, ra.rows, rb.rows)
-        return result, build_checksum_card(result, lang_val)
+        return features.checksum_inner(session, table_a, table_b, lang_val,
+                                       where_val, checksum_cols_str)
 
-    def _compare_checksum_fn(table_a, table_b, lang_val, where_val, checksum_cols_str=""):
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        result, html = _checksum_inner(table_a, table_b, lang_val, where_val, checksum_cols_str)
-        _store_partial("checksum", result)
-        return html
-
-    _compare_checksum = _with_validation(session, _compare_checksum_fn)
+    def _compare_checksum(table_a, table_b, lang_val, where_val,
+                          checksum_cols_str=""):
+        return features.compare_checksum_action(session, table_a, table_b,
+                                                lang_val, where_val,
+                                                checksum_cols_str)
 
     # ── Chunked (blocked) verification for large tables ──
 
-    def _chunked_inner(table_a, table_b, lang_val, where_val="",
-                       key_cols_str="", checksum_cols_str="",
-                       col_mapping_str=""):
-        from seatunnel_agent.agents.data.data_comparison.chunked import compare_chunked
-        ex_a, ex_b = _snap_executors()
-        key_cols = [k.strip() for k in (key_cols_str or "").split(",") if k.strip()]
-        if not key_cols:
-            return None, (
-                '<div style="padding:10px;color:#d97706;background:#fffbeb;'
-                'border-radius:8px;margin-bottom:8px;">'
-                f'{dc(lang_val, "dc_chunked_need_pk")}</div>')
-        pk = key_cols[0]
-        mapping = parse_column_mapping(col_mapping_str) if col_mapping_str else {}
-        cols = [c.strip() for c in (checksum_cols_str or "").split(",") if c.strip()]
-        if not cols:
-            desc_a, desc_b = run_parallel(
-                lambda: ex_a.describe_table(table_a),
-                lambda: ex_b.describe_table(table_b),
-            )
-            names_a = {c.name.lower(): c.name for c in desc_a.columns}
-            names_b = {c.name.lower() for c in desc_b.columns}
-            cols = [names_a[k] for k in names_a
-                    if k != pk.lower()
-                    and mapping.get(names_a[k], names_a[k]).lower() in names_b]
-        cols_b = [mapping.get(c, c) for c in cols]
-        pk_b = mapping.get(pk, pk)
-        if not cols:
-            # no shared non-pk columns: hash the pk itself on each side
-            cols, cols_b = [pk], [pk_b]
-
-        def _run_a(sql, n):
-            return ex_a.run(sql, max_rows=n).rows
-
-        def _run_b(sql, n):
-            return ex_b.run(sql, max_rows=n).rows
-
-        result = compare_chunked(
-            _run_a, _run_b, table_a, table_b, pk, cols,
-            ex_a.config.ds_type, ex_b.config.ds_type, where=where_val or "",
-            columns_b=cols_b, pk_column_b=pk_b)
-        return result, build_chunked_card(result, lang_val)
-
-    def _compare_chunked_fn(table_a, table_b, lang_val, where_val,
-                            key_cols_str="", checksum_cols_str="",
-                            col_mapping_str=""):
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        result, html = _chunked_inner(table_a, table_b, lang_val, where_val,
-                                      key_cols_str, checksum_cols_str,
-                                      col_mapping_str)
-        if result is not None:
-            _store_partial("chunked", result)
-        return html
-
-    _compare_chunked_btn_fn = _with_validation(session, _compare_chunked_fn)
+    def _compare_chunked_btn_fn(table_a, table_b, lang_val, where_val,
+                                key_cols_str="", checksum_cols_str="",
+                                col_mapping_str=""):
+        return features.compare_chunked_action(session, table_a, table_b,
+                                               lang_val, where_val,
+                                               key_cols_str, checksum_cols_str,
+                                               col_mapping_str)
 
     # ── Partition comparison (DD) ──
 
     def _partition_inner(table_a, table_b, lang_val, where_val="", partition_col=""):
-        ex_a, ex_b = _snap_executors()
-        if not partition_col.strip():
-            return PartitionResult(table_a, table_b), build_partition_card(
-                PartitionResult(table_a, table_b), lang_val)
-        sql_a = build_partition_count_sql(table_a, partition_col.strip(), where_val,
-                                          ds_type=ex_a.config.ds_type)
-        sql_b = build_partition_count_sql(table_b, partition_col.strip(), where_val,
-                                          ds_type=ex_b.config.ds_type)
-        ra, rb = run_parallel(
-            lambda: ex_a.run(sql_a, max_rows=_PARTITION_MAX_ROWS),
-            lambda: ex_b.run(sql_b, max_rows=_PARTITION_MAX_ROWS),
-        )
-        result = compare_partitions(table_a, table_b, partition_col.strip(),
-                                    ra.rows, rb.rows)
-        return result, build_partition_card(result, lang_val)
+        return features.partition_inner(session, table_a, table_b, lang_val,
+                                        where_val, partition_col)
 
-    def _compare_partition_fn(table_a, table_b, lang_val, where_val, partition_col):
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        if not partition_col or not partition_col.strip():
-            return f'<div style="color:#dc2626;">{dc(lang_val, "dc_partition_col_hint")}</div>'
-        result, html = _partition_inner(table_a, table_b, lang_val, where_val, partition_col)
-        _store_partial("partition", result)
-        return html
-
-    _compare_partition = _with_validation(session, _compare_partition_fn)
+    def _compare_partition(table_a, table_b, lang_val, where_val, partition_col):
+        return features.compare_partition_action(session, table_a, table_b,
+                                                 lang_val, where_val,
+                                                 partition_col)
 
     # ── Custom aggregates (EE) ──
 
     def _custom_agg_inner(table_a, table_b, lang_val, where_val="", expressions_str=""):
-        ex_a, ex_b = _snap_executors()
-        expressions = parse_custom_agg_expressions(expressions_str)
-        if not expressions:
-            return CustomAggResult(table_a, table_b), build_custom_agg_card(
-                CustomAggResult(table_a, table_b), lang_val)
-        sql_a = build_custom_agg_sql(table_a, expressions, where_val)
-        sql_b = build_custom_agg_sql(table_b, expressions, where_val)
-        ra, rb = run_parallel(
-            lambda: ex_a.run(sql_a, max_rows=1),
-            lambda: ex_b.run(sql_b, max_rows=1),
-        )
-        row_a = ra.rows[0] if ra.rows else ()
-        row_b = rb.rows[0] if rb.rows else ()
-        result = compare_custom_aggs(table_a, row_a, table_b, row_b, expressions)
-        return result, build_custom_agg_card(result, lang_val)
+        return features.custom_agg_inner(session, table_a, table_b, lang_val,
+                                         where_val, expressions_str)
 
-    def _compare_custom_agg_fn(table_a, table_b, lang_val, where_val, expressions_str):
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        if not expressions_str or not expressions_str.strip():
-            return f'<div style="color:#dc2626;">{dc(lang_val, "dc_custom_agg_hint")}</div>'
-        result, html = _custom_agg_inner(table_a, table_b, lang_val, where_val, expressions_str)
-        _store_partial("custom_agg", result)
-        return html
-
-    _compare_custom_agg = _with_validation(session, _compare_custom_agg_fn)
+    def _compare_custom_agg(table_a, table_b, lang_val, where_val, expressions_str):
+        return features.compare_custom_agg_action(session, table_a, table_b,
+                                                  lang_val, where_val,
+                                                  expressions_str)
 
     # ── Custom SQL comparison (B) ──
 
     def _compare_sql(sql_a_text, sql_b_text, lang_val):
-        with session.lock:
-            if session.executor_a is None or session.executor_b is None:
-                return dc(lang_val, "dc_connect_both")
-        if not sql_a_text.strip() or not sql_b_text.strip():
-            return dc(lang_val, "dc_sql_readonly_only")
-
-        for sql_text in (sql_a_text, sql_b_text):
-            stripped = sql_text.strip().upper()
-            if not (stripped.startswith("SELECT") or stripped.startswith("WITH")):
-                return dc(lang_val, "dc_sql_readonly_only")
-            if _DDL_KEYWORDS.search(sql_text):
-                return dc(lang_val, "dc_sql_readonly_only")
-
-        try:
-            with session.lock:
-                ex_a, ex_b = session.executor_a, session.executor_b
-            ra, rb = run_parallel(
-                lambda: ex_a.run(sql_a_text.strip(), max_rows=200),
-                lambda: ex_b.run(sql_b_text.strip(), max_rows=200),
-            )
-            diff = diff_results(ra.columns, ra.rows, rb.columns, rb.rows)
-            cols = ra.columns or rb.columns
-            return build_sql_result_card(diff, lang_val, columns=cols)
-        except Exception as e:
-            return _error_html(lang_val, e)
+        return features.compare_sql_action(session, sql_a_text, sql_b_text,
+                                           lang_val)
 
     # ── Compare All (F — structured report, G — schema cache, H — progress) ──
 
@@ -1187,71 +959,16 @@ def render_data_comparison_page(app=None) -> None:
     def _incremental_fn(table_a, table_b, lang_val, where_val,
                         watermark_col, watermark_val, key_cols_str,
                         col_mapping_str, masking_on):
-        with session.lock:
-            if session.executor_a is None or session.executor_b is None:
-                return dc(lang_val, "dc_connect_both")
-        if not table_a or not table_b:
-            return dc(lang_val, "dc_select_tables")
-        if not watermark_col.strip():
-            return dc(lang_val, "dc_watermark_hint")
-        ok, msg = _validate_where(where_val, lang_val)
-        if not ok:
-            return msg
-        try:
-            ex_a, ex_b = session.executor_a, session.executor_b
-            last_val = watermark_val.strip()
-            sql_a = build_incremental_sql(table_a, watermark_col.strip(), last_val,
-                                         _INCREMENTAL_LIMIT, where_val,
-                                         ds_type=ex_a.config.ds_type)
-            sql_b = build_incremental_sql(table_b, watermark_col.strip(), last_val,
-                                         _INCREMENTAL_LIMIT, where_val,
-                                         ds_type=ex_b.config.ds_type)
-            ra, rb = run_parallel(
-                lambda: ex_a.run(sql_a, max_rows=_INCREMENTAL_LIMIT),
-                lambda: ex_b.run(sql_b, max_rows=_INCREMENTAL_LIMIT),
-            )
-            mapping = parse_column_mapping(col_mapping_str) if col_mapping_str else {}
-            rb_cols = apply_column_mapping(rb.columns, mapping) if mapping else rb.columns
-            rows_a, rows_b = list(ra.rows), list(rb.rows)
-            if masking_on:
-                sa = detect_sensitive_columns(ra.columns, rows_a)
-                sb = detect_sensitive_columns(rb_cols, rows_b)
-                if sa:
-                    rows_a = mask_rows(ra.columns, rows_a, sa)
-                if sb:
-                    rows_b = mask_rows(rb_cols, rows_b, sb)
-            key_cols = [k.strip() for k in key_cols_str.split(",") if k.strip()] if key_cols_str else []
-            if key_cols:
-                kd_result = diff_by_key(ra.columns, rows_a, rb_cols, rows_b, key_cols)
-                _store_partial("keyed_diff", kd_result)
-                return build_keyed_diff_card(kd_result, lang_val)
-            diff = diff_results(ra.columns, rows_a, rb_cols, rows_b)
-            _store_partial("sample", diff)
-            return build_sample_diff_card(diff, lang_val, columns=ra.columns or rb_cols)
-        except Exception as e:
-            return _error_html(lang_val, e)
+        return features.compare_incremental_action(
+            session, table_a, table_b, lang_val, where_val,
+            watermark_col, watermark_val, key_cols_str,
+            col_mapping_str, masking_on)
 
     # ── Feature B — Quality rules ──
 
     def _check_quality_fn(table_a, table_b, lang_val, where_val, quality_rules_str):
-        with session.lock:
-            if session.executor_a is None or session.executor_b is None:
-                return dc(lang_val, "dc_connect_both")
-        if not table_a or not table_b:
-            return dc(lang_val, "dc_select_tables")
-        if not quality_rules_str.strip():
-            return dc(lang_val, "dc_quality_rules_hint")
-        try:
-            rules = parse_quality_rules(quality_rules_str)
-            if not rules:
-                return dc(lang_val, "dc_quality_rules_hint")
-            profile_result, _ = _profile_inner(table_a, table_b, lang_val, where_val)
-            results_a = check_quality_rules(rules, profile_result, side="a")
-            results_b = check_quality_rules(rules, profile_result, side="b")
-            return (build_quality_card(results_a, lang_val, side_label="A")
-                    + build_quality_card(results_b, lang_val, side_label="B"))
-        except Exception as e:
-            return _error_html(lang_val, e)
+        return features.check_quality_action(
+            session, table_a, table_b, lang_val, where_val, quality_rules_str)
 
     # ── Feature C — Diff SQL generation ──
 

@@ -10,6 +10,7 @@ import {
 } from '@/api'
 import { ActionRow } from '@/components/ActionRow'
 import { ConnectForm, type ConnFields } from '@/components/ConnectForm'
+import { FeatureAccordions } from '@/components/FeatureAccordions'
 import { OptionsCard } from '@/components/OptionsCard'
 import { PresetsCard } from '@/components/PresetsCard'
 import { Card } from '@shared/components/card'
@@ -123,6 +124,14 @@ export default function App() {
                 options={options}
                 onChange={setOptions}
                 onReset={resetOptions}
+              />
+              <FeatureAccordions
+                sessionId={sessionId}
+                tableA={tableA}
+                tableB={tableB}
+                options={options}
+                onResult={setResultHtml}
+                resetSeq={resetSeq}
               />
               <ActionRow
                 sessionId={sessionId}
