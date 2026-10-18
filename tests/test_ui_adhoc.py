@@ -55,9 +55,15 @@ class TestLoadAdhocCase:
         f.write_text(json.dumps([{"click": "连接"}]), encoding="utf-8")
         assert ah.load_adhoc_case(f).steps[0].action == "click"
 
-    def test_fixture_use_works(self, tmp_path):
+    def test_fixture_use_works(self, tmp_path, monkeypatch):
+        # the shipped _fixtures.yaml is empty since the last Gradio pages
+        # retired — exercise the splice mechanism with a synthetic fixture
+        monkeypatch.setattr(
+            ah, "_load_fixtures",
+            lambda cases_dir: {"demo_fixture": [
+                {"click": "A"}, {"click": "B"}, {"click": "C"}]})
         f = tmp_path / "s.yaml"
-        f.write_text("- use: connect_skew_sqlite\n", encoding="utf-8")
+        f.write_text("- use: demo_fixture\n", encoding="utf-8")
         case = ah.load_adhoc_case(f)
         assert len(case.steps) >= 3          # fixture spliced in
 
