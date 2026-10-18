@@ -197,7 +197,6 @@ class DCPage:
     # per-route "page is ready" selector (default: body)
     READY = {
         "/text2sql": ".st-sidebar-status",
-        "/impact": ".st-imp-side",
         "/settings": ".st-set-page",
         "/mcp": ".st-mcp-tools",
     }
@@ -532,9 +531,6 @@ class DCPage:
     def result_container(self) -> Locator:
         # data comparison result card; falls back to the SQL review report
         loc = self.page.locator(".st-main .st-schema-card")
-        if loc.count():
-            return loc.first
-        loc = self.page.locator(".st-imp-main")
         if loc.count():
             return loc.first
         for cls in (".st-pii-main", ".st-lgi-main", ".st-sdf-main",

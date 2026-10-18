@@ -92,8 +92,8 @@ class TestLoader:
 
     def test_filter_by_case_id(self):
         cases = load_cases()
-        picked = filter_cases(cases, "", ["scr3", "AIP1"])
-        assert {c.id for c in picked} == {"SCR3", "AIP1"}
+        picked = filter_cases(cases, "", ["scr8", "AIP1"])
+        assert {c.id for c in picked} == {"SCR8", "AIP1"}
 
     def test_filter_unknown_id_raises(self):
         with pytest.raises(CaseLoadError, match="unknown case id"):

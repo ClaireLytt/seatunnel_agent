@@ -3,25 +3,6 @@
 # 以下的控件永远够不着(e7ec1a1 修过 /transpile 与 /impact 正是此病)。
 # scrollable 断言会把视口压到 500px 高,确认容器真的能滚到底。
 
-- id: SCR3
-  title: 变更影响页有滚动条
-  tags: [smoke, sqlite]
-  page: /impact
-  steps:
-    - wait: 500
-      note: 纯断言用例,等页面水合完成即可
-  expect:
-    - scrollable: {selector: .st-imp-page}
-
-# SCR4 retired: /datacompare is the React page; it scrolls natively
-# (see tests/test_datacompare_page.py).
-
-# SCR5 retired: /sqlreview is the React page; it scrolls natively.
-
-# SCR6 retired: text2sql-legacy page deleted; React app scrolls natively.
-
-# SCR7 retired: /migrate is the React page; it scrolls natively.
-
 - id: SCR8
   title: data agents hub scrolls to the last card
   tags: [smoke, sqlite]
