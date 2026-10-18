@@ -26,7 +26,7 @@ npm run build --workspace schema_drift -> ✓ built in 3.06s
 uitest smoke (--no-llm) -> PASS 34 · FAIL 0 · ERROR 0 · SKIP 0 · MANUAL 0 · 耗时 127s
                            报告: runs/20261019_075618/report.html
                            (36→34:SDF1/SDF2 smoke YAML 退役,等价覆盖移入页测)
-python scripts/check_workflow.py -> (报告落盘提交后补记,见文末)
+python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / [PASS] 报告落盘(全 PASS)
 ```
 
 手工验证:hub 启动后 `GET /schemadrift/` 200;中文目录 demo 对比往返截图
