@@ -148,7 +148,7 @@ export function PresetsCard({
       </div>
 
       <div className="mt-3 flex items-center gap-3">
-        <button type="button" className={smallBtnCls} onClick={onDelete} aria-label="delete">
+        <button type="button" className={smallBtnCls} onClick={onDelete} aria-label={t('delete')}>
           🗑
         </button>
         {status && (

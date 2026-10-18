@@ -278,6 +278,13 @@ def test_compare_schema_identical_card(client, connected):
     assert "Schemas are identical" in html
 
 
+def test_compare_schema_card_renders_zh(client, connected):
+    # lang rides on every action request; the card comes back localized
+    html = _action(client, connected, "schema", lang="zh").json()["html"]
+    assert "表结构对比" in html
+    assert "表结构完全一致" in html
+
+
 def test_compare_schema_diff_card(client, connected, tmp_path):
     # side B gets a table with an extra column -> "added" row in the card
     db_c = tmp_path / "c.db"

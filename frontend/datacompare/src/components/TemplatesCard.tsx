@@ -145,7 +145,7 @@ export function TemplatesCard({
         <button type="button" className={smallBtnCls} onClick={onLoad}>
           {t('templateLoad')}
         </button>
-        <button type="button" className={smallBtnCls} onClick={onDelete} aria-label="delete">
+        <button type="button" className={smallBtnCls} onClick={onDelete} aria-label={t('delete')}>
           🗑
         </button>
       </div>
