@@ -121,23 +121,6 @@ LABELS: dict[str, tuple[str, ...]] = {
     "SQL 方言":   ("SQL 方言", "SQL Dialect"),
     # ── MCP Toolbox page (/mcp) ──
     "刷新审计":   ("刷新", "Refresh"),
-    # ── Lineage page (/lineage) ──
-    "SQL 目录":   ("SQL 目录", "SQL directory"),
-    "SeaTunnel 配置目录": ("SeaTunnel 配置目录", "SeaTunnel config directory"),
-    "构建血缘图": ("构建血缘图", "Build lineage graph"),
-    "目标表":     ("目标表", "Target table"),
-    "查询血缘":   ("查询血缘", "Query lineage"),
-    "表名搜索":   ("表名搜索", "Table search"),
-    "搜索":       ("搜索", "Search"),
-    "治理体检":   ("治理体检", "Governance health check"),
-    "血缘字段":   ("字段（可选）", "Column (optional)"),
-    "查询路径":   ("查询路径", "Find path"),
-    "SLA 影响分析": ("SLA 影响分析", "SLA impact analysis"),
-    "保存快照":   ("保存快照", "Save snapshot"),
-    "快照对比":   ("快照对比", "Compare snapshots"),
-    "路径终点表": ("路径终点表", "Path destination table"),
-    "快照名":     ("快照名（可选）", "Snapshot name (optional)"),
-    "对比快照":   ("对比快照", "Compare against snapshot"),
     # settings page (/settings) — labels from settings_ui.py::_I18N
     "提供商":     ("提供商", "Provider"),
     "API Key":    ("API Key", "API Key"),
@@ -213,7 +196,6 @@ class DCPage:
 
     # per-route "page is ready" selector (default: body)
     READY = {
-        "/lineage": ".st-lin-side",
         "/text2sql": ".st-sidebar-status",
         "/impact": ".st-imp-side",
         "/settings": ".st-set-page",
@@ -552,9 +534,6 @@ class DCPage:
         loc = self.page.locator(".st-main .st-schema-card")
         if loc.count():
             return loc.first
-        loc = self.page.locator(".st-lin-main")
-        if loc.count():
-            return loc.first
         loc = self.page.locator(".st-imp-main")
         if loc.count():
             return loc.first
@@ -618,7 +597,7 @@ class DCPage:
         """Poll until *text* appears in the page body (or result area) —
         replaces fragile fixed waits for slow-rendering side effects."""
         target = ("document.body" if where == "body"
-                  else "document.querySelector('.st-main .st-schema-card, .st-lin-main')")
+                  else "document.querySelector('.st-main .st-schema-card')")
         self.page.wait_for_function(
             f"t => (({target})?.textContent || '').includes(t)",
             arg=text, timeout=timeout_ms)

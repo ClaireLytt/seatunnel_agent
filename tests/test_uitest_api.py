@@ -55,8 +55,10 @@ def test_meta_lists_suites_and_agents(client):
     # dataskew retired from the YAML engine too: its coverage lives in
     # tests/test_dataskew_page.py / test_dataskew_session_api.py
     assert "dataskew" not in keys
+    # lineage retired from the YAML engine too (tests/test_lineage_page.py)
+    assert "lineage" not in keys
     zh = {a["key"]: a["label_zh"] for a in data["agents"]}
-    assert zh["lineage"] == "数据血缘"
+    assert zh["impact"] == "变更影响分析"
 
 
 def test_case_save_rejects_bad_yaml(client):

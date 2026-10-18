@@ -3,16 +3,6 @@
 # 以下的控件永远够不着(e7ec1a1 修过 /transpile 与 /impact 正是此病)。
 # scrollable 断言会把视口压到 500px 高,确认容器真的能滚到底。
 
-- id: SCR1
-  title: 血缘页有滚动条
-  tags: [smoke, sqlite]
-  page: /lineage
-  steps:
-    - wait: 500
-      note: 纯断言用例,等页面水合完成即可
-  expect:
-    - scrollable: {selector: .st-lin-page}
-
 - id: SCR3
   title: 变更影响页有滚动条
   tags: [smoke, sqlite]

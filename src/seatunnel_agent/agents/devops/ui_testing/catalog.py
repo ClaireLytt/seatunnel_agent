@@ -7,7 +7,6 @@ SUITES = ["smoke", "full", "sqlite", "hive", "slow"]
 # Agent picker: route prefixes -> every automated case on those pages.
 AGENT_ROUTES: dict[str, tuple[str, ...]] = {
     "all": (),
-    "lineage": ("/lineage",),
     "text2sql": ("/text2sql", "/history", "/favorites", "/schema-browser"),
     "impact": ("/impact",),
     "mcp": ("/mcp",),
@@ -16,13 +15,11 @@ AGENT_ROUTES: dict[str, tuple[str, ...]] = {
 
 AGENT_LABELS = {
     "en": {"all": "All agents",
-           "lineage": "Data Lineage",
            "text2sql": "Text2SQL & aux pages",
            "impact": "Change Impact Analysis",
            "mcp": "MCP Toolbox",
            "settings": "Settings"},
     "zh": {"all": "全部 Agent",
-           "lineage": "数据血缘",
            "text2sql": "Text2SQL 与辅助页",
            "impact": "变更影响分析",
            "mcp": "MCP 工具箱",
