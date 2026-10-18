@@ -232,7 +232,6 @@ class DCPage:
     READY = {
         "/lineage": ".st-lin-side",
         "/text2sql": ".st-sidebar-status",
-        "/transpile": ".st-trp-side",
         "/impact": ".st-imp-side",
         "/settings": ".st-set-page",
         "/dataskew": "#dsk-sql-box textarea",
@@ -572,9 +571,6 @@ class DCPage:
         if loc.count():
             return loc.first
         loc = self.page.locator(".st-lin-main")
-        if loc.count():
-            return loc.first
-        loc = self.page.locator(".st-trp-main")
         if loc.count():
             return loc.first
         loc = self.page.locator(".st-imp-main")

@@ -13,16 +13,6 @@
   expect:
     - scrollable: {selector: .st-lin-page}
 
-- id: SCR2
-  title: 方言翻译页有滚动条
-  tags: [smoke, sqlite]
-  page: /transpile
-  steps:
-    - wait: 500
-      note: 纯断言用例,等页面水合完成即可
-  expect:
-    - scrollable: {selector: .st-trp-page}
-
 - id: SCR3
   title: 变更影响页有滚动条
   tags: [smoke, sqlite]

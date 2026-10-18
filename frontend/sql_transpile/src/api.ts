@@ -77,6 +77,7 @@ export function translateBatch(
     to,
     ...(from !== 'auto' ? { from } : {}),
     lang,
+    report: true,
   })
 }
 

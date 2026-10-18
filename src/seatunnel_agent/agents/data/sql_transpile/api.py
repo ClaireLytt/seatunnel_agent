@@ -21,7 +21,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from seatunnel_agent.common.utils import normalize_lang
 
-from .report import batch_to_dict, render_markdown, result_to_dict
+from .report import (
+    batch_to_dict,
+    render_batch_markdown,
+    render_markdown,
+    result_to_dict,
+)
 from .transpiler import DIALECTS, translate, transpile_dir
 
 logger = logging.getLogger(__name__)
@@ -61,6 +66,7 @@ class BatchRequest(BaseModel):
     out_dir: str | None = Field(
         None, description="Write translated files mirroring the input tree "
                           "(whitelist-guarded like 'dir')")
+    report: bool = Field(False, description="Include the rendered markdown report")
 
 
 @router.post("/translate")
@@ -95,7 +101,11 @@ def batch_endpoint(req: BatchRequest) -> dict[str, Any]:
                               out_dir=out_dir)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return batch_to_dict(batch, normalize_lang(req.lang))
+    lang = normalize_lang(req.lang)
+    data = batch_to_dict(batch, lang)
+    if req.report:
+        data["report"] = render_batch_markdown(batch, lang)
+    return data
 
 
 class AdviceRequest(BaseModel):
