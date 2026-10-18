@@ -18,7 +18,6 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from fastapi import APIRouter
-from pydantic import BaseModel
 
 from seatunnel_agent.agents.data.data_comparison.actions import (
     snap_executors,
@@ -53,6 +52,10 @@ from seatunnel_agent.agents.data.data_comparison.comparator import (
     parse_custom_agg_expressions,
     parse_quality_rules,
     run_parallel,
+)
+from seatunnel_agent.agents.data.data_comparison.deps import (
+    OptionsRequest,
+    get_session_or_404,
 )
 from seatunnel_agent.agents.data.data_comparison.i18n import dc
 from seatunnel_agent.agents.data.data_comparison.registry import SessionState
@@ -495,18 +498,9 @@ def check_quality_action(session: SessionState, table_a: str, table_b: str,
 router = APIRouter()
 
 
-class FeatureRequest(BaseModel):
-    """Feature-accordion action request: global options + per-feature fields."""
+class FeatureRequest(OptionsRequest):
+    """Feature-accordion action request: shared options + per-feature fields."""
 
-    session_id: str
-    table_a: str = ""
-    table_b: str = ""
-    lang: str = "en"
-    where: str = ""
-    # global options that some features consume
-    key_columns: str = ""
-    column_mapping: str = ""
-    masking: bool = True
     # incremental
     watermark_col: str = ""
     watermark_val: str = ""
@@ -526,9 +520,7 @@ class FeatureRequest(BaseModel):
 
 
 def _session_of(req: FeatureRequest) -> SessionState:
-    # local import avoids a circular import with api.py
-    from seatunnel_agent.agents.data.data_comparison.api import _get_session
-    return _get_session(req.session_id)
+    return get_session_or_404(req.session_id)
 
 
 @router.post("/compare/incremental")

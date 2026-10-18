@@ -30,7 +30,6 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
 
 from seatunnel_agent.agents.data.data_comparison import actions, features
 from seatunnel_agent.agents.data.data_comparison.comparator import (
@@ -44,11 +43,12 @@ from seatunnel_agent.agents.data.data_comparison.comparator import (
     parse_threshold,
     run_parallel,
 )
-from seatunnel_agent.agents.data.data_comparison.i18n import dc
-from seatunnel_agent.agents.data.data_comparison.registry import (
-    SessionState,
-    get_registry,
+from seatunnel_agent.agents.data.data_comparison.deps import (
+    OptionsRequest,
+    get_session_or_404,
 )
+from seatunnel_agent.agents.data.data_comparison.i18n import dc
+from seatunnel_agent.agents.data.data_comparison.registry import SessionState
 from seatunnel_agent.agents.data.data_comparison.ui_cards import (
     build_batch_count_card,
     build_batch_full_card,
@@ -67,30 +67,37 @@ from seatunnel_agent.agents.data.data_comparison.ui_shared import (
 router = APIRouter()
 
 # Session ids with a compound run in flight (double-trigger guard).
+# The scheduled tick (schedule_api.run_schedule_tick) acquires the same
+# guard via try_acquire_run/release_run — legacy single-run semantics.
 _RUNNING: set[str] = set()
 _RUNNING_LOCK = threading.Lock()
+
+
+def try_acquire_run(session_id: str) -> bool:
+    """Take the per-session running flag; False when a run is in flight."""
+    with _RUNNING_LOCK:
+        if session_id in _RUNNING:
+            return False
+        _RUNNING.add(session_id)
+        return True
+
+
+def release_run(session_id: str) -> None:
+    """Release the per-session running flag."""
+    with _RUNNING_LOCK:
+        _RUNNING.discard(session_id)
+
 
 ProgressFn = Callable[[float, str], None]
 
 
-class CompoundRequest(BaseModel):
+class CompoundRequest(OptionsRequest):
     """Request body shared by the compound actions.
 
-    Option fields mirror ``api.CompareRequest`` (the global options
-    block rides on every action); webhook fields are compare-all only.
+    The shared options base rides on every action; webhook fields are
+    compare-all only.
     """
 
-    session_id: str
-    table_a: str = ""
-    table_b: str = ""
-    lang: str = "en"
-    where: str = ""
-    threshold: str = ""
-    key_columns: str = ""
-    strategy: str = "TOP N"
-    column_mapping: str = ""
-    masking: bool = True
-    stratified_col: str = ""
     webhook_url: str = ""
     notify_on_fail: bool = False
     # optional compare-all stages (feature accordion fields, ticket 06)
@@ -98,13 +105,6 @@ class CompoundRequest(BaseModel):
     checksum_columns: str = ""
     partition_col: str = ""
     expressions: str = ""
-
-
-def _get_session(session_id: str) -> SessionState:
-    session = get_registry().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="unknown session_id")
-    return session
 
 
 # ── profile (not actually slow — plain JSON like the core actions) ──
@@ -136,7 +136,7 @@ def compare_profile(session: SessionState, table_a: str, table_b: str,
 @router.post("/compare/profile")
 def compare_profile_endpoint(req: CompoundRequest) -> dict[str, str]:
     """Column profile card (HTML fragment; guards return their message)."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     return {"html": compare_profile(
         session, req.table_a, req.table_b, req.lang, req.where)}
 
@@ -432,13 +432,11 @@ def _stream_run(
     Acquires the per-session running flag before the stream starts so a
     second trigger gets an immediate HTTP 409.
     """
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
 
-    with _RUNNING_LOCK:
-        if req.session_id in _RUNNING:
-            raise HTTPException(status_code=409,
-                                detail="a compound run is already in progress")
-        _RUNNING.add(req.session_id)
+    if not try_acquire_run(req.session_id):
+        raise HTTPException(status_code=409,
+                            detail="a compound run is already in progress")
 
     q: queue.Queue[dict[str, Any] | None] = queue.Queue()
 
@@ -451,8 +449,7 @@ def _stream_run(
         except Exception as e:  # pragma: no cover — run fns catch their own
             html = _error_html(req.lang, e)
         finally:
-            with _RUNNING_LOCK:
-                _RUNNING.discard(req.session_id)
+            release_run(req.session_id)
         q.put({"event": "done", "html": html})
         q.put(None)
 

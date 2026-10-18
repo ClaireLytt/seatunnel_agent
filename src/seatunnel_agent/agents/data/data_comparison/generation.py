@@ -37,11 +37,12 @@ from seatunnel_agent.agents.data.data_comparison.comparator import (
     parse_column_mapping,
     run_parallel,
 )
-from seatunnel_agent.agents.data.data_comparison.i18n import dc
-from seatunnel_agent.agents.data.data_comparison.registry import (
-    SessionState,
-    get_registry,
+from seatunnel_agent.agents.data.data_comparison.deps import (
+    SessionTablesRequest,
+    get_session_or_404,
 )
+from seatunnel_agent.agents.data.data_comparison.i18n import dc
+from seatunnel_agent.agents.data.data_comparison.registry import SessionState
 from seatunnel_agent.agents.data.data_comparison.ui_cards import (
     build_aggregate_card,
     build_batch_template_card,
@@ -343,25 +344,14 @@ def batch_templates_html(session: SessionState, selected_names: list[str],
 # ── REST endpoints ──────────────────────────────────────────────────
 
 
-def _get_session(session_id: str) -> SessionState:
-    session = get_registry().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="unknown session_id")
-    return session
-
-
-class SyncConfigRequest(BaseModel):
-    session_id: str
-    table_a: str = ""
-    table_b: str = ""
+class SyncConfigRequest(SessionTablesRequest):
     column_mapping: str = ""
-    lang: str = "en"
 
 
 @router.post("/generate/sync-config")
 def generate_sync_config_endpoint(req: SyncConfigRequest) -> dict[str, Any]:
     """Masked config HTML + download_id for the real-password .conf file."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     html, path = gen_sync_config(session, req.table_a, req.table_b,
                                  req.column_mapping, req.lang)
     download_id: str | None = None
@@ -383,17 +373,14 @@ def download_sync_config(download_id: str = Query(alias="id")) -> FileResponse:
                         media_type="application/octet-stream")
 
 
-class DiffSqlRequest(BaseModel):
-    session_id: str
-    table_a: str = ""
-    table_b: str = ""
-    lang: str = "en"
+class DiffSqlRequest(SessionTablesRequest):
+    pass
 
 
 @router.post("/generate/diff-sql")
 def generate_diff_sql_endpoint(req: DiffSqlRequest) -> dict[str, str]:
     """INSERT/UPDATE/DELETE SQL card from the last keyed diff."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     return {"html": gen_diff_sql_html(session, req.table_b, req.lang)}
 
 
@@ -472,7 +459,7 @@ def save_template(req: TemplateSaveRequest) -> dict[str, Any]:
             masking_enabled=req.masking_enabled,
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=422, detail=str(e)) from e
     return {"ok": True, "name": req.name.strip()}
 
 
@@ -503,5 +490,5 @@ class BatchRunRequest(BaseModel):
 @router.post("/templates/batch-run")
 def batch_run_templates(req: BatchRunRequest) -> dict[str, str]:
     """Combined batch-result card over the selected templates (legacy F6)."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     return {"html": batch_templates_html(session, req.names, req.lang)}

@@ -21,13 +21,14 @@ from seatunnel_agent.agents.data.data_comparison.compound import (
     router as compound_router,
 )
 from seatunnel_agent.agents.data.data_comparison.connect import connect_side
+from seatunnel_agent.agents.data.data_comparison.deps import (
+    OptionsRequest,
+    get_session_or_404,
+)
 from seatunnel_agent.agents.data.data_comparison.generation import (
     router as generation_router,
 )
-from seatunnel_agent.agents.data.data_comparison.registry import (
-    SessionState,
-    get_registry,
-)
+from seatunnel_agent.agents.data.data_comparison.registry import get_registry
 from seatunnel_agent.agents.data.data_comparison.reports_api import (
     router as _reports_router,
 )
@@ -54,13 +55,6 @@ router.include_router(compound_router)
 router.include_router(_schedule_router)
 
 _SCHEDULE_INTERVALS = ["1", "5", "15", "30", "60"]
-
-
-def _get_session(session_id: str) -> SessionState:
-    session = get_registry().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="unknown session_id")
-    return session
 
 
 @router.get("/meta")
@@ -104,7 +98,7 @@ class ConnectRequest(BaseModel):
 @router.post("/connect")
 def connect(req: ConnectRequest) -> dict[str, Any]:
     """Connect one side; stores the executor + tables in the session."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     result = connect_side(
         session, req.side, req.ds_type,
         req.host, req.port, req.db, req.username, req.password, req.lang,
@@ -125,32 +119,14 @@ def connect(req: ConnectRequest) -> dict[str, Any]:
     }
 
 
-class CompareRequest(BaseModel):
-    """Core comparison action request.
-
-    The option fields default to the legacy page's defaults; ticket 05
-    (options block) plugs real values into the same fields.
-    """
-
-    session_id: str
-    table_a: str = ""
-    table_b: str = ""
-    lang: str = "en"
-    where: str = ""
-    # count
-    threshold: str = ""
-    # sample
-    key_columns: str = ""
-    strategy: str = "TOP N"
-    column_mapping: str = ""
-    masking: bool = True
-    stratified_col: str = ""
+class CompareRequest(OptionsRequest):
+    """Core comparison action request: exactly the shared options base."""
 
 
 @router.post("/compare/schema")
 def compare_schema(req: CompareRequest) -> dict[str, str]:
     """Schema diff card (HTML fragment; guards return their message as html)."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     return {"html": actions.compare_schema(
         session, req.table_a, req.table_b, req.lang, req.where)}
 
@@ -158,7 +134,7 @@ def compare_schema(req: CompareRequest) -> dict[str, str]:
 @router.post("/compare/count")
 def compare_count(req: CompareRequest) -> dict[str, str]:
     """Row-count comparison card, with optional threshold badge."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     return {"html": actions.compare_count(
         session, req.table_a, req.table_b, req.lang, req.where,
         req.threshold)}
@@ -167,7 +143,7 @@ def compare_count(req: CompareRequest) -> dict[str, str]:
 @router.post("/compare/sample")
 def compare_sample(req: CompareRequest) -> dict[str, str]:
     """Sample-data diff card (keyed diff when key columns are given)."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     return {"html": actions.compare_sample(
         session, req.table_a, req.table_b, req.lang, req.where,
         req.key_columns, req.strategy, req.column_mapping, req.masking,
@@ -177,7 +153,7 @@ def compare_sample(req: CompareRequest) -> dict[str, str]:
 @router.post("/compare/aggregate")
 def compare_aggregate(req: CompareRequest) -> dict[str, str]:
     """Aggregate comparison card over shared numeric columns."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     return {"html": actions.compare_aggregate(
         session, req.table_a, req.table_b, req.lang, req.where)}
 
@@ -185,7 +161,7 @@ def compare_aggregate(req: CompareRequest) -> dict[str, str]:
 @router.get("/tables")
 def list_tables(session_id: str, side: Literal["a", "b"]) -> dict[str, Any]:
     """Tables loaded by the last successful connect on *side*."""
-    session = _get_session(session_id)
+    session = get_session_or_404(session_id)
     with session.lock:
         tables = list(getattr(session, f"tables_{side}"))
     return {"tables": tables}
@@ -224,7 +200,7 @@ def list_presets() -> dict[str, Any]:
 def save_preset(req: PresetSaveRequest) -> dict[str, Any]:
     """Save (upsert by name) a connection preset."""
     if req.ds_type not in DS_TYPES:
-        raise HTTPException(status_code=400,
+        raise HTTPException(status_code=422,
                             detail=f"unknown datasource: {req.ds_type}")
     try:
         _PRESETS_STORE.save(
@@ -233,7 +209,7 @@ def save_preset(req: PresetSaveRequest) -> dict[str, Any]:
             req.password.strip(), environment=req.environment.strip(),
         )
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        raise HTTPException(status_code=422, detail=str(e)) from e
     return {"ok": True, "name": req.name.strip()}
 
 

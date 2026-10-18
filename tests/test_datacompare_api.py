@@ -237,7 +237,11 @@ def test_presets_save_same_name_replaces(client, presets_tmp):
 
 def test_presets_save_empty_name_rejected(client, presets_tmp):
     r = _save_preset(client, name="   ")
-    assert r.status_code == 400
+    assert r.status_code == 422
+
+
+def test_presets_save_unknown_datasource_rejected(client, presets_tmp):
+    assert _save_preset(client, ds_type="nope").status_code == 422
 
 
 def test_presets_load_unknown_404(client, presets_tmp):
@@ -1057,7 +1061,7 @@ def test_templates_save_load_delete_round_trip(client, templates_tmp):
 
 
 def test_templates_save_empty_name_rejected(client, templates_tmp):
-    assert _save_template(client, name="  ").status_code == 400
+    assert _save_template(client, name="  ").status_code == 422
 
 
 def test_templates_load_unknown_404(client, templates_tmp):
@@ -1250,6 +1254,63 @@ def test_schedule_tick_records_error_when_no_report(client, connected,
     assert status["last_error"]
     assert status["last_run"] is None
     assert list(reports_tmp.glob("*.json")) == []
+    client.post("/api/datacompare/schedule/stop",
+                json={"session_id": connected, "lang": "en"})
+
+
+def test_schedule_tick_skipped_while_manual_run_in_flight(client, connected,
+                                                          reports_tmp):
+    """The tick honours compound's per-session running guard (legacy
+    single-run semantics): a manual compound run in flight makes the tick
+    skip with schedule_last_error='busy' and still re-arm the timer."""
+    from seatunnel_agent.agents.data.data_comparison import (
+        compound,
+        schedule_api,
+    )
+    from seatunnel_agent.agents.data.data_comparison.registry import (
+        get_registry,
+    )
+
+    assert _schedule_start(client, connected).json()["ok"] is True
+    session = get_registry().get(connected)
+    assert session is not None
+
+    with compound._RUNNING_LOCK:
+        compound._RUNNING.add(connected)
+    try:
+        schedule_api.run_schedule_tick(session)
+    finally:
+        with compound._RUNNING_LOCK:
+            compound._RUNNING.discard(connected)
+
+    status = _schedule_status(client, connected)
+    assert status["last_error"] == "busy"
+    assert status["last_run"] is None
+    assert list(reports_tmp.glob("*.json")) == []
+    with session.lock:
+        assert session.schedule_timer is not None  # re-armed despite skip
+
+    client.post("/api/datacompare/schedule/stop",
+                json={"session_id": connected, "lang": "en"})
+
+
+def test_schedule_tick_releases_running_guard(client, connected, reports_tmp):
+    """A normal tick takes and releases the guard (no leak blocking manual
+    runs afterwards)."""
+    from seatunnel_agent.agents.data.data_comparison import (
+        compound,
+        schedule_api,
+    )
+    from seatunnel_agent.agents.data.data_comparison.registry import (
+        get_registry,
+    )
+
+    assert _schedule_start(client, connected).json()["ok"] is True
+    session = get_registry().get(connected)
+    assert session is not None
+    schedule_api.run_schedule_tick(session)
+    with compound._RUNNING_LOCK:
+        assert connected not in compound._RUNNING
     client.post("/api/datacompare/schedule/stop",
                 json={"session_id": connected, "lang": "en"})
 

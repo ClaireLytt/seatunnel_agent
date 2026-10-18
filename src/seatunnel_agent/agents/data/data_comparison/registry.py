@@ -42,15 +42,44 @@ class SessionState:
     lock: threading.Lock = field(default_factory=threading.Lock)
 
 
-class ConnectionRegistry:
-    """Thread-safe map of session id -> :class:`SessionState`."""
+#: Default cap on live sessions (seatunnel-style cap+evict): each session
+#: can hold two DB executors and a timer, so an unbounded registry leaks.
+_DEFAULT_MAX_SESSIONS = 100
 
-    def __init__(self) -> None:
+
+class ConnectionRegistry:
+    """Thread-safe map of session id -> :class:`SessionState`.
+
+    Capped at ``max_sessions``: :meth:`create` evicts the oldest session
+    without an active schedule first (dict order = creation order).
+    Sessions with ``schedule_active`` are never evicted — killing a user's
+    scheduled comparison to admit a new tab would be worse than briefly
+    exceeding the cap.
+    """
+
+    def __init__(self, max_sessions: int = _DEFAULT_MAX_SESSIONS) -> None:
         self._sessions: dict[str, SessionState] = {}
         self._lock = threading.Lock()
+        self._max_sessions = max_sessions
 
     def create(self) -> SessionState:
-        """Create and register a new session with a fresh id."""
+        """Create and register a new session with a fresh id.
+
+        Evicts (via :meth:`remove`, which cancels timers) the oldest
+        idle session when the registry is at capacity.
+        """
+        while True:
+            with self._lock:
+                if len(self._sessions) < self._max_sessions:
+                    break
+                victim = next(
+                    (sid for sid, s in self._sessions.items()
+                     if not s.schedule_active),
+                    None,
+                )
+            if victim is None:  # every session has an active schedule
+                break
+            self.remove(victim)
         session = SessionState(session_id=uuid.uuid4().hex)
         with self._lock:
             self._sessions[session.session_id] = session

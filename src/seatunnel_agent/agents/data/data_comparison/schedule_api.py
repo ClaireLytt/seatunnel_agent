@@ -23,7 +23,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from seatunnel_agent.agents.data.data_comparison import reports_api
@@ -35,12 +35,14 @@ from seatunnel_agent.agents.data.data_comparison.comparator import (
 from seatunnel_agent.agents.data.data_comparison.compound import (
     CompoundRequest,
     compare_all_run,
+    release_run,
+    try_acquire_run,
+)
+from seatunnel_agent.agents.data.data_comparison.deps import (
+    get_session_or_404,
 )
 from seatunnel_agent.agents.data.data_comparison.i18n import dc
-from seatunnel_agent.agents.data.data_comparison.registry import (
-    SessionState,
-    get_registry,
-)
+from seatunnel_agent.agents.data.data_comparison.registry import SessionState
 from seatunnel_agent.agents.data.data_comparison.ui_cards import (
     build_trend_alert_card,
 )
@@ -52,13 +54,6 @@ from seatunnel_agent.agents.data.data_comparison.ui_shared import (
 
 # No prefix of its own: api.py includes this router under /api/datacompare.
 router = APIRouter(tags=["datacompare-schedule"])
-
-
-def _get_session(session_id: str) -> SessionState:
-    session = get_registry().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="unknown session_id")
-    return session
 
 
 class ScheduleStartRequest(CompoundRequest):
@@ -100,6 +95,13 @@ def run_schedule_tick(session: SessionState) -> None:
     if req is None:  # stopped and cleared between arm and fire
         return
     assert isinstance(req, CompoundRequest)
+    # Same per-session guard as the compound endpoints (legacy single-run
+    # semantics): skip this tick when a manual run is in flight.
+    if not try_acquire_run(session.session_id):
+        with session.lock:
+            session.schedule_last_error = "busy"
+        _reschedule(session, interval_min)
+        return
     try:
         with session.lock:
             report_before = session.last_report
@@ -129,13 +131,15 @@ def run_schedule_tick(session: SessionState) -> None:
                 "table_a": req.table_a, "table_b": req.table_b,
                 "error": str(exc),
             })
+    finally:
+        release_run(session.session_id)
     _reschedule(session, interval_min)
 
 
 @router.post("/schedule/start")
 def schedule_start(req: ScheduleStartRequest) -> dict[str, Any]:
     """Arm the per-session comparison timer (legacy _schedule_start)."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     if not req.table_a or not req.table_b:
         return {"ok": False, "active": False,
                 "message": dc(req.lang, "dc_select_tables")}
@@ -161,7 +165,7 @@ def schedule_start(req: ScheduleStartRequest) -> dict[str, Any]:
 @router.post("/schedule/stop")
 def schedule_stop(req: ScheduleStopRequest) -> dict[str, Any]:
     """Cancel the timer and deactivate (legacy _schedule_stop)."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     with session.lock:
         session.schedule_active = False
         session.schedule_request = None
@@ -176,7 +180,7 @@ def schedule_stop(req: ScheduleStopRequest) -> dict[str, Any]:
 @router.get("/schedule/status")
 def schedule_status(session_id: str) -> dict[str, Any]:
     """Live schedule state (new endpoint; legacy only had status strings)."""
-    session = _get_session(session_id)
+    session = get_session_or_404(session_id)
     with session.lock:
         return {
             "active": session.schedule_active,

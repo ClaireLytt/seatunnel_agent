@@ -27,11 +27,12 @@ from seatunnel_agent.agents.data.data_comparison.comparator import (
     CompareReport,
     diff_reports,
 )
-from seatunnel_agent.agents.data.data_comparison.i18n import dc
-from seatunnel_agent.agents.data.data_comparison.registry import (
-    SessionState,
-    get_registry,
+from seatunnel_agent.agents.data.data_comparison.deps import (
+    SessionTablesRequest,
+    get_session_or_404,
 )
+from seatunnel_agent.agents.data.data_comparison.i18n import dc
+from seatunnel_agent.agents.data.data_comparison.registry import SessionState
 from seatunnel_agent.agents.data.data_comparison.ui_cards import (
     build_aggregate_card,
     build_batch_count_card,
@@ -59,13 +60,6 @@ from seatunnel_agent.agents.data.data_comparison.ui_shared import (
 
 # No prefix of its own: api.py includes this router under /api/datacompare.
 router = APIRouter(tags=["datacompare-reports"])
-
-
-def _get_session(session_id: str) -> SessionState:
-    session = get_registry().get(session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="unknown session_id")
-    return session
 
 
 def _snap_report(session: SessionState) -> CompareReport:
@@ -97,17 +91,14 @@ def _read_report(name: str) -> CompareReport:
 # ── save / list / load (legacy ui.py _save_report/_list_reports/_load_report) ──
 
 
-class ReportSaveRequest(BaseModel):
-    session_id: str
-    table_a: str = ""
-    table_b: str = ""
-    lang: str = "en"
+class ReportSaveRequest(SessionTablesRequest):
+    pass
 
 
 @router.post("/reports")
 def save_report(req: ReportSaveRequest) -> dict[str, Any]:
     """Persist the session's last report as compare_<a>_vs_<b>_<ts>.json."""
-    session = _get_session(req.session_id)
+    session = get_session_or_404(req.session_id)
     with session.lock:
         report = session.last_report
     if not report:
@@ -140,7 +131,7 @@ def list_reports() -> dict[str, list[str]]:
 @router.get("/reports/{name}")
 def load_report(name: str, session_id: str, lang: str = "en") -> dict[str, str]:
     """Load a saved report into the session and render its cards."""
-    session = _get_session(session_id)
+    session = get_session_or_404(session_id)
     report = _read_report(name)
     with session.lock:
         session.last_report = report
@@ -199,7 +190,7 @@ def report_diff(req: ReportDiffRequest) -> dict[str, str]:
 @router.get("/export/csv")
 def export_csv(session_id: str, lang: str = "en") -> FileResponse:
     """Multi-section CSV of the session's last report."""
-    report = _snap_report(_get_session(session_id))
+    report = _snap_report(get_session_or_404(session_id))
     path = Path(_export_report_csv(report))
     return FileResponse(path, media_type="text/csv", filename=path.name)
 
@@ -207,7 +198,7 @@ def export_csv(session_id: str, lang: str = "en") -> FileResponse:
 @router.get("/export/xlsx")
 def export_xlsx(session_id: str, lang: str = "en") -> FileResponse:
     """Multi-sheet Excel workbook of the session's last report."""
-    report = _snap_report(_get_session(session_id))
+    report = _snap_report(get_session_or_404(session_id))
     path = Path(_export_report_excel(report))
     return FileResponse(
         path,
@@ -223,5 +214,5 @@ def export_xlsx(session_id: str, lang: str = "en") -> FileResponse:
 @router.get("/report/standalone")
 def standalone_report(session_id: str, lang: str = "en") -> HTMLResponse:
     """Full standalone report page — the React page links here (_blank)."""
-    report = _snap_report(_get_session(session_id))
+    report = _snap_report(get_session_or_404(session_id))
     return HTMLResponse(build_standalone_report(report, lang))

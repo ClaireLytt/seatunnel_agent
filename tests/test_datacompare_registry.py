@@ -100,6 +100,61 @@ class TestConnectionRegistry:
         assert len(set(ids)) == 8 * 50
 
 
+class TestEviction:
+    """Cap + evict-oldest-idle on create() (seatunnel-style cap)."""
+
+    def test_create_evicts_oldest_idle_when_full(self):
+        reg = ConnectionRegistry(max_sessions=3)
+        s1 = reg.create()
+        s2 = reg.create()
+        s3 = reg.create()
+        s4 = reg.create()
+        assert reg.get(s1.session_id) is None  # oldest idle evicted
+        assert reg.get(s2.session_id) is s2
+        assert reg.get(s3.session_id) is s3
+        assert reg.get(s4.session_id) is s4
+
+    def test_eviction_skips_sessions_with_active_schedule(self):
+        reg = ConnectionRegistry(max_sessions=2)
+        s1 = reg.create()
+        with s1.lock:
+            s1.schedule_active = True
+        s2 = reg.create()
+        s3 = reg.create()
+        assert reg.get(s1.session_id) is s1  # protected by its schedule
+        assert reg.get(s2.session_id) is None  # next-oldest idle evicted
+        assert reg.get(s3.session_id) is s3
+
+    def test_all_scheduled_grows_past_cap_instead_of_killing_schedules(self):
+        reg = ConnectionRegistry(max_sessions=2)
+        sessions = [reg.create() for _ in range(2)]
+        for s in sessions:
+            with s.lock:
+                s.schedule_active = True
+        s3 = reg.create()
+        for s in [*sessions, s3]:
+            assert reg.get(s.session_id) is s
+
+    def test_eviction_cancels_schedule_timer(self):
+        reg = ConnectionRegistry(max_sessions=1)
+        s1 = reg.create()
+        timer = threading.Timer(3600, lambda: None)
+        timer.start()
+        with s1.lock:
+            s1.schedule_timer = timer  # left-over timer, schedule inactive
+        reg.create()
+        assert reg.get(s1.session_id) is None
+        assert not timer.is_alive() or timer.finished.is_set()
+        timer.cancel()
+
+    def test_default_cap_is_100(self):
+        reg = ConnectionRegistry()
+        first = reg.create()
+        for _ in range(100):
+            reg.create()
+        assert reg.get(first.session_id) is None
+
+
 def test_get_registry_singleton():
     assert get_registry() is get_registry()
     assert isinstance(get_registry(), ConnectionRegistry)
