@@ -10,7 +10,6 @@
 > `T2S_SUBSCRIPTIONS_PATH` 隔离到本轮 `runs/<ts>/`,不污染仓库 config/);
 > TRP 组覆盖 SQL 方言翻译页(`/transpile`,演示数据 `examples/transpile_demo`);
 > IMP 组覆盖变更影响分析页(`/impact`,目录/粘贴/上下文三种模式,演示数据 `examples/impact_demo`);
-> MIG 组覆盖配置迁移页(`/migrate`,演示数据 `examples/migrate_demo`);
 > SET 组覆盖设置页(`/settings`,LLM API 界面配置;被测应用的设置文件被
 > 隔离到本轮 `runs/<ts>/`,不会触碰开发者真实配置);
 > SCR 组回归全部七个页面的滚动容器(500px 小窗验证内容可滚到底,
