@@ -31,7 +31,7 @@ npm run build --workspace data_skew -> ✓ built in 3.04s
 uitest smoke (--no-llm) -> PASS 44 · FAIL 0 · ERROR 0 · SKIP 0 · MANUAL 1 · 耗时 169s
                            报告: runs/20261019_020338/report.html
                            (50→44:DSK smoke YAML + SCR9 退役,等价覆盖移入页测)
-python scripts/check_workflow.py -> (报告落盘提交后补记,见文末)
+python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / [PASS] 报告落盘(全 PASS)
 ```
 
 手工验证:hub 启动后 `GET /dataskew/` 200;`POST /api/skew/session` 发号正常;
