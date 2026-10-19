@@ -87,11 +87,14 @@ class TestDataCoverage:
 # data agents whose REST routers used to be a hand-maintained tuple in
 # launch_app — they must now declare api= so the manifest loop mounts them.
 # sql_review is not listed: its router is mounted unconditionally by the
-# launcher (the React page depends on it), same as uitest.
+# launcher (the React page depends on it), same as uitest. config_lint,
+# sql_fmt, sql_transpile, data_skew, sql_testgen, data_lineage,
+# schema_drift, metric_diff and pii_scan moved off the list for the same
+# reason when their pages went React.
 _DATA_API_NAMES = {
-    "text2sql", "data_lineage", "sql_transpile", "data_skew",
-    "pii_scan", "log_inspect", "schema_drift", "sql_testgen", "config_lint",
-    "dag_check", "metric_diff", "sql_fmt",
+    "text2sql",
+    "log_inspect",
+    "dag_check",
 }
 
 

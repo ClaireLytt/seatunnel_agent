@@ -701,7 +701,12 @@ def test_probe_lines_for_prompt_escapes_multiline_values():
 
 
 def test_remove_section_line_anchored():
-    from seatunnel_agent.agents.data.data_skew.ui import _PROBE_HEAD_RE, _remove_section
+    from seatunnel_agent.agents.data.data_skew.sections import (
+        PROBE_HEAD_RE as _PROBE_HEAD_RE,
+    )
+    from seatunnel_agent.agents.data.data_skew.sections import (
+        remove_section as _remove_section,
+    )
 
     section = render_probe_section([_fake_result()], "en")
     report = "# Report\n\nbody text\n\n" + section
@@ -713,10 +718,14 @@ def test_remove_section_line_anchored():
 
 def test_remove_section_only_touches_its_own_section():
     from seatunnel_agent.agents.data.data_skew import consistency
-    from seatunnel_agent.agents.data.data_skew.ui import (
-        _CST_HEAD_RE,
-        _PROBE_HEAD_RE,
-        _remove_section,
+    from seatunnel_agent.agents.data.data_skew.sections import (
+        CST_HEAD_RE as _CST_HEAD_RE,
+    )
+    from seatunnel_agent.agents.data.data_skew.sections import (
+        PROBE_HEAD_RE as _PROBE_HEAD_RE,
+    )
+    from seatunnel_agent.agents.data.data_skew.sections import (
+        remove_section as _remove_section,
     )
 
     probe_sec = render_probe_section([_fake_result()], "en")

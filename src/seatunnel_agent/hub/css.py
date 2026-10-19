@@ -43,7 +43,7 @@ footer { display: none !important; }
 }
 
 /* Standalone pages (history, favorites, schema, sql review, and any page
-   carrying the generic .st-scroll-page marker — e.g. data skew) need
+   carrying the generic .st-scroll-page marker) need
    scrolling. Only the outermost .gradio-container scrolls; everything
    inside is visible. */
 body:has(.st-history-page),
@@ -91,54 +91,6 @@ body:has(.st-hub) .gradio-container > .main > .wrap {
     height: auto !important;
     min-height: auto !important;
 }
-
-/* ══════════════════════════════════════════
-   Data Skew page polish (same scroll ergonomics as SQL Review)
-   ══════════════════════════════════════════ */
-body:has(.st-scroll-page) .gradio-container > .main > .wrap {
-    max-width: 1500px !important;
-    width: 100% !important;
-    margin: 0 auto !important;
-    padding: 14px 28px 48px !important;
-}
-/* SQL input box: fixed height with a visible vertical scrollbar
-   (max_lines pins the textarea; long SQL scrolls inside the box) */
-#dsk-sql-box textarea {
-    overflow-y: auto !important;
-    scrollbar-width: thin;
-}
-/* Keep the SQL input visible while scrolling a long report */
-body:has(.st-scroll-page) .dsk-input-col {
-    position: sticky !important;
-    top: 12px !important;
-    align-self: flex-start !important;
-}
-/* Report as a card (mirrors .sr-report-card) */
-.gradio-container .dsk-report-card {
-    border: 1px solid #e5e7eb !important;
-    border-radius: 10px !important;
-    background: #fff !important;
-    padding: 14px 18px !important;
-    min-height: 320px !important;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04) !important;
-}
-.dsk-report-card h1 { margin-top: 0 !important; font-size: 1.35rem !important; }
-.dsk-report-card h2 { margin: 16px 0 6px !important; }
-.dsk-report-card h3 { margin: 14px 0 6px !important; }
-.dsk-report-card table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-    margin: 6px 0 !important;
-}
-.dsk-report-card th, .dsk-report-card td {
-    border: 1px solid #e5e7eb !important;
-    padding: 6px 10px !important;
-    text-align: left !important;
-    vertical-align: top !important;
-    line-height: 1.5 !important;
-}
-.dsk-report-card th { background: #f3f4f6 !important; }
-.dsk-report-card tbody tr:nth-child(even) td { background: #fafafa !important; }
 
 /* ══════════════════════════════════════════════
    Sidebar — Claude-style push layout (Column)
@@ -242,10 +194,10 @@ body.st-sidebar-dragging {
 }
 
 /* ══════════════════════════
-   Lineage page — the global container is 100vh/overflow-hidden,
+   Settings page — the global container is 100vh/overflow-hidden,
    so the page provides its own vertical scroll
    ══════════════════════════ */
-.st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page, .st-set-page {
+.st-set-page {
     /* the navbar is hidden, so the page owns the full viewport; keep the
        explicit height so the page (not the clipped app root) scrolls */
     height: 100vh !important;
@@ -257,32 +209,19 @@ body.st-sidebar-dragging {
     scrollbar-width: thin;
     scrollbar-gutter: stable;
 }
-.st-lin-page::-webkit-scrollbar, .st-trp-page::-webkit-scrollbar,
-.st-imp-page::-webkit-scrollbar, .st-mig-page::-webkit-scrollbar,
 .st-set-page::-webkit-scrollbar { width: 8px; }
-.st-lin-page::-webkit-scrollbar-thumb, .st-trp-page::-webkit-scrollbar-thumb,
-.st-imp-page::-webkit-scrollbar-thumb, .st-mig-page::-webkit-scrollbar-thumb,
 .st-set-page::-webkit-scrollbar-thumb {
     background: #d1d5db;
     border-radius: 4px;
 }
-.st-lin-page::-webkit-scrollbar-thumb:hover,
-.st-trp-page::-webkit-scrollbar-thumb:hover,
-.st-imp-page::-webkit-scrollbar-thumb:hover,
-.st-mig-page::-webkit-scrollbar-thumb:hover,
 .st-set-page::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
 /* Panels grow with their content (e.g. the expanded Hive advanced
    accordion); the page scrollbar above is the only vertical scroll. */
-.st-lin-side, .st-lin-main, .st-trp-side, .st-trp-main,
-.st-imp-side, .st-imp-main, .st-mig-side, .st-mig-main, .st-set-main {
+.st-set-main {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
     align-self: flex-start !important;
-}
-.st-lin-side, .st-trp-side, .st-imp-side, .st-mig-side {
-    padding-right: 6px !important;
-    border-right: 1px solid #e5e7eb;
 }
 /* Settings page stacks blocks directly in the page column; stop flex from
    shrinking them below content height so the page scrollbar can take over. */
@@ -292,9 +231,6 @@ body.st-sidebar-dragging {
 .st-set-page {
     max-width: 900px;
     margin: 0 auto !important;
-}
-.st-lin-hidden {
-    display: none !important;
 }
 
 /* ══════════════════════════

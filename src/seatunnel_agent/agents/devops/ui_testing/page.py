@@ -119,42 +119,8 @@ LABELS: dict[str, tuple[str, ...]] = {
     "清空":       ("清空", "Clear"),
     "下载报告":   ("下载报告（.md）", "Download Report (.md)"),
     "SQL 方言":   ("SQL 方言", "SQL Dialect"),
-    # ── Data Skew page (/dataskew) — labels from data_skew/i18n.py ──
-    "开始分析":   ("开始分析", "Analyze Skew"),
-    "分析模式":   ("分析模式", "Analysis Mode"),
-    "连接数据源": ("连接数据源（可选——用真实数据验证倾斜）",
-                   "Connect data source (optional — verify skew with real data)"),
-    "探查采样":   ("探查采样", "Probe sampling"),
-    "验证倾斜（实测）": ("验证倾斜（实测数据）", "Verify Skew (live data)"),
-    "一致性实测": ("一致性实测（运行两版 SQL）",
-                   "Measure Consistency (runs both SQLs)"),
-    "下载优化 SQL": ("下载优化后 SQL（.sql）", "Download Optimized SQL (.sql)"),
-    "上传 SQL 文件": ("上传 SQL 文件", "Upload SQL file"),
-    "已保存连接": ("已保存连接", "Saved connection"),
-    "读取已保存连接": ("读取已保存连接", "Load saved connections"),
     # ── MCP Toolbox page (/mcp) ──
     "刷新审计":   ("刷新", "Refresh"),
-    "分析历史":   ("分析历史（最近 20 条）", "Analysis history (last 20)"),
-    "选择记录":   ("选择记录", "Pick a record"),
-    "历史刷新":   ("刷新", "Refresh"),
-    "载入所选":   ("载入所选", "Load selected"),
-    # ── Lineage page (/lineage) ──
-    "SQL 目录":   ("SQL 目录", "SQL directory"),
-    "SeaTunnel 配置目录": ("SeaTunnel 配置目录", "SeaTunnel config directory"),
-    "构建血缘图": ("构建血缘图", "Build lineage graph"),
-    "目标表":     ("目标表", "Target table"),
-    "查询血缘":   ("查询血缘", "Query lineage"),
-    "表名搜索":   ("表名搜索", "Table search"),
-    "搜索":       ("搜索", "Search"),
-    "治理体检":   ("治理体检", "Governance health check"),
-    "血缘字段":   ("字段（可选）", "Column (optional)"),
-    "查询路径":   ("查询路径", "Find path"),
-    "SLA 影响分析": ("SLA 影响分析", "SLA impact analysis"),
-    "保存快照":   ("保存快照", "Save snapshot"),
-    "快照对比":   ("快照对比", "Compare snapshots"),
-    "路径终点表": ("路径终点表", "Path destination table"),
-    "快照名":     ("快照名（可选）", "Snapshot name (optional)"),
-    "对比快照":   ("对比快照", "Compare against snapshot"),
     # settings page (/settings) — labels from settings_ui.py::_I18N
     "提供商":     ("提供商", "Provider"),
     "API Key":    ("API Key", "API Key"),
@@ -230,13 +196,8 @@ class DCPage:
 
     # per-route "page is ready" selector (default: body)
     READY = {
-        "/lineage": ".st-lin-side",
         "/text2sql": ".st-sidebar-status",
-        "/transpile": ".st-trp-side",
-        "/impact": ".st-imp-side",
-        "/migrate": ".st-mig-side",
         "/settings": ".st-set-page",
-        "/dataskew": "#dsk-sql-box textarea",
         "/mcp": ".st-mcp-tools",
     }
 
@@ -572,27 +533,10 @@ class DCPage:
         loc = self.page.locator(".st-main .st-schema-card")
         if loc.count():
             return loc.first
-        loc = self.page.locator(".st-lin-main")
-        if loc.count():
-            return loc.first
-        loc = self.page.locator(".st-trp-main")
-        if loc.count():
-            return loc.first
-        loc = self.page.locator(".st-imp-main")
-        if loc.count():
-            return loc.first
-        loc = self.page.locator(".st-mig-main")
-        if loc.count():
-            return loc.first
-        for cls in (".st-pii-main", ".st-lgi-main", ".st-sdf-main",
-                    ".st-tgn-main", ".st-cfl-main", ".st-dag-main",
-                    ".st-mdf-main", ".st-fmt-main"):
+        for cls in (".st-lgi-main", ".st-dag-main"):
             loc = self.page.locator(cls)
             if loc.count():
                 return loc.first
-        loc = self.page.locator(".dsk-report-card")
-        if loc.count():
-            return loc.first
         return self.page.locator(".prose").last
 
     def result_text(self) -> str:
@@ -648,7 +592,7 @@ class DCPage:
         """Poll until *text* appears in the page body (or result area) —
         replaces fragile fixed waits for slow-rendering side effects."""
         target = ("document.body" if where == "body"
-                  else "document.querySelector('.st-main .st-schema-card, .st-lin-main')")
+                  else "document.querySelector('.st-main .st-schema-card')")
         self.page.wait_for_function(
             f"t => (({target})?.textContent || '').includes(t)",
             arg=text, timeout=timeout_ms)

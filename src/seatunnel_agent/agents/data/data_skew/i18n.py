@@ -42,6 +42,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_running_static": "Running static skew scan…",
         "dsk_running_llm": "LLM is analyzing and rewriting the SQL…",
         "dsk_error": "Error",
+        "dsk_conn_no_env": "host is empty and no .env config found",
         # --- datasource connection (optional) ---
         "dsk_conn_accordion": "Connect data source (optional — verify skew with real data)",
         "dsk_preset_dd": "Saved connection",
@@ -366,6 +367,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_running_static": "正在执行静态倾斜扫描…",
         "dsk_running_llm": "LLM 正在分析并改写 SQL…",
         "dsk_error": "错误",
+        "dsk_conn_no_env": "主机为空且 .env 中未配置该数据源",
         # --- datasource connection (optional) ---
         "dsk_conn_accordion": "连接数据源（可选——用真实数据验证倾斜）",
         "dsk_preset_dd": "已保存连接",

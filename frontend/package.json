@@ -3,9 +3,20 @@
   "private": true,
   "workspaces": [
     "shared",
+    "config_lint",
+    "change_impact",
+    "config_migrate",
     "data_comparison",
+    "data_lineage",
+    "data_skew",
+    "metric_diff",
+    "pii_scan",
+    "schema_drift",
     "seatunnel",
+    "sql_fmt",
     "sql_review",
+    "sql_testgen",
+    "sql_transpile",
     "uitest",
     "text2sql"
   ]

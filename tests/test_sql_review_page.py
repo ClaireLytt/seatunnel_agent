@@ -16,9 +16,13 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import assert_dialect_switch
+from tests.conftest import download_text as _download_text
+
 pytestmark = pytest.mark.uitest
 
 FRONTEND_DIST = Path("frontend") / "sql_review" / "dist"
+TRANSPILE_DIST = Path("frontend") / "sql_transpile" / "dist"
 
 
 def _free_port() -> int:
@@ -45,6 +49,10 @@ def page_url(tmp_path, monkeypatch):
     app = FastAPI()
     app.include_router(router)
     app.mount("/sqlreview", StaticFiles(directory=FRONTEND_DIST, html=True))
+    # the → Transpile bridge test lands on /transpile — serve its dist too
+    if (TRANSPILE_DIST / "index.html").is_file():
+        app.mount("/transpile",
+                  StaticFiles(directory=TRANSPILE_DIST, html=True))
 
     port = _free_port()
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
@@ -193,4 +201,108 @@ def test_sql_review_page_report_hidden_before_review(page_url):
         expect(page.get_by_role("heading", name="Report", exact=True)).to_be_visible(
             timeout=15000)
 
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_sql_review_download_report(page_url):
+    """Ticket 01: Download Report really downloads — suggested_filename is
+    sql_review_report.md and the content is the non-empty CR report."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("#sql").fill("SELECT * FROM ods.user_log WHERE a = NULL")
+        page.get_by_role("button", name="Start Review").click()
+        expect(page.locator(".sr-report")).to_be_visible(timeout=15000)
+
+        with page.expect_download() as dl:
+            page.get_by_role("button",
+                             name="Download Report (.md)").click()
+        report = dl.value
+        assert report.suggested_filename == "sql_review_report.md"
+        report_text = _download_text(report)
+        assert report_text.strip()
+        assert "CR Report" in report_text
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_sql_review_page_dialect_switch_mysql(page_url):
+    """Ticket 05: non-default dialect (mysql) still produces a CR report."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        def run():
+            page.locator("#sql").fill(
+                "SELECT * FROM ods.user_log WHERE a = NULL")
+            page.get_by_role("button", name="Start Review").click()
+
+        assert_dialect_switch(page, dialect="mysql", run=run,
+                              report=page.locator(".sr-report"),
+                              contains="CR Report",
+                              select=page.locator("#dialect"))
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_sql_review_page_transpile_bridge(page_url):
+    """Ticket 05: → Transpile opens /transpile in a new tab, hands the
+    SQL over via the localStorage bridge key, and the transpile page
+    drains the key into its SQL textarea (real prefill, not just the
+    storage write)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    if not (TRANSPILE_DIST / "index.html").is_file():
+        pytest.skip("sql_transpile dist not built (cd frontend && "
+                    "npm run build --workspace sql_transpile)")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        page.locator("#sql").fill("SELECT get_json_object(j, '$.a') FROM t")
+        with page.expect_popup() as popup_info:
+            page.get_by_role("button", name="→ Transpile").click()
+        popup = popup_info.value
+        # StaticFiles redirects the mount root to the trailing-slash URL
+        assert popup.url.rstrip("/").endswith("/transpile")
+        # the transpile app reads + removes the bridge key on mount and
+        # prefills its SQL box — assert the end-to-end handover
+        box = popup.get_by_placeholder(
+            "Paste one or more ;-separated statements…")
+        expect(box).to_have_value(
+            "SELECT get_json_object(j, '$.a') FROM t", timeout=10000)
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_sql_review_page_stats_refresh(page_url):
+    """Ticket 05: Stats accordion loads on open; Refresh Stats re-fetches
+    /stats and the stats area renders (empty-history state is fine)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        # opening the accordion triggers the first stats load
+        with page.expect_response("**/stats") as first:
+            page.get_by_text("Review History Stats").click()
+        assert first.value.ok
+        expect(page.get_by_text("No review records yet.")).to_be_visible()
+
+        # Refresh Stats fires a second fetch and keeps a rendered state
+        with page.expect_response("**/stats") as second:
+            page.get_by_role("button", name="Refresh Stats").click()
+        assert second.value.ok
+        expect(page.get_by_text("No review records yet.")).to_be_visible()
         browser.close()

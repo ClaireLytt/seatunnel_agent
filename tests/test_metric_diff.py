@@ -215,7 +215,24 @@ def test_api_check_outside_whitelist(api_client, monkeypatch, tmp_path):
     assert r.status_code == 403
 
 
+def test_api_check_failed_structured(api_client, monkeypatch):
+    import seatunnel_agent.agents.data.metric_diff.api as api_mod
+
+    def boom(*a, **kw):
+        raise ValueError("parse exploded")
+
+    monkeypatch.setattr(api_mod, "check_sql_dir", boom)
+    r = api_client.post("/api/metricdiff/check", json={
+        "sql_dir": "examples/metricdiff_demo"})
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["code"] == "check_failed"
+    assert "parse exploded" in detail["error"]
+
+
 def test_api_check_bad_dir(api_client):
     r = api_client.post("/api/metricdiff/check", json={"sql_dir": "no_such"})
     assert r.status_code == 400
+    # structured since the React migration: frontend localizes bad_dir
+    assert r.json()["detail"] == {"code": "bad_dir", "path": "no_such"}
     assert api_client.get("/api/metricdiff/health").json()["status"] == "ok"

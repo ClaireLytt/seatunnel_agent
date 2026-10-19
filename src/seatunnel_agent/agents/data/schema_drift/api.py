@@ -66,15 +66,28 @@ def diff(req: DriftRequest) -> DriftResponse:
             status_code=400,
             detail="Provide either inline SQL or paths, not both")
     if has_old_sql:
-        result = diff_scripts(req.old_sql, req.new_sql, dialect=req.dialect)
+        try:
+            result = diff_scripts(req.old_sql, req.new_sql,
+                                  dialect=req.dialect)
+        except Exception as exc:  # legacy UI degraded to "⚠️ Type: msg"
+            raise HTTPException(status_code=400, detail={
+                "code": "diff_failed",
+                "error": f"{type(exc).__name__}: {exc}"})
     elif has_old_path:
         for raw in (req.old_path.strip(), req.new_path.strip()):
+            # whitelist first (403, no existence probing), then a structured
+            # detail the frontend localizes (i18n `bad_path`)
             _check_path_allowed(raw)
             if not Path(raw).exists():
                 raise HTTPException(status_code=400,
-                                    detail=f"路径不存在: {raw}")
-        result = diff_paths(req.old_path.strip(), req.new_path.strip(),
-                            dialect=req.dialect)
+                                    detail={"code": "bad_path", "path": raw})
+        try:
+            result = diff_paths(req.old_path.strip(), req.new_path.strip(),
+                                dialect=req.dialect)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail={
+                "code": "diff_failed",
+                "error": f"{type(exc).__name__}: {exc}"})
     else:
         raise HTTPException(
             status_code=400,

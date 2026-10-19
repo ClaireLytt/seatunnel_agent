@@ -208,3 +208,37 @@ def test_api_format_bad_sql_kept(api_client):
     data = r.json()["result"]
     assert data["failed"] == 1 and data["changed"] is False
     assert api_client.get("/api/sqlfmt/health").json()["status"] == "ok"
+
+
+def test_api_format_dir(api_client):
+    r = api_client.post("/api/sqlfmt/format", json={
+        "dir": "examples/sqlfmt_demo", "lang": "en", "report": True})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["result"] is None
+    assert any(x["path"].endswith("messy.sql") for x in data["results"])
+    assert "messy.sql" in data["report"]
+
+
+def test_api_format_dir_bad_dir_structured(api_client):
+    r = api_client.post("/api/sqlfmt/format", json={"dir": "no/such/dir"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == {"code": "bad_dir", "path": "no/such/dir"}
+
+
+def test_api_format_dir_whitelist_403(api_client, tmp_path, monkeypatch):
+    monkeypatch.setenv("SQLFMT_API_ALLOWED_DIRS", str(tmp_path))
+    r = api_client.post("/api/sqlfmt/format", json={
+        "dir": "examples/sqlfmt_demo"})
+    assert r.status_code == 403
+
+
+def test_api_format_requires_sql_or_dir(api_client):
+    r = api_client.post("/api/sqlfmt/format", json={})
+    assert r.status_code == 400
+
+
+def test_api_format_rejects_both_sql_and_dir(api_client):
+    r = api_client.post("/api/sqlfmt/format", json={
+        "sql": "SELECT 1", "dir": "examples/sqlfmt_demo"})
+    assert r.status_code == 400

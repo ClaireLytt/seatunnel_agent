@@ -221,6 +221,67 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     )
     app.app.include_router(datacompare_api_router)
 
+    # Config Migrate backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.config_migrate.api import (
+        router as config_migrate_api_router,
+    )
+    app.app.include_router(config_migrate_api_router)
+
+    # Config Lint backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.config_lint.api import (
+        router as config_lint_api_router,
+    )
+    app.app.include_router(config_lint_api_router)
+
+    # SQL Formatter backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.sql_fmt.api import (
+        router as sql_fmt_api_router,
+    )
+    app.app.include_router(sql_fmt_api_router)
+
+    # SQL Transpile backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.sql_transpile.api import (
+        router as sql_transpile_api_router,
+    )
+    app.app.include_router(sql_transpile_api_router)
+
+    # Data Skew backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.data_skew.api import (
+        router as data_skew_api_router,
+    )
+    app.app.include_router(data_skew_api_router)
+
+    # Test Data Generator backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.sql_testgen.api import (
+        router as sql_testgen_api_router,
+    )
+    app.app.include_router(sql_testgen_api_router)
+
+    # Data Lineage backend: same deal — the React page calls it (the
+    # /impact Gradio page shares this router via its own manifest-free use).
+    from seatunnel_agent.agents.data.data_lineage.api import (
+        router as data_lineage_api_router,
+    )
+    app.app.include_router(data_lineage_api_router)
+
+    # Schema Drift backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.schema_drift.api import (
+        router as schema_drift_api_router,
+    )
+    app.app.include_router(schema_drift_api_router)
+
+    # Metric Diff backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.metric_diff.api import (
+        router as metric_diff_api_router,
+    )
+    app.app.include_router(metric_diff_api_router)
+
+    # PII Scan backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.pii_scan.api import (
+        router as pii_scan_api_router,
+    )
+    app.app.include_router(pii_scan_api_router)
+
     # Rebuilt React pages: every external manifest mounts from the
     # frontend/<name>/dist convention; unbuilt bundles get a hint page.
     from fastapi.responses import HTMLResponse

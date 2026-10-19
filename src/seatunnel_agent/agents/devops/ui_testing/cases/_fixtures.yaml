@@ -3,10 +3,3 @@
 # 数据对比页的 connect_*/select_* 组已随 Gradio /datacompare 退役
 # (ticket 11,替代覆盖见 tests/test_datacompare_page.py)。
 
-# Data Skew 页 (/dataskew) 连接内置 SQLite 演示库,供实测探查用例复用
-connect_skew_sqlite:
-  - open_accordion: 连接数据源
-  - select: {of: 数据源类型, value: SQLite}
-  - fill: {数据库: config/uitest_demo.db}
-  - click: 连接
-  - wait_text: {text: 已连接}

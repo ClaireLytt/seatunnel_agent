@@ -4589,7 +4589,7 @@ class TestSkewCardHandoff:
         import json as _json
         from urllib.parse import quote
 
-        from seatunnel_agent.agents.data.data_skew.ui import parse_conn_handoff
+        from seatunnel_agent.agents.data.data_skew.sections import parse_conn_handoff
 
         raw = quote(_json.dumps({
             "ds_type": "MySQL", "host": "db-b", "port": 3306,

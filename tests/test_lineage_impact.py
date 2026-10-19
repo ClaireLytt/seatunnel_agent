@@ -412,7 +412,10 @@ def test_api_impact_unreadable_dir_is_400(api_client, monkeypatch):
         "old_dir": str(OLD), "new_dir": str(NEW),
     })
     assert r.status_code == 400
-    assert "变更影响分析失败" in r.json()["detail"]
+    # structured since the React migration: {code, error(raw exc text)}
+    detail = r.json()["detail"]
+    assert detail["code"] == "analyze_failed"
+    assert "permission denied" in detail["error"]
 
 
 # ─────────────────────────── MCP tool ───────────────────────────
@@ -690,3 +693,32 @@ def test_cli_impact_stats_summary(tmp_path, monkeypatch):
     assert "共 1 次" in res.output
     assert "含破坏性 1 次" in res.output
     assert "高频变更表" in res.output
+
+
+def test_api_impact_carries_mermaid_and_diff(api_client, monkeypatch):
+    from pathlib import Path
+
+    demo = Path("examples/impact_demo").resolve()
+    monkeypatch.setenv("LINEAGE_API_ALLOWED_DIRS", str(demo))
+    r = api_client.post("/api/lineage/impact", json={
+        "old_dir": str(demo / "old"), "new_dir": str(demo / "new"),
+        "lang": "en"})
+    assert r.status_code == 200, r.text
+    assert "mermaid" in r.json()
+    assert "sql_diff" not in r.json()  # dirs mode: no pasted texts
+
+    r = api_client.post("/api/lineage/impact", json={
+        "old_sql": "SELECT a FROM t", "new_sql": "SELECT a, b FROM t",
+        "lang": "en"})
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert "mermaid" in data
+    assert "diff" in data["sql_diff"] or "+" in data["sql_diff"]
+
+
+def test_api_impact_bad_dir_structured(api_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("LINEAGE_API_ALLOWED_DIRS", str(tmp_path))
+    r = api_client.post("/api/lineage/impact", json={
+        "old_dir": str(tmp_path / "nope"), "new_dir": str(tmp_path / "nope2")})
+    assert r.status_code == 400
+    assert r.json()["detail"]["code"] == "bad_dir"

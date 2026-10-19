@@ -3,53 +3,6 @@
 # 以下的控件永远够不着(e7ec1a1 修过 /transpile 与 /impact 正是此病)。
 # scrollable 断言会把视口压到 500px 高,确认容器真的能滚到底。
 
-- id: SCR1
-  title: 血缘页有滚动条
-  tags: [smoke, sqlite]
-  page: /lineage
-  steps:
-    - wait: 500
-      note: 纯断言用例,等页面水合完成即可
-  expect:
-    - scrollable: {selector: .st-lin-page}
-
-- id: SCR2
-  title: 方言翻译页有滚动条
-  tags: [smoke, sqlite]
-  page: /transpile
-  steps:
-    - wait: 500
-      note: 纯断言用例,等页面水合完成即可
-  expect:
-    - scrollable: {selector: .st-trp-page}
-
-- id: SCR3
-  title: 变更影响页有滚动条
-  tags: [smoke, sqlite]
-  page: /impact
-  steps:
-    - wait: 500
-      note: 纯断言用例,等页面水合完成即可
-  expect:
-    - scrollable: {selector: .st-imp-page}
-
-# SCR4 retired: /datacompare is the React page; it scrolls natively
-# (see tests/test_datacompare_page.py).
-
-# SCR5 retired: /sqlreview is the React page; it scrolls natively.
-
-# SCR6 retired: text2sql-legacy page deleted; React app scrolls natively.
-
-- id: SCR7
-  title: 配置迁移页有滚动条
-  tags: [smoke, sqlite]
-  page: /migrate
-  steps:
-    - wait: 500
-      note: 纯断言用例,等页面水合完成即可
-  expect:
-    - scrollable: {selector: .st-mig-page}
-
 - id: SCR8
   title: data agents hub scrolls to the last card
   tags: [smoke, sqlite]
@@ -61,15 +14,3 @@
   expect:
     - scrollable: {selector: .gradio-container}
 
-- id: SCR9
-  title: 数据倾斜页整体可滚动 (.st-scroll-page 标记)
-  tags: [smoke, sqlite]
-  page: /dataskew
-  steps:
-    - wait: 500
-      note: 纯断言用例,等页面水合完成即可
-  expect:
-    - scrollable: {selector: .gradio-container}
-
-# SCR10 retired: /datacompare is the React page; results-panel scrolling is
-# covered by tests/test_datacompare_page.py.

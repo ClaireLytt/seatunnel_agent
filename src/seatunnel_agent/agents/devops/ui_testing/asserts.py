@@ -325,5 +325,6 @@ def _check(a: Assertion, dc: DCPage) -> tuple[bool, str]:
     raise ValueError(f"unhandled assertion kind: {k}")
 
 
-# every page-level scroll container class, newest last (see ui.py CSS)
-_PAGE_SCROLL_SELECTOR = ".st-lin-page, .st-trp-page, .st-imp-page, .st-mig-page"
+# default page-level scroll container (remaining Gradio pages use
+# explicit selectors in their cases; /settings keeps .st-set-page)
+_PAGE_SCROLL_SELECTOR = ".st-set-page"
