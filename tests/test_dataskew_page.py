@@ -480,3 +480,207 @@ def test_dataskew_copy_sql_clipboard(page_url, stub_llm):
         clipboard = page.evaluate("() => navigator.clipboard.readText()")
         assert clipboard == STUB_OPTIMIZED_SQL
         browser.close()
+
+
+# ─────────────────── ticket 04: panel-control coverage ───────────────────
+
+# Single-source SeaTunnel job config against the seeded SQLite demo table:
+# the configured split key `qty` holds only 5 distinct values (low_ndv for
+# 2 tasks), so the measured check recommends `id` and returns a patched conf.
+SPLITKEY_CONF = """\
+env { parallelism = 2 }
+source {
+  Jdbc {
+    url = "jdbc:sqlite:demo.db"
+    table_path = "dc_test_metrics_a"
+    partition_column = "qty"
+    partition_num = 2
+  }
+}
+sink { Console {} }
+"""
+
+
+def _write_eventlog(path: Path) -> None:
+    """Minimal Spark event log: stage 1 has a 60s straggler vs a 2s median
+    (confirmed skew), stage 2 is even (same shape as tests/test_data_skew.py)."""
+    import json
+
+    events: list[dict] = [
+        {"Event": "SparkListenerApplicationStart", "App Name": "pw_app"},
+        {"Event": "SparkListenerStageCompleted",
+         "Stage Info": {"Stage ID": 1, "Stage Name": "Exchange"}},
+        {"Event": "SparkListenerStageCompleted",
+         "Stage Info": {"Stage ID": 2, "Stage Name": "Scan"}},
+    ]
+    for sid, durs in ((1, (2000, 2000, 2500, 60_000)),
+                      (2, (3000, 3100, 2900, 3000))):
+        for d in durs:
+            events.append({
+                "Event": "SparkListenerTaskEnd", "Stage ID": sid,
+                "Task Info": {"Launch Time": 0, "Finish Time": d},
+                "Task Metrics": {"Shuffle Read Metrics": {
+                    "Remote Bytes Read": 0, "Local Bytes Read": 0}}})
+    path.write_text("\n".join(json.dumps(e) for e in events),
+                    encoding="utf-8")
+
+
+@pytest.fixture()
+def no_llm_key(monkeypatch):
+    """Deterministic no-API-key environment: load_settings raises, so
+    mode=llm degrades to the static scan with the banner (never a model
+    call)."""
+    from seatunnel_agent.common import config as config_mod
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("no api key configured (test)")
+
+    monkeypatch.setattr(config_mod, "load_settings", _raise)
+
+
+@pytest.fixture()
+def stub_presets(monkeypatch):
+    """One saved SQLite connection preset, served from a stub store (the
+    real store reads ~/.seatunnel-agent — not touched here)."""
+    from seatunnel_agent.agents.data.data_comparison import (
+        presets as presets_mod,
+    )
+
+    class _Store:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def list(self):
+            return [{"name": "pw_demo", "ds_type": "sqlite"}]
+
+        def get_by_name(self, name):
+            if name != "pw_demo":
+                return None
+            return {"name": "pw_demo", "ds_type": "sqlite", "host": "",
+                    "port": "", "database": _DEMO_DB, "username": "",
+                    "password": ""}
+
+    monkeypatch.setattr(presets_mod, "ConnectionPresetsStore", _Store)
+
+
+@pytest.mark.uitest
+def test_dataskew_llm_mode_no_key_banner(page_url, no_llm_key):
+    """Mode select switched to llm without an API key: the analysis
+    degrades deterministically to static with the localized banner."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("#dsk-sql-box").fill(DISTINCT_SQL)
+        # selects: 0=dialect 1=mode 2=preset 3=ds_type 4=sample
+        page.locator("select").nth(1).select_option("llm")
+        page.get_by_role("button", name="Analyze Skew", exact=True).click()
+
+        report = page.locator(".dsk-report-card")
+        expect(report).to_be_visible(timeout=10000)
+        expect(report).to_contain_text("LLM is not configured")
+        expect(report).to_contain_text("COUNT(DISTINCT)")  # static findings
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_dataskew_splitkey_upload_check_download(page_url, tmp_path):
+    """Split-key panel end to end: upload a .conf, check the key, download
+    the patched config via a real expect_download."""
+    from playwright.sync_api import expect, sync_playwright
+
+    conf_file = tmp_path / "job.conf"
+    conf_file.write_text(SPLITKEY_CONF, encoding="utf-8")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        _connect_sqlite(page)
+        panel = page.locator("details",
+                             has_text="SeaTunnel split-key check")
+        panel.locator("summary").click()
+        panel.locator('input[type="file"]').set_input_files(str(conf_file))
+        expect(panel.locator("textarea")).to_have_value(SPLITKEY_CONF)
+
+        page.get_by_role("button", name="Check split key",
+                         exact=True).click()
+        dl_btn = page.get_by_role("button",
+                                  name="Download patched config")
+        expect(dl_btn).to_be_visible(timeout=20000)
+        with page.expect_download() as dl:
+            dl_btn.click()
+        patched = dl.value
+        assert patched.suggested_filename == "seatunnel_patched.conf"
+        patched_text = _download_text(patched)
+        assert patched_text.strip()
+        assert 'partition_column = "id"' in patched_text
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_dataskew_runtime_panel(page_url, tmp_path):
+    """Runtime panel: rt_btn without inputs shows the localized guard;
+    uploading a Spark event log appends the runtime diagnosis section."""
+    from playwright.sync_api import expect, sync_playwright
+
+    log_file = tmp_path / "eventlog.json"
+    _write_eventlog(log_file)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        panel = page.locator("details", has_text="Runtime diagnosis")
+        panel.locator("summary").click()
+        page.get_by_role("button", name="Fetch & diagnose",
+                         exact=True).click()
+        expect(page.get_by_text("Provide both the History Server URL",
+                                exact=False)).to_be_visible()
+
+        panel.locator('input[type="file"]').set_input_files(str(log_file))
+        report = page.locator(".dsk-report-card")
+        expect(report).to_be_visible(timeout=15000)
+        expect(report).to_contain_text("Runtime Skew Diagnosis",
+                                       timeout=15000)
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_dataskew_preset_load_and_sample_verify(page_url, stub_presets):
+    """Preset load button fills the form from the saved connection; after
+    switching the sample-size select Verify still works."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("#dsk-sql-box").fill(GROUP_SQL)
+        page.locator("summary", has_text="Connect data source").click()
+        page.get_by_role("button", name="Load saved connections",
+                         exact=True).click()
+        # selects: 0=dialect 1=mode 2=preset 3=ds_type 4=sample
+        preset_select = page.locator("select").nth(2)
+        expect(preset_select.locator("option",
+                                     has_text="pw_demo")).to_have_count(1)
+        preset_select.select_option("pw_demo")
+        expect(page.get_by_text("Database").locator(
+            "xpath=following-sibling::input")).to_have_value(_DEMO_DB)
+
+        page.get_by_role("button", name="Connect", exact=True).click()
+        expect(page.get_by_text("Connected", exact=False)).to_be_visible(
+            timeout=10000)
+
+        page.locator("select").nth(4).select_option("1")  # 1% sampling
+        page.get_by_role("button", name="Verify Skew (live data)",
+                         exact=True).click()
+        expect(page.locator(".dsk-report-card")).to_contain_text(
+            "Skew Verification", timeout=15000)
+        browser.close()

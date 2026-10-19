@@ -320,3 +320,132 @@ def test_lineage_lang_switch(page_url):
         expect(page.get_by_text("血缘图已构建", exact=False)).to_be_visible(
             timeout=15000)
         browser.close()
+
+
+# ─────────────────── ticket 04: advanced-control coverage ───────────────────
+
+UPSTREAM_TABLE = "ods.orders_raw"    # feeds dwd.orders_di in the demo dir
+DOWNSTREAM_TABLE = "dws.gmv_daily"   # built from dwd.orders_di
+
+
+@pytest.fixture()
+def lineage_no_llm(monkeypatch):
+    """Deterministic no-API-key environment for the Agent panel: the API
+    module's load_settings raises, so /analyze/stream returns the
+    structured no_settings final frame (never a model call)."""
+    from seatunnel_agent.agents.data.data_lineage import api as lineage_api
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("no api key configured (test)")
+
+    monkeypatch.setattr(lineage_api, "load_settings", _raise)
+
+
+def _mermaid_pre(page):
+    """The mermaid-source <pre> inside its accordion (opened on demand)."""
+    acc = page.locator("details", has_text="Mermaid source")
+    if not acc.locator("pre").is_visible():
+        acc.locator("summary").click()
+    return acc.locator("pre")
+
+
+@pytest.mark.uitest
+def test_lineage_direction_filter_up_down(page_url):
+    """Equivalent of the retired LIN13 yaml case, both directions:
+    upstream-only shows the upstream table and not the downstream one,
+    downstream-only the symmetric opposite."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        _build_demo(page)  # target table dwd.orders_di
+        # selects: 0=sql dialect, 1=direction, 2=snapshot compare
+        direction = page.locator("select").nth(1)
+
+        direction.select_option("upstream")
+        page.get_by_role("button", name="Query lineage", exact=True).click()
+        expect(page.locator("svg").first).to_be_visible(timeout=15000)
+        pre = _mermaid_pre(page)
+        expect(pre).to_contain_text(UPSTREAM_TABLE)
+        expect(pre).not_to_contain_text(DOWNSTREAM_TABLE)
+
+        direction.select_option("downstream")
+        page.get_by_role("button", name="Query lineage", exact=True).click()
+        expect(pre).to_contain_text(DOWNSTREAM_TABLE, timeout=15000)
+        expect(pre).not_to_contain_text(UPSTREAM_TABLE)
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_lineage_copy_mermaid_clipboard(page_url):
+    """Copy in the mermaid-source accordion writes the graph source to
+    the clipboard (real clipboard permissions + readText)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        ctx = browser.new_context(
+            permissions=["clipboard-read", "clipboard-write"])
+        page = ctx.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        _build_demo(page)
+        page.get_by_role("button", name="Query lineage", exact=True).click()
+        expect(page.locator("svg").first).to_be_visible(timeout=15000)
+
+        acc = page.locator("details", has_text="Mermaid source")
+        acc.locator("summary").click()
+        acc.get_by_role("button", name="Copy", exact=True).click()
+        expect(acc.get_by_text("Copied", exact=False)).to_be_visible()
+
+        clipboard = page.evaluate("() => navigator.clipboard.readText()")
+        assert clipboard.startswith("flowchart")
+        assert DEMO_TABLE in clipboard
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_lineage_path_analysis(page_url):
+    """Find path renders the lineage path between two demo tables."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        _build_demo(page)  # source table dwd.orders_di
+        page.locator('input[list="lin-tables-dst"]').fill(
+            "ads.city_gmv_report")
+        page.get_by_role("button", name="Find path", exact=True).click()
+
+        report = page.locator(".lin-report")
+        expect(report).to_be_visible(timeout=15000)
+        # the demo path runs dwd.orders_di → dws.gmv_daily → ads.city_gmv_report
+        expect(report).to_contain_text("dws.gmv_daily")
+        expect(report).to_contain_text("ads.city_gmv_report")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_lineage_agent_real_question_no_key(page_url, lineage_no_llm):
+    """Agent panel with a real question but no API key: the deterministic
+    reachable path is the localized no_settings degradation message."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        _build_demo(page, pick_table=False)
+        page.locator("summary", has_text="Agent Q&A").click()
+        page.get_by_placeholder("e.g. Which downstream tables").fill(
+            "Which downstream tables depend on dwd.orders_di?")
+        page.get_by_role("button", name="Ask", exact=True).click()
+        expect(page.get_by_text("No API key configured",
+                                exact=False)).to_be_visible(timeout=15000)
+        browser.close()

@@ -3,26 +3,8 @@
 
 # SR11-SR13 retired: /sqlreview is the React page (see tests/test_sql_review_page.py).
 
-# ── 血缘扩展 ──
-
-- id: LIN13
-  title: 方向过滤为仅上游时不出现下游表
-  tags: [full, sqlite]
-  page: /lineage
-  setup:
-    - fill: {SQL 目录: examples/lineage_demo}
-    - click: 构建血缘图
-    - wait: 2500
-      note: 构图结果写在侧栏
-  steps:
-    - select: {of: 目标表, value: dws.gmv_daily}
-    - select: {of: 方向, value: 仅上游}
-    - click: 查询血缘
-    - wait_result: {}
-  expect:
-    - text_contains: {in: 结果区, text: dwd.orders_di}
-    - text_not_contains: {in: 结果区, text: ads.top_users}
-      note: 仅上游模式不应把下游 ads 表画进链路
+# LIN13 retired: /lineage is the React page — direction filtering is covered
+# by tests/test_lineage_page.py::test_lineage_direction_filter_up_down.
 
 # 数据对比扩展用例 (D5/G3/L2/J3) retired: /datacompare is the React page
 # (see tests/test_datacompare_page.py).
