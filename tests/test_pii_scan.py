@@ -334,3 +334,24 @@ def test_api_rules_and_health(api_client):
     assert r.status_code == 200
     assert any(x["category"] == "phone" for x in r.json()["rules"])
     assert api_client.get("/api/pii/health").json()["status"] == "ok"
+
+
+def test_api_scan_bad_dir_structured(api_client):
+    # structured since the React migration: frontend localizes bad_dir
+    r = api_client.post("/api/pii/scan", json={"dir": "no_such_dir"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == {"code": "bad_dir", "path": "no_such_dir"}
+
+
+def test_api_scan_failed_structured(api_client, monkeypatch):
+    import seatunnel_agent.agents.data.pii_scan.api as api_mod
+
+    def boom(*a, **kw):
+        raise ValueError("scanner exploded")
+
+    monkeypatch.setattr(api_mod, "scan_sql_text", boom)
+    r = api_client.post("/api/pii/scan", json={"sql": "SELECT 1"})
+    assert r.status_code == 400
+    detail = r.json()["detail"]
+    assert detail["code"] == "scan_failed"
+    assert "scanner exploded" in detail["error"]
