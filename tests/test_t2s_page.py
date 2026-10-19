@@ -15,6 +15,8 @@ import time
 
 import pytest
 
+from tests.conftest import download_text as _download_text
+
 pytestmark = pytest.mark.uitest
 
 DIST = "frontend/text2sql/dist"
@@ -110,7 +112,6 @@ def chat_page_url(tmp_path, monkeypatch):
     class FakeAgent:
         def __init__(self):
             self._on_event = None
-            self.messages = []
             self.runtime = type("R", (), {"ds_type": "sqlite"})()
             self.runtime.store = type(
                 "S", (), {"tables": [type("T", (), {"full_name": "orders"})()]})()
@@ -127,8 +128,10 @@ def chat_page_url(tmp_path, monkeypatch):
 
         def chat(self, message):
             if "slow" in message:
-                # never finishes on its own: the Stop endpoint injects the
-                # terminal event into the live stream (sessions.stop)
+                # never finishes on its own: the Stop endpoint injects
+                # the terminal event into the live stream (sessions.stop).
+                # The 60s is only a backstop so the daemon worker thread
+                # cannot linger forever; no test ever waits on it.
                 self._on_event("text", {"text": "thinking slowly"})
                 threading.Event().wait(60)
                 return ""
@@ -354,13 +357,6 @@ def test_t2s_subscriptions_view(page_url, t2s_stores):
 
 
 # ── ticket 03: button-level coverage for every text2sql control ──────
-
-
-def _download_text(download) -> str:
-    """Reusable download-assertion helper: save and read the file's text."""
-    from pathlib import Path
-
-    return Path(download.path()).read_text(encoding="utf-8")
 
 
 @pytest.fixture()
@@ -616,8 +612,8 @@ def test_t2s_history_refresh_export_delete_resume(chat_page_url, t2s_stores):
 
 @pytest.mark.uitest
 def test_t2s_favorites_rename_delete_refresh(chat_page_url, t2s_stores):
-    """Favorites view: rename via the ✎ button + Enter commit, delete,
-    and refresh."""
+    """Favorites view: rename via the ✎ button (Enter is the editor's
+    only commit path; blur cancels), delete, and refresh."""
     from playwright.sync_api import expect, sync_playwright
 
     t2s_stores.favs.save("top orders", "SELECT * FROM orders LIMIT 10",
@@ -632,9 +628,18 @@ def test_t2s_favorites_rename_delete_refresh(chat_page_url, t2s_stores):
         view = page.locator(".st-favorites-view")
         expect(view).to_contain_text("old name", timeout=15000)
 
-        # rename: ✎ button opens the inline editor, Enter commits
+        # rename: ✎ opens the inline editor. The editor has no commit
+        # button — Enter is the only commit path and blur cancels, so
+        # cover both: blur first (no-op), then Enter (commit).
         view.locator("tr", has_text="old name").get_by_title("Rename").click()
         # the row text is replaced by the editor, so re-locate inside tbody
+        editor = view.locator("tbody input")
+        editor.fill("ignored name")
+        editor.blur()  # cancel: the typed value must be discarded
+        expect(view).to_contain_text("old name")
+        expect(view).not_to_contain_text("ignored name")
+
+        view.locator("tr", has_text="old name").get_by_title("Rename").click()
         editor = view.locator("tbody input")
         editor.fill("new name")
         editor.press("Enter")
@@ -771,6 +776,11 @@ def test_t2s_subscriptions_lifecycle(chat_page_url, t2s_stores, monkeypatch):
 
         # run-now records a run; the status column reflects it
         row.get_by_title("Run now").click()
+        expect(row).to_contain_text("ok", timeout=10000)
+
+        # ⟳ re-fetches the list; the recorded run status survives
+        view.get_by_role("button", name="⟳").click()
+        row = view.locator("tbody tr", has_text="daily sales")
         expect(row).to_contain_text("ok", timeout=10000)
 
         # delete closes the loop

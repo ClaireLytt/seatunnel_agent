@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import assert_dialect_switch
+
 pytestmark = pytest.mark.uitest
 
 from seatunnel_agent.agents.data.schema_drift.manifest import MANIFEST
@@ -250,21 +252,21 @@ def test_schemadrift_lang_switch(page_url):
 def test_schemadrift_dialect_switch_spark(page_url):
     """Ticket 05: non-default dialect (spark) still compares pasted DDL
     and reports the dropped column."""
-    from playwright.sync_api import expect, sync_playwright
+    from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
-        page.locator("select").select_option("spark")
-        expect(page.locator("select")).to_have_value("spark")
-        page.get_by_placeholder("Paste the old CREATE TABLE script…").fill(OLD_DDL)
-        page.get_by_placeholder("Paste the new CREATE TABLE script…").fill(NEW_DDL)
-        page.get_by_role("button", name="Compare", exact=True).click()
+        def run():
+            page.get_by_placeholder(
+                "Paste the old CREATE TABLE script…").fill(OLD_DDL)
+            page.get_by_placeholder(
+                "Paste the new CREATE TABLE script…").fill(NEW_DDL)
+            page.get_by_role("button", name="Compare", exact=True).click()
 
-        report = page.locator(".sd-report")
-        expect(report).to_be_visible(timeout=15000)
-        expect(report).to_contain_text("phone")
-        expect(page.locator("body")).not_to_contain_text("Traceback")
+        assert_dialect_switch(page, dialect="spark", run=run,
+                              report=page.locator(".sd-report"),
+                              contains="phone")
         browser.close()

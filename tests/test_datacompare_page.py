@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import download_text as _download_text
+
 pytestmark = pytest.mark.uitest
 
 FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "data_comparison" / "dist"
@@ -390,11 +392,6 @@ def _connect_both(page, tmp_path) -> None:
         form.locator(f"#table-{side}").select_option("orders")
 
 
-def _download_text(download) -> str:
-    """Save a Playwright download and read it back as text."""
-    return Path(download.path()).read_text(encoding="utf-8")
-
-
 @pytest.mark.uitest
 def test_datacompare_count_sample_aggregate_cards(page_url, tmp_path):
     """Core actions count/sample/aggregate each render their result card."""
@@ -549,6 +546,49 @@ def test_datacompare_generation_card_buttons(page_url, tmp_path):
 
 
 @pytest.mark.uitest
+def test_datacompare_generate_diff_sql_happy_path(page_url, tmp_path):
+    """Generate Diff SQL after a keyed diff: side B is mutated so the
+    keyed diff carries modified + added rows, and the Generated SQL card
+    shows real repair statements (not the empty-state notice)."""
+    import sqlite3
+
+    from playwright.sync_api import expect, sync_playwright
+
+    _make_dbs(tmp_path)
+    # drift side B: one modified value + one extra row
+    conn = sqlite3.connect(tmp_path / "b.db")
+    conn.execute("UPDATE orders SET val = 'changed' WHERE id = 2")
+    conn.execute("INSERT INTO orders VALUES (3, 'extra')")
+    conn.commit()
+    conn.close()
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_both(page, tmp_path)
+
+        cards = page.locator("[data-testid=result-cards]")
+
+        # keyed diff first: Key Columns + incremental feature, as in
+        # test_datacompare_feature_accordion_runs
+        page.locator("#opt-keys").fill("id")
+        page.locator("[data-testid=accordion-incremental] > button").click()
+        page.locator(
+            "[data-testid=accordion-incremental] input").first.fill("id")
+        page.locator("[data-testid=feature-incremental]").click()
+        expect(cards).to_contain_text("Key-Based Diff")
+
+        # now the session holds a keyed diff for the SQL generator
+        page.locator("[data-testid=sync-card] > button").click()
+        page.get_by_role("button", name="Generate Diff SQL").click()
+        expect(cards).to_contain_text("Generated SQL")
+        expect(cards).to_contain_text("UPDATE")
+        expect(cards).to_contain_text("orders")
+        browser.close()
+
+
+@pytest.mark.uitest
 def test_datacompare_preset_save_b_and_env_compare(page_url, tmp_path):
     """Save Preset (B) persists side B's form; Compare Environments then
     resolves both env presets and renders real comparison cards."""
@@ -610,7 +650,10 @@ def test_datacompare_reports_cycle_and_trends(page_url, tmp_path):
         card.get_by_role("button", name="Save Report").click()
         expect(page.locator("[data-testid=report-status]")).to_contain_text(
             "Report saved")
-        # second save → distinct timestamped filename for the diff
+        # second save needs a distinct filename for the diff; the server
+        # names reports compare_<a>_vs_<b>_<UTC-seconds>.json with no
+        # client-settable name (reports_api.save_report), so waiting out
+        # the 1-second timestamp resolution is the deterministic option.
         page.wait_for_timeout(1100)
         card.get_by_role("button", name="Save Report").click()
         card.get_by_role("button", name="Refresh").click()

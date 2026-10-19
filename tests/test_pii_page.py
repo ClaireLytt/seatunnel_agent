@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import assert_dialect_switch
+
 pytestmark = pytest.mark.uitest
 
 from seatunnel_agent.agents.data.pii_scan.manifest import MANIFEST
@@ -230,19 +232,16 @@ def test_pii_lang_switch(page_url):
 def test_pii_dialect_switch_spark(page_url):
     """Ticket 05: non-default dialect (spark) still scans the demo dir
     and reports the sensitive column."""
-    from playwright.sync_api import expect, sync_playwright
+    from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
-        page.locator("select").select_option("spark")
-        expect(page.locator("select")).to_have_value("spark")
-        page.get_by_role("button", name="Scan directory", exact=True).click()
-
-        report = page.locator(".pii-report")
-        expect(report).to_be_visible(timeout=15000)
-        expect(report).to_contain_text("bank_card_no")
-        expect(page.locator("body")).not_to_contain_text("Traceback")
+        assert_dialect_switch(
+            page, dialect="spark",
+            run=lambda: page.get_by_role("button", name="Scan directory",
+                                         exact=True).click(),
+            report=page.locator(".pii-report"), contains="bank_card_no")
         browser.close()

@@ -16,9 +16,13 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import assert_dialect_switch
+from tests.conftest import download_text as _download_text
+
 pytestmark = pytest.mark.uitest
 
 FRONTEND_DIST = Path("frontend") / "sql_review" / "dist"
+TRANSPILE_DIST = Path("frontend") / "sql_transpile" / "dist"
 
 
 def _free_port() -> int:
@@ -45,6 +49,10 @@ def page_url(tmp_path, monkeypatch):
     app = FastAPI()
     app.include_router(router)
     app.mount("/sqlreview", StaticFiles(directory=FRONTEND_DIST, html=True))
+    # the → Transpile bridge test lands on /transpile — serve its dist too
+    if (TRANSPILE_DIST / "index.html").is_file():
+        app.mount("/transpile",
+                  StaticFiles(directory=TRANSPILE_DIST, html=True))
 
     port = _free_port()
     server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
@@ -196,11 +204,6 @@ def test_sql_review_page_report_hidden_before_review(page_url):
         browser.close()
 
 
-def _download_text(download) -> str:
-    """Reusable download-assertion helper: save and read the file's text."""
-    return Path(download.path()).read_text(encoding="utf-8")
-
-
 @pytest.mark.uitest
 def test_sql_review_download_report(page_url):
     """Ticket 01: Download Report really downloads — suggested_filename is
@@ -230,30 +233,36 @@ def test_sql_review_download_report(page_url):
 @pytest.mark.uitest
 def test_sql_review_page_dialect_switch_mysql(page_url):
     """Ticket 05: non-default dialect (mysql) still produces a CR report."""
-    from playwright.sync_api import expect, sync_playwright
+    from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
-        page.locator("#dialect").select_option("mysql")
-        expect(page.locator("#dialect")).to_have_value("mysql")
-        page.locator("#sql").fill("SELECT * FROM ods.user_log WHERE a = NULL")
-        page.get_by_role("button", name="Start Review").click()
+        def run():
+            page.locator("#sql").fill(
+                "SELECT * FROM ods.user_log WHERE a = NULL")
+            page.get_by_role("button", name="Start Review").click()
 
-        report = page.locator(".sr-report")
-        expect(report).to_be_visible(timeout=15000)
-        expect(report).to_contain_text("CR Report")
-        expect(page.locator("body")).not_to_contain_text("Traceback")
+        assert_dialect_switch(page, dialect="mysql", run=run,
+                              report=page.locator(".sr-report"),
+                              contains="CR Report",
+                              select=page.locator("#dialect"))
         browser.close()
 
 
 @pytest.mark.uitest
 def test_sql_review_page_transpile_bridge(page_url):
-    """Ticket 05: → Transpile opens /transpile in a new tab and hands the
-    SQL over via the localStorage bridge key."""
-    from playwright.sync_api import sync_playwright
+    """Ticket 05: → Transpile opens /transpile in a new tab, hands the
+    SQL over via the localStorage bridge key, and the transpile page
+    drains the key into its SQL textarea (real prefill, not just the
+    storage write)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    if not (TRANSPILE_DIST / "index.html").is_file():
+        pytest.skip("sql_transpile dist not built (cd frontend && "
+                    "npm run build --workspace sql_transpile)")
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -262,10 +271,15 @@ def test_sql_review_page_transpile_bridge(page_url):
         page.locator("#sql").fill("SELECT get_json_object(j, '$.a') FROM t")
         with page.expect_popup() as popup_info:
             page.get_by_role("button", name="→ Transpile").click()
-        assert popup_info.value.url.endswith("/transpile")
-        stored = page.evaluate(
-            "() => localStorage.getItem('st_transpile_sql')")
-        assert stored == "SELECT get_json_object(j, '$.a') FROM t"
+        popup = popup_info.value
+        # StaticFiles redirects the mount root to the trailing-slash URL
+        assert popup.url.rstrip("/").endswith("/transpile")
+        # the transpile app reads + removes the bridge key on mount and
+        # prefills its SQL box — assert the end-to-end handover
+        box = popup.get_by_placeholder(
+            "Paste one or more ;-separated statements…")
+        expect(box).to_have_value(
+            "SELECT get_json_object(j, '$.a') FROM t", timeout=10000)
         browser.close()
 
 

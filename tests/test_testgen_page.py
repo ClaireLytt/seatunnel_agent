@@ -21,6 +21,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import assert_dialect_switch
+
 pytestmark = pytest.mark.uitest
 
 from seatunnel_agent.agents.data.sql_testgen.manifest import MANIFEST
@@ -239,21 +241,19 @@ def test_testgen_lang_switch(page_url):
 def test_testgen_dialect_switch_spark(page_url):
     """Ticket 05: non-default dialect (spark) still generates for the
     prefilled JOIN."""
-    from playwright.sync_api import expect, sync_playwright
+    from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
-        page.locator("select").select_option("spark")
-        expect(page.locator("select")).to_have_value("spark")
-        page.get_by_role("button", name="Generate", exact=True).click()
-
-        report = page.locator(".tg-report")
-        expect(report).to_be_visible(timeout=10000)
-        expect(report).to_contain_text("dwd.user_info")
-        expect(page.locator("body")).not_to_contain_text("Traceback")
+        assert_dialect_switch(
+            page, dialect="spark",
+            run=lambda: page.get_by_role("button", name="Generate",
+                                         exact=True).click(),
+            report=page.locator(".tg-report"),
+            contains="dwd.user_info", timeout=10000)
         browser.close()
 
 

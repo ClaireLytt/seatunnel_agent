@@ -26,6 +26,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import assert_dialect_switch, labeled_select
+from tests.conftest import download_text as _download_text
+
 pytestmark = pytest.mark.uitest
 
 from seatunnel_agent.agents.data.data_skew.manifest import MANIFEST
@@ -89,8 +92,7 @@ def _connect_sqlite(page):
     from playwright.sync_api import expect
 
     page.locator("summary", has_text="Connect data source").click()
-    # selects: 0=dialect 1=mode 2=preset 3=ds_type 4=sample
-    page.locator("select").nth(3).select_option("sqlite")
+    labeled_select(page, "Datasource type").select_option("sqlite")
     page.get_by_text("Database").locator("xpath=following-sibling::input").fill(
         _DEMO_DB)
     page.get_by_role("button", name="Connect", exact=True).click()
@@ -367,11 +369,6 @@ def test_dataskew_conn_cookie_handoff(page_url):
         browser.close()
 
 
-def _download_text(download) -> str:
-    """Reusable download-assertion helper: save and read the file's text."""
-    return Path(download.path()).read_text(encoding="utf-8")
-
-
 STUB_OPTIMIZED_SQL = ("SELECT user_id, SUM(cnt) FROM ("
                       "SELECT user_id, COUNT(*) AS cnt FROM ods.user_log "
                       "GROUP BY user_id, bucket) t GROUP BY user_id")
@@ -407,8 +404,7 @@ def _analyze_llm(page):
     from playwright.sync_api import expect
 
     page.locator("#dsk-sql-box").fill(GROUP_SQL)
-    # selects: 0=dialect 1=mode 2=preset 3=ds_type 4=sample
-    page.locator("select").nth(1).select_option("llm")
+    labeled_select(page, "Analysis Mode").select_option("llm")
     page.get_by_role("button", name="Analyze Skew", exact=True).click()
     expect(page.locator(".dsk-report-card")).to_be_visible(timeout=10000)
 
@@ -575,8 +571,7 @@ def test_dataskew_llm_mode_no_key_banner(page_url, no_llm_key):
         page.goto(page_url, wait_until="networkidle")
 
         page.locator("#dsk-sql-box").fill(DISTINCT_SQL)
-        # selects: 0=dialect 1=mode 2=preset 3=ds_type 4=sample
-        page.locator("select").nth(1).select_option("llm")
+        labeled_select(page, "Analysis Mode").select_option("llm")
         page.get_by_role("button", name="Analyze Skew", exact=True).click()
 
         report = page.locator(".dsk-report-card")
@@ -666,8 +661,7 @@ def test_dataskew_preset_load_and_sample_verify(page_url, stub_presets):
         page.locator("summary", has_text="Connect data source").click()
         page.get_by_role("button", name="Load saved connections",
                          exact=True).click()
-        # selects: 0=dialect 1=mode 2=preset 3=ds_type 4=sample
-        preset_select = page.locator("select").nth(2)
+        preset_select = labeled_select(page, "Saved connection")
         expect(preset_select.locator("option",
                                      has_text="pw_demo")).to_have_count(1)
         preset_select.select_option("pw_demo")
@@ -678,7 +672,7 @@ def test_dataskew_preset_load_and_sample_verify(page_url, stub_presets):
         expect(page.get_by_text("Connected", exact=False)).to_be_visible(
             timeout=10000)
 
-        page.locator("select").nth(4).select_option("1")  # 1% sampling
+        labeled_select(page, "Probe sampling").select_option("1")  # 1% sampling
         page.get_by_role("button", name="Verify Skew (live data)",
                          exact=True).click()
         expect(page.locator(".dsk-report-card")).to_contain_text(
@@ -691,20 +685,20 @@ def test_dataskew_preset_load_and_sample_verify(page_url, stub_presets):
 def test_dataskew_dialect_switch_hive(page_url):
     """Ticket 05: non-default dialect (hive; default is spark) still flags
     the COUNT(DISTINCT) single-point aggregation."""
-    from playwright.sync_api import expect, sync_playwright
+    from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
-        page.locator("select").first.select_option("hive")
-        expect(page.locator("select").first).to_have_value("hive")
-        page.locator("#dsk-sql-box").fill(DISTINCT_SQL)
-        page.get_by_role("button", name="Analyze Skew", exact=True).click()
+        def run():
+            page.locator("#dsk-sql-box").fill(DISTINCT_SQL)
+            page.get_by_role("button", name="Analyze Skew",
+                             exact=True).click()
 
-        report = page.locator(".dsk-report-card")
-        expect(report).to_be_visible(timeout=10000)
-        expect(report).to_contain_text("COUNT(DISTINCT)")
-        expect(page.locator("body")).not_to_contain_text("Traceback")
+        assert_dialect_switch(
+            page, dialect="hive", run=run,
+            report=page.locator(".dsk-report-card"),
+            contains="COUNT(DISTINCT)", timeout=10000)
         browser.close()

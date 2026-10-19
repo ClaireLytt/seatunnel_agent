@@ -24,6 +24,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import assert_dialect_switch, labeled_select
+
 pytestmark = pytest.mark.uitest
 
 from seatunnel_agent.agents.data.data_lineage.manifest import MANIFESTS
@@ -362,8 +364,7 @@ def test_lineage_direction_filter_up_down(page_url):
         page.goto(page_url, wait_until="networkidle")
 
         _build_demo(page)  # target table dwd.orders_di
-        # selects: 0=sql dialect, 1=direction, 2=snapshot compare
-        direction = page.locator("select").nth(1)
+        direction = labeled_select(page, "Direction")
 
         direction.select_option("upstream")
         page.get_by_role("button", name="Query lineage", exact=True).click()
@@ -463,11 +464,12 @@ def test_lineage_dialect_switch_spark(page_url):
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
-        page.locator("select").first.select_option("spark")
-        expect(page.locator("select").first).to_have_value("spark")
-        _build_demo(page)
-        page.get_by_role("button", name="Query lineage", exact=True).click()
-        expect(page.locator("svg").first).to_be_visible(timeout=15000)
-        expect(page.locator(".lin-report")).to_be_visible()
-        expect(page.locator("body")).not_to_contain_text("Traceback")
+        def run():
+            _build_demo(page)
+            page.get_by_role("button", name="Query lineage",
+                             exact=True).click()
+            expect(page.locator("svg").first).to_be_visible(timeout=15000)
+
+        assert_dialect_switch(page, dialect="spark", run=run,
+                              report=page.locator(".lin-report"))
         browser.close()
