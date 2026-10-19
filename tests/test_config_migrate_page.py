@@ -252,3 +252,31 @@ def test_config_migrate_lang_switch(page_url):
         zh_page.get_by_role("button", name="迁移", exact=True).click()
         expect(zh_page.locator(".cm-report")).to_contain_text("无法识别的文件格式")
         browser.close()
+
+
+@pytest.mark.uitest
+def test_config_migrate_copy_conf_clipboard(page_url):
+    """Ticket 01: the Copy button writes the generated SeaTunnel config to
+    the clipboard (clipboard-read/clipboard-write permissions + readText)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        ctx = browser.new_context(
+            permissions=["clipboard-read", "clipboard-write"])
+        page = ctx.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("textarea").fill(DATAX_JOB)
+        page.get_by_role("button", name="Migrate", exact=True).click()
+        expect(page.locator("pre").first).to_be_visible()
+
+        page.get_by_role("button", name="Copy", exact=True).click()
+        expect(page.get_by_text("Copied", exact=False)).to_be_visible()
+
+        clipboard = page.evaluate("() => navigator.clipboard.readText()")
+        # clipboard holds the generated config, not the displayed highlight
+        assert "select a, b from t1" in clipboard
+        assert "Console" in clipboard
+        assert "parallelism = 2" in clipboard
+        browser.close()

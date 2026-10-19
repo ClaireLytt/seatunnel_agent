@@ -194,3 +194,34 @@ def test_sql_review_page_report_hidden_before_review(page_url):
             timeout=15000)
 
         browser.close()
+
+
+def _download_text(download) -> str:
+    """Reusable download-assertion helper: save and read the file's text."""
+    return Path(download.path()).read_text(encoding="utf-8")
+
+
+@pytest.mark.uitest
+def test_sql_review_download_report(page_url):
+    """Ticket 01: Download Report really downloads — suggested_filename is
+    sql_review_report.md and the content is the non-empty CR report."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("#sql").fill("SELECT * FROM ods.user_log WHERE a = NULL")
+        page.get_by_role("button", name="Start Review").click()
+        expect(page.locator(".sr-report")).to_be_visible(timeout=15000)
+
+        with page.expect_download() as dl:
+            page.get_by_role("button",
+                             name="Download Report (.md)").click()
+        report = dl.value
+        assert report.suggested_filename == "sql_review_report.md"
+        report_text = _download_text(report)
+        assert report_text.strip()
+        assert "CR Report" in report_text
+        browser.close()
