@@ -44,6 +44,8 @@ export default function App() {
       setReport('')
       if (e instanceof ApiError && e.code === 'bad_path') {
         setError(t('bad_path') + e.path)
+      } else if (e instanceof ApiError && e.code === 'diff_failed') {
+        setError(`⚠️ ${e.error}`)  // legacy "⚠️ Type: msg" parity
       } else {
         setError(String(e instanceof Error ? e.message : e))
       }

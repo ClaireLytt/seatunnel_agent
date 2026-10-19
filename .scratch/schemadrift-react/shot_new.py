@@ -1,4 +1,4 @@
-"""Screenshot the new React /schemadrift page (en/zh x light/dark) + a lint round-trip."""
+"""Screenshot the new React /schemadrift page (en/zh x light/dark) + dirs round-trip."""
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -7,7 +7,6 @@ OUT = Path(__file__).resolve().parent / "screenshots"
 OUT.mkdir(parents=True, exist_ok=True)
 BASE = "http://127.0.0.1:7863"
 
-DEMO = "select a,b from t where x=1"
 
 with sync_playwright() as p:
     browser = p.chromium.launch()

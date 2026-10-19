@@ -10,10 +10,12 @@ export interface DriftResponse {
 export class ApiError extends Error {
   code: string
   path: string
-  constructor(code: string, path: string) {
-    super(`${code}: ${path}`)
+  error: string
+  constructor(code: string, path: string, error = '') {
+    super(`${code}: ${path || error}`)
     this.code = code
     this.path = path
+    this.error = error
   }
 }
 
@@ -36,8 +38,8 @@ export async function diff(body: {
       .then((d) => d.detail as unknown)
       .catch(() => '')
     if (detail && typeof detail === 'object' && 'code' in (detail as object)) {
-      const d = detail as { code: string; path?: string }
-      throw new ApiError(d.code, d.path ?? '')
+      const d = detail as { code: string; path?: string; error?: string }
+      throw new ApiError(d.code, d.path ?? '', d.error ?? '')
     }
     throw new Error((detail as string) || `diff: HTTP ${r.status}`)
   }

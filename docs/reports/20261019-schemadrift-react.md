@@ -53,3 +53,24 @@ python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / 
 ## 未执行的步骤
 
 - 无。
+
+## Code-review fix-up(同批次追加)
+
+双轴 code-review(Standards/Spec,范围 0e40be1..HEAD):**零硬违规**。修复:
+
+| 发现 | 修复 |
+| --- | --- |
+| diff_scripts/diff_paths 解析异常变 500(旧页降级为 ⚠️ Type: msg) | 结构化 {code:"diff_failed",error},前端按旧格式 ⚠️ 展示 |
+| .scratch 截图脚本残留 sql_fmt 拷贝痕迹(死 DEMO 变量、过时 docstring) | 清除 |
+
+未修复的判断项(有先例依据):空态复用 old_ph(sql_fmt 等先例一致)、
+ReportView/api.ts 跨 workspace 拷贝(已在遗留清单)、
+error div 内联 style(全部先例页同款)。
+
+```
+ruff check src tests -> All checks passed!
+mypy                 -> Success: no issues found in 115 source files
+pytest(schemadrift 定向 44 条) -> 44 passed
+pytest -m uitest tests/test_schemadrift_page.py -> 8 passed
+npm run lint/build --workspace schema_drift -> 通过 / ✓ built
+```
