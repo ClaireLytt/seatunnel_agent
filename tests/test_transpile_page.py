@@ -334,3 +334,25 @@ def test_transpile_lang_switch(page_url):
         zh_page.get_by_role("button", name="翻译", exact=True).click()
         expect(zh_page.locator(".tr-report")).to_contain_text("全自动 1")
         browser.close()
+
+
+@pytest.mark.uitest
+def test_transpile_explicit_source_dialect(page_url):
+    """Ticket 05: an explicitly selected source dialect (hive, not auto)
+    translates successfully and the report names the pair."""
+    from playwright.sync_api import expect, sync_playwright
+
+    url, _ = page_url
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(url, wait_until="networkidle")
+
+        page.locator("select").first.select_option("hive")
+        expect(page.locator("select").first).to_have_value("hive")
+        page.locator("textarea").fill(HIVE_JSON_SQL)
+        page.get_by_role("button", name="Translate", exact=True).click()
+
+        expect(page.locator("pre").first).to_contain_text("JSON_EXTRACT")
+        expect(page.locator(".tr-report")).to_contain_text("hive → doris")
+        browser.close()

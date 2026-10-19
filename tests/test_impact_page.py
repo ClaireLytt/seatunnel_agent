@@ -284,3 +284,25 @@ def test_impact_lang_switch(page_url):
         expect(page.locator(".imp-report")).to_contain_text(
             "变更影响分析", timeout=20000)
         browser.close()
+
+
+@pytest.mark.uitest
+def test_impact_dialect_switch_spark(page_url):
+    """Ticket 05: non-default dialect (spark) still yields the graded
+    report — no traceback, no error state."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("select").select_option("spark")
+        expect(page.locator("select")).to_have_value("spark")
+        _analyze_dirs(page)
+
+        report = page.locator(".imp-report")
+        expect(report).to_be_visible(timeout=20000)
+        expect(report).to_contain_text("[error]")
+        expect(page.locator("body")).not_to_contain_text("Traceback")
+        browser.close()

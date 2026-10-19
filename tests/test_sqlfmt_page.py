@@ -281,3 +281,25 @@ def test_sqlfmt_lang_switch(page_url):
         zh_page.get_by_role("button", name="格式化", exact=True).click()
         expect(zh_page.locator(".sf-report")).to_contain_text("SQL 格式化")
         browser.close()
+
+
+@pytest.mark.uitest
+def test_sqlfmt_dialect_switch_mysql(page_url):
+    """Ticket 05: non-default dialect (mysql) still formats messy SQL."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("select").select_option("mysql")
+        expect(page.locator("select")).to_have_value("mysql")
+        page.locator("textarea").fill(MESSY)
+        page.get_by_role("button", name="Format", exact=True).click()
+
+        report = page.locator(".sf-report")
+        expect(report).to_be_visible()
+        expect(report).to_contain_text("SELECT")
+        expect(page.locator("body")).not_to_contain_text("Traceback")
+        browser.close()

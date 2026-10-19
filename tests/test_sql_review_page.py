@@ -194,3 +194,70 @@ def test_sql_review_page_report_hidden_before_review(page_url):
             timeout=15000)
 
         browser.close()
+
+
+@pytest.mark.uitest
+def test_sql_review_page_dialect_switch_mysql(page_url):
+    """Ticket 05: non-default dialect (mysql) still produces a CR report."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("#dialect").select_option("mysql")
+        expect(page.locator("#dialect")).to_have_value("mysql")
+        page.locator("#sql").fill("SELECT * FROM ods.user_log WHERE a = NULL")
+        page.get_by_role("button", name="Start Review").click()
+
+        report = page.locator(".sr-report")
+        expect(report).to_be_visible(timeout=15000)
+        expect(report).to_contain_text("CR Report")
+        expect(page.locator("body")).not_to_contain_text("Traceback")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_sql_review_page_transpile_bridge(page_url):
+    """Ticket 05: → Transpile opens /transpile in a new tab and hands the
+    SQL over via the localStorage bridge key."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        page.locator("#sql").fill("SELECT get_json_object(j, '$.a') FROM t")
+        with page.expect_popup() as popup_info:
+            page.get_by_role("button", name="→ Transpile").click()
+        assert popup_info.value.url.endswith("/transpile")
+        stored = page.evaluate(
+            "() => localStorage.getItem('st_transpile_sql')")
+        assert stored == "SELECT get_json_object(j, '$.a') FROM t"
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_sql_review_page_stats_refresh(page_url):
+    """Ticket 05: Stats accordion loads on open; Refresh Stats re-fetches
+    /stats and the stats area renders (empty-history state is fine)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        # opening the accordion triggers the first stats load
+        with page.expect_response("**/stats") as first:
+            page.get_by_text("Review History Stats").click()
+        assert first.value.ok
+        expect(page.get_by_text("No review records yet.")).to_be_visible()
+
+        # Refresh Stats fires a second fetch and keeps a rendered state
+        with page.expect_response("**/stats") as second:
+            page.get_by_role("button", name="Refresh Stats").click()
+        assert second.value.ok
+        expect(page.get_by_text("No review records yet.")).to_be_visible()
+        browser.close()

@@ -233,3 +233,47 @@ def test_testgen_lang_switch(page_url):
         page.get_by_role("button", name="生成测试数据", exact=True).click()
         expect(page.locator(".tg-report")).to_contain_text("查询执行成功")
         browser.close()
+
+
+@pytest.mark.uitest
+def test_testgen_dialect_switch_spark(page_url):
+    """Ticket 05: non-default dialect (spark) still generates for the
+    prefilled JOIN."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("select").select_option("spark")
+        expect(page.locator("select")).to_have_value("spark")
+        page.get_by_role("button", name="Generate", exact=True).click()
+
+        report = page.locator(".tg-report")
+        expect(report).to_be_visible(timeout=10000)
+        expect(report).to_contain_text("dwd.user_info")
+        expect(page.locator("body")).not_to_contain_text("Traceback")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_testgen_rows_slider_non_default(page_url):
+    """Ticket 05: a non-default row-count slider value changes the
+    generated row count (report stats line follows the slider)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator('input[type="range"]').fill("8")
+        expect(page.locator('input[type="range"]')).to_have_value("8")
+        page.get_by_role("button", name="Generate", exact=True).click()
+
+        report = page.locator(".tg-report")
+        expect(report).to_be_visible(timeout=10000)
+        expect(report).to_contain_text("rows per table 8")
+        expect(report).not_to_contain_text("rows per table 5")
+        browser.close()

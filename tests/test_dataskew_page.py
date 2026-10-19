@@ -365,3 +365,26 @@ def test_dataskew_conn_cookie_handoff(page_url):
         expect(page.get_by_text("Host").locator(
             "xpath=following-sibling::input")).to_have_value("db-b")
         browser.close()
+
+
+@pytest.mark.uitest
+def test_dataskew_dialect_switch_hive(page_url):
+    """Ticket 05: non-default dialect (hive; default is spark) still flags
+    the COUNT(DISTINCT) single-point aggregation."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("select").first.select_option("hive")
+        expect(page.locator("select").first).to_have_value("hive")
+        page.locator("#dsk-sql-box").fill(DISTINCT_SQL)
+        page.get_by_role("button", name="Analyze Skew", exact=True).click()
+
+        report = page.locator(".dsk-report-card")
+        expect(report).to_be_visible(timeout=10000)
+        expect(report).to_contain_text("COUNT(DISTINCT)")
+        expect(page.locator("body")).not_to_contain_text("Traceback")
+        browser.close()
