@@ -275,12 +275,11 @@ def test_t2s_history_view_qlog(chat_page_url, tmp_path, monkeypatch):
 
 
 @pytest.mark.uitest
-def test_t2s_favorites_view(page_url):
+def test_t2s_favorites_view(page_url, t2s_stores):
     from playwright.sync_api import expect, sync_playwright
 
-    from seatunnel_agent.agents.data.text2sql.api_shared import fav_store
-
-    fav_store.save("top orders", "SELECT * FROM orders LIMIT 10", "show top orders")
+    t2s_stores.favs.save("top orders", "SELECT * FROM orders LIMIT 10",
+                         "show top orders")
 
     url, _ = page_url
     with sync_playwright() as p:
@@ -315,7 +314,7 @@ def test_t2s_metrics_view(chat_page_url):
 
 
 @pytest.mark.uitest
-def test_t2s_boards_view(page_url):
+def test_t2s_boards_view(page_url, t2s_stores):
     from playwright.sync_api import expect, sync_playwright
 
     url, _ = page_url
@@ -335,7 +334,7 @@ def test_t2s_boards_view(page_url):
 
 
 @pytest.mark.uitest
-def test_t2s_subscriptions_view(page_url):
+def test_t2s_subscriptions_view(page_url, t2s_stores):
     from playwright.sync_api import expect, sync_playwright
 
     url, _ = page_url
