@@ -52,7 +52,8 @@ export default function App() {
       } else if (e instanceof ApiError && e.code === 'check_failed') {
         setError(`⚠️ ${e.error}`) // legacy "⚠️ Type: msg" parity
       } else {
-        setError(String(e instanceof Error ? e.message : e))
+        // e.g. 403 whitelist rejection — server detail string, labeled
+        setError(t('request_failed') + String(e instanceof Error ? e.message : e))
       }
     } finally {
       setBusy(false)

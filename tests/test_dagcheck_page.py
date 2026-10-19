@@ -9,7 +9,8 @@ Equivalence coverage for the retired uitest YAML cases
 (cases/dagcheck.yaml DAG1-DAG5, removed in this ticket): cycle + broken
 upstream (DAG1), execution batches + critical path (DAG2), unschedulable
 tables (DAG3), bad dir warning without traceback (DAG4), English flow
-(DAG5); plus non-default dialect (spark) and empty-input prompt.
+(DAG5); plus non-default dialect (spark, payload asserted), empty-input
+prompt (no request fired), bad SeaTunnel config dir, and whitelist 403.
 """
 
 from __future__ import annotations
@@ -187,6 +188,51 @@ def test_dagcheck_bad_dir_warning(page_url):
 
 
 @pytest.mark.uitest
+def test_dagcheck_bad_seatunnel_dir_warning(page_url):
+    """Optional SeaTunnel config dir: a non-directory path (under the
+    whitelist root) shows the localized bad_dir warning carrying that
+    path, no traceback."""
+    from playwright.sync_api import expect, sync_playwright
+
+    bad_st = DEMO / "no_such_st_dir"
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = _zh_page(browser.new_context, page_url)
+
+        page.locator("input").nth(1).fill(str(bad_st))
+        page.get_by_role("button", name="体检 DAG", exact=True).click()
+        expect(page.get_by_text("不是有效目录", exact=False)).to_be_visible(
+            timeout=10000)
+        expect(page.get_by_text("no_such_st_dir",
+                                exact=False)).to_be_visible()
+        expect(page.locator("body")).not_to_contain_text("Traceback")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_dagcheck_whitelist_403_message(page_url):
+    """Whitelist rejection: with DAGCHECK_API_ALLOWED_DIRS limited to the
+    demo dir (fixture), a dir outside it gets the 403 detail rendered
+    under the localized request_failed label — no traceback."""
+    from playwright.sync_api import expect, sync_playwright
+
+    outside = ROOT / "src"
+    assert outside.is_dir()
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = _zh_page(browser.new_context, page_url)
+
+        page.locator("input").first.fill(str(outside))
+        page.get_by_role("button", name="体检 DAG", exact=True).click()
+        expect(page.get_by_text("请求失败", exact=False)).to_be_visible(
+            timeout=10000)
+        expect(page.get_by_text("不在允许范围内", exact=False)).to_be_visible()
+        expect(page.locator("body")).not_to_contain_text("Traceback")
+        browser.close()
+
+
+@pytest.mark.uitest
 def test_dagcheck_english_flow(page_url):
     """DAG5: English chrome runs the check and renders the English
     report title and critical path section."""
@@ -208,7 +254,8 @@ def test_dagcheck_english_flow(page_url):
 @pytest.mark.uitest
 def test_dagcheck_dialect_switch_spark(page_url):
     """Non-default dialect (spark) still reports the cycle on the demo
-    dir — shared conftest.assert_dialect_switch body."""
+    dir — shared conftest.assert_dialect_switch body — and the request
+    payload actually carries dialect=spark (wiring, not just the UI)."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as p:
@@ -216,26 +263,38 @@ def test_dagcheck_dialect_switch_spark(page_url):
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
+        payload: dict = {}
+
+        def run() -> None:
+            with page.expect_request("**/api/dagcheck/check") as req_info:
+                page.get_by_role("button", name="Check DAG",
+                                 exact=True).click()
+            payload.update(req_info.value.post_data_json)
+
         assert_dialect_switch(
-            page, dialect="spark",
-            run=lambda: page.get_by_role("button", name="Check DAG",
-                                         exact=True).click(),
+            page, dialect="spark", run=run,
             report=page.locator(".md-report"), contains="tmp.a")
+        assert payload.get("dialect") == "spark", payload
         browser.close()
 
 
 @pytest.mark.uitest
 def test_dagcheck_empty_dir_warning(page_url):
-    """Empty directory input shows the localized prompt, no request fired."""
+    """Empty directory input shows the localized prompt, no request fired
+    (a request listener on /api/dagcheck/check must stay empty)."""
     from playwright.sync_api import expect, sync_playwright
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
+        check_calls: list[str] = []
+        page.on("request", lambda r: check_calls.append(r.url)
+                if "/api/dagcheck/check" in r.url else None)
         page.goto(page_url, wait_until="networkidle")
 
         page.locator("input").first.fill("")
         page.get_by_role("button", name="Check DAG", exact=True).click()
         expect(page.get_by_text("Provide a SQL directory first.",
                                 exact=False)).to_be_visible()
+        assert not check_calls, f"request fired: {check_calls}"
         browser.close()
