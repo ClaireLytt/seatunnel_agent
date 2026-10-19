@@ -367,6 +367,121 @@ def test_dataskew_conn_cookie_handoff(page_url):
         browser.close()
 
 
+def _download_text(download) -> str:
+    """Reusable download-assertion helper: save and read the file's text."""
+    return Path(download.path()).read_text(encoding="utf-8")
+
+
+STUB_OPTIMIZED_SQL = ("SELECT user_id, SUM(cnt) FROM ("
+                      "SELECT user_id, COUNT(*) AS cnt FROM ods.user_log "
+                      "GROUP BY user_id, bucket) t GROUP BY user_id")
+
+
+@pytest.fixture()
+def stub_llm(monkeypatch):
+    """Deterministic (zero-token) LLM mode: stub the agent + settings at
+    their source modules so /api/skew/analyze mode=llm returns an optimized
+    SQL without calling a model. Reusable pattern for LLM-gated controls."""
+    from seatunnel_agent.agents.data.data_skew import agent as agent_mod
+    from seatunnel_agent.agents.data.data_skew.agent import SkewAnalysisResult
+    from seatunnel_agent.agents.data.data_skew.report import SkewReport
+    from seatunnel_agent.common import config as config_mod
+
+    class _StubAgent:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def analyze(self, sql, use_llm=True, probe_context=""):
+            rep = SkewReport(optimized_sql=STUB_OPTIMIZED_SQL)
+            return SkewAnalysisResult(
+                report=rep, used_llm=True,
+                markdown="## Stub Report\n\nGROUP BY hotspot rewritten.")
+
+    monkeypatch.setattr(agent_mod, "DataSkewAgent", _StubAgent)
+    monkeypatch.setattr(config_mod, "load_settings", lambda *a, **kw: object())
+
+
+def _analyze_llm(page):
+    """Run an analysis in (stubbed) LLM mode so the optimized-SQL card with
+    its download + Copy buttons renders."""
+    from playwright.sync_api import expect
+
+    page.locator("#dsk-sql-box").fill(GROUP_SQL)
+    # selects: 0=dialect 1=mode 2=preset 3=ds_type 4=sample
+    page.locator("select").nth(1).select_option("llm")
+    page.get_by_role("button", name="Analyze Skew", exact=True).click()
+    expect(page.locator(".dsk-report-card")).to_be_visible(timeout=10000)
+
+
+@pytest.mark.uitest
+def test_dataskew_download_report(page_url):
+    """Ticket 01: Download Report really downloads — suggested_filename is
+    data_skew_report.md and the content is the non-empty report."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("#dsk-sql-box").fill(DISTINCT_SQL)
+        page.get_by_role("button", name="Analyze Skew", exact=True).click()
+        expect(page.locator(".dsk-report-card")).to_be_visible(timeout=10000)
+
+        with page.expect_download() as dl:
+            page.get_by_role("button", name="Download Report (.md)",
+                             exact=True).click()
+        report = dl.value
+        assert report.suggested_filename == "data_skew_report.md"
+        report_text = _download_text(report)
+        assert report_text.strip()
+        assert "COUNT(DISTINCT" in report_text
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_dataskew_download_optimized_sql(page_url, stub_llm):
+    """Ticket 01: Download Optimized SQL really downloads —
+    my_task_optimized.sql with the optimized SQL as content."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        _analyze_llm(page)
+        with page.expect_download() as dl:
+            page.get_by_role("button", name="Download Optimized SQL (.sql)",
+                             exact=True).click()
+        sql_dl = dl.value
+        assert sql_dl.suggested_filename == "my_task_optimized.sql"
+        assert _download_text(sql_dl).strip() == STUB_OPTIMIZED_SQL
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_dataskew_copy_sql_clipboard(page_url, stub_llm):
+    """Ticket 01: Copy writes the optimized SQL to the clipboard
+    (clipboard-read/clipboard-write context permissions + readText)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        ctx = browser.new_context(
+            permissions=["clipboard-read", "clipboard-write"])
+        page = ctx.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        _analyze_llm(page)
+        page.get_by_role("button", name="Copy", exact=True).click()
+        expect(page.get_by_text("Copied", exact=False)).to_be_visible()
+
+        clipboard = page.evaluate("() => navigator.clipboard.readText()")
+        assert clipboard == STUB_OPTIMIZED_SQL
+        browser.close()
+
+
 @pytest.mark.uitest
 def test_dataskew_dialect_switch_hive(page_url):
     """Ticket 05: non-default dialect (hive; default is spark) still flags

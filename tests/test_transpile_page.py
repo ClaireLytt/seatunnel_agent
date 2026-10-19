@@ -337,6 +337,37 @@ def test_transpile_lang_switch(page_url):
 
 
 @pytest.mark.uitest
+def test_transpile_copy_sql_clipboard(page_url):
+    """Ticket 01: Copy writes the translated SQL to the clipboard
+    (clipboard-read/clipboard-write context permissions + readText)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    url, _ = page_url
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        ctx = browser.new_context(
+            permissions=["clipboard-read", "clipboard-write"])
+        page = ctx.new_page()
+        page.goto(url, wait_until="networkidle")
+
+        page.locator("textarea").fill(HIVE_JSON_SQL)
+        page.get_by_role("button", name="Translate", exact=True).click()
+        copy_btn = page.get_by_role("button", name="Copy", exact=True)
+        expect(copy_btn).to_be_visible()
+
+        shown_sql = copy_btn.locator("xpath=../../pre").text_content() or ""
+        copy_btn.click()
+        expect(page.get_by_text("Copied", exact=False)).to_be_visible()
+
+        clipboard = page.evaluate("() => navigator.clipboard.readText()")
+        # Windows Chromium normalizes clipboard text to CRLF
+        clipboard = clipboard.replace("\r\n", "\n")
+        assert clipboard.strip() == shown_sql.strip()
+        assert "JSON_EXTRACT" in clipboard
+        browser.close()
+
+
+@pytest.mark.uitest
 def test_transpile_explicit_source_dialect(page_url):
     """Ticket 05: an explicitly selected source dialect (hive, not auto)
     translates successfully and the report names the pair."""
