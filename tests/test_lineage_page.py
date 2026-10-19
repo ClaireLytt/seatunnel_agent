@@ -320,3 +320,24 @@ def test_lineage_lang_switch(page_url):
         expect(page.get_by_text("血缘图已构建", exact=False)).to_be_visible(
             timeout=15000)
         browser.close()
+
+
+@pytest.mark.uitest
+def test_lineage_dialect_switch_spark(page_url):
+    """Ticket 05: building with a non-default SQL dialect (spark) still
+    yields a queryable graph + mermaid SVG."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("select").first.select_option("spark")
+        expect(page.locator("select").first).to_have_value("spark")
+        _build_demo(page)
+        page.get_by_role("button", name="Query lineage", exact=True).click()
+        expect(page.locator("svg").first).to_be_visible(timeout=15000)
+        expect(page.locator(".lin-report")).to_be_visible()
+        expect(page.locator("body")).not_to_contain_text("Traceback")
+        browser.close()
