@@ -534,7 +534,7 @@ class DCPage:
         if loc.count():
             return loc.first
         for cls in (".st-pii-main", ".st-lgi-main",
-                    ".st-dag-main", ".st-mdf-main"):
+                    ".st-dag-main"):
             loc = self.page.locator(cls)
             if loc.count():
                 return loc.first

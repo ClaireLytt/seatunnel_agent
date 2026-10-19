@@ -23,8 +23,10 @@ from seatunnel_agent.agents.devops.ui_testing.seed_sqlite import SEED, seed_sqli
 
 class TestLoader:
     def test_builtin_cases_load(self):
+        # floor tracks the YAML suite as Gradio pages retire to Playwright
+        # page tests (metricdiff batch brought it to 50)
         cases = load_cases()
-        assert len(cases) >= 55
+        assert len(cases) >= 50
         ids = [c.id for c in cases]
         assert len(ids) == len(set(ids)), "case ids must be unique"
 
