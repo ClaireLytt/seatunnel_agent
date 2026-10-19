@@ -38,6 +38,9 @@ def page_url(tmp_path, monkeypatch):
         generation as gen_mod,
     )
     from seatunnel_agent.agents.data.data_comparison import presets as presets_mod
+    from seatunnel_agent.agents.data.data_comparison import (
+        reports_api as reports_mod,
+    )
     from seatunnel_agent.agents.data.data_comparison.api import router
     from seatunnel_agent.agents.data.data_comparison.presets import (
         ConnectionPresetsStore,
@@ -49,10 +52,14 @@ def page_url(tmp_path, monkeypatch):
     # isolate the presets + templates stores (and key file) from the user's home
     monkeypatch.setattr(presets_mod, "_KEY_PATH", tmp_path / "dc_secret.key")
     monkeypatch.setattr(presets_mod, "_cached_key", None)
-    monkeypatch.setattr(api_mod, "_PRESETS_STORE",
-                        ConnectionPresetsStore(tmp_path / "dc_connections.json"))
+    presets_store = ConnectionPresetsStore(tmp_path / "dc_connections.json")
+    monkeypatch.setattr(api_mod, "_PRESETS_STORE", presets_store)
+    # generation.py (env compare) holds its own module-level store reference
+    monkeypatch.setattr(gen_mod, "_PRESETS_STORE", presets_store)
     monkeypatch.setattr(gen_mod, "_TEMPLATES_STORE",
                         ComparisonTemplatesStore(tmp_path / "dc_templates.json"))
+    # isolate saved reports (also read by /trends via reports_api._REPORTS_DIR)
+    monkeypatch.setattr(reports_mod, "_REPORTS_DIR", tmp_path / "dc_reports")
 
     if not (FRONTEND_DIST / "index.html").is_file():
         pytest.skip(
@@ -351,4 +358,381 @@ def test_datacompare_compare_all_streams_to_cards(page_url, tmp_path):
         cards = page.locator("[data-testid=result-cards]")
         expect(cards).to_contain_text("Comparison Summary")
         expect(cards).to_contain_text("Column Profile Comparison")
+        browser.close()
+
+
+# ── ticket 02 (coverage batch): every interactive control gets clicked ──
+
+
+def _make_dbs(tmp_path) -> None:
+    """Two identical SQLite fixtures → deterministic match outcomes."""
+    import sqlite3
+
+    for name in ("a.db", "b.db"):
+        conn = sqlite3.connect(tmp_path / name)
+        conn.execute("CREATE TABLE orders (id INTEGER, val TEXT)")
+        conn.executemany("INSERT INTO orders VALUES (?, ?)",
+                         [(1, "x"), (2, "y")])
+        conn.commit()
+        conn.close()
+
+
+def _connect_both(page, tmp_path) -> None:
+    """Connect both sides to the SQLite fixtures and pick `orders`."""
+    from playwright.sync_api import expect
+
+    for side, name in (("a", "a.db"), ("b", "b.db")):
+        form = page.locator(f"[data-testid=connect-{side}]")
+        form.locator(f"#ds-{side}").select_option(label="SQLite")
+        form.locator(f"#db-{side}").fill(str(tmp_path / name))
+        form.get_by_role("button", name="Connect").click()
+        expect(page.locator(f"[data-testid=status-{side}]")).to_contain_text("✅")
+        form.locator(f"#table-{side}").select_option("orders")
+
+
+def _download_text(download) -> str:
+    """Save a Playwright download and read it back as text."""
+    return Path(download.path()).read_text(encoding="utf-8")
+
+
+@pytest.mark.uitest
+def test_datacompare_count_sample_aggregate_cards(page_url, tmp_path):
+    """Core actions count/sample/aggregate each render their result card."""
+    from playwright.sync_api import expect, sync_playwright
+
+    _make_dbs(tmp_path)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_both(page, tmp_path)
+
+        cards = page.locator("[data-testid=result-cards]")
+        for action, title in (("count", "Row Count Comparison"),
+                              ("sample", "Sample Data Diff"),
+                              ("aggregate", "Aggregate Comparison")):
+            btn = page.locator(f"[data-testid=action-{action}]")
+            expect(btn).to_be_enabled()
+            btn.click()
+            expect(cards).to_contain_text(title)
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_profile_and_batch_actions(page_url, tmp_path):
+    """Compound actions profile/batch-count/batch-full render their cards."""
+    from playwright.sync_api import expect, sync_playwright
+
+    _make_dbs(tmp_path)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_both(page, tmp_path)
+
+        cards = page.locator("[data-testid=result-cards]")
+        for action, title in (("profile", "Column Profile Comparison"),
+                              ("batch-count", "Batch Row Count"),
+                              ("batch-full", "Batch Full Comparison")):
+            btn = page.locator(f"[data-testid=action-{action}]")
+            expect(btn).to_be_enabled()
+            btn.click()
+            expect(cards).to_contain_text(title)
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_feature_accordion_runs(page_url, tmp_path):
+    """All 8 feature run buttons render their result card (chunked uses
+    the Key Columns option as its numeric PK)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    _make_dbs(tmp_path)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_both(page, tmp_path)
+
+        # chunked verification reads Key Columns from the global options
+        page.locator("#opt-keys").fill("id")
+
+        cards = page.locator("[data-testid=result-cards]")
+
+        def open_acc(testid):
+            page.locator(f"[data-testid={testid}] > button").click()
+
+        # incremental (no key cols in payload → positional sample diff card)
+        open_acc("accordion-incremental")
+        acc = page.locator("[data-testid=accordion-incremental]")
+        acc.locator("input").first.fill("id")
+        page.locator("[data-testid=feature-incremental]").click()
+        expect(cards).to_contain_text("Key-Based Diff")
+
+        open_acc("accordion-quality")
+        page.locator("[data-testid=accordion-quality] input").first.fill(
+            "val:not_null>50")
+        page.locator("[data-testid=feature-quality]").click()
+        expect(cards).to_contain_text("Quality Check Result")
+
+        open_acc("accordion-skew")
+        page.locator("[data-testid=accordion-skew] input").first.fill("val")
+        page.locator("[data-testid=feature-skew]").click()
+        expect(cards).to_contain_text("Data Skew Analysis")
+
+        open_acc("accordion-checksum")
+        page.locator("[data-testid=accordion-checksum] input").first.fill("val")
+        page.locator("[data-testid=feature-checksum]").click()
+        expect(cards).to_contain_text("Checksum Comparison")
+        page.locator("[data-testid=feature-chunked]").click()
+        expect(cards).to_contain_text("Chunked Verification")
+
+        open_acc("accordion-partition")
+        page.locator("[data-testid=accordion-partition] input").first.fill("val")
+        page.locator("[data-testid=feature-partition]").click()
+        expect(cards).to_contain_text("Partition Comparison")
+
+        open_acc("accordion-custom-agg")
+        page.locator("[data-testid=accordion-custom-agg] textarea").fill(
+            "s=SUM(id)")
+        page.locator("[data-testid=feature-custom-agg]").click()
+        expect(cards).to_contain_text("Custom Aggregate Comparison")
+
+        open_acc("accordion-sql")
+        sqls = page.locator("[data-testid=accordion-sql] textarea")
+        sqls.nth(0).fill("SELECT COUNT(*) AS c FROM orders")
+        sqls.nth(1).fill("SELECT COUNT(*) AS c FROM orders")
+        page.locator("[data-testid=feature-sql]").click()
+        expect(cards).to_contain_text("SQL Result Comparison")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_generation_card_buttons(page_url, tmp_path):
+    """GenerationCard: sync config (+ real .conf download), diff SQL and
+    lineage each render deterministically."""
+    from playwright.sync_api import expect, sync_playwright
+
+    _make_dbs(tmp_path)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_both(page, tmp_path)
+
+        cards = page.locator("[data-testid=result-cards]")
+
+        page.locator("[data-testid=sync-card] > button").click()
+        # scope below the accordion header (which shares the title text)
+        page.locator("[data-testid=sync-card] div").get_by_role(
+            "button", name="Generate Sync Config").click()
+        expect(cards).to_contain_text("Sync config generated")
+        with page.expect_download() as dl_info:
+            page.locator("[data-testid=sync-download]").click()
+        download = dl_info.value
+        assert download.suggested_filename == "seatunnel_sync.conf"
+        text = _download_text(download)
+        assert "orders" in text and text.strip()
+
+        # diff SQL without a prior keyed diff → deterministic notice
+        page.get_by_role("button", name="Generate Diff SQL").click()
+        expect(cards).to_contain_text("No keyed diff result to generate SQL from")
+
+        page.locator("[data-testid=lineage-card] > button").click()
+        page.locator("#lineage-sql").fill(
+            "INSERT INTO orders SELECT * FROM src_orders")
+        page.locator("[data-testid=lineage-card] div").get_by_role(
+            "button", name="Upstream Dependencies").click()
+        expect(cards).to_contain_text("Upstream Dependencies")
+        expect(cards).to_contain_text("src_orders")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_preset_save_b_and_env_compare(page_url, tmp_path):
+    """Save Preset (B) persists side B's form; Compare Environments then
+    resolves both env presets and renders real comparison cards."""
+    from playwright.sync_api import expect, sync_playwright
+
+    _make_dbs(tmp_path)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_both(page, tmp_path)
+
+        card = page.locator("[data-testid=presets-card]")
+        card.get_by_role("button", name="Presets").click()
+        card.locator("#preset-name").fill("pa")
+        card.locator("#preset-env").fill("dev")
+        card.get_by_role("button", name="Save Preset (A)").click()
+        expect(page.locator("[data-testid=preset-status]")).to_contain_text(
+            "Preset saved: pa")
+        card.locator("#preset-name").fill("pb")
+        card.locator("#preset-env").fill("prod")
+        card.get_by_role("button", name="Save Preset (B)").click()
+        expect(page.locator("[data-testid=preset-status]")).to_contain_text(
+            "Preset saved: pb")
+        expect(card.locator("#preset-load-b option",
+                            has_text="pb (prod)")).to_have_count(1)
+
+        page.locator("[data-testid=env-card] > button").click()
+        page.locator("#env-a").fill("dev")
+        page.locator("#env-b").fill("prod")
+        page.locator("#env-table").fill("orders")
+        page.get_by_role("button", name="Compare Environments").click()
+        cards = page.locator("[data-testid=result-cards]")
+        expect(cards).to_contain_text("Multi-Environment Result")
+        expect(cards).to_contain_text("Row Count Comparison")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_reports_cycle_and_trends(page_url, tmp_path):
+    """ReportsCard save→refresh→load→diff closes the loop; Trend show then
+    charts the saved history."""
+    from playwright.sync_api import expect, sync_playwright
+
+    _make_dbs(tmp_path)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_both(page, tmp_path)
+
+        # a comparison result to persist
+        page.locator("[data-testid=action-count]").click()
+        cards = page.locator("[data-testid=result-cards]")
+        expect(cards).to_contain_text("Row Count Comparison")
+
+        card = page.locator("[data-testid=reports-card]")
+        card.locator("xpath=./button").click()  # open (triggers refresh)
+        card.get_by_role("button", name="Save Report").click()
+        expect(page.locator("[data-testid=report-status]")).to_contain_text(
+            "Report saved")
+        # second save → distinct timestamped filename for the diff
+        page.wait_for_timeout(1100)
+        card.get_by_role("button", name="Save Report").click()
+        card.get_by_role("button", name="Refresh").click()
+        expect(card.locator("#report-load option")).to_have_count(3)  # blank + 2
+
+        names = card.locator("#report-load option").all_text_contents()
+        newest, oldest = names[1], names[2]
+        card.locator("#report-load").select_option(newest)
+        expect(cards).to_contain_text("Report loaded")
+        expect(cards).to_contain_text("Row Count Comparison")
+
+        card.locator("#report-old").select_option(oldest)
+        card.locator("#report-new").select_option(newest)
+        card.get_by_role("button", name="Report Diff").click()
+        # identical snapshots → the diff endpoint's deterministic verdict
+        expect(cards).to_contain_text("No changes between reports")
+
+        # trends read the same saved-report history
+        page.locator("[data-testid=trends-card] > button").click()
+        page.locator("[data-testid=trend-show]").click()
+        expect(page.locator("[data-testid=trend-charts]")).to_be_visible()
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_templates_delete_and_batch_run(page_url, tmp_path):
+    """TemplatesCard: delete the selected template; batch-run the rest."""
+    from playwright.sync_api import expect, sync_playwright
+
+    _make_dbs(tmp_path)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_both(page, tmp_path)
+
+        card = page.locator("[data-testid=templates-card]")
+        card.locator("xpath=./button").click()  # open
+        for name in ("t-del", "t-run"):
+            page.locator("#template-name").fill(name)
+            card.get_by_role("button", name="Save Template").click()
+            expect(page.locator("[data-testid=template-status]")).to_contain_text(
+                "Template saved")
+
+        # wait out the post-save refresh (it resets the selection)
+        expect(page.locator("#template-load option")).to_have_count(3)
+        page.locator("#template-load").select_option("t-del")
+        expect(page.locator("#template-load")).to_have_value("t-del")
+        card.get_by_role("button", name="delete").click()
+        expect(page.locator("[data-testid=template-status]")).to_contain_text(
+            "Template deleted")
+        expect(page.locator("#template-load option", has_text="t-del")
+               ).to_have_count(0)
+
+        page.locator("#batch-templates").select_option(["t-run"])
+        card.get_by_role("button", name="Run Selected").click()
+        cards = page.locator("[data-testid=result-cards]")
+        expect(cards).to_contain_text("Batch Template Results")
+        expect(cards).to_contain_text("t-run")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_schedule_start_stop(page_url, tmp_path):
+    """Schedule start arms the timer (status ●); stop disarms it (○)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    _make_dbs(tmp_path)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_both(page, tmp_path)
+
+        page.locator("[data-testid=schedule-card] > button").click()
+        page.locator("[data-testid=schedule-interval]").select_option("5")
+        status = page.locator("[data-testid=schedule-status]")
+
+        page.locator("[data-testid=schedule-start]").click()
+        expect(status).to_contain_text("Scheduled: next run in 5 min")
+        expect(status).to_contain_text("●")
+
+        page.locator("[data-testid=schedule-stop]").click()
+        expect(status).to_contain_text("Schedule stopped")
+        expect(status).to_contain_text("○")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_datacompare_export_downloads_and_standalone_report(page_url, tmp_path):
+    """Export CSV/Excel really download; View Report opens the standalone
+    HTML page in a new tab."""
+    from playwright.sync_api import expect, sync_playwright
+
+    _make_dbs(tmp_path)
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_both(page, tmp_path)
+
+        page.locator("[data-testid=action-count]").click()
+        expect(page.locator("[data-testid=result-cards]")).to_contain_text(
+            "Row Count Comparison")
+
+        toolbar = page.locator("[data-testid=results-toolbar]")
+        with page.expect_download() as dl_info:
+            toolbar.get_by_role("link", name="Export CSV").click()
+        csv_dl = dl_info.value
+        assert csv_dl.suggested_filename.endswith(".csv")
+        assert "row count" in _download_text(csv_dl).lower()
+
+        with page.expect_download() as dl_info:
+            toolbar.get_by_role("link", name="Export Excel").click()
+        xlsx_dl = dl_info.value
+        assert xlsx_dl.suggested_filename.endswith(".xlsx")
+        assert Path(xlsx_dl.path()).stat().st_size > 0
+
+        with page.expect_popup() as pop_info:
+            toolbar.get_by_role("link", name="View Report").click()
+        report_page = pop_info.value
+        report_page.wait_for_load_state()
+        expect(report_page.locator("h1")).to_contain_text(
+            "Data Comparison Report")
         browser.close()
