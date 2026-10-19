@@ -54,3 +54,23 @@ python scripts/check_workflow.py -> [PASS] AI 署名 / [PASS] 工作区干净 / 
 ## 未执行的步骤
 
 - 无。
+
+## Code-review fix-up(同批次追加)
+
+双轴 code-review(Standards/Spec,范围 80af4ae..HEAD):**零硬违规**。修复:
+
+| 发现 | 修复 |
+| --- | --- |
+| 既有 API 测试未钉新错误形状(ticket 01 "既有测试同步"未落实) | bad_dir detail 全形状断言 + 新增 check_failed 结构化降级测试 |
+| 页测来源冲突断言弱(MDF2 等价性仅靠 gmv) | 补 contact + "different source columns" 断言 |
+| api.py 函数内 import(风格) | 上移模块级 |
+
+未修复的判断项:ReportView/api.ts 第 11 份拷贝(遗留清单已有)、
+ApiError path/error 双字段并存(两错误码合用,规模内可接受)。
+
+```
+ruff check src tests -> All checks passed!
+mypy                 -> Success: no issues found in 114 source files
+pytest tests/test_metric_diff.py -> 24 passed(新增 check_failed 测试)
+pytest -m uitest tests/test_metricdiff_page.py -> 5 passed
+```

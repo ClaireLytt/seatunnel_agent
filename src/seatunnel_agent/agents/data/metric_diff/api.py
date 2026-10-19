@@ -10,12 +10,17 @@ Endpoints (deterministic — nothing executed):
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import add_health, ms_since
+from seatunnel_agent.common.api_guard import (
+    add_health,
+    check_path_allowed,
+    ms_since,
+)
 from seatunnel_agent.common.utils import normalize_lang
 
 from .differ import check_sql_dir
@@ -40,10 +45,6 @@ class MetricDiffResponse(BaseModel):
 
 @router.post("/check", response_model=MetricDiffResponse)
 def check(req: MetricDiffRequest) -> MetricDiffResponse:
-    from pathlib import Path
-
-    from seatunnel_agent.common.api_guard import check_path_allowed
-
     start = time.time()
     lang = normalize_lang(req.lang)
     target = (req.sql_dir or "").strip()

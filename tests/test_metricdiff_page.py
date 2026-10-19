@@ -115,6 +115,9 @@ def test_metricdiff_formula_and_source_conflicts(page_url):
         expect(report).to_contain_text("different formulas")
         expect(report).to_contain_text("01_gmv_report_a.sql")
         expect(report).to_contain_text("02_gmv_report_b.sql")
+        # MDF2 source conflict: contact copied from different source columns
+        expect(report).to_contain_text("different source columns")
+        expect(report).to_contain_text("contact")
         # normalized count(1)/count(*) metric must NOT be flagged
         expect(report).not_to_contain_text("order_cnt")
         browser.close()
