@@ -270,6 +270,12 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     )
     app.app.include_router(schema_drift_api_router)
 
+    # Metric Diff backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.metric_diff.api import (
+        router as metric_diff_api_router,
+    )
+    app.app.include_router(metric_diff_api_router)
+
     # Rebuilt React pages: every external manifest mounts from the
     # frontend/<name>/dist convention; unbuilt bundles get a hint page.
     from fastapi.responses import HTMLResponse

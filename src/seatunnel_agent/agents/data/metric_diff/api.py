@@ -12,10 +12,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
+from seatunnel_agent.common.api_guard import add_health, ms_since
 from seatunnel_agent.common.utils import normalize_lang
 
 from .differ import check_sql_dir
@@ -40,10 +40,25 @@ class MetricDiffResponse(BaseModel):
 
 @router.post("/check", response_model=MetricDiffResponse)
 def check(req: MetricDiffRequest) -> MetricDiffResponse:
+    from pathlib import Path
+
+    from seatunnel_agent.common.api_guard import check_path_allowed
+
     start = time.time()
     lang = normalize_lang(req.lang)
-    target = require_dir(req.sql_dir, "METRICDIFF_API_ALLOWED_DIRS")
-    result = check_sql_dir(target, dialect=req.dialect)
+    target = (req.sql_dir or "").strip()
+    # whitelist first (403, no existence probing), then a structured
+    # detail the frontend localizes (i18n `bad_dir`)
+    check_path_allowed(target, "METRICDIFF_API_ALLOWED_DIRS")
+    if not Path(target).is_dir():
+        raise HTTPException(status_code=400,
+                            detail={"code": "bad_dir", "path": target})
+    try:
+        result = check_sql_dir(target, dialect=req.dialect)
+    except Exception as exc:  # legacy UI degraded to "⚠️ Type: msg"
+        raise HTTPException(status_code=400, detail={
+            "code": "check_failed",
+            "error": f"{type(exc).__name__}: {exc}"})
     return MetricDiffResponse(
         result=report_to_dict(result, lang),
         report=render_markdown(result, lang) if req.report else None,

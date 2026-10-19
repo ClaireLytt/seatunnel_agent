@@ -9,6 +9,7 @@
     "data_comparison",
     "data_lineage",
     "data_skew",
+    "metric_diff",
     "schema_drift",
     "seatunnel",
     "sql_fmt",

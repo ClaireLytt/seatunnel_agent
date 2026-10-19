@@ -1,0 +1,50 @@
+@import '@shared/theme.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Server-rendered metric diff report markdown (report.render_markdown /
+   render_batch_markdown). */
+.md-report {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.md-report h2,
+.md-report h3 {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0.75rem 0 0.5rem;
+}
+.md-report ul {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+.md-report li {
+  margin: 0.2rem 0;
+}
+.md-report code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  background: var(--grid);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+.md-report table {
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+}
+.md-report th,
+.md-report td {
+  border: 1px solid var(--line);
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+}
+.md-report blockquote {
+  margin: 0.75rem 0 0;
+  padding: 0.4rem 0.75rem;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
