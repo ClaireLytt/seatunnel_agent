@@ -35,6 +35,7 @@ def make_agent_router(
     report_to_dict: Callable[..., dict[str, Any]],
     render_markdown: Callable[..., str],
     path_field: str = "sql_dir",
+    pre_check: Callable[..., None] | None = None,
 ) -> APIRouter:
     """Return a fully-wired :class:`APIRouter` for the common pattern.
 
@@ -55,6 +56,9 @@ def make_agent_router(
         Post-processing callables ``(domain_result, lang) -> …``.
     path_field:
         Name of the path attribute on *request_model* (default ``"sql_dir"``).
+    pre_check:
+        Optional ``pre_check(req)`` called before the domain function.
+        Use it to validate extra request fields or set up context.
     """
     router = APIRouter(prefix=prefix, tags=list(tags))
 
@@ -72,6 +76,8 @@ def make_agent_router(
                 status_code=400,
                 detail={"code": "bad_dir", "path": target},
             )
+        if pre_check is not None:
+            pre_check(req)
         try:
             result = domain_fn(target, dialect=req.dialect)  # type: ignore[attr-defined]
         except Exception as exc:
