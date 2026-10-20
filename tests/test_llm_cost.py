@@ -231,3 +231,41 @@ class TestApi:
         app.include_router(router)
         resp = TestClient(app).get("/api/llmcost/health")
         assert resp.json() == {"status": "ok", "agent": "llm_cost"}
+
+    # ── prices (backing the React page, ticket 01) ───────────────────
+
+    def _client(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from seatunnel_agent.agents.ai.llm_cost.api import router
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app)
+
+    def test_prices_builtin(self):
+        resp = self._client().get("/api/llmcost/prices")
+        assert resp.status_code == 200
+        data = resp.json()
+        prefixes = {p["prefix"] for p in data["prices"]}
+        assert "deepseek-chat" in prefixes
+        row = next(p for p in data["prices"] if p["prefix"] == "deepseek-chat")
+        assert set(row) == {"prefix", "input_usd", "output_usd", "source"}
+        assert data["override_path"]
+
+    def test_prices_override_wins(self, tmp_path, monkeypatch):
+        f = tmp_path / "pricing.yaml"
+        f.write_text("prices:\n  deepseek-chat:\n    input_usd: 9.9\n"
+                     "    output_usd: 9.9\n", encoding="utf-8")
+        monkeypatch.setenv("SEATUNNEL_PRICING_PATH", str(f))
+        data = self._client().get("/api/llmcost/prices").json()
+        row = next(p for p in data["prices"] if p["prefix"] == "deepseek-chat"
+                   and p["source"] != "builtin")
+        assert row["input_usd"] == 9.9
+
+    def test_prices_malformed_400(self, tmp_path, monkeypatch):
+        f = tmp_path / "pricing.yaml"
+        f.write_text("prices: 42\n", encoding="utf-8")
+        monkeypatch.setenv("SEATUNNEL_PRICING_PATH", str(f))
+        resp = self._client().get("/api/llmcost/prices")
+        assert resp.status_code == 400
