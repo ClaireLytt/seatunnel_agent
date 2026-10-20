@@ -10,6 +10,7 @@
     "data_comparison",
     "data_lineage",
     "data_skew",
+    "doc_qa",
     "llm_cost",
     "llm_eval",
     "metric_diff",
