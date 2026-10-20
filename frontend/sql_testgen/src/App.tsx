@@ -1,18 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
+import { DIALECTS } from '@shared/constants'
 import { generateData } from '@/api'
 import { ReportView } from '@/components/ReportView'
-
-const DIALECTS = [
-  'hive',
-  'spark',
-  'mysql',
-  'postgresql',
-  'clickhouse',
-  'doris',
-  'starrocks',
-]
 
 // Same demo prefill as the legacy page (_DEMO_SQL) — a 2-table JOIN with a
 // partition filter and an IN list, so first-time users get a telling report.
