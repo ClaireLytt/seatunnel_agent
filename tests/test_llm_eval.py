@@ -373,3 +373,32 @@ class TestApi:
     def test_health(self):
         resp = self._client().get("/api/llmeval/health")
         assert resp.json() == {"status": "ok", "agent": "llm_eval"}
+
+    # ── validate / demo (backing the React page, ticket 01) ──────────
+
+    def test_validate_ok(self):
+        resp = self._client().post("/api/llmeval/validate",
+                                   json={"suite_yaml": _MINI_SUITE})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is True
+        assert data["cases"] >= 1
+        assert "raw_prompt" in data["agents"]
+
+    def test_validate_bad_suite(self):
+        resp = self._client().post("/api/llmeval/validate",
+                                   json={"suite_yaml": "cases: 42"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ok"] is False
+        assert data["error"]
+
+    def test_validate_empty_422(self):
+        resp = self._client().post("/api/llmeval/validate",
+                                   json={"suite_yaml": ""})
+        assert resp.status_code == 422  # pydantic min_length, same as /run
+
+    def test_demo_suite(self):
+        resp = self._client().get("/api/llmeval/demo")
+        assert resp.status_code == 200
+        assert "text2sql-golden" in resp.json()["text"]
