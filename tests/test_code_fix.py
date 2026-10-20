@@ -163,3 +163,94 @@ class TestEndToEnd:
                      client=ScriptedClient([_text("都修好了(并没有)")]))
         assert not result.success
         assert result.final_test_output.startswith("[EXIT")
+
+
+class TestApi:
+    """SSE run endpoint backing the React page (ticket 01) — gated by a
+    mandatory CODEFIX_API_ALLOWED_DIRS whitelist."""
+
+    def _client(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from seatunnel_agent.agents.ai.code_fix.api import router
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app)
+
+    @staticmethod
+    def _events(resp):
+        import json as _json
+        out = []
+        for line in resp.iter_lines():
+            if line.startswith("data: "):
+                out.append(_json.loads(line[len("data: "):]))
+        return out
+
+    def test_no_whitelist_403(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("CODEFIX_API_ALLOWED_DIRS", raising=False)
+        resp = self._client().post("/api/codefix/run",
+                                   json={"path": str(tmp_path)})
+        assert resp.status_code == 403
+
+    def test_path_outside_whitelist_403(self, tmp_path, monkeypatch):
+        allowed = tmp_path / "allowed"
+        allowed.mkdir()
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        monkeypatch.setenv("CODEFIX_API_ALLOWED_DIRS", str(allowed))
+        resp = self._client().post("/api/codefix/run",
+                                   json={"path": str(outside)})
+        assert resp.status_code == 403
+
+    def test_run_streams_steps_then_done(self, tmp_path, monkeypatch):
+        repo = make_project(tmp_path / "proj" if False else tmp_path)
+        monkeypatch.setenv("CODEFIX_API_ALLOWED_DIRS", str(tmp_path))
+        monkeypatch.setenv("API_KEY", "sk-test")
+
+        script = ScriptedClient([
+            _tool("run_tests", {}),
+            _tool("read_file", {"path": "app.py"}),
+            _tool("apply_patch", {"path": "app.py", "old": "a * b",
+                                  "new": "a / b"}),
+            _tool("run_tests", {}),
+            _text("fixed"),
+        ])
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient",
+                            lambda *a, **k: script)
+        with self._client().stream(
+                "POST", "/api/codefix/run",
+                json={"path": str(repo), "lang": "en",
+                      "max_steps": 8}) as resp:
+            assert resp.status_code == 200
+            assert resp.headers["content-type"].startswith(
+                "text/event-stream")
+            events = self._events(resp)
+        steps = [e for e in events if e["type"] == "step"]
+        assert steps and steps[0]["tool"] == "run_tests"
+        done = events[-1]
+        assert done["type"] == "done"
+        assert done["success"] is True
+        assert "a / b" in done["diff"]
+        # the original checkout stays untouched (worktree isolation)
+        assert "a * b" in (repo / "app.py").read_text(encoding="utf-8")
+
+    def test_no_key_degrades_to_error_event(self, tmp_path, monkeypatch):
+        repo = make_project(tmp_path)
+        monkeypatch.setenv("CODEFIX_API_ALLOWED_DIRS", str(tmp_path))
+        for var in ("API_KEY", "ANTHROPIC_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+        monkeypatch.setattr("seatunnel_agent.common.config.load_dotenv",
+                            lambda *a, **k: None)
+        monkeypatch.setattr(
+            "seatunnel_agent.common.settings_store.apply_to_env",
+            lambda: None)
+        with self._client().stream(
+                "POST", "/api/codefix/run",
+                json={"path": str(repo), "lang": "en"}) as resp:
+            assert resp.status_code == 200
+            events = self._events(resp)
+        assert events[-1]["type"] == "error"
+        assert "key" in events[-1]["message"].lower() \
+            or "LLM" in events[-1]["message"]

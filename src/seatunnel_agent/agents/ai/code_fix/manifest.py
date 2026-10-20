@@ -16,6 +16,8 @@ MANIFEST = AgentManifest(
     desc_zh=("跑测试 → 读码 → 打补丁 → 复跑直到通过;在 git worktree 隔离"
              "执行,最终以确定性复跑验收"),
     render="seatunnel_agent.agents.ai.code_fix.ui:render_code_fix_page",
-    api=None,  # it mutates the local filesystem — CLI/UI only, no REST
+    # The run endpoint mutates the local filesystem, so it is OFF by
+    # default: 403 unless CODEFIX_API_ALLOWED_DIRS whitelists the target.
+    api="seatunnel_agent.agents.ai.code_fix.api:router",
     order=60,
 )
