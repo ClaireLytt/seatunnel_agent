@@ -13,8 +13,7 @@ MANIFEST = AgentManifest(
     title_zh="Schema 漂移检查",
     desc_en="Diff two DDL snapshots — breaking / risk / info severity for every structural change",
     desc_zh="对比两份 DDL 快照 — 每处结构变更按破坏 / 风险 / 提示分级",
-    # api intentionally unset: the router is mounted unconditionally by the
-    # launcher (the React page depends on it), not behind --api.
+    api="seatunnel_agent.agents.data.schema_drift.api:router",
     render="",  # React static mount serves this route (frontend/schema_drift)
     group="governance",
     order=30,

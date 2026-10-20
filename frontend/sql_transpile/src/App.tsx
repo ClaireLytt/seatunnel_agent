@@ -9,15 +9,12 @@ import {
   translateBatch,
   translateSql,
 } from '@/api'
-import { ReportView } from '@/components/ReportView'
+import { ReportView } from '@shared/components/ReportView'
 import { SqlView } from '@/components/SqlView'
+import { fieldCls, labelCls } from '@shared/constants'
 
 const FALLBACK_DIALECTS = ['hive', 'spark', 'doris', 'starrocks']
 
-const fieldCls =
-  'w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink'
-const labelCls =
-  'mb-2 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft'
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -234,7 +231,7 @@ export default function App() {
                 <SqlView sql={outputSql} />
               </div>
             )}
-            {report && <ReportView markdown={report} />}
+            {report && <ReportView className="tr-report" markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('sql_ph')}</p>}
           </Card>
 
@@ -254,7 +251,7 @@ export default function App() {
                   </button>
                   {advice && (
                     <div className="mt-3">
-                      <ReportView markdown={advice} />
+                      <ReportView className="tr-report" markdown={advice} />
                     </div>
                   )}
                 </div>

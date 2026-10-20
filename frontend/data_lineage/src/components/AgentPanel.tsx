@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { analyzeStream, ApiError, type SourceParams, type SseFrame } from '@/api'
-import { ReportView } from '@/components/ReportView'
+import { ReportView } from '@shared/components/ReportView'
 import { fieldCls, labelCls, smallBtnCls } from '@/ui'
 
 // Phase labels for streamed step events (legacy _PHASE_LABELS).

@@ -5,7 +5,7 @@ import { DATASKEW_SQL_KEY } from '@shared/bridge'
 import { analyze, getSessionId } from '@/api'
 import { ConnectPanel } from '@/components/ConnectPanel'
 import { HistoryPanel } from '@/components/HistoryPanel'
-import { ReportView } from '@/components/ReportView'
+import { ReportView } from '@shared/components/ReportView'
 import { RuntimePanel } from '@/components/RuntimePanel'
 import { SplitKeyPanel } from '@/components/SplitKeyPanel'
 import { SqlView } from '@/components/SqlView'
@@ -234,7 +234,7 @@ export default function App() {
                     </button>
                   )}
                 </div>
-                <ReportView markdown={report} />
+                <ReportView className="dsk-report" markdown={report} />
               </div>
             )}
             {!busy && !report && !error && (

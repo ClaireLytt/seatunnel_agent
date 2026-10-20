@@ -106,9 +106,9 @@ def test_ported_keys_match_legacy_verbatim() -> None:
 
 
 def test_dialect_list_pinned_to_legacy() -> None:
-    app = (SRC / "App.tsx").read_text(encoding="utf-8")
-    m = re.search(r"const DIALECTS = \[(.*?)\]", app, re.S)
-    assert m, "DIALECTS literal not found in App.tsx"
+    constants = (ROOT / "frontend" / "shared" / "src" / "constants.ts").read_text(encoding="utf-8")
+    m = re.search(r"const DIALECTS = \[(.*?)\]", constants, re.S)
+    assert m, "DIALECTS literal not found in shared/constants.ts"
     assert re.findall(r"'([a-z]+)'", m.group(1)) == LEGACY_DIALECTS
 
 

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { ApiError, migrateBatch, migrateText, type MigrateResponse } from '@/api'
 import { ConfView } from '@/components/ConfView'
-import { ReportView } from '@/components/ReportView'
+import { ReportView } from '@shared/components/ReportView'
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -145,7 +145,7 @@ export default function App() {
               </div>
             )}
             {result && result.conf && <ConfView conf={result.conf} />}
-            {result && <div className="mt-4"><ReportView markdown={result.report} /></div>}
+            {result && <div className="mt-4"><ReportView className="cm-report" markdown={result.report} /></div>}
             {!result && !error && (
               <p className="text-sm text-muted">{t('job_ph')}</p>
             )}

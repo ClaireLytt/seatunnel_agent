@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { ApiError, lintConfig, lintDir } from '@/api'
-import { ReportView } from '@/components/ReportView'
+import { ReportView } from '@shared/components/ReportView'
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -133,7 +133,7 @@ export default function App() {
                 {error}
               </div>
             )}
-            {report && <ReportView markdown={report} />}
+            {report && <ReportView className="cl-report" markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('conf_ph')}</p>}
           </Card>
         </main>

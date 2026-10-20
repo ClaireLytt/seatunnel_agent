@@ -16,7 +16,7 @@ import {
 import { CHECK_CATALOG_EN } from '@/i18n'
 import { DATASKEW_SQL_KEY, TRANSPILE_SQL_KEY } from '@shared/bridge'
 import { Collapsible } from '@/components/Collapsible'
-import { ReportView } from '@/components/ReportView'
+import { ReportView } from '@shared/components/ReportView'
 import { TrendChart } from '@/components/TrendChart'
 import { Card } from '@shared/components/card'
 
@@ -347,7 +347,7 @@ export default function App() {
             </button>
           </div>
           <Card>
-            <ReportView markdown={report} onLineClick={jumpToLine} />
+            <ReportView className="sr-report" markdown={report} onLineClick={jumpToLine} />
           </Card>
         </section>
       )}

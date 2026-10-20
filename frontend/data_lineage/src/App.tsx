@@ -10,7 +10,7 @@ import {
 } from '@/api'
 import { AgentPanel } from '@/components/AgentPanel'
 import { GraphView } from '@/components/GraphView'
-import { ReportView } from '@/components/ReportView'
+import { ReportView } from '@shared/components/ReportView'
 import { ToolsPanel } from '@/components/ToolsPanel'
 import { fieldCls, labelCls, smallBtnCls } from '@/ui'
 
@@ -309,7 +309,7 @@ export default function App() {
             {mermaidSrc && <GraphView source={mermaidSrc} onNode={onNodeClick} />}
             {report ? (
               <div className="mt-4">
-                <ReportView markdown={report} />
+                <ReportView className="lin-report" markdown={report} />
               </div>
             ) : (
               !notice && <p className="text-sm italic text-muted">{t('report_ph')}</p>

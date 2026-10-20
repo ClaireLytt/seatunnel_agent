@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { analyzeImpact, ApiError } from '@/api'
 import { GraphView } from '@/components/GraphView'
-import { ReportView } from '@/components/ReportView'
+import { ReportView } from '@shared/components/ReportView'
 import { fieldCls, labelCls } from '@/ui'
 
 // SQL_DIALECTS from sqlglot_lineage (impact shares the lineage parser).
@@ -210,13 +210,13 @@ export default function App() {
             {notice && (
               <div className="mb-3 text-sm" style={{ color: 'var(--accent)' }}>
                 {/* legacy wrote guards into gr.Markdown — keep markdown */}
-                <ReportView markdown={notice} />
+                <ReportView className="imp-report" markdown={notice} />
               </div>
             )}
             {mermaidSrc && <GraphView source={mermaidSrc} />}
             {report ? (
               <div className="mt-4">
-                <ReportView markdown={report} />
+                <ReportView className="imp-report" markdown={report} />
               </div>
             ) : (
               !notice && <p className="text-sm italic text-muted">{t('result_ph')}</p>

@@ -84,17 +84,25 @@ class TestDataCoverage:
         assert no_card == {"/loginspect", "/mcp"}
 
 
-# data agents whose REST routers used to be a hand-maintained tuple in
-# launch_app — they must now declare api= so the manifest loop mounts them.
-# sql_review is not listed: its router is mounted unconditionally by the
-# launcher (the React page depends on it), same as uitest. config_lint,
-# sql_fmt, sql_transpile, data_skew, sql_testgen, data_lineage,
-# schema_drift, metric_diff and pii_scan moved off the list for the same
-# reason when their pages went React.
+# Every data agent with a REST router must declare api= so the manifest
+# loop in launch_app auto-mounts it (no manual wiring in ui.py).
 _DATA_API_NAMES = {
     "text2sql",
     "log_inspect",
     "dag_check",
+    "sql_review",
+    "seatunnel",
+    "data_comparison",
+    "config_migrate",
+    "config_lint",
+    "sql_fmt",
+    "sql_transpile",
+    "data_skew",
+    "sql_testgen",
+    "data_lineage",
+    "schema_drift",
+    "metric_diff",
+    "pii_scan",
 }
 
 
@@ -103,6 +111,30 @@ class TestDataApiRouters:
         by_name = {m.name: m for m in workspace_manifests("data")}
         missing = [n for n in _DATA_API_NAMES if not by_name[n].api]
         assert not missing, missing
+
+
+class TestAutoMount:
+    """The manifest loop in launch_app replaces hand-coded router imports."""
+
+    def test_all_api_manifests_resolve_to_router(self):
+        """Every manifest with api= resolves to a FastAPI APIRouter."""
+        for mf in discover():
+            if mf.api:
+                router = resolve(mf.api)
+                assert hasattr(router, "routes"), (
+                    f"{mf.name}: api={mf.api!r} did not resolve to a router")
+
+    def test_no_duplicate_router_mounts(self):
+        """Two manifests must not point to the same api= target."""
+        apis = [mf.api for mf in discover() if mf.api]
+        assert len(apis) == len(set(apis)), (
+            f"duplicate api targets: {[a for a in apis if apis.count(a) > 1]}")
+
+    def test_uitest_router_declared(self):
+        """The uitest manifest (devops) also declares its router."""
+        by_name = {m.name: m for m in discover()}
+        assert by_name["uitest"].api == (
+            "seatunnel_agent.agents.devops.ui_testing.api:router")
 
 
 class TestExternalManifest:
