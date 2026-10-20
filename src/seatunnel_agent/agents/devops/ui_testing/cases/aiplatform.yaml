@@ -115,18 +115,6 @@
   expect:
     - text_contains: {in: 结果区, text: 请先粘贴}
 
-# ── 智能编排 /orchestrator(只看页面与 agent 清单,不发消息)──────────────
-
-- id: ORCH1
-  title: 编排页 agent 清单齐全
-  tags: [smoke, sqlite]
-  page: /orchestrator
-  steps:
-    - open_accordion: {target: 可路由的 agent}
-    - wait: 800
-      note: 等待回调完成(确定性输出,无加载信号)
-  expect:
-    - text_contains: {in: 页面, text: sql_review}
-    - text_contains: {in: 页面, text: sql_fmt}
-    - text_contains: {in: 页面, text: /sqlreview}
-    - text_not_contains: {in: 页面, text: Traceback}
+# ── 智能编排 /orchestrator ──────────────────────────────────────────────
+# ORCH1 retired: /orchestrator is the React page
+# (see tests/test_orchestrator_page.py).
