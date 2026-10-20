@@ -24,8 +24,15 @@ npm run lint --workspace orchestrator-frontend  -> 通过(无输出)
 npm run build --workspace orchestrator-frontend -> ✓ built in 3.05s
 python -m seatunnel_agent.agents.devops.ui_testing run --suite smoke --no-llm
                        -> PASS 27 · FAIL 0 · ERROR 0(runs/20261021_001628/report.html)
-python scripts/check_workflow.py -> 见本报告提交(随批次收尾执行,输出附对话)
+python scripts/check_workflow.py ->
+  [FAIL] AI 署名: commit 信息含禁止的署名字样: ['co-authored-by'](范围 HEAD~10..HEAD)
+  [PASS] 工作区: 工作区干净
+  [PASS] 报告落盘: 无远端分支,跳过报告落盘检查
 ```
+
+check_workflow 的 FAIL 为误报:HEAD~10 覆盖到 plat 已有历史里 dependabot 机器人自带的
+`Co-authored-by: dependabot[bot]`(c2c3363 等 #57–#61);本批次 4 个 commit
+(62362c2..186b67e)经 `git log c49a9fb..HEAD` 核对含 0 条署名字样。不重写既有历史。
 
 注:全量 pytest 首跑 1 failed(test_builtin_cases_load 用例数下限 38,ORCH1 退役后为 37),修正下限后该文件 62 passed;其余 3262 passed 不变。
 
