@@ -416,3 +416,142 @@ class TestSessionContinuity:
         assert ChatLogger().last_session() == []
         lg.log_turn("s2", "q2", "a2")  # a new session after clearing
         assert [t["request"] for t in ChatLogger().last_session()] == ["q2"]
+
+
+class TestChatApi:
+    """SSE chat endpoint backing the React page (frontend/orchestrator)."""
+
+    def _client(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from seatunnel_agent.agents.ai.orchestrator.api import router
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app)
+
+    @staticmethod
+    def _events(resp) -> list[dict]:
+        events = []
+        for line in resp.iter_lines():
+            if line.startswith("data: "):
+                events.append(json.loads(line[len("data: "):]))
+        return events
+
+    def test_chat_streams_steps_then_done(self, monkeypatch):
+        monkeypatch.setenv("API_KEY", "sk-test")
+
+        def fake_client(settings, tools=None, **kw):
+            return ScriptedClient([
+                _tool("sql_fmt", {"sql": "select 1"}),
+                _text("finished"),
+            ])
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient",
+                            fake_client)
+        with self._client().stream(
+                "POST", "/api/orchestrator/chat",
+                json={"request": "format it", "lang": "en"}) as resp:
+            assert resp.status_code == 200
+            assert resp.headers["content-type"].startswith(
+                "text/event-stream")
+            events = self._events(resp)
+        assert events[0]["type"] == "step"
+        assert events[0]["tool"] == "sql_fmt"
+        assert events[0]["output"]
+        done = events[-1]
+        assert done["type"] == "done"
+        assert done["reply"] == "finished"
+        assert done["session"]
+        assert done["suggested_only"] is False
+
+    def test_chat_no_key_degrades_to_suggestions(self, monkeypatch):
+        for var in ("API_KEY", "ANTHROPIC_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+        monkeypatch.setattr("seatunnel_agent.common.config.load_dotenv",
+                            lambda *a, **k: None)
+        monkeypatch.setattr(
+            "seatunnel_agent.common.settings_store.apply_to_env",
+            lambda: None)
+        with self._client().stream(
+                "POST", "/api/orchestrator/chat",
+                json={"request": "审查 sql", "lang": "zh"}) as resp:
+            events = self._events(resp)
+        done = events[-1]
+        assert done["type"] == "done"
+        assert done["suggested_only"] is True
+        assert "sql_review" in done["reply"]
+
+    def test_chat_seeds_history_and_keeps_session(self, monkeypatch,
+                                                  tmp_path):
+        monkeypatch.setenv("API_KEY", "sk-test")
+        monkeypatch.setenv("ORCH_CHAT_LOG", "1")
+        monkeypatch.setenv("ORCH_CHAT_PATH", str(tmp_path / "c.jsonl"))
+        seen: dict = {}
+
+        def fake_client(settings, tools=None, **kw):
+            client = ScriptedClient([_text("a2")])
+            seen["client"] = client
+            return client
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient",
+                            fake_client)
+        with self._client().stream(
+                "POST", "/api/orchestrator/chat",
+                json={"request": "q2", "lang": "en", "session": "sid-1",
+                      "history": [{"role": "user", "content": "q1"},
+                                  {"role": "assistant", "content": "a1"}],
+                      }) as resp:
+            events = self._events(resp)
+        assert events[-1]["session"] == "sid-1"
+        from seatunnel_agent.agents.ai.orchestrator.olog import ChatLogger
+        turns = ChatLogger().last_session()
+        assert [t["request"] for t in turns] == ["q2"]
+        assert turns[0]["session"] == "sid-1"
+
+    def test_chat_provider_failure_yields_error_event(self, monkeypatch):
+        monkeypatch.setenv("API_KEY", "sk-test")
+
+        def broken_client(settings, tools=None, **kw):
+            class Boom:
+                def chat(self, *a, **k):
+                    raise RuntimeError("auth failed")
+
+                def append_assistant(self, raw):
+                    return {"role": "assistant", "content": raw}
+
+                def build_tool_result_message(self, trs):
+                    return {"role": "user", "content": trs}
+            return Boom()
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient",
+                            broken_client)
+        with self._client().stream(
+                "POST", "/api/orchestrator/chat",
+                json={"request": "hi"}) as resp:
+            events = self._events(resp)
+        assert events[-1]["type"] == "error"
+        assert "auth failed" in events[-1]["message"]
+
+    def test_chat_empty_request_422(self):
+        resp = self._client().post("/api/orchestrator/chat",
+                                   json={"request": ""})
+        assert resp.status_code == 422
+
+    def test_session_restore_and_clear(self, monkeypatch, tmp_path):
+        monkeypatch.setenv("ORCH_CHAT_LOG", "1")
+        monkeypatch.setenv("ORCH_CHAT_PATH", str(tmp_path / "c.jsonl"))
+        from seatunnel_agent.agents.ai.orchestrator.olog import ChatLogger
+        lg = ChatLogger()
+        lg.log_turn("s9", "q1", "a1", [{"tool": "sql_fmt",
+                                        "elapsed_ms": 5}])
+        lg.log_turn("s9", "q2", "a2", [])
+        client = self._client()
+        data = client.get("/api/orchestrator/session").json()
+        assert data["session"] == "s9"
+        assert [t["request"] for t in data["turns"]] == ["q1", "q2"]
+        assert data["turns"][0]["steps"][0]["tool"] == "sql_fmt"
+
+        assert client.post("/api/orchestrator/session/clear"
+                           ).json() == {"ok": True}
+        data = client.get("/api/orchestrator/session").json()
+        assert data["session"] is None
+        assert data["turns"] == []
