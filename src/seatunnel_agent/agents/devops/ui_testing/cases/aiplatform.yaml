@@ -16,43 +16,9 @@
     - text_contains: {in: 页面, text: LLM 成本观测}
     - text_contains: {in: 页面, text: 返回首页}
 
-# ── LLM 成本观测 /llmcost(纯本地聚合,无 LLM)──────────────────────────
-
-- id: COST1
-  title: 成本页加载即出汇总报告
-  tags: [smoke, sqlite]
-  page: /llmcost
-  steps:
-    - wait: 1500
-      note: 页面 on-load 自动刷新汇总
-  expect:
-    - text_contains: {in: 页面, text: LLM 成本}
-    - text_not_contains: {in: 页面, text: Traceback}
-
-- id: COST2
-  title: 价格表面板含内置价目
-  tags: [smoke, sqlite]
-  page: /llmcost
-  steps:
-    - wait: 1500
-      note: 等待回调完成(确定性输出,无加载信号)
-    - open_accordion: {target: 价格表}
-  expect:
-    - text_contains: {in: 页面, text: deepseek-chat}
-    - text_contains: {in: 页面, text: 模型前缀}
-
-- id: COST3
-  title: 切换时间窗重新计算
-  tags: [full, sqlite]
-  page: /llmcost
-  steps:
-    - wait: 1500
-      note: 等待回调完成(确定性输出,无加载信号)
-    - select: {of: 时间窗(天), value: "7"}
-    - wait: 1500
-      note: 等待回调完成(确定性输出,无加载信号)
-  expect:
-    - text_contains: {in: 页面, text: 近 7 天}
+# ── LLM 成本观测 /llmcost ────────────────────────────────────────────────
+# COST1-COST3 retired: /llmcost is the React page
+# (see tests/test_llmcost_page.py).
 
 # ── Prompt 实验室 /promptlab ─────────────────────────────────────────────
 # PLAB1-PLAB2 retired: /promptlab is the React page
