@@ -16,7 +16,8 @@ MANIFEST = AgentManifest(
              "draft reply"),
     desc_zh=("历史 issue 查重(BM25)、git grep 定位模块、查文档 — 产出"
              "标签、优先级与草拟回复"),
-    render="seatunnel_agent.agents.ai.issue_triage.ui:render_issue_triage_page",
+    render="",
     api="seatunnel_agent.agents.ai.issue_triage.api:router",
     order=70,
+    external=True,
 )

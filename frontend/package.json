@@ -12,6 +12,7 @@
     "data_lineage",
     "data_skew",
     "doc_qa",
+    "issue_triage",
     "llm_cost",
     "llm_eval",
     "metric_diff",

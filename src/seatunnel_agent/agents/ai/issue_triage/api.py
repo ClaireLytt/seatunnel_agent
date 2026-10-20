@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -14,18 +15,23 @@ from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
 
-from .engine import triage
+from .engine import load_issues, triage
 from .report import normalize_lang, render_markdown
 
 router = APIRouter(prefix="/api/triage", tags=["issue_triage"])
+
+# Bundled demo history — same file the legacy Gradio page used (ui.py _DEMO).
+_DEMO = (Path(__file__).resolve().parents[5] / "examples" / "triage_demo"
+         / "issues.jsonl")
 
 
 class TriageRequest(BaseModel):
     title: str = Field(..., min_length=1)
     body: str = Field("", description="Issue body")
-    issues: list[dict[str, Any]] = Field(
-        default_factory=list,
-        description="History issues [{number,title,body,labels}] for dedupe")
+    issues: list[dict[str, Any]] | None = Field(
+        None,
+        description="History issues [{number,title,body,labels}] for dedupe;"
+                    " omit for the bundled demo history, [] for none")
     lang: str = "zh"
     report: bool = Field(False, description="Include the markdown report")
 
@@ -49,8 +55,12 @@ def run(req: TriageRequest) -> TriageResponse:
         settings = load_settings()
     except RuntimeError as exc:  # no API key
         raise HTTPException(status_code=503, detail=str(exc))
+    if req.issues is None:
+        issues = load_issues(_DEMO) if _DEMO.is_file() else []
+    else:
+        issues = req.issues
     try:
-        result = triage(req.title, req.body, settings, issues=req.issues,
+        result = triage(req.title, req.body, settings, issues=issues,
                         repo_dir=None)
     except Exception as exc:
         raise HTTPException(status_code=502,
