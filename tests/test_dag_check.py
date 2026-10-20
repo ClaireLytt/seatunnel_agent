@@ -209,6 +209,15 @@ def test_api_check_outside_whitelist(api_client, monkeypatch, tmp_path):
 
 
 def test_api_check_requires_dir(api_client):
+    # structured detail: the React page localizes `bad_dir` client-side
     r = api_client.post("/api/dagcheck/check", json={"sql_dir": "no_such"})
     assert r.status_code == 400
+    assert r.json()["detail"] == {"code": "bad_dir", "path": "no_such"}
     assert api_client.get("/api/dagcheck/health").json()["status"] == "ok"
+
+
+def test_api_check_bad_seatunnel_dir(api_client):
+    r = api_client.post("/api/dagcheck/check", json={
+        "sql_dir": str(DEMO), "seatunnel_dir": "no_such_st"})
+    assert r.status_code == 400
+    assert r.json()["detail"] == {"code": "bad_dir", "path": "no_such_st"}

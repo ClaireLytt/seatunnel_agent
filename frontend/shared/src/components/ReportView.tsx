@@ -27,11 +27,5 @@ export function ReportView({
         if (line) onLineClick(line)
       }
     : undefined
-  return (
-    <div
-      className={className}
-      onClick={onClick}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  )
+  return <div className={className} onClick={onClick} dangerouslySetInnerHTML={{ __html: html }} />
 }
