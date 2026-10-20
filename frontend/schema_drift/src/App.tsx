@@ -2,26 +2,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { ApiError, diff } from '@/api'
-import { ReportView } from '@/components/ReportView'
+import { ReportView } from '@shared/components/ReportView'
+import { fieldCls, labelCls, textareaCls, DIALECTS } from '@shared/constants'
 
-// Pinned to the legacy _DIALECTS tuple (parity test in
-// tests/test_schemadrift_i18n.py keeps this in sync with the backend).
-const DIALECTS = [
-  'hive',
-  'spark',
-  'mysql',
-  'postgresql',
-  'clickhouse',
-  'doris',
-  'starrocks',
-]
-
-const fieldCls =
-  'w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink'
-const labelCls =
-  'mb-2 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft'
-const textareaCls =
-  'w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink'
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -177,7 +160,7 @@ export default function App() {
                 {error}
               </div>
             )}
-            {report && <ReportView markdown={report} />}
+            {report && <ReportView className="sd-report" markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('old_ph')}</p>}
           </Card>
         </main>

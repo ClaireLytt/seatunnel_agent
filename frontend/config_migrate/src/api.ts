@@ -1,3 +1,5 @@
+import { ApiError } from '@shared/api'
+export { ApiError }
 const BASE = '/api/config_migrate'
 
 export interface MigrateResponse {
@@ -11,16 +13,6 @@ export interface BatchResponse {
   report: string
 }
 
-/** Structured API error (e.g. {code: 'bad_dir', path}) the UI can localize. */
-export class ApiError extends Error {
-  code: string
-  path: string
-  constructor(code: string, path: string) {
-    super(`${code}: ${path}`)
-    this.code = code
-    this.path = path
-  }
-}
 
 export async function migrateText(text: string, lang: string): Promise<MigrateResponse> {
   const r = await fetch(`${BASE}/migrate`, {

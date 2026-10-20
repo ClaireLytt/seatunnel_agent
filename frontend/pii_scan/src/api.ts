@@ -1,3 +1,5 @@
+import { ApiError } from '@shared/api'
+export { ApiError }
 const BASE = '/api/pii'
 
 export interface ScanResponse {
@@ -6,18 +8,6 @@ export interface ScanResponse {
   elapsed_ms: number
 }
 
-/** Structured API error ({code: bad_dir|scan_failed, …}) the UI localizes. */
-export class ApiError extends Error {
-  code: string
-  path: string
-  error: string
-  constructor(code: string, path: string, error = '') {
-    super(`${code}: ${path || error}`)
-    this.code = code
-    this.path = path
-    this.error = error
-  }
-}
 
 export async function scan(body: {
   sql?: string

@@ -1,3 +1,5 @@
+import { ApiError } from '@shared/api'
+export { ApiError }
 const BASE = '/api/transpile'
 
 export interface TranslateResponse {
@@ -18,16 +20,6 @@ export interface AdviceResponse {
   detail?: string
 }
 
-/** Structured API error (e.g. {code: 'bad_dir', path}) the UI can localize. */
-export class ApiError extends Error {
-  code: string
-  path: string
-  constructor(code: string, path: string) {
-    super(`${code}: ${path}`)
-    this.code = code
-    this.path = path
-  }
-}
 
 async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {

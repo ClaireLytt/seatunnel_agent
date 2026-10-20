@@ -1,3 +1,5 @@
+import { ApiError } from '@shared/api'
+export { ApiError }
 const BASE = '/api/schemadrift'
 
 export interface DriftResponse {
@@ -6,18 +8,6 @@ export interface DriftResponse {
   elapsed_ms: number
 }
 
-/** Structured API error (e.g. {code: 'bad_path', path}) the UI localizes. */
-export class ApiError extends Error {
-  code: string
-  path: string
-  error: string
-  constructor(code: string, path: string, error = '') {
-    super(`${code}: ${path || error}`)
-    this.code = code
-    this.path = path
-    this.error = error
-  }
-}
 
 export async function diff(body: {
   old_sql?: string
