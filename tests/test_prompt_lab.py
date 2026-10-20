@@ -225,3 +225,40 @@ class TestApi:
     def test_health(self):
         resp = self._client().get("/api/promptlab/health")
         assert resp.json() == {"status": "ok", "agent": "prompt_lab"}
+
+    # ── diff / history (backing the React page, ticket 01) ───────────
+
+    def test_diff_endpoint(self):
+        resp = self._client().post("/api/promptlab/diff", json={
+            "a": {"profile": "kimi", "model": "m1", "reply": "x\ny"},
+            "b": {"profile": "claude", "model": "m2", "reply": "x\nz"},
+            "lang": "en"})
+        assert resp.status_code == 200
+        md = resp.json()["markdown"]
+        assert "```diff" in md and "-y" in md and "+z" in md
+        assert "kimi" in md and "claude" in md
+
+    def test_diff_same_text(self):
+        cell = {"profile": "a", "model": "m", "reply": "same"}
+        resp = self._client().post("/api/promptlab/diff", json={
+            "a": cell, "b": {**cell, "profile": "b"}, "lang": "zh"})
+        md = resp.json()["markdown"]
+        assert "diff" not in md.lower() or "```diff" not in md
+        assert "相同" in md
+
+    def test_history_empty(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PROMPT_LAB_PATH", str(tmp_path / "x.jsonl"))
+        resp = self._client().get("/api/promptlab/history")
+        assert resp.status_code == 200
+        assert resp.json() == {"runs": []}
+
+    def test_history_returns_recent(self, tmp_path, monkeypatch, profiles):
+        monkeypatch.setenv("PROMPT_LAB_LOG", "1")
+        monkeypatch.setenv("PROMPT_LAB_PATH", str(tmp_path / "x.jsonl"))
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient", FakeClient)
+        self._client().post("/api/promptlab/run", json={
+            "prompt": "hello", "profiles": ["kimi"]})
+        resp = self._client().get("/api/promptlab/history?n=5")
+        runs = resp.json()["runs"]
+        assert len(runs) == 1
+        assert "sk-kimi" not in resp.text
