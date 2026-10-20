@@ -1,18 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
+import { DIALECTS } from '@shared/constants'
 import { generateData } from '@/api'
-import { ReportView } from '@/components/ReportView'
-
-const DIALECTS = [
-  'hive',
-  'spark',
-  'mysql',
-  'postgresql',
-  'clickhouse',
-  'doris',
-  'starrocks',
-]
+import { ReportView } from '@shared/components/ReportView'
+import { fieldCls, labelCls, textareaCls } from '@shared/constants'
 
 // Same demo prefill as the legacy page (_DEMO_SQL) — a 2-table JOIN with a
 // partition filter and an IN list, so first-time users get a telling report.
@@ -22,12 +14,6 @@ JOIN dwd.order_pay o ON u.user_id = o.user_id
 WHERE o.dt = '2024-01-01' AND o.status IN ('PAID', 'DONE')
 GROUP BY u.user_id, u.user_name`
 
-const fieldCls =
-  'w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink'
-const textareaCls =
-  'w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink'
-const labelCls =
-  'mb-2 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft'
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -156,7 +142,7 @@ export default function App() {
                 {error}
               </div>
             )}
-            {report && <ReportView markdown={report} />}
+            {report && <ReportView className="tg-report" markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('sql_ph')}</p>}
           </Card>
         </main>

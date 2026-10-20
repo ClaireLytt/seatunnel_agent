@@ -9,24 +9,23 @@ Endpoints (deterministic — nothing executed):
 
 from __future__ import annotations
 
-import time
-from pathlib import Path
-from typing import Any
+import contextvars
 
-from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import (
-    add_health,
-    check_path_allowed,
-    ms_since,
-)
-from seatunnel_agent.common.utils import normalize_lang
+from seatunnel_agent.common.api_factory import make_agent_router
 
 from .checker import check_sql_dir
 from .report import render_markdown, report_to_dict
 
-router = APIRouter(prefix="/api/dagcheck", tags=["dag_check"])
+# Re-export so existing monkeypatches (tests) can replace the name.
+_check_sql_dir = check_sql_dir
+
+# Thread the optional seatunnel_dir through a context-var so the
+# factory's ``domain_fn(path, dialect=)`` call-site needs no change.
+_seatunnel_dir_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "_seatunnel_dir_ctx", default=None,
+)
 
 
 class DagCheckRequest(BaseModel):
@@ -39,37 +38,43 @@ class DagCheckRequest(BaseModel):
     report: bool = Field(False, description="Include the rendered markdown report")
 
 
-class DagCheckResponse(BaseModel):
-    result: dict[str, Any]
-    report: str | None = None
-    elapsed_ms: int
+def _pre_check(req: DagCheckRequest) -> None:
+    """Validate and stash seatunnel_dir before the domain call."""
+    from pathlib import Path
+
+    from fastapi import HTTPException
+
+    from seatunnel_agent.common.api_guard import check_path_allowed
+
+    st_dir = (req.seatunnel_dir or "").strip() or None
+    if st_dir:
+        check_path_allowed(st_dir, "DAGCHECK_API_ALLOWED_DIRS")
+        if not Path(st_dir).is_dir():
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "bad_dir", "path": st_dir},
+            )
+    _seatunnel_dir_ctx.set(st_dir)
 
 
-@router.post("/check", response_model=DagCheckResponse)
-def check(req: DagCheckRequest) -> DagCheckResponse:
-    start = time.time()
-    lang = normalize_lang(req.lang)
-    # whitelist first (403, no existence probing), then a structured
-    # detail the frontend localizes (i18n `bad_dir`)
-    for raw in filter(None, (req.sql_dir.strip(),
-                             (req.seatunnel_dir or "").strip())):
-        check_path_allowed(raw, "DAGCHECK_API_ALLOWED_DIRS")
-        if not Path(raw).is_dir():
-            raise HTTPException(status_code=400,
-                                detail={"code": "bad_dir", "path": raw})
-    try:
-        result = check_sql_dir(
-            req.sql_dir.strip(), dialect=req.dialect,
-            seatunnel_dir=(req.seatunnel_dir or "").strip() or None)
-    except Exception as exc:  # legacy UI degraded to "⚠️ Type: msg"
-        raise HTTPException(status_code=400, detail={
-            "code": "check_failed",
-            "error": f"{type(exc).__name__}: {exc}"})
-    return DagCheckResponse(
-        result=report_to_dict(result, lang),
-        report=render_markdown(result, lang) if req.report else None,
-        elapsed_ms=ms_since(start),
+def _domain(path: str, *, dialect: str = "hive"):
+    """Late-bound wrapper so monkeypatching ``_check_sql_dir`` works."""
+    import sys
+
+    mod = sys.modules[__name__]
+    return mod._check_sql_dir(
+        path, dialect=dialect, seatunnel_dir=_seatunnel_dir_ctx.get(),
     )
 
 
-add_health(router, "dag_check")
+router = make_agent_router(
+    prefix="/api/dagcheck",
+    tags=["dag_check"],
+    domain_fn=_domain,
+    request_model=DagCheckRequest,
+    allowed_dirs_env="DAGCHECK_API_ALLOWED_DIRS",
+    health_name="dag_check",
+    report_to_dict=report_to_dict,
+    render_markdown=render_markdown,
+    pre_check=_pre_check,
+)

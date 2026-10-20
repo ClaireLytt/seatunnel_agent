@@ -2,17 +2,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { ApiError, checkDir, formatSql } from '@/api'
-import { ReportView } from '@/components/ReportView'
-
-const DIALECTS = [
-  'hive',
-  'spark',
-  'mysql',
-  'postgresql',
-  'clickhouse',
-  'doris',
-  'starrocks',
-]
+import { ReportView } from '@shared/components/ReportView'
+import { DIALECTS } from '@shared/constants'
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -158,7 +149,7 @@ export default function App() {
                 {error}
               </div>
             )}
-            {report && <ReportView markdown={report} />}
+            {report && <ReportView className="sf-report" markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('sql_ph')}</p>}
           </Card>
         </main>

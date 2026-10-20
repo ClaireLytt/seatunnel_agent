@@ -1,3 +1,5 @@
+import { ApiError } from '@shared/api'
+export { ApiError }
 const BASE = '/api/conflint'
 
 export interface LintResponse {
@@ -6,16 +8,6 @@ export interface LintResponse {
   elapsed_ms: number
 }
 
-/** Structured API error (e.g. {code: 'bad_dir', path}) the UI can localize. */
-export class ApiError extends Error {
-  code: string
-  path: string
-  constructor(code: string, path: string) {
-    super(`${code}: ${path}`)
-    this.code = code
-    this.path = path
-  }
-}
 
 export async function lintConfig(config: string, lang: string): Promise<LintResponse> {
   return postLint({ config, lang, report: true })

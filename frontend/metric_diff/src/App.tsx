@@ -2,24 +2,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { ApiError, checkMetrics } from '@/api'
-import { ReportView } from '@/components/ReportView'
+import { ReportView } from '@shared/components/ReportView'
+import { fieldCls, labelCls, DIALECTS } from '@shared/constants'
 
-// Pinned to the legacy _DIALECTS tuple (parity test in
-// tests/test_metricdiff_i18n.py keeps this in sync).
-const DIALECTS = [
-  'hive',
-  'spark',
-  'mysql',
-  'postgresql',
-  'clickhouse',
-  'doris',
-  'starrocks',
-]
-
-const fieldCls =
-  'w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink'
-const labelCls =
-  'mb-2 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft'
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -113,7 +98,7 @@ export default function App() {
                 {error}
               </div>
             )}
-            {report && <ReportView markdown={report} />}
+            {report && <ReportView className="md-report" markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('dir_ph')}</p>}
           </Card>
         </main>
