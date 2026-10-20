@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
-import { runSuite } from '@/api'
+import { fetchDemoSuite, fetchHistory, runSuite, validateSuite } from '@/api'
+import type { HistoryRun } from '@/api'
 import { Card } from '@shared/components/card'
 import { ReportView } from '@shared/components/ReportView'
 import { labelCls, textareaCls } from '@shared/constants'
+import { TrendChart } from '@/TrendChart'
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -14,6 +16,41 @@ export default function App() {
   const [judge, setJudge] = useState(false)
   const [running, setRunning] = useState(false)
   const [report, setReport] = useState('')
+  const [trendRuns, setTrendRuns] = useState<HistoryRun[] | null>(null)
+
+  const onLoadDemo = async () => {
+    try {
+      setSuiteYaml(await fetchDemoSuite())
+    } catch (e) {
+      setReport(`⚠️ ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
+  // Parse-only feedback loop — never calls the LLM (mirrors Gradio do_validate).
+  const onValidate = async () => {
+    if (!suiteYaml.trim()) {
+      setReport(t('emptySuite'))
+      return
+    }
+    try {
+      const r = await validateSuite(suiteYaml)
+      setReport(
+        r.ok
+          ? t('validOk', { n: r.cases, agents: r.agents.join(', ') })
+          : `⚠️ ${r.error}`,
+      )
+    } catch (e) {
+      setReport(`⚠️ ${e instanceof Error ? e.message : e}`)
+    }
+  }
+
+  const onRefreshTrend = async () => {
+    try {
+      setTrendRuns(await fetchHistory(200))
+    } catch {
+      setTrendRuns([])
+    }
+  }
 
   const onRun = async () => {
     if (!suiteYaml.trim()) {
@@ -69,6 +106,20 @@ export default function App() {
             onChange={(e) => setSuiteYaml(e.target.value)}
             placeholder={t('suitePh')}
           />
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={onLoadDemo}
+              className="flex-1 rounded border-[1.5px] border-ink px-3 py-1.5 font-mono text-xs text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+            >
+              {t('demoBtn')}
+            </button>
+            <button
+              onClick={onValidate}
+              className="flex-1 rounded border-[1.5px] border-ink px-3 py-1.5 font-mono text-xs text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+            >
+              {t('validateBtn')}
+            </button>
+          </div>
           <label className="mt-4 flex items-center gap-2 font-mono text-sm text-fg">
             <input
               type="checkbox"
@@ -95,6 +146,26 @@ export default function App() {
           ) : (
             <p className="text-muted">{t('reportPh')}</p>
           )}
+
+          <details className="mt-6 rounded border border-line">
+            <summary className="cursor-pointer select-none px-3 py-2 font-mono text-sm text-ink">
+              {t('trendAcc')}
+            </summary>
+            <div className="px-3 pb-3">
+              {trendRuns !== null &&
+                (trendRuns.length > 0 ? (
+                  <TrendChart runs={trendRuns} />
+                ) : (
+                  <p className="font-mono text-sm text-muted">{t('noRuns')}</p>
+                ))}
+              <button
+                onClick={onRefreshTrend}
+                className="mt-2 rounded border-[1.5px] border-ink px-3 py-1.5 font-mono text-xs text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+              >
+                {t('trendBtn')}
+              </button>
+            </div>
+          </details>
         </Card>
       </div>
     </div>
