@@ -2,12 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { ReportView } from '@shared/components/ReportView'
-import { chatStream, clearSession, type ChatEvent } from '@/api'
+import {
+  chatStream,
+  clearSession,
+  fetchAgents,
+  fetchSession,
+  type AgentSpec,
+  type ChatEvent,
+} from '@/api'
 
 type Item =
   | { kind: 'user'; text: string }
   | { kind: 'step'; tool: string; ms: number; output: string }
-  | { kind: 'reply'; text: string; suggestedOnly: boolean }
+  | { kind: 'reply'; text: string; suggestedOnly: boolean; toolsUsed?: string[] }
   | { kind: 'error'; text: string }
 
 const MAX_STEP_OUTPUT = 4000
@@ -17,8 +24,34 @@ export default function App() {
   const [items, setItems] = useState<Item[]>([])
   const [input, setInput] = useState('')
   const [running, setRunning] = useState(false)
+  const [agents, setAgents] = useState<AgentSpec[]>([])
   const sessionRef = useRef<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // restore the most recent persisted session (same as the Gradio page)
+  useEffect(() => {
+    fetchSession()
+      .then(({ session, turns }) => {
+        if (!turns.length) return
+        sessionRef.current = session
+        const restored: Item[] = []
+        for (const turn of turns) {
+          restored.push({ kind: 'user', text: turn.request })
+          restored.push({
+            kind: 'reply',
+            text: turn.reply,
+            suggestedOnly: false,
+            toolsUsed: turn.steps.length ? turn.steps.map((s) => s.tool) : undefined,
+          })
+        }
+        setItems(restored)
+      })
+      .catch((e) => console.error(e))
+    fetchAgents(i18n.language)
+      .then(({ agents }) => setAgents(agents))
+      .catch((e) => console.error(e))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight)
@@ -143,10 +176,33 @@ export default function App() {
                   <p className="mb-2 font-mono text-xs text-ink-soft">{t('noKey')}</p>
                 )}
                 <ReportView markdown={it.text} className="st-md space-y-2" />
+                {it.toolsUsed && (
+                  <p className="mt-2 font-mono text-xs text-ink-soft">
+                    🔧 {it.toolsUsed.join(', ')}
+                  </p>
+                )}
               </div>
             ),
           )}
           {running && <div className="text-sm text-muted">{t('working')}</div>}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(
+            [
+              ['exReview', 'exReviewText'],
+              ['exChain', 'exChainText'],
+              ['exPii', 'exPiiText'],
+            ] as const
+          ).map(([label, textKey]) => (
+            <button
+              key={label}
+              onClick={() => setInput(t(textKey))}
+              disabled={running}
+              className="rounded border border-line px-3 py-1 font-mono text-xs text-ink-soft transition hover:border-ink hover:text-ink disabled:opacity-50"
+            >
+              {t(label)}
+            </button>
+          ))}
         </div>
         <div className="mt-3 flex gap-2">
           <textarea
@@ -180,6 +236,40 @@ export default function App() {
           </div>
         </div>
       </Card>
+
+      <details className="mt-6 rounded border border-line bg-card px-4 py-3">
+        <summary className="cursor-pointer font-mono text-sm text-ink">{t('agentsAcc')}</summary>
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-line font-mono text-xs uppercase tracking-wide text-ink-soft">
+                <th className="py-2 pr-4">{t('colAgent')}</th>
+                <th className="py-2 pr-4">{t('colPage')}</th>
+                <th className="py-2">{t('colDesc')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...agents]
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map((a) => (
+                  <tr key={a.name} className="border-b border-line align-top last:border-b-0">
+                    <td className="py-2 pr-4 font-mono text-xs text-ink">{a.name}</td>
+                    <td className="py-2 pr-4 font-mono text-xs">
+                      {a.page ? (
+                        <a href={a.page} className="text-ink underline">
+                          {a.page}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="py-2 text-fg">{a.description.slice(0, 110)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   )
 }

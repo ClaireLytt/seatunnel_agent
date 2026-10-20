@@ -18,6 +18,13 @@ export type ChatEvent =
     }
   | { type: 'error'; message: string }
 
+export interface AgentSpec {
+  name: string
+  description: string
+  page: string | null
+  input_schema?: Record<string, unknown>
+}
+
 export interface SessionTurn {
   request: string
   reply: string
@@ -41,6 +48,12 @@ export async function chatStream(
 export async function fetchSession(): Promise<{ session: string | null; turns: SessionTurn[] }> {
   const r = await fetch(`${BASE}/session`)
   if (!r.ok) throw new Error(`session: HTTP ${r.status}`)
+  return r.json()
+}
+
+export async function fetchAgents(lang: string): Promise<{ agents: AgentSpec[] }> {
+  const r = await fetch(`${BASE}/agents?lang=${encodeURIComponent(lang)}`)
+  if (!r.ok) throw new Error(`agents: HTTP ${r.status}`)
   return r.json()
 }
 

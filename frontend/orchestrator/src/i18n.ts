@@ -26,6 +26,21 @@ const resources = {
         '⚠️ No LLM configured — suggestions only. Configure an API key on the Settings page.',
       working: '⏳ Routing & running agents…',
       home: 'Home',
+      agentsAcc: 'Routable agents',
+      colAgent: 'Agent',
+      colPage: 'Page',
+      colDesc: 'What it does',
+      exReview: 'Try: SQL review',
+      exChain: 'Try: translate + review',
+      exPii: 'Try: PII scan',
+      exReviewText:
+        "Review this SQL: SELECT * FROM dwd_order_df a, dim_user_df b WHERE a.ds='2026-10-01'",
+      exChainText:
+        'Translate this Hive SQL to Doris, then review the result: ' +
+        'SELECT city, collect_set(user_id) FROM t GROUP BY city',
+      exPiiText:
+        "Any sensitive columns in this DDL? CREATE TABLE u (phone STRING COMMENT 'mobile phone', " +
+        "id_card STRING COMMENT 'national id')",
     },
   },
   zh: {
@@ -46,6 +61,21 @@ const resources = {
       noKey: '⚠️ 未配置 LLM — 仅能做关键词推荐。请到设置页配置 API key。',
       working: '⏳ 正在路由并执行 agent…',
       home: '首页',
+      agentsAcc: '可路由的 agent',
+      colAgent: 'Agent',
+      colPage: '页面',
+      colDesc: '说明',
+      exReview: '示例:SQL 审查',
+      exChain: '示例:翻译+审查',
+      exPii: '示例:PII 扫描',
+      exReviewText:
+        "审查这段 SQL:SELECT * FROM dwd_order_df a, dim_user_df b WHERE a.ds='2026-10-01'",
+      exChainText:
+        '把这段 Hive SQL 翻译成 Doris,然后审查翻译结果:' +
+        'SELECT city, collect_set(user_id) FROM t GROUP BY city',
+      exPiiText:
+        "这段 DDL 里有敏感字段吗?CREATE TABLE u (phone STRING COMMENT '手机号', " +
+        "id_card STRING COMMENT '身份证')",
     },
   },
 }
