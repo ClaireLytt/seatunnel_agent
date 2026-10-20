@@ -17,8 +17,7 @@ MANIFESTS = [
         title_zh="数据血缘",
         desc_en="Table & column lineage from SQL files, SeaTunnel configs and Hive metadata — impact, SLA, health",
         desc_zh="从 SQL / SeaTunnel 配置 / Hive 元数据构建表级与字段级血缘 — 影响分析、SLA、治理体检",
-        # api intentionally unset: the router is mounted unconditionally by
-        # the launcher (the React page depends on it), not behind --api.
+        api="seatunnel_agent.agents.data.data_lineage.api:router",
         render="",  # React static mount serves this route (frontend/data_lineage)
         group="governance",
         order=10,
@@ -35,8 +34,6 @@ MANIFESTS = [
         title_zh="变更影响分析",
         desc_en="SQL diff × lineage — compare two SQL trees and report the release blast radius with severity levels",
         desc_zh="SQL 变更 × 血缘 — 对比两份 SQL 目录，输出上线影响面与严重度分级",
-        # api intentionally unset: the shared lineage router (incl.
-        # /api/lineage/impact) is mounted unconditionally by the launcher.
         render="",  # React static mount serves this route (frontend/change_impact)
         group="governance",
         order=20,

@@ -13,8 +13,7 @@ MANIFEST = AgentManifest(
     title_zh="数据比对",
     desc_en="Compare schemas, row counts, and data across two data sources",
     desc_zh="跨数据源比对表结构、行数、数据差异",
-    # api intentionally unset: the router is mounted unconditionally by the
-    # launcher (the React page depends on it), not behind --api.
+    api="seatunnel_agent.agents.data.data_comparison.api:router",
     render="",  # React static mount serves this route (frontend/data_comparison)
     group="build",
     order=30,
