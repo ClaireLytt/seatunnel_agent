@@ -255,8 +255,8 @@ class TestApi:
 
     def test_prices_override_wins(self, tmp_path, monkeypatch):
         f = tmp_path / "pricing.yaml"
-        f.write_text("prices:\n  deepseek-chat:\n    input_usd: 9.9\n"
-                     "    output_usd: 9.9\n", encoding="utf-8")
+        f.write_text("prices:\n  - model: deepseek-chat\n    input: 9.9\n"
+                     "    output: 9.9\n", encoding="utf-8")
         monkeypatch.setenv("SEATUNNEL_PRICING_PATH", str(f))
         data = self._client().get("/api/llmcost/prices").json()
         row = next(p for p in data["prices"] if p["prefix"] == "deepseek-chat"
