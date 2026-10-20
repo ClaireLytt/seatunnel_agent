@@ -26,6 +26,7 @@
     "sql_testgen",
     "sql_transpile",
     "uitest",
-    "text2sql"
+    "text2sql",
+    "web_task"
   ]
 }

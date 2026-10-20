@@ -1,0 +1,47 @@
+@import '@shared/theme.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Agent-reply markdown inside the final report. */
+.wt-report {
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+.wt-report h2,
+.wt-report h3 {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0.75rem 0 0.5rem;
+}
+.wt-report ul,
+.wt-report ol {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+.wt-report li {
+  margin: 0.2rem 0;
+}
+.wt-report code {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.8rem;
+  background: var(--grid);
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+.wt-report pre {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+}
+.wt-report blockquote {
+  margin: 0.75rem 0 0;
+  padding: 0.4rem 0.75rem;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
