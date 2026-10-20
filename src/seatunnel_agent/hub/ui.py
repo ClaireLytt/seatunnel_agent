@@ -276,6 +276,12 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
     )
     app.app.include_router(metric_diff_api_router)
 
+    # DAG Check backend: same deal — the React page calls it.
+    from seatunnel_agent.agents.data.dag_check.api import (
+        router as dag_check_api_router,
+    )
+    app.app.include_router(dag_check_api_router)
+
     # PII Scan backend: same deal — the React page calls it.
     from seatunnel_agent.agents.data.pii_scan.api import (
         router as pii_scan_api_router,

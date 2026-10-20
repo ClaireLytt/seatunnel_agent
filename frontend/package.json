@@ -4,6 +4,7 @@
   "workspaces": [
     "shared",
     "config_lint",
+    "dag_check",
     "change_impact",
     "config_migrate",
     "data_comparison",
