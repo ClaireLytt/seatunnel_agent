@@ -4,7 +4,10 @@ import { fetchSummary } from '@/api'
 import type { SummaryResponse } from '@/api'
 import { Card } from '@shared/components/card'
 import { ReportView } from '@shared/components/ReportView'
-import { fieldCls, labelCls } from '@shared/constants'
+import { fieldCls, labelCls, smallBtnCls } from '@shared/constants'
+import { CostChart, TokensChart } from '@/Charts'
+import { PriceTable } from '@/PriceTable'
+import { downloadCsv, summaryCsv } from '@/csv'
 
 const DAY_CHOICES = [7, 14, 30, 90]
 
@@ -60,6 +63,7 @@ export default function App() {
           pct: Math.round((cost / budgetNum) * 100) + '%',
         })
       : ''
+  const csv = resp ? summaryCsv(resp.summary) : null
 
   return (
     <div className="mx-auto max-w-[1180px] px-4 py-10">
@@ -115,6 +119,11 @@ export default function App() {
         >
           {t('refreshBtn')}
         </button>
+        {csv !== null && (
+          <button className={smallBtnCls + ' py-2.5'} onClick={() => downloadCsv(csv)}>
+            {t('csvBtn')}
+          </button>
+        )}
       </div>
 
       <Card className="mt-6">
@@ -139,9 +148,17 @@ export default function App() {
               <p className="mb-4 font-mono text-sm text-muted">{t('noData')}</p>
             )}
             <ReportView className="lc-report" markdown={resp.report ?? ''} />
+            {resp.summary.total.calls > 0 && (
+              <div className="mt-6 grid gap-6 md:grid-cols-2">
+                <CostChart summary={resp.summary} budget={budgetNum} />
+                <TokensChart summary={resp.summary} />
+              </div>
+            )}
           </>
         ) : null}
       </Card>
+
+      <PriceTable />
     </div>
   )
 }
