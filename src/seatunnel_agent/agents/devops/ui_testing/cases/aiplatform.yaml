@@ -54,30 +54,9 @@
   expect:
     - text_contains: {in: 页面, text: 近 7 天}
 
-# ── Prompt 实验室 /promptlab(只走输入校验,不触发真实调用)──────────────
-
-- id: PLAB1
-  title: 空 Prompt 给出提示而非调用
-  tags: [smoke, sqlite]
-  page: /promptlab
-  steps:
-    - click: 运行对比
-    - wait: 800
-      note: 等待回调完成(确定性输出,无加载信号)
-  expect:
-    - text_contains: {in: 结果区, text: 请先输入 Prompt}
-
-- id: PLAB2
-  title: 实验历史面板可刷新不崩溃
-  tags: [full, sqlite]
-  page: /promptlab
-  steps:
-    - open_accordion: {target: 实验历史}
-    - click: 刷新历史
-    - wait: 800
-      note: 等待回调完成(确定性输出,无加载信号)
-  expect:
-    - text_not_contains: {in: 页面, text: Traceback}
+# ── Prompt 实验室 /promptlab ─────────────────────────────────────────────
+# PLAB1-PLAB2 retired: /promptlab is the React page
+# (see tests/test_promptlab_page.py).
 
 # ── LLM 评测 /llmeval ────────────────────────────────────────────────────
 # EVAL1-EVAL3 retired: /llmeval is the React page
