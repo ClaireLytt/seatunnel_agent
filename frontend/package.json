@@ -10,6 +10,7 @@
     "data_comparison",
     "data_lineage",
     "data_skew",
+    "llm_cost",
     "llm_eval",
     "metric_diff",
     "orchestrator",
