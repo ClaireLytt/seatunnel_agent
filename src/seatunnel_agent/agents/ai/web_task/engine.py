@@ -67,13 +67,15 @@ class WebTaskResult:
 def run_task(goal: str, url: str, settings: Settings,
              session: Any = None, client: Any = None,
              max_steps: int = 15, allow_external: bool = False,
-             headed: bool = False, on_step=None) -> WebTaskResult:
+             headed: bool = False, allow_private: bool = False,
+             on_step=None) -> WebTaskResult:
     start = time.time()
     own_session = session is None
     if own_session:
-        from .session import PlaywrightSession
-        session = PlaywrightSession(allow_external=allow_external,
-                                    headed=headed)
+        from . import session as session_mod
+        session = session_mod.PlaywrightSession(
+            allow_external=allow_external, headed=headed,
+            allow_private=allow_private)
         try:
             session.start(url)
         except Exception:

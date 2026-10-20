@@ -202,3 +202,135 @@ class TestOriginGuard:
         s.origin = "http://127.0.0.1:7860"
         out = s.goto("https://evil.example.com/")
         assert out.startswith("BLOCKED")
+
+
+class TestAllowPrivatePassthrough:
+    """run_task must forward allow_private to the session it builds
+    (the UI's default loopback URL depends on it)."""
+
+    class _Recorder:
+        last_kwargs: dict = {}
+
+        def __init__(self, **kwargs):
+            TestAllowPrivatePassthrough._Recorder.last_kwargs = kwargs
+
+        def start(self, url):
+            raise RuntimeError("stop-here")
+
+        def close(self):
+            pass
+
+    def _run(self, monkeypatch, **kw):
+        monkeypatch.setattr(
+            "seatunnel_agent.agents.ai.web_task.session.PlaywrightSession",
+            self._Recorder)
+        with pytest.raises(RuntimeError, match="stop-here"):
+            run_task("g", "http://127.0.0.1:7860/", SETTINGS,
+                     client=ScriptedClient([]), **kw)
+        return self._Recorder.last_kwargs
+
+    def test_default_false(self, monkeypatch):
+        assert self._run(monkeypatch).get("allow_private") is False
+
+    def test_passthrough_true(self, monkeypatch):
+        assert self._run(monkeypatch,
+                         allow_private=True).get("allow_private") is True
+
+
+class TestApi:
+    """SSE run endpoint (ticket 01) — OFF unless WEBTASK_API_ENABLED=1."""
+
+    def _client(self):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from seatunnel_agent.agents.ai.web_task.api import router
+        app = FastAPI()
+        app.include_router(router)
+        return TestClient(app)
+
+    @staticmethod
+    def _events(resp):
+        import json as _json
+        return [_json.loads(line[len("data: "):])
+                for line in resp.iter_lines() if line.startswith("data: ")]
+
+    class _FakeFactory:
+        """PlaywrightSession stand-in recording kwargs, backed by the
+        module-level FakeSession page."""
+        last_kwargs: dict = {}
+
+        def __new__(cls, **kwargs):
+            TestApi._FakeFactory.last_kwargs = kwargs
+            inner = FakeSession()
+            inner.start = lambda url: None  # type: ignore[attr-defined]
+            return inner
+
+    def test_disabled_403(self, monkeypatch):
+        monkeypatch.delenv("WEBTASK_API_ENABLED", raising=False)
+        resp = self._client().post("/api/webtask/run",
+                                   json={"goal": "g",
+                                         "url": "http://127.0.0.1:7860/"})
+        assert resp.status_code == 403
+
+    def test_run_streams_steps_then_done(self, monkeypatch):
+        monkeypatch.setenv("WEBTASK_API_ENABLED", "1")
+        monkeypatch.setenv("API_KEY", "sk-test")
+        monkeypatch.setattr(
+            "seatunnel_agent.agents.ai.web_task.session.PlaywrightSession",
+            self._FakeFactory)
+        script = ScriptedClient([
+            _tool("fill", {"index": 0, "text": "alice"}),
+            _tool("click", {"index": 1}),
+            _text("DONE: submitted"),
+        ])
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient",
+                            lambda *a, **k: script)
+        with self._client().stream(
+                "POST", "/api/webtask/run",
+                json={"goal": "submit the form",
+                      "url": "http://127.0.0.1:7860/", "lang": "en",
+                      "max_steps": 6}) as resp:
+            assert resp.status_code == 200
+            events = self._events(resp)
+        steps = [e for e in events if e["type"] == "step"]
+        assert steps and steps[0]["tool"] == "fill"
+        done = events[-1]
+        assert done["type"] == "done" and done["success"] is True
+        # loopback start URL is explicitly permitted over HTTP…
+        assert self._FakeFactory.last_kwargs.get("allow_private") is True
+        # …while the exposed knobs stay off
+        assert self._FakeFactory.last_kwargs.get("allow_external") is False
+        assert self._FakeFactory.last_kwargs.get("headed") is False
+
+    def test_non_loopback_private_rejected(self, monkeypatch):
+        monkeypatch.setenv("WEBTASK_API_ENABLED", "1")
+        monkeypatch.setenv("API_KEY", "sk-test")
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient",
+                            lambda *a, **k: ScriptedClient([]))
+        with self._client().stream(
+                "POST", "/api/webtask/run",
+                json={"goal": "g", "url": "http://192.168.1.10/",
+                      "lang": "en"}) as resp:
+            events = self._events(resp)
+        assert events[-1]["type"] == "error"
+        assert "private" in events[-1]["message"]
+
+    def test_no_key_degrades_to_error_event(self, monkeypatch):
+        monkeypatch.setenv("WEBTASK_API_ENABLED", "1")
+        for var in ("API_KEY", "ANTHROPIC_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+        monkeypatch.setattr("seatunnel_agent.common.config.load_dotenv",
+                            lambda *a, **k: None)
+        monkeypatch.setattr(
+            "seatunnel_agent.common.settings_store.apply_to_env",
+            lambda: None)
+        with self._client().stream(
+                "POST", "/api/webtask/run",
+                json={"goal": "g", "url": "http://127.0.0.1:7860/",
+                      "lang": "en"}) as resp:
+            events = self._events(resp)
+        assert events[-1]["type"] == "error"
+        assert "key" in events[-1]["message"].lower() \
+            or "LLM" in events[-1]["message"]
