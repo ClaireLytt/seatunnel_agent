@@ -9,24 +9,15 @@ Endpoints (deterministic — nothing executed):
 
 from __future__ import annotations
 
-import time
-from pathlib import Path
-from typing import Any
-
-from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import (
-    add_health,
-    check_path_allowed,
-    ms_since,
-)
-from seatunnel_agent.common.utils import normalize_lang
+from seatunnel_agent.common.api_factory import make_agent_router
 
-from .differ import check_sql_dir
+from . import differ
 from .report import render_markdown, report_to_dict
 
-router = APIRouter(prefix="/api/metricdiff", tags=["metric_diff"])
+# Re-export so existing monkeypatches (tests) can replace the name.
+check_sql_dir = differ.check_sql_dir
 
 
 class MetricDiffRequest(BaseModel):
@@ -37,34 +28,20 @@ class MetricDiffRequest(BaseModel):
     report: bool = Field(False, description="Include the rendered markdown report")
 
 
-class MetricDiffResponse(BaseModel):
-    result: dict[str, Any]
-    report: str | None = None
-    elapsed_ms: int
+def _domain(path: str, *, dialect: str = "hive"):
+    """Late-bound wrapper so monkeypatching ``check_sql_dir`` works."""
+    import sys
+    mod = sys.modules[__name__]
+    return mod.check_sql_dir(path, dialect=dialect)
 
 
-@router.post("/check", response_model=MetricDiffResponse)
-def check(req: MetricDiffRequest) -> MetricDiffResponse:
-    start = time.time()
-    lang = normalize_lang(req.lang)
-    target = (req.sql_dir or "").strip()
-    # whitelist first (403, no existence probing), then a structured
-    # detail the frontend localizes (i18n `bad_dir`)
-    check_path_allowed(target, "METRICDIFF_API_ALLOWED_DIRS")
-    if not Path(target).is_dir():
-        raise HTTPException(status_code=400,
-                            detail={"code": "bad_dir", "path": target})
-    try:
-        result = check_sql_dir(target, dialect=req.dialect)
-    except Exception as exc:  # legacy UI degraded to "⚠️ Type: msg"
-        raise HTTPException(status_code=400, detail={
-            "code": "check_failed",
-            "error": f"{type(exc).__name__}: {exc}"})
-    return MetricDiffResponse(
-        result=report_to_dict(result, lang),
-        report=render_markdown(result, lang) if req.report else None,
-        elapsed_ms=ms_since(start),
-    )
-
-
-add_health(router, "metric_diff")
+router = make_agent_router(
+    prefix="/api/metricdiff",
+    tags=["metric_diff"],
+    domain_fn=_domain,
+    request_model=MetricDiffRequest,
+    allowed_dirs_env="METRICDIFF_API_ALLOWED_DIRS",
+    health_name="metric_diff",
+    report_to_dict=report_to_dict,
+    render_markdown=render_markdown,
+)
