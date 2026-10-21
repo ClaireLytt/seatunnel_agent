@@ -13,7 +13,8 @@
 3. i18n:i18next 资源从 Python i18n 字典逐字平移;语言初始化
    `langFromCookie()`。
 4. REST:页面直接 fetch;router 在 `hub/ui.py` launch 后无条件挂载
-   (uitest/sql_review 模式),manifest 的 `api=` 留空以免 --api 环重复挂载。
+   (uitest/sql_review 模式),manifest 保留 `api=`(hub 的 manifest 环
+   无条件挂载,现行约定;早期 "api= 留空" 做法已废弃)。
 
 ## 切换
 
