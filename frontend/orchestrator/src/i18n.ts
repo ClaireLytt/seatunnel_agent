@@ -1,7 +1,4 @@
-import i18n from 'i18next'
-import { initReactI18next } from 'react-i18next'
-
-import { langFromCookie } from '@shared/lang'
+import { initI18n } from '@shared/i18n'
 
 // Copy carried over from the legacy Gradio page
 // (seatunnel_agent/agents/ai/orchestrator/ui.py _I18N).
@@ -80,11 +77,4 @@ const resources = {
   },
 }
 
-i18n.use(initReactI18next).init({
-  resources,
-  lng: langFromCookie(),
-  fallbackLng: 'en',
-  interpolation: { escapeValue: false },
-})
-
-export default i18n
+export default initI18n(resources)

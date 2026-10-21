@@ -3,8 +3,10 @@ import { useTranslation } from 'react-i18next'
 import { fetchSummary } from '@/api'
 import type { SummaryResponse } from '@/api'
 import { Card } from '@shared/components/card'
+import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
 import { fieldCls, labelCls, smallBtnCls } from '@shared/constants'
+import { langOf } from '@shared/lang'
 import { CostChart, TokensChart } from '@/Charts'
 import { PriceTable } from '@/PriceTable'
 import { downloadCsv, summaryCsv } from '@/csv'
@@ -22,7 +24,7 @@ function usd(v: number): string {
 
 export default function App() {
   const { t, i18n } = useTranslation()
-  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   const [days, setDays] = useState(30)
   const [budget, setBudget] = useState('')
@@ -67,24 +69,7 @@ export default function App() {
 
   return (
     <div className="mx-auto max-w-[1180px] px-4 py-10">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <span className="mb-4 inline-block rounded border border-ink-soft px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
-            ai / llmcost
-          </span>
-          <h1 className="font-display text-4xl font-bold tracking-tight text-ink">
-            {t('title')}
-          </h1>
-          <p className="mt-3 max-w-[680px] text-muted">{t('subtitle')}</p>
-        </div>
-        <a
-          href="/"
-          title={t('home')}
-          className="shrink-0 rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
-        >
-          {t('home')}
-        </a>
-      </header>
+      <PageHeader badge="ai / llmcost" />
 
       <div className="mt-8 flex flex-wrap items-end gap-4">
         <label className="w-36">

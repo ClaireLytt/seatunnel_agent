@@ -1,5 +1,9 @@
 // Thin client for the SQL Review REST API (agents/data/sql_review/api.py).
 
+import { ApiError, fetchJson } from '@shared/api'
+
+export { ApiError }
+
 export const DIALECTS = [
   'hive',
   'spark',
@@ -105,37 +109,18 @@ export const DIALECT_ALIASES: Record<string, Dialect> = {
 
 const BASE = '/api/sql_review'
 
-// carries the HTTP status so callers can branch on it instead of matching
-// the detail wording
-export class ApiError extends Error {
-  status: number
-  constructor(status: number, detail: string) {
-    super(detail)
-    this.status = status
-  }
-}
-
-async function post<T>(path: string, body: unknown): Promise<T> {
-  const r = await fetch(`${BASE}${path}`, {
+// non-2xx responses throw the shared ApiError{status, detail}, so callers
+// can branch on the HTTP status instead of matching the detail wording
+const post = <T,>(path: string, body: unknown): Promise<T> =>
+  fetchJson<T>(`${BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!r.ok) {
-    const data = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))
-    throw new ApiError(
-      r.status,
-      typeof data.detail === 'string' ? data.detail : `HTTP ${r.status}`,
-    )
-  }
-  return r.json()
-}
 
 export const review = (req: ReviewRequest) => post<ReviewResponse>('/review', req)
 export const fix = (req: FixRequest) => post<FixResponse>('/fix', req)
 
-export async function fetchStats(): Promise<StatsResponse> {
-  const r = await fetch(`${BASE}/stats`)
-  if (!r.ok) throw new Error(`stats: HTTP ${r.status}`)
-  return r.json()
+export function fetchStats(): Promise<StatsResponse> {
+  return fetchJson(`${BASE}/stats`)
 }

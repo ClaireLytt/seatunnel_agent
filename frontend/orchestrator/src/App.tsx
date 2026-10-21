@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
+import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
 import {
   chatStream,
@@ -112,22 +113,7 @@ export default function App() {
 
   return (
     <div className="mx-auto max-w-[1020px] px-4 py-10">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <span className="mb-4 inline-block rounded border border-ink-soft px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
-            ai / orchestrator
-          </span>
-          <h1 className="font-display text-4xl font-bold tracking-tight text-ink">{t('title')}</h1>
-          <p className="mt-3 max-w-[620px] text-muted">{t('subtitle')}</p>
-        </div>
-        <a
-          href="/"
-          title={t('home')}
-          className="shrink-0 rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
-        >
-          {t('home')}
-        </a>
-      </header>
+      <PageHeader badge="ai / orchestrator" maxW="max-w-[620px]" />
 
       <Card className="st-chat mt-8 flex h-[70vh] flex-col">
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto pr-1">
