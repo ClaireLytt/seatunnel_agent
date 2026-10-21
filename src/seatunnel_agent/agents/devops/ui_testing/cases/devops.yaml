@@ -43,19 +43,3 @@
     - text_contains: {in: 结果区, text: 0.3.0}
     - text_contains: {in: 结果区, text: 新功能}
 
-- id: CI1
-  title: 粘贴失败日志聚出根因
-  tags: [smoke, sqlite]
-  page: /ciinspect
-  steps:
-    - fill:
-        失败作业日志: |-
-          ##[error]ConnectionError: reach host:443 after 3 retries
-          ##[error]ConnectionError: reach host:443 after 5 retries
-    - click: 分析
-    - wait_result: {}
-  expect:
-    - text_contains: {in: 结果区, text: CI 日志诊断}
-    - text_contains: {in: 结果区, text: ConnectionError}
-    - text_contains: {in: 结果区, text: 错误事件 2}
-    - text_contains: {in: 结果区, text: 根因聚类}

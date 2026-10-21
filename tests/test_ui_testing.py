@@ -26,9 +26,10 @@ class TestLoader:
         # floor tracks the YAML suite as Gradio pages retire to Playwright
         # page tests (dagcheck DAG1-5, orchestrator ORCH1, llmeval EVAL1-3,
         # promptlab PLAB1-2, then llmcost COST1-3, then secretscan
-        # SEC1-2, retired to Playwright, bringing it to 27)
+        # SEC1-2, then ciinspect CI1, retired to Playwright, bringing
+        # it to 26)
         cases = load_cases()
-        assert len(cases) >= 27
+        assert len(cases) >= 26
         ids = [c.id for c in cases]
         assert len(ids) == len(set(ids)), "case ids must be unique"
 
