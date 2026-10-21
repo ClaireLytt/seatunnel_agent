@@ -26,8 +26,8 @@ jobs:
           python-version: "3.11"
       - run: python scripts/check_workflow.py --range "origin/${{ github.base_ref }}...HEAD"
 
-  # React frontend for /uitest (frontend/uitest): build must succeed and
-  # ESLint/Prettier must be clean, mirroring the local verification commands.
+  # React frontend: uitest build must succeed, ESLint must be clean across
+  # ALL workspaces, and Prettier clean on uitest+shared (single job, no matrix).
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -43,7 +43,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build --workspace uitest-frontend
-      - run: npm run lint --workspace uitest-frontend
+      - run: npm run lint --workspaces --if-present
       - run: npx prettier --check uitest/src shared/src
 
   ruff:
