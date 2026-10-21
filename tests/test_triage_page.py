@@ -25,7 +25,7 @@ from seatunnel_agent.agents.ai.issue_triage.manifest import MANIFEST
 from tests.conftest import make_page_url
 from tests.conftest import zh_page as _zh_page
 
-SHOTS = Path(__file__).resolve().parents[1] / "docs" / "reports" / "shots"
+SHOTS = Path(__file__).resolve().parents[1] / "runs" / "shots"
 
 # neutralize every key source so /run answers a deterministic 503
 page_url = make_page_url(

@@ -178,7 +178,7 @@ def test_seatunnel_sessions_sidebar(page_url):
         browser.close()
 
 
-SHOTS = Path(__file__).resolve().parents[1] / "docs" / "reports" / "shots"
+SHOTS = Path(__file__).resolve().parents[1] / "runs" / "shots"
 
 
 @pytest.mark.uitest

@@ -28,7 +28,7 @@ from tests.conftest import make_page_url
 from tests.conftest import zh_page as _zh_page
 
 ROOT = Path(__file__).resolve().parents[1]
-SHOTS = ROOT / "docs" / "reports" / "shots"
+SHOTS = ROOT / "runs" / "shots"
 DEMO = ROOT / "examples" / "llmcost_demo"
 
 # demo usage log + pricing override -> every number is deterministic

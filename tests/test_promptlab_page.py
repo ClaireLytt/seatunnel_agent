@@ -26,7 +26,7 @@ from seatunnel_agent.agents.ai.prompt_lab.manifest import MANIFEST
 from tests.conftest import make_page_url
 from tests.conftest import zh_page as _zh_page
 
-SHOTS = Path(__file__).resolve().parents[1] / "docs" / "reports" / "shots"
+SHOTS = Path(__file__).resolve().parents[1] / "runs" / "shots"
 
 # experiment log must not leak between tests (history panel reads it)
 page_url = make_page_url(

@@ -26,7 +26,7 @@ from seatunnel_agent.agents.ai.web_task.manifest import MANIFEST
 from tests.conftest import make_page_url
 from tests.conftest import zh_page as _zh_page
 
-SHOTS = Path(__file__).resolve().parents[1] / "docs" / "reports" / "shots"
+SHOTS = Path(__file__).resolve().parents[1] / "runs" / "shots"
 
 # gate unset -> the run endpoint answers 403 (the default-off
 # posture this page must surface clearly)

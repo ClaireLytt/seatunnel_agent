@@ -26,7 +26,7 @@ from seatunnel_agent.agents.ai.doc_qa.manifest import MANIFEST
 from tests.conftest import make_page_url
 from tests.conftest import zh_page as _zh_page
 
-SHOTS = Path(__file__).resolve().parents[1] / "docs" / "reports" / "shots"
+SHOTS = Path(__file__).resolve().parents[1] / "runs" / "shots"
 
 # the BM25 corpus reads docs/ relative to cwd -> chdir to the repo root
 page_url = make_page_url(MANIFEST, "seatunnel_agent.agents.ai.doc_qa.api:router",

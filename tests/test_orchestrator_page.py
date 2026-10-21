@@ -26,7 +26,7 @@ from seatunnel_agent.agents.ai.orchestrator.manifest import MANIFEST
 from tests.conftest import make_page_url
 from tests.conftest import zh_page as _zh_page
 
-SHOTS = Path(__file__).resolve().parents[1] / "docs" / "reports" / "shots"
+SHOTS = Path(__file__).resolve().parents[1] / "runs" / "shots"
 
 # no .env in cwd + no key anywhere -> the chat endpoint degrades to
 # deterministic keyword suggestions (stable, no network)
@@ -136,7 +136,7 @@ def test_orchestrator_session_restore_and_clear(page_url, tmp_path):
 def test_orchestrator_i18n_and_dark_screenshots(page_url):
     """en-dark and zh-light shots with the agents panel open, plus a
     zh suggestion round-trip shot (the after-side of the migration
-    comparison in docs/reports/shots/)."""
+    comparison; written under runs/shots/)."""
     from playwright.sync_api import expect, sync_playwright
 
     SHOTS.mkdir(parents=True, exist_ok=True)
