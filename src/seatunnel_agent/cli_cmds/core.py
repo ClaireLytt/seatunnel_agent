@@ -185,7 +185,6 @@ def _build_frontends(
     makes the whole run exit non-zero after listing all failed workspaces.
     """
     import json
-    import os
     import shutil
     import subprocess
     import time
@@ -194,6 +193,8 @@ def _build_frontends(
     start = time.monotonic()
     if jobs is None:
         jobs = min(os.cpu_count() or 1, 6)
+    elif jobs < 1:
+        jobs = 1
 
     if frontend is None:
         frontend = Path(__file__).resolve().parents[3] / "frontend"
@@ -258,6 +259,7 @@ def _build_frontends(
         return name, proc.returncode, output
 
     failed: list[str] = []
+    built = 0
     with ThreadPoolExecutor(max_workers=jobs) as pool:
         futures = {pool.submit(build_one, name): name for name, _ in pending}
         hashes = dict(pending)
@@ -266,7 +268,7 @@ def _build_frontends(
             ws = frontend / name
             block = "".join(f"[{name}] {line}\n" for line in output.splitlines())
             console.print(
-                f"[green]{name}: building (npm run build --workspace {name})...[/green]"
+                f"[green]{name}: build output (npm run build --workspace {name}):[/green]"
             )
             if block:
                 console.print(block, end="", markup=False, highlight=False)
@@ -274,17 +276,18 @@ def _build_frontends(
                 console.print(f"[red]{name}: build failed (exit {returncode})[/red]")
                 failed.append(name)
                 continue
+            hash_file = ws / "dist" / ".build-hash"
             if not (ws / "dist").is_dir():
                 console.print(
                     f"[yellow]{name}: build produced no dist/ — "
                     "not writing .build-hash (will rebuild next time)[/yellow]"
                 )
                 continue
-            (ws / "dist" / ".build-hash").write_text(hashes[name], encoding="utf-8")
+            hash_file.write_text(hashes[name], encoding="utf-8")
+            built += 1
             console.print(f"[green]{name}: built[/green]")
 
     elapsed = time.monotonic() - start
-    built = len(pending) - len(failed)
     console.print(
         f"frontend build: {built} built, {skipped} skipped, "
         f"{len(failed)} failed in {elapsed:.1f}s"
@@ -302,7 +305,7 @@ def _build_frontends(
 @click.option("--insecure", is_flag=True, help="Allow a non-loopback/share launch without SEATUNNEL_UI_AUTH (not recommended)")
 @click.option("--build", "build_frontend", is_flag=True, help="Build the React frontends (npm run build) before launching; unchanged workspaces are skipped")
 @click.option("--force", is_flag=True, help="With --build: rebuild all workspaces, ignoring the incremental cache")
-@click.option("--jobs", type=int, default=None, help="With --build: max parallel workspace builds (default min(CPU, 6))")
+@click.option("--jobs", type=click.IntRange(min=1), default=None, help="With --build: max parallel workspace builds (default min(CPU, 6))")
 def ui(port: int, host: str, share: bool, api: bool, insecure: bool, build_frontend: bool, force: bool, jobs: int | None) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     if build_frontend:
