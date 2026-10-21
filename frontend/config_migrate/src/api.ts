@@ -1,4 +1,4 @@
-import { ApiError } from '@shared/api'
+import { ApiError, fetchJson } from '@shared/api'
 export { ApiError }
 const BASE = '/api/config_migrate'
 
@@ -14,14 +14,12 @@ export interface BatchResponse {
 }
 
 
-export async function migrateText(text: string, lang: string): Promise<MigrateResponse> {
-  const r = await fetch(`${BASE}/migrate`, {
+export function migrateText(text: string, lang: string): Promise<MigrateResponse> {
+  return fetchJson(`${BASE}/migrate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text, lang }),
   })
-  if (!r.ok) throw new Error(`migrate: HTTP ${r.status}`)
-  return r.json()
 }
 
 export async function migrateBatch(
