@@ -15,9 +15,6 @@ console errors) and before/after screenshots.
 
 from __future__ import annotations
 
-import socket
-import threading
-import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -26,64 +23,15 @@ import pytest
 pytestmark = pytest.mark.uitest
 
 from seatunnel_agent.agents.ai.prompt_lab.manifest import MANIFEST
-from seatunnel_agent.hub.registry import frontend_dist
+from tests.conftest import make_page_url
+from tests.conftest import zh_page as _zh_page
 
-ROOT = Path(__file__).resolve().parents[1]
-FRONTEND_DIST = ROOT / frontend_dist(MANIFEST)
-SHOTS = ROOT / "docs" / "reports" / "shots"
+SHOTS = Path(__file__).resolve().parents[1] / "docs" / "reports" / "shots"
 
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture()
-def page_url(monkeypatch, tmp_path):
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
-    from seatunnel_agent.agents.ai.prompt_lab.api import router
-
-    if not (FRONTEND_DIST / "index.html").is_file():
-        pytest.skip("frontend dist not built "
-                    "(cd frontend && npm run build --workspace "
-                    "prompt-lab-frontend)")
-
-    # experiment log must not leak between tests (history panel reads it)
-    monkeypatch.setenv("PROMPT_LAB_PATH", str(tmp_path / "xlog.jsonl"))
-
-    app = FastAPI()
-    app.include_router(router)
-    app.mount("/promptlab",
-              StaticFiles(directory=FRONTEND_DIST, html=True))
-
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/promptlab/"
-    server.should_exit = True
-    t.join(timeout=5)
-
-
-def _zh_page(ctx_factory, page_url):
-    """New page with the st-lang=zh-CN cookie set (Chinese chrome)."""
-    host = urlparse(page_url).hostname
-    ctx = ctx_factory()
-    ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                      "domain": host, "path": "/"}])
-    page = ctx.new_page()
-    page.goto(page_url, wait_until="networkidle")
-    return page
+# experiment log must not leak between tests (history panel reads it)
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.ai.prompt_lab.api:router",
+    "/promptlab", env={"PROMPT_LAB_PATH": "{tmp}/xlog.jsonl"})
 
 
 @pytest.mark.uitest

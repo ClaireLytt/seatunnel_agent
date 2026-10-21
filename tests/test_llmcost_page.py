@@ -16,9 +16,6 @@ over-budget banner, and before/after screenshots.
 
 from __future__ import annotations
 
-import socket
-import threading
-import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -27,67 +24,18 @@ import pytest
 pytestmark = pytest.mark.uitest
 
 from seatunnel_agent.agents.ai.llm_cost.manifest import MANIFEST
-from seatunnel_agent.hub.registry import frontend_dist
+from tests.conftest import make_page_url
+from tests.conftest import zh_page as _zh_page
 
 ROOT = Path(__file__).resolve().parents[1]
-FRONTEND_DIST = ROOT / frontend_dist(MANIFEST)
 SHOTS = ROOT / "docs" / "reports" / "shots"
 DEMO = ROOT / "examples" / "llmcost_demo"
 
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture()
-def page_url(monkeypatch):
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
-    from seatunnel_agent.agents.ai.llm_cost.api import router
-
-    if not (FRONTEND_DIST / "index.html").is_file():
-        pytest.skip("frontend dist not built "
-                    "(cd frontend && npm run build --workspace "
-                    "llm-cost-frontend)")
-    assert (DEMO / "llm_usage_sample.jsonl").is_file()
-
-    monkeypatch.setenv("LLM_USAGE_PATH",
-                       str(DEMO / "llm_usage_sample.jsonl"))
-    monkeypatch.setenv("SEATUNNEL_PRICING_PATH",
-                       str(DEMO / "pricing.yaml"))
-
-    app = FastAPI()
-    app.include_router(router)
-    app.mount("/llmcost", StaticFiles(directory=FRONTEND_DIST, html=True))
-
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/llmcost/"
-    server.should_exit = True
-    t.join(timeout=5)
-
-
-def _zh_page(ctx_factory, page_url):
-    """New page with the st-lang=zh-CN cookie set (Chinese chrome)."""
-    host = urlparse(page_url).hostname
-    ctx = ctx_factory()
-    ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                      "domain": host, "path": "/"}])
-    page = ctx.new_page()
-    page.goto(page_url, wait_until="networkidle")
-    return page
+# demo usage log + pricing override -> every number is deterministic
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.ai.llm_cost.api:router", "/llmcost",
+    env={"LLM_USAGE_PATH": str(DEMO / "llm_usage_sample.jsonl"),
+         "SEATUNNEL_PRICING_PATH": str(DEMO / "pricing.yaml")})
 
 
 @pytest.mark.uitest
