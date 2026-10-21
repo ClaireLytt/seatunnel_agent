@@ -74,3 +74,23 @@
 ## 9. 禁止破坏性命令
 
 - **不允许运行任何清空/删除本地仓库的命令**:禁止 `rm -rf`、`Remove-Item -Recurse -Force`、`git clean -fdx`、`git reset --hard`、`git checkout --`、强制覆盖等可能丢失本地文件或未提交改动的操作;确需删除单个文件时必须先征得用户同意。
+
+### 事故记录(2026-10-22,不允许再犯)
+
+批次收尾清理 worktree 时,AI 运行了:
+
+```bash
+git worktree list --porcelain | grep worktree | grep agent | sed 's/worktree //' \
+  | while read w; do git worktree remove "$w" --force 2>/dev/null \
+      || { rm -rf "$w"; git worktree prune; }; done
+```
+
+主仓库路径 `D:/ospp/seatunnel_agent` 本身含 "agent" 子串,被 `grep agent` 匹配进删除列表;`git worktree remove` 对主仓库的拒绝报错被 `2>/dev/null` 吞掉,`||` 回退执行了 `rm -rf 主仓库`,删掉了工作树与 `.git`,**未推送分支(约 20 个提交、4 个批次成果)永久丢失**。
+
+由此固化以下规则:
+
+1. **清理 worktree 只允许逐个执行 `git worktree remove <完整路径>`**,路径必须以 `.claude/worktrees/agent-` 为前缀逐一核对;禁止任何形式的 `rm`/`Remove-Item` 回退。
+2. **禁止用子串 grep 过滤路径后接删除类命令**;匹配必须用完整前缀/精确路径。
+3. **禁止对删除/清理类命令的守卫报错做 `2>/dev/null` 静默**;守卫失败必须让命令失败,不得回退到更强的删除手段。
+4. **批次合并进集成分支后立即推送远端**(`git push`,代理问题用 `-c http.proxy=`),不允许多个批次的成果只存在于本地;`check_workflow.py` 出现"无远端分支"视为待办,不是可忽略提示。
+5. 删除多个文件/目录前,先打印完整目标清单让用户确认,再逐项执行。
