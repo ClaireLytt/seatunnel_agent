@@ -51,6 +51,113 @@ def assert_dialect_switch(page, *, dialect: str, run, report,
     expect(page.locator("body")).not_to_contain_text("Traceback")
 
 
+# ── React page-test server factory (ticket: arch-deepen-2 C1) ─────────────
+#
+# Every tests/test_*_page.py used to carry its own _free_port / uvicorn
+# page_url fixture / _zh_page copy (~50 lines each). The shared factory
+# below is the single implementation; a page-test file declares:
+#
+#     page_url = make_page_url(MANIFEST, "my.pkg.api:router", "/route")
+#
+# Options cover the variants the 25 files proved necessary: extra env,
+# the no-LLM-key neutralization triple, and chdir-to-tmp/repo-root.
+
+
+def _free_port() -> int:
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def make_page_url(manifest, router_ref: str, mount: str, *,
+                  env: dict[str, str] | None = None,
+                  neutralize_llm: bool = False,
+                  chdir: str | None = None):
+    """Build the in-process uvicorn ``page_url`` fixture for a React page.
+
+    ``router_ref`` is "module.path:attr" (imported lazily so collection
+    stays cheap). ``env`` entries are set via monkeypatch; a value of
+    ``None`` deletes the variable instead. ``neutralize_llm`` applies the
+    no-key triple (env keys, settings store path, dotenv stubs).
+    ``chdir`` is "tmp" or "root" (repo root), or None to stay put."""
+    import importlib
+    import threading
+    import time
+
+    root = Path(__file__).resolve().parents[1]
+
+    @pytest.fixture()
+    def page_url(monkeypatch, tmp_path):
+        import uvicorn
+        from fastapi import FastAPI
+        from fastapi.staticfiles import StaticFiles
+
+        from seatunnel_agent.hub.registry import frontend_dist
+
+        mod_name, attr = router_ref.split(":")
+        router = getattr(importlib.import_module(mod_name), attr)
+
+        dist = root / frontend_dist(manifest)
+        if not (dist / "index.html").is_file():
+            pytest.skip(f"frontend dist not built for {manifest.name} "
+                        "(cd frontend && npm run build)")
+
+        if chdir == "tmp":
+            monkeypatch.chdir(tmp_path)
+        elif chdir == "root":
+            monkeypatch.chdir(root)
+        if neutralize_llm:
+            for var in ("API_KEY", "ANTHROPIC_API_KEY"):
+                monkeypatch.delenv(var, raising=False)
+            monkeypatch.setenv("SEATUNNEL_LLM_SETTINGS_PATH",
+                               str(tmp_path / "no_settings.json"))
+            monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: False)
+            monkeypatch.setattr(
+                "seatunnel_agent.common.config.load_dotenv",
+                lambda *a, **k: None)
+        for key, value in (env or {}).items():
+            if value is None:
+                monkeypatch.delenv(key, raising=False)
+            else:
+                monkeypatch.setenv(
+                    key, value.replace("{tmp}", str(tmp_path)))
+
+        app = FastAPI()
+        app.include_router(router)
+        app.mount(mount, StaticFiles(directory=dist, html=True))
+
+        port = _free_port()
+        server = uvicorn.Server(uvicorn.Config(
+            app, host="127.0.0.1", port=port, log_level="warning"))
+        t = threading.Thread(target=server.run, daemon=True)
+        t.start()
+        deadline = time.time() + 15
+        while not server.started:
+            if time.time() > deadline:
+                pytest.fail("uvicorn did not start")
+            time.sleep(0.1)
+        yield f"http://127.0.0.1:{port}{mount}/"
+        server.should_exit = True
+        t.join(timeout=5)
+
+    return page_url
+
+
+def zh_page(ctx_factory, page_url):
+    """New page with the st-lang=zh-CN cookie set (Chinese chrome)."""
+    from urllib.parse import urlparse
+
+    host = urlparse(page_url).hostname
+    ctx = ctx_factory()
+    ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
+                      "domain": host, "path": "/"}])
+    page = ctx.new_page()
+    page.goto(page_url, wait_until="networkidle")
+    return page
+
+
 @pytest.fixture(autouse=True)
 def _no_llm_usage_log(monkeypatch):
     """Tests must not append to the real logs/llm_usage.jsonl.

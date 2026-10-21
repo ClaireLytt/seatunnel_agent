@@ -23,7 +23,7 @@ export function MetricsView({ onUse }: { onUse: (text: string) => void }) {
       )
     : metrics
 
-  const useMetric = (m: MetricInfo) => {
+  const applyMetric = (m: MetricInfo) => {
     const dim = m.dimensions[0]
     const name = m.display_name || m.name
     const text = dim
@@ -79,7 +79,7 @@ export function MetricsView({ onUse }: { onUse: (text: string) => void }) {
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
-                        useMetric(m)
+                        applyMetric(m)
                       }}
                       className="rounded border border-ink px-2 text-ink hover:bg-ink hover:text-paper"
                     >

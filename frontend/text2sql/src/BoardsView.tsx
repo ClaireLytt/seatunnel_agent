@@ -7,6 +7,7 @@ import {
   fetchBoards,
   renderBoard,
   type Board,
+  type BoardRenderResult,
   type SessionMeta,
 } from '@/api'
 
@@ -15,7 +16,7 @@ export function BoardsView({ session }: { session: SessionMeta | null }) {
   const [boards, setBoards] = useState<Board[]>([])
   const [expanded, setExpanded] = useState<string | null>(null)
   const [newName, setNewName] = useState('')
-  const [rendered, setRendered] = useState<Record<string, any[]>>({})
+  const [rendered, setRendered] = useState<Record<string, BoardRenderResult[]>>({})
   const [err, setErr] = useState('')
 
   const refresh = () => {
@@ -112,7 +113,7 @@ export function BoardsView({ session }: { session: SessionMeta | null }) {
                 ))}
                 {rendered[b.id] && (
                   <div className="mt-2 space-y-2 border-t border-line pt-2">
-                    {rendered[b.id].map((r: any, i: number) => (
+                    {rendered[b.id].map((r, i) => (
                       <div key={i}>
                         <div className="text-fg">{r.title}</div>
                         {r.error ? (
@@ -127,9 +128,9 @@ export function BoardsView({ session }: { session: SessionMeta | null }) {
                               </tr>
                             </thead>
                             <tbody>
-                              {r.rows?.map((row: any[], ri: number) => (
+                              {r.rows?.map((row, ri) => (
                                 <tr key={ri} className="border-b border-line last:border-b-0">
-                                  {row.map((v: any, ci: number) => (
+                                  {row.map((v, ci) => (
                                     <td key={ci} className="px-1 text-fg">{String(v ?? '')}</td>
                                   ))}
                                 </tr>

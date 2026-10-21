@@ -13,7 +13,8 @@ MANIFEST = AgentManifest(
     title_zh="Prompt 实验室",
     desc_en=("Run one prompt across provider profiles side-by-side — outputs, tokens, latency, diff"),
     desc_zh=("同一 Prompt 多个模型档案并排对比 — 输出、token、耗时与差异"),
-    render="seatunnel_agent.agents.ai.prompt_lab.ui:render_prompt_lab_page",
+    render="",
     api="seatunnel_agent.agents.ai.prompt_lab.api:router",
     order=30,
+    external=True,
 )

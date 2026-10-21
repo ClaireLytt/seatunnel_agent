@@ -134,6 +134,47 @@ class TestCliAndApi:
                                     json={"title": "x"})
         assert resp.status_code == 503
 
+    def test_api_omitted_issues_loads_demo_history(self, monkeypatch):
+        """No `issues` field → server loads the bundled demo JSONL."""
+        monkeypatch.setenv("API_KEY", "sk-test")
+        client = ScriptedClient([
+            _tool("search_similar", {"query": "UI cannot start, port in use"}),
+            _text(_FINAL),
+        ])
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient",
+                            lambda *a, **kw: client)
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from seatunnel_agent.agents.ai.issue_triage.api import router
+        app = FastAPI()
+        app.include_router(router)
+        resp = TestClient(app).post("/api/triage/run", json={
+            "title": "UI 起不来", "body": "端口被占用"})
+        assert resp.status_code == 200
+        # Dedupe actually hit demo issue #12 — demo history was loaded.
+        assert "#12" in client.tool_outputs[0]
+
+    def test_api_explicit_empty_issues_no_history(self, monkeypatch):
+        """Explicit `issues: []` → no history, dedupe finds nothing."""
+        monkeypatch.setenv("API_KEY", "sk-test")
+        client = ScriptedClient([
+            _tool("search_similar", {"query": "UI cannot start, port in use"}),
+            _text(_FINAL),
+        ])
+        monkeypatch.setattr("seatunnel_agent.common.llm.LLMClient",
+                            lambda *a, **kw: client)
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from seatunnel_agent.agents.ai.issue_triage.api import router
+        app = FastAPI()
+        app.include_router(router)
+        resp = TestClient(app).post("/api/triage/run", json={
+            "title": "UI 起不来", "body": "端口被占用", "issues": []})
+        assert resp.status_code == 200
+        assert "(no similar issue found)" in client.tool_outputs[0]
+
     def test_api_with_fake_llm(self, monkeypatch):
         monkeypatch.setenv("API_KEY", "sk-test")
 

@@ -3,6 +3,8 @@
 Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
 
   POST /api/promptlab/run      — run one prompt across profiles
+  POST /api/promptlab/diff     — unified diff of two cells' replies
+  GET  /api/promptlab/history  — recent experiment log (previews only)
   GET  /api/promptlab/profiles — list profile NAMES (never their contents:
                                  profiles hold decrypted API keys)
   GET  /api/promptlab/health   — health check
@@ -19,8 +21,9 @@ from pydantic import BaseModel, Field
 from seatunnel_agent.common.api_guard import add_health, ms_since
 from seatunnel_agent.common.settings_store import list_profiles
 
-from .report import normalize_lang, render_matrix_markdown
-from .runner import ACTIVE, run_matrix
+from .report import normalize_lang, render_diff, render_matrix_markdown
+from .runner import ACTIVE, CellResult, run_matrix
+from .xlog import ExperimentLogger
 
 router = APIRouter(prefix="/api/promptlab", tags=["prompt_lab"])
 
@@ -56,6 +59,33 @@ def run(req: RunRequest) -> RunResponse:
         all_failed=result.all_failed,
         elapsed_ms=ms_since(start),
     )
+
+
+class DiffCell(BaseModel):
+    profile: str
+    model: str = ""
+    reply: str = ""
+
+
+class DiffRequest(BaseModel):
+    a: DiffCell
+    b: DiffCell
+    lang: str = "zh"
+
+
+@router.post("/diff")
+def diff(req: DiffRequest) -> dict[str, str]:
+    """Unified diff of two cells' replies — same rendering as the page."""
+    to_cell = lambda c: CellResult(profile=c.profile, model=c.model,
+                                   reply=c.reply)
+    return {"markdown": render_diff(to_cell(req.a), to_cell(req.b),
+                                    normalize_lang(req.lang))}
+
+
+@router.get("/history")
+def history(n: int = 20) -> dict[str, Any]:
+    """Recent experiment log rows (previews only, never full replies)."""
+    return {"runs": ExperimentLogger().recent(n=max(1, min(n, 1000)))}
 
 
 @router.get("/profiles")

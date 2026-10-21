@@ -42,7 +42,9 @@ def page_url(tmp_path, monkeypatch):
     if not (FRONTEND_DIST / "index.html").is_file():
         pytest.skip("frontend dist not built (cd frontend && npm run build --workspace sql_review)")
 
-    # review log goes to a temp dir, not the real history
+    # review history (read + write) goes to an empty temp dir, not the real
+    # logs/: the stats endpoint reads via SQLREVIEW_LOG_DIR (rlog.default_log_dir)
+    monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path / "rlogs"))
     from seatunnel_agent.agents.data.sql_review import rlog
     monkeypatch.setattr(rlog.ReviewLogger, "log", lambda self, **kw: None)
 

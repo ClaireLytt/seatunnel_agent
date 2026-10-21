@@ -15,7 +15,8 @@ MANIFEST = AgentManifest(
              "retrieval with citations, optional grounded LLM synthesis"),
     desc_zh=("SeaTunnel 连接器与项目文档问答 — 离线 BM25 检索带引用,"
              "可选基于片段的 LLM 综合"),
-    render="seatunnel_agent.agents.ai.doc_qa.ui:render_doc_qa_page",
+    render="",
     api="seatunnel_agent.agents.ai.doc_qa.api:router",
     order=50,
+    external=True,
 )

@@ -1,23 +1,4 @@
-import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { makeViteConfig } from '../shared/vite.base'
 
 // Served by FastAPI at /schemadrift (see seatunnel_agent.agents.data.schema_drift.api)
-export default defineConfig({
-  base: '/schemadrift/',
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@shared': fileURLToPath(new URL('../shared/src', import.meta.url)),
-    },
-  },
-  server: {
-    proxy: {
-      '/api/schemadrift': 'http://127.0.0.1:7860',
-    },
-  },
-  build: {
-    outDir: 'dist',
-  },
-})
+export default makeViteConfig({ base: '/schemadrift/', apiPath: '/api/schemadrift', url: import.meta.url })

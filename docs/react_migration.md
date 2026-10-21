@@ -13,7 +13,8 @@
 3. i18n:i18next 资源从 Python i18n 字典逐字平移;语言初始化
    `langFromCookie()`。
 4. REST:页面直接 fetch;router 在 `hub/ui.py` launch 后无条件挂载
-   (uitest/sql_review 模式),manifest 的 `api=` 留空以免 --api 环重复挂载。
+   (uitest/sql_review 模式),manifest 保留 `api=`(hub 的 manifest 环
+   无条件挂载,现行约定;早期 "api= 留空" 做法已废弃)。
 
 ## 切换
 
@@ -42,9 +43,12 @@
 ## 验证
 
 13. 全套:ruff / mypy / pytest / `pytest -m uitest tests/test_<name>_page.py`
-    / uitest smoke / 截图前后对比(`docs/reports/shots/`,旧页截图用
-    `git worktree add` 到迁移前 commit 起服务,Gradio 页 Playwright 要用
-    `wait_until="load"`,networkidle 因长连接不触发)/ check_workflow.py。
+    / uitest smoke / 截图前后对比(页测截图统一输出到 `runs/shots/`
+    (gitignore);报告引用的正式对比图由人工从 runs/shots/ 复制到
+    `docs/reports/shots/` 后提交,测试不得直接写 docs——否则每次跑测试
+    都污染工作区。旧页截图用 `git worktree add` 到迁移前 commit 起服务,
+    Gradio 页 Playwright 要用 `wait_until="load"`,networkidle 因长连接
+    不触发)/ check_workflow.py。
 
 ## 先例速查(2026-10 三轮迁移沉淀,免重复探索)
 

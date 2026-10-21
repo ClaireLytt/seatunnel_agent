@@ -9,22 +9,16 @@ built dist):
 
 from __future__ import annotations
 
-import socket
-import threading
 import time
 from pathlib import Path
 
 import pytest
 
+from tests.conftest import make_page_url
+
 pytestmark = pytest.mark.uitest
 
-FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "seatunnel" / "dist"
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+from seatunnel_agent.agents.data.seatunnel.manifest import MANIFEST
 
 
 class _FakePageAgent:
@@ -55,14 +49,12 @@ class _FakePageAgent:
         return ""
 
 
-@pytest.fixture()
-def page_url(monkeypatch, tmp_path):
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
+@pytest.fixture(autouse=True)
+def _fake_seatunnel_backend(monkeypatch, tmp_path):
+    """Scripted agent + isolated history/conversation state (the server
+    comes from the shared make_page_url factory; these module attrs are
+    read per-request)."""
     from seatunnel_agent.agents.data.seatunnel import api
-    from seatunnel_agent.agents.data.seatunnel.api import router
     from seatunnel_agent.common import history
 
     monkeypatch.setattr(history, "HISTORY_DIR", tmp_path)
@@ -72,26 +64,9 @@ def page_url(monkeypatch, tmp_path):
     api._CONVERSATIONS.clear()
     api.CONNECTION.update({"settings": None, "version": None})
 
-    if not (FRONTEND_DIST / "index.html").is_file():
-        pytest.skip("frontend dist not built (cd frontend && npm run build --workspace seatunnel)")
 
-    app = FastAPI()
-    app.include_router(router)
-    app.mount("/seatunnel", StaticFiles(directory=FRONTEND_DIST, html=True))
-
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/seatunnel/"
-    server.should_exit = True
-    t.join(timeout=5)
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.seatunnel.api:router", "/seatunnel")
 
 
 @pytest.mark.uitest
@@ -203,7 +178,7 @@ def test_seatunnel_sessions_sidebar(page_url):
         browser.close()
 
 
-SHOTS = Path(__file__).resolve().parents[1] / "docs" / "reports" / "shots"
+SHOTS = Path(__file__).resolve().parents[1] / "runs" / "shots"
 
 
 @pytest.mark.uitest
