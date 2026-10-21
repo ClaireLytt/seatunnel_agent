@@ -206,7 +206,7 @@ class TestUiBuildForceFlag:
         forced: list[bool] = []
         monkeypatch.setattr(
             "seatunnel_agent.cli_cmds.core._build_frontends",
-            lambda force=False: forced.append(force),
+            lambda force=False, jobs=None: forced.append(force),
         )
         fake_ui = types.ModuleType("seatunnel_agent.hub.ui")
         fake_ui.create_ui = lambda: object()  # type: ignore[attr-defined]
@@ -236,7 +236,7 @@ class TestUiBuildForceFlag:
         forced: list[bool] = []
         monkeypatch.setattr(
             "seatunnel_agent.cli_cmds.core._build_frontends",
-            lambda force=False: forced.append(force),
+            lambda force=False, jobs=None: forced.append(force),
         )
         fake_ui = types.ModuleType("seatunnel_agent.hub.ui")
         fake_ui.create_ui = lambda: object()  # type: ignore[attr-defined]
@@ -373,3 +373,79 @@ class TestParallelBuild:
         npm_calls.clear()
         _build_frontends(frontend=frontend, jobs=1)
         assert npm_calls == []
+
+
+class TestUiBuildJobsFlag:
+    """`ui --build --jobs N` passes jobs through to _build_frontends."""
+
+    def _invoke(self, monkeypatch: pytest.MonkeyPatch, args: list[str]) -> tuple:
+        import sys
+        import types
+
+        from click.testing import CliRunner
+
+        from seatunnel_agent.cli import cli
+
+        kwargs_seen: list[dict] = []
+        monkeypatch.setattr(
+            "seatunnel_agent.cli_cmds.core._build_frontends",
+            lambda force=False, jobs=None: kwargs_seen.append(
+                {"force": force, "jobs": jobs}
+            ),
+        )
+        fake_ui = types.ModuleType("seatunnel_agent.hub.ui")
+        fake_ui.create_ui = lambda: object()  # type: ignore[attr-defined]
+        fake_ui.launch_app = lambda *a, **k: None  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "seatunnel_agent.hub.ui", fake_ui)
+
+        result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 0, result.output
+        return kwargs_seen, result
+
+    def test_jobs_passed_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        kwargs_seen, _ = self._invoke(monkeypatch, ["ui", "--build", "--jobs", "3"])
+        assert kwargs_seen == [{"force": False, "jobs": 3}]
+
+    def test_default_jobs_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        kwargs_seen, _ = self._invoke(monkeypatch, ["ui", "--build"])
+        assert kwargs_seen == [{"force": False, "jobs": None}]
+
+    def test_jobs_without_build_warns_and_is_ignored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        kwargs_seen, result = self._invoke(monkeypatch, ["ui", "--jobs", "3"])
+        assert kwargs_seen == []
+        assert "--jobs has no effect without --build" in result.output
+
+
+class TestBuildSummaryLine:
+    """_build_frontends prints one summary line with counts and elapsed time."""
+
+    def test_summary_counts_built_and_skipped(
+        self, frontend: Path, npm_calls: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build_frontends(frontend=frontend)
+        out = capsys.readouterr().out
+        assert "frontend build: 2 built, 0 skipped, 0 failed in " in out
+        _build_frontends(frontend=frontend)
+        out = capsys.readouterr().out
+        assert "frontend build: 0 built, 2 skipped, 0 failed in " in out
+
+    def test_summary_counts_failed(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        state = TestParallelBuild()._tracking_npm(monkeypatch, fail={"alpha"})
+        with pytest.raises(SystemExit):
+            _build_frontends(frontend=frontend, jobs=2)
+        assert sorted(state["calls"]) == BUILDABLE
+        out = capsys.readouterr().out
+        assert "frontend build: 1 built, 0 skipped, 1 failed in " in out
+
+    def test_summary_elapsed_has_seconds_unit(
+        self, frontend: Path, npm_calls: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import re
+
+        _build_frontends(frontend=frontend)
+        out = capsys.readouterr().out
+        assert re.search(r"frontend build: 2 built, 0 skipped, 0 failed in \d+\.\d+s", out)

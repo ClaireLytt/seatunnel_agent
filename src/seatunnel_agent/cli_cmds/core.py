@@ -188,8 +188,10 @@ def _build_frontends(
     import os
     import shutil
     import subprocess
+    import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    start = time.monotonic()
     if jobs is None:
         jobs = min(os.cpu_count() or 1, 6)
 
@@ -221,6 +223,7 @@ def _build_frontends(
         base=frontend,
     )
 
+    skipped = 0
     pending: list[tuple[str, str]] = []  # (workspace name, its content hash)
     for name in workspaces:
         ws = frontend / name
@@ -240,6 +243,7 @@ def _build_frontends(
             and hash_file.read_text("utf-8").strip() == ws_hash
         ):
             console.print(f"[cyan]{name}: skipped (unchanged)[/cyan]")
+            skipped += 1
             continue
         pending.append((name, ws_hash))
 
@@ -279,6 +283,12 @@ def _build_frontends(
             (ws / "dist" / ".build-hash").write_text(hashes[name], encoding="utf-8")
             console.print(f"[green]{name}: built[/green]")
 
+    elapsed = time.monotonic() - start
+    built = len(pending) - len(failed)
+    console.print(
+        f"frontend build: {built} built, {skipped} skipped, "
+        f"{len(failed)} failed in {elapsed:.1f}s"
+    )
     if failed:
         console.print(f"[red]frontend build failed for: {', '.join(sorted(failed))}[/red]")
         sys.exit(1)
@@ -292,12 +302,16 @@ def _build_frontends(
 @click.option("--insecure", is_flag=True, help="Allow a non-loopback/share launch without SEATUNNEL_UI_AUTH (not recommended)")
 @click.option("--build", "build_frontend", is_flag=True, help="Build the React frontends (npm run build) before launching; unchanged workspaces are skipped")
 @click.option("--force", is_flag=True, help="With --build: rebuild all workspaces, ignoring the incremental cache")
-def ui(port: int, host: str, share: bool, api: bool, insecure: bool, build_frontend: bool, force: bool) -> None:
+@click.option("--jobs", type=int, default=None, help="With --build: max parallel workspace builds (default min(CPU, 6))")
+def ui(port: int, host: str, share: bool, api: bool, insecure: bool, build_frontend: bool, force: bool, jobs: int | None) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     if build_frontend:
-        _build_frontends(force=force)
-    elif force:
-        console.print("[yellow]--force has no effect without --build[/yellow]")
+        _build_frontends(force=force, jobs=jobs)
+    elif force or jobs is not None:
+        if force:
+            console.print("[yellow]--force has no effect without --build[/yellow]")
+        if jobs is not None:
+            console.print("[yellow]--jobs has no effect without --build[/yellow]")
     try:
         from ..hub.ui import create_ui, launch_app
     except ModuleNotFoundError as exc:
