@@ -14,62 +14,24 @@ directory check, FMT6 English chrome.
 
 from __future__ import annotations
 
-import socket
-import threading
-import time
 from pathlib import Path
 
 import pytest
 
-from tests.conftest import assert_dialect_switch
+from tests.conftest import assert_dialect_switch, make_page_url
 
 pytestmark = pytest.mark.uitest
 
 from seatunnel_agent.agents.data.sql_fmt.manifest import MANIFEST
-from seatunnel_agent.hub.registry import frontend_dist
 
 ROOT = Path(__file__).resolve().parents[1]
-FRONTEND_DIST = ROOT / frontend_dist(MANIFEST)
 DEMO_DIR = ROOT / "examples" / "sqlfmt_demo"
 
 MESSY = "select a,b from t where x=1"
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture()
-def page_url():
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
-    from seatunnel_agent.agents.data.sql_fmt.api import router
-
-    if not (FRONTEND_DIST / "index.html").is_file():
-        pytest.skip(
-            "frontend dist not built (cd frontend && npm run build --workspace sql_fmt)")
-
-    app = FastAPI()
-    app.include_router(router)
-    app.mount("/sqlfmt", StaticFiles(directory=FRONTEND_DIST, html=True))
-
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/sqlfmt/"
-    server.should_exit = True
-    t.join(timeout=5)
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.sql_fmt.api:router", "/sqlfmt")
 
 
 @pytest.mark.uitest

@@ -10,36 +10,22 @@ runner. Deselected by default (needs a browser + built dist):
 from __future__ import annotations
 
 import json
-import socket
-import threading
-import time
 from types import SimpleNamespace
 
 import pytest
 
+from tests.conftest import make_page_url
+
 pytestmark = pytest.mark.uitest
 
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+from seatunnel_agent.agents.devops.ui_testing.manifest import MANIFEST
 
 
-@pytest.fixture()
-def page_url(tmp_path, monkeypatch):
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
+@pytest.fixture(autouse=True)
+def _fake_runner(tmp_path, monkeypatch):
+    """Seeded history + faked run_suite (the server comes from the shared
+    make_page_url factory; runner/report attrs are read per-request)."""
     from seatunnel_agent.agents.devops.ui_testing import runner
-    from seatunnel_agent.agents.devops.ui_testing.api import (
-        FRONTEND_DIST,
-        router,
-    )
-
-    if not (FRONTEND_DIST / "index.html").is_file():
-        pytest.skip("frontend dist not built (cd frontend/uitest && npm run build)")
 
     # one seeded history run
     monkeypatch.setattr(runner, "RUNS_DIR", tmp_path)
@@ -72,23 +58,9 @@ def page_url(tmp_path, monkeypatch):
     for fn in ("write_json", "write_html", "write_labels_patch"):
         monkeypatch.setattr(report, fn, lambda *a, **k: None)
 
-    app = FastAPI()
-    app.include_router(router)
-    app.mount("/uitest", StaticFiles(directory=FRONTEND_DIST, html=True))
 
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/uitest/"
-    server.should_exit = True
-    t.join(timeout=5)
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.devops.ui_testing.api:router", "/uitest")
 
 
 @pytest.mark.uitest
