@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
+import { readConnHandoff } from '@/connHandoff'
 import {
   ApiError,
   connect,
@@ -29,33 +30,6 @@ const DS_PLACEHOLDERS: Record<string, { port: string; db: string }> = {
   mysql: { port: '3306', db: '' },
   postgresql: { port: '5432', db: 'postgres' },
   sqlite: { port: '', db: 'config/demo.db' },
-}
-
-/** Fields the Data Comparison page hands over via the st_dataskew_conn
- * cookie (no password). */
-export interface ConnHandoff {
-  ds_type: string
-  host: string
-  port: string
-  database: string
-  username: string
-}
-
-export function readConnHandoff(): ConnHandoff | null {
-  const m = document.cookie.match(/(?:^|;\s*)st_dataskew_conn=([^;]+)/)
-  if (!m) return null
-  try {
-    const data = JSON.parse(decodeURIComponent(m[1])) as Record<string, unknown>
-    return {
-      ds_type: String(data.ds_type ?? '').toLowerCase(),
-      host: String(data.host ?? ''),
-      port: String(data.port ?? ''),
-      database: String(data.database ?? ''),
-      username: String(data.username ?? ''),
-    }
-  } catch {
-    return null
-  }
 }
 
 export function ConnectPanel({
