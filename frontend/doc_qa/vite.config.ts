@@ -1,23 +1,4 @@
-import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
+import { makeViteConfig } from '../shared/vite.base'
 
 // Served by FastAPI at /docqa (see seatunnel_agent.agents.ai.doc_qa.api)
-export default defineConfig({
-  base: '/docqa/',
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-      '@shared': fileURLToPath(new URL('../shared/src', import.meta.url)),
-    },
-  },
-  server: {
-    proxy: {
-      '/api/docqa': 'http://127.0.0.1:7860',
-    },
-  },
-  build: {
-    outDir: 'dist',
-  },
-})
+export default makeViteConfig({ base: '/docqa/', apiPath: '/api/docqa', url: import.meta.url })
