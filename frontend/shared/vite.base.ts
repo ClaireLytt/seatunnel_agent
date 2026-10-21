@@ -31,6 +31,20 @@ export function makeViteConfig({ base, apiPath, url }: MakeViteConfigOptions) {
     },
     build: {
       outDir: 'dist',
+      rollupOptions: {
+        output: {
+          manualChunks(id: string) {
+            if (!id.includes('node_modules')) return undefined
+            if (/node_modules[\\/](react|react-dom|scheduler)[\\/]/.test(id)) {
+              return 'vendor-react'
+            }
+            if (/node_modules[\\/](recharts|d3-[^\\/]+|victory-vendor|internmap|delaunator|robust-predicates)[\\/]/.test(id)) {
+              return 'vendor-charts'
+            }
+            return undefined
+          },
+        },
+      },
     },
   })
 }
