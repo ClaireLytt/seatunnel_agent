@@ -94,3 +94,4 @@ git worktree list --porcelain | grep worktree | grep agent | sed 's/worktree //'
 3. **禁止对删除/清理类命令的守卫报错做 `2>/dev/null` 静默**;守卫失败必须让命令失败,不得回退到更强的删除手段。
 4. **批次合并进集成分支后立即推送远端**(`git push`,代理问题用 `-c http.proxy=`),不允许多个批次的成果只存在于本地;`check_workflow.py` 出现"无远端分支"视为待办,不是可忽略提示。
 5. 删除多个文件/目录前,先打印完整目标清单让用户确认,再逐项执行。
+6. **清理 worktree 的唯一入口是 `python scripts/cleanup_worktrees.py`**(默认 dry-run,`--yes` 执行;规则 1–3 已在其中代码化并有单测 tests/test_cleanup_worktrees.py);不得再手写清理 shell。
