@@ -18,6 +18,7 @@
     "metric_diff",
     "orchestrator",
     "pii_scan",
+    "secret_scan",
     "prompt_lab",
     "schema_drift",
     "seatunnel",
