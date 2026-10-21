@@ -70,3 +70,7 @@
 - 多代理编排(spec→tickets 流程):票级实现只跑 ruff/mypy + 与本票相关的定向测试;全量 pytest、uitest smoke 与批次报告由编排会话在批次收尾统一执行一次,票级子代理不写报告。
 - 前端改动后页面验证:`seatunnel-agent ui --build`(一步构建全部 workspace 并启动 hub)。
 - 批次收尾:`python scripts/check_workflow.py`(工作流机械核对,FAIL 则本批次不得标记完成)。
+
+## 9. 禁止破坏性命令
+
+- **不允许运行任何清空/删除本地仓库的命令**:禁止 `rm -rf`、`Remove-Item -Recurse -Force`、`git clean -fdx`、`git reset --hard`、`git checkout --`、强制覆盖等可能丢失本地文件或未提交改动的操作;确需删除单个文件时必须先征得用户同意。
