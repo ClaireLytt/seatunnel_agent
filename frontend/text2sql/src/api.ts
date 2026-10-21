@@ -194,10 +194,20 @@ export const pinToBoard = (
     body: JSON.stringify({ title, sql, ds_type }),
   }).then(j)
 
+export interface BoardRenderResult {
+  id: string
+  title: string
+  sql: string
+  columns?: string[]
+  rows?: unknown[][]
+  row_count?: number
+  error?: string
+}
+
 export const renderBoard = (
   boardId: string,
   sessionId: string,
-): Promise<{ results: { id: string; title: string; sql: string; columns?: string[]; rows?: unknown[][]; row_count?: number; error?: string }[] }> =>
+): Promise<{ results: BoardRenderResult[] }> =>
   fetch(`${BASE}/boards/${boardId}/render?session_id=${sessionId}`).then(j)
 
 // ── Subscriptions ───────────────────────────────────────────────────
@@ -238,7 +248,7 @@ export const patchSubscription = (id: string, enabled: boolean): Promise<{ enabl
     body: JSON.stringify({ enabled }),
   }).then(j)
 
-export const runSubscription = (id: string): Promise<{ status: string }> =>
+export const runSubscription = (id: string): Promise<{ status: string; error?: string }> =>
   fetch(`${BASE}/subscriptions/${id}/run`, { method: 'POST' }).then(j)
 
 export interface QlogRecord {

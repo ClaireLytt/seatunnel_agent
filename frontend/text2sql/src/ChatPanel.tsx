@@ -41,7 +41,7 @@ export function ChatPanel({
       setInput(prefill)
       onPrefillUsed?.()
     }
-  }, [prefill])
+  }, [prefill, onPrefillUsed])
 
   // resumed transcript replaces the current conversation display
   useEffect(() => {

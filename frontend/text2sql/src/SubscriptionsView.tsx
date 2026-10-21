@@ -48,7 +48,7 @@ export function SubscriptionsView() {
   const doRun = async (id: string) => {
     try {
       const r = await runSubscription(id)
-      if (r.status === 'error') setErr((r as any).error || 'run failed')
+      if (r.status === 'error') setErr(r.error || 'run failed')
       refresh()
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
