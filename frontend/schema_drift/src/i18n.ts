@@ -1,7 +1,4 @@
-import i18n from 'i18next'
-import { initReactI18next } from 'react-i18next'
-
-import { langFromCookie } from '@shared/lang'
+import { initI18n } from '@shared/i18n'
 
 // UI-chrome keys ported verbatim from the legacy _I18N dict
 // (agents/data/schema_drift/ui.py). The legacy `title` markdown is split
@@ -61,11 +58,4 @@ const resources = {
   },
 }
 
-i18n.use(initReactI18next).init({
-  resources,
-  lng: langFromCookie(),
-  fallbackLng: 'en',
-  interpolation: { escapeValue: false },
-})
-
-export default i18n
+export default initI18n(resources)

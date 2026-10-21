@@ -1,4 +1,4 @@
-import { ApiError } from '@shared/api'
+import { ApiError, fetchJson } from '@shared/api'
 export { ApiError }
 const BASE = '/api/transpile'
 
@@ -88,7 +88,5 @@ export function requestAdvice(
 }
 
 export async function fetchDialects(): Promise<string[]> {
-  const r = await fetch(`${BASE}/dialects`)
-  if (!r.ok) throw new Error(`dialects: HTTP ${r.status}`)
-  return (await r.json()).dialects as string[]
+  return (await fetchJson<{ dialects: string[] }>(`${BASE}/dialects`)).dialects
 }

@@ -1,3 +1,5 @@
+import { fetchJson } from '@shared/api'
+
 const BASE = '/api/testgen'
 
 export interface GenerateResponse {
@@ -6,7 +8,7 @@ export interface GenerateResponse {
   elapsed_ms: number
 }
 
-export async function generateData(body: {
+export function generateData(body: {
   sql: string
   ddl: string
   rows: number
@@ -14,17 +16,9 @@ export async function generateData(body: {
   validate_sqlite: boolean
   lang: string
 }): Promise<GenerateResponse> {
-  const r = await fetch(`${BASE}/generate`, {
+  return fetchJson(`${BASE}/generate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, report: true }),
   })
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as unknown)
-      .catch(() => '')
-    throw new Error((detail as string) || `generate: HTTP ${r.status}`)
-  }
-  return r.json()
 }
