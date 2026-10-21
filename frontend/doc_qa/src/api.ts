@@ -1,5 +1,7 @@
 // REST client for /api/docqa (seatunnel_agent.agents.ai.doc_qa.api).
 
+import { fetchJson } from '@shared/api'
+
 const BASE = '/api/docqa'
 
 export interface AskResponse {
@@ -8,17 +10,12 @@ export interface AskResponse {
   elapsed_ms: number
 }
 
-// Errors carry FastAPI's `detail` when present; the page shows it as ⚠️ detail.
+// Errors surface as ApiError{status, detail}; the page shows ⚠️ detail.
 // `k` is not sent — the endpoint default (4) matches the old Gradio page.
-export async function ask(question: string, llm: boolean, lang: string): Promise<AskResponse> {
-  const r = await fetch(`${BASE}/ask`, {
+export function ask(question: string, llm: boolean, lang: string): Promise<AskResponse> {
+  return fetchJson(`${BASE}/ask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ question, llm, lang }),
   })
-  if (!r.ok) {
-    const data = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))
-    throw new Error(typeof data.detail === 'string' ? data.detail : `HTTP ${r.status}`)
-  }
-  return r.json()
 }
