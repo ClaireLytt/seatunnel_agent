@@ -66,6 +66,8 @@ def npm_calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
         class R:
             returncode = 0
+            stdout = ""
+            stderr = ""
 
         return R()
 
@@ -146,6 +148,8 @@ def test_build_without_dist_skips_hash_and_rebuilds(
 
         class R:
             returncode = 0
+            stdout = ""
+            stderr = ""
 
         return R()
 
@@ -243,3 +247,129 @@ class TestUiBuildForceFlag:
         assert result.exit_code == 0, result.output
         assert forced == []
         assert "--force has no effect without --build" in result.output
+
+
+def add_workspace(frontend: Path, name: str) -> None:
+    """Extend the fake frontend tree with one more buildable workspace."""
+    pkg = json.loads((frontend / "package.json").read_text())
+    pkg["workspaces"].append(name)
+    (frontend / "package.json").write_text(json.dumps(pkg))
+    ws = frontend / name
+    (ws / "src").mkdir(parents=True)
+    (ws / "package.json").write_text(
+        json.dumps({"name": name, "scripts": {"build": "vite build"}})
+    )
+    (ws / "vite.config.ts").write_text("export default {};\n")
+    (ws / "tsconfig.json").write_text("{}\n")
+    (ws / "src" / "main.tsx").write_text(f"// {name} entry\n")
+
+
+class TestParallelBuild:
+    """_build_frontends(jobs=N) runs pending builds in a bounded pool."""
+
+    def _tracking_npm(
+        self, monkeypatch: pytest.MonkeyPatch, fail: set[str] | None = None
+    ) -> dict:
+        """Fake npm that records calls and tracks peak concurrency."""
+        import threading
+        import time
+
+        state: dict = {"calls": [], "current": 0, "peak": 0}
+        lock = threading.Lock()
+
+        def fake_run(cmd: list[str], **kwargs: object) -> object:
+            assert cmd[0] == "npm"
+            name = cmd[cmd.index("--workspace") + 1]
+            with lock:
+                state["calls"].append(name)
+                state["current"] += 1
+                state["peak"] = max(state["peak"], state["current"])
+            time.sleep(0.05)
+            with lock:
+                state["current"] -= 1
+            rc = 1 if fail and name in fail else 0
+            if rc == 0:
+                (Path(str(kwargs["cwd"])) / name / "dist").mkdir(
+                    parents=True, exist_ok=True
+                )
+
+            class R:
+                returncode = rc
+                stdout = f"{name} build output\n"
+                stderr = ""
+
+            return R()
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        monkeypatch.setattr("shutil.which", lambda name: "npm")
+        return state
+
+    def test_parallel_builds_all_within_jobs_limit(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for name in ("gamma", "delta"):
+            add_workspace(frontend, name)
+        state = self._tracking_npm(monkeypatch)
+        _build_frontends(frontend=frontend, jobs=2)
+        assert sorted(state["calls"]) == sorted(BUILDABLE + ["gamma", "delta"])
+        assert state["peak"] <= 2
+        assert state["peak"] >= 2  # actually ran in parallel
+        for name in BUILDABLE + ["gamma", "delta"]:
+            assert (frontend / name / "dist" / ".build-hash").is_file()
+
+    def test_unchanged_workspaces_skip_pool(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        state = self._tracking_npm(monkeypatch)
+        _build_frontends(frontend=frontend, jobs=4)
+        state["calls"].clear()
+        _build_frontends(frontend=frontend, jobs=4)
+        assert state["calls"] == []
+        out = capsys.readouterr().out
+        for name in BUILDABLE:
+            assert f"{name}: skipped (unchanged)" in out
+
+    def test_failure_finishes_others_and_lists_all_failed(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        add_workspace(frontend, "gamma")
+        state = self._tracking_npm(monkeypatch, fail={"alpha", "gamma"})
+        with pytest.raises(SystemExit) as exc:
+            _build_frontends(frontend=frontend, jobs=2)
+        assert exc.value.code != 0
+        assert sorted(state["calls"]) == sorted(BUILDABLE + ["gamma"])
+        out = capsys.readouterr().out
+        assert "alpha" in out and "gamma" in out
+        assert not (frontend / "alpha" / "dist" / ".build-hash").exists()
+        assert not (frontend / "gamma" / "dist" / ".build-hash").exists()
+        assert (frontend / "beta" / "dist" / ".build-hash").is_file()
+
+    def test_failed_workspace_rebuilds_next_time(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._tracking_npm(monkeypatch, fail={"alpha"})
+        with pytest.raises(SystemExit):
+            _build_frontends(frontend=frontend, jobs=2)
+        state2 = self._tracking_npm(monkeypatch)
+        _build_frontends(frontend=frontend, jobs=2)
+        assert state2["calls"] == ["alpha"]
+
+    def test_output_flushed_as_prefixed_block(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        self._tracking_npm(monkeypatch)
+        _build_frontends(frontend=frontend, jobs=2)
+        out = capsys.readouterr().out
+        for name in BUILDABLE:
+            assert f"[{name}] {name} build output" in out
+
+    def test_jobs_1_equivalent_to_sequential(
+        self, frontend: Path, npm_calls: list[str]
+    ) -> None:
+        _build_frontends(frontend=frontend, jobs=1)
+        assert npm_calls == BUILDABLE
+        for name in BUILDABLE:
+            assert (frontend / name / "dist" / ".build-hash").is_file()
+        npm_calls.clear()
+        _build_frontends(frontend=frontend, jobs=1)
+        assert npm_calls == []
