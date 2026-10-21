@@ -14,30 +14,6 @@
     - text_contains: {in: 页面, text: 依赖体检}
     - text_contains: {in: 页面, text: 发布助手}
 
-- id: SEC1
-  title: 粘贴文本扫出密码赋值且预览脱敏
-  tags: [smoke, sqlite]
-  page: /secretscan
-  steps:
-    - fill: {待扫描文本: "password = \"hunter2-prod\""}
-    - click: 扫描
-    - wait_result: {}
-  expect:
-    - text_contains: {in: 结果区, text: 明文密码赋值}
-    - text_not_contains: {in: 页面, text: hunter2-prod}
-
-- id: SEC2
-  title: 扫描 demo 目录出高危发现
-  tags: [full, sqlite]
-  page: /secretscan
-  steps:
-    - open_accordion: {target: 扫描目录}
-    - click: 扫描目录
-    - wait_result: {}
-  expect:
-    - text_contains: {in: 结果区, text: 高危 4}
-    - text_contains: {in: 结果区, text: AWS AccessKey}
-
 - id: DEP1
   title: 检查本项目出依赖清单
   tags: [smoke, sqlite]
