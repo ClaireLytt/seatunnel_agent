@@ -1,11 +1,8 @@
 """REST API for dependency health — FastAPI router.
 
-Inline metadata only (pyproject / requirements text) — the API never walks
-project paths; checking "this server's own environment" is what the UI page
-button and the CLI are for.
-
-  POST /api/depcheck/check — check inline pyproject/requirements text
-  GET  /api/depcheck/health — health check
+  POST /api/depcheck/check      — check inline pyproject/requirements text
+  GET  /api/depcheck/check-self  — check this server's own project deps
+  GET  /api/depcheck/health      — health check
 """
 
 from __future__ import annotations
@@ -18,7 +15,12 @@ from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
 
-from .core import check, parse_pyproject_text, parse_requirements_text
+from .core import (
+    check,
+    collect_from_path,
+    parse_pyproject_text,
+    parse_requirements_text,
+)
 from .report import normalize_lang, render_markdown
 
 router = APIRouter(prefix="/api/depcheck", tags=["dep_check"])
@@ -54,6 +56,19 @@ def check_deps(req: CheckRequest) -> CheckResponse:
         result=result.to_dict(),
         report=(render_markdown(result, normalize_lang(req.lang))
                 if req.report else None),
+        elapsed_ms=ms_since(start),
+    )
+
+
+@router.get("/check-self", response_model=CheckResponse)
+def check_self(lang: str = "zh") -> CheckResponse:
+    """Check the server's own project dependencies."""
+    start = time.time()
+    reqs = collect_from_path(".")
+    result = check(reqs)
+    return CheckResponse(
+        result=result.to_dict(),
+        report=render_markdown(result, normalize_lang(lang)),
         elapsed_ms=ms_since(start),
     )
 
