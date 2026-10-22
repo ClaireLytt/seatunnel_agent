@@ -21,6 +21,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
+from seatunnel_agent.common.sse import sse
+
 from .catalog import AGENT_LABELS, AGENT_ROUTES, SUITES, agent_case_ids
 
 router = APIRouter(prefix="/api/uitest", tags=["uitest"])
@@ -88,10 +90,6 @@ def runs() -> dict:
     return {"runs": out}
 
 
-def _sse(obj: dict) -> str:
-    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
-
-
 @router.post("/run")
 def run(req: RunRequest) -> StreamingResponse:
     if req.suite not in SUITES:
@@ -137,14 +135,14 @@ def run(req: RunRequest) -> StreamingResponse:
                 item = q.get()
                 if item is None:
                     break
-                yield _sse({"type": "progress", "line": item})
+                yield sse({"type": "progress", "line": item})
             t.join(timeout=10)
 
             if "error" in done:
-                yield _sse({"type": "error", "message": done["error"]})
+                yield sse({"type": "error", "message": done["error"]})
                 return
             rr = done["rr"]
-            yield _sse({
+            yield sse({
                 "type": "done",
                 "run_id": done["run_id"],
                 "counts": rr.counts(),
