@@ -1,3 +1,5 @@
+import { fetchJson } from '@shared/api'
+
 const BASE = '/api/release'
 
 export interface NotesResponse {
@@ -11,13 +13,13 @@ export interface GitLogResponse {
   elapsed_ms: number
 }
 
-export async function generateNotes(
+export function generateNotes(
   logText: string,
   currentVersion: string,
   lang: string,
   polish: boolean,
 ): Promise<NotesResponse> {
-  const r = await fetch(`${BASE}/notes`, {
+  return fetchJson(`${BASE}/notes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -28,24 +30,8 @@ export async function generateNotes(
       polish,
     }),
   })
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as string)
-      .catch(() => `HTTP ${r.status}`)
-    throw new Error(detail)
-  }
-  return r.json()
 }
 
-export async function fetchGitLog(): Promise<GitLogResponse> {
-  const r = await fetch(`${BASE}/git-log`)
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as string)
-      .catch(() => `HTTP ${r.status}`)
-    throw new Error(detail)
-  }
-  return r.json()
+export function fetchGitLog(): Promise<GitLogResponse> {
+  return fetchJson(`${BASE}/git-log`)
 }

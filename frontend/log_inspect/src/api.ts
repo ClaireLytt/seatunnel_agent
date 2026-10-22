@@ -1,3 +1,5 @@
+import { fetchJson } from '@shared/api'
+
 const BASE = '/api/loginspect'
 
 export interface ScanResponse {
@@ -11,7 +13,15 @@ export interface AdviceResponse {
   elapsed_ms: number
 }
 
-export async function scanDir(
+function postScan(body: Record<string, unknown>): Promise<ScanResponse> {
+  return fetchJson(`${BASE}/scan`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
+export function scanDir(
   dir: string,
   includeWarn: boolean,
   top: number,
@@ -20,7 +30,7 @@ export async function scanDir(
   return postScan({ dir, include_warn: includeWarn, top, lang, report: true })
 }
 
-export async function scanText(
+export function scanText(
   text: string,
   includeWarn: boolean,
   top: number,
@@ -29,23 +39,7 @@ export async function scanText(
   return postScan({ text, include_warn: includeWarn, top, lang, report: true })
 }
 
-async function postScan(body: Record<string, unknown>): Promise<ScanResponse> {
-  const r = await fetch(`${BASE}/scan`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as string)
-      .catch(() => `HTTP ${r.status}`)
-    throw new Error(detail)
-  }
-  return r.json()
-}
-
-export async function getAdvice(
+export function getAdvice(
   dir: string | null,
   text: string | null,
   includeWarn: boolean,
@@ -55,17 +49,9 @@ export async function getAdvice(
   const body: Record<string, unknown> = { include_warn: includeWarn, top, lang }
   if (dir) body.dir = dir
   if (text) body.text = text
-  const r = await fetch(`${BASE}/advice`, {
+  return fetchJson(`${BASE}/advice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as string)
-      .catch(() => `HTTP ${r.status}`)
-    throw new Error(detail)
-  }
-  return r.json()
 }
