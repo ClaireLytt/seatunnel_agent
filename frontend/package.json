@@ -22,6 +22,7 @@
     "pii_scan",
     "secret_scan",
     "prompt_lab",
+    "release_notes",
     "schema_drift",
     "seatunnel",
     "sql_fmt",
