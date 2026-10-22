@@ -5,6 +5,7 @@
     "shared",
     "config_lint",
     "dag_check",
+    "dep_check",
     "change_impact",
     "ci_inspect",
     "code_fix",
