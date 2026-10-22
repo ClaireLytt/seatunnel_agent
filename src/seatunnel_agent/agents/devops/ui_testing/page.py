@@ -533,9 +533,6 @@ class DCPage:
         loc = self.page.locator(".st-main .st-schema-card")
         if loc.count():
             return loc.first
-        loc = self.page.locator(".st-lgi-main")
-        if loc.count():
-            return loc.first
         return self.page.locator(".prose").last
 
     def result_text(self) -> str:
