@@ -15,7 +15,7 @@
 | 高 | 票04 migrate B:8 页(+84/−356;emoji 经 titlePrefix 归一,漂移修复 mb-3→mb-4/text-3xl→text-4xl/mt-2→mt-3;结构化 detail 端点不换 fetchJson) | 8 workspace src | 票04 commit |
 | 高 | 票05 migrate C:7 页(+38/−192)+ 主会话补 code_fix/web_task header(titlePrefix 就绪后);13 个 i18n 对账测试跟进新缝(叶子断言 initI18n,cookie 行为断言收敛至 shared) | 7 workspace src、tests/test_*_i18n.py ×13 | 本报告同批提交 |
 
-**收尾核对**:25/25 i18n.ts 走 initI18n(grep 空);PageHeader 覆盖 23/25(seatunnel/text2sql header 结构不同构——text-2xl/边栏内/无 home 链接,正当保留);fetchJson 覆盖全部非结构化 detail 的 REST(结构化 {code,path} 端点如实保留,sql_fmt 先例);useRunner 落在贴合的单请求页(llm_eval/prompt_lab/doc_qa/issue_triage 等),流式/多面板页不硬塞。
+**收尾核对**:25/25 i18n.ts 走 initI18n(grep 空);PageHeader 覆盖 23/25(seatunnel/text2sql header 结构不同构——text-2xl/边栏内/无 home 链接,正当保留)。**更正记录(2026-10-22 复核)**:本报告首版写 23/25 时实际为 22/25——sql_fmt 在票 03 因 emoji 跳过后、titlePrefix 落地时仅补了 code_fix/web_task 而漏掉;prove-it-works 复核(grep 逐页核对)发现后已补切(`fix` commit),现 23/25 为真值,核查命令:`grep -rln "<PageHeader" frontend/*/src/App.tsx | wc -l`;fetchJson 覆盖全部非结构化 detail 的 REST(结构化 {code,path} 端点如实保留,sql_fmt 先例);useRunner 落在贴合的单请求页(llm_eval/prompt_lab/doc_qa/issue_triage 等),流式/多面板页不硬塞。
 
 ## 验证结果
 
