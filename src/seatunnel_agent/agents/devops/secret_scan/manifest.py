@@ -13,7 +13,8 @@ MANIFEST = AgentManifest(
     title_zh="敏感凭证扫描",
     desc_en=("Provider tokens, private keys, password assignments & high-entropy strings — masked previews, CI gate"),
     desc_zh=("云厂商 token、私钥、明文密码与高熵串 — 预览脱敏,可做 CI 门禁"),
-    render="seatunnel_agent.agents.devops.secret_scan.ui:render_secret_scan_page",
+    render="",
     api="seatunnel_agent.agents.devops.secret_scan.api:router",
     order=10,
+    external=True,
 )
