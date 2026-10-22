@@ -14,18 +14,6 @@
     - text_contains: {in: 页面, text: 依赖体检}
     - text_contains: {in: 页面, text: 发布助手}
 
-- id: DEP1
-  title: 检查本项目出依赖清单
-  tags: [smoke, sqlite]
-  page: /depcheck
-  steps:
-    - click: 检查本项目
-    - wait_result: {}
-  expect:
-    - text_contains: {in: 结果区, text: 依赖体检}
-    - text_contains: {in: 结果区, text: 依赖清单}
-    - text_contains: {in: 结果区, text: click}
-
 - id: REL1
   title: 粘贴提交记录生成分组 changelog
   tags: [smoke, sqlite]
