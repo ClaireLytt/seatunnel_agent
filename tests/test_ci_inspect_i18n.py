@@ -105,6 +105,10 @@ def test_ported_keys_match_legacy_verbatim() -> None:
 
 
 def test_i18n_initialized_from_lang_cookie() -> None:
+    # cookie-driven lng lives behind the shared seam now; the leaf only
+    # declares resources (shared/src/i18n.ts carries langFromCookie)
     text = I18N_TS.read_text(encoding="utf-8")
-    assert "langFromCookie" in text
-    assert re.search(r"lng:\s*langFromCookie\(\)", text)
+    assert "initI18n(resources)" in text or "initI18n(" in text
+    shared = (ROOT / "frontend" / "shared" / "src" / "i18n.ts").read_text(
+        encoding="utf-8")
+    assert re.search(r"lng:\s*langFromCookie\(\)", shared)

@@ -1,3 +1,7 @@
+// REST client for /api/secretscan (seatunnel_agent.agents.devops.secret_scan.api).
+
+import { fetchJson } from '@shared/api'
+
 const BASE = '/api/secretscan'
 
 export interface ScanResponse {
@@ -6,18 +10,11 @@ export interface ScanResponse {
   elapsed_ms: number
 }
 
-export async function scan(body: { text: string; lang: string }): Promise<ScanResponse> {
-  const r = await fetch(`${BASE}/scan`, {
+// Errors surface as ApiError{status, detail}; the page shows the detail text.
+export function scan(body: { text: string; lang: string }): Promise<ScanResponse> {
+  return fetchJson(`${BASE}/scan`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, report: true }),
   })
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as unknown)
-      .catch(() => '')
-    throw new Error((typeof detail === 'string' && detail) || `scan: HTTP ${r.status}`)
-  }
-  return r.json()
 }

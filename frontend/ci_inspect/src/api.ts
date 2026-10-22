@@ -1,3 +1,7 @@
+// REST client for /api/ciinspect (seatunnel_agent.agents.devops.ci_inspect.api).
+
+import { fetchJson } from '@shared/api'
+
 const BASE = '/api/ciinspect'
 
 export interface AnalyzeResponse {
@@ -6,22 +10,15 @@ export interface AnalyzeResponse {
   elapsed_ms: number
 }
 
-export async function analyze(body: {
+// Errors surface as ApiError{status, detail}; the page shows the detail text.
+export function analyze(body: {
   logs: { name: string; text: string }[]
   runs_json: string
   lang: string
 }): Promise<AnalyzeResponse> {
-  const r = await fetch(`${BASE}/analyze`, {
+  return fetchJson(`${BASE}/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ...body, report: true }),
   })
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as unknown)
-      .catch(() => '')
-    throw new Error((typeof detail === 'string' && detail) || `analyze: HTTP ${r.status}`)
-  }
-  return r.json()
 }
