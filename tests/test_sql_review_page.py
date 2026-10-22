@@ -9,66 +9,41 @@ built dist):
 
 from __future__ import annotations
 
-import socket
-import threading
-import time
 from pathlib import Path
 
 import pytest
 
-from tests.conftest import assert_dialect_switch
+from tests.conftest import assert_dialect_switch, make_page_url
 from tests.conftest import download_text as _download_text
+from tests.conftest import zh_page as _zh_page
 
 pytestmark = pytest.mark.uitest
 
-FRONTEND_DIST = Path("frontend") / "sql_review" / "dist"
-TRANSPILE_DIST = Path("frontend") / "sql_transpile" / "dist"
+from seatunnel_agent.agents.data.sql_review.manifest import MANIFEST
+from seatunnel_agent.agents.data.sql_transpile.manifest import (
+    MANIFEST as TRANSPILE_MANIFEST,
+)
+from seatunnel_agent.hub.registry import frontend_dist
+
+ROOT = Path(__file__).resolve().parents[1]
+TRANSPILE_DIST = ROOT / frontend_dist(TRANSPILE_MANIFEST)
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture()
-def page_url(tmp_path, monkeypatch):
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
-    from seatunnel_agent.agents.data.sql_review.api import router
-
-    if not (FRONTEND_DIST / "index.html").is_file():
-        pytest.skip("frontend dist not built (cd frontend && npm run build --workspace sql_review)")
-
-    # review history (read + write) goes to an empty temp dir, not the real
-    # logs/: the stats endpoint reads via SQLREVIEW_LOG_DIR (rlog.default_log_dir)
-    monkeypatch.setenv("SQLREVIEW_LOG_DIR", str(tmp_path / "rlogs"))
+def _stub_rlog(monkeypatch, tmp_path):
+    """Review logging is a no-op; nothing lands in the real logs/."""
     from seatunnel_agent.agents.data.sql_review import rlog
     monkeypatch.setattr(rlog.ReviewLogger, "log", lambda self, **kw: None)
 
-    app = FastAPI()
-    app.include_router(router)
-    app.mount("/sqlreview", StaticFiles(directory=FRONTEND_DIST, html=True))
-    # the → Transpile bridge test lands on /transpile — serve its dist too
-    if (TRANSPILE_DIST / "index.html").is_file():
-        app.mount("/transpile",
-                  StaticFiles(directory=TRANSPILE_DIST, html=True))
 
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/sqlreview/"
-    server.should_exit = True
-    t.join(timeout=5)
+# review history (read + write) goes to an empty temp dir, not the real
+# logs/: the stats endpoint reads via SQLREVIEW_LOG_DIR (rlog.default_log_dir).
+# The → Transpile bridge test lands on /transpile — serve its dist too.
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.sql_review.api:router",
+    "/sqlreview",
+    env={"SQLREVIEW_LOG_DIR": "{tmp}/rlogs"},
+    extra_mounts=[("/transpile", TRANSPILE_MANIFEST)],
+    post_setup=_stub_rlog)
 
 
 @pytest.mark.uitest
@@ -132,11 +107,7 @@ def test_sql_review_page_dataskew_bridge(page_url):
 
 @pytest.mark.uitest
 def test_sql_review_page_language_follows_cookie(page_url):
-    from urllib.parse import urlparse
-
     from playwright.sync_api import expect, sync_playwright
-
-    host = urlparse(page_url).hostname
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -147,11 +118,7 @@ def test_sql_review_page_language_follows_cookie(page_url):
         expect(page.get_by_role("button", name="Start Review")).to_be_visible()
 
         # st-lang=zh cookie (set by the hub) → Chinese chrome, zh placeholder
-        ctx = browser.new_context()
-        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                          "domain": host, "path": "/"}])
-        zh_page = ctx.new_page()
-        zh_page.goto(page_url, wait_until="networkidle")
+        zh_page = _zh_page(browser.new_context, page_url)
         expect(zh_page.get_by_role("button", name="开始审查")).to_be_visible()
         expect(zh_page.locator("#sql")).to_have_attribute(
             "placeholder", "粘贴要审查的 SQL……")

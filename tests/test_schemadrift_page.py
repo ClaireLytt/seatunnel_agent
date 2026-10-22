@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import assert_dialect_switch, make_page_url
+from tests.conftest import zh_page as _zh_page
 
 pytestmark = pytest.mark.uitest
 
@@ -186,19 +187,11 @@ def test_schemadrift_empty_input_warnings(page_url):
 @pytest.mark.uitest
 def test_schemadrift_lang_switch(page_url):
     """st-lang cookie drives chrome + server report language."""
-    from urllib.parse import urlparse
-
     from playwright.sync_api import expect, sync_playwright
-
-    host = urlparse(page_url).hostname
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        ctx = browser.new_context()
-        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                          "domain": host, "path": "/"}])
-        page = ctx.new_page()
-        page.goto(page_url, wait_until="networkidle")
+        page = _zh_page(browser.new_context, page_url)
 
         expect(page.get_by_role("button", name="对比",
                                 exact=True)).to_be_visible()

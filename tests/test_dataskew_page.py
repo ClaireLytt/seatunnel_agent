@@ -19,72 +19,37 @@ the API layer (tests/test_dataskew_session_api.py).
 
 from __future__ import annotations
 
-import socket
-import threading
-import time
 from pathlib import Path
 
 import pytest
 
-from tests.conftest import assert_dialect_switch, labeled_select
+from tests.conftest import assert_dialect_switch, labeled_select, make_page_url
 from tests.conftest import download_text as _download_text
+from tests.conftest import zh_page as _zh_page
 
 pytestmark = pytest.mark.uitest
 
 from seatunnel_agent.agents.data.data_skew.manifest import MANIFEST
-from seatunnel_agent.hub.registry import frontend_dist
 
 ROOT = Path(__file__).resolve().parents[1]
 _DEMO_DB = ""  # set by the page_url fixture (seeded per-test)
-FRONTEND_DIST = ROOT / frontend_dist(MANIFEST)
 
 DISTINCT_SQL = "SELECT COUNT(DISTINCT user_id) FROM ods.user_log"
 GROUP_SQL = "SELECT status, COUNT(*) FROM dc_test_orders_a GROUP BY status"
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture()
-def page_url(monkeypatch, tmp_path):
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
-    from seatunnel_agent.agents.data.data_skew.api import router
-
-    if not (FRONTEND_DIST / "index.html").is_file():
-        pytest.skip(
-            "frontend dist not built (cd frontend && npm run build --workspace data_skew)")
-
-    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
-                       str(tmp_path / "history.jsonl"))
-    # seeded SQLite demo db (the repo copy is gitignored; CI builds it)
+def _seed_demo_db(monkeypatch, tmp_path):
+    """Seeded SQLite demo db (the repo copy is gitignored; CI builds it)."""
     from seatunnel_agent.agents.devops.ui_testing.seed_sqlite import seed_sqlite
 
     global _DEMO_DB
     _DEMO_DB = str(seed_sqlite(tmp_path / "uitest_demo.db"))
 
-    app = FastAPI()
-    app.include_router(router)
-    app.mount("/dataskew", StaticFiles(directory=FRONTEND_DIST, html=True))
 
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/dataskew/"
-    server.should_exit = True
-    t.join(timeout=5)
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.data_skew.api:router", "/dataskew",
+    env={"SEATUNNEL_SKEW_HISTORY_PATH": "{tmp}/history.jsonl"},
+    post_setup=_seed_demo_db)
 
 
 def _connect_sqlite(page):
@@ -129,18 +94,11 @@ def test_dataskew_page_smoke(page_url):
 @pytest.mark.uitest
 def test_dataskew_static_distinct_finding_zh(page_url):
     """DSK2: COUNT(DISTINCT) single-point aggregation flagged (zh report)."""
-    from urllib.parse import urlparse
-
     from playwright.sync_api import expect, sync_playwright
 
-    host = urlparse(page_url).hostname
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        ctx = browser.new_context()
-        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                          "domain": host, "path": "/"}])
-        page = ctx.new_page()
-        page.goto(page_url, wait_until="networkidle")
+        page = _zh_page(browser.new_context, page_url)
 
         page.locator("#dsk-sql-box").fill(DISTINCT_SQL)
         page.get_by_role("button", name="开始分析", exact=True).click()

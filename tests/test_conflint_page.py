@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import make_page_url
+from tests.conftest import zh_page as _zh_page
 
 pytestmark = pytest.mark.uitest
 
@@ -128,19 +129,11 @@ def test_conflint_empty_input_warning(page_url):
 @pytest.mark.uitest
 def test_conflint_bad_dir_zh(page_url):
     """Directory lint with a non-directory shows the localized bad_dir error."""
-    from urllib.parse import urlparse
-
     from playwright.sync_api import expect, sync_playwright
-
-    host = urlparse(page_url).hostname
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        ctx = browser.new_context()
-        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                          "domain": host, "path": "/"}])
-        page = ctx.new_page()
-        page.goto(page_url, wait_until="networkidle")
+        page = _zh_page(browser.new_context, page_url)
 
         page.get_by_text("检查整个目录").click()
         page.get_by_placeholder(
@@ -157,11 +150,7 @@ def test_conflint_bad_dir_zh(page_url):
 def test_conflint_lang_switch(page_url):
     """st-lang cookie drives the chrome language (shared lang.ts), and the
     report follows the UI language through the API lang parameter."""
-    from urllib.parse import urlparse
-
     from playwright.sync_api import expect, sync_playwright
-
-    host = urlparse(page_url).hostname
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -173,11 +162,7 @@ def test_conflint_lang_switch(page_url):
                                 exact=True)).to_be_visible()
 
         # st-lang=zh-CN cookie (set by the hub) → Chinese chrome + zh report
-        ctx = browser.new_context()
-        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                          "domain": host, "path": "/"}])
-        zh_page = ctx.new_page()
-        zh_page.goto(page_url, wait_until="networkidle")
+        zh_page = _zh_page(browser.new_context, page_url)
         expect(zh_page.get_by_role("button", name="检查配置",
                                    exact=True)).to_be_visible()
         expect(zh_page.locator("textarea")).to_have_attribute(

@@ -9,32 +9,21 @@ built dist):
 
 from __future__ import annotations
 
-import socket
-import threading
-import time
 from pathlib import Path
 
 import pytest
 
 from tests.conftest import download_text as _download_text
+from tests.conftest import make_page_url
 
 pytestmark = pytest.mark.uitest
 
-FRONTEND_DIST = Path(__file__).resolve().parents[1] / "frontend" / "data_comparison" / "dist"
+from seatunnel_agent.agents.data.data_comparison.manifest import MANIFEST
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture()
-def page_url(tmp_path, monkeypatch):
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
+def _isolate_stores(monkeypatch, tmp_path):
+    """Keep the presets/templates/reports stores (and key file) out of the
+    user's home — module-level references patched before app assembly."""
     from seatunnel_agent.agents.data.data_comparison import api as api_mod
     from seatunnel_agent.agents.data.data_comparison import (
         generation as gen_mod,
@@ -43,7 +32,6 @@ def page_url(tmp_path, monkeypatch):
     from seatunnel_agent.agents.data.data_comparison import (
         reports_api as reports_mod,
     )
-    from seatunnel_agent.agents.data.data_comparison.api import router
     from seatunnel_agent.agents.data.data_comparison.presets import (
         ConnectionPresetsStore,
     )
@@ -63,27 +51,10 @@ def page_url(tmp_path, monkeypatch):
     # isolate saved reports (also read by /trends via reports_api._REPORTS_DIR)
     monkeypatch.setattr(reports_mod, "_REPORTS_DIR", tmp_path / "dc_reports")
 
-    if not (FRONTEND_DIST / "index.html").is_file():
-        pytest.skip(
-            "frontend dist not built (cd frontend && npm run build --workspace data_comparison)")
 
-    app = FastAPI()
-    app.include_router(router)
-    app.mount("/datacompare", StaticFiles(directory=FRONTEND_DIST, html=True))
-
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/datacompare/"
-    server.should_exit = True
-    t.join(timeout=5)
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.data_comparison.api:router",
+    "/datacompare", post_setup=_isolate_stores)
 
 
 @pytest.mark.uitest
