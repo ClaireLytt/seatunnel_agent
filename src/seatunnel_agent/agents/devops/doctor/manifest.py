@@ -17,6 +17,6 @@ MANIFEST = AgentManifest(
     desc_zh=("描述症状 — agent 自己查端口、依赖、LLM 配置与日志尾部"
              "(全只读),给出修复命令由你执行"),
     render="seatunnel_agent.agents.devops.doctor.ui:render_doctor_page",
-    api=None,  # it introspects the local environment — CLI/UI only
+    api="seatunnel_agent.agents.devops.doctor.api:router",
     order=50,
 )
