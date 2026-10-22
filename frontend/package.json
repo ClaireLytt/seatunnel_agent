@@ -17,6 +17,7 @@
     "doc_qa",
     "issue_triage",
     "llm_cost",
+    "log_inspect",
     "llm_eval",
     "metric_diff",
     "orchestrator",
