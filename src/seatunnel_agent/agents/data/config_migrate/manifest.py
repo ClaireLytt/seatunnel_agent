@@ -14,7 +14,6 @@ MANIFEST = AgentManifest(
     desc_en="Convert DataX job JSON / sqoop commands into SeaTunnel configs with a migration-notes list",
     desc_zh="DataX job JSON / sqoop 命令一键转 SeaTunnel 配置，附迁移说明清单",
     api="seatunnel_agent.agents.data.config_migrate.api:router",
-    render="",  # React static mount serves this route (frontend/config_migrate)
     group="build",
     order=40,
     external=True,

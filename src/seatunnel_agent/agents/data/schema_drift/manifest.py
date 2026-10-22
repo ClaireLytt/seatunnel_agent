@@ -14,7 +14,6 @@ MANIFEST = AgentManifest(
     desc_en="Diff two DDL snapshots — breaking / risk / info severity for every structural change",
     desc_zh="对比两份 DDL 快照 — 每处结构变更按破坏 / 风险 / 提示分级",
     api="seatunnel_agent.agents.data.schema_drift.api:router",
-    render="",  # React static mount serves this route (frontend/schema_drift)
     group="governance",
     order=30,
     external=True,

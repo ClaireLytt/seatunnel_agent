@@ -13,7 +13,6 @@ MANIFEST = AgentManifest(
     title_zh="CI 日志诊断",
     desc_en=("Cluster failed-job logs into root causes, spot flaky jobs and duration drift across runs"),
     desc_zh=("失败日志聚类出根因,识别 flaky 作业与时长漂移"),
-    render="",
     api="seatunnel_agent.agents.devops.ci_inspect.api:router",
     order=20,
     external=True,

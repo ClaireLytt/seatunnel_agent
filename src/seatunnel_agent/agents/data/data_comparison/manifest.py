@@ -14,7 +14,6 @@ MANIFEST = AgentManifest(
     desc_en="Compare schemas, row counts, and data across two data sources",
     desc_zh="跨数据源比对表结构、行数、数据差异",
     api="seatunnel_agent.agents.data.data_comparison.api:router",
-    render="",  # React static mount serves this route (frontend/data_comparison)
     group="build",
     order=30,
     external=True,

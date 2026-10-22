@@ -14,7 +14,6 @@ MANIFEST = AgentManifest(
     desc_en="Naming rules × column lineage — find sensitive columns and flag unmasked downstream spread",
     desc_zh="命名规则 × 字段血缘 — 识别敏感列并标出未脱敏的下游扩散",
     api="seatunnel_agent.agents.data.pii_scan.api:router",
-    render="",  # React static mount serves this route (frontend/pii_scan)
     group="governance",
     order=50,
     external=True,

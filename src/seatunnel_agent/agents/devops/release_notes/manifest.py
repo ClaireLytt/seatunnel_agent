@@ -13,7 +13,6 @@ MANIFEST = AgentManifest(
     title_zh="发布助手",
     desc_en=("Grouped changelog from conventional commits + semver bump suggestion; optional LLM polish"),
     desc_zh=("按 conventional commits 分组生成 changelog + 语义化版本建议;可选 LLM 润色"),
-    render="",
     external=True,
     api="seatunnel_agent.agents.devops.release_notes.api:router",
     order=40,

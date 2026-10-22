@@ -13,7 +13,6 @@ MANIFEST = AgentManifest(
     title_zh="依赖体检",
     desc_en=("Declared vs installed, unpinned specs, duplicate pins and a license inventory — offline"),
     desc_zh=("声明 vs 实装、未钉版本、重复/冲突与 License 清单 — 全离线"),
-    render="",
     external=True,
     api="seatunnel_agent.agents.devops.dep_check.api:router",
     order=30,

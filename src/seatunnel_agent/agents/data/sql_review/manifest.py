@@ -14,7 +14,6 @@ MANIFEST = AgentManifest(
     desc_en="Static + LLM review for Hive / Spark / Flink / MaxCompute SQL — performance, quality & standards",
     desc_zh="Hive / Spark / Flink / MaxCompute SQL 静态 + LLM 审查 — 性能、质量与规范",
     api="seatunnel_agent.agents.data.sql_review.api:router",
-    render="",  # React static mount serves this route (frontend/sql_review)
     group="quality",
     order=10,
     external=True,

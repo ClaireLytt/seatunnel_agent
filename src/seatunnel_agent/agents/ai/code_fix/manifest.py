@@ -15,7 +15,6 @@ MANIFEST = AgentManifest(
              "worktree; success verified by a final deterministic run"),
     desc_zh=("跑测试 → 读码 → 打补丁 → 复跑直到通过;在 git worktree 隔离"
              "执行,最终以确定性复跑验收"),
-    render="",
     # The run endpoint mutates the local filesystem, so it is OFF by
     # default: 403 unless CODEFIX_API_ALLOWED_DIRS whitelists the target.
     api="seatunnel_agent.agents.ai.code_fix.api:router",

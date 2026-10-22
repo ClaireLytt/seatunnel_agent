@@ -18,7 +18,6 @@ MANIFEST = AgentManifest(
     desc_en="Browser-driven regression for the agent pages — YAML cases, LLM fuzzy assertions, HTML reports",
     desc_zh="真实浏览器驱动的页面自动回归 — YAML 用例、LLM 模糊断言、HTML 报告",
     api="seatunnel_agent.agents.devops.ui_testing.api:router",
-    render="",
     card=False,
     external=True,
 )
