@@ -1,5 +1,7 @@
 // REST client for /api/llmcost (seatunnel_agent.agents.ai.llm_cost.api).
 
+import { fetchJson } from '@shared/api'
+
 const BASE = '/api/llmcost'
 
 export interface SummaryTotal {
@@ -30,19 +32,14 @@ export interface SummaryResponse {
 
 // 400 (malformed pricing override) carries the error text in FastAPI's
 // `detail`; the page shows it in the report area.
-export async function fetchSummary(
+export function fetchSummary(
   days: number,
   budget: number | null,
   lang: string,
 ): Promise<SummaryResponse> {
   const params = new URLSearchParams({ days: String(days), lang, report: 'true' })
   if (budget !== null && budget > 0) params.set('budget', String(budget))
-  const r = await fetch(`${BASE}/summary?${params}`)
-  if (!r.ok) {
-    const data = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))
-    throw new Error(typeof data.detail === 'string' ? data.detail : `HTTP ${r.status}`)
-  }
-  return r.json()
+  return fetchJson(`${BASE}/summary?${params}`)
 }
 
 // ── Reserved for ticket 03 (price table / charts / CSV) ──────────────────────
@@ -59,11 +56,6 @@ export interface PricesResponse {
   override_path: string
 }
 
-export async function fetchPrices(): Promise<PricesResponse> {
-  const r = await fetch(`${BASE}/prices`)
-  if (!r.ok) {
-    const data = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))
-    throw new Error(typeof data.detail === 'string' ? data.detail : `HTTP ${r.status}`)
-  }
-  return r.json()
+export function fetchPrices(): Promise<PricesResponse> {
+  return fetchJson(`${BASE}/prices`)
 }

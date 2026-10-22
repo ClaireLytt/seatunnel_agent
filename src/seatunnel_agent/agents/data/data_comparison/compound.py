@@ -20,11 +20,9 @@ optional skew / checksum / partition / custom-aggregate stages from
 
 from __future__ import annotations
 
-import json
-import queue
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from typing import Any
 
@@ -63,6 +61,7 @@ from seatunnel_agent.agents.data.data_comparison.ui_shared import (
     _validate_where,
     _with_validation,
 )
+from seatunnel_agent.common.sse import sse_stream
 
 router = APIRouter()
 
@@ -416,11 +415,7 @@ def _no_common_card(lang_val: str, title_key: str) -> str:
     )
 
 
-# ── SSE plumbing (seatunnel queue+worker precedent) ──────────────────
-
-
-def _sse(obj: dict[str, Any]) -> str:
-    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
+# ── SSE plumbing (common sse_stream: queue+worker+sentinel) ──────────
 
 
 def _stream_run(
@@ -438,31 +433,19 @@ def _stream_run(
         raise HTTPException(status_code=409,
                             detail="a compound run is already in progress")
 
-    q: queue.Queue[dict[str, Any] | None] = queue.Queue()
+    def work(emit: Callable[[Any], None]) -> Mapping[str, Any]:
+        def progress(value: float, desc: str = "") -> None:
+            emit({"event": "progress", "value": value, "desc": desc})
 
-    def progress(value: float, desc: str = "") -> None:
-        q.put({"event": "progress", "value": value, "desc": desc})
-
-    def work() -> None:
         try:
             html = run(session, req, progress)
         except Exception as e:  # pragma: no cover — run fns catch their own
             html = _error_html(req.lang, e)
         finally:
             release_run(req.session_id)
-        q.put({"event": "done", "html": html})
-        q.put(None)
+        return {"event": "done", "html": html}
 
-    threading.Thread(target=work, daemon=True).start()
-
-    def gen() -> Iterator[str]:
-        while True:
-            item = q.get()
-            if item is None:
-                break
-            yield _sse(item)
-
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return sse_stream(work)
 
 
 @router.post("/compare/all")

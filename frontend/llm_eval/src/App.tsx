@@ -4,43 +4,46 @@ import { useTranslation } from 'react-i18next'
 import { fetchDemoSuite, fetchHistory, runSuite, validateSuite } from '@/api'
 import type { HistoryRun } from '@/api'
 import { Card } from '@shared/components/card'
+import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
-import { labelCls, textareaCls } from '@shared/constants'
+import { btnPrimary, labelCls, textareaCls } from '@shared/constants'
+import { langOf } from '@shared/lang'
+import { useRunner } from '@shared/useRunner'
 import { TrendChart } from '@/TrendChart'
 
 export default function App() {
   const { t, i18n } = useTranslation()
-  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   const [suiteYaml, setSuiteYaml] = useState('')
   const [judge, setJudge] = useState(false)
-  const [running, setRunning] = useState(false)
-  const [report, setReport] = useState('')
+  const { busy, error, result, run, setError } = useRunner(runSuite)
   const [trendRuns, setTrendRuns] = useState<HistoryRun[] | null>(null)
 
   const onLoadDemo = async () => {
     try {
       setSuiteYaml(await fetchDemoSuite())
     } catch (e) {
-      setReport(`⚠️ ${e instanceof Error ? e.message : e}`)
+      setError(`⚠️ ${e instanceof Error ? e.message : e}`)
     }
   }
 
   // Parse-only feedback loop — never calls the LLM (mirrors Gradio do_validate).
+  // Validation outcomes reuse the runner's error slot (same report area).
   const onValidate = async () => {
     if (!suiteYaml.trim()) {
-      setReport(t('emptySuite'))
+      setError(t('emptySuite'))
       return
     }
     try {
       const r = await validateSuite(suiteYaml)
-      setReport(
+      setError(
         r.ok
           ? t('validOk', { n: r.cases, agents: r.agents.join(', ') })
           : `⚠️ ${r.error}`,
       )
     } catch (e) {
-      setReport(`⚠️ ${e instanceof Error ? e.message : e}`)
+      setError(`⚠️ ${e instanceof Error ? e.message : e}`)
     }
   }
 
@@ -52,47 +55,25 @@ export default function App() {
     }
   }
 
-  const onRun = async () => {
+  const onRun = () => {
     if (!suiteYaml.trim()) {
-      setReport(t('emptySuite'))
+      setError(t('emptySuite'))
       return
     }
-    setRunning(true)
-    try {
-      const r = await runSuite(suiteYaml, judge, lang)
-      setReport(r.report ?? '')
-    } catch (e) {
-      setReport(`⚠️ ${e instanceof Error ? e.message : e}`)
-    } finally {
-      setRunning(false)
-    }
+    void run(suiteYaml, judge, lang)
   }
+
+  const report = error || (result?.report ?? '')
 
   return (
     <div className="mx-auto max-w-[1180px] px-4 py-10">
-      <motion.header
+      <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="flex items-start justify-between gap-4"
       >
-        <div>
-          <span className="mb-4 inline-block rounded border border-ink-soft px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
-            ai / llmeval
-          </span>
-          <h1 className="font-display text-4xl font-bold tracking-tight text-ink">
-            {t('title')}
-          </h1>
-          <p className="mt-3 max-w-[680px] text-muted">{t('subtitle')}</p>
-        </div>
-        <a
-          href="/"
-          title={t('home')}
-          className="shrink-0 rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
-        >
-          {t('home')}
-        </a>
-      </motion.header>
+        <PageHeader badge="ai / llmeval" />
+      </motion.div>
 
       <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-[2fr_5fr]">
         <Card>
@@ -129,17 +110,13 @@ export default function App() {
             />
             {t('judgeLabel')}
           </label>
-          <button
-            onClick={onRun}
-            disabled={running}
-            className="mt-4 w-full rounded border-[1.5px] border-ink bg-ink px-6 py-2 font-mono text-sm text-paper transition enabled:hover:-translate-x-px enabled:hover:-translate-y-px enabled:hover:shadow-hard disabled:opacity-50"
-          >
-            {running ? t('running') : t('runBtn')}
+          <button onClick={onRun} disabled={busy} className={btnPrimary}>
+            {busy ? t('running') : t('runBtn')}
           </button>
         </Card>
 
         <Card>
-          {running ? (
+          {busy ? (
             <p className="font-mono text-sm text-muted">{t('running')}</p>
           ) : report ? (
             <ReportView className="le-report" markdown={report} />

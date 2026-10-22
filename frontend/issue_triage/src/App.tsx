@@ -2,55 +2,34 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { runTriage } from '@/api'
 import { Card } from '@shared/components/card'
+import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
-import { fieldCls, labelCls, textareaCls } from '@shared/constants'
+import { btnPrimary, fieldCls, labelCls, textareaCls } from '@shared/constants'
+import { langOf } from '@shared/lang'
+import { useRunner } from '@shared/useRunner'
 
 export default function App() {
   const { t, i18n } = useTranslation()
-  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
-  const [running, setRunning] = useState(false)
-  const [report, setReport] = useState('')
+  const { busy, error, result, run, setError } = useRunner(runTriage)
 
-  const onTriage = async () => {
+  const onTriage = () => {
     // Local gate — mirrors the Gradio page's do_triage: no request is sent.
     if (!title.trim()) {
-      setReport(t('empty'))
+      setError(t('empty'))
       return
     }
-    setRunning(true)
-    try {
-      const r = await runTriage(title, body, lang)
-      setReport(r.report ?? '')
-    } catch (e) {
-      setReport(`⚠️ ${e instanceof Error ? e.message : e}`)
-    } finally {
-      setRunning(false)
-    }
+    void run(title, body, lang)
   }
+
+  const report = error || (result?.report ?? '')
 
   return (
     <div className="mx-auto max-w-[1180px] px-4 py-10">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <span className="mb-4 inline-block rounded border border-ink-soft px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
-            ai / triage
-          </span>
-          <h1 className="font-display text-4xl font-bold tracking-tight text-ink">
-            {t('title')}
-          </h1>
-          <p className="mt-3 max-w-[680px] text-muted">{t('subtitle')}</p>
-        </div>
-        <a
-          href="/"
-          title={t('home')}
-          className="shrink-0 rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
-        >
-          {t('home')}
-        </a>
-      </header>
+      <PageHeader badge="ai / triage" />
 
       <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-[2fr_5fr]">
         <Card>
@@ -76,17 +55,13 @@ export default function App() {
             onChange={(e) => setBody(e.target.value)}
           />
 
-          <button
-            onClick={onTriage}
-            disabled={running}
-            className="mt-4 w-full rounded border-[1.5px] border-ink bg-ink px-6 py-2 font-mono text-sm text-paper transition enabled:hover:-translate-x-px enabled:hover:-translate-y-px enabled:hover:shadow-hard disabled:opacity-50"
-          >
-            {running ? t('running') : t('runBtn')}
+          <button onClick={onTriage} disabled={busy} className={btnPrimary}>
+            {busy ? t('running') : t('runBtn')}
           </button>
         </Card>
 
         <Card>
-          {running ? (
+          {busy ? (
             <p className="font-mono text-sm text-muted">{t('running')}</p>
           ) : report ? (
             <ReportView className="it-report" markdown={report} />

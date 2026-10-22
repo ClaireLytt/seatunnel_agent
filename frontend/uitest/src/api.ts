@@ -1,3 +1,4 @@
+import { fetchJson } from '@shared/api'
 import { postSSE } from '@shared/sse'
 
 export interface AgentMeta {
@@ -31,15 +32,11 @@ export interface RunEntry {
 const BASE = '/api/uitest'
 
 export async function fetchRuns(): Promise<RunEntry[]> {
-  const r = await fetch(`${BASE}/runs`)
-  if (!r.ok) throw new Error(`runs: HTTP ${r.status}`)
-  return (await r.json()).runs
+  return (await fetchJson<{ runs: RunEntry[] }>(`${BASE}/runs`)).runs
 }
 
-export async function fetchMeta(): Promise<Meta> {
-  const r = await fetch(`${BASE}/meta`)
-  if (!r.ok) throw new Error(`meta: HTTP ${r.status}`)
-  return r.json()
+export function fetchMeta(): Promise<Meta> {
+  return fetchJson(`${BASE}/meta`)
 }
 
 export async function runSuite(
@@ -53,17 +50,12 @@ export async function runSuite(
   }
 }
 
-export async function saveCase(text: string): Promise<{ ids: string[]; path: string }> {
-  const r = await fetch(`${BASE}/case`, {
+export function saveCase(text: string): Promise<{ ids: string[]; path: string }> {
+  return fetchJson(`${BASE}/case`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ text }),
   })
-  if (!r.ok) {
-    const data = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))
-    throw new Error(data.detail || `HTTP ${r.status}`)
-  }
-  return r.json()
 }
 
 export const reportUrl = (runId: string) => `${BASE}/report/${runId}`

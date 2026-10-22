@@ -8,6 +8,7 @@
 - 不添加 AI 的署名或 Co-authored-by 信息。
 - **不允许擅自更改用户的分支**:对已有分支做 rebase/force push/重写历史/合并等操作前必须先征得用户同意。
 - **不要基于未合并的分支开新分支开发**:新开发分支一律从已合并的 main 切出;若用户尚未合并某个分支,不得把它当作新分支的基底(堆叠分支需用户明确要求)。
+- **禁止创建 worktree,只在当前分支工作,不并行开发**:任何任务(包括 spec→tickets 多票流程与子代理)一律在当前检出的分支和主工作区串行进行;不得 `git worktree add`、不得为票据开新分支、不得多条改动线并行写同一仓库。此条优先于任何 skill/流程模板里"每票一分支一 worktree 并行"的默认做法。
 
 ## 2. UI 设计规范
 
@@ -70,3 +71,28 @@
 - 多代理编排(spec→tickets 流程):票级实现只跑 ruff/mypy + 与本票相关的定向测试;全量 pytest、uitest smoke 与批次报告由编排会话在批次收尾统一执行一次,票级子代理不写报告。
 - 前端改动后页面验证:`seatunnel-agent ui --build`(一步构建全部 workspace 并启动 hub)。
 - 批次收尾:`python scripts/check_workflow.py`(工作流机械核对,FAIL 则本批次不得标记完成)。
+
+## 9. 禁止破坏性命令
+
+- **不允许运行任何清空/删除本地仓库的命令**:禁止 `rm -rf`、`Remove-Item -Recurse -Force`、`git clean -fdx`、`git reset --hard`、`git checkout --`、强制覆盖等可能丢失本地文件或未提交改动的操作;确需删除单个文件时必须先征得用户同意。
+
+### 事故记录(2026-10-22,不允许再犯)
+
+批次收尾清理 worktree 时,AI 运行了:
+
+```bash
+git worktree list --porcelain | grep worktree | grep agent | sed 's/worktree //' \
+  | while read w; do git worktree remove "$w" --force 2>/dev/null \
+      || { rm -rf "$w"; git worktree prune; }; done
+```
+
+主仓库路径 `D:/ospp/seatunnel_agent` 本身含 "agent" 子串,被 `grep agent` 匹配进删除列表;`git worktree remove` 对主仓库的拒绝报错被 `2>/dev/null` 吞掉,`||` 回退执行了 `rm -rf 主仓库`,删掉了工作树与 `.git`,**未推送分支(约 20 个提交、4 个批次成果)永久丢失**。
+
+由此固化以下规则:
+
+1. **清理 worktree 只允许逐个执行 `git worktree remove <完整路径>`**,路径必须以 `.claude/worktrees/agent-` 为前缀逐一核对;禁止任何形式的 `rm`/`Remove-Item` 回退。
+2. **禁止用子串 grep 过滤路径后接删除类命令**;匹配必须用完整前缀/精确路径。
+3. **禁止对删除/清理类命令的守卫报错做 `2>/dev/null` 静默**;守卫失败必须让命令失败,不得回退到更强的删除手段。
+4. **批次合并进集成分支后立即推送远端**(`git push`,代理问题用 `-c http.proxy=`),不允许多个批次的成果只存在于本地;`check_workflow.py` 出现"无远端分支"视为待办,不是可忽略提示。
+5. 删除多个文件/目录前,先打印完整目标清单让用户确认,再逐项执行。
+6. **清理 worktree 的唯一入口是 `python scripts/cleanup_worktrees.py`**(默认 dry-run,`--yes` 执行;规则 1–3 已在其中代码化并有单测 tests/test_cleanup_worktrees.py);不得再手写清理 shell。

@@ -1,3 +1,4 @@
+import { fetchJson } from '@shared/api'
 import { postSSE } from '@shared/sse'
 
 export interface Datasource {
@@ -43,20 +44,12 @@ export interface ConnectParams {
 
 const BASE = '/api/datacompare'
 
-async function json<T>(r: Response, what: string): Promise<T> {
-  if (!r.ok) throw new Error(`${what}: HTTP ${r.status}`)
-  return r.json()
-}
-
 export async function fetchMeta(): Promise<Meta> {
-  return json(await fetch(`${BASE}/meta`), 'meta')
+  return fetchJson(`${BASE}/meta`)
 }
 
 export async function createSession(): Promise<string> {
-  const data = await json<{ session_id: string }>(
-    await fetch(`${BASE}/session`, { method: 'POST' }),
-    'session',
-  )
+  const data = await fetchJson<{ session_id: string }>(`${BASE}/session`, { method: 'POST' })
   return data.session_id
 }
 
@@ -71,26 +64,20 @@ export async function compareAction(
     lang: string
   } & CompareOptions,
 ): Promise<string> {
-  const data = await json<{ html: string }>(
-    await fetch(`${BASE}/compare/${action}`, {
+  const data = await fetchJson<{ html: string }>(`${BASE}/compare/${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    action,
-  )
+    })
   return data.html
 }
 
 export async function connectSide(params: ConnectParams): Promise<ConnectResult> {
-  return json(
-    await fetch(`${BASE}/connect`, {
+  return fetchJson(`${BASE}/connect`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    'connect',
-  )
+    })
 }
 
 // ── Global comparison options (frontend state; rides on action calls) ──
@@ -151,14 +138,11 @@ export async function featureAction(
   } & CompareOptions &
     FeatureFields,
 ): Promise<string> {
-  const data = await json<{ html: string }>(
-    await fetch(`${BASE}/compare/${action}`, {
+  const data = await fetchJson<{ html: string }>(`${BASE}/compare/${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    action,
-  )
+    })
   return data.html
 }
 
@@ -181,26 +165,20 @@ export interface PresetConnection {
 }
 
 export async function listPresets(): Promise<PresetSummary[]> {
-  const data = await json<{ presets: PresetSummary[] }>(
-    await fetch(`${BASE}/presets`),
-    'presets',
-  )
+  const data = await fetchJson<{ presets: PresetSummary[] }>(`${BASE}/presets`)
   return data.presets
 }
 
 export async function savePreset(p: PresetConnection & { name: string }): Promise<void> {
-  await json(
-    await fetch(`${BASE}/presets`, {
+  await fetchJson(`${BASE}/presets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(p),
-    }),
-    'save preset',
-  )
+    })
 }
 
 export async function loadPreset(name: string): Promise<PresetConnection & { name: string }> {
-  return json(await fetch(`${BASE}/presets/${encodeURIComponent(name)}`), 'load preset')
+  return fetchJson(`${BASE}/presets/${encodeURIComponent(name)}`)
 }
 
 // ── Report persistence (ticket 07) ──
@@ -217,40 +195,31 @@ export async function saveReport(params: {
   table_b: string
   lang: string
 }): Promise<ReportSaveResult> {
-  return json(
-    await fetch(`${BASE}/reports`, {
+  return fetchJson(`${BASE}/reports`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    'save report',
-  )
+    })
 }
 
 export async function listReports(): Promise<string[]> {
-  const data = await json<{ files: string[] }>(await fetch(`${BASE}/reports`), 'reports')
+  const data = await fetchJson<{ files: string[] }>(`${BASE}/reports`)
   return data.files
 }
 
 export async function loadReport(name: string, sessionId: string, lang: string): Promise<string> {
-  const data = await json<{ html: string }>(
-    await fetch(
+  const data = await fetchJson<{ html: string }>(
       `${BASE}/reports/${encodeURIComponent(name)}?session_id=${encodeURIComponent(sessionId)}&lang=${lang}`,
-    ),
-    'load report',
-  )
+    )
   return data.html
 }
 
 export async function diffReports(oldName: string, newName: string, lang: string): Promise<string> {
-  const data = await json<{ html: string }>(
-    await fetch(`${BASE}/reports/diff`, {
+  const data = await fetchJson<{ html: string }>(`${BASE}/reports/diff`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ old: oldName, new: newName, lang }),
-    }),
-    'diff reports',
-  )
+    })
   return data.html
 }
 
@@ -262,10 +231,7 @@ export const standaloneReportUrl = (sessionId: string, lang: string) =>
   `${BASE}/report/standalone?session_id=${encodeURIComponent(sessionId)}&lang=${lang}`
 
 export async function deletePreset(name: string): Promise<void> {
-  await json(
-    await fetch(`${BASE}/presets/${encodeURIComponent(name)}`, { method: 'DELETE' }),
-    'delete preset',
-  )
+  await fetchJson(`${BASE}/presets/${encodeURIComponent(name)}`, { method: 'DELETE' })
 }
 
 // ── Compound actions with progress (ticket 04) ──
@@ -307,14 +273,11 @@ export async function compareStream(
 }
 
 export async function compareProfile(params: CompoundParams): Promise<string> {
-  const data = await json<{ html: string }>(
-    await fetch(`${BASE}/compare/profile`, {
+  const data = await fetchJson<{ html: string }>(`${BASE}/compare/profile`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    'profile',
-  )
+    })
   return data.html
 }
 
@@ -332,14 +295,11 @@ export async function generateSyncConfig(params: {
   column_mapping: string
   lang: string
 }): Promise<SyncConfigResult> {
-  return json(
-    await fetch(`${BASE}/generate/sync-config`, {
+  return fetchJson(`${BASE}/generate/sync-config`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    'sync config',
-  )
+    })
 }
 
 // GET FileResponse carrying the real passwords — used as a plain link href.
@@ -353,14 +313,11 @@ export async function generateDiffSql(params: {
   table_b: string
   lang: string
 }): Promise<string> {
-  const data = await json<{ html: string }>(
-    await fetch(`${BASE}/generate/diff-sql`, {
+  const data = await fetchJson<{ html: string }>(`${BASE}/generate/diff-sql`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    'diff sql',
-  )
+    })
   return data.html
 }
 
@@ -369,14 +326,11 @@ export async function traceLineage(params: {
   sqls: string
   lang: string
 }): Promise<string> {
-  const data = await json<{ html: string }>(
-    await fetch(`${BASE}/lineage`, {
+  const data = await fetchJson<{ html: string }>(`${BASE}/lineage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    'lineage',
-  )
+    })
   return data.html
 }
 
@@ -387,14 +341,11 @@ export async function compareEnvironments(params: {
   where: string
   lang: string
 }): Promise<string> {
-  const data = await json<{ html: string }>(
-    await fetch(`${BASE}/compare/environments`, {
+  const data = await fetchJson<{ html: string }>(`${BASE}/compare/environments`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    'environments',
-  )
+    })
   return data.html
 }
 
@@ -425,33 +376,24 @@ export interface ComparisonTemplate {
 }
 
 export async function listTemplates(): Promise<TemplateSummary[]> {
-  const data = await json<{ templates: TemplateSummary[] }>(
-    await fetch(`${BASE}/templates`),
-    'templates',
-  )
+  const data = await fetchJson<{ templates: TemplateSummary[] }>(`${BASE}/templates`)
   return data.templates
 }
 
 export async function saveTemplate(t: ComparisonTemplate): Promise<void> {
-  await json(
-    await fetch(`${BASE}/templates`, {
+  await fetchJson(`${BASE}/templates`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(t),
-    }),
-    'save template',
-  )
+    })
 }
 
 export async function loadTemplate(name: string): Promise<ComparisonTemplate> {
-  return json(await fetch(`${BASE}/templates/${encodeURIComponent(name)}`), 'load template')
+  return fetchJson(`${BASE}/templates/${encodeURIComponent(name)}`)
 }
 
 export async function deleteTemplate(name: string): Promise<void> {
-  await json(
-    await fetch(`${BASE}/templates/${encodeURIComponent(name)}`, { method: 'DELETE' }),
-    'delete template',
-  )
+  await fetchJson(`${BASE}/templates/${encodeURIComponent(name)}`, { method: 'DELETE' })
 }
 
 // ── Schedule / webhook / trends (ticket 09) ──
@@ -482,32 +424,23 @@ export interface ScheduleStatus {
 export async function scheduleStart(
   params: CompoundParams & WebhookOptions & FeatureFields & { interval: string },
 ): Promise<ScheduleResult> {
-  return json(
-    await fetch(`${BASE}/schedule/start`, {
+  return fetchJson(`${BASE}/schedule/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    'schedule start',
-  )
+    })
 }
 
 export async function scheduleStop(sessionId: string, lang: string): Promise<ScheduleResult> {
-  return json(
-    await fetch(`${BASE}/schedule/stop`, {
+  return fetchJson(`${BASE}/schedule/stop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId, lang }),
-    }),
-    'schedule stop',
-  )
+    })
 }
 
 export async function scheduleStatus(sessionId: string): Promise<ScheduleStatus> {
-  return json(
-    await fetch(`${BASE}/schedule/status?session_id=${encodeURIComponent(sessionId)}`),
-    'schedule status',
-  )
+  return fetchJson(`${BASE}/schedule/status?session_id=${encodeURIComponent(sessionId)}`)
 }
 
 export interface TrendEntry {
@@ -528,7 +461,7 @@ export interface TrendsResult {
 
 export async function fetchTrends(lang: string, alertRules: string): Promise<TrendsResult> {
   const qs = new URLSearchParams({ lang, alert_rules: alertRules })
-  return json(await fetch(`${BASE}/trends?${qs}`), 'trends')
+  return fetchJson(`${BASE}/trends?${qs}`)
 }
 
 export async function batchRunTemplates(params: {
@@ -536,13 +469,10 @@ export async function batchRunTemplates(params: {
   names: string[]
   lang: string
 }): Promise<string> {
-  const data = await json<{ html: string }>(
-    await fetch(`${BASE}/templates/batch-run`, {
+  const data = await fetchJson<{ html: string }>(`${BASE}/templates/batch-run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
-    }),
-    'batch run',
-  )
+    })
   return data.html
 }

@@ -12,10 +12,8 @@ server-side — everything else stays behind ``validate_start_url``.
 
 from __future__ import annotations
 
-import json
 import os
-import queue
-import threading
+from collections.abc import Callable, Mapping
 from typing import Any
 from urllib.parse import urlparse
 
@@ -24,13 +22,9 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health
+from seatunnel_agent.common.sse import _NO_KEY, sse_stream
 
 router = APIRouter(prefix="/api/webtask", tags=["web_task"])
-
-_NO_KEY = {
-    "en": "No LLM configured — set an API key on the Settings page first.",
-    "zh": "未配置 LLM — 请先到设置页配置 API key。",
-}
 
 _LOOPBACK = {"127.0.0.1", "localhost", "::1"}
 
@@ -40,10 +34,6 @@ class RunRequest(BaseModel):
     url: str = Field(..., min_length=1, description="Start URL")
     max_steps: int = Field(15, ge=2, le=30)
     lang: str = "zh"
-
-
-def _sse(obj: dict[str, Any]) -> str:
-    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
 
 
 @router.post("/run")
@@ -66,48 +56,26 @@ def run(req: RunRequest) -> StreamingResponse:
     load_dotenv()
     settings_store.apply_to_env()
 
-    def stream():
+    def work(emit: Callable[[Any], None]) -> Mapping[str, Any] | None:
         try:
             settings = load_settings()
         except RuntimeError:
-            yield _sse({"type": "error", "message": _NO_KEY[lang]})
-            return
+            return {"type": "error", "message": _NO_KEY[lang]}
 
         from .engine import run_task
-        events: queue.Queue = queue.Queue()
-        outcome: dict[str, Any] = {}
+        result = run_task(
+            req.goal.strip(), req.url.strip(), settings,
+            max_steps=req.max_steps,
+            allow_private=allow_private, on_step=emit)
+        return {"type": "done", "success": result.success,
+                "reply": result.reply,
+                "steps": [s.to_dict() for s in result.steps],
+                "truncated": result.truncated,
+                "elapsed_ms": result.elapsed_ms}
 
-        def work() -> None:
-            try:
-                outcome["result"] = run_task(
-                    req.goal.strip(), req.url.strip(), settings,
-                    max_steps=req.max_steps,
-                    allow_private=allow_private, on_step=events.put)
-            except Exception as exc:
-                outcome["error"] = f"{type(exc).__name__}: {exc}"
-            finally:
-                events.put(None)  # sentinel
-
-        threading.Thread(target=work, daemon=True).start()
-        while True:
-            step = events.get()
-            if step is None:
-                break
-            yield _sse({"type": "step", "tool": step.tool,
-                        "elapsed_ms": step.elapsed_ms,
-                        "error": step.error})
-
-        if "error" in outcome:
-            yield _sse({"type": "error", "message": outcome["error"]})
-            return
-        result = outcome["result"]
-        yield _sse({"type": "done", "success": result.success,
-                    "reply": result.reply,
-                    "steps": [s.to_dict() for s in result.steps],
-                    "truncated": result.truncated,
-                    "elapsed_ms": result.elapsed_ms})
-
-    return StreamingResponse(stream(), media_type="text/event-stream")
+    return sse_stream(work, map_step=lambda step: {
+        "type": "step", "tool": step.tool,
+        "elapsed_ms": step.elapsed_ms, "error": step.error})
 
 
 add_health(router, "web_task")

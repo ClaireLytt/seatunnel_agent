@@ -8,70 +8,41 @@ real connect against a temp SQLite DB. Deselected by default:
 
 from __future__ import annotations
 
-import socket
 import sqlite3
 import threading
-import time
 
 import pytest
 
 from tests.conftest import download_text as _download_text
+from tests.conftest import make_page_url
 
 pytestmark = pytest.mark.uitest
 
-DIST = "frontend/text2sql/dist"
+from seatunnel_agent.agents.data.text2sql.manifest import MANIFESTS
 
+MANIFEST = MANIFESTS[0]  # the /text2sql card (aux pages share its dist)
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.text2sql.api:router", "/text2sql")
 
 
 @pytest.fixture()
-def page_url(tmp_path):
-    from pathlib import Path
-
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
-    from seatunnel_agent.agents.data.text2sql.api import router
-
-    if not (Path(DIST) / "index.html").is_file():
-        pytest.skip("text2sql dist not built (cd frontend && npm run build -w @seatunnel/text2sql-frontend)")
-
+def db_path(tmp_path) -> str:
+    """Temp SQLite demo DB for the real-connect tests."""
     db = tmp_path / "demo.db"
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, amount REAL)")
     con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
     con.commit()
     con.close()
-
-    app = FastAPI()
-    app.include_router(router)
-    app.mount("/text2sql", StaticFiles(directory=DIST, html=True))
-
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/text2sql/", str(db)
-    server.should_exit = True
-    t.join(timeout=5)
+    return str(db)
 
 
 @pytest.mark.uitest
-def test_t2s_page_connects(page_url):
+def test_t2s_page_connects(page_url, db_path):
     from playwright.sync_api import expect, sync_playwright
 
-    url, db_path = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -93,21 +64,11 @@ def test_t2s_page_connects(page_url):
         browser.close()
 
 
-@pytest.fixture()
-def chat_page_url(tmp_path, monkeypatch):
-    """Same in-process server, but the agent is faked so the chat stream
-    (not the LLM) is the seam under test."""
-    from pathlib import Path
-
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
+def _fake_agent_setup(monkeypatch, tmp_path):
+    """Fake the agent so the chat stream (not the LLM) is the seam under
+    test (used by the second server fixture, ``chat_page_url``)."""
     from seatunnel_agent.agents.data.text2sql import api as t2s_api
     from seatunnel_agent.agents.data.text2sql import api_shared as t2s_shared
-
-    if not (Path(DIST) / "index.html").is_file():
-        pytest.skip("text2sql dist not built")
 
     class FakeAgent:
         def __init__(self):
@@ -149,22 +110,10 @@ def chat_page_url(tmp_path, monkeypatch):
     monkeypatch.setattr(t2s_shared, "build_agent", lambda *a, **k: FakeAgent())
     monkeypatch.setattr(t2s_api, "build_agent", lambda *a, **k: FakeAgent())
 
-    app = FastAPI()
-    app.include_router(t2s_api.router)
-    app.mount("/text2sql", StaticFiles(directory=DIST, html=True))
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/text2sql/"
-    server.should_exit = True
-    t.join(timeout=5)
+
+chat_page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.text2sql.api:router", "/text2sql",
+    post_setup=_fake_agent_setup, name="chat_page_url")
 
 
 @pytest.mark.uitest
@@ -214,12 +163,12 @@ def test_t2s_chat_streams_and_renders_table(chat_page_url):
 
 
 @pytest.mark.uitest
-def test_t2s_schema_filter_and_browser(page_url):
+def test_t2s_schema_filter_and_browser(page_url, db_path):
     """Ticket #68: sidebar table filter narrows the session; the #schema
     view lists tables and shows column detail. Real SQLite session."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, db_path = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -284,7 +233,7 @@ def test_t2s_favorites_view(page_url, t2s_stores):
     t2s_stores.favs.save("top orders", "SELECT * FROM orders LIMIT 10",
                          "show top orders")
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -320,7 +269,7 @@ def test_t2s_metrics_view(chat_page_url):
 def test_t2s_boards_view(page_url, t2s_stores):
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -340,7 +289,7 @@ def test_t2s_boards_view(page_url, t2s_stores):
 def test_t2s_subscriptions_view(page_url, t2s_stores):
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -514,12 +463,12 @@ def test_t2s_chat_stop_interrupts(chat_page_url):
 
 
 @pytest.mark.uitest
-def test_t2s_schema_select_all_and_reload(page_url):
+def test_t2s_schema_select_all_and_reload(page_url, db_path):
     """Schema panel: select-all restores a narrowed session; reload keeps
     the table list intact."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, db_path = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -690,12 +639,12 @@ def test_t2s_metrics_expand_and_use(chat_page_url):
 
 
 @pytest.mark.uitest
-def test_t2s_boards_enter_create_render_delete_refresh(page_url, t2s_stores):
+def test_t2s_boards_enter_create_render_delete_refresh(page_url, t2s_stores, db_path):
     """Boards view: Enter creates a board; a pinned item renders against
     the live session; delete removes it; refresh confirms."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, db_path = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()

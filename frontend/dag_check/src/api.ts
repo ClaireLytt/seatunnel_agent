@@ -1,22 +1,14 @@
+// Structured API error ({code: bad_dir|check_failed, …}) the UI localizes —
+// shared legacy (code, path, error) constructor.
+import { ApiError } from '@shared/api'
+export { ApiError }
+
 const BASE = '/api/dagcheck'
 
 export interface CheckResponse {
   result: Record<string, unknown>
   report: string | null
   elapsed_ms: number
-}
-
-/** Structured API error ({code: bad_dir|check_failed, …}) the UI localizes. */
-export class ApiError extends Error {
-  code: string
-  path: string
-  error: string
-  constructor(code: string, path: string, error = '') {
-    super(`${code}: ${path || error}`)
-    this.code = code
-    this.path = path
-    this.error = error
-  }
 }
 
 export async function checkDag(body: {

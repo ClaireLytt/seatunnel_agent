@@ -17,6 +17,47 @@ WORKSPACES = ["shared", "alpha", "beta"]
 BUILDABLE = ["alpha", "beta"]
 
 
+class FakeResult:
+    """Minimal stand-in for subprocess.CompletedProcess."""
+
+    def __init__(self, returncode: int = 0, stdout: str = "", stderr: str = "") -> None:
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def tracking_npm(
+    monkeypatch: pytest.MonkeyPatch, fail: set[str] | None = None
+) -> dict:
+    """Fake npm that records calls and tracks peak concurrency."""
+    import threading
+    import time
+
+    state: dict = {"calls": [], "current": 0, "peak": 0}
+    lock = threading.Lock()
+
+    def fake_run(cmd: list[str], **kwargs: object) -> FakeResult:
+        assert cmd[0] == "npm"
+        name = cmd[cmd.index("--workspace") + 1]
+        with lock:
+            state["calls"].append(name)
+            state["current"] += 1
+            state["peak"] = max(state["peak"], state["current"])
+        time.sleep(0.05)
+        with lock:
+            state["current"] -= 1
+        rc = 1 if fail and name in fail else 0
+        if rc == 0:
+            (Path(str(kwargs["cwd"])) / name / "dist").mkdir(
+                parents=True, exist_ok=True
+            )
+        return FakeResult(rc, stdout=f"{name} build output\n")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr("shutil.which", lambda name: "npm")
+    return state
+
+
 def make_frontend(root: Path) -> Path:
     frontend = root / "frontend"
     frontend.mkdir()
@@ -64,10 +105,7 @@ def npm_calls(monkeypatch: pytest.MonkeyPatch) -> list[str]:
                 parents=True, exist_ok=True
             )
 
-        class R:
-            returncode = 0
-
-        return R()
+        return FakeResult()
 
     monkeypatch.setattr("subprocess.run", fake_run)
     monkeypatch.setattr("shutil.which", lambda name: "npm")
@@ -141,13 +179,9 @@ def test_build_without_dist_skips_hash_and_rebuilds(
     """If npm run build produces no dist/, no hash is written; next run rebuilds."""
     calls: list[str] = []
 
-    def fake_run(cmd: list[str], **kwargs: object) -> object:
+    def fake_run(cmd: list[str], **kwargs: object) -> FakeResult:
         calls.append(cmd[cmd.index("--workspace") + 1])
-
-        class R:
-            returncode = 0
-
-        return R()
+        return FakeResult()
 
     monkeypatch.setattr("subprocess.run", fake_run)
     monkeypatch.setattr("shutil.which", lambda name: "npm")
@@ -202,7 +236,7 @@ class TestUiBuildForceFlag:
         forced: list[bool] = []
         monkeypatch.setattr(
             "seatunnel_agent.cli_cmds.core._build_frontends",
-            lambda force=False: forced.append(force),
+            lambda force=False, jobs=None: forced.append(force),
         )
         fake_ui = types.ModuleType("seatunnel_agent.hub.ui")
         fake_ui.create_ui = lambda: object()  # type: ignore[attr-defined]
@@ -232,7 +266,7 @@ class TestUiBuildForceFlag:
         forced: list[bool] = []
         monkeypatch.setattr(
             "seatunnel_agent.cli_cmds.core._build_frontends",
-            lambda force=False: forced.append(force),
+            lambda force=False, jobs=None: forced.append(force),
         )
         fake_ui = types.ModuleType("seatunnel_agent.hub.ui")
         fake_ui.create_ui = lambda: object()  # type: ignore[attr-defined]
@@ -243,3 +277,194 @@ class TestUiBuildForceFlag:
         assert result.exit_code == 0, result.output
         assert forced == []
         assert "--force has no effect without --build" in result.output
+
+
+def add_workspace(frontend: Path, name: str) -> None:
+    """Extend the fake frontend tree with one more buildable workspace."""
+    pkg = json.loads((frontend / "package.json").read_text())
+    pkg["workspaces"].append(name)
+    (frontend / "package.json").write_text(json.dumps(pkg))
+    ws = frontend / name
+    (ws / "src").mkdir(parents=True)
+    (ws / "package.json").write_text(
+        json.dumps({"name": name, "scripts": {"build": "vite build"}})
+    )
+    (ws / "vite.config.ts").write_text("export default {};\n")
+    (ws / "tsconfig.json").write_text("{}\n")
+    (ws / "src" / "main.tsx").write_text(f"// {name} entry\n")
+
+
+class TestParallelBuild:
+    """_build_frontends(jobs=N) runs pending builds in a bounded pool."""
+
+    def test_parallel_builds_all_within_jobs_limit(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        for name in ("gamma", "delta"):
+            add_workspace(frontend, name)
+        state = tracking_npm(monkeypatch)
+        _build_frontends(frontend=frontend, jobs=2)
+        assert sorted(state["calls"]) == sorted(BUILDABLE + ["gamma", "delta"])
+        assert state["peak"] == 2  # actually ran in parallel
+        for name in BUILDABLE + ["gamma", "delta"]:
+            assert (frontend / name / "dist" / ".build-hash").is_file()
+
+    def test_unchanged_workspaces_skip_pool(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        state = tracking_npm(monkeypatch)
+        _build_frontends(frontend=frontend, jobs=4)
+        state["calls"].clear()
+        _build_frontends(frontend=frontend, jobs=4)
+        assert state["calls"] == []
+        out = capsys.readouterr().out
+        for name in BUILDABLE:
+            assert f"{name}: skipped (unchanged)" in out
+
+    def test_failure_finishes_others_and_lists_all_failed(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        add_workspace(frontend, "gamma")
+        state = tracking_npm(monkeypatch, fail={"alpha", "gamma"})
+        with pytest.raises(SystemExit) as exc:
+            _build_frontends(frontend=frontend, jobs=2)
+        assert exc.value.code != 0
+        assert sorted(state["calls"]) == sorted(BUILDABLE + ["gamma"])
+        out = capsys.readouterr().out
+        assert "alpha" in out and "gamma" in out
+        assert not (frontend / "alpha" / "dist" / ".build-hash").exists()
+        assert not (frontend / "gamma" / "dist" / ".build-hash").exists()
+        assert (frontend / "beta" / "dist" / ".build-hash").is_file()
+
+    def test_failed_workspace_rebuilds_next_time(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tracking_npm(monkeypatch, fail={"alpha"})
+        with pytest.raises(SystemExit):
+            _build_frontends(frontend=frontend, jobs=2)
+        state2 = tracking_npm(monkeypatch)
+        _build_frontends(frontend=frontend, jobs=2)
+        assert state2["calls"] == ["alpha"]
+
+    def test_output_flushed_as_prefixed_block(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        tracking_npm(monkeypatch)
+        _build_frontends(frontend=frontend, jobs=2)
+        out = capsys.readouterr().out
+        for name in BUILDABLE:
+            assert f"[{name}] {name} build output" in out
+
+    def test_jobs_1_equivalent_to_sequential(
+        self, frontend: Path, npm_calls: list[str]
+    ) -> None:
+        _build_frontends(frontend=frontend, jobs=1)
+        assert npm_calls == BUILDABLE
+        for name in BUILDABLE:
+            assert (frontend / name / "dist" / ".build-hash").is_file()
+        npm_calls.clear()
+        _build_frontends(frontend=frontend, jobs=1)
+        assert npm_calls == []
+
+    def test_jobs_below_one_is_clamped_to_one(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Direct callers passing jobs<1 get a serial build instead of a crash."""
+        state = tracking_npm(monkeypatch)
+        _build_frontends(frontend=frontend, jobs=0)
+        assert sorted(state["calls"]) == BUILDABLE
+        assert state["peak"] == 1
+        for name in BUILDABLE:
+            assert (frontend / name / "dist" / ".build-hash").is_file()
+
+
+class TestUiBuildJobsFlag:
+    """`ui --build --jobs N` passes jobs through to _build_frontends."""
+
+    def _invoke(self, monkeypatch: pytest.MonkeyPatch, args: list[str]) -> tuple:
+        import sys
+        import types
+
+        from click.testing import CliRunner
+
+        from seatunnel_agent.cli import cli
+
+        kwargs_seen: list[dict] = []
+        monkeypatch.setattr(
+            "seatunnel_agent.cli_cmds.core._build_frontends",
+            lambda force=False, jobs=None: kwargs_seen.append(
+                {"force": force, "jobs": jobs}
+            ),
+        )
+        fake_ui = types.ModuleType("seatunnel_agent.hub.ui")
+        fake_ui.create_ui = lambda: object()  # type: ignore[attr-defined]
+        fake_ui.launch_app = lambda *a, **k: None  # type: ignore[attr-defined]
+        monkeypatch.setitem(sys.modules, "seatunnel_agent.hub.ui", fake_ui)
+
+        result = CliRunner().invoke(cli, args)
+        assert result.exit_code == 0, result.output
+        return kwargs_seen, result
+
+    def test_jobs_passed_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        kwargs_seen, _ = self._invoke(monkeypatch, ["ui", "--build", "--jobs", "3"])
+        assert kwargs_seen == [{"force": False, "jobs": 3}]
+
+    def test_default_jobs_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        kwargs_seen, _ = self._invoke(monkeypatch, ["ui", "--build"])
+        assert kwargs_seen == [{"force": False, "jobs": None}]
+
+    def test_jobs_without_build_warns_and_is_ignored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        kwargs_seen, result = self._invoke(monkeypatch, ["ui", "--jobs", "3"])
+        assert kwargs_seen == []
+        assert "--jobs has no effect without --build" in result.output
+
+
+class TestBuildSummaryLine:
+    """_build_frontends prints one summary line with counts and elapsed time."""
+
+    def test_summary_counts_built_and_skipped(
+        self, frontend: Path, npm_calls: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        _build_frontends(frontend=frontend)
+        out = capsys.readouterr().out
+        assert "frontend build: 2 built, 0 skipped, 0 failed in " in out
+        _build_frontends(frontend=frontend)
+        out = capsys.readouterr().out
+        assert "frontend build: 0 built, 2 skipped, 0 failed in " in out
+
+    def test_summary_counts_failed(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        state = tracking_npm(monkeypatch, fail={"alpha"})
+        with pytest.raises(SystemExit):
+            _build_frontends(frontend=frontend, jobs=2)
+        assert sorted(state["calls"]) == BUILDABLE
+        out = capsys.readouterr().out
+        assert "frontend build: 1 built, 0 skipped, 1 failed in " in out
+
+    def test_summary_excludes_build_without_dist(
+        self, frontend: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """npm exiting 0 without producing dist/ must not count as built."""
+
+        def fake_run(cmd: list[str], **kwargs: object) -> FakeResult:
+            return FakeResult()
+
+        monkeypatch.setattr("subprocess.run", fake_run)
+        monkeypatch.setattr("shutil.which", lambda name: "npm")
+        _build_frontends(frontend=frontend)
+        out = capsys.readouterr().out
+        assert "frontend build: 0 built, 0 skipped, 0 failed in " in out
+        for name in BUILDABLE:
+            assert f"{name}: build produced no dist/" in out
+
+    def test_summary_elapsed_has_seconds_unit(
+        self, frontend: Path, npm_calls: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import re
+
+        _build_frontends(frontend=frontend)
+        out = capsys.readouterr().out
+        assert re.search(r"frontend build: 2 built, 0 skipped, 0 failed in \d+\.\d+s", out)

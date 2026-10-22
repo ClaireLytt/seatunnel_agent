@@ -26,6 +26,7 @@ import { TrendsCard } from '@/components/TrendsCard'
 import { ResultsToolbar } from '@/components/ResultsToolbar'
 import { useTabFill } from '@/tabFill'
 import { Card } from '@shared/components/card'
+import { PageHeader } from '@shared/components/PageHeader'
 
 // NOTE (accepted, ticket 10/11): each card takes the same ~5-prop bundle
 // (sessionId/tableA/tableB/options/onResult). Consolidating that into a
@@ -150,22 +151,7 @@ export default function App() {
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-8">
-      <header className="flex items-start justify-between gap-4">
-        <div>
-          <span className="mb-3 inline-block rounded border border-ink-soft px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
-            data / compare
-          </span>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-ink">{t('title')}</h1>
-          <p className="mt-2 max-w-[620px] text-sm text-muted">{t('subtitle')}</p>
-        </div>
-        <a
-          href="/"
-          title={t('home')}
-          className="shrink-0 rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
-        >
-          {t('home')}
-        </a>
-      </header>
+      <PageHeader badge="data / compare" maxW="max-w-[620px]" />
 
       {error && (
         <div className="mt-4 font-mono text-sm" style={{ color: 'var(--accent)' }}>

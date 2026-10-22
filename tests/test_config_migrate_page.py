@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from tests.conftest import make_page_url
+from tests.conftest import zh_page as _zh_page
 
 pytestmark = pytest.mark.uitest
 
@@ -159,19 +160,11 @@ def test_config_migrate_unrecognized_input(page_url):
 @pytest.mark.uitest
 def test_config_migrate_batch_bad_dir_zh(page_url):
     """Batch with a non-directory path shows the localized bad_dir error."""
-    from urllib.parse import urlparse
-
     from playwright.sync_api import expect, sync_playwright
-
-    host = urlparse(page_url).hostname
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        ctx = browser.new_context()
-        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                          "domain": host, "path": "/"}])
-        page = ctx.new_page()
-        page.goto(page_url, wait_until="networkidle")
+        page = _zh_page(browser.new_context, page_url)
 
         page.get_by_text("批量迁移目录").click()
         page.get_by_placeholder("包含 *.json / sqoop 脚本的目录（递归）").fill(
@@ -187,11 +180,7 @@ def test_config_migrate_batch_bad_dir_zh(page_url):
 def test_config_migrate_lang_switch(page_url):
     """st-lang cookie drives the chrome language (shared lang.ts), and the
     report follows the UI language through the API lang parameter."""
-    from urllib.parse import urlparse
-
     from playwright.sync_api import expect, sync_playwright
-
-    host = urlparse(page_url).hostname
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
@@ -203,11 +192,7 @@ def test_config_migrate_lang_switch(page_url):
                                 exact=True)).to_be_visible()
 
         # st-lang=zh-CN cookie (set by the hub) → Chinese chrome + zh report
-        ctx = browser.new_context()
-        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                          "domain": host, "path": "/"}])
-        zh_page = ctx.new_page()
-        zh_page.goto(page_url, wait_until="networkidle")
+        zh_page = _zh_page(browser.new_context, page_url)
         expect(zh_page.get_by_role("button", name="迁移",
                                    exact=True)).to_be_visible()
         expect(zh_page.locator("textarea")).to_have_attribute(

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import os
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -74,21 +76,30 @@ def _free_port() -> int:
 def make_page_url(manifest, router_ref: str, mount: str, *,
                   env: dict[str, str] | None = None,
                   neutralize_llm: bool = False,
-                  chdir: str | None = None):
+                  chdir: str | None = None,
+                  extra_mounts: list[tuple[str, Any]] | None = None,
+                  post_setup: Callable[..., None] | None = None,
+                  name: str = "page_url"):
     """Build the in-process uvicorn ``page_url`` fixture for a React page.
 
     ``router_ref`` is "module.path:attr" (imported lazily so collection
     stays cheap). ``env`` entries are set via monkeypatch; a value of
     ``None`` deletes the variable instead. ``neutralize_llm`` applies the
     no-key triple (env keys, settings store path, dotenv stubs).
-    ``chdir`` is "tmp" or "root" (repo root), or None to stay put."""
+    ``chdir`` is "tmp" or "root" (repo root), or None to stay put.
+    ``extra_mounts`` mounts additional built dists ``(mount_path,
+    manifest)`` on the same server (skipped when not built, matching the
+    historical inline behavior). ``post_setup(monkeypatch, tmp_path)``
+    runs after env handling and before the app is assembled — the hook
+    for module-level store/agent stubbing and data seeding. ``name``
+    names the fixture (for a second server fixture in the same file)."""
     import importlib
     import threading
     import time
 
     root = Path(__file__).resolve().parents[1]
 
-    @pytest.fixture()
+    @pytest.fixture(name=name)
     def page_url(monkeypatch, tmp_path):
         import uvicorn
         from fastapi import FastAPI
@@ -123,10 +134,17 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
             else:
                 monkeypatch.setenv(
                     key, value.replace("{tmp}", str(tmp_path)))
+        if post_setup is not None:
+            post_setup(monkeypatch, tmp_path)
 
         app = FastAPI()
         app.include_router(router)
         app.mount(mount, StaticFiles(directory=dist, html=True))
+        for extra_mount, extra_manifest in (extra_mounts or []):
+            extra_dist = root / frontend_dist(extra_manifest)
+            if (extra_dist / "index.html").is_file():
+                app.mount(extra_mount,
+                          StaticFiles(directory=extra_dist, html=True))
 
         port = _free_port()
         server = uvicorn.Server(uvicorn.Config(

@@ -1,7 +1,4 @@
-import i18n from 'i18next'
-import { initReactI18next } from 'react-i18next'
-
-import { langFromCookie } from '@shared/lang'
+import { initI18n } from '@shared/i18n'
 
 // Strings ported verbatim from the legacy Python dictionary
 // (agents/data/sql_review/i18n.py); markdown heading markers dropped —
@@ -126,11 +123,4 @@ export const CHECK_CATALOG_EN: Record<string, string> = {
   time_boundary: 'Time boundary logic (cross-day / timezone / month-end / leap year)',
 }
 
-i18n.use(initReactI18next).init({
-  resources,
-  lng: langFromCookie(),
-  fallbackLng: 'en',
-  interpolation: { escapeValue: false },
-})
-
-export default i18n
+export default initI18n(resources)

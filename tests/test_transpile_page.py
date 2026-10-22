@@ -16,65 +16,28 @@ chrome. Plus the sql_review localStorage bridge pickup.
 
 from __future__ import annotations
 
-import socket
-import threading
-import time
+import os
 from pathlib import Path
 
 import pytest
 
+from tests.conftest import make_page_url
+from tests.conftest import zh_page as _zh_page
+
 pytestmark = pytest.mark.uitest
 
 from seatunnel_agent.agents.data.sql_transpile.manifest import MANIFEST
-from seatunnel_agent.hub.registry import frontend_dist
 
 ROOT = Path(__file__).resolve().parents[1]
-FRONTEND_DIST = ROOT / frontend_dist(MANIFEST)
 DEMO_DIR = ROOT / "examples" / "transpile_demo"
 
 HIVE_JSON_SQL = "SELECT get_json_object(j, '$.a') FROM t"
 UDF_SQL = "SELECT my_udf(x) FROM t"
 
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture()
-def page_url(monkeypatch, tmp_path):
-    import uvicorn
-    from fastapi import FastAPI
-    from fastapi.staticfiles import StaticFiles
-
-    from seatunnel_agent.agents.data.sql_transpile.api import router
-
-    if not (FRONTEND_DIST / "index.html").is_file():
-        pytest.skip(
-            "frontend dist not built (cd frontend && npm run build --workspace sql_transpile)")
-
-    import os
-    monkeypatch.setenv("TRANSPILE_API_ALLOWED_DIRS",
-                       os.pathsep.join([str(ROOT), str(tmp_path)]))
-
-    app = FastAPI()
-    app.include_router(router)
-    app.mount("/transpile", StaticFiles(directory=FRONTEND_DIST, html=True))
-
-    port = _free_port()
-    server = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port,
-                                           log_level="warning"))
-    t = threading.Thread(target=server.run, daemon=True)
-    t.start()
-    deadline = time.time() + 15
-    while not server.started:
-        if time.time() > deadline:
-            pytest.fail("uvicorn did not start")
-        time.sleep(0.1)
-    yield f"http://127.0.0.1:{port}/transpile/", tmp_path
-    server.should_exit = True
-    t.join(timeout=5)
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.sql_transpile.api:router",
+    "/transpile",
+    env={"TRANSPILE_API_ALLOWED_DIRS": os.pathsep.join([str(ROOT), "{tmp}"])})
 
 
 @pytest.mark.uitest
@@ -82,7 +45,7 @@ def test_transpile_page_smoke(page_url):
     """TRP9-adjacent: page loads with English chrome; no console errors."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -111,7 +74,7 @@ def test_transpile_hive_to_doris(page_url):
     """TRP1: get_json_object → JSON_EXTRACT, fully automatic."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -130,7 +93,7 @@ def test_transpile_unknown_udf_needs_manual(page_url):
     """TRP2: unknown UDF lands in the needs-manual bucket."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -148,7 +111,7 @@ def test_transpile_bad_sql_no_traceback(page_url):
     """TRP3: unparseable SQL yields a readable warning, never a traceback."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -167,7 +130,7 @@ def test_transpile_retarget_starrocks(page_url):
     """TRP4: switching the target dialect retargets the report header."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -186,7 +149,7 @@ def test_transpile_batch_demo_dir(page_url):
     """TRP5: batch over the demo dir reports per-file stats."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     assert DEMO_DIR.is_dir(), f"demo dir missing: {DEMO_DIR}"
 
     with sync_playwright() as p:
@@ -207,11 +170,11 @@ def test_transpile_batch_demo_dir(page_url):
 
 
 @pytest.mark.uitest
-def test_transpile_batch_with_out_dir(page_url):
+def test_transpile_batch_with_out_dir(page_url, tmp_path):
     """TRP7: batch with a whitelisted output dir writes translated files."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, tmp_path = page_url
+    url = page_url
     out = tmp_path / "trp_out"
 
     with sync_playwright() as p:
@@ -236,20 +199,11 @@ def test_transpile_batch_with_out_dir(page_url):
 @pytest.mark.uitest
 def test_transpile_bad_dir_zh(page_url):
     """TRP8: non-directory path shows the localized bad_dir error (zh)."""
-    from urllib.parse import urlparse
-
     from playwright.sync_api import expect, sync_playwright
-
-    url, _ = page_url
-    host = urlparse(url).hostname
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
-        ctx = browser.new_context()
-        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                          "domain": host, "path": "/"}])
-        page = ctx.new_page()
-        page.goto(url, wait_until="networkidle")
+        page = _zh_page(browser.new_context, page_url)
 
         page.locator("summary", has_text="批量翻译目录").click()
         page.get_by_placeholder("包含 *.sql 的目录（递归扫描）").fill(
@@ -267,7 +221,7 @@ def test_transpile_advice_deterministic_path(page_url):
     the structured 'none' state — no LLM call needed."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -290,7 +244,7 @@ def test_transpile_bridge_pickup(page_url):
     """SQL handed over from sql_review via localStorage prefills the box."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()
@@ -310,21 +264,12 @@ def test_transpile_bridge_pickup(page_url):
 @pytest.mark.uitest
 def test_transpile_lang_switch(page_url):
     """st-lang cookie drives the chrome language, and the report follows."""
-    from urllib.parse import urlparse
-
     from playwright.sync_api import expect, sync_playwright
-
-    url, _ = page_url
-    host = urlparse(url).hostname
 
     with sync_playwright() as p:
         browser = p.chromium.launch()
 
-        ctx = browser.new_context()
-        ctx.add_cookies([{"name": "st-lang", "value": "zh-CN",
-                          "domain": host, "path": "/"}])
-        zh_page = ctx.new_page()
-        zh_page.goto(url, wait_until="networkidle")
+        zh_page = _zh_page(browser.new_context, page_url)
         expect(zh_page.get_by_role("button", name="翻译",
                                    exact=True)).to_be_visible()
         expect(zh_page.locator("textarea")).to_have_attribute(
@@ -342,7 +287,7 @@ def test_transpile_copy_sql_clipboard(page_url):
     (clipboard-read/clipboard-write context permissions + readText)."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         ctx = browser.new_context(
@@ -373,7 +318,7 @@ def test_transpile_explicit_source_dialect(page_url):
     translates successfully and the report names the pair."""
     from playwright.sync_api import expect, sync_playwright
 
-    url, _ = page_url
+    url = page_url
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page()

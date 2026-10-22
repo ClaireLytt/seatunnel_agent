@@ -1,5 +1,7 @@
 // REST client for /api/promptlab (seatunnel_agent.agents.ai.prompt_lab.api).
 
+import { fetchJson } from '@shared/api'
+
 const BASE = '/api/promptlab'
 
 export const ACTIVE = '(active)'
@@ -25,14 +27,14 @@ export interface RunResponse {
 
 // 400 (ValueError) carries the error text in FastAPI's `detail`;
 // the page shows it in the report area.
-export async function runMatrix(
+export function runMatrix(
   prompt: string,
   system: string,
   profiles: string[],
   parallel: boolean,
   lang: string,
 ): Promise<RunResponse> {
-  const r = await fetch(`${BASE}/run`, {
+  return fetchJson(`${BASE}/run`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -44,17 +46,10 @@ export async function runMatrix(
       report: true,
     }),
   })
-  if (!r.ok) {
-    const data = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))
-    throw new Error(typeof data.detail === 'string' ? data.detail : `HTTP ${r.status}`)
-  }
-  return r.json()
 }
 
 export async function fetchProfiles(): Promise<string[]> {
-  const r = await fetch(`${BASE}/profiles`)
-  if (!r.ok) throw new Error(`profiles: HTTP ${r.status}`)
-  return (await r.json()).profiles
+  return (await fetchJson<{ profiles: string[] }>(`${BASE}/profiles`)).profiles
 }
 
 // ── Reserved for ticket 03 (diff / history) ──────────────────────────────────
@@ -66,13 +61,12 @@ export interface DiffCell {
 }
 
 export async function diffCells(a: DiffCell, b: DiffCell, lang: string): Promise<string> {
-  const r = await fetch(`${BASE}/diff`, {
+  const data = await fetchJson<{ markdown: string }>(`${BASE}/diff`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ a, b, lang }),
   })
-  if (!r.ok) throw new Error(`diff: HTTP ${r.status}`)
-  return (await r.json()).markdown
+  return data.markdown
 }
 
 export interface HistoryRun {
@@ -83,7 +77,5 @@ export interface HistoryRun {
 }
 
 export async function fetchHistory(n = 20): Promise<HistoryRun[]> {
-  const r = await fetch(`${BASE}/history?n=${n}`)
-  if (!r.ok) throw new Error(`history: HTTP ${r.status}`)
-  return (await r.json()).runs
+  return (await fetchJson<{ runs: HistoryRun[] }>(`${BASE}/history?n=${n}`)).runs
 }

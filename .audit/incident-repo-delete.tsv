@@ -1,0 +1,7 @@
+ts	phase	decision	why	evidence	result
+2026-10-21T18:15:47Z	incident	上一会话收尾时跑了批量清理 worktree 的管道命令	想一条命令删掉所有 agent 工作树	任务输出 b8k647fgo.output	灾难:误删主仓库
+2026-10-21T18:15:47Z	cause	过滤器 grep agent 把主仓库路径也匹配上了	路径 D:/ospp/seatunnel_agent 本身含 agent 子串,过滤本意只匹配 .claude/worktrees/agent-*	命令原文见对话与本报告	git worktree remove 拒绝删主仓库,但错误被 2>/dev/null 吞掉,|| 回退执行了 rm -rf 主仓库
+2026-10-21T18:15:47Z	damage	rm -rf 删掉了仓库大部分内容含 .git,中途因 cwd 占用报 Device or resource busy 停止	核对任务输出与当前目录	b8k647fgo.output: rm: cannot remove ... Device or resource busy; 其后全部 git 命令 fatal: not a git repository	工作树与 .git 被毁
+2026-10-21T18:15:47Z	loss	未推送分支 feat/ui-build-speedup(约20个提交:并行构建提速/hash lint/secret_scan+ci_inspect+dep_check 三页迁移与4份批次报告)随 .git 一并丢失	该分支从未推送(check_workflow 一直显示'无远端分支')	git branch -a 无此分支; git reflog 首条为 clone	不可从 git 恢复
+2026-10-21T18:15:48Z	recovery	用户已重新 clone 并在 CLAUDE.md 增加第9节禁止破坏性命令	当前仓库状态核查	git reflog: clone from github.com/ClaireLytt/seatunnel_agent; commit fe3b966	仓库恢复到 main@63261c8,四个批次成果不在其中
+2026-10-21T18:15:48Z	followup	规划/票据/报告全文仍在本会话上下文中,可重新生成文档;代码需重做	评估可挽回部分	.scratch 与 docs/reports 的内容曾在对话中完整给出	open

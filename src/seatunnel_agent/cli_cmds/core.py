@@ -172,16 +172,29 @@ def _hash_frontend_paths(paths: list[Path], base: Path) -> str:
     return digest.hexdigest()
 
 
-def _build_frontends(frontend: Path | None = None, force: bool = False) -> None:
+def _build_frontends(
+    frontend: Path | None = None, force: bool = False, jobs: int | None = None
+) -> None:
     """Incrementally build React workspaces under frontend/ (npm install first if needed).
 
     Each workspace's sources/build config plus the shared package sources are
     content-hashed and compared with ``<workspace>/dist/.build-hash``; unchanged
-    workspaces are skipped unless ``force`` is set.
+    workspaces are skipped unless ``force`` is set. Workspaces needing a rebuild
+    run in a bounded thread pool of ``jobs`` workers (default ``min(CPU, 6)``),
+    each build's output flushed as one ``[name]``-prefixed block; any failure
+    makes the whole run exit non-zero after listing all failed workspaces.
     """
     import json
     import shutil
     import subprocess
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    start = time.monotonic()
+    if jobs is None:
+        jobs = min(os.cpu_count() or 1, 6)
+    elif jobs < 1:
+        jobs = 1
 
     if frontend is None:
         frontend = Path(__file__).resolve().parents[3] / "frontend"
@@ -211,6 +224,8 @@ def _build_frontends(frontend: Path | None = None, force: bool = False) -> None:
         base=frontend,
     )
 
+    skipped = 0
+    pending: list[tuple[str, str]] = []  # (workspace name, its content hash)
     for name in workspaces:
         ws = frontend / name
         pkg_file = ws / "package.json"
@@ -229,17 +244,57 @@ def _build_frontends(frontend: Path | None = None, force: bool = False) -> None:
             and hash_file.read_text("utf-8").strip() == ws_hash
         ):
             console.print(f"[cyan]{name}: skipped (unchanged)[/cyan]")
+            skipped += 1
             continue
-        console.print(f"[green]{name}: building (npm run build --workspace {name})...[/green]")
-        subprocess.run([npm, "run", "build", "--workspace", name], cwd=frontend, check=True)
-        if not (ws / "dist").is_dir():
+        pending.append((name, ws_hash))
+
+    def build_one(name: str) -> tuple[str, int, str]:
+        proc = subprocess.run(
+            [npm, "run", "build", "--workspace", name],
+            cwd=frontend,
+            capture_output=True,
+            text=True,
+        )
+        output = (proc.stdout or "") + (proc.stderr or "")
+        return name, proc.returncode, output
+
+    failed: list[str] = []
+    built = 0
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        futures = {pool.submit(build_one, name): name for name, _ in pending}
+        hashes = dict(pending)
+        for future in as_completed(futures):
+            name, returncode, output = future.result()
+            ws = frontend / name
+            block = "".join(f"[{name}] {line}\n" for line in output.splitlines())
             console.print(
-                f"[yellow]{name}: build produced no dist/ — "
-                "not writing .build-hash (will rebuild next time)[/yellow]"
+                f"[green]{name}: build output (npm run build --workspace {name}):[/green]"
             )
-            continue
-        hash_file.write_text(ws_hash, encoding="utf-8")
-        console.print(f"[green]{name}: built[/green]")
+            if block:
+                console.print(block, end="", markup=False, highlight=False)
+            if returncode != 0:
+                console.print(f"[red]{name}: build failed (exit {returncode})[/red]")
+                failed.append(name)
+                continue
+            hash_file = ws / "dist" / ".build-hash"
+            if not (ws / "dist").is_dir():
+                console.print(
+                    f"[yellow]{name}: build produced no dist/ — "
+                    "not writing .build-hash (will rebuild next time)[/yellow]"
+                )
+                continue
+            hash_file.write_text(hashes[name], encoding="utf-8")
+            built += 1
+            console.print(f"[green]{name}: built[/green]")
+
+    elapsed = time.monotonic() - start
+    console.print(
+        f"frontend build: {built} built, {skipped} skipped, "
+        f"{len(failed)} failed in {elapsed:.1f}s"
+    )
+    if failed:
+        console.print(f"[red]frontend build failed for: {', '.join(sorted(failed))}[/red]")
+        sys.exit(1)
 
 
 @click.command()
@@ -250,12 +305,16 @@ def _build_frontends(frontend: Path | None = None, force: bool = False) -> None:
 @click.option("--insecure", is_flag=True, help="Allow a non-loopback/share launch without SEATUNNEL_UI_AUTH (not recommended)")
 @click.option("--build", "build_frontend", is_flag=True, help="Build the React frontends (npm run build) before launching; unchanged workspaces are skipped")
 @click.option("--force", is_flag=True, help="With --build: rebuild all workspaces, ignoring the incremental cache")
-def ui(port: int, host: str, share: bool, api: bool, insecure: bool, build_frontend: bool, force: bool) -> None:
+@click.option("--jobs", type=click.IntRange(min=1), default=None, help="With --build: max parallel workspace builds (default min(CPU, 6))")
+def ui(port: int, host: str, share: bool, api: bool, insecure: bool, build_frontend: bool, force: bool, jobs: int | None) -> None:
     """Launch the Gradio web UI for interactive agent use."""
     if build_frontend:
-        _build_frontends(force=force)
-    elif force:
-        console.print("[yellow]--force has no effect without --build[/yellow]")
+        _build_frontends(force=force, jobs=jobs)
+    elif force or jobs is not None:
+        if force:
+            console.print("[yellow]--force has no effect without --build[/yellow]")
+        if jobs is not None:
+            console.print("[yellow]--jobs has no effect without --build[/yellow]")
     try:
         from ..hub.ui import create_ui, launch_app
     except ModuleNotFoundError as exc:

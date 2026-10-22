@@ -15,10 +15,8 @@ keyword suggestions.
 
 from __future__ import annotations
 
-import json
-import queue
-import threading
 import time
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -26,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import add_health, ms_since
+from seatunnel_agent.common.sse import sse_stream
 
 from .catalog import build_catalog
 from .router import render_suggestions, suggest
@@ -90,10 +89,6 @@ class ChatRequest(BaseModel):
                     "context after a page refresh")
 
 
-def _sse(obj: dict[str, Any]) -> str:
-    return f"data: {json.dumps(obj, ensure_ascii=False)}\n\n"
-
-
 @router.post("/chat")
 def chat(req: ChatRequest) -> StreamingResponse:
     """One orchestration turn as an SSE stream: a ``step`` event per tool
@@ -108,18 +103,17 @@ def chat(req: ChatRequest) -> StreamingResponse:
     load_dotenv()
     settings_store.apply_to_env()
 
-    def stream():
+    def work(emit: Callable[[Any], None]) -> Mapping[str, Any] | None:
         try:
             settings = load_settings()
         except RuntimeError:
             catalog = build_catalog(default_lang=req.lang)
             reply = render_suggestions(suggest(req.request, catalog),
                                        req.lang)
-            yield _sse({"type": "done", "reply": reply, "steps": [],
-                        "truncated": False, "suggested_only": True,
-                        "session": req.session,
-                        "elapsed_ms": ms_since(start)})
-            return
+            return {"type": "done", "reply": reply, "steps": [],
+                    "truncated": False, "suggested_only": True,
+                    "session": req.session,
+                    "elapsed_ms": ms_since(start)}
 
         from .engine import Orchestrator
         from .olog import ChatLogger
@@ -134,37 +128,17 @@ def chat(req: ChatRequest) -> StreamingResponse:
             # refresh still sees the WHOLE conversation
             orch.session_id = req.session
 
-        events: queue.Queue = queue.Queue()
-        outcome: dict[str, Any] = {}
-
-        def work() -> None:
-            try:
-                outcome["result"] = orch.run(req.request,
-                                             on_step=events.put)
-            except Exception as exc:
-                outcome["error"] = f"{type(exc).__name__}: {exc}"
-            finally:
-                events.put(None)  # sentinel
-
-        threading.Thread(target=work, daemon=True).start()
-        while True:
-            step = events.get()
-            if step is None:
-                break
-            yield _sse({"type": "step", **step.to_dict()})
-
-        if "error" in outcome:
-            yield _sse({"type": "error", "message": outcome["error"]})
-            return
-        result = outcome["result"]
+        result = orch.run(req.request, on_step=emit)
         ChatLogger().log_turn(orch.session_id, req.request, result.reply,
                               [s.to_dict() for s in result.steps])
-        yield _sse({"type": "done", "reply": result.reply,
-                    "truncated": result.truncated, "suggested_only": False,
-                    "session": orch.session_id,
-                    "elapsed_ms": ms_since(start)})
+        return {"type": "done", "reply": result.reply,
+                "truncated": result.truncated, "suggested_only": False,
+                "session": orch.session_id,
+                "elapsed_ms": ms_since(start)}
 
-    return StreamingResponse(stream(), media_type="text/event-stream")
+    return sse_stream(work,
+                      map_step=lambda step: {"type": "step",
+                                             **step.to_dict()})
 
 
 @router.get("/session")

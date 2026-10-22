@@ -113,6 +113,7 @@ files = [
     "src/seatunnel_agent/common/context.py",
     "src/seatunnel_agent/common/jsonl_log.py",
     "src/seatunnel_agent/common/settings_store.py",
+    "src/seatunnel_agent/common/sse.py",
     "src/seatunnel_agent/common/session_scope.py",
     "src/seatunnel_agent/common/sql_text.py",
     "src/seatunnel_agent/common/filelock.py",
