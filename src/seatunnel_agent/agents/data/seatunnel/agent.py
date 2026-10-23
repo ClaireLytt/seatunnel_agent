@@ -8,6 +8,7 @@ from typing import Any
 from rich.console import Console
 from rich.panel import Panel
 
+from seatunnel_agent.agent_core import ToolLoopAgent, ToolSpec
 from seatunnel_agent.agents.data.seatunnel.prompts import build_system_prompt
 from seatunnel_agent.agents.data.seatunnel.tools import TOOL_DEFINITIONS, execute_tool
 from seatunnel_agent.common.config import Settings, env_int
@@ -115,109 +116,85 @@ class SeaTunnelAgent:
     # ------------------------------------------------------------------
 
     def _agent_loop(self, system_prompt: str) -> str:
-        text_delta_cb = None
-        if self._on_event:
-            def text_delta_cb(chunk: str) -> None:
-                self._emit("text_delta", {"text": chunk})
+        """Run the shared bounded tool-use loop (agent_core.ToolLoopAgent).
+
+        Agent specifics ride the loop's seams: stop_event, text deltas and
+        usage via on_event, the session context hint via system_hint, and
+        truncate_messages via the truncation policy. Tool wrappers keep
+        context tracking and job-retry accounting; when the retry limit is
+        hit the wrapper raises the stop signal and the summary turn runs
+        here (legacy semantics). The legacy per-iteration "step"
+        (iteration/phase) events are not re-emitted - no consumer existed.
+        """
+        from types import SimpleNamespace
+
+        def adapter(event_type: str, data: dict[str, Any]) -> None:
+            if event_type == "turn":
+                shim = SimpleNamespace(thinking_text=data["thinking"],
+                                       reply_text=data["text"])
+                self._emit_parsed_events(shim)
+                self._display_parsed(shim)
+            elif event_type == "tool_call":
+                self._display_tool_call(data["name"], data["input"])
+                self._emit("tool_call", data)
+            elif event_type == "step":
+                self._display_tool_result(data["tool"], data["output"])
+                self._emit("tool_result", {"name": data["tool"],
+                                           "result": data["output"]})
+            elif event_type in ("text_delta", "usage"):
+                self._emit(event_type, data)
+
+        self._retry_exhausted = False
+
+        def make_run(name: str):
+            def run(**kw: Any) -> str:
+                result = execute_tool(name, kw, self.settings)
+                self._update_context(name, kw, result)
+                if name == "run_seatunnel_job":
+                    self._track_retry(result)
+                    if self.retry_count >= self.settings.max_retries:
+                        self._retry_exhausted = True
+                        self.stop_event.set()
+                return result
+            return run
+
+        tools = [ToolSpec(name=d["name"], description="", input_schema={},
+                          run=make_run(d["name"]))
+                 for d in TOOL_DEFINITIONS]
 
         self.stop_event.clear()
+        loop = ToolLoopAgent(
+            self.settings, tools, system_prompt, "seatunnel",
+            max_steps=MAX_LOOP_ITERATIONS, client=self.llm,
+            on_event=adapter,  # always: it also drives the Rich CLI display
+            stop_event=self.stop_event,
+            system_hint=self._build_context_hint,
+            truncate=truncate_messages,
+            on_limit=lambda: ("Agent loop reached maximum iterations "
+                              "without completing."))
+        request = self.messages[-1]["content"]
+        loop.messages = self.messages[:-1]
+        result = loop.run(request)
+        self.messages = loop.messages
 
-        for iteration in range(MAX_LOOP_ITERATIONS):
-            if self.stop_event.is_set():
-                return self._finish_stopped()
-
-            self._emit("step", {
-                "iteration": iteration + 1,
-                "max": MAX_LOOP_ITERATIONS,
-                "phase": "thinking",
+        if result.stopped and self._retry_exhausted:
+            # legacy retry-limit semantics: one forced summary turn
+            self.messages.append({
+                "role": "user",
+                "content": (
+                    f"SYSTEM: Maximum retry limit ({self.settings.max_retries}) reached. "
+                    "Please summarize what you tried and suggest manual fixes."
+                ),
             })
-
-            effective_prompt = system_prompt
-            context_hint = self._build_context_hint()
-            if context_hint:
-                effective_prompt = system_prompt + context_hint
-
-            self.messages = truncate_messages(self.messages)
-            resp = self.llm.chat(effective_prompt, self.messages, on_text_delta=text_delta_cb)
-
+            resp = self.llm.chat(system_prompt, self.messages)
             self.messages.append(self.llm.append_assistant(resp.raw_content))
-
-            if resp.usage:
-                self._emit("usage", resp.usage)
-
-            self._emit_parsed_events(resp)
-            self._display_parsed(resp)
-
-            if not resp.wants_tool_use:
-                final = resp.reply_text
-                self._emit("final_answer", {"text": final})
-                return final
-
-            self._emit("step", {
-                "iteration": iteration + 1,
-                "max": MAX_LOOP_ITERATIONS,
-                "phase": "executing_tools",
-                "tool_count": len(resp.tool_calls),
-            })
-
-            tool_results = []
-            stopped_mid_tools = False
-            for tc in resp.tool_calls:
-                if self.stop_event.is_set():
-                    # Keep history valid: every tool_use needs a tool_result.
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": tc.id,
-                        "content": json.dumps({"error": "Cancelled: stopped by user"}),
-                    })
-                    stopped_mid_tools = True
-                    continue
-
-                self._display_tool_call(tc.name, tc.input)
-                self._emit("tool_call", {"name": tc.name, "input": tc.input})
-
-                result = execute_tool(tc.name, tc.input, self.settings)
-
-                self._display_tool_result(tc.name, result)
-                self._emit("tool_result", {"name": tc.name, "result": result})
-
-                self._update_context(tc.name, tc.input, result)
-
-                if tc.name == "run_seatunnel_job":
-                    self._track_retry(result)
-
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc.id,
-                    "content": result,
-                })
-
-            result_msg = self.llm.build_tool_result_message(tool_results)
-            if isinstance(result_msg, list):
-                self.messages.extend(result_msg)
-            else:
-                self.messages.append(result_msg)
-
-            if stopped_mid_tools:
-                return self._finish_stopped()
-
-            if self.retry_count >= self.settings.max_retries:
-                self.messages.append({
-                    "role": "user",
-                    "content": (
-                        f"SYSTEM: Maximum retry limit ({self.settings.max_retries}) reached. "
-                        "Please summarize what you tried and suggest manual fixes."
-                    ),
-                })
-                resp = self.llm.chat(system_prompt, self.messages)
-                self.messages.append(self.llm.append_assistant(resp.raw_content))
-                final = resp.reply_text or "Maximum retry limit reached."
-                self._emit("final_answer", {"text": final})
-                return final
-
-        msg = "Agent loop reached maximum iterations without completing."
-        self._emit("final_answer", {"text": msg})
-        return msg
+            final = resp.reply_text or "Maximum retry limit reached."
+            self._emit("final_answer", {"text": final})
+            return final
+        if result.stopped:
+            return self._finish_stopped()
+        self._emit("final_answer", {"text": result.reply})
+        return result.reply
 
     def _finish_stopped(self) -> str:
         self._emit("final_answer", {"text": STOPPED_MESSAGE})

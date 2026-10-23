@@ -149,10 +149,10 @@ class TestAgentLoop:
              patch.object(agent.llm, "append_assistant", return_value={"role": "assistant", "content": "ok"}):
             agent.run("test")
 
-        step_events = [e for e in events if e["type"] == "step"]
-        assert len(step_events) >= 1
-        assert step_events[0]["iteration"] == 1
-        assert step_events[0]["phase"] == "thinking"
+        # shared-loop protocol (ticket loop-06): per-iteration phase
+        # events are gone; the model turn surfaces as a "text" event.
+        kinds = [e["type"] for e in events]
+        assert "text" in kinds and "final_answer" in kinds
 
     def test_context_hint_in_prompt(self):
         agent = SeaTunnelAgent(SETTINGS)
@@ -373,7 +373,7 @@ class TestStopEvent:
         # First tool executed, second got a synthetic cancelled result
         assert mock_exec.call_count == 1
         assert len(captured_results) == 2
-        assert "Cancelled" in str(captured_results[1]["content"])
+        assert "cancelled" in str(captured_results[1]["content"]).lower()
 
     def test_stop_event_cleared_on_next_run(self):
         agent = SeaTunnelAgent(SETTINGS)
@@ -442,3 +442,39 @@ class TestTruncatePairing:
             {"role": "assistant", "content": "hello"},
         ]
         assert truncate_messages(msgs, max_chars=1000) == msgs
+
+
+class TestSharedLoopMigration:
+    def test_agent_runs_on_shared_loop_tool_flow(self):
+        """Ticket loop-06: tool flow + event protocol via the shared loop."""
+        import unittest.mock as mock
+
+        from tests.conftest import llm_text, llm_tool
+
+        responses = [llm_tool("validate_config",
+                              {"config_path": "a.conf"}, cid="c1"),
+                     llm_text("all good")]
+
+        events = []
+        agent = SeaTunnelAgent(
+            SETTINGS, on_event=lambda t, d: events.append(t))
+        with mock.patch.object(
+                agent.llm, "chat",
+                side_effect=lambda *a, **kw: responses.pop(0)), \
+             mock.patch.object(
+                agent.llm, "append_assistant",
+                side_effect=lambda raw: {"role": "assistant",
+                                         "content": [raw]}), \
+             mock.patch.object(
+                agent.llm, "build_tool_result_message",
+                side_effect=lambda r: {"role": "user", "content": r}), \
+             mock.patch(
+                "seatunnel_agent.agents.data.seatunnel.agent.execute_tool",
+                return_value='{"success": true}'):
+            out = agent.run("validate a.conf")
+        assert out == "all good"
+        assert "tool_call" in events and "tool_result" in events
+        assert events.index("tool_call") < events.index("tool_result")
+        assert "final_answer" in events
+        # context tracking survived the migration
+        assert "a.conf" in agent.context["validated_configs"]
