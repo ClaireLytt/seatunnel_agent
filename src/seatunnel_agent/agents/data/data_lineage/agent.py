@@ -17,6 +17,7 @@ from typing import Any
 from rich.console import Console
 from rich.panel import Panel
 
+from seatunnel_agent.agent_core import ToolLoopAgent, ToolSpec
 from seatunnel_agent.agent_core.display import display_tool_call, display_tool_result
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.context import truncate_messages
@@ -29,6 +30,8 @@ from .prompts import build_lineage_prompt
 from .render import select_mermaid
 from .report import LineageReport
 from .tools import TOOL_DEFINITIONS, LineageRuntime, execute_lineage_tool
+
+TOOL_NAMES = [d["name"] for d in TOOL_DEFINITIONS]
 
 MAX_LOOP_ITERATIONS = 10
 
@@ -146,83 +149,58 @@ class LineageAgent:
     # ------------------------------------------------------------------
 
     def _agent_loop(self) -> str:
-        text_delta_cb = None
-        if self._on_event:
-            def text_delta_cb(chunk: str) -> None:
-                self._emit("text_delta", {"text": chunk})
+        """Run the shared bounded tool-use loop (agent_core.ToolLoopAgent).
 
-        for iteration in range(MAX_LOOP_ITERATIONS):
-            self._emit("step", {
-                "iteration": iteration + 1,
-                "max": MAX_LOOP_ITERATIONS,
-                "phase": "thinking",
-            })
+        Agent specifics ride the loop's seams: the adapter keeps the legacy
+        event protocol (thinking / text / tool_call / tool_result /
+        final_answer) and the Rich CLI display; ``on_limit`` keeps the
+        fall-back-to-last-report behavior. The legacy per-iteration "step"
+        (iteration/phase) events are not re-emitted - no consumer existed.
+        """
+        def adapter(event_type: str, data: dict[str, Any]) -> None:
+            if event_type == "turn":
+                if data["thinking"]:
+                    self._emit("thinking", {"text": data["thinking"]})
+                    self.console.print(
+                        Panel(truncate(data["thinking"], 500),
+                              title="Thinking", border_style="dim",
+                              style="italic dim"))
+                if data["text"]:
+                    self._emit("text", {"text": data["text"]})
+                    self.console.print("\n" + data["text"])
+            elif event_type == "tool_call":
+                self._display_tool_call(data["name"], data["input"])
+                self._emit("tool_call", data)
+            elif event_type == "step":
+                self._display_tool_result(data["tool"], data["output"])
+                self._emit("tool_result", {"name": data["tool"],
+                                           "result": data["output"]})
+            elif event_type in ("text_delta", "usage"):
+                self._emit(event_type, data)
 
-            self.messages = truncate_messages(self.messages)
-            resp = self.llm.chat(
-                self._system_prompt, self.messages, on_text_delta=text_delta_cb
-            )
+        def on_limit() -> str:
+            if self.runtime.last_report:
+                return self.runtime.last_report
+            return ("Lineage agent reached maximum iterations "
+                    "without completing.")
 
-            self.messages.append(self.llm.append_assistant(resp.raw_content))
-
-            if resp.usage:
-                self._emit("usage", resp.usage)
-
-            if resp.thinking_text:
-                self._emit("thinking", {"text": resp.thinking_text})
-                self.console.print(
-                    Panel(
-                        truncate(resp.thinking_text, 500),
-                        title="Thinking",
-                        border_style="dim",
-                        style="italic dim",
-                    )
-                )
-            if resp.reply_text:
-                self._emit("text", {"text": resp.reply_text})
-                self.console.print(f"\n{resp.reply_text}")
-
-            if not resp.wants_tool_use:
-                final = resp.reply_text
-                self._emit("final_answer", {"text": final})
-                return final
-
-            self._emit("step", {
-                "iteration": iteration + 1,
-                "max": MAX_LOOP_ITERATIONS,
-                "phase": "executing_tools",
-                "tool_count": len(resp.tool_calls),
-            })
-
-            tool_results = []
-            for tc in resp.tool_calls:
-                self._display_tool_call(tc.name, tc.input)
-                self._emit("tool_call", {"name": tc.name, "input": tc.input})
-
-                result = execute_lineage_tool(tc.name, tc.input, self.runtime)
-
-                self._display_tool_result(tc.name, result)
-                self._emit("tool_result", {"name": tc.name, "result": result})
-
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc.id,
-                    "content": result,
-                })
-
-            result_msg = self.llm.build_tool_result_message(tool_results)
-            if isinstance(result_msg, list):
-                self.messages.extend(result_msg)
-            else:
-                self.messages.append(result_msg)
-
-        # Fell out of the loop — fall back to whatever report exists.
-        if self.runtime.last_report:
-            self._emit("final_answer", {"text": self.runtime.last_report})
-            return self.runtime.last_report
-        msg = "Lineage agent reached maximum iterations without completing."
-        self._emit("final_answer", {"text": msg})
-        return msg
+        tools = [
+            ToolSpec(name=name, description="", input_schema={},
+                     run=(lambda _n=name, **kw:
+                          execute_lineage_tool(_n, kw, self.runtime)))
+            for name in TOOL_NAMES
+        ]
+        request = self.messages[-1]["content"]
+        loop = ToolLoopAgent(
+            self.settings, tools, self._system_prompt, "data_lineage",
+            max_steps=MAX_LOOP_ITERATIONS, client=self.llm,
+            on_event=adapter,  # always: it also drives the Rich CLI display
+            truncate=truncate_messages, on_limit=on_limit)
+        loop.messages = self.messages[:-1]
+        result = loop.run(request)
+        self.messages = loop.messages
+        self._emit("final_answer", {"text": result.reply})
+        return result.reply
 
     # ------------------------------------------------------------------
     # Display (Rich)
