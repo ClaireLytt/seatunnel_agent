@@ -146,3 +146,28 @@ def test_forced_summary_repairs_dangling_tool_use():
     assert out.reply == "step limit reached"
     results = agent.messages[-1]["content"]
     assert any(r["tool_use_id"] == "last" for r in results)
+
+
+def test_turn_and_tool_call_events():
+    events: list[tuple[str, dict]] = []
+    client = ScriptedClient([llm_tool("echo", {"a": 1}), llm_text("done")])
+    agent = ToolLoopAgent(SETTINGS, [ECHO], "sys", "t", client=client,
+                          on_event=lambda t, d: events.append((t, d)))
+    agent.run("q")
+    kinds = [t for t, _ in events]
+    # tool_call fires BEFORE its step
+    assert kinds.index("tool_call") < kinds.index("step")
+    assert [d for t, d in events if t == "tool_call"] == \
+        [{"name": "echo", "input": {"a": 1}}]
+    turns = [d for t, d in events if t == "turn"]
+    assert turns[-1]["text"] == "done"
+
+
+def test_on_limit_policy_replaces_forced_summary():
+    responses = [llm_tool("echo", {}, cid=f"c{i}") for i in range(2)]
+    client = ScriptedClient(responses)
+    agent = ToolLoopAgent(SETTINGS, [ECHO], "sys", "t", client=client,
+                          max_steps=2, on_limit=lambda: "fallback report")
+    out = agent.run("q")
+    assert out.truncated and out.reply == "fallback report"
+    assert len(client.systems) == 2  # no extra summary LLM call

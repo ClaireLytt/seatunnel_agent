@@ -21,8 +21,10 @@ from ..common.config import Settings
 
 _MAX_RESULT_CHARS = 20000
 
-# on_event callback: (event_type, payload). Emitted types: "step" (a Step
-# dict), "text_delta" ({"text": chunk}), "usage" (the provider usage dict).
+# on_event callback: (event_type, payload). Emitted types: "turn"
+# ({"thinking", "text"} after each model response), "tool_call"
+# ({"name", "input"} before a tool runs), "step" (a Step dict, after),
+# "text_delta" ({"text": chunk}), "usage" (the provider usage dict).
 EventCallback = Callable[[str, dict[str, Any]], None]
 
 
@@ -78,6 +80,7 @@ class ToolLoopAgent:
                  system_hint: Callable[[], str] | None = None,
                  truncate: Callable[[list[dict[str, Any]]],
                                     list[dict[str, Any]]] | None = None,
+                 on_limit: Callable[[], str] | None = None,
                  ) -> None:
         self.settings = settings
         self.tools = {t.name: t for t in tools}
@@ -88,6 +91,7 @@ class ToolLoopAgent:
             else threading.Event()
         self.system_hint = system_hint
         self.truncate = truncate
+        self.on_limit = on_limit
         if client is None:
             from ..common.llm import LLMClient
             client = LLMClient(settings, agent=agent_name, tools=[{
@@ -121,6 +125,9 @@ class ToolLoopAgent:
         self.messages.append(self.client.append_assistant(resp.raw_content))
         if getattr(resp, "usage", None):
             self._emit("usage", dict(resp.usage))
+        self._emit("turn", {"thinking": getattr(resp, "thinking_text", "")
+                            or "",
+                            "text": resp.reply_text or ""})
         return resp
 
     def run(self, request: str,
@@ -151,6 +158,8 @@ class ToolLoopAgent:
                     })
                     result.stopped = True
                     continue
+                self._emit("tool_call", {"name": tc.name,
+                                         "input": tc.input or {}})
                 step = self._execute(tc.name, tc.input or {})
                 result.steps.append(step)
                 if on_step:
@@ -167,6 +176,12 @@ class ToolLoopAgent:
                 break
         else:
             result.truncated = True
+            if self.on_limit is not None:
+                # agent-supplied step-limit policy instead of the forced
+                # summary turn (no extra LLM call; history is already valid)
+                result.reply = self.on_limit()
+                result.elapsed_ms = int((time.time() - start) * 1000)
+                return result
             self.messages.append({
                 "role": "user",
                 "content": ("SYSTEM: step limit reached — summarize what "
