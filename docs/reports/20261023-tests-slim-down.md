@@ -8,11 +8,9 @@
 
 | 优先级 | 内容 | 文件 | commit |
 | --- | --- | --- | --- |
-| 高 | 共享 i18n 校验辅助(parse_locale_block/i18n_resources/workspace_sources)入 conftest,迁移 2 个试点文件 | tests/conftest.py、tests/test_ci_inspect_i18n.py、tests/test_datacompare_i18n.py | d8a01b1* |
+| 高 | 共享 i18n 校验辅助(parse_locale_block/i18n_resources/workspace_sources)入 conftest,迁移 2 个试点文件 | tests/conftest.py、tests/test_ci_inspect_i18n.py、tests/test_datacompare_i18n.py | 0972f41 |
 | 高 | 迁移其余 18 个 test_*_i18n.py 到共享辅助,删除全部本地副本 | tests/test_*_i18n.py | 5115b05 |
 | 中 | 共享 llm_text/llm_tool/run_cli 入 conftest,去重 7 个文件的 _text/_tool/_run_cli | tests/conftest.py、test_code_fix/doctor/issue_triage/orchestrator/web_task/data_lineage/sql_review | fcf7cdf |
-
-\* 票 01 commit 为 "refactor(tests): shared i18n parity helpers in conftest, migrate 2 pilot files"(紧随 0bb2bd8 之后)。
 
 净效果:tests/ 28 个文件,+210/−738 行(净减约 528 行重复代码)。
 
