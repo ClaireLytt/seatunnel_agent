@@ -26,16 +26,16 @@ class TestLoader:
         # floor tracks the YAML suite as Gradio pages retire to Playwright
         # page tests (dagcheck DAG1-5, orchestrator ORCH1, llmeval EVAL1-3,
         # promptlab PLAB1-2, then llmcost COST1-3, then secretscan
-        # SEC1-2, then ciinspect CI1, retired to Playwright, bringing
-        # it to 26)
+        # SEC1-2, then ciinspect CI1, then lineage/impact LGI*, retired
+        # to Playwright, bringing it to 18)
         cases = load_cases()
-        assert len(cases) >= 26
+        assert len(cases) >= 18
         ids = [c.id for c in cases]
         assert len(ids) == len(set(ids)), "case ids must be unique"
 
     def test_smoke_suite_size(self):
         cases = filter_cases(load_cases(), "smoke")
-        assert len(cases) >= 20
+        assert len(cases) >= 16
 
     def test_shorthand_click(self):
         steps = ldr._expand_step({"click": "连接"}, {}, "t")
