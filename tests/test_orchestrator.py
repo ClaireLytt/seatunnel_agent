@@ -545,3 +545,18 @@ class TestChatApi:
         data = client.get("/api/orchestrator/session").json()
         assert data["session"] is None
         assert data["turns"] == []
+
+
+def test_engine_runs_on_shared_loop():
+    """Ticket loop-02: the orchestrator's loop body is the shared one."""
+    from seatunnel_agent.agent_core import LoopResult
+    from seatunnel_agent.agents.ai.orchestrator.engine import (
+        OrchestratorResult,
+    )
+
+    assert OrchestratorResult is LoopResult
+    orch = Orchestrator(SETTINGS, lang="en",
+                        client=ScriptedClient([_text("hi")]), catalog={})
+    out = orch.run("q")
+    assert out.reply == "hi" and out.stopped is False
+    assert "stopped" in out.to_dict()
