@@ -1,4 +1,4 @@
-import { ApiError, fetchJson } from '@shared/api'
+import { ApiError, fetchJson, postStructured } from '@shared/api'
 export { ApiError }
 const BASE = '/api/transpile'
 
@@ -22,23 +22,7 @@ export interface AdviceResponse {
 
 
 async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
-  const r = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as unknown)
-      .catch(() => '')
-    if (detail && typeof detail === 'object' && 'code' in detail) {
-      const d = detail as { code: string; path?: string }
-      throw new ApiError(d.code, d.path ?? '')
-    }
-    throw new Error((detail as string) || `${path}: HTTP ${r.status}`)
-  }
-  return r.json()
+  return postStructured(`${BASE}${path}`, body, path)
 }
 
 export function translateSql(
