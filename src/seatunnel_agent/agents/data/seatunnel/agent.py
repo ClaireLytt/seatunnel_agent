@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.panel import Panel
 
 from seatunnel_agent.agent_core import ToolLoopAgent, ToolSpec
+from seatunnel_agent.agent_core.events import legacy_event_adapter
 from seatunnel_agent.agents.data.seatunnel.prompts import build_system_prompt
 from seatunnel_agent.agents.data.seatunnel.tools import TOOL_DEFINITIONS, execute_tool
 from seatunnel_agent.common.config import Settings, env_int
@@ -128,21 +129,15 @@ class SeaTunnelAgent:
         """
         from types import SimpleNamespace
 
-        def adapter(event_type: str, data: dict[str, Any]) -> None:
-            if event_type == "turn":
-                shim = SimpleNamespace(thinking_text=data["thinking"],
-                                       reply_text=data["text"])
-                self._emit_parsed_events(shim)
-                self._display_parsed(shim)
-            elif event_type == "tool_call":
-                self._display_tool_call(data["name"], data["input"])
-                self._emit("tool_call", data)
-            elif event_type == "step":
-                self._display_tool_result(data["tool"], data["output"])
-                self._emit("tool_result", {"name": data["tool"],
-                                           "result": data["output"]})
-            elif event_type in ("text_delta", "usage"):
-                self._emit(event_type, data)
+        def display_turn(thinking: str, text: str) -> None:
+            self._display_parsed(SimpleNamespace(thinking_text=thinking,
+                                                 reply_text=text))
+
+        adapter = legacy_event_adapter(
+            self._emit,
+            display_turn=display_turn,
+            display_tool_call=self._display_tool_call,
+            display_tool_result=self._display_tool_result)
 
         self._retry_exhausted = False
 
@@ -315,12 +310,6 @@ class SeaTunnelAgent:
     # ------------------------------------------------------------------
     # Display (Rich)
     # ------------------------------------------------------------------
-
-    def _emit_parsed_events(self, resp: Any) -> None:
-        if resp.thinking_text:
-            self._emit("thinking", {"text": resp.thinking_text})
-        if resp.reply_text:
-            self._emit("text", {"text": resp.reply_text})
 
     def _display_parsed(self, resp: Any) -> None:
         if resp.thinking_text:

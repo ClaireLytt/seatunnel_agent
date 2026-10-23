@@ -22,8 +22,12 @@ from seatunnel_agent.agents.data.text2sql.manifest import MANIFESTS
 
 MANIFEST = MANIFESTS[0]  # the /text2sql card (aux pages share its dist)
 
+# Real-connect tests never invoke the LLM (connect/schema/boards only),
+# but build_agent -> load_settings() demands a key; a dummy one makes the
+# suite pass on machines without .env (CI's real key is equally unused).
 page_url = make_page_url(
-    MANIFEST, "seatunnel_agent.agents.data.text2sql.api:router", "/text2sql")
+    MANIFEST, "seatunnel_agent.agents.data.text2sql.api:router", "/text2sql",
+    env={"API_KEY": "sk-test"})
 
 
 @pytest.fixture()

@@ -19,6 +19,10 @@ from rich.panel import Panel
 
 from seatunnel_agent.agent_core import ToolLoopAgent, ToolSpec
 from seatunnel_agent.agent_core.display import display_tool_call, display_tool_result
+from seatunnel_agent.agent_core.events import (
+    display_turn_panels,
+    legacy_event_adapter,
+)
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.context import truncate_messages
 from seatunnel_agent.common.llm import LLMClient
@@ -157,26 +161,12 @@ class LineageAgent:
         fall-back-to-last-report behavior. The legacy per-iteration "step"
         (iteration/phase) events are not re-emitted - no consumer existed.
         """
-        def adapter(event_type: str, data: dict[str, Any]) -> None:
-            if event_type == "turn":
-                if data["thinking"]:
-                    self._emit("thinking", {"text": data["thinking"]})
-                    self.console.print(
-                        Panel(truncate(data["thinking"], 500),
-                              title="Thinking", border_style="dim",
-                              style="italic dim"))
-                if data["text"]:
-                    self._emit("text", {"text": data["text"]})
-                    self.console.print("\n" + data["text"])
-            elif event_type == "tool_call":
-                self._display_tool_call(data["name"], data["input"])
-                self._emit("tool_call", data)
-            elif event_type == "step":
-                self._display_tool_result(data["tool"], data["output"])
-                self._emit("tool_result", {"name": data["tool"],
-                                           "result": data["output"]})
-            elif event_type in ("text_delta", "usage"):
-                self._emit(event_type, data)
+        adapter = legacy_event_adapter(
+            self._emit,
+            display_turn=lambda th, tx: display_turn_panels(
+                self.console, th, tx),
+            display_tool_call=self._display_tool_call,
+            display_tool_result=self._display_tool_result)
 
         def on_limit() -> str:
             if self.runtime.last_report:

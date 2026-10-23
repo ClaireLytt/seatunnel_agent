@@ -34,10 +34,13 @@ def _get_utf8_stdout() -> Any:
 
 from seatunnel_agent.agent_core import ToolLoopAgent, ToolSpec
 from seatunnel_agent.agent_core.display import display_tool_call, display_tool_result
+from seatunnel_agent.agent_core.events import (
+    display_turn_panels,
+    legacy_event_adapter,
+)
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.context import truncate_messages
 from seatunnel_agent.common.llm import LLMClient
-from seatunnel_agent.common.utils import truncate
 
 from .executor import DatabaseConfig
 from .prompts import build_text2sql_prompt
@@ -138,45 +141,35 @@ class Text2SQLAgent:
         per-iteration "step" (iteration/phase) events are not re-emitted -
         no consumer existed.
         """
-        def adapter(event_type: str, data: dict[str, Any]) -> None:
-            if event_type == "turn":
-                if data["thinking"]:
-                    self._emit("thinking", {"text": data["thinking"]})
-                    self.console.print(
-                        Panel(truncate(data["thinking"], 500),
-                              title="Thinking", border_style="dim",
-                              style="italic dim"))
-                if data["text"]:
-                    self._emit("text", {"text": data["text"]})
-                    self.console.print("\n" + data["text"])
-            elif event_type == "tool_call":
-                self._display_tool_call(data["name"], data["input"])
-                self._emit("tool_call", data)
-            elif event_type == "step":
-                name, result = data["tool"], data["output"]
-                self._display_tool_result(name, result)
-                self._emit("tool_result", {"name": name, "result": result})
-                if name == "execute_sql":
-                    try:
-                        parsed = json.loads(result)
-                    except (json.JSONDecodeError, TypeError):
-                        parsed = {}
-                    if parsed.get("error"):
-                        self._emit("sql_retry", {
-                            "attempt": parsed.get("attempt", 0),
-                            "max": self.runtime.max_sql_retries,
-                            "error_type": parsed.get("error_type", ""),
-                            "retry_hint": parsed.get("retry_hint", ""),
-                            "failed_sql": parsed.get(
-                                "sql", data["input"].get("sql", "")),
-                        })
-                    elif parsed.get("cached"):
-                        self._emit("cache_hit", {
-                            "sql": parsed.get("sql", ""),
-                            "row_count": parsed.get("row_count", 0),
-                        })
-            elif event_type in ("text_delta", "usage"):
-                self._emit(event_type, data)
+        def step_extra(data: dict[str, Any]) -> None:
+            if data["tool"] != "execute_sql":
+                return
+            try:
+                parsed = json.loads(data["output"])
+            except (json.JSONDecodeError, TypeError):
+                parsed = {}
+            if parsed.get("error"):
+                self._emit("sql_retry", {
+                    "attempt": parsed.get("attempt", 0),
+                    "max": self.runtime.max_sql_retries,
+                    "error_type": parsed.get("error_type", ""),
+                    "retry_hint": parsed.get("retry_hint", ""),
+                    "failed_sql": parsed.get(
+                        "sql", data["input"].get("sql", "")),
+                })
+            elif parsed.get("cached"):
+                self._emit("cache_hit", {
+                    "sql": parsed.get("sql", ""),
+                    "row_count": parsed.get("row_count", 0),
+                })
+
+        adapter = legacy_event_adapter(
+            self._emit,
+            display_turn=lambda th, tx: display_turn_panels(
+                self.console, th, tx),
+            display_tool_call=self._display_tool_call,
+            display_tool_result=self._display_tool_result,
+            step_extra=step_extra)
 
         tools = [
             ToolSpec(name=name, description="", input_schema={},
