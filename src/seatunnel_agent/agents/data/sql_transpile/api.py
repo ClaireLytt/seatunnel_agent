@@ -13,7 +13,6 @@ Endpoints (deterministic unless stated — no SQL execution):
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -88,11 +87,9 @@ def translate_endpoint(req: TranslateRequest) -> dict[str, Any]:
 @router.post("/batch")
 def batch_endpoint(req: BatchRequest) -> dict[str, Any]:
     """Analyze by default; writes only into a whitelist-guarded out_dir."""
-    _check_dir_allowed(req.dir)
-    if not Path(req.dir).is_dir():
-        # structured detail: the frontend localizes it (i18n `bad_dir`)
-        raise HTTPException(status_code=400,
-                            detail={"code": "bad_dir", "path": req.dir})
+    from seatunnel_agent.common.api_guard import require_dir_structured
+
+    require_dir_structured(req.dir, "TRANSPILE_API_ALLOWED_DIRS")
     out_dir = (req.out_dir or "").strip() or None
     if out_dir:
         _check_dir_allowed(out_dir)  # write target under the same whitelist

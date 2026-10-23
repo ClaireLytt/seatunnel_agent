@@ -52,6 +52,19 @@ def require_dir(raw_path: str, env_var: str) -> str:
     return path
 
 
+def require_dir_structured(raw_path: str, env_var: str) -> str:
+    """Like :func:`require_dir`, but a missing directory raises the
+    structured ``{"code": "bad_dir", "path"}`` detail the React pages
+    localize (i18n ``bad_dir``). Whitelist first — 403 for out-of-scope
+    paths, with no existence probing. Returns the stripped path."""
+    path = (raw_path or "").strip()
+    check_path_allowed(path, env_var)
+    if not Path(path).is_dir():
+        raise HTTPException(status_code=400,
+                            detail={"code": "bad_dir", "path": path})
+    return path
+
+
 def ms_since(start: float) -> int:
     """Elapsed milliseconds since a ``time.time()`` start stamp."""
     return int((time.time() - start) * 1000)

@@ -11,7 +11,6 @@ Endpoints (all deterministic — no LLM, no database, nothing executed):
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -19,8 +18,8 @@ from pydantic import BaseModel, Field
 
 from seatunnel_agent.common.api_guard import (
     add_health,
-    check_path_allowed,
     ms_since,
+    require_dir_structured,
 )
 from seatunnel_agent.common.utils import normalize_lang
 
@@ -54,14 +53,8 @@ def scan(req: PiiScanRequest) -> PiiScanResponse:
     lang = normalize_lang(req.lang)
     try:
         if (req.dir or "").strip():
-            target = (req.dir or "").strip()
-            # whitelist first (403, no existence probing), then a structured
-            # detail the frontend localizes (i18n `bad_dir`)
-            check_path_allowed(target, "PII_API_ALLOWED_DIRS")
-            if not Path(target).is_dir():
-                raise HTTPException(status_code=400,
-                                    detail={"code": "bad_dir",
-                                            "path": target})
+            target = require_dir_structured(req.dir or "",
+                                            "PII_API_ALLOWED_DIRS")
             result = scan_dir(target, dialect=req.dialect)
         else:
             result = scan_sql_text(req.sql or "", dialect=req.dialect)

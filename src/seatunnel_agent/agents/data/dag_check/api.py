@@ -40,20 +40,13 @@ class DagCheckRequest(BaseModel):
 
 def _pre_check(req: DagCheckRequest) -> None:
     """Validate and stash seatunnel_dir before the domain call."""
-    from pathlib import Path
 
-    from fastapi import HTTPException
 
-    from seatunnel_agent.common.api_guard import check_path_allowed
+    from seatunnel_agent.common.api_guard import require_dir_structured
 
     st_dir = (req.seatunnel_dir or "").strip() or None
     if st_dir:
-        check_path_allowed(st_dir, "DAGCHECK_API_ALLOWED_DIRS")
-        if not Path(st_dir).is_dir():
-            raise HTTPException(
-                status_code=400,
-                detail={"code": "bad_dir", "path": st_dir},
-            )
+        require_dir_structured(st_dir, "DAGCHECK_API_ALLOWED_DIRS")
     _seatunnel_dir_ctx.set(st_dir)
 
 

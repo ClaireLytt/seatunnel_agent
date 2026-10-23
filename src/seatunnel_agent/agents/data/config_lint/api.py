@@ -15,7 +15,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
+from seatunnel_agent.common.api_guard import (
+    add_health,
+    ms_since,
+    require_dir_structured,
+)
 from seatunnel_agent.common.utils import normalize_lang
 
 from .linter import lint_dir, lint_text
@@ -45,17 +49,7 @@ def lint(req: LintRequest) -> LintResponse:
                             detail="Provide 'config' or 'dir'")
     lang = normalize_lang(req.lang)
     if (req.dir or "").strip():
-        from pathlib import Path
-
-        from seatunnel_agent.common.api_guard import check_path_allowed
-
-        # whitelist first (403 for out-of-scope paths — no existence probing),
-        # then a structured detail the frontend localizes (i18n `bad_dir`)
-        check_path_allowed(req.dir.strip(), "CONFLINT_API_ALLOWED_DIRS")
-        if not Path(req.dir.strip()).is_dir():
-            raise HTTPException(status_code=400,
-                                detail={"code": "bad_dir", "path": req.dir})
-        target = require_dir(req.dir, "CONFLINT_API_ALLOWED_DIRS")
+        target = require_dir_structured(req.dir, "CONFLINT_API_ALLOWED_DIRS")
         results = lint_dir(target)
         report = render_batch_markdown(results, lang) if req.report else None
     else:
