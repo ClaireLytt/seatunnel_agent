@@ -31,6 +31,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from tests.conftest import i18n_resources, workspace_sources
+
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "frontend" / "sql_transpile" / "src"
 I18N_TS = SRC / "i18n.ts"
@@ -71,48 +73,16 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
 }
 
 
-def _parse_locale(block: str) -> dict[str, str]:
-    # keys may be multi-part string concatenations ('a ' + 'b'); join them
-    pairs = re.findall(
-        r"(\w+):\s*((?:'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|\s|\+)+)",
-        block,
-    )
-    out: dict[str, str] = {}
-    for key, raw in pairs:
-        chunks = re.findall(r"'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"", raw)
-        val = "".join(a if a else b for a, b in chunks)
-        out[key] = (val.replace("\\'", "'").replace('\\"', '"')
-                    .replace("\\n", "\n"))
-    return out
-
-
-def _resources() -> dict[str, dict[str, str]]:
-    text = I18N_TS.read_text(encoding="utf-8")
-    locales = re.findall(
-        r"^  (en|zh): \{\s*translation: \{(.*?)^    \},\s*^  \},",
-        text,
-        re.S | re.M,
-    )
-    assert {name for name, _ in locales} == {"en", "zh"}, "en/zh blocks not found"
-    return {name: _parse_locale(body) for name, body in locales}
-
-
-def _workspace_sources() -> list[str]:
-    files = list(SRC.glob("*.tsx")) + list((SRC / "components").glob("*.tsx"))
-    assert files, "no .tsx files found — glob broken?"
-    return [f.read_text(encoding="utf-8") for f in files]
-
-
 def test_en_zh_key_sets_match() -> None:
-    res = _resources()
+    res = i18n_resources(I18N_TS)
     assert res["en"], "no keys parsed from i18n.ts"
     assert set(res["en"]) == set(res["zh"])
 
 
 def test_every_t_usage_is_defined() -> None:
-    keys = set(_resources()["en"])
+    keys = set(i18n_resources(I18N_TS)["en"])
     used: set[str] = set()
-    for text in _workspace_sources():
+    for text in workspace_sources(SRC):
         used |= set(re.findall(r"\bt\('(\w+)'", text))
     assert used, "no t() usages found — glob broken?"
     missing = used - keys
@@ -120,7 +90,7 @@ def test_every_t_usage_is_defined() -> None:
 
 
 def test_ported_keys_match_legacy_verbatim() -> None:
-    res = _resources()
+    res = i18n_resources(I18N_TS)
     problems: list[str] = []
     for react_key, expected_by_lang in LEGACY_EXPECTED.items():
         for lang in ("en", "zh"):
