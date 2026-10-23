@@ -82,3 +82,20 @@
 2. 手动兜底时只允许逐个 `git worktree remove <完整路径>`(前缀 `.claude/worktrees/agent-` 逐一核对);禁止任何 `rm`/`Remove-Item` 回退、禁止子串 grep 过滤路径后接删除、禁止对守卫报错做 `2>/dev/null` 静默。
 3. **批次合并后立即 `git push`**(代理问题用 `-c http.proxy=`);成果不允许只存在本地,`check_workflow.py` 报"无远端分支"是待办不是提示。
 4. 删除多个文件/目录前,先打印完整目标清单让用户确认,再逐项执行。
+
+## 10. 规则 ↔ 强制点对照表
+
+重复犯错(≥2 次)的规则必须有机械强制点;新增规则时同步登记,靠本表发现"写了规则没人执行"的缺口。
+
+| 规则 | 强制点 |
+| --- | --- |
+| heredoc 体内禁反斜杠/中文 | 全局 PreToolUse hook(~/.claude/hooks/block_heredoc.py,本机) |
+| 控制台输出 UTF-8 | .claude/settings.json env `PYTHONUTF8=1`(本机,未入库);check_workflow.py 自身也 reconfigure stdout |
+| commit 无 AI 署名 | scripts/check_workflow.py + CI workflow-check |
+| 工作区干净 / 批次报告落盘 | 同上 |
+| worktree 清理四规则 | scripts/cleanup_worktrees.py + tests/test_cleanup_worktrees.py |
+| 前端目录名 = manifest.name | tests/test_registry.py::test_external_manifest_names_match_frontend_workspace_dirs |
+| uitest 用例计数与 YAML 同步 | tests/test_ui_testing.py 派生断言(对账 YAML 源) |
+| lint 范围含 scripts/ | CI lint.yml + 第 8 节命令 |
+| 目录入参先白名单后存在性(bad_dir) | common/api_guard.require_dir 单源 + 各 agent API 测试 |
+| UI 改动交用户验证后再提交 | 无机械强制(判断型,见第 5 节)——仅此类规则允许停留在文档层 |
