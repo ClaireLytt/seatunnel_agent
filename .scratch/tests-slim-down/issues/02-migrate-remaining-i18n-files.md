@@ -4,8 +4,8 @@
 
 **Blocked by:** 01 (Expand: shared i18n parity helpers in conftest + pilot migration).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] Zero definitions of the helper trio remain outside the shared location (verifiable by grep)
-- [ ] Test functions, names, and assertions in all 18 files unchanged
-- [ ] `pytest --collect-only -q` count identical before/after; full `pytest` green; `ruff check src tests` and `mypy` pass
+- [x] Zero definitions of the helper trio remain outside the shared location (verifiable by grep)
+- [x] Test functions, names, and assertions in all 18 files unchanged
+- [x] `pytest --collect-only -q` count identical before/after; full `pytest` green; `ruff check src tests` and `mypy` pass

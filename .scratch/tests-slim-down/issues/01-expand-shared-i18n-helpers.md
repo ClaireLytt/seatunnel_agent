@@ -4,9 +4,9 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] Shared helpers exist once, taking the i18n file path and source dir as parameters; no behavior change to parsing or globbing
-- [ ] The two pilot files keep only their path constants and test functions; their helper copies are deleted
-- [ ] `pytest --collect-only -q` count identical before/after; full `pytest` green; `ruff check src tests` and `mypy` pass
-- [ ] A short conftest comment points future i18n test files at the shared helpers (mirroring the make_page_url note)
+- [x] Shared helpers exist once, taking the i18n file path and source dir as parameters; no behavior change to parsing or globbing
+- [x] The two pilot files keep only their path constants and test functions; their helper copies are deleted
+- [x] `pytest --collect-only -q` count identical before/after; full `pytest` green; `ruff check src tests` and `mypy` pass
+- [x] A short conftest comment points future i18n test files at the shared helpers (mirroring the make_page_url note)

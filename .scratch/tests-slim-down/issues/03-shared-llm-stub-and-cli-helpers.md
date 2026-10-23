@@ -4,8 +4,8 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] One shared definition of `_tool`/`_text`; the five files import it, local copies deleted
-- [ ] `_run_cli` unified or divergence documented
-- [ ] Test functions, names, and assertions unchanged; full `pytest` green; `ruff check src tests` and `mypy` pass
+- [x] One shared definition of `_tool`/`_text`; the five files import it, local copies deleted
+- [x] `_run_cli` unified or divergence documented
+- [x] Test functions, names, and assertions unchanged; full `pytest` green; `ruff check src tests` and `mypy` pass
