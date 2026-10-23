@@ -4,10 +4,10 @@
 
 **Blocked by:** 01, 02 (first migration must prove the seams before a live chat surface moves).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] Local loop deleted; event protocol preserved through the loop's event callback (any semantic that can't be hosted cleanly is documented, not forced)
-- [ ] Existing text2sql tests + Playwright stream-flow page tests green unchanged
-- [ ] One offline loop test added (scripted client)
-- [ ] ruff/mypy + targeted tests green
+- [x] Local loop deleted; event protocol preserved through the loop's event callback (any semantic that can't be hosted cleanly is documented, not forced)
+- [x] Existing text2sql tests + Playwright stream-flow page tests green unchanged
+- [x] One offline loop test added (scripted client)
+- [x] ruff/mypy + targeted tests green
 

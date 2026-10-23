@@ -4,10 +4,10 @@
 
 **Blocked by:** 01 (Expand: grow ToolLoopAgent's interface).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] Orchestrator's local loop and duplicate dataclasses deleted (replace, don't layer)
-- [ ] Existing orchestrator API/telemetry tests green unchanged
-- [ ] One offline loop test added (orchestrator tools + scripted client)
-- [ ] ruff/mypy + targeted tests green
+- [x] Orchestrator's local loop and duplicate dataclasses deleted (replace, don't layer)
+- [x] Existing orchestrator API/telemetry tests green unchanged
+- [x] One offline loop test added (orchestrator tools + scripted client)
+- [x] ruff/mypy + targeted tests green
 

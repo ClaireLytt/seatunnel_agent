@@ -4,10 +4,10 @@
 
 **Blocked by:** 01, 02 (first migration must prove the seams before the primary chat surface moves).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] Local loop deleted; stop/delta/usage/truncation via the shared seams
-- [ ] Existing seatunnel API + Playwright page tests green unchanged; stop/stream verified in a real browser (uitest smoke at batch close)
-- [ ] One offline loop test added (scripted client)
-- [ ] ruff/mypy + targeted tests green
+- [x] Local loop deleted; stop/delta/usage/truncation via the shared seams
+- [x] Existing seatunnel API + Playwright page tests green unchanged; stop/stream verified in a real browser (uitest smoke at batch close)
+- [x] One offline loop test added (scripted client)
+- [x] ruff/mypy + targeted tests green
 

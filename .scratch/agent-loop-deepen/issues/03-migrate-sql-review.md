@@ -4,9 +4,9 @@
 
 **Blocked by:** 01 (Expand: grow ToolLoopAgent's interface).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] Local loop deleted; behavior anchored by existing sql_review tests green unchanged
-- [ ] One offline loop test added (scripted client)
-- [ ] ruff/mypy + targeted tests green
+- [x] Local loop deleted; behavior anchored by existing sql_review tests green unchanged
+- [x] One offline loop test added (scripted client)
+- [x] ruff/mypy + targeted tests green
 

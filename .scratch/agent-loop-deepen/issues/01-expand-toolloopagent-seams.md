@@ -4,10 +4,10 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] All four seams optional; omitting them reproduces current behavior bit-for-bit (existing adopters' tests green unchanged)
-- [ ] Loop-level scripted-client tests cover: stop mid-run, text-delta emission, usage events, per-turn hint, truncation policy, dangling tool_use repair, forced summary
-- [ ] Shared Step/LoopResult remain the single loop-telemetry schema (extended only if an event type demands it)
-- [ ] ruff/mypy + full pytest green
+- [x] All four seams optional; omitting them reproduces current behavior bit-for-bit (existing adopters' tests green unchanged)
+- [x] Loop-level scripted-client tests cover: stop mid-run, text-delta emission, usage events, per-turn hint, truncation policy, dangling tool_use repair, forced summary
+- [x] Shared Step/LoopResult remain the single loop-telemetry schema (extended only if an event type demands it)
+- [x] ruff/mypy + full pytest green
 
