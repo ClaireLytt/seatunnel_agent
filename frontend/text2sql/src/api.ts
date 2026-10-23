@@ -1,3 +1,5 @@
+import { fetchJson } from '@shared/api'
+
 const BASE = '/api/text2sql'
 
 export type DsType = string
@@ -8,9 +10,8 @@ export interface Datasource {
 }
 
 export async function fetchDatasources(): Promise<Datasource[]> {
-  const r = await fetch(`${BASE}/datasources`)
-  if (!r.ok) throw new Error(`datasources: HTTP ${r.status}`)
-  return (await r.json()).datasources
+  const data = await fetchJson<{ datasources: Datasource[] }>(`${BASE}/datasources`)
+  return data.datasources
 }
 
 export interface DbConfig {
@@ -28,17 +29,12 @@ export interface SessionMeta {
   tables: string[]
 }
 
-export async function connect(dsType: DsType, dbConfig: DbConfig): Promise<SessionMeta> {
-  const r = await fetch(`${BASE}/connect`, {
+export function connect(dsType: DsType, dbConfig: DbConfig): Promise<SessionMeta> {
+  return fetchJson(`${BASE}/connect`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ds_type: dsType, db_config: dbConfig }),
   })
-  if (!r.ok) {
-    const data = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))
-    throw new Error(data.detail || `HTTP ${r.status}`)
-  }
-  return r.json()
 }
 
 export type ChatEvent =
@@ -73,10 +69,8 @@ export async function stopChat(sessionId: string): Promise<void> {
   })
 }
 
-export async function resetSession(sessionId: string): Promise<SessionMeta> {
-  const r = await fetch(`${BASE}/session/${sessionId}/reset`, { method: 'POST' })
-  if (!r.ok) throw new Error(`reset: HTTP ${r.status}`)
-  return r.json()
+export function resetSession(sessionId: string): Promise<SessionMeta> {
+  return fetchJson(`${BASE}/session/${sessionId}/reset`, { method: 'POST' })
 }
 
 export interface TableInfo {
@@ -92,29 +86,21 @@ export interface TableDetail {
   partition_columns: { name: string; type: string }[]
 }
 
-const j = async (r: Response) => {
-  if (!r.ok) {
-    const d = await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))
-    throw new Error(d.detail || `HTTP ${r.status}`)
-  }
-  return r.json()
-}
-
 export const fetchSchema = (sid: string): Promise<{ tables: TableInfo[] }> =>
-  fetch(`${BASE}/session/${sid}/schema`).then(j)
+  fetchJson(`${BASE}/session/${sid}/schema`)
 
 export const fetchTable = (sid: string, name: string): Promise<TableDetail> =>
-  fetch(`${BASE}/session/${sid}/schema/${encodeURIComponent(name)}`).then(j)
+  fetchJson(`${BASE}/session/${sid}/schema/${encodeURIComponent(name)}`)
 
 export const filterTables = (sid: string, tables: string[]): Promise<SessionMeta> =>
-  fetch(`${BASE}/session/${sid}/schema/filter`, {
+  fetchJson(`${BASE}/session/${sid}/schema/filter`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ tables }),
-  }).then(j)
+  })
 
 export const reloadSchema = (sid: string): Promise<SessionMeta> =>
-  fetch(`${BASE}/session/${sid}/schema/reload`, { method: 'POST' }).then(j)
+  fetchJson(`${BASE}/session/${sid}/schema/reload`, { method: 'POST' })
 
 // ── Templates ───────────────────────────────────────────────────────
 
@@ -128,7 +114,7 @@ export interface Template {
 }
 
 export const fetchTemplates = (): Promise<{ templates: Template[] }> =>
-  fetch(`${BASE}/templates`).then(j)
+  fetchJson(`${BASE}/templates`)
 
 // ── Metrics catalog ─────────────────────────────────────────────────
 
@@ -150,7 +136,7 @@ export interface MetricInfo {
 }
 
 export const fetchMetrics = (): Promise<{ count: number; metrics: MetricInfo[] }> =>
-  fetch(`${BASE}/metrics`).then(j)
+  fetchJson(`${BASE}/metrics`)
 
 // ── Boards ──────────────────────────────────────────────────────────
 
@@ -170,17 +156,17 @@ export interface Board {
 }
 
 export const fetchBoards = (): Promise<{ boards: Board[] }> =>
-  fetch(`${BASE}/boards`).then(j)
+  fetchJson(`${BASE}/boards`)
 
 export const createBoard = (name: string): Promise<{ board: Board }> =>
-  fetch(`${BASE}/boards`, {
+  fetchJson(`${BASE}/boards`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
-  }).then(j)
+  })
 
 export const deleteBoard = (id: string): Promise<{ deleted: boolean }> =>
-  fetch(`${BASE}/boards/${id}`, { method: 'DELETE' }).then(j)
+  fetchJson(`${BASE}/boards/${id}`, { method: 'DELETE' })
 
 export const pinToBoard = (
   boardId: string,
@@ -188,11 +174,11 @@ export const pinToBoard = (
   sql: string,
   ds_type = '',
 ): Promise<{ item: BoardItem }> =>
-  fetch(`${BASE}/boards/${boardId}/pin`, {
+  fetchJson(`${BASE}/boards/${boardId}/pin`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title, sql, ds_type }),
-  }).then(j)
+  })
 
 export interface BoardRenderResult {
   id: string
@@ -208,7 +194,7 @@ export const renderBoard = (
   boardId: string,
   sessionId: string,
 ): Promise<{ results: BoardRenderResult[] }> =>
-  fetch(`${BASE}/boards/${boardId}/render?session_id=${sessionId}`).then(j)
+  fetchJson(`${BASE}/boards/${boardId}/render?session_id=${sessionId}`)
 
 // ── Subscriptions ───────────────────────────────────────────────────
 
@@ -227,29 +213,29 @@ export interface Subscription {
 }
 
 export const fetchSubscriptions = (): Promise<{ subscriptions: Subscription[] }> =>
-  fetch(`${BASE}/subscriptions`).then(j)
+  fetchJson(`${BASE}/subscriptions`)
 
 export const createSubscription = (
   data: { name: string; cron: string; source_type: string; metric?: string; favorite_id?: string; ds_type?: string; connection?: string; database?: string; webhook_url?: string; lang?: string },
 ): Promise<{ subscription: Subscription }> =>
-  fetch(`${BASE}/subscriptions`, {
+  fetchJson(`${BASE}/subscriptions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
-  }).then(j)
+  })
 
 export const deleteSubscription = (id: string): Promise<{ deleted: boolean }> =>
-  fetch(`${BASE}/subscriptions/${id}`, { method: 'DELETE' }).then(j)
+  fetchJson(`${BASE}/subscriptions/${id}`, { method: 'DELETE' })
 
 export const patchSubscription = (id: string, enabled: boolean): Promise<{ enabled: boolean }> =>
-  fetch(`${BASE}/subscriptions/${id}`, {
+  fetchJson(`${BASE}/subscriptions/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ enabled }),
-  }).then(j)
+  })
 
 export const runSubscription = (id: string): Promise<{ status: string; error?: string }> =>
-  fetch(`${BASE}/subscriptions/${id}/run`, { method: 'POST' }).then(j)
+  fetchJson(`${BASE}/subscriptions/${id}/run`, { method: 'POST' })
 
 export interface QlogRecord {
   timestamp: string
@@ -268,17 +254,17 @@ export interface SavedSession {
 }
 
 export const fetchQlog = (n = 100): Promise<{ records: QlogRecord[] }> =>
-  fetch(`${BASE}/history/qlog?n=${n}`).then(j)
+  fetchJson(`${BASE}/history/qlog?n=${n}`)
 
 export const deleteQlog = (indices: number[]): Promise<{ deleted: number }> =>
-  fetch(`${BASE}/history/qlog/delete`, {
+  fetchJson(`${BASE}/history/qlog/delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ indices }),
-  }).then(j)
+  })
 
 export const clearQlog = (): Promise<{ cleared: boolean }> =>
-  fetch(`${BASE}/history/qlog/clear`, { method: 'POST' }).then(j)
+  fetchJson(`${BASE}/history/qlog/clear`, { method: 'POST' })
 
 export const qlogExportUrl = `${BASE}/history/qlog/export`
 
@@ -295,7 +281,7 @@ export interface Favorite {
 }
 
 export const fetchFavorites = (): Promise<{ favorites: Favorite[] }> =>
-  fetch(`${BASE}/favorites`).then(j)
+  fetchJson(`${BASE}/favorites`)
 
 export const saveFavorite = (
   name: string,
@@ -303,21 +289,21 @@ export const saveFavorite = (
   question = '',
   ds_type = '',
 ): Promise<{ favorite: Favorite }> =>
-  fetch(`${BASE}/favorites`, {
+  fetchJson(`${BASE}/favorites`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, sql, question, ds_type }),
-  }).then(j)
+  })
 
 export const renameFavorite = (id: string, name: string): Promise<{ renamed: boolean }> =>
-  fetch(`${BASE}/favorites/${id}`, {
+  fetchJson(`${BASE}/favorites/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name }),
-  }).then(j)
+  })
 
 export const deleteFavorite = (id: string): Promise<{ deleted: boolean }> =>
-  fetch(`${BASE}/favorites/${id}`, { method: 'DELETE' }).then(j)
+  fetchJson(`${BASE}/favorites/${id}`, { method: 'DELETE' })
 
 export const sendFeedback = (
   sessionId: string,
@@ -325,21 +311,21 @@ export const sendFeedback = (
   sql: string,
   positive: boolean,
 ): Promise<{ ok: boolean; positive: boolean }> =>
-  fetch(`${BASE}/feedback`, {
+  fetchJson(`${BASE}/feedback`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId, question, sql, positive }),
-  }).then(j)
+  })
 
 export const fetchSavedSessions = (): Promise<{ sessions: SavedSession[] }> =>
-  fetch(`${BASE}/history/sessions`).then(j)
+  fetchJson(`${BASE}/history/sessions`)
 
 export const resumeSaved = (
   sid: string,
   savedId: string,
 ): Promise<{ title: string; chat: { role: string; content: string }[] }> =>
-  fetch(`${BASE}/session/${sid}/resume`, {
+  fetchJson(`${BASE}/session/${sid}/resume`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ saved_id: savedId }),
-  }).then(j)
+  })

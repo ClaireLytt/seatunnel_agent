@@ -1,4 +1,4 @@
-import { ApiError, fetchJson } from '@shared/api'
+import { ApiError, fetchJson, postStructured } from '@shared/api'
 export { ApiError }
 const BASE = '/api/config_migrate'
 
@@ -27,21 +27,5 @@ export async function migrateBatch(
   outDir: string,
   lang: string,
 ): Promise<BatchResponse> {
-  const r = await fetch(`${BASE}/batch`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jobs_dir: jobsDir, out_dir: outDir, lang }),
-  })
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as unknown)
-      .catch(() => '')
-    if (detail && typeof detail === 'object' && 'code' in detail) {
-      const d = detail as { code: string; path?: string }
-      throw new ApiError(d.code, d.path ?? '')
-    }
-    throw new Error((detail as string) || `batch: HTTP ${r.status}`)
-  }
-  return r.json()
+  return postStructured(`${BASE}/batch`, { jobs_dir: jobsDir, out_dir: outDir, lang }, 'batch')
 }

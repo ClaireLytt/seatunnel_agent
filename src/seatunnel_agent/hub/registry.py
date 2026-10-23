@@ -39,7 +39,7 @@ class AgentManifest:
     title_zh: str
     desc_en: str
     desc_zh: str
-    render: str          # "seatunnel_agent.agents.devops.secret_scan.ui:render_secret_scan_page"
+    render: str = ""     # "pkg.ui:render_fn" for Gradio; empty for external/React
     api: str | None = None   # "seatunnel_agent.agents.devops.secret_scan.api:router"
     order: int = 100     # card order within the workspace
     group: str | None = None  # workspace section key (display text lives in the hub)

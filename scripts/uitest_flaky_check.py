@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Stability check: N consecutive smoke rounds must produce identical verdicts."""
 import io
 import subprocess

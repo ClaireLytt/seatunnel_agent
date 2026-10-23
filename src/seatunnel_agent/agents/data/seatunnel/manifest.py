@@ -14,7 +14,6 @@ MANIFEST = AgentManifest(
     desc_en="Generate / validate / run SeaTunnel configs with natural language, auto-diagnose & fix",
     desc_zh="自然语言生成 / 验证 / 运行 SeaTunnel 配置，自动诊断修复",
     api="seatunnel_agent.agents.data.seatunnel.api:router",
-    render="",  # React static mount serves this route (walking skeleton)
     group="build",
     order=10,
     external=True,

@@ -14,7 +14,6 @@ MANIFEST = AgentManifest(
     desc_en="Same-named metrics defined differently across jobs — why two reports disagree",
     desc_zh="同名指标在不同作业里定义不同 — 「两张报表数对不上」的头号原因",
     api="seatunnel_agent.agents.data.metric_diff.api:router",
-    render="",  # React static mount serves this route (frontend/metric_diff)
     group="governance",
     order=40,
     external=True,

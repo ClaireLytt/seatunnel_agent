@@ -13,7 +13,6 @@ MANIFEST = AgentManifest(
     title_zh="LLM 评测",
     desc_en=("Golden suites for the LLM features — automated scoring, regression gate, score trends"),
     desc_zh=("LLM 功能黄金用例集 — 自动打分、回归门禁、分数趋势"),
-    render="",
     api="seatunnel_agent.agents.ai.llm_eval.api:router",
     order=20,
     external=True,

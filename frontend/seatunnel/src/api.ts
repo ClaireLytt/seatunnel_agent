@@ -1,3 +1,5 @@
+import { fetchJson } from '@shared/api'
+
 export interface Mode {
   key: string
   en: string
@@ -19,16 +21,12 @@ export interface Meta {
 
 export type ConnectResult = { ok: true; model: string } | { ok: false; error: string }
 
-export async function connect(): Promise<ConnectResult> {
-  const resp = await fetch('/api/seatunnel/connect', { method: 'POST' })
-  if (!resp.ok) throw new Error(`connect: HTTP ${resp.status}`)
-  return resp.json()
+export function connect(): Promise<ConnectResult> {
+  return fetchJson('/api/seatunnel/connect', { method: 'POST' })
 }
 
-export async function fetchMeta(): Promise<Meta> {
-  const resp = await fetch('/api/seatunnel/meta')
-  if (!resp.ok) throw new Error(`meta: HTTP ${resp.status}`)
-  return resp.json()
+export function fetchMeta(): Promise<Meta> {
+  return fetchJson('/api/seatunnel/meta')
 }
 
 // ── Sessions ─────────────────────────────────────────────────────────
@@ -52,24 +50,20 @@ export interface SessionDetail {
 }
 
 export async function listSessions(): Promise<SessionSummary[]> {
-  const resp = await fetch('/api/seatunnel/sessions')
-  if (!resp.ok) throw new Error(`sessions: HTTP ${resp.status}`)
-  return (await resp.json()).sessions
+  const data = await fetchJson<{ sessions: SessionSummary[] }>('/api/seatunnel/sessions')
+  return data.sessions
 }
 
-export async function loadSession(id: string): Promise<SessionDetail> {
-  const resp = await fetch(`/api/seatunnel/sessions/${id}`)
-  if (!resp.ok) throw new Error(`session: HTTP ${resp.status}`)
-  return resp.json()
+export function loadSession(id: string): Promise<SessionDetail> {
+  return fetchJson(`/api/seatunnel/sessions/${id}`)
 }
 
 export async function renameSession(id: string, title: string): Promise<void> {
-  const resp = await fetch(`/api/seatunnel/sessions/${id}`, {
+  await fetchJson(`/api/seatunnel/sessions/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ title }),
   })
-  if (!resp.ok) throw new Error(`rename: HTTP ${resp.status}`)
 }
 
 // Export downloads via a plain navigation (no fetch/stream logic needed).
@@ -78,8 +72,7 @@ export function exportSessionUrl(id: string): string {
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  const resp = await fetch(`/api/seatunnel/sessions/${id}`, { method: 'DELETE' })
-  if (!resp.ok) throw new Error(`delete: HTTP ${resp.status}`)
+  await fetchJson(`/api/seatunnel/sessions/${id}`, { method: 'DELETE' })
 }
 
 // ── Chat SSE ─────────────────────────────────────────────────────────
@@ -117,17 +110,17 @@ export async function demoStream(
 export async function uploadFile(file: File): Promise<string> {
   const form = new FormData()
   form.append('file', file)
-  const resp = await fetch('/api/seatunnel/upload', { method: 'POST', body: form })
-  if (!resp.ok) throw new Error(`upload: HTTP ${resp.status}`)
-  const data = (await resp.json()) as { path: string }
+  const data = await fetchJson<{ path: string }>('/api/seatunnel/upload', {
+    method: 'POST',
+    body: form,
+  })
   return data.path
 }
 
 export async function stopChat(conversationId: string, lang?: string): Promise<void> {
-  const resp = await fetch('/api/seatunnel/chat/stop', {
+  await fetchJson('/api/seatunnel/chat/stop', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ conversation_id: conversationId, lang: lang ?? 'en' }),
   })
-  if (!resp.ok) throw new Error(`stop: HTTP ${resp.status}`)
 }

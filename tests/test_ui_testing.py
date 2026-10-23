@@ -21,21 +21,35 @@ from seatunnel_agent.agents.devops.ui_testing.seed_sqlite import SEED, seed_sqli
 
 # ── loader ──
 
+def _raw_yaml_cases() -> list[dict]:
+    """Cases as written in the builtin YAML files — the source of truth the
+    loader must reproduce, so retiring a case can never silently desync a
+    hand-maintained floor (that happened twice: 2026-10 Gradio retirements)."""
+    import yaml
+
+    raw: list[dict] = []
+    for path in sorted(ldr.CASES_DIR.glob("*.yaml")):
+        if path.name == "_fixtures.yaml":
+            continue
+        raw.extend(yaml.safe_load(path.read_text(encoding="utf-8")) or [])
+    return raw
+
+
 class TestLoader:
     def test_builtin_cases_load(self):
-        # floor tracks the YAML suite as Gradio pages retire to Playwright
-        # page tests (dagcheck DAG1-5, orchestrator ORCH1, llmeval EVAL1-3,
-        # promptlab PLAB1-2, then llmcost COST1-3, then secretscan
-        # SEC1-2, then ciinspect CI1, retired to Playwright, bringing
-        # it to 26)
-        cases = load_cases()
-        assert len(cases) >= 26
+        cases = load_cases(user_dir=None)
+        raw = _raw_yaml_cases()
+        assert len(cases) == len(raw), "loader must surface every YAML case"
+        assert len(raw) > 0
         ids = [c.id for c in cases]
         assert len(ids) == len(set(ids)), "case ids must be unique"
 
     def test_smoke_suite_size(self):
-        cases = filter_cases(load_cases(), "smoke")
-        assert len(cases) >= 20
+        smoke = filter_cases(load_cases(user_dir=None), "smoke")
+        raw_smoke = [c for c in _raw_yaml_cases()
+                     if "smoke" in (c.get("tags") or [])]
+        assert len(smoke) == len(raw_smoke)
+        assert len(raw_smoke) > 0
 
     def test_shorthand_click(self):
         steps = ldr._expand_step({"click": "连接"}, {}, "t")

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Acceptance criterion #2: inject three bug classes; each must be caught.
 
 ① frontend wiring: connect A outputs routed to B's status/table components
@@ -66,8 +65,10 @@ for title, path, old, new, case_ids in BUGS:
 # lookup (verdict HEALED, exit 0) and emit a paste-ready LABELS patch.
 print()
 print("④ 自愈闭环: 注入按钮文案漂移(结构对比→结构比对),期望 HEALED…")
-import os                                    # noqa: E402
-from dotenv import load_dotenv               # noqa: E402
+import os
+
+from dotenv import load_dotenv
+
 load_dotenv()
 if not (os.getenv("API_KEY") or os.getenv("ANTHROPIC_API_KEY")):
     print("   ⏭️ 跳过: 未配置 API_KEY(自愈需要 LLM)")

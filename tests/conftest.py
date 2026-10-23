@@ -53,6 +53,90 @@ def assert_dialect_switch(page, *, dialect: str, run, report,
     expect(page.locator("body")).not_to_contain_text("Traceback")
 
 
+# ── shared i18n parity helpers (ticket: tests-slim-down 01) ────────────────
+#
+# Every tests/test_*_i18n.py used to carry identical copies of the trio
+# below (~30 lines each). An i18n test file now keeps only its path
+# constants and calls:
+#
+#     res = i18n_resources(I18N_TS)
+#     sources = workspace_sources(SRC)
+
+
+def parse_locale_block(block: str) -> dict[str, str]:
+    """Parse one locale's ``translation: {…}`` body from i18n.ts.
+
+    Keys may be multi-part string concatenations ('a ' + 'b'); join them."""
+    import re
+
+    pairs = re.findall(
+        r"(\w+):\s*((?:'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|\s|\+)+)",
+        block,
+    )
+    out: dict[str, str] = {}
+    for key, raw in pairs:
+        chunks = re.findall(r"'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"", raw)
+        val = "".join(a if a else b for a, b in chunks)
+        out[key] = (val.replace("\\'", "'").replace('\\"', '"')
+                    .replace("\\n", "\n"))
+    return out
+
+
+def i18n_resources(i18n_ts: Path) -> dict[str, dict[str, str]]:
+    """Extract the en/zh translation dicts from a workspace's i18n.ts."""
+    import re
+
+    text = i18n_ts.read_text(encoding="utf-8")
+    locales = re.findall(
+        r"^  (en|zh): \{\s*translation: \{(.*?)^    \},\s*^  \},",
+        text,
+        re.S | re.M,
+    )
+    assert {name for name, _ in locales} == {"en", "zh"}, "en/zh blocks not found"
+    return {name: parse_locale_block(body) for name, body in locales}
+
+
+def workspace_sources(src: Path) -> list[str]:
+    """Read every .tsx source in a workspace's src/ dir."""
+    files = list(src.glob("*.tsx"))
+    assert files, "no .tsx files found — glob broken?"
+    return [f.read_text(encoding="utf-8") for f in files]
+
+
+# ── shared fake-LLM reply builders + CLI runner (ticket: tests-slim-down 03)
+
+
+def llm_text(reply: str, *, raw_content: Any = None, usage: Any = None):
+    """A no-tool-use LLMResponse carrying only ``reply`` text."""
+    from seatunnel_agent.common.llm import LLMResponse
+
+    return LLMResponse(wants_tool_use=False, tool_calls=[], thinking_text="",
+                       reply_text=reply,
+                       raw_content={"f": 1} if raw_content is None else raw_content,
+                       usage={} if usage is None else usage)
+
+
+def llm_tool(name: str, inp: dict, cid: str = "c1", *,
+             raw_content: Any = None, usage: Any = None):
+    """An LLMResponse requesting one tool call ``name(inp)``."""
+    from seatunnel_agent.common.llm import LLMResponse, ToolCall
+
+    return LLMResponse(wants_tool_use=True,
+                       tool_calls=[ToolCall(id=cid, name=name, input=inp)],
+                       thinking_text="", reply_text="",
+                       raw_content={"f": 1} if raw_content is None else raw_content,
+                       usage={} if usage is None else usage)
+
+
+def run_cli(args):
+    """Invoke the seatunnel-agent click CLI in-process."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    return CliRunner().invoke(cli, args)
+
+
 # ── React page-test server factory (ticket: arch-deepen-2 C1) ─────────────
 #
 # Every tests/test_*_page.py used to carry its own _free_port / uvicorn
@@ -76,6 +160,7 @@ def _free_port() -> int:
 def make_page_url(manifest, router_ref: str, mount: str, *,
                   env: dict[str, str] | None = None,
                   neutralize_llm: bool = False,
+                  dummy_llm_key: bool = False,
                   chdir: str | None = None,
                   extra_mounts: list[tuple[str, Any]] | None = None,
                   post_setup: Callable[..., None] | None = None,
@@ -86,6 +171,10 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
     stays cheap). ``env`` entries are set via monkeypatch; a value of
     ``None`` deletes the variable instead. ``neutralize_llm`` applies the
     no-key triple (env keys, settings store path, dotenv stubs).
+    ``dummy_llm_key`` is the opposite convenience: endpoints whose setup
+    demands ``load_settings()`` (which raises without an API key) get a
+    fake one, so real-connect tests that never invoke the LLM pass on
+    machines without .env (precedent: test_t2s_page.py, 2026-10-23).
     ``chdir`` is "tmp" or "root" (repo root), or None to stay put.
     ``extra_mounts`` mounts additional built dists ``(mount_path,
     manifest)`` on the same server (skipped when not built, matching the
@@ -128,6 +217,8 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
             monkeypatch.setattr(
                 "seatunnel_agent.common.config.load_dotenv",
                 lambda *a, **k: None)
+        if dummy_llm_key:
+            monkeypatch.setenv("API_KEY", "sk-test")
         for key, value in (env or {}).items():
             if value is None:
                 monkeypatch.delenv(key, raising=False)

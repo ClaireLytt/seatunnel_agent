@@ -14,7 +14,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from seatunnel_agent.common.api_guard import add_health, check_path_allowed, ms_since
+from seatunnel_agent.common.api_guard import (
+    add_health,
+    ms_since,
+    require_dir,
+)
 from seatunnel_agent.common.utils import normalize_lang
 
 
@@ -64,18 +68,10 @@ def make_agent_router(
 
     @router.post("/check", response_model=_StandardResponse)
     def check(req: request_model) -> _StandardResponse:  # type: ignore[valid-type]
-        from pathlib import Path
-
         start = time.time()
         lang = normalize_lang(req.lang)  # type: ignore[attr-defined]
         raw_path: str = getattr(req, path_field)
-        target = (raw_path or "").strip()
-        check_path_allowed(target, allowed_dirs_env)
-        if not Path(target).is_dir():
-            raise HTTPException(
-                status_code=400,
-                detail={"code": "bad_dir", "path": target},
-            )
+        target = require_dir(raw_path, allowed_dirs_env)
         if pre_check is not None:
             pre_check(req)
         try:

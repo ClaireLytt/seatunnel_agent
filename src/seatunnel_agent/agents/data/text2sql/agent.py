@@ -32,16 +32,22 @@ def _get_utf8_stdout() -> Any:
             _utf8_stdout = sys.stdout
     return _utf8_stdout
 
+from seatunnel_agent.agent_core import ToolLoopAgent, ToolSpec
 from seatunnel_agent.agent_core.display import display_tool_call, display_tool_result
+from seatunnel_agent.agent_core.events import (
+    display_turn_panels,
+    legacy_event_adapter,
+)
 from seatunnel_agent.common.config import Settings
 from seatunnel_agent.common.context import truncate_messages
 from seatunnel_agent.common.llm import LLMClient
-from seatunnel_agent.common.utils import truncate
 
 from .executor import DatabaseConfig
 from .prompts import build_text2sql_prompt
 from .schema import SchemaStore
 from .tools import TOOL_DEFINITIONS, Text2SQLRuntime, execute_text2sql_tool
+
+TOOL_NAMES = [d["name"] for d in TOOL_DEFINITIONS]
 
 MAX_LOOP_ITERATIONS = 15
 
@@ -126,98 +132,64 @@ class Text2SQLAgent:
     # ------------------------------------------------------------------
 
     def _agent_loop(self) -> str:
-        text_delta_cb = None
-        if self._on_event:
-            def text_delta_cb(chunk: str) -> None:
-                self._emit("text_delta", {"text": chunk})
+        """Run the shared bounded tool-use loop (agent_core.ToolLoopAgent).
 
-        for iteration in range(MAX_LOOP_ITERATIONS):
-            self._emit("step", {
-                "iteration": iteration + 1,
-                "max": MAX_LOOP_ITERATIONS,
-                "phase": "thinking",
-            })
-
-            self.messages = truncate_messages(self.messages)
-            resp = self.llm.chat(
-                self._system_prompt, self.messages, on_text_delta=text_delta_cb
-            )
-
-            self.messages.append(self.llm.append_assistant(resp.raw_content))
-
-            if resp.usage:
-                self._emit("usage", resp.usage)
-
-            if resp.thinking_text:
-                self._emit("thinking", {"text": resp.thinking_text})
-                self.console.print(
-                    Panel(
-                        truncate(resp.thinking_text, 500),
-                        title="Thinking",
-                        border_style="dim",
-                        style="italic dim",
-                    )
-                )
-            if resp.reply_text:
-                self._emit("text", {"text": resp.reply_text})
-                self.console.print(f"\n{resp.reply_text}")
-
-            if not resp.wants_tool_use:
-                final = resp.reply_text
-                self._emit("final_answer", {"text": final})
-                return final
-
-            self._emit("step", {
-                "iteration": iteration + 1,
-                "max": MAX_LOOP_ITERATIONS,
-                "phase": "executing_tools",
-                "tool_count": len(resp.tool_calls),
-            })
-
-            tool_results = []
-            for tc in resp.tool_calls:
-                self._display_tool_call(tc.name, tc.input)
-                self._emit("tool_call", {"name": tc.name, "input": tc.input})
-
-                result = execute_text2sql_tool(tc.name, tc.input, self.runtime)
-
-                self._display_tool_result(tc.name, result)
-                self._emit("tool_result", {"name": tc.name, "result": result})
-
-                if tc.name == "execute_sql":
-                    try:
-                        data = json.loads(result)
-                    except (json.JSONDecodeError, TypeError):
-                        data = {}
-                    if data.get("error"):
-                        self._emit("sql_retry", {
-                            "attempt": data.get("attempt", 0),
-                            "max": self.runtime.max_sql_retries,
-                            "error_type": data.get("error_type", ""),
-                            "retry_hint": data.get("retry_hint", ""),
-                            "failed_sql": data.get("sql", tc.input.get("sql", "")),
-                        })
-                    elif data.get("cached"):
-                        self._emit("cache_hit", {
-                            "sql": data.get("sql", ""),
-                            "row_count": data.get("row_count", 0),
-                        })
-
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": tc.id,
-                    "content": result,
+        Agent specifics ride the loop's seams: the adapter keeps the legacy
+        event protocol (thinking / text / tool_call / tool_result /
+        sql_retry / cache_hit / final_answer) and the Rich CLI display;
+        ``on_limit`` keeps the legacy step-limit message. The legacy
+        per-iteration "step" (iteration/phase) events are not re-emitted -
+        no consumer existed.
+        """
+        def step_extra(data: dict[str, Any]) -> None:
+            if data["tool"] != "execute_sql":
+                return
+            try:
+                parsed = json.loads(data["output"])
+            except (json.JSONDecodeError, TypeError):
+                parsed = {}
+            if parsed.get("error"):
+                self._emit("sql_retry", {
+                    "attempt": parsed.get("attempt", 0),
+                    "max": self.runtime.max_sql_retries,
+                    "error_type": parsed.get("error_type", ""),
+                    "retry_hint": parsed.get("retry_hint", ""),
+                    "failed_sql": parsed.get(
+                        "sql", data["input"].get("sql", "")),
+                })
+            elif parsed.get("cached"):
+                self._emit("cache_hit", {
+                    "sql": parsed.get("sql", ""),
+                    "row_count": parsed.get("row_count", 0),
                 })
 
-            result_msg = self.llm.build_tool_result_message(tool_results)
-            if isinstance(result_msg, list):
-                self.messages.extend(result_msg)
-            else:
-                self.messages.append(result_msg)
+        adapter = legacy_event_adapter(
+            self._emit,
+            display_turn=lambda th, tx: display_turn_panels(
+                self.console, th, tx),
+            display_tool_call=self._display_tool_call,
+            display_tool_result=self._display_tool_result,
+            step_extra=step_extra)
 
-        msg = "Text2SQL agent reached maximum iterations without completing."
-        self._emit("final_answer", {"text": msg})
-        return msg
+        tools = [
+            ToolSpec(name=name, description="", input_schema={},
+                     run=(lambda _n=name, **kw:
+                          execute_text2sql_tool(_n, kw, self.runtime)))
+            for name in TOOL_NAMES
+        ]
+        request = self.messages[-1]["content"]
+        loop = ToolLoopAgent(
+            self.settings, tools, self._system_prompt, "text2sql",
+            max_steps=MAX_LOOP_ITERATIONS, client=self.llm,
+            on_event=adapter,  # always: it also drives the Rich CLI display
+            truncate=truncate_messages,
+            on_limit=lambda: ("Text2SQL agent reached maximum iterations "
+                              "without completing."))
+        loop.messages = self.messages[:-1]
+        result = loop.run(request)
+        self.messages = loop.messages
+        self._emit("final_answer", {"text": result.reply})
+        return result.reply
 
     # ------------------------------------------------------------------
     # Display (Rich)

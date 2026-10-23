@@ -14,7 +14,6 @@ MANIFEST = AgentManifest(
     desc_en="Cycles, broken upstream, dead jobs — plus execution batches and the critical path",
     desc_zh="环/断链/死作业检测 — 并给出执行分批与关键路径",
     api="seatunnel_agent.agents.data.dag_check.api:router",
-    render="",  # React static mount serves this route (frontend/dag_check)
     group="governance",
     order=60,
     external=True,

@@ -20,7 +20,7 @@ from seatunnel_agent.agents.ai.orchestrator import (
 )
 from seatunnel_agent.cli import cli
 from seatunnel_agent.common.config import Settings
-from seatunnel_agent.common.llm import LLMResponse, ToolCall
+from seatunnel_agent.common.llm import LLMResponse
 
 SETTINGS = Settings(api_key="sk-test")
 
@@ -32,18 +32,8 @@ def _tmp_audit(monkeypatch, tmp_path):
                        str(tmp_path / "audit.jsonl"))
 
 
-def _text(reply: str) -> LLMResponse:
-    return LLMResponse(wants_tool_use=False, tool_calls=[], thinking_text="",
-                       reply_text=reply, raw_content={"fake": True},
-                       usage={"input_tokens": 5, "output_tokens": 5})
-
-
-def _tool(name: str, tool_input: dict, call_id: str = "t1") -> LLMResponse:
-    return LLMResponse(
-        wants_tool_use=True,
-        tool_calls=[ToolCall(id=call_id, name=name, input=tool_input)],
-        thinking_text="", reply_text="", raw_content={"fake": True},
-        usage={"input_tokens": 5, "output_tokens": 5})
+from tests.conftest import llm_text as _text
+from tests.conftest import llm_tool as _tool
 
 
 class ScriptedClient:
@@ -555,3 +545,18 @@ class TestChatApi:
         data = client.get("/api/orchestrator/session").json()
         assert data["session"] is None
         assert data["turns"] == []
+
+
+def test_engine_runs_on_shared_loop():
+    """Ticket loop-02: the orchestrator's loop body is the shared one."""
+    from seatunnel_agent.agent_core import LoopResult
+    from seatunnel_agent.agents.ai.orchestrator.engine import (
+        OrchestratorResult,
+    )
+
+    assert OrchestratorResult is LoopResult
+    orch = Orchestrator(SETTINGS, lang="en",
+                        client=ScriptedClient([_text("hi")]), catalog={})
+    out = orch.run("q")
+    assert out.reply == "hi" and out.stopped is False
+    assert "stopped" in out.to_dict()

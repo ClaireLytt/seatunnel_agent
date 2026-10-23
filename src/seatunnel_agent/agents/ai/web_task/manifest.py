@@ -15,7 +15,6 @@ MANIFEST = AgentManifest(
              "observe — confined to the start origin by default"),
     desc_zh=("给目标和 URL → 真实浏览器循环:快照、点击、填表、再观察 — "
              "默认只允许同源页面"),
-    render="",
     external=True,
     # The run endpoint drives a local browser, so it is OFF by default:
     # 403 unless WEBTASK_API_ENABLED=1 is set.

@@ -210,3 +210,21 @@ class TestCardHtml:
             logo="Y", color="#000", title_en="t", title_zh="题",
             desc_en="d", desc_zh="述", render="m:f")
         assert base.group is None
+
+
+def test_external_manifest_names_match_frontend_workspace_dirs():
+    """frontend_dist() mounts frontend/<manifest.name>/dist by naming
+    convention. A workspace directory created under any other name builds
+    fine but never mounts (pitfall 2026-10-18: 'datacompare' dir vs
+    'data_comparison' manifest shipped a permanent not-built page). Pin
+    the convention: every external manifest must have its workspace dir."""
+    from pathlib import Path
+
+    from seatunnel_agent.hub.registry import discover
+
+    root = Path(__file__).resolve().parents[1]
+    missing = [mf.name for mf in discover()
+               if mf.external and not (root / "frontend" / mf.name).is_dir()]
+    assert not missing, (
+        f"external manifests without frontend/<name>/ dir: {missing} "
+        "(workspace dir must equal manifest.name)")

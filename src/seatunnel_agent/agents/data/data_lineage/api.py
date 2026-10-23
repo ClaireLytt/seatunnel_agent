@@ -21,7 +21,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import ms_since
+from seatunnel_agent.common.api_guard import ms_since, require_dir
 from seatunnel_agent.common.config import load_settings
 
 from .agent import LineageAgent, static_lineage
@@ -370,15 +370,9 @@ def change_impact(req: ImpactRequest) -> dict[str, Any]:
             status_code=400,
             detail="请二选一：old_dir+new_dir（目录模式）或 old_sql+new_sql（文本模式）",
         )
-    from pathlib import Path
 
     def _require_dir(d: str) -> None:
-        # whitelist first (403, no existence probing), then a structured
-        # detail the frontend localizes (i18n `bad_dir`)
-        _check_dir_allowed(d)
-        if not Path(d).is_dir():
-            raise HTTPException(status_code=400,
-                                detail={"code": "bad_dir", "path": d})
+        require_dir(d, "LINEAGE_API_ALLOWED_DIRS")
 
     start = time.time()
     try:

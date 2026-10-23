@@ -1,4 +1,4 @@
-import { ApiError } from '@shared/api'
+import { ApiError, postStructured } from '@shared/api'
 export { ApiError }
 const BASE = '/api/sqlfmt'
 
@@ -27,21 +27,5 @@ export async function checkDir(
 }
 
 async function postFormat(body: Record<string, unknown>): Promise<FormatResponse> {
-  const r = await fetch(`${BASE}/format`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!r.ok) {
-    const detail = await r
-      .json()
-      .then((d) => d.detail as unknown)
-      .catch(() => '')
-    if (detail && typeof detail === 'object' && 'code' in detail) {
-      const d = detail as { code: string; path?: string }
-      throw new ApiError(d.code, d.path ?? '')
-    }
-    throw new Error((detail as string) || `format: HTTP ${r.status}`)
-  }
-  return r.json()
+  return postStructured(`${BASE}/format`, body, 'format')
 }

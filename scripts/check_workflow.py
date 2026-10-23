@@ -76,6 +76,9 @@ def main() -> int:
         ("工作区", check_clean_worktree()),
         ("报告落盘", check_report_committed(rng)),
     ]
+    # Windows 默认 cp1252 无法打印中文检查名,统一切 UTF-8
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     failed = False
     for name, (ok, msg) in checks:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}: {msg}")

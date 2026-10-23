@@ -1060,13 +1060,7 @@ def test_generate_fix_no_sql_raises(monkeypatch):
 # CLI: --dir / --fail-on / --rules / --output
 # ---------------------------------------------------------------------------
 
-from click.testing import CliRunner
-
-from seatunnel_agent.cli import cli as _cli_root
-
-
-def _run_cli(args):
-    return CliRunner().invoke(_cli_root, args)
+from tests.conftest import run_cli as _run_cli
 
 
 def test_cli_review_static_inline():
@@ -2978,3 +2972,37 @@ def test_agent_instructions_bypass_cache(tmp_path, monkeypatch):
     holder["agent"] = ag2
     ag2.review("select cache_me from t where pt='1'", instructions="focus on joins")
     assert calls["n"] == 2
+
+
+def test_agent_runs_on_shared_loop_with_event_protocol(monkeypatch):
+    """Ticket loop-03: tool flow + legacy event names via the shared loop."""
+    from seatunnel_agent.agents.data.sql_review import agent as agent_mod
+    from tests.conftest import llm_text, llm_tool
+
+    class ToolFake:
+        def __init__(self):
+            self.responses = [
+                llm_tool("lint_sql", {}, cid="c1"),
+                llm_text("## CR 报告" + chr(10)*2 + "ok"),
+            ]
+
+        def chat(self, system, messages, on_text_delta=None):
+            return self.responses.pop(0)
+
+        def append_assistant(self, raw):
+            return {"role": "assistant", "content": [raw]}
+
+        def build_tool_result_message(self, results):
+            return {"role": "user", "content": results}
+
+    monkeypatch.setattr(agent_mod, "LLMClient",
+                        lambda s, tools=None, **kw: ToolFake())
+    events = []
+    ag = agent_mod.SQLReviewAgent(
+        None, dialect="hive", lang="zh", use_cache=False,
+        on_event=lambda t, d: events.append(t))
+    out = ag.review("select id from t where pt='1'")
+    assert out.startswith("## CR 报告")
+    assert "tool_call" in events and "tool_result" in events
+    assert events.index("tool_call") < events.index("tool_result")
+    assert "final_answer" in events

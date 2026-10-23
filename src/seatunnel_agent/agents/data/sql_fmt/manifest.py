@@ -14,7 +14,6 @@ MANIFEST = AgentManifest(
     desc_en="Deterministic pretty-print with black-style --check / --write — parse failures kept verbatim",
     desc_zh="确定性排版，black 式 --check / --write — 解析失败原样保留",
     api="seatunnel_agent.agents.data.sql_fmt.api:router",
-    render="",  # React static mount serves this route (frontend/sql_fmt)
     group="quality",
     order=20,
     external=True,

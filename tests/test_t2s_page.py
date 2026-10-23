@@ -23,7 +23,8 @@ from seatunnel_agent.agents.data.text2sql.manifest import MANIFESTS
 MANIFEST = MANIFESTS[0]  # the /text2sql card (aux pages share its dist)
 
 page_url = make_page_url(
-    MANIFEST, "seatunnel_agent.agents.data.text2sql.api:router", "/text2sql")
+    MANIFEST, "seatunnel_agent.agents.data.text2sql.api:router", "/text2sql",
+    dummy_llm_key=True)  # real-connect tests never invoke the LLM
 
 
 @pytest.fixture()
