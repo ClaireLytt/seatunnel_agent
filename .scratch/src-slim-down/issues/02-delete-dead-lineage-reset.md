@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] The method is deleted; grep confirms no caller existed
-- [ ] Lineage tests green; ruff/mypy pass
+- [x] The method is deleted; grep confirms no caller existed
+- [x] Lineage tests green; ruff/mypy pass

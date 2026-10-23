@@ -4,9 +4,9 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] `require_dir` exists once in api_guard; whitelist-before-existence ordering encoded there
-- [ ] Seven routers call it; zero inline copies remain (grep for the bad_dir raise outside api_guard)
-- [ ] Endpoint signatures, response models, and error payloads unchanged; the seven agents' API tests green unchanged
-- [ ] ruff/mypy pass
+- [x] `require_dir` exists once in api_guard; whitelist-before-existence ordering encoded there
+- [x] Seven routers call it; zero inline copies remain (grep for the bad_dir raise outside api_guard)
+- [x] Endpoint signatures, response models, and error payloads unchanged; the seven agents' API tests green unchanged
+- [x] ruff/mypy pass
