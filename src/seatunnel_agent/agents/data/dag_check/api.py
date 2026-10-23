@@ -42,11 +42,11 @@ def _pre_check(req: DagCheckRequest) -> None:
     """Validate and stash seatunnel_dir before the domain call."""
 
 
-    from seatunnel_agent.common.api_guard import require_dir_structured
+    from seatunnel_agent.common.api_guard import require_dir
 
     st_dir = (req.seatunnel_dir or "").strip() or None
     if st_dir:
-        require_dir_structured(st_dir, "DAGCHECK_API_ALLOWED_DIRS")
+        require_dir(st_dir, "DAGCHECK_API_ALLOWED_DIRS")
     _seatunnel_dir_ctx.set(st_dir)
 
 

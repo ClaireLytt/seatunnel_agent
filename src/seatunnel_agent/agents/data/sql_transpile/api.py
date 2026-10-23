@@ -87,9 +87,9 @@ def translate_endpoint(req: TranslateRequest) -> dict[str, Any]:
 @router.post("/batch")
 def batch_endpoint(req: BatchRequest) -> dict[str, Any]:
     """Analyze by default; writes only into a whitelist-guarded out_dir."""
-    from seatunnel_agent.common.api_guard import require_dir_structured
+    from seatunnel_agent.common.api_guard import require_dir
 
-    require_dir_structured(req.dir, "TRANSPILE_API_ALLOWED_DIRS")
+    require_dir(req.dir, "TRANSPILE_API_ALLOWED_DIRS")
     out_dir = (req.out_dir or "").strip() or None
     if out_dir:
         _check_dir_allowed(out_dir)  # write target under the same whitelist

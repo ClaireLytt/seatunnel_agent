@@ -1,4 +1,5 @@
-import { fetchJson } from '@shared/api'
+import { ApiError, postStructured } from '@shared/api'
+export { ApiError }
 
 const BASE = '/api/loginspect'
 
@@ -14,11 +15,7 @@ export interface AdviceResponse {
 }
 
 function postScan(body: Record<string, unknown>): Promise<ScanResponse> {
-  return fetchJson(`${BASE}/scan`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  return postStructured(`${BASE}/scan`, body, 'scan')
 }
 
 export function scanDir(
@@ -49,9 +46,5 @@ export function getAdvice(
   const body: Record<string, unknown> = { include_warn: includeWarn, top, lang }
   if (dir) body.dir = dir
   if (text) body.text = text
-  return fetchJson(`${BASE}/advice`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  return postStructured(`${BASE}/advice`, body, 'advice')
 }

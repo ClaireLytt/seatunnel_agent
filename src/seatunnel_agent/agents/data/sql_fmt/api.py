@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from seatunnel_agent.common.api_guard import (
     add_health,
     ms_since,
-    require_dir_structured,
+    require_dir,
 )
 from seatunnel_agent.common.utils import normalize_lang
 
@@ -55,7 +55,7 @@ def format_sql(req: FormatRequest) -> FormatResponse:
                             detail="Provide exactly one of 'sql' or 'dir'")
     lang = normalize_lang(req.lang)
     if target:
-        target = require_dir_structured(target, "SQLFMT_API_ALLOWED_DIRS")
+        target = require_dir(target, "SQLFMT_API_ALLOWED_DIRS")
         results = fmt_dir(target, dialect=req.dialect, write=False)
         return FormatResponse(
             results=[r.to_dict() for r in results],

@@ -92,7 +92,9 @@ def test_migrate_empty_input_422(client: TestClient) -> None:
 
 # ── batch endpoint (ticket 02) ──
 
-def test_batch_migrate_success(client: TestClient, tmp_path) -> None:
+def test_batch_migrate_success(client: TestClient, tmp_path,
+                               monkeypatch) -> None:
+    monkeypatch.setenv("CONFIG_MIGRATE_API_ALLOWED_DIRS", str(tmp_path))
     jobs = tmp_path / "jobs"
     jobs.mkdir()
     (jobs / "a.json").write_text(json.dumps(_DATAX_JOB), encoding="utf-8")
@@ -107,7 +109,9 @@ def test_batch_migrate_success(client: TestClient, tmp_path) -> None:
     assert "`" in data["report"] and "a.json" in data["report"]
 
 
-def test_batch_migrate_partial_failure(client: TestClient, tmp_path) -> None:
+def test_batch_migrate_partial_failure(client: TestClient, tmp_path,
+                                       monkeypatch) -> None:
+    monkeypatch.setenv("CONFIG_MIGRATE_API_ALLOWED_DIRS", str(tmp_path))
     jobs = tmp_path / "jobs"
     jobs.mkdir()
     (jobs / "good.json").write_text(json.dumps(_DATAX_JOB), encoding="utf-8")
@@ -120,13 +124,26 @@ def test_batch_migrate_partial_failure(client: TestClient, tmp_path) -> None:
     assert "bad.json" in data["report"]
 
 
-def test_batch_migrate_missing_dir_400(client: TestClient,
-                                       tmp_path) -> None:
+def test_batch_migrate_missing_dir_400(client: TestClient, tmp_path,
+                                       monkeypatch) -> None:
+    monkeypatch.setenv("CONFIG_MIGRATE_API_ALLOWED_DIRS", str(tmp_path))
     bad = str(tmp_path / "nope")
     r = client.post("/api/config_migrate/batch",
                     json={"jobs_dir": bad, "lang": "en"})
     assert r.status_code == 400
     assert r.json()["detail"] == {"code": "bad_dir", "path": bad}
+
+
+def test_batch_migrate_outside_whitelist_403(client: TestClient, tmp_path,
+                                             monkeypatch) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    monkeypatch.setenv("CONFIG_MIGRATE_API_ALLOWED_DIRS", str(allowed))
+    r = client.post("/api/config_migrate/batch",
+                    json={"jobs_dir": str(outside), "lang": "en"})
+    assert r.status_code == 403
 
 
 def test_batch_migrate_blank_dir_422(client: TestClient) -> None:

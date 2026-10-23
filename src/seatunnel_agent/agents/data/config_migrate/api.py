@@ -7,7 +7,6 @@ Gradio-free modules only (migrator/report), never ``ui.py``.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -21,6 +20,7 @@ from seatunnel_agent.agents.data.config_migrate.report import (
     render_batch_markdown,
     render_migrate_markdown,
 )
+from seatunnel_agent.common.api_guard import check_path_allowed, require_dir
 
 router = APIRouter(prefix="/api/config_migrate", tags=["config_migrate"])
 
@@ -60,12 +60,12 @@ def batch(req: BatchRequest) -> dict[str, Any]:
     jobs_dir = req.jobs_dir.strip()
     if not jobs_dir:
         raise HTTPException(status_code=422, detail="empty jobs_dir")
-    if not Path(jobs_dir).is_dir():
-        # structured detail: the frontend localizes it (i18n `bad_dir`)
-        raise HTTPException(status_code=400,
-                            detail={"code": "bad_dir", "path": jobs_dir})
+    jobs_dir = require_dir(jobs_dir, "CONFIG_MIGRATE_API_ALLOWED_DIRS")
+    out_dir = req.out_dir.strip() or None
+    if out_dir:  # write target stays under the same whitelist
+        check_path_allowed(out_dir, "CONFIG_MIGRATE_API_ALLOWED_DIRS")
     try:
-        res = migrate_dir(jobs_dir, out_dir=req.out_dir.strip() or None)
+        res = migrate_dir(jobs_dir, out_dir=out_dir)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return {

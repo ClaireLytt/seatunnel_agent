@@ -43,20 +43,10 @@ def check_path_allowed(raw_path: str, env_var: str, noun: str = "目录") -> Non
 
 def require_dir(raw_path: str, env_var: str) -> str:
     """Whitelist-check *raw_path* and require it to be an existing
-    directory — the shared head of every path-taking API endpoint.
+    directory — the shared head of every directory-taking API endpoint.
+    Whitelist first (403, no existence probing), then a structured
+    ``{"code": "bad_dir", "path"}`` 400 the React pages localize.
     Returns the stripped path."""
-    path = (raw_path or "").strip()
-    check_path_allowed(path, env_var)
-    if not Path(path).is_dir():
-        raise HTTPException(status_code=400, detail=f"不是有效目录: {path}")
-    return path
-
-
-def require_dir_structured(raw_path: str, env_var: str) -> str:
-    """Like :func:`require_dir`, but a missing directory raises the
-    structured ``{"code": "bad_dir", "path"}`` detail the React pages
-    localize (i18n ``bad_dir``). Whitelist first — 403 for out-of-scope
-    paths, with no existence probing. Returns the stripped path."""
     path = (raw_path or "").strip()
     check_path_allowed(path, env_var)
     if not Path(path).is_dir():

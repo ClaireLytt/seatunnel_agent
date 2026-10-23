@@ -21,7 +21,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import ms_since, require_dir_structured
+from seatunnel_agent.common.api_guard import ms_since, require_dir
 from seatunnel_agent.common.config import load_settings
 
 from .agent import LineageAgent, static_lineage
@@ -372,7 +372,7 @@ def change_impact(req: ImpactRequest) -> dict[str, Any]:
         )
 
     def _require_dir(d: str) -> None:
-        require_dir_structured(d, "LINEAGE_API_ALLOWED_DIRS")
+        require_dir(d, "LINEAGE_API_ALLOWED_DIRS")
 
     start = time.time()
     try:

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
-import { scanDir, scanText, getAdvice } from '@/api'
+import { ApiError, scanDir, scanText, getAdvice } from '@/api'
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -34,7 +34,11 @@ export default function App() {
       setLastText(null)
     } catch (e) {
       setReport('')
-      setError(String(e))
+      if (e instanceof ApiError && e.code === 'bad_dir') {
+        setError(t('bad_dir') + e.path)
+      } else {
+        setError(String(e))
+      }
     } finally {
       setBusy(false)
     }

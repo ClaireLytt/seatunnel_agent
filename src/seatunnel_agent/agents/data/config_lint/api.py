@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 from seatunnel_agent.common.api_guard import (
     add_health,
     ms_since,
-    require_dir_structured,
+    require_dir,
 )
 from seatunnel_agent.common.utils import normalize_lang
 
@@ -49,7 +49,7 @@ def lint(req: LintRequest) -> LintResponse:
                             detail="Provide 'config' or 'dir'")
     lang = normalize_lang(req.lang)
     if (req.dir or "").strip():
-        target = require_dir_structured(req.dir, "CONFLINT_API_ALLOWED_DIRS")
+        target = require_dir(req.dir, "CONFLINT_API_ALLOWED_DIRS")
         results = lint_dir(target)
         report = render_batch_markdown(results, lang) if req.report else None
     else:

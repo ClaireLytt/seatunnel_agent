@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from seatunnel_agent.common.api_guard import (
     add_health,
     ms_since,
-    require_dir_structured,
+    require_dir,
 )
 from seatunnel_agent.common.utils import normalize_lang
 
@@ -53,7 +53,7 @@ def scan(req: PiiScanRequest) -> PiiScanResponse:
     lang = normalize_lang(req.lang)
     try:
         if (req.dir or "").strip():
-            target = require_dir_structured(req.dir or "",
+            target = require_dir(req.dir or "",
                                             "PII_API_ALLOWED_DIRS")
             result = scan_dir(target, dialect=req.dialect)
         else:

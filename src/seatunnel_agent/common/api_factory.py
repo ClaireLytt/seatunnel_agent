@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from seatunnel_agent.common.api_guard import (
     add_health,
     ms_since,
-    require_dir_structured,
+    require_dir,
 )
 from seatunnel_agent.common.utils import normalize_lang
 
@@ -71,7 +71,7 @@ def make_agent_router(
         start = time.time()
         lang = normalize_lang(req.lang)  # type: ignore[attr-defined]
         raw_path: str = getattr(req, path_field)
-        target = require_dir_structured(raw_path, allowed_dirs_env)
+        target = require_dir(raw_path, allowed_dirs_env)
         if pre_check is not None:
             pre_check(req)
         try:

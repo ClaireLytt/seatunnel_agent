@@ -82,7 +82,8 @@ def advice(req: AdviceRequest) -> AdviceResponse:
         raise HTTPException(status_code=400, detail="Provide 'dir' or 'text'")
     # Run the scan first
     if (req.dir or "").strip():
-        target = require_dir(req.dir or "", "LOGINSPECT_API_ALLOWED_DIRS")
+        target = require_dir(req.dir or "",
+                                        "LOGINSPECT_API_ALLOWED_DIRS")
         report = scan_dir(target,
                           patterns=tuple(req.patterns or DEFAULT_PATTERNS),
                           include_warn=req.include_warn)
