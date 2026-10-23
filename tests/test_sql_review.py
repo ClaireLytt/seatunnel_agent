@@ -1060,13 +1060,7 @@ def test_generate_fix_no_sql_raises(monkeypatch):
 # CLI: --dir / --fail-on / --rules / --output
 # ---------------------------------------------------------------------------
 
-from click.testing import CliRunner
-
-from seatunnel_agent.cli import cli as _cli_root
-
-
-def _run_cli(args):
-    return CliRunner().invoke(_cli_root, args)
+from tests.conftest import run_cli as _run_cli
 
 
 def test_cli_review_static_inline():

@@ -103,6 +103,40 @@ def workspace_sources(src: Path) -> list[str]:
     return [f.read_text(encoding="utf-8") for f in files]
 
 
+# ── shared fake-LLM reply builders + CLI runner (ticket: tests-slim-down 03)
+
+
+def llm_text(reply: str, *, raw_content: Any = None, usage: Any = None):
+    """A no-tool-use LLMResponse carrying only ``reply`` text."""
+    from seatunnel_agent.common.llm import LLMResponse
+
+    return LLMResponse(wants_tool_use=False, tool_calls=[], thinking_text="",
+                       reply_text=reply,
+                       raw_content={"f": 1} if raw_content is None else raw_content,
+                       usage={} if usage is None else usage)
+
+
+def llm_tool(name: str, inp: dict, cid: str = "c1", *,
+             raw_content: Any = None, usage: Any = None):
+    """An LLMResponse requesting one tool call ``name(inp)``."""
+    from seatunnel_agent.common.llm import LLMResponse, ToolCall
+
+    return LLMResponse(wants_tool_use=True,
+                       tool_calls=[ToolCall(id=cid, name=name, input=inp)],
+                       thinking_text="", reply_text="",
+                       raw_content={"f": 1} if raw_content is None else raw_content,
+                       usage={} if usage is None else usage)
+
+
+def run_cli(args):
+    """Invoke the seatunnel-agent click CLI in-process."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    return CliRunner().invoke(cli, args)
+
+
 # ── React page-test server factory (ticket: arch-deepen-2 C1) ─────────────
 #
 # Every tests/test_*_page.py used to carry its own _free_port / uvicorn

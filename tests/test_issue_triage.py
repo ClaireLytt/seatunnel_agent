@@ -15,22 +15,13 @@ from seatunnel_agent.agents.ai.issue_triage import (
 )
 from seatunnel_agent.cli import cli
 from seatunnel_agent.common.config import Settings
-from seatunnel_agent.common.llm import LLMResponse, ToolCall
 
 DEMO = Path(__file__).resolve().parents[1] / "examples" / "triage_demo"
 SETTINGS = Settings(api_key="sk-test")
 
 
-def _text(reply):
-    return LLMResponse(wants_tool_use=False, tool_calls=[], thinking_text="",
-                       reply_text=reply, raw_content={"f": 1}, usage={})
-
-
-def _tool(name, inp, cid="c1"):
-    return LLMResponse(wants_tool_use=True,
-                       tool_calls=[ToolCall(id=cid, name=name, input=inp)],
-                       thinking_text="", reply_text="",
-                       raw_content={"f": 1}, usage={})
+from tests.conftest import llm_text as _text
+from tests.conftest import llm_tool as _tool
 
 
 class ScriptedClient:

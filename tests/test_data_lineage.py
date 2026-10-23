@@ -708,13 +708,7 @@ def test_logger_recent_empty(tmp_path):
 # CLI
 # ---------------------------------------------------------------------------
 
-from click.testing import CliRunner
-
-from seatunnel_agent.cli import cli as _cli_root
-
-
-def _run_cli(args):
-    return CliRunner().invoke(_cli_root, args)
+from tests.conftest import run_cli as _run_cli
 
 
 def test_cli_lineage_markdown(sql_dir):
