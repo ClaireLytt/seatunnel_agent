@@ -53,6 +53,56 @@ def assert_dialect_switch(page, *, dialect: str, run, report,
     expect(page.locator("body")).not_to_contain_text("Traceback")
 
 
+# ── shared i18n parity helpers (ticket: tests-slim-down 01) ────────────────
+#
+# Every tests/test_*_i18n.py used to carry identical copies of the trio
+# below (~30 lines each). An i18n test file now keeps only its path
+# constants and calls:
+#
+#     res = i18n_resources(I18N_TS)
+#     sources = workspace_sources(SRC)
+
+
+def parse_locale_block(block: str) -> dict[str, str]:
+    """Parse one locale's ``translation: {…}`` body from i18n.ts.
+
+    Keys may be multi-part string concatenations ('a ' + 'b'); join them."""
+    import re
+
+    pairs = re.findall(
+        r"(\w+):\s*((?:'(?:[^'\\]|\\.)*'|\"(?:[^\"\\]|\\.)*\"|\s|\+)+)",
+        block,
+    )
+    out: dict[str, str] = {}
+    for key, raw in pairs:
+        chunks = re.findall(r"'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"", raw)
+        val = "".join(a if a else b for a, b in chunks)
+        out[key] = (val.replace("\\'", "'").replace('\\"', '"')
+                    .replace("\\n", "\n"))
+    return out
+
+
+def i18n_resources(i18n_ts: Path) -> dict[str, dict[str, str]]:
+    """Extract the en/zh translation dicts from a workspace's i18n.ts."""
+    import re
+
+    text = i18n_ts.read_text(encoding="utf-8")
+    locales = re.findall(
+        r"^  (en|zh): \{\s*translation: \{(.*?)^    \},\s*^  \},",
+        text,
+        re.S | re.M,
+    )
+    assert {name for name, _ in locales} == {"en", "zh"}, "en/zh blocks not found"
+    return {name: parse_locale_block(body) for name, body in locales}
+
+
+def workspace_sources(src: Path) -> list[str]:
+    """Read every .tsx source in a workspace's src/ dir."""
+    files = list(src.glob("*.tsx"))
+    assert files, "no .tsx files found — glob broken?"
+    return [f.read_text(encoding="utf-8") for f in files]
+
+
 # ── React page-test server factory (ticket: arch-deepen-2 C1) ─────────────
 #
 # Every tests/test_*_page.py used to carry its own _free_port / uvicorn
