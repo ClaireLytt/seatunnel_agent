@@ -141,11 +141,6 @@ class LineageAgent:
         self.console.print(Panel(message, title="Lineage", border_style="cyan"))
         return self._agent_loop()
 
-    def reset(self) -> None:
-        """Clear the conversation; the loaded graph is kept."""
-        self.messages = []
-        self.runtime.reset_question_state()
-
     # ------------------------------------------------------------------
     # Core ReAct loop
     # ------------------------------------------------------------------
