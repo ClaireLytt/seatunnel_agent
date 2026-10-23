@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (Expand: postStructured in shared api + pilot migration).
 
-**Status:** done (2026-10-23)
+**Status:** done (2026-10-23) — scope adjusted: 6 of 9 migrated; change_impact/data_lineage/data_skew kept their own ApiError semantics (see docs/reports/20261023-frontend-slim-down.md)
 
 - [x] Zero hand-rolled structured-error fetch blocks remain in workspace api clients (verifiable by grep)
 - [x] Exported function signatures, types, and endpoint paths unchanged in all 9 workspaces
