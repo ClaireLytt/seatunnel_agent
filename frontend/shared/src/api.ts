@@ -44,11 +44,7 @@ export class ApiError extends Error {
  * a plain Error("<label>: HTTP <status>" fallback). Extracted verbatim
  * from the block previously copied across 11 workspace api clients.
  */
-export async function postStructured<T>(
-  url: string,
-  body: unknown,
-  label = 'request',
-): Promise<T> {
+export async function postStructured<T>(url: string, body: unknown, label = 'request'): Promise<T> {
   const r = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
