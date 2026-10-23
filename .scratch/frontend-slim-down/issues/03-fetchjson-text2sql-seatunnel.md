@@ -4,8 +4,8 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] All convertible plain-JSON fetches in the two workspaces go through fetchJson; non-converted calls listed with reasons
-- [ ] Error text rendered by the pages unchanged (page tests green)
-- [ ] `npm run lint`/`npm run build` for both workspaces pass
+- [x] All convertible plain-JSON fetches in the two workspaces go through fetchJson; non-converted calls listed with reasons
+- [x] Error text rendered by the pages unchanged (page tests green)
+- [x] `npm run lint`/`npm run build` for both workspaces pass

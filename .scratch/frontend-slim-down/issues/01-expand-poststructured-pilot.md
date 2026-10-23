@@ -4,8 +4,8 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done (2026-10-23)
 
-- [ ] `postStructured` exists once in the shared api module next to `ApiError`/`fetchJson`, behavior identical to the copied block
-- [ ] The two pilot api clients contain only endpoint paths, types, and payload mapping; exported signatures unchanged
-- [ ] `npm run lint`/`npm run build` for shared + both workspaces pass; the two pages' Playwright page tests green (success and error paths)
+- [x] `postStructured` exists once in the shared api module next to `ApiError`/`fetchJson`, behavior identical to the copied block
+- [x] The two pilot api clients contain only endpoint paths, types, and payload mapping; exported signatures unchanged
+- [x] `npm run lint`/`npm run build` for shared + both workspaces pass; the two pages' Playwright page tests green (success and error paths)
