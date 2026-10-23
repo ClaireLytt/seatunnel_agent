@@ -11,6 +11,7 @@ scripted fake.
 from __future__ import annotations
 
 import json
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -19,6 +20,10 @@ from typing import Any
 from ..common.config import Settings
 
 _MAX_RESULT_CHARS = 20000
+
+# on_event callback: (event_type, payload). Emitted types: "step" (a Step
+# dict), "text_delta" ({"text": chunk}), "usage" (the provider usage dict).
+EventCallback = Callable[[str, dict[str, Any]], None]
 
 
 @dataclass(frozen=True)
@@ -48,11 +53,13 @@ class LoopResult:
     steps: list[Step] = field(default_factory=list)
     truncated: bool = False
     elapsed_ms: int = 0
+    stopped: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {"reply": self.reply,
                 "steps": [s.to_dict() for s in self.steps],
-                "truncated": self.truncated, "elapsed_ms": self.elapsed_ms}
+                "truncated": self.truncated, "elapsed_ms": self.elapsed_ms,
+                "stopped": self.stopped}
 
 
 class ToolLoopAgent:
@@ -65,11 +72,22 @@ class ToolLoopAgent:
                  system_prompt: str,
                  agent_name: str,
                  max_steps: int = 10,
-                 client: Any = None) -> None:
+                 client: Any = None,
+                 on_event: EventCallback | None = None,
+                 stop_event: threading.Event | None = None,
+                 system_hint: Callable[[], str] | None = None,
+                 truncate: Callable[[list[dict[str, Any]]],
+                                    list[dict[str, Any]]] | None = None,
+                 ) -> None:
         self.settings = settings
         self.tools = {t.name: t for t in tools}
         self.system_prompt = system_prompt
         self.max_steps = max(1, max_steps)
+        self.on_event = on_event
+        self.stop_event = stop_event if stop_event is not None \
+            else threading.Event()
+        self.system_hint = system_hint
+        self.truncate = truncate
         if client is None:
             from ..common.llm import LLMClient
             client = LLMClient(settings, agent=agent_name, tools=[{
@@ -80,6 +98,31 @@ class ToolLoopAgent:
         self.client = client
         self.messages: list[dict[str, Any]] = []
 
+    def _emit(self, event_type: str, data: dict[str, Any]) -> None:
+        if self.on_event:
+            self.on_event(event_type, data)
+
+    def _chat(self) -> Any:
+        """One client turn: hint, truncation, delta streaming, usage event."""
+        system = self.system_prompt
+        if self.system_hint:
+            hint = self.system_hint()
+            if hint:
+                system = system + hint
+        if self.truncate:
+            self.messages = self.truncate(self.messages)
+        if self.on_event:
+            def on_text_delta(chunk: str) -> None:
+                self._emit("text_delta", {"text": chunk})
+            resp = self.client.chat(system, self.messages,
+                                    on_text_delta=on_text_delta)
+        else:
+            resp = self.client.chat(system, self.messages)
+        self.messages.append(self.client.append_assistant(resp.raw_content))
+        if getattr(resp, "usage", None):
+            self._emit("usage", dict(resp.usage))
+        return resp
+
     def run(self, request: str,
             on_step: Callable[[Step], None] | None = None) -> LoopResult:
         if not (request or "").strip():
@@ -89,24 +132,39 @@ class ToolLoopAgent:
         result = LoopResult(reply="")
 
         for _turn in range(self.max_steps):
-            resp = self.client.chat(self.system_prompt, self.messages)
-            self.messages.append(self.client.append_assistant(
-                resp.raw_content))
+            if self.stop_event.is_set():
+                result.stopped = True
+                result.reply = result.reply or "stopped by user"
+                break
+            resp = self._chat()
             if not resp.wants_tool_use:
                 result.reply = resp.reply_text or ""
                 break
             tool_results = []
             for tc in resp.tool_calls:
+                if self.stop_event.is_set():
+                    # keep history valid: every tool_use needs a tool_result
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": tc.id,
+                        "content": "cancelled: stopped by user",
+                    })
+                    result.stopped = True
+                    continue
                 step = self._execute(tc.name, tc.input or {})
                 result.steps.append(step)
                 if on_step:
                     on_step(step)
+                self._emit("step", step.to_dict())
                 tool_results.append({
                     "type": "tool_result",
                     "tool_use_id": tc.id,
                     "content": step.output,
                 })
             self._append_results(tool_results)
+            if result.stopped:
+                result.reply = "stopped by user"
+                break
         else:
             result.truncated = True
             self.messages.append({
@@ -115,9 +173,7 @@ class ToolLoopAgent:
                             "you have and answer now, without further tool "
                             "calls."),
             })
-            resp = self.client.chat(self.system_prompt, self.messages)
-            self.messages.append(self.client.append_assistant(
-                resp.raw_content))
+            resp = self._chat()
             if resp.wants_tool_use:
                 # answer every dangling tool_use or the next turn 400s
                 cancelled = [{"type": "tool_result", "tool_use_id": tc.id,
