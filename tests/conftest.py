@@ -160,6 +160,7 @@ def _free_port() -> int:
 def make_page_url(manifest, router_ref: str, mount: str, *,
                   env: dict[str, str] | None = None,
                   neutralize_llm: bool = False,
+                  dummy_llm_key: bool = False,
                   chdir: str | None = None,
                   extra_mounts: list[tuple[str, Any]] | None = None,
                   post_setup: Callable[..., None] | None = None,
@@ -170,6 +171,10 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
     stays cheap). ``env`` entries are set via monkeypatch; a value of
     ``None`` deletes the variable instead. ``neutralize_llm`` applies the
     no-key triple (env keys, settings store path, dotenv stubs).
+    ``dummy_llm_key`` is the opposite convenience: endpoints whose setup
+    demands ``load_settings()`` (which raises without an API key) get a
+    fake one, so real-connect tests that never invoke the LLM pass on
+    machines without .env (precedent: test_t2s_page.py, 2026-10-23).
     ``chdir`` is "tmp" or "root" (repo root), or None to stay put.
     ``extra_mounts`` mounts additional built dists ``(mount_path,
     manifest)`` on the same server (skipped when not built, matching the
@@ -212,6 +217,8 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
             monkeypatch.setattr(
                 "seatunnel_agent.common.config.load_dotenv",
                 lambda *a, **k: None)
+        if dummy_llm_key:
+            monkeypatch.setenv("API_KEY", "sk-test")
         for key, value in (env or {}).items():
             if value is None:
                 monkeypatch.delenv(key, raising=False)

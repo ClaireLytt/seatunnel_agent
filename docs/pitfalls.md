@@ -20,3 +20,17 @@
 - **问题**:后台起的 `python -m seatunnel_agent.hub.ui` 任务在数十分钟后报 failed,日志为空,看似崩溃。会话内已出现 ≥3 次误判。
 - **根因**:带 `SEATUNNEL_UI_KILL_PORT=1` 起新实例时会杀掉占用 7860 的旧实例 —— 被杀的就是上一个后台任务,其退出被任务系统报告为 failed。
 - **规避**:起新 hub 前先显式停掉旧后台任务(TaskStop);或看到此类 failed 通知时,先确认是否刚启动过新实例,再按故障排查。
+
+## 2026-10-22 worktree 清理删库事故(CLAUDE.md 第 9 节规则的出处)
+
+批次收尾清理 worktree 时,AI 运行了:
+
+```bash
+git worktree list --porcelain | grep worktree | grep agent | sed 's/worktree //' \
+  | while read w; do git worktree remove "$w" --force 2>/dev/null \
+      || { rm -rf "$w"; git worktree prune; }; done
+```
+
+主仓库路径 `D:/ospp/seatunnel_agent` 本身含 "agent" 子串,被 `grep agent` 匹配进删除列表;`git worktree remove` 对主仓库的拒绝报错被 `2>/dev/null` 吞掉,`||` 回退执行了 `rm -rf 主仓库`,删掉了工作树与 `.git`,未推送分支(约 20 个提交、4 个批次成果)永久丢失。
+
+三个独立失误叠加才酿成事故:子串匹配把主仓库卷入目标清单;静默守卫吞掉了最后一道拒绝;回退路径用了比原命令更强的删除手段。由此固化的规则见 CLAUDE.md 第 9 节,并已代码化进 `scripts/cleanup_worktrees.py`(单测 tests/test_cleanup_worktrees.py)。

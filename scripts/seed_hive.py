@@ -61,7 +61,7 @@ def main() -> int:
         # this session. Harmless on MR-based warehouses.
         try:
             cursor.execute("SET tez.counters.max=4096")
-        except Exception as exc:  # noqa: BLE001 — best-effort knob
+        except Exception as exc:
             print(f"SET tez.counters.max skipped: {exc}")
         for i, s in enumerate(stmts, 1):
             head = re.sub(r"\s+", " ", s)[:70]
