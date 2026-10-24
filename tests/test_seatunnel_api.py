@@ -521,10 +521,11 @@ def test_upload_rejects_oversized_file(
 
 
 def test_demo_streams_general_script(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """No config path -> 'general' script streamed over the chat SSE frames."""
     monkeypatch.setenv("UI_DEMO_STEP_DELAY", "0")
+    monkeypatch.chdir(tmp_path)
     resp = client.post("/api/seatunnel/demo", json={"config_path": "", "lang": "en"})
     assert resp.status_code == 200
     assert resp.headers["content-type"].startswith("text/event-stream")
@@ -631,12 +632,13 @@ def test_demo_general_admits_write_failure(
 
 
 def test_demo_honours_step_delay_env_var(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """UI_DEMO_STEP_DELAY paces the stream (legacy ui.py:36 behaviour kept)."""
     import time as _time
 
     monkeypatch.setenv("UI_DEMO_STEP_DELAY", "0.05")
+    monkeypatch.chdir(tmp_path)
     t0 = _time.time()
     resp = client.post("/api/seatunnel/demo", json={"config_path": "", "lang": "en"})
     assert resp.status_code == 200
