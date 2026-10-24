@@ -79,12 +79,17 @@ class JsonlLog:
             lines = self.path.read_text(encoding="utf-8").splitlines()
         except OSError:
             return []
+        # walk backwards and stop at n hits — the filter path otherwise
+        # JSON-parses the whole (rotation-capped) file on every call
         out: list[dict[str, Any]] = []
-        for line in lines if where else lines[-n:]:
+        for line in reversed(lines):
             try:
                 rec = json.loads(line)
             except ValueError:
                 continue
             if where is None or where(rec):
                 out.append(rec)
-        return out[-n:]
+                if len(out) == n:
+                    break
+        out.reverse()
+        return out
