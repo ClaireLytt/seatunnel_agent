@@ -64,3 +64,4 @@ src/seatunnel_agent/ui_testing/baselines/
 
 # demo-generated config (seatunnel page Demo button)
 configs/demo_fake_to_console.conf
+.config_history/
