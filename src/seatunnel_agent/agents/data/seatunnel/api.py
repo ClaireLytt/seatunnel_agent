@@ -16,6 +16,7 @@ Endpoints:
 from __future__ import annotations
 
 import json
+import logging
 import queue
 import threading
 import time
@@ -99,8 +100,6 @@ def _persist_session(cid: str, conv: _Conversation) -> None:
             agent_context=dict(getattr(agent, "context", None) or {}),
         ))
     except Exception:  # pragma: no cover - persistence must not kill the stream
-        import logging
-
         logging.getLogger(__name__).warning(
             "failed to persist seatunnel session %s", cid, exc_info=True)
 
@@ -306,7 +305,9 @@ def _warmup_llm(provider: str) -> None:
         else:
             import openai  # noqa: F401
     except Exception:
-        pass
+        # missing SDK surfaces properly at connect time; warmup just logs
+        logging.getLogger(__name__).debug(
+            "LLM SDK warmup import failed for %s", provider, exc_info=True)
 
 
 @router.post("/connect")

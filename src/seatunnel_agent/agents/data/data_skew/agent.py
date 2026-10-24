@@ -8,6 +8,7 @@ table) and the optimized SQL is written to ``<name>_optimized.sql``.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -183,7 +184,9 @@ class DataSkewAgent:
             try:
                 self.on_event(event, payload)
             except Exception:
-                pass
+                # a broken progress callback must not kill the run — but log it
+                logging.getLogger(__name__).debug(
+                    "on_event callback failed for %s", event, exc_info=True)
 
     @property
     def llm(self) -> LLMClient:
