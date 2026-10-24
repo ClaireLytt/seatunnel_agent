@@ -39,6 +39,11 @@ I18N: dict[str, dict[str, str]] = {
             "- **Sink**: Console (print to stdout)\n\n"
             "Ready to run if SeaTunnel is installed."
         ),
+        "demo_failed": (
+            "**Demo did not complete.**\n\n"
+            "A tool call failed: {error}\n\n"
+            "Nothing was saved to `{path}` beyond what the transcript above shows."
+        ),
     },
     "zh": {
         "mode_nl": "自然语言描述",
@@ -54,6 +59,11 @@ I18N: dict[str, dict[str, str]] = {
             "- **Source**: FakeSource（生成 5 行假数据，字段 id/name/age）\n"
             "- **Sink**: Console（输出到控制台）\n\n"
             "如果安装了 SeaTunnel，可以直接运行此配置。"
+        ),
+        "demo_failed": (
+            "**演示未完成。**\n\n"
+            "工具调用失败：{error}\n\n"
+            "除上方记录外，没有任何内容被保存到 `{path}`。"
         ),
     },
 }

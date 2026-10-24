@@ -99,7 +99,7 @@ export function HistoryView({
                 }
               >
                 <td className="px-2 py-1 text-muted">{r.timestamp?.slice(5, 19)}</td>
-                <td className="px-2 py-1 text-fg">{r.user_query}</td>
+                <td className="px-2 py-1 text-fg">{r.user_query?.trim() || '—'}</td>
                 <td
                   className="px-2 py-1"
                   style={{ color: r.status === 'ok' ? 'var(--ok)' : 'var(--accent)' }}

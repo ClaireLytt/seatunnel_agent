@@ -4,6 +4,11 @@
 1. 未推送 commit 的提交信息中无 AI 署名(Co-Authored-By / Generated with)。
 2. git 工作区干净(不允许留下未提交的修改)。
 3. 未推送 commit 若改动了 src/ 或 tests/,docs/reports/ 中必须同批提交了新报告。
+4. 禁作弊变绿(floor,只看 diff 新增/删除,存量不管;收紧静默、放水报警):
+   - 新增压制注释(# noqa / # type: ignore / @ts-ignore / @ts-nocheck / eslint-disable)
+   - 测试放水(新增 skip/xfail、删测试文件、存活测试文件中删 assert)
+   - pyproject [tool.mypy] files 白名单缩水
+   - 未完成桩子(raise NotImplementedError、单行空 except: pass、src/ 新增 TODO)
 
 用法:python scripts/check_workflow.py [--range <rev-range>]
 本地默认核对 origin/<当前分支>..HEAD;CI 中传 --range origin/<base>...HEAD 核对整个 PR。
@@ -13,10 +18,105 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
 
 FORBIDDEN_TRAILERS = ("co-authored-by", "generated with")
+
+# ---------------- floor(禁作弊变绿)----------------
+# 只扫代码路径;本文件与其单测含有规则样本字符串,豁免。
+FLOOR_SCOPE = ("src/", "tests/", "scripts/", "frontend/", "pyproject.toml")
+FLOOR_EXEMPT = ("scripts/check_workflow.py", "tests/test_check_workflow_floor.py")
+
+RE_SUPPRESS = re.compile(
+    r"#\s*noqa|#\s*type:\s*ignore|@ts-ignore|@ts-nocheck|eslint-disable"
+)
+RE_TEST_SKIP = re.compile(r"@pytest\.mark\.(skip|xfail)")
+RE_STUB = re.compile(r"raise\s+NotImplementedError|except[^:\n]*:\s*pass\b")
+RE_TODO = re.compile(r"\bTODO\b")
+RE_MYPY_FILE = re.compile(r'^\s*"src/')
+
+
+def _in_floor_scope(path: str) -> bool:
+    return path.startswith(FLOOR_SCOPE) and path not in FLOOR_EXEMPT
+
+
+def parse_diff(diff: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """把 unified diff 解析为 (新增行, 删除行),各元素为 (文件路径, 行文本)。
+
+    仅 hunk 外的 ---/+++ 是文件头;hunk 内每行都是内容。
+    """
+    added: list[tuple[str, str]] = []
+    removed: list[tuple[str, str]] = []
+    file = ""
+    in_header = False
+    for line in diff.splitlines():
+        if line.startswith("diff "):
+            in_header = True
+        elif line.startswith("@@"):
+            in_header = False
+        elif in_header:
+            if line.startswith("+++ "):
+                path = line[4:].strip()
+                if path != "/dev/null":
+                    file = re.sub(r"^b/", "", path)
+        elif line.startswith("+"):
+            added.append((file, line[1:]))
+        elif line.startswith("-"):
+            removed.append((file, line[1:]))
+    return added, removed
+
+
+def floor_findings(
+    added: list[tuple[str, str]],
+    removed: list[tuple[str, str]],
+    deleted_files: list[str],
+) -> list[str]:
+    """按 CLAUDE.md 第 10 节 floor 规则产出违规清单(空 = 干净)。"""
+    findings: list[str] = []
+    deleted_tests = [
+        f for f in deleted_files if f.startswith("tests/test_") and f not in FLOOR_EXEMPT
+    ]
+    for f in deleted_tests:
+        findings.append(f"[删测试文件] {f}")
+    for file, text in added:
+        if not _in_floor_scope(file):
+            continue
+        if RE_SUPPRESS.search(text):
+            findings.append(f"[新增压制注释] {file}: {text.strip()[:80]}")
+        if file.startswith("tests/") and RE_TEST_SKIP.search(text):
+            findings.append(f"[测试skip/xfail] {file}: {text.strip()[:80]}")
+        if RE_STUB.search(text):
+            findings.append(f"[未完成桩子] {file}: {text.strip()[:80]}")
+        if file.startswith("src/") and RE_TODO.search(text):
+            findings.append(f"[TODO顶实现] {file}: {text.strip()[:80]}")
+    for file, text in removed:
+        if not _in_floor_scope(file):
+            continue
+        if (
+            file.startswith("tests/")
+            and file not in deleted_tests
+            and text.lstrip().startswith("assert ")
+        ):
+            findings.append(f"[删断言] {file}: {text.strip()[:80]}")
+        if file == "pyproject.toml" and RE_MYPY_FILE.match(text):
+            findings.append(f"[mypy白名单缩水] pyproject.toml: {text.strip()[:80]}")
+    return findings
+
+
+def check_floor(rng: str | None) -> tuple[bool, str]:
+    if rng is None:
+        return True, "无远端分支,跳过 floor 检查"
+    diff = _git("diff", "--unified=0", rng)
+    deleted_files = _git("diff", "--name-only", "--diff-filter=D", rng).splitlines()
+    added, removed = parse_diff(diff)
+    findings = floor_findings(added, removed, deleted_files)
+    if findings:
+        return False, f"发现 {len(findings)} 处降低门槛的改动(范围 {rng}):\n" + "\n".join(
+            "  " + f for f in findings
+        )
+    return True, f"无作弊变绿改动(范围 {rng})"
 
 
 def _git(*args: str) -> str:
@@ -75,6 +175,7 @@ def main() -> int:
         ("AI 署名", check_no_ai_attribution(rng)),
         ("工作区", check_clean_worktree()),
         ("报告落盘", check_report_committed(rng)),
+        ("floor", check_floor(rng)),
     ]
     # Windows 默认 cp1252 无法打印中文检查名,统一切 UTF-8
     if hasattr(sys.stdout, "reconfigure"):

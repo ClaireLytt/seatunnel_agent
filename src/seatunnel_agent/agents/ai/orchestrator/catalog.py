@@ -132,7 +132,7 @@ def _wrap_sql_testgen(sql: str, ddl: str = "", rows: int = 20,
     if not (sql or "").strip():
         return "SQL 不能为空 / SQL must not be empty"
     result = generate(sql, ddl=ddl, rows=max(1, min(int(rows), 200)),
-                      dialect=dialect)
+                      dialect=dialect, lang=lang)
     result.validation = validate_with_sqlite(result)
     return render_markdown(result, lang)
 

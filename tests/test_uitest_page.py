@@ -36,7 +36,14 @@ def _fake_runner(tmp_path, monkeypatch):
         "elapsed_ms": 2000, "tokens": 0,
         "cases": [{"case_id": "H1", "verdict": "PASS"}],
     }), encoding="utf-8")
-    (d / "report.html").write_text("<html></html>", encoding="utf-8")
+    # the report carries a script (stat-tile filtering) — the viewer iframe
+    # must allow it to run (sandbox="allow-scripts")
+    (d / "report.html").write_text(
+        "<html><body><div id='ok'></div><script>"
+        "document.getElementById('ok').textContent='script-ran'"
+        "</script></body></html>",
+        encoding="utf-8",
+    )
 
     # fake runner: SSE wiring is the seam, not the browser suite
     def fake_run_suite(suite, case_ids=None, no_llm=True, on_progress=None,
@@ -91,4 +98,30 @@ def test_uitest_page_smoke(page_url):
         expect(page.get_by_text("PASS 1").first).to_be_visible(timeout=15000)
         expect(page.get_by_text("elapsed 0s")).to_be_visible()
 
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_uitest_report_iframe_runs_scripts(page_url):
+    """Viewing a report must not log 'Blocked script execution' — the
+    report iframe is sandboxed with allow-scripts so its filter JS works."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        errors: list[str] = []
+        page.on("console", lambda m: errors.append(m.text)
+                if m.type == "error" else None)
+        page.goto(page_url, wait_until="networkidle")
+
+        page.get_by_role("button", name="View").first.click()
+        frame_el = page.locator("iframe")
+        expect(frame_el).to_be_visible(timeout=15000)
+        # the script inside the report actually executed
+        frame = page.frame_locator("iframe")
+        expect(frame.locator("#ok")).to_have_text("script-ran", timeout=15000)
+
+        blocked = [e for e in errors if "Blocked script execution" in e]
+        assert not blocked, blocked
         browser.close()

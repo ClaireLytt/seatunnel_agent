@@ -471,3 +471,18 @@ def test_server_json_manifest_valid():
     # PyPI ownership validation needs the mcp-name marker in the README
     readme = open("README.md", encoding="utf-8").read()
     assert f"mcp-name: {doc['name']}" in readme
+
+
+def test_every_tool_has_page_description():
+    """The /mcp page table showed empty 'What it does' cells — every
+    registered tool must have a non-empty zh+en description."""
+    from seatunnel_agent.agents.data.mcp_toolbox.core import build_tool_functions
+    from seatunnel_agent.agents.data.mcp_toolbox.ui import _TOOL_DESC
+
+    names = list(build_tool_functions(include_db=True))
+    missing = [n for n in names
+               if not _TOOL_DESC.get(n, {}).get("zh")
+               or not _TOOL_DESC.get(n, {}).get("en")]
+    assert not missing, f"tools without page description: {missing}"
+    stale = [n for n in _TOOL_DESC if n not in names]
+    assert not stale, f"descriptions for unregistered tools: {stale}"

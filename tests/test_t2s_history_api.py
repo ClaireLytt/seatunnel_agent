@@ -55,6 +55,9 @@ def test_qlog_clear_and_export(client, qlog):
 
 
 def test_saved_sessions_list_and_resume(client, tmp_path, monkeypatch):
+    # connect → build_agent → load_settings needs a key; don't depend on the
+    # machine's .env or on another test having set it (order dependence)
+    monkeypatch.setenv("API_KEY", "test-key")
     # saved chat sessions live in a temp store
     from seatunnel_agent.agents.data.text2sql import chat_history as ch
     monkeypatch.setattr(ch, "HISTORY_DIR", tmp_path)

@@ -1,4 +1,9 @@
-"""Rendering: mermaid flowcharts, markdown trees and the final Chinese report."""
+"""Rendering: mermaid flowcharts, markdown trees and the final report.
+
+Every public render function takes ``lang`` ("zh" default, "en") and pulls
+its copy from the module i18n table; table/column/baseline NAMES are user
+data and pass through untouched.
+"""
 
 from __future__ import annotations
 
@@ -30,6 +35,161 @@ LAYER_COLORS = {
 }
 
 _ID_SANITIZE_RE = re.compile(r"[^0-9A-Za-z_]")
+
+# EN counterparts of graph.FIELD_LABELS (those stay zh: they double as
+# TableNode.to_dict keys, a data contract we must not fork by language).
+_FIELD_LABELS_EN = {
+    "source_type": "type",
+    "database": "database",
+    "table": "table",
+    "layer": "layer",
+    "is_sla": "SLA?",
+    "sla_time": "SLA time",
+    "baselines": "baselines",
+}
+
+_I18N: dict[str, dict[str, str]] = {
+    "zh": {
+        # mermaid / tree / path
+        "missing_table": "未找到表 {name}",
+        "missing_table_md": "未找到表 `{name}`。",
+        "agg_group": "{name}（{n} 张表）",
+        "agg_root": "根表: {name}",
+        "agg_note": "    %% 节点过多已聚合为分层视图（原始 {nodes} 表 / {edges} 边）",
+        "dashed_note": "    %% 虚线 = 启发式/低置信度血缘边",
+        "mermaid_truncated": "链路过大已截断",
+        "mermaid_truncated_more": "，另有 {n} 个节点未展示",
+        "no_col_lineage": "无下游字段血缘",
+        "agg_edge": "聚合",
+        "tree_root_suffix": "（当前表）",
+        "tree_truncated": "- …（链路过大已截断，可增大深度或收窄方向）",
+        "path_none": "`{src}` 与 `{dst}` 之间没有找到血缘路径（双向均已尝试）。",
+        "path_head": "`{src}` → `{dst}` 共 **{n}** 跳：",
+        "path_mermaid_none": "未找到路径",
+        # SLA impact
+        "sla_title": "## SLA 延迟影响分析：`{root}`",
+        "sla_delay_suffix": "（假设延迟 {hours} 小时）",
+        "sla_no_tasks": "下游链路上没有 SLA 或基线任务，延迟不会直接影响承诺产出。",
+        "sla_count": "下游共 **{n}** 个 SLA/基线任务受影响（按距离与产出时间排序）：",
+        "sla_hops": "距离(跳)",
+        "sla_propagate": ("延迟 {hours} 小时将沿上表链路传导；"
+                          "距离越近、SLA 产出时间越早的任务破线风险越高，请优先关注。"),
+        "truncated_item": "- …（链路过大已截断）",
+        "yes": "是",
+        "no": "否",
+        "list_sep": "、",
+        # report sections
+        "sla_section_none": "链路上没有 SLA 或基线任务。",
+        "impact_degraded": ("字段 `{root}` 没有可用的字段级血缘（SQL 未覆盖或解析受限），"
+                            "已降级为**表级**下游分析：影响约 {n} 张下游表。"),
+        "impact_none": "字段 `{root}` 没有已知的下游字段依赖。",
+        "impact_head": "字段 `{root}` 影响以下 {n} 个下游字段：",
+        "report_title": "## 血缘分析报告：`{root}`",
+        "report_missing": "未在血缘图中找到表 `{root}`。",
+        "sec_graph": "### 血缘图",
+        "sec_chain": "### 链路概览",
+        "chain_stats": ("- 上游 **{up}** 张 · 下游 **{down}** 张"
+                        "（边 {edges} 条，方向：{direction}）"),
+        "sec_sla": "### SLA 与基线",
+        "sec_impact": "### 字段影响分析",
+        "sec_summary": "### 总体结论",
+        # health report
+        "h_title": "## 血缘治理体检报告",
+        "h_stats": ("- 表 **{tables}** 张 · 血缘边 **{edges}** 条 · "
+                    "字段级血缘 **{column_edges}** 条 · SLA 表 **{sla_tables}** 张"),
+        "h_conf_sources": "来源 ",
+        "h_conf_confidence": "置信度 ",
+        "h_conf_edge": "- 边 ",
+        "h_cycles_title": "### 环依赖（{n} 个）",
+        "h_cycles_intro": "以下环路会导致调度依赖死锁或口径混乱，需要拆解：",
+        "h_cycles_none": "未检测到环依赖。",
+        "h_isolated_title": "### 孤立表（{n} 张，无上下游）",
+        "h_isolated_intro": "既没有上游也没有下游，可能是未接入血缘或已废弃：",
+        "h_isolated_none": "没有孤立表。",
+        "h_more_hidden": "- …另有 {n} 张未展示",
+        "h_no_downstream_title": "### 无下游表（{n} 张，可评估下线）",
+        "h_no_downstream_intro": "有上游加工但没有任何消费方，建议确认后下线以节省成本：",
+        "h_no_downstream_none": "没有可下线候选表。",
+    },
+    "en": {
+        "missing_table": "table {name} not found",
+        "missing_table_md": "Table `{name}` not found.",
+        "agg_group": "{name} ({n} tables)",
+        "agg_root": "root: {name}",
+        "agg_note": ("    %% too many nodes — aggregated by layer "
+                     "(original: {nodes} tables / {edges} edges)"),
+        "dashed_note": "    %% dashed = heuristic / low-confidence edge",
+        "mermaid_truncated": "chain too large — truncated",
+        "mermaid_truncated_more": "; {n} more nodes not shown",
+        "no_col_lineage": "no downstream column lineage",
+        "agg_edge": "agg",
+        "tree_root_suffix": " (current table)",
+        "tree_truncated": ("- … (chain truncated — increase depth or "
+                           "narrow the direction)"),
+        "path_none": ("No lineage path found between `{src}` and `{dst}` "
+                      "(both directions tried)."),
+        "path_head": "`{src}` → `{dst}` — **{n}** hop(s):",
+        "path_mermaid_none": "no path found",
+        "sla_title": "## SLA Delay Impact: `{root}`",
+        "sla_delay_suffix": " (assumed delay {hours}h)",
+        "sla_no_tasks": ("No SLA or baseline tasks downstream — the delay "
+                         "does not directly hit any committed output."),
+        "sla_count": ("**{n}** downstream SLA/baseline task(s) affected "
+                      "(sorted by distance and output time):"),
+        "sla_hops": "distance (hops)",
+        "sla_propagate": ("A {hours}h delay propagates along the chain above; "
+                          "the closer the task and the earlier its SLA time, "
+                          "the higher the breach risk — check those first."),
+        "truncated_item": "- … (chain truncated)",
+        "yes": "yes",
+        "no": "no",
+        "list_sep": ", ",
+        "sla_section_none": "No SLA or baseline tasks on the chain.",
+        "impact_degraded": ("Column `{root}` has no usable column-level "
+                            "lineage (SQL not covered or parse-limited) — "
+                            "degraded to **table-level** downstream analysis: "
+                            "about {n} downstream table(s) affected."),
+        "impact_none": "Column `{root}` has no known downstream column dependencies.",
+        "impact_head": "Column `{root}` impacts {n} downstream column(s):",
+        "report_title": "## Lineage Report: `{root}`",
+        "report_missing": "Table `{root}` not found in the lineage graph.",
+        "sec_graph": "### Lineage Graph",
+        "sec_chain": "### Chain Overview",
+        "chain_stats": ("- upstream **{up}** · downstream **{down}** "
+                        "({edges} edges, direction: {direction})"),
+        "sec_sla": "### SLA & Baselines",
+        "sec_impact": "### Column Impact",
+        "sec_summary": "### Summary",
+        "h_title": "## Lineage Governance Health Report",
+        "h_stats": ("- tables **{tables}** · lineage edges **{edges}** · "
+                    "column edges **{column_edges}** · SLA tables **{sla_tables}**"),
+        "h_conf_sources": "sources ",
+        "h_conf_confidence": "confidence ",
+        "h_conf_edge": "- edges ",
+        "h_cycles_title": "### Dependency cycles ({n})",
+        "h_cycles_intro": ("These cycles deadlock the scheduler or blur metric "
+                           "definitions — break them up:"),
+        "h_cycles_none": "No dependency cycles detected.",
+        "h_isolated_title": "### Isolated tables ({n}, no upstream or downstream)",
+        "h_isolated_intro": ("No upstream and no downstream — possibly not wired "
+                             "into lineage, or already abandoned:"),
+        "h_isolated_none": "No isolated tables.",
+        "h_more_hidden": "- … {n} more not shown",
+        "h_no_downstream_title": ("### Tables without downstream "
+                                  "({n}, retirement candidates)"),
+        "h_no_downstream_intro": ("Produced upstream but consumed by nothing — "
+                                  "confirm and retire to save cost:"),
+        "h_no_downstream_none": "No retirement candidates.",
+    },
+}
+
+
+def _tr(lang: str) -> dict[str, str]:
+    return _I18N.get(lang, _I18N["zh"])
+
+
+def _labels(lang: str) -> dict[str, str]:
+    return _FIELD_LABELS_EN if lang == "en" else FIELD_LABELS
 
 
 def mermaid_id(name: str) -> str:
@@ -98,8 +258,9 @@ def _group_key(node: TableNode) -> str:
     return node.database or node.layer or "other"
 
 
-def _render_aggregated(chain: ChainResult) -> str:
+def _render_aggregated(chain: ChainResult, lang: str = "zh") -> str:
     """Grouped view for huge chains: one node per database/layer group."""
+    tr = _tr(lang)
     groups: dict[str, int] = {}
     group_of: dict[str, str] = {}
     for name, node in chain.nodes.items():
@@ -117,19 +278,18 @@ def _render_aggregated(chain: ChainResult) -> str:
     ids = _IdMap()
     root_group = group_of.get(chain.root)
     for key in sorted(groups):
-        label = f"{html.escape(key)}（{groups[key]} 张表）"
+        label = tr["agg_group"].format(name=html.escape(key), n=groups[key])
         if key == root_group:
-            label = f"<b>{label}</b><br/>根表: {html.escape(chain.root)}"
+            root_bit = tr["agg_root"].format(name=html.escape(chain.root))
+            label = f"<b>{label}</b><br/>{root_bit}"
         lines.append(f'    {ids.get(key)}["{label}"]')
     for (gs, gd), count in sorted(edge_counts.items()):
         lines.append(f"    {ids.get(gs)} -->|{count}| {ids.get(gd)}")
     if root_group is not None:
         lines.append("    classDef root_mark stroke:#111827,stroke-width:3px")
         lines.append(f"    class {ids.get(root_group)} root_mark")
-    lines.append(
-        f"    %% 节点过多已聚合为分层视图"
-        f"（原始 {len(chain.nodes)} 表 / {len(chain.edges)} 边）"
-    )
+    lines.append(tr["agg_note"].format(nodes=len(chain.nodes),
+                                       edges=len(chain.edges)))
     return "\n".join(lines)
 
 
@@ -137,12 +297,15 @@ def render_mermaid(
     chain: ChainResult,
     max_nodes: int = MAX_MERMAID_NODES,
     aggregate_threshold: int = AGGREGATE_THRESHOLD,
+    lang: str = "zh",
 ) -> str:
+    tr = _tr(lang)
     if chain.missing_root or not chain.nodes:
-        return f'flowchart LR\n    empty["未找到表 {html.escape(chain.root)}"]'
+        missing = tr["missing_table"].format(name=html.escape(chain.root))
+        return f'flowchart LR\n    empty["{missing}"]'
 
     if len(chain.nodes) > aggregate_threshold:
-        return _render_aggregated(chain)
+        return _render_aggregated(chain, lang)
 
     kept, pruned = _select_nodes(chain, max_nodes)
     lines = ["flowchart LR"]
@@ -171,7 +334,7 @@ def render_mermaid(
             else:
                 lines.append(f"    {ids.get(src)} --> {ids.get(dst)}")
     if dashed:
-        lines.append("    %% 虚线 = 启发式/低置信度血缘边")
+        lines.append(tr["dashed_note"])
 
     for layer in sorted(used_layers):
         color = LAYER_COLORS.get(layer, LAYER_COLORS[""])
@@ -188,21 +351,25 @@ def render_mermaid(
 
     if pruned or chain.truncated:
         hidden = len(chain.nodes) - len(kept)
-        note = "链路过大已截断"
+        note = tr["mermaid_truncated"]
         if hidden > 0:
-            note += f"，另有 {hidden} 个节点未展示"
+            note += tr["mermaid_truncated_more"].format(n=hidden)
         lines.append(f"    %% {note}")
     return "\n".join(lines)
 
 
-def render_column_mermaid(impact: ColumnImpactResult) -> str:
+def render_column_mermaid(impact: ColumnImpactResult, lang: str = "zh") -> str:
+    tr = _tr(lang)
     root = f"{impact.root_table}.{impact.root_column}"
     if impact.missing_root:
-        return f'flowchart LR\n    empty["未找到表 {html.escape(impact.root_table)}"]'
+        missing = tr["missing_table"].format(
+            name=html.escape(impact.root_table))
+        return f'flowchart LR\n    empty["{missing}"]'
     if impact.degraded and impact.table_fallback:
-        return render_mermaid(impact.table_fallback)
+        return render_mermaid(impact.table_fallback, lang=lang)
     if not impact.edges:
-        return f'flowchart LR\n    {mermaid_id(root)}["{html.escape(root)}<br/>无下游字段血缘"]'
+        return (f'flowchart LR\n    {mermaid_id(root)}'
+                f'["{html.escape(root)}<br/>{tr["no_col_lineage"]}"]')
 
     lines = ["flowchart LR"]
     ids = _IdMap()
@@ -224,11 +391,11 @@ def render_column_mermaid(impact: ColumnImpactResult) -> str:
         src = declare(edge.src_table, edge.src_column)
         dst = declare(edge.dst_table, edge.dst_column)
         if edge.is_aggregation:
-            lines.append(f"    {src} -->|聚合| {dst}")
+            lines.append(f"    {src} -->|{tr['agg_edge']}| {dst}")
         else:
             lines.append(f"    {src} --> {dst}")
     if impact.truncated:
-        lines.append("    %% 链路过大已截断")
+        lines.append(f"    %% {tr['mermaid_truncated']}")
     return "\n".join(lines)
 
 
@@ -237,20 +404,22 @@ def select_mermaid(
     impact: ColumnImpactResult | None,
     max_nodes: int = MAX_MERMAID_NODES,
     prefer_impact: bool = True,
+    lang: str = "zh",
 ) -> str:
     """Column-level graph when a usable impact result exists (and is preferred),
     else the table-level chain graph, else empty."""
     if prefer_impact and impact is not None and not impact.degraded and impact.edges:
-        return render_column_mermaid(impact)
+        return render_column_mermaid(impact, lang)
     if chain is not None and not chain.missing_root:
-        return render_mermaid(chain, max_nodes)
+        return render_mermaid(chain, max_nodes, lang=lang)
     return ""
 
 
-def render_tree(chain: ChainResult) -> str:
+def render_tree(chain: ChainResult, lang: str = "zh") -> str:
     """Markdown indented tree fallback (upstream above root, downstream below)."""
+    tr = _tr(lang)
     if chain.missing_root:
-        return f"未找到表 `{chain.root}`。"
+        return tr["missing_table_md"].format(name=chain.root)
     lines: list[str] = []
     # Nearest upstream first, deeper ancestors nested below it — starting at
     # indent 0 so CommonMark never mistakes the first item for a code block.
@@ -267,7 +436,7 @@ def render_tree(chain: ChainResult) -> str:
         node = chain.nodes.get(name)
         layer = f" ({node.layer})" if node and node.layer else ""
         lines.append(f"{'  ' * (depth - 1)}- ⬆ `{name}`{layer}")
-    lines.append(f"- **`{chain.root}`**（当前表）")
+    lines.append(f"- **`{chain.root}`**{tr['tree_root_suffix']}")
     for name in downs:
         depth = chain.depth_of[name]
         node = chain.nodes.get(name)
@@ -275,22 +444,23 @@ def render_tree(chain: ChainResult) -> str:
         sla = " ⏰SLA" if node and node.is_sla else ""
         lines.append(f"{'  ' * depth}- ⬇ `{name}`{layer}{sla}")
     if chain.truncated:
-        lines.append("- …（链路过大已截断，可增大深度或收窄方向）")
+        lines.append(tr["tree_truncated"])
     return "\n".join(lines)
 
 
 def render_path(path: list[str] | None, src: str, dst: str,
-                graph: LineageGraph | None = None) -> str:
+                graph: LineageGraph | None = None, lang: str = "zh") -> str:
     """Markdown for a src→dst path query (None = no path found)."""
+    tr = _tr(lang)
     if not path:
-        return f"`{src}` 与 `{dst}` 之间没有找到血缘路径（双向均已尝试）。"
+        return tr["path_none"].format(src=src, dst=dst)
     parts = []
     for name in path:
         node = graph.get(name) if graph else None
         layer = f"({node.layer})" if node and node.layer else ""
         parts.append(f"`{name}`{layer}")
     lines = [
-        f"`{path[0]}` → `{path[-1]}` 共 **{len(path) - 1}** 跳：",
+        tr["path_head"].format(src=path[0], dst=path[-1], n=len(path) - 1),
         "",
         " → ".join(parts),
     ]
@@ -298,9 +468,10 @@ def render_path(path: list[str] | None, src: str, dst: str,
 
 
 def render_path_mermaid(path: list[str] | None,
-                        graph: LineageGraph | None = None) -> str:
+                        graph: LineageGraph | None = None,
+                        lang: str = "zh") -> str:
     if not path:
-        return 'flowchart LR\n    empty["未找到路径"]'
+        return f'flowchart LR\n    empty["{_tr(lang)["path_mermaid_none"]}"]'
     lines = ["flowchart LR"]
     ids = _IdMap()
     for i, name in enumerate(path):
@@ -313,116 +484,126 @@ def render_path_mermaid(path: list[str] | None,
     return "\n".join(lines)
 
 
-def render_sla_impact(impact: SlaImpactResult) -> str:
-    """Chinese report section: downstream SLA/baseline tasks at risk."""
+def render_sla_impact(impact: SlaImpactResult, lang: str = "zh") -> str:
+    """Report section: downstream SLA/baseline tasks at risk."""
+    tr = _tr(lang)
+    labels = _labels(lang)
     if impact.missing_root:
-        return f"未找到表 `{impact.root}`。"
-    title = f"## SLA 延迟影响分析：`{impact.root}`"
+        return tr["missing_table_md"].format(name=impact.root)
+    title = tr["sla_title"].format(root=impact.root)
     if impact.delay_hours > 0:
-        title += f"（假设延迟 {impact.delay_hours:g} 小时）"
+        title += tr["sla_delay_suffix"].format(hours=f"{impact.delay_hours:g}")
     lines = [title, ""]
     if not impact.affected:
-        lines.append("下游链路上没有 SLA 或基线任务，延迟不会直接影响承诺产出。")
+        lines.append(tr["sla_no_tasks"])
         return "\n".join(lines)
     lines.extend([
-        f"下游共 **{len(impact.affected)}** 个 SLA/基线任务受影响"
-        "（按距离与产出时间排序）：",
+        tr["sla_count"].format(n=len(impact.affected)),
         "",
-        f"| 距离(跳) | {FIELD_LABELS['table']} | {FIELD_LABELS['layer']} | "
-        f"{FIELD_LABELS['is_sla']} | {FIELD_LABELS['sla_time']} | "
-        f"{FIELD_LABELS['baselines']} |",
+        f"| {tr['sla_hops']} | {labels['table']} | {labels['layer']} | "
+        f"{labels['is_sla']} | {labels['sla_time']} | "
+        f"{labels['baselines']} |",
         "| --- | --- | --- | --- | --- | --- |",
     ])
     for node, hops in impact.affected:
         lines.append(
             f"| {hops} | `{node.name}` | {node.layer or '-'} | "
-            f"{'是' if node.is_sla else '否'} | {node.sla_time or '-'} | "
-            f"{'、'.join(node.baselines) or '-'} |"
+            f"{tr['yes'] if node.is_sla else tr['no']} | {node.sla_time or '-'} | "
+            f"{tr['list_sep'].join(node.baselines) or '-'} |"
         )
     if impact.delay_hours > 0:
         lines.extend([
             "",
-            f"延迟 {impact.delay_hours:g} 小时将沿上表链路传导；"
-            "距离越近、SLA 产出时间越早的任务破线风险越高，请优先关注。",
+            tr["sla_propagate"].format(hours=f"{impact.delay_hours:g}"),
         ])
     if impact.truncated:
-        lines.append("- …（链路过大已截断）")
+        lines.append(tr["truncated_item"])
     return "\n".join(lines)
 
 
 _CONF_LABELS = {"high": "高", "medium": "中", "low": "低"}
 
 
-def _confidence_line(stats: dict) -> list[str]:
+def _confidence_line(stats: dict, lang: str = "zh") -> list[str]:
+    tr = _tr(lang)
     sources = stats.get("edge_sources") or {}
     conf = stats.get("edge_confidence") or {}
     if not sources and not conf:
         return []
+    conf_labels = _CONF_LABELS if lang == "zh" else {}
     bits = []
     if sources:
         bits.append(
-            "来源 " + " / ".join(f"{k}:{v}" for k, v in sorted(sources.items()))
+            tr["h_conf_sources"]
+            + " / ".join(f"{k}:{v}" for k, v in sorted(sources.items()))
         )
     if conf:
         bits.append(
-            "置信度 " + " / ".join(
-                f"{_CONF_LABELS.get(k, k)}:{v}" for k, v in sorted(conf.items())
+            tr["h_conf_confidence"] + " / ".join(
+                f"{conf_labels.get(k, k)}:{v}" for k, v in sorted(conf.items())
             )
         )
-    return [f"- 边 {' · '.join(bits)}"]
+    return [tr["h_conf_edge"] + " · ".join(bits)]
 
 
-def render_health(report: HealthReport, sample: int = 30) -> str:
-    """Chinese governance health-check report."""
+def render_health(report: HealthReport, sample: int = 30,
+                  lang: str = "zh") -> str:
+    """Governance health-check report, localized by *lang* (zh default)."""
+    tr = _tr(lang)
     stats = report.stats
     lines = [
-        "## 血缘治理体检报告",
+        tr["h_title"],
         "",
-        f"- 表 **{stats.get('tables', 0)}** 张 · 血缘边 **{stats.get('edges', 0)}** 条 · "
-        f"字段级血缘 **{stats.get('column_edges', 0)}** 条 · "
-        f"SLA 表 **{stats.get('sla_tables', 0)}** 张",
-        *_confidence_line(stats),
+        tr["h_stats"].format(
+            tables=stats.get("tables", 0), edges=stats.get("edges", 0),
+            column_edges=stats.get("column_edges", 0),
+            sla_tables=stats.get("sla_tables", 0)),
+        *_confidence_line(stats, lang),
         "",
-        f"### 环依赖（{len(report.cycles)} 个）",
+        tr["h_cycles_title"].format(n=len(report.cycles)),
         "",
     ]
     if report.cycles:
-        lines.append("以下环路会导致调度依赖死锁或口径混乱，需要拆解：")
+        lines.append(tr["h_cycles_intro"])
         lines.extend(
             f"- {' → '.join(f'`{n}`' for n in cycle)}" for cycle in report.cycles
         )
     else:
-        lines.append("未检测到环依赖。")
-    lines.extend(["", f"### 孤立表（{len(report.isolated)} 张，无上下游）", ""])
+        lines.append(tr["h_cycles_none"])
+    lines.extend(["", tr["h_isolated_title"].format(n=len(report.isolated)), ""])
     if report.isolated:
-        lines.append("既没有上游也没有下游，可能是未接入血缘或已废弃：")
+        lines.append(tr["h_isolated_intro"])
         lines.extend(f"- `{n}`" for n in report.isolated[:sample])
         if len(report.isolated) > sample:
-            lines.append(f"- …另有 {len(report.isolated) - sample} 张未展示")
+            lines.append(
+                tr["h_more_hidden"].format(n=len(report.isolated) - sample))
     else:
-        lines.append("没有孤立表。")
+        lines.append(tr["h_isolated_none"])
     lines.extend([
         "",
-        f"### 无下游表（{len(report.no_downstream)} 张，可评估下线）",
+        tr["h_no_downstream_title"].format(n=len(report.no_downstream)),
         "",
     ])
     if report.no_downstream:
-        lines.append("有上游加工但没有任何消费方，建议确认后下线以节省成本：")
+        lines.append(tr["h_no_downstream_intro"])
         lines.extend(f"- `{n}`" for n in report.no_downstream[:sample])
         if len(report.no_downstream) > sample:
-            lines.append(f"- …另有 {len(report.no_downstream) - sample} 张未展示")
+            lines.append(
+                tr["h_more_hidden"].format(n=len(report.no_downstream) - sample))
     else:
-        lines.append("没有可下线候选表。")
+        lines.append(tr["h_no_downstream_none"])
     return "\n".join(lines)
 
 
-def _render_sla_section(report: LineageReport) -> str:
+def _render_sla_section(report: LineageReport, lang: str = "zh") -> str:
+    tr = _tr(lang)
+    labels = _labels(lang)
     if not report.sla_nodes and not report.baseline_nodes:
-        return "链路上没有 SLA 或基线任务。"
+        return tr["sla_section_none"]
     header = (
-        f"| {FIELD_LABELS['table']} | {FIELD_LABELS['layer']} | "
-        f"{FIELD_LABELS['is_sla']} | {FIELD_LABELS['sla_time']} | "
-        f"{FIELD_LABELS['baselines']} |"
+        f"| {labels['table']} | {labels['layer']} | "
+        f"{labels['is_sla']} | {labels['sla_time']} | "
+        f"{labels['baselines']} |"
     )
     lines = [header, "| --- | --- | --- | --- | --- |"]
     seen: set[str] = set()
@@ -432,58 +613,58 @@ def _render_sla_section(report: LineageReport) -> str:
         seen.add(node.name)
         lines.append(
             f"| `{node.name}` | {node.layer or '-'} | "
-            f"{'是' if node.is_sla else '否'} | {node.sla_time or '-'} | "
-            f"{'、'.join(node.baselines) or '-'} |"
+            f"{tr['yes'] if node.is_sla else tr['no']} | {node.sla_time or '-'} | "
+            f"{tr['list_sep'].join(node.baselines) or '-'} |"
         )
     return "\n".join(lines)
 
 
-def _render_impact_section(impact: ColumnImpactResult) -> str:
+def _render_impact_section(impact: ColumnImpactResult, lang: str = "zh") -> str:
+    tr = _tr(lang)
     root = f"{impact.root_table}.{impact.root_column}"
     if impact.missing_root:
-        return f"未找到表 `{impact.root_table}`。"
+        return tr["missing_table_md"].format(name=impact.root_table)
     if impact.degraded:
         count = len(impact.table_fallback.nodes) - 1 if impact.table_fallback else 0
-        return (
-            f"字段 `{root}` 没有可用的字段级血缘（SQL 未覆盖或解析受限），"
-            f"已降级为**表级**下游分析：影响约 {max(count, 0)} 张下游表。"
-        )
+        return tr["impact_degraded"].format(root=root, n=max(count, 0))
     if not impact.impacted:
-        return f"字段 `{root}` 没有已知的下游字段依赖。"
-    lines = [f"字段 `{root}` 影响以下 {len(impact.impacted)} 个下游字段：", ""]
+        return tr["impact_none"].format(root=root)
+    lines = [tr["impact_head"].format(root=root, n=len(impact.impacted)), ""]
     lines.extend(f"- `{item}`" for item in impact.impacted)
     if impact.truncated:
-        lines.append("- …（链路过大已截断）")
+        lines.append(tr["truncated_item"])
     return "\n".join(lines)
 
 
-def render_report(report: LineageReport) -> str:
+def render_report(report: LineageReport, lang: str = "zh") -> str:
+    tr = _tr(lang)
     stats = report.stats()
-    lines = [f"## 血缘分析报告：`{report.root_table}`", ""]
+    lines = [tr["report_title"].format(root=report.root_table), ""]
     if report.chain and report.chain.missing_root:
-        lines.append(f"未在血缘图中找到表 `{report.root_table}`。")
+        lines.append(tr["report_missing"].format(root=report.root_table))
         return "\n".join(lines)
 
     if report.mermaid:
-        lines.extend(["### 血缘图", "", "```mermaid", report.mermaid, "```", ""])
+        lines.extend([tr["sec_graph"], "", "```mermaid", report.mermaid, "```", ""])
     if report.chain:
         lines.extend([
-            "### 链路概览",
+            tr["sec_chain"],
             "",
-            f"- 上游 **{stats['upstream']}** 张 · 下游 **{stats['downstream']}** 张"
-            f"（边 {stats['edges']} 条，方向：{report.direction}）",
+            tr["chain_stats"].format(
+                up=stats["upstream"], down=stats["downstream"],
+                edges=stats["edges"], direction=report.direction),
             "",
-            render_tree(report.chain),
+            render_tree(report.chain, lang),
             "",
         ])
-    lines.extend(["### SLA 与基线", "", _render_sla_section(report), ""])
+    lines.extend([tr["sec_sla"], "", _render_sla_section(report, lang), ""])
     if report.column_impact:
         lines.extend([
-            "### 字段影响分析",
+            tr["sec_impact"],
             "",
-            _render_impact_section(report.column_impact),
+            _render_impact_section(report.column_impact, lang),
             "",
         ])
     if report.summary:
-        lines.extend(["### 总体结论", "", report.summary, ""])
+        lines.extend([tr["sec_summary"], "", report.summary, ""])
     return "\n".join(lines).rstrip() + "\n"

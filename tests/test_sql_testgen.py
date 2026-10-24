@@ -310,3 +310,23 @@ def test_api_generate_bad_sql(api_client):
         "sql": "SELECT FROM WHERE"})
     assert r.status_code == 400
     assert api_client.get("/api/testgen/health").json()["status"] == "ok"
+
+
+def test_notes_localized_by_lang():
+    """Generator notes follow the requested language (EN page showed Chinese)."""
+    result_en = generate(JOIN_SQL, lang="en")
+    assert result_en.notes, "expected an inferred-types note"
+    joined_en = " ".join(result_en.notes)
+    assert "Inferred types" in joined_en
+    assert not any("一" <= ch <= "鿿" for ch in joined_en)
+
+    result_zh = generate(JOIN_SQL, lang="zh")
+    assert any("推断类型" in n for n in result_zh.notes)
+
+
+def test_api_report_lang_en_has_no_chinese_notes(api_client):
+    r = api_client.post("/api/testgen/generate", json={
+        "sql": JOIN_SQL, "lang": "en", "report": True})
+    assert r.status_code == 200
+    notes = r.json()["result"]["notes"]
+    assert not any("一" <= ch <= "鿿" for ch in " ".join(notes))

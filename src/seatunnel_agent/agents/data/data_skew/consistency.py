@@ -11,6 +11,7 @@ multisets.
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
@@ -123,7 +124,10 @@ def check_consistency(
                     r.agg_match = fp_a == fp_b
                     r.agg_cols = len(cols)
             except Exception:
-                pass
+                # aggregate fingerprinting is best-effort; r.agg_compared
+                # stays False, but the reason must not vanish silently
+                logging.getLogger(__name__).debug(
+                    "aggregate compare failed", exc_info=True)
     except Exception as exc:
         r.error = str(exc)
     return r

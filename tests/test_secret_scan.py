@@ -37,6 +37,9 @@ class TestRules:
         ("jwt = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVP",
          "jwt", "medium"),
         ('password = "hunter2-prod"', "password_assign", "medium"),
+        ('db_password = "SuperSecret123!"', "password_assign", "medium"),
+        ("mysql_password: 'Qw3rty!789'", "password_assign", "medium"),
+        ('ROOT_PWD = "N0tAGuess#42"', "password_assign", "medium"),
         ('api_key: "sk-live-0123456789abcdef"', "apikey_assign", "medium"),
         ("dsn = mysql://root:p4ssw0rd@host:3306/db",
          "url_credentials", "medium"),
@@ -56,6 +59,8 @@ class TestRules:
         for line in ('password = "${DB_PASSWORD}"',
                      'api_key: "your-key-here"',
                      'password = "changeme99"',
+                     'db_password = "changeme99"',
+                     'mysql_password = "your-password"',
                      'token = "<insert-token>"'):
             assert scan_text(line) == [], line
         assert is_placeholder("{{ secret }}")
@@ -229,3 +234,21 @@ class TestScanPathsRules:
         # scanning the SUBDIR with the repo-root config must still exempt
         result = scan_paths([tmp_path / "tests"], root=tmp_path)
         assert result.findings == []
+
+
+def test_repo_dogfood_no_high_findings():
+    """Scanning our own src/ and scripts/ with the repo .secretscan.yaml
+    yields no high findings — keeps the CI gate green and catches a real
+    leaked credential (doc example keys are exempted by config)."""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.devops.secret_scan.scanner import (
+        load_config,
+        scan_paths,
+    )
+
+    repo = Path(__file__).resolve().parents[1]
+    result = scan_paths([repo / "src", repo / "scripts"],
+                        config=load_config(repo), root=repo)
+    high = [f for f in result.findings if f.severity == "high"]
+    assert not high, [(f.file, f.line, f.rule_id) for f in high]

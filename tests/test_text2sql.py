@@ -273,6 +273,17 @@ class TestExportAndLog:
         line = (tmp_path / "text2sql_queries.jsonl").read_text(encoding="utf-8")
         assert json.loads(line.strip())["user_query"] == "查入库量"
 
+    def test_query_logger_never_logs_empty_question(self, tmp_path):
+        """History showed rows with an empty Question — the sink now falls
+        back to a bracketed channel tag so every record is attributable."""
+        logger = QueryLogger(log_dir=tmp_path)
+        logger.log(user_query="", generated_sql="SELECT 1", status="success",
+                   extra={"source": "mcp"})
+        logger.log(user_query="   ", generated_sql="SELECT 2", status="success")
+        recs = logger.recent(5)
+        assert all(r["user_query"].strip() for r in recs)
+        assert {r["user_query"] for r in recs} == {"[mcp]", "[unknown]"}
+
 
 # ------------------------------------------------------------------
 # Column validation (PRD §13 — prevent hallucinated columns)

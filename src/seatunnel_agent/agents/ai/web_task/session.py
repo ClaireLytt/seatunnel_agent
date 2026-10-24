@@ -10,6 +10,7 @@ caller explicitly allows external sites.
 from __future__ import annotations
 
 import ipaddress
+import logging
 import socket
 from typing import Any
 from urllib.parse import urlparse
@@ -107,7 +108,9 @@ class PlaywrightSession:
             try:
                 closer()
             except Exception:
-                pass
+                # best-effort teardown, but never silently (pitfalls 2026-10-22)
+                logging.getLogger(__name__).debug(
+                    "browser teardown step failed", exc_info=True)
 
     # ── agent primitives ────────────────────────────────────────────────
 

@@ -52,6 +52,7 @@ class SourceRequest(BaseModel):
     use_cache: bool = Field(True, description="使用 Hive 血缘图的本地 TTL 缓存")
     session_id: str = Field(
         "", description="可选：复用该会话里已构建的血缘图（POST /build）")
+    lang: str = Field("zh", description="报告语言 zh|en")
 
 
 class QueryRequest(SourceRequest):
@@ -188,7 +189,8 @@ def query(req: QueryRequest) -> QueryResponse:
     config = load_lineage_config()
 
     report = static_lineage(
-        graph, req.table, req.direction, req.depth, column=req.column, config=config
+        graph, req.table, req.direction, req.depth, column=req.column,
+        config=config, lang=req.lang,
     )
     chain = report.chain
     if chain and chain.missing_root:
@@ -203,7 +205,7 @@ def query(req: QueryRequest) -> QueryResponse:
         },
     )
     return QueryResponse(
-        report=render_report(report),
+        report=render_report(report, lang=req.lang),
         mermaid=report.mermaid,
         nodes={k: v.to_dict() for k, v in (chain.nodes if chain else {}).items()},
         edges=[list(e) for e in (chain.edges if chain else [])],
@@ -229,8 +231,8 @@ def find_path(req: PathRequest) -> dict[str, Any]:
         "found": path is not None,
         "path": path or [],
         "hops": len(path) - 1 if path else None,
-        "markdown": render_path(path, req.src, req.dst, graph),
-        "mermaid": render_path_mermaid(path, graph),
+        "markdown": render_path(path, req.src, req.dst, graph, lang=req.lang),
+        "mermaid": render_path_mermaid(path, graph, lang=req.lang),
         "warnings": warnings,
         "elapsed_ms": elapsed_ms,
     }
@@ -250,8 +252,8 @@ def sla_impact(req: SlaImpactRequest) -> dict[str, Any]:
     elapsed_ms = _log_elapsed(start, graph.stats(), query=req.table, mode="sla")
     return {
         **impact.to_dict(),
-        "markdown": render_sla_impact(impact),
-        "mermaid": render_mermaid(chain, config.max_mermaid_nodes),
+        "markdown": render_sla_impact(impact, lang=req.lang),
+        "mermaid": render_mermaid(chain, config.max_mermaid_nodes, lang=req.lang),
         "warnings": warnings,
         "elapsed_ms": elapsed_ms,
     }
@@ -265,7 +267,7 @@ def health_check(req: SourceRequest) -> dict[str, Any]:
     elapsed_ms = _log_elapsed(start, graph.stats(), query="health_check", mode="health")
     return {
         **report.to_dict(),
-        "markdown": render_health(report),
+        "markdown": render_health(report, lang=req.lang),
         "warnings": warnings,
         "elapsed_ms": elapsed_ms,
     }

@@ -9,6 +9,8 @@ export interface SourceParams {
   use_hive?: boolean
   meta_table?: string
   partition?: string
+  /** report language for every backend-rendered markdown/mermaid */
+  lang?: 'en' | 'zh'
 }
 
 export interface BuildResponse {

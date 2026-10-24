@@ -18,6 +18,36 @@ _T2S_TMP = Path(tempfile.mkdtemp(prefix="t2s_examples_")) / "t2s_examples.json"
 os.environ.setdefault("T2S_EXAMPLES_PATH", str(_T2S_TMP))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _no_repo_pollution():
+    """Fail the session if tests leave new untracked files in the repo.
+
+    A test exercising code that writes under cwd must monkeypatch.chdir to
+    tmp_path — see docs/pitfalls.md (2026-10-24: demo config committed by
+    accident). git may be unavailable (sdist run); then the guard is a no-op.
+    """
+    import subprocess
+
+    def untracked() -> set[str]:
+        try:
+            out = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True, text=True, timeout=30, check=True,
+            ).stdout
+        except Exception:
+            return set()
+        return {line[3:] for line in out.splitlines()
+                if line.startswith("??")}
+
+    before = untracked()
+    yield
+    leaked = untracked() - before
+    assert not leaked, (
+        "tests wrote new untracked files into the repo (chdir to tmp_path "
+        f"in the offending test): {sorted(leaked)}"
+    )
+
+
 # ── shared Playwright helpers (importable: from tests.conftest import …) ──
 
 

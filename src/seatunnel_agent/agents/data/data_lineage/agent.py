@@ -49,6 +49,7 @@ def static_lineage(
     depth: int = 3,
     column: str | None = None,
     config: LineageConfig | None = None,
+    lang: str = "zh",
 ) -> LineageReport:
     """Deterministic lineage analysis (no LLM): query the graph, build a report."""
     config = config or LineageConfig()
@@ -68,7 +69,8 @@ def static_lineage(
             table, column, depth=COLUMN_IMPACT_DEPTH, max_nodes=config.max_nodes,
         )
 
-    mermaid = select_mermaid(chain, impact, config.max_mermaid_nodes)
+    mermaid = select_mermaid(chain, impact, config.max_mermaid_nodes,
+                             lang=lang)
 
     return LineageReport(
         root_table=chain.root,
