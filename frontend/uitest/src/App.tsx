@@ -234,7 +234,7 @@ export default function App() {
             <iframe
               title={t('report')}
               src={reportUrl(runId)}
-              sandbox="allow-same-origin"
+              sandbox="allow-scripts"
               className="h-[70vh] w-full rounded border border-line bg-card"
             />
           </motion.section>
