@@ -99,4 +99,5 @@
 | lint 范围含 scripts/ | CI lint.yml + 第 8 节命令 |
 | 不泄露 api key/凭证(第 1 节) | CI lint.yml secretscan job + tests/test_secret_scan.py::test_repo_dogfood_no_high_findings(豁免配置 .secretscan.yaml) |
 | 目录入参先白名单后存在性(bad_dir) | common/api_guard.require_dir 单源 + 各 agent API 测试 |
+| 禁作弊变绿(floor:新增压制注释、测试 skip/删断言/删文件、mypy 白名单缩水、桩子/TODO 顶实现) | scripts/check_workflow.py floor 检查 + tests/test_check_workflow_floor.py + CI workflow-check |
 | UI 改动交用户验证后再提交 | 无机械强制(判断型,见第 5 节)——仅此类规则允许停留在文档层 |
