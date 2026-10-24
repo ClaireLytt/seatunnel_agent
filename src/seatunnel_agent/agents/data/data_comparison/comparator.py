@@ -10,7 +10,6 @@ import os
 import re
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -25,26 +24,6 @@ atexit.register(_POOL.shutdown, wait=False)
 
 _T = TypeVar("_T")
 _U = TypeVar("_U")
-
-_SAFE_IDENT = re.compile(r"^[\w][\w.$]*$", re.ASCII)
-
-# Tunable limits (previously scattered magic numbers)
-try:
-    MAX_AGG_COLUMNS = max(1, int(os.getenv("DC_MAX_COMPARE_COLUMNS", "20")))
-except ValueError:
-    MAX_AGG_COLUMNS = 20
-DEFAULT_CHECKSUM_SEGMENTS = 10
-STR_CAST_LEN = 200
-GINI_SKEW_THRESHOLD = 0.6
-# Side-vs-side qualification thresholds: when A and B disagree by more than
-# this the skew is a sync-pipeline symptom, not a business fact.
-GINI_MISMATCH_THRESHOLD = 0.2
-TOP1_MISMATCH_PP = 20.0        # percentage points of top-1 share
-TOP1_SKEW_THRESHOLD = 50.0     # top-1 share marking a hot key on one side
-
-# Dialects where backslash is an escape character inside string literals.
-_BACKSLASH_ESCAPE_DIALECTS = frozenset(
-    {"mysql", "doris", "hive", "sparksql", "clickhouse"})
 
 from .models import (  # noqa: F401 — re-exported, public API
     AggregateItem,
@@ -74,49 +53,24 @@ from .models import (  # noqa: F401 — re-exported, public API
     SkewResult,
     ThresholdConfig,
 )
-
-# ---------------------------------------------------------------------------
-# Identifier quoting
-# ---------------------------------------------------------------------------
-
-# Engines that quote identifiers with backticks; SQL Server uses brackets;
-# everything else gets ANSI double quotes.
-_BACKTICK_ENGINES = frozenset({
-    "mysql", "doris", "hive", "sparksql", "flinksql", "clickhouse",
-})
-
-
-def quote_identifier(name: str, ds_type: str = "") -> str:
-    """Quote a SQL identifier to prevent injection, using the dialect's style.
-
-    Simple names (alphanumeric + underscore/dot/$) pass through unchanged.
-    Anything else is quoted with the engine-appropriate delimiter:
-    backticks (MySQL family), brackets (SQL Server), or ANSI double quotes.
-    """
-    if _SAFE_IDENT.match(name):
-        return name
-    if ds_type in _BACKTICK_ENGINES:
-        return "`" + name.replace("`", "``") + "`"
-    if ds_type == "sqlserver":
-        return "[" + name.replace("]", "]]") + "]"
-    return '"' + name.replace('"', '""') + '"'
-
-
-_STR_CAST_TYPE: dict[str, str] = {
-    "hive":     "STRING",
-    "sparksql": "STRING",
-    "flinksql": "STRING",
-    "mysql":    f"CHAR({STR_CAST_LEN})",
-    "sqlite":   "TEXT",
-}
-
-
-def cast_to_string(expr: str, ds_type: str = "") -> str:
-    """Portable "cast to string" expression for *expr* in the given dialect."""
-    if ds_type == "clickhouse":
-        return f"toString({expr})"
-    return f"CAST({expr} AS {_STR_CAST_TYPE.get(ds_type, f'VARCHAR({STR_CAST_LEN})')})"
-
+from .sqlbase import (  # noqa: F401 — re-exported, public API
+    _BACKSLASH_ESCAPE_DIALECTS,
+    DEFAULT_CHECKSUM_SEGMENTS,
+    GINI_MISMATCH_THRESHOLD,
+    GINI_SKEW_THRESHOLD,
+    MAX_AGG_COLUMNS,
+    STR_CAST_LEN,
+    TOP1_MISMATCH_PP,
+    TOP1_SKEW_THRESHOLD,
+    _blank_string_literals,
+    _canon_timestamp,
+    _close_enough,
+    _row_limit,
+    _where_clause,
+    cast_to_string,
+    quote_identifier,
+    validate_where,
+)
 
 # ---------------------------------------------------------------------------
 # Schema comparison
@@ -164,64 +118,6 @@ def compare_schemas(
 # ---------------------------------------------------------------------------
 # SQL builders
 # ---------------------------------------------------------------------------
-
-_WHERE_WRITE_KEYWORD_RE = re.compile(
-    r"\b(insert|update|delete|drop|alter|truncate|create|grant|revoke|merge)\b",
-    re.IGNORECASE,
-)
-
-
-def _blank_string_literals(text: str) -> str:
-    """Blank the interior of '...' / "..." literals (length-preserving) so
-    separators and keywords inside legitimate filter values never trigger
-    the checks below."""
-    out = list(text)
-    i, n = 0, len(text)
-    while i < n:
-        ch = text[i]
-        if ch in ("'", '"'):
-            i += 1
-            while i < n and text[i] != ch:
-                if text[i] == "\\":
-                    out[i] = " "
-                    i += 1
-                    if i < n:
-                        out[i] = " "
-                        i += 1
-                    continue
-                out[i] = " "
-                i += 1
-        i += 1
-    return "".join(out)
-
-
-def validate_where(where: str) -> None:
-    """Read-only guard for user-supplied WHERE filters (mirrors the text2sql
-    validator's strip-literals + keyword-blacklist approach): reject stacked
-    statements, comment markers and write/DDL keywords. Raises ValueError."""
-    if not where.strip():
-        return
-    cleaned = _blank_string_literals(where)
-    if ";" in cleaned:
-        raise ValueError("WHERE 过滤条件不允许包含分号/多语句")
-    for marker in ("--", "/*", "#"):
-        if marker in cleaned:
-            raise ValueError(f"WHERE 过滤条件不允许包含注释符 '{marker}'")
-    m = _WHERE_WRITE_KEYWORD_RE.search(cleaned)
-    if m:
-        raise ValueError(f"WHERE 过滤条件包含写操作关键词 '{m.group(1)}'")
-
-
-def _where_clause(where: str) -> str:
-    validate_where(where)
-    return f" WHERE {where}" if where.strip() else ""
-
-
-def _row_limit(ds_type: str, n: int) -> tuple[str, str]:
-    if ds_type == "sqlserver":
-        return f"TOP {int(n)} ", ""
-    return "", f" LIMIT {int(n)}"
-
 
 def build_count_sql(table_name: str, where: str = "") -> str:
     return f"SELECT COUNT(*) AS cnt FROM {quote_identifier(table_name)}{_where_clause(where)}"
@@ -272,74 +168,6 @@ def build_aggregate_sql(table_name: str, columns: list[str], where: str = "",
 # ---------------------------------------------------------------------------
 
 _METRIC_OFFSETS = {"sum": 0, "avg": 1, "min": 2, "max": 3, "null_count": 4}
-
-
-# Cross-source normalization rules for loose value equality. Migrations
-# between engines produce "false diffs" from rendering, not data: trailing
-# whitespace in CHAR columns, '2024-01-01T00:00:00' vs '2024-01-01 00:00:00'
-# vs a bare date, NULL vs '' on engines that conflate them. Each rule can be
-# switched via environment variables (documented defaults chosen for the
-# common Hive↔MySQL case).
-_NORM_TRIM = os.getenv("DC_NORM_TRIM", "1") != "0"
-_NORM_TIMESTAMPS = os.getenv("DC_NORM_TIMESTAMPS", "1") != "0"
-_NORM_NULL_EQ_EMPTY = os.getenv("DC_NORM_NULL_EQ_EMPTY", "0") == "1"
-
-_TS_RE = re.compile(
-    r"^(\d{4}-\d{2}-\d{2})"                 # date
-    r"(?:[T ](\d{2}:\d{2})(?::(\d{2}))?"    # optional time
-    r"(?:\.(\d+))?"                         # optional fraction
-    r"(Z|[+-]\d{2}:?\d{2})?)?$"             # optional zone suffix
-)
-
-
-def _canon_timestamp(s: str) -> str | None:
-    """Canonical 'YYYY-MM-DD HH:MM:SS.frac[zone]' for ISO-ish datetimes.
-
-    A bare date equals midnight; 'T' and ' ' separators, missing seconds and
-    trailing fractional zeros are normalized away. The zone suffix is KEPT
-    (normalized: 'Z' == '+00:00' == '+0000'), so '10:30:00+08:00' never
-    equals '10:30:00Z' — those are instants eight hours apart. Returns None
-    when the string is not datetime-shaped."""
-    m = _TS_RE.match(s)
-    if not m:
-        return None
-    date, hm, sec, frac, zone = m.groups()
-    frac = (frac or "").rstrip("0")
-    z = (zone or "").replace(":", "")
-    if z in ("+0000", "-0000"):
-        z = "Z"
-    return (f"{date} {hm or '00:00'}:{sec or '00'}"
-            + (f".{frac}" if frac else "") + z)
-
-
-def _close_enough(a: Any, b: Any, tolerance: float = 1e-6) -> bool:
-    if a is None and b is None:
-        return True
-    if a is None or b is None:
-        if _NORM_NULL_EQ_EMPTY and (a in (None, "") and b in (None, "")):
-            return True
-        return False
-    try:
-        fa, fb = float(a), float(b)
-    except (TypeError, ValueError):
-        sa, sb = str(a), str(b)
-        if _NORM_TRIM:
-            sa, sb = sa.strip(), sb.strip()
-        if sa == sb:
-            return True
-        if _NORM_TIMESTAMPS:
-            ca, cb = _canon_timestamp(sa), _canon_timestamp(sb)
-            if ca is not None and ca == cb:
-                return True
-        return False
-    if math.isnan(fa) and math.isnan(fb):
-        return True
-    if math.isnan(fa) or math.isnan(fb):
-        return False
-    if fa == fb:
-        return True
-    denom = max(abs(fa), abs(fb), 1e-9)
-    return abs(fa - fb) / denom < tolerance
 
 
 def compare_aggregates(
@@ -654,116 +482,6 @@ def build_stratified_sample_sql(
         f"FROM {qt}{wc}"
         f") _sub WHERE _rn <= {n}"
     )
-
-
-# ---------------------------------------------------------------------------
-# JDBC helpers  (C)
-# ---------------------------------------------------------------------------
-
-_JDBC_URL_PATTERNS: dict[str, str] = {
-    "mysql":      "jdbc:mysql://{host}:{port}/{database}",
-    "postgresql": "jdbc:postgresql://{host}:{port}/{database}",
-    "sqlserver":  "jdbc:sqlserver://{host}:{port};databaseName={database}",
-    "clickhouse": "jdbc:clickhouse://{host}:{port}/{database}",
-    "doris":      "jdbc:mysql://{host}:{port}/{database}",
-    "hive":       "jdbc:hive2://{host}:{port}/{database}",
-    "sparksql":   "jdbc:hive2://{host}:{port}/{database}",
-}
-
-_JDBC_DRIVERS: dict[str, str] = {
-    "mysql":      "com.mysql.cj.jdbc.Driver",
-    "doris":      "com.mysql.cj.jdbc.Driver",
-    "postgresql": "org.postgresql.Driver",
-    "sqlserver":  "com.microsoft.sqlserver.jdbc.SQLServerDriver",
-    "clickhouse": "com.clickhouse.jdbc.ClickHouseDriver",
-    "hive":       "org.apache.hive.jdbc.HiveDriver",
-    "sparksql":   "org.apache.hive.jdbc.HiveDriver",
-}
-
-
-def build_jdbc_url(ds_type: str, host: str, port: int, database: str) -> str:
-    pattern = _JDBC_URL_PATTERNS.get(ds_type, "jdbc:{ds}://{host}:{port}/{database}")
-    return pattern.format(ds=ds_type, host=host, port=port, database=database)
-
-
-def get_jdbc_driver(ds_type: str) -> str:
-    return _JDBC_DRIVERS.get(ds_type, "")
-
-
-def _escape_hocon(s: str) -> str:
-    """Escape a string value for embedding in a HOCON double-quoted string."""
-    return s.replace("\\", "\\\\").replace('"', '\\"').replace("$", "$$")
-
-
-def generate_sync_config(
-    ds_type_a: str, host_a: str, port_a: int, db_a: str,
-    user_a: str | None, pwd_a: str | None, table_a: str,
-    ds_type_b: str, host_b: str, port_b: int, db_b: str,
-    user_b: str | None, pwd_b: str | None, table_b: str,
-    column_mapping: ColumnMapping | None = None,
-    parallelism: int = 2,
-) -> str:
-    """Generate a SeaTunnel HOCON sync job config: source A -> sink B."""
-    url_a = build_jdbc_url(ds_type_a, host_a, port_a, db_a)
-    url_b = build_jdbc_url(ds_type_b, host_b, port_b, db_b)
-    drv_a = get_jdbc_driver(ds_type_a)
-    drv_b = get_jdbc_driver(ds_type_b)
-
-    transform_block = "transform {\n}"
-    if column_mapping:
-        # SeaTunnel's SQL transform runs in its own engine, which quotes
-        # identifiers with backticks regardless of source/sink dialect.
-        field_list = ", ".join(
-            f"{quote_identifier(v, 'mysql')} AS {quote_identifier(k, 'mysql')}"
-            for k, v in column_mapping.items()
-        )
-        transform_block = (
-            'transform {\n'
-            '  Sql {\n'
-            f'    query = "{_escape_hocon(f"SELECT *, {field_list} FROM source_table")}"\n'
-            '  }\n'
-            '}'
-        )
-
-    lines = [
-        'env {',
-        '  job.mode = "BATCH"',
-        f'  parallelism = {int(parallelism)}',
-        '}',
-        '',
-        'source {',
-        '  Jdbc {',
-        f'    url = "{_escape_hocon(url_a)}"',
-        f'    driver = "{drv_a}"',
-    ]
-    if user_a:
-        lines.append(f'    user = "{_escape_hocon(user_a)}"')
-    if pwd_a:
-        lines.append(f'    password = "{_escape_hocon(pwd_a)}"')
-    lines += [
-        f'    query = "{_escape_hocon(f"SELECT * FROM {quote_identifier(table_a, ds_type_a)}")}"',
-        '  }',
-        '}',
-        '',
-        transform_block,
-        '',
-        'sink {',
-        '  Jdbc {',
-        f'    url = "{_escape_hocon(url_b)}"',
-        f'    driver = "{drv_b}"',
-    ]
-    if user_b:
-        lines.append(f'    user = "{_escape_hocon(user_b)}"')
-    if pwd_b:
-        lines.append(f'    password = "{_escape_hocon(pwd_b)}"')
-    lines += [
-        f'    database = "{_escape_hocon(db_b)}"',
-        f'    table = "{_escape_hocon(table_b)}"',
-        '    generate_sink_sql = true',
-        '  }',
-        '}',
-    ]
-    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -1099,498 +817,6 @@ def mask_rows(
 
 
 # ---------------------------------------------------------------------------
-# Data skew analysis  (BB)
-# ---------------------------------------------------------------------------
-
-def build_skew_sql(
-    table_name: str, column: str, where: str = "", top_n: int = 20,
-    ds_type: str = "mysql",
-) -> str:
-    """Build SQL to get top-N value frequencies for one column."""
-    qc = quote_identifier(column, ds_type)
-    qt = quote_identifier(table_name, ds_type)
-    if top_n > 0 and ds_type == "sqlserver":
-        top_clause = f"TOP {int(top_n)} "
-    else:
-        top_clause = ""
-    sql = (
-        f"SELECT {top_clause}{cast_to_string(qc, ds_type)} AS val, COUNT(*) AS cnt"
-        f"\n  FROM {qt}{_where_clause(where)}"
-        f"\n GROUP BY {qc}"
-        f"\n ORDER BY cnt DESC"
-    )
-    if top_n > 0 and ds_type != "sqlserver":
-        sql += f"\n LIMIT {top_n}"
-    return sql
-
-
-def compute_skew_metrics(counts: list[int]) -> tuple[float, float, float]:
-    """Return (gini, cv, top1_pct) from a list of frequency counts.
-
-    - gini: 0 = uniform, 1 = all in one value
-    - cv: coefficient of variation (std/mean)
-    - top1_pct: percentage held by largest value
-    """
-    if not counts:
-        return 0.0, 0.0, 0.0
-    total = sum(counts)
-    if total == 0:
-        return 0.0, 0.0, 0.0
-    n = len(counts)
-    if n == 1:
-        return 0.0, 0.0, 100.0
-
-    # Gini coefficient
-    sorted_c = sorted(counts)
-    cum = 0.0
-    weighted_sum = 0.0
-    for i, c in enumerate(sorted_c):
-        cum += c
-        weighted_sum += (2 * (i + 1) - n - 1) * c
-    gini = weighted_sum / (n * total) if total else 0.0
-    gini = max(0.0, min(1.0, gini))
-
-    # CV
-    mean = total / n
-    variance = sum((c - mean) ** 2 for c in counts) / n
-    std = math.sqrt(variance)
-    cv = std / mean if mean else 0.0
-
-    # Top-1 concentration
-    top1 = max(counts) / total * 100
-
-    return round(gini, 4), round(cv, 4), round(top1, 2)
-
-
-def compare_skew(
-    table_a: str, table_b: str, column: str,
-    rows_a: list[tuple], total_a: int,
-    rows_b: list[tuple], total_b: int,
-    top_n: int = 20,
-) -> SkewItem:
-    """Compare skew for one column between two tables."""
-    counts_a = [int(r[1]) for r in rows_a if len(r) >= 2]
-    counts_b = [int(r[1]) for r in rows_b if len(r) >= 2]
-
-    gini_a, cv_a, top1_a = compute_skew_metrics(counts_a)
-    gini_b, cv_b, top1_b = compute_skew_metrics(counts_b)
-
-    # Merge buckets from both sides
-    map_a: dict[str, int] = {}
-    for r in rows_a:
-        if len(r) >= 2:
-            map_a[str(r[0])] = int(r[1])
-    map_b: dict[str, int] = {}
-    for r in rows_b:
-        if len(r) >= 2:
-            map_b[str(r[0])] = int(r[1])
-
-    all_vals: list[str] = []
-    seen: set[str] = set()
-    for r in rows_a:
-        v = str(r[0]) if len(r) >= 1 else ""
-        if v not in seen:
-            all_vals.append(v)
-            seen.add(v)
-    for r in rows_b:
-        v = str(r[0]) if len(r) >= 1 else ""
-        if v not in seen:
-            all_vals.append(v)
-            seen.add(v)
-
-    buckets: list[SkewBucket] = []
-    for v in all_vals[:top_n]:
-        ca = map_a.get(v, 0)
-        cb = map_b.get(v, 0)
-        buckets.append(SkewBucket(
-            value=v,
-            count_a=ca, count_b=cb,
-            pct_a=round(ca / total_a * 100, 2) if total_a else 0.0,
-            pct_b=round(cb / total_b * 100, 2) if total_b else 0.0,
-        ))
-
-    return SkewItem(
-        column=column,
-        gini_a=gini_a, gini_b=gini_b,
-        cv_a=cv_a, cv_b=cv_b,
-        top1_pct_a=top1_a, top1_pct_b=top1_b,
-        ndv_a=len(map_a), ndv_b=len(map_b),
-        buckets=buckets,
-    )
-
-
-def skew_side_verdict(result: SkewResult) -> tuple[str, list[str]]:
-    """Qualify the measured skew: sync symptom or business fact.
-
-    Returns ``(verdict, columns)`` where verdict is:
-    - ``"mismatch"``: A and B disagree on a column's distribution — when B
-      is synced from A this points at the sync pipeline (split/filter
-      logic), so fix the data before tuning any compute.
-    - ``"both_skewed"``: both sides skew the same way — a business fact
-      (hot customer / default value); protect the downstream compute.
-    - ``"ok"``: nothing notable.
-    Mismatch wins over both_skewed when both are present.
-    """
-    if not result.items or not result.total_a or not result.total_b:
-        return "ok", []
-    mismatch: list[str] = []
-    both: list[str] = []
-    for it in result.items:
-        if (abs(it.gini_a - it.gini_b) > GINI_MISMATCH_THRESHOLD
-                or abs(it.top1_pct_a - it.top1_pct_b) > TOP1_MISMATCH_PP):
-            mismatch.append(it.column)
-        elif ((it.gini_a > GINI_SKEW_THRESHOLD and it.gini_b > GINI_SKEW_THRESHOLD)
-              or (it.top1_pct_a > TOP1_SKEW_THRESHOLD
-                  and it.top1_pct_b > TOP1_SKEW_THRESHOLD)):
-            both.append(it.column)
-    if mismatch:
-        return "mismatch", mismatch
-    if both:
-        return "both_skewed", both
-    return "ok", []
-
-
-# ---------------------------------------------------------------------------
-# Checksum comparison  (F1)
-# ---------------------------------------------------------------------------
-
-# Row-hash expression per dialect ({cols} = comma-joined string-cast columns).
-# SQL Server needs CONVERT to get a hex string (HASHBYTES returns varbinary);
-# ClickHouse is handled separately (its MD5 returns binary FixedString(16)).
-_HASH_FUNC: dict[str, str] = {
-    "mysql":      "MD5(CONCAT_WS(',', {cols}))",
-    "postgresql": "MD5(CONCAT_WS(',', {cols}))",
-    "hive":       "MD5(CONCAT_WS(',', {cols}))",
-    "sparksql":   "MD5(CONCAT_WS(',', {cols}))",
-    "doris":      "MD5(CONCAT_WS(',', {cols}))",
-    "flinksql":   "MD5(CONCAT_WS(',', {cols}))",
-    "sqlserver":  "CONVERT(VARCHAR(32), HASHBYTES('MD5', CONCAT_WS(',', {cols})), 2)",
-}
-
-# Segment-bucketing expression per dialect. Engines without a portable
-# non-cryptographic hash (Flink SQL, SQLite) fall back to a single segment.
-_SEG_FUNC: dict[str, str] = {
-    "mysql":      "MOD(CRC32(CONCAT_WS(',', {cols})), {n})",
-    "doris":      "MOD(CRC32(CONCAT_WS(',', {cols})), {n})",
-    "postgresql": "MOD(ABS(HASHTEXT(CONCAT_WS(',', {cols}))), {n})",
-    "hive":       "PMOD(HASH({raw_cols}), {n})",
-    "sparksql":   "PMOD(HASH({raw_cols}), {n})",
-    "sqlserver":  "ABS(CHECKSUM(CONCAT_WS(',', {cols}))) % {n}",
-}
-
-
-def build_checksum_sql(
-    table_name: str, columns: list[str], ds_type: str = "mysql",
-    where: str = "", segments: int = DEFAULT_CHECKSUM_SEGMENTS,
-) -> str:
-    """Build SQL to compute per-segment checksums for data verification."""
-    segments = max(1, int(segments))
-    qt = quote_identifier(table_name, ds_type)
-    qcols = [quote_identifier(c, ds_type) for c in columns]
-    cols_cast = ", ".join(cast_to_string(qc, ds_type) for qc in qcols)
-
-    if ds_type == "sqlite":
-        # SQLite has neither MD5 nor a hash function: single segment with a
-        # length-sum fingerprint (valid SQL, same-engine comparisons only).
-        concat = " || ',' || ".join(f"COALESCE(CAST({qc} AS TEXT), '')" for qc in qcols)
-        return (
-            f"SELECT 0 AS seg,"
-            f"\n  COUNT(*) AS cnt,"
-            f"\n  COALESCE(SUM(LENGTH({concat})), 0) AS seg_hash"
-            f"\n  FROM {qt}{_where_clause(where)}"
-        )
-
-    if ds_type == "clickhouse":
-        ts_cols = [f"toString({qc})" for qc in qcols]
-        hash_expr = "hex(MD5(concat(" + ", ',', ".join(ts_cols) + ")))"
-        seg_expr = f"cityHash64({', '.join(ts_cols)}) % {segments}"
-    else:
-        hash_expr = _HASH_FUNC.get(ds_type, _HASH_FUNC["mysql"]).format(cols=cols_cast)
-        seg_tpl = _SEG_FUNC.get(ds_type)
-        if seg_tpl is None:
-            seg_expr = "0"
-        else:
-            seg_expr = seg_tpl.format(cols=cols_cast, raw_cols=", ".join(qcols),
-                                      n=segments)
-
-    if seg_expr == "0":
-        return (
-            f"SELECT 0 AS seg,"
-            f"\n  COUNT(*) AS cnt,"
-            f"\n  MIN({hash_expr}) AS seg_hash"
-            f"\n  FROM {qt}{_where_clause(where)}"
-        )
-    return (
-        f"SELECT {seg_expr} AS seg,"
-        f"\n  COUNT(*) AS cnt,"
-        f"\n  MIN({hash_expr}) AS seg_hash"
-        f"\n  FROM {qt}{_where_clause(where)}"
-        f"\n GROUP BY {seg_expr}"
-        f"\n ORDER BY seg"
-    )
-
-
-def compare_checksums(
-    table_a: str, table_b: str,
-    rows_a: list[tuple], rows_b: list[tuple],
-) -> ChecksumResult:
-    """Compare per-segment checksums from both sides."""
-    map_a: dict[int, tuple[int, str]] = {}
-    for r in rows_a:
-        if len(r) >= 3:
-            map_a[int(r[0])] = (int(r[1]), str(r[2]).lower())
-    map_b: dict[int, tuple[int, str]] = {}
-    for r in rows_b:
-        if len(r) >= 3:
-            map_b[int(r[0])] = (int(r[1]), str(r[2]).lower())
-
-    all_segs = sorted(set(map_a.keys()) | set(map_b.keys()))
-    items: list[ChecksumItem] = []
-    match_count = 0
-    mismatch_count = 0
-    for seg in all_segs:
-        a = map_a.get(seg, (0, ""))
-        b = map_b.get(seg, (0, ""))
-        matched = (a[0] == b[0] and a[1] == b[1])
-        if matched:
-            match_count += 1
-        else:
-            mismatch_count += 1
-        items.append(ChecksumItem(
-            segment=seg, checksum_a=a[1], checksum_b=b[1], match=matched,
-        ))
-
-    return ChecksumResult(
-        table_a=table_a, table_b=table_b,
-        items=items, match_count=match_count, mismatch_count=mismatch_count,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Partition-level comparison  (F2)
-# ---------------------------------------------------------------------------
-
-def build_partition_count_sql(
-    table_name: str, partition_col: str, where: str = "",
-    ds_type: str = "mysql",
-) -> str:
-    """Build SQL to get row counts grouped by partition column."""
-    qt = quote_identifier(table_name, ds_type)
-    qp = quote_identifier(partition_col, ds_type)
-    return (
-        f"SELECT {cast_to_string(qp, ds_type)} AS part_val, COUNT(*) AS cnt"
-        f"\n  FROM {qt}{_where_clause(where)}"
-        f"\n GROUP BY {qp}"
-        f"\n ORDER BY cnt DESC"
-    )
-
-
-def compare_partitions(
-    table_a: str, table_b: str, partition_col: str,
-    rows_a: list[tuple], rows_b: list[tuple],
-) -> PartitionResult:
-    """Compare row counts per partition value."""
-    map_a: dict[str, int] = {}
-    for r in rows_a:
-        if len(r) >= 2:
-            map_a[str(r[0])] = int(r[1])
-    map_b: dict[str, int] = {}
-    for r in rows_b:
-        if len(r) >= 2:
-            map_b[str(r[0])] = int(r[1])
-
-    all_keys = list(dict.fromkeys(
-        [str(r[0]) for r in rows_a if len(r) >= 1] +
-        [str(r[0]) for r in rows_b if len(r) >= 1]
-    ))
-
-    items: list[PartitionCompareItem] = []
-    total_delta = 0
-    for k in all_keys:
-        ca = map_a.get(k, 0)
-        cb = map_b.get(k, 0)
-        delta = ca - cb
-        total_delta += abs(delta)
-        pct = round(delta / max(ca, cb, 1) * 100, 2)
-        items.append(PartitionCompareItem(
-            partition_value=k, count_a=ca, count_b=cb,
-            delta=delta, delta_pct=pct,
-        ))
-
-    return PartitionResult(
-        table_a=table_a, table_b=table_b,
-        partition_column=partition_col,
-        items=items, total_delta=total_delta,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Custom aggregate expressions  (F3)
-# ---------------------------------------------------------------------------
-
-_CUSTOM_AGG_FORBIDDEN = re.compile(
-    r"\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|TRUNCATE|EXEC|EXECUTE|GRANT|REVOKE"
-    r"|MERGE|CALL|UNION|SET|LOAD|COPY|RENAME)\b"
-    r"|INTO\s+OUTFILE|;",
-    re.IGNORECASE,
-)
-
-
-def parse_custom_agg_expressions(raw: str) -> list[tuple[str, str]]:
-    """Parse ``alias=EXPRESSION`` lines, returning (alias, expr) pairs."""
-    result: list[tuple[str, str]] = []
-    for line in raw.strip().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if "=" not in line:
-            continue
-        alias, _, expr = line.partition("=")
-        alias = alias.strip()
-        expr = expr.strip()
-        if not alias or not expr:
-            continue
-        if _CUSTOM_AGG_FORBIDDEN.search(expr):
-            continue
-        result.append((alias, expr))
-    return result
-
-
-def build_custom_agg_sql(
-    table_name: str, expressions: list[tuple[str, str]], where: str = "",
-) -> str:
-    """Build SQL with user-defined aggregate expressions."""
-    qt = quote_identifier(table_name)
-    parts = [f"({expr}) AS {quote_identifier(alias)}" for alias, expr in expressions]
-    return f"SELECT {', '.join(parts)}\n  FROM {qt}{_where_clause(where)}"
-
-
-def compare_custom_aggs(
-    table_a: str, row_a: tuple, table_b: str, row_b: tuple,
-    expressions: list[tuple[str, str]],
-) -> CustomAggResult:
-    """Compare custom aggregate results."""
-    def _coerce(row: tuple, i: int) -> Any:
-        if i >= len(row) or row[i] is None:
-            return None
-        try:
-            return float(row[i])
-        except (TypeError, ValueError):
-            return row[i]
-
-    items: list[CustomAggItem] = []
-    mismatches = 0
-    for i, (alias, expr) in enumerate(expressions):
-        va = _coerce(row_a, i)
-        vb = _coerce(row_b, i)
-        matched = _close_enough(va, vb)
-        if not matched:
-            mismatches += 1
-        items.append(CustomAggItem(
-            expression=expr, alias=alias,
-            value_a=va, value_b=vb, match=matched,
-        ))
-    return CustomAggResult(
-        table_a=table_a, table_b=table_b,
-        items=items, mismatches=mismatches,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Trend alerting  (F4)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class AlertRule:
-    """Parsed alert rule from user input."""
-    metric: str
-    threshold: float
-    consecutive: int
-
-
-@dataclass
-class TrendAlert:
-    """A single alert rule evaluation result."""
-    metric: str
-    threshold: float
-    consecutive_required: int
-    consecutive_actual: int
-    triggered: bool
-    current_value: float | None = None
-
-
-def parse_alert_rules(raw: str) -> list[AlertRule]:
-    """Parse alert rules from a string like ``row_count_delta>100:3, mismatches>0:5``.
-
-    Each rule: ``metric>threshold:consecutive_count``
-    """
-    rules: list[AlertRule] = []
-    for line in raw.replace(",", "\n").strip().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        try:
-            left, consecutive_str = line.rsplit(":", 1)
-            consecutive = int(consecutive_str)
-            if ">" in left:
-                metric, threshold_str = left.split(">", 1)
-                rules.append(AlertRule(
-                    metric=metric.strip(),
-                    threshold=float(threshold_str),
-                    consecutive=max(1, consecutive),
-                ))
-        except (ValueError, IndexError):
-            continue
-    return rules
-
-
-def check_trend_alerts(
-    trend_data: list[dict[str, Any]],
-    alert_rules: list[AlertRule],
-) -> list[TrendAlert]:
-    """Check trend data against alert rules.
-
-    *trend_data* is the output of ``build_trend_data()``.
-    """
-    _metric_extractors: dict[str, str] = {
-        "row_count_delta": "delta",
-        "delta": "delta",
-        "delta_pct": "delta_pct",
-        "mismatches": "mismatches",
-    }
-
-    results: list[TrendAlert] = []
-    for rule in alert_rules:
-        metric = rule.metric
-        threshold = rule.threshold
-        required = rule.consecutive
-        field = _metric_extractors.get(metric, metric)
-
-        consecutive = 0
-        current_val: float | None = None
-        for entry in reversed(trend_data):
-            val = entry.get(field)
-            if val is None:
-                break
-            current_val = current_val if current_val is not None else float(val)
-            if abs(float(val)) > threshold:
-                consecutive += 1
-            else:
-                break
-
-        results.append(TrendAlert(
-            metric=metric,
-            threshold=threshold,
-            consecutive_required=required,
-            consecutive_actual=consecutive,
-            triggered=consecutive >= required,
-            current_value=current_val,
-        ))
-    return results
-
-
-# ---------------------------------------------------------------------------
 # Report diff — compare two CompareReport objects  (Phase 5A)
 # ---------------------------------------------------------------------------
 
@@ -1639,3 +865,34 @@ def get_upstream_tables(table_name: str, sql_list: list[str]) -> list[str]:
             if t.lower() != target_lower and t.lower() not in seen:
                 seen.add(t.lower())
     return sorted(seen)
+
+# Base primitives + moved feature sections — re-exported so every existing
+# import site (ui_cards, actions, chunked, tests, ...) keeps working.
+from .alerts import (  # noqa: F401
+    AlertRule,
+    TrendAlert,
+    check_trend_alerts,
+    parse_alert_rules,
+)
+from .checksum import (  # noqa: F401
+    _CUSTOM_AGG_FORBIDDEN,
+    build_checksum_sql,
+    build_custom_agg_sql,
+    build_partition_count_sql,
+    compare_checksums,
+    compare_custom_aggs,
+    compare_partitions,
+    parse_custom_agg_expressions,
+)
+from .skew import (  # noqa: F401
+    build_skew_sql,
+    compare_skew,
+    compute_skew_metrics,
+    skew_side_verdict,
+)
+from .sync_config import (  # noqa: F401
+    _escape_hocon,
+    build_jdbc_url,
+    generate_sync_config,
+    get_jdbc_driver,
+)
