@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
+import { langOf } from '@shared/lang'
 import {
   ApiError,
   build,
@@ -18,7 +19,7 @@ import { fieldCls, labelCls, smallBtnCls } from '@/ui'
 const SQL_DIALECTS = ['hive', 'spark', 'mysql', 'postgresql', 'clickhouse', 'doris', 'starrocks']
 
 export default function App() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [sessionId, setSessionId] = useState('')
   // data sources
   const [sqlDir, setSqlDir] = useState('')
@@ -53,7 +54,8 @@ export default function App() {
     use_hive: useHive,
     meta_table: metaTable.trim() || undefined,
     partition: partition.trim() || undefined,
-  }), [sessionId, sqlDir, sqlDialect, stDir, useHive, metaTable, partition])
+    lang: langOf(i18n),
+  }), [sessionId, sqlDir, sqlDialect, stDir, useHive, metaTable, partition, i18n])
 
   const showError = (e: unknown) => {
     if (e instanceof ApiError) {

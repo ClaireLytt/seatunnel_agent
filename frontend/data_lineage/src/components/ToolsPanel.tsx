@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
-import { langOf } from '@shared/lang'
 import {
   ApiError,
   findPath,
@@ -32,7 +31,7 @@ export function ToolsPanel({
   onResult: (report: string, mermaid?: string) => void
   onNotice: (notice: string) => void
 }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const [keyword, setKeyword] = useState('')
   const [searchMd, setSearchMd] = useState('')
   const [pathDst, setPathDst] = useState('')
@@ -94,7 +93,7 @@ export function ToolsPanel({
 
   const doHealth = () =>
     void guard(async () => {
-      const res = await healthCheck(src(), langOf(i18n))
+      const res = await healthCheck(src())
       onResult(res.markdown)
     })
 

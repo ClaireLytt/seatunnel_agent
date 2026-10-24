@@ -837,6 +837,50 @@ def test_render_health_sections():
     assert "血缘治理体检报告" in text
 
 
+def _no_cjk(text: str) -> bool:
+    return not any("一" <= ch <= "鿿" for ch in text)
+
+
+def test_render_all_reports_localized_english():
+    """EN UI must get English for every lineage report, not just health."""
+    from seatunnel_agent.agents.data.data_lineage.render import (
+        render_mermaid,
+        render_path,
+        render_sla_impact,
+        render_tree,
+    )
+
+    g = _sla_graph()
+    chain = g.full_chain("zz.dwd_b")
+    assert _no_cjk(render_tree(chain, lang="en"))
+    assert _no_cjk(render_mermaid(chain, lang="en"))
+    assert _no_cjk(render_path(["a", "b"], "a", "b", g, lang="en"))
+    assert _no_cjk(render_path(None, "a", "x", g, lang="en"))
+    sla = render_sla_impact(g.sla_impact("zz.ods_a", 2.5), lang="en")
+    assert "SLA" in sla
+    # baseline NAMES are user data and stay as-is; strip them before the check
+    assert _no_cjk(sla.replace("核心基线", ""))
+
+    # zh defaults unchanged
+    assert "当前表" in render_tree(chain)
+    assert "SLA 延迟影响分析" in render_sla_impact(g.sla_impact("zz.ods_a", 1))
+
+
+def test_render_report_localized_english():
+    from seatunnel_agent.agents.data.data_lineage.render import render_report
+    from seatunnel_agent.agents.data.data_lineage.report import LineageReport
+
+    g = _sla_graph()
+    report = LineageReport(
+        root_table="zz.dwd_b", direction="both",
+        chain=g.full_chain("zz.dwd_b"),
+    )
+    text = render_report(report, lang="en")
+    assert "Lineage Report" in text
+    assert _no_cjk(text.replace("核心基线", ""))
+    assert "血缘分析报告" in render_report(report)
+
+
 def test_render_health_localized_english():
     """EN UI showed the governance report in Chinese — render follows lang."""
     from seatunnel_agent.agents.data.data_lineage.render import render_health
