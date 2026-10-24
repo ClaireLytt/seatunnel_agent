@@ -555,6 +555,7 @@ def test_demo_streams_validate_script_for_existing_config(
     client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("UI_DEMO_STEP_DELAY", "0")
+    monkeypatch.chdir(tmp_path)
     from seatunnel_agent.agents.data.seatunnel.rendering import DEMO_CONFIG
 
     cfg = tmp_path / "pipe.conf"
@@ -574,6 +575,59 @@ def test_demo_streams_validate_script_for_existing_config(
     )
     assert "验证完成" in text_md
     assert str(cfg) in text_md
+
+
+def test_demo_general_writes_config_inside_cwd(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The demo's write_config call really writes, to a dir-guard-allowed path.
+
+    Regression: the demo used to pre-write the config out-of-band to the OS
+    temp dir, then script a write_config call that the dir guard refused —
+    the transcript showed a failure while the summary claimed success.
+    """
+    monkeypatch.setenv("UI_DEMO_STEP_DELAY", "0")
+    monkeypatch.chdir(tmp_path)
+    resp = client.post("/api/seatunnel/demo", json={"config_path": "", "lang": "en"})
+    assert resp.status_code == 200
+    events = _sse_events(resp)
+    mds = [e["markdown"] for e in events if e["type"] == "event"]
+
+    # the scripted write_config call must not be refused by the dir guard
+    assert not any("Refusing to operate" in m for m in mds)
+    # the file really exists under the working directory
+    assert (tmp_path / "configs" / "demo_fake_to_console.conf").is_file()
+    text_md = next(
+        e["markdown"] for e in events if e["type"] == "event" and e["kind"] == "text"
+    )
+    assert "demo_fake_to_console.conf" in text_md
+    assert "Config generated and validated" in text_md
+
+
+def test_demo_general_admits_write_failure(
+    client: TestClient, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When a demo tool call fails, the summary says so instead of claiming success."""
+    monkeypatch.setenv("UI_DEMO_STEP_DELAY", "0")
+    monkeypatch.chdir(tmp_path)
+    from seatunnel_agent.agents.data.seatunnel import tools as st_tools
+
+    real_execute = st_tools.execute_tool
+
+    def failing_execute(name, tool_input, settings):
+        if name == "write_config":
+            return '{"error": "disk on fire"}'
+        return real_execute(name, tool_input, settings)
+
+    monkeypatch.setattr(st_tools, "execute_tool", failing_execute)
+    resp = client.post("/api/seatunnel/demo", json={"config_path": "", "lang": "en"})
+    assert resp.status_code == 200
+    events = _sse_events(resp)
+    text_md = next(
+        e["markdown"] for e in events if e["type"] == "event" and e["kind"] == "text"
+    )
+    assert "Config generated and validated" not in text_md
+    assert "disk on fire" in text_md
 
 
 def test_demo_honours_step_delay_env_var(

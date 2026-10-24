@@ -503,17 +503,19 @@ def demo_stream(req: DemoRequest) -> StreamingResponse:
 
     1:1 with legacy ui.py _run_demo: same DEMO_STEPS scripts, real
     execute_tool calls against a fake Settings, UI_DEMO_STEP_DELAY pause
-    between steps, demo config written to the temp dir when no real
-    config path is given.
+    between steps. The demo config is written by the scripted write_config
+    tool itself (never out-of-band), to a dir-guard-allowed path under the
+    working directory, and the closing summary is derived from the real
+    tool outcomes — a failed tool call yields a failure summary.
     """
+    import json
     import os
-    import tempfile
 
+    from seatunnel_agent.agents.data.seatunnel import tools as st_tools
     from seatunnel_agent.agents.data.seatunnel.rendering import (
         DEMO_CONFIG,
         DEMO_STEPS,
     )
-    from seatunnel_agent.agents.data.seatunnel.tools import execute_tool
     from seatunnel_agent.common.config import Settings, env_float
 
     delay = env_float("UI_DEMO_STEP_DELAY", 0.35)
@@ -527,9 +529,9 @@ def demo_stream(req: DemoRequest) -> StreamingResponse:
     steps = DEMO_STEPS[key]
 
     if not has_config:
-        config_path = os.path.join(tempfile.gettempdir(), "demo_fake_to_console.conf")
-        with open(config_path, "w", encoding="utf-8") as f:
-            f.write(DEMO_CONFIG)
+        # Same guard-allowed location the upload endpoint uses; the scripted
+        # write_config call below is the only thing that writes the file.
+        config_path = os.path.join("configs", "demo_fake_to_console.conf")
 
     def _tool_input(name: str) -> dict[str, Any]:
         if name == "write_config":
@@ -543,6 +545,7 @@ def demo_stream(req: DemoRequest) -> StreamingResponse:
 
     def stream():
         yield _sse({"type": "conversation", "id": cid})
+        failures: list[str] = []
         for step in steps:
             t = step["type"]
             time.sleep(delay)
@@ -557,13 +560,25 @@ def demo_stream(req: DemoRequest) -> StreamingResponse:
                 ev = {"type": "tool_call", "name": step["name"],
                       "input": _tool_input(step["name"])}
             elif t == "tool_result":
-                result = execute_tool(step["name"], _tool_input(step["name"]),
-                                      fake_settings)
+                result = st_tools.execute_tool(
+                    step["name"], _tool_input(step["name"]), fake_settings)
+                try:
+                    parsed = json.loads(result)
+                    if isinstance(parsed, dict) and parsed.get("error"):
+                        failures.append(str(parsed["error"]))
+                except (ValueError, TypeError):
+                    pass
                 ev = {"type": "tool_result", "name": step["name"], "result": result}
-            else:  # text
-                tkey = "demo_validate_done" if key == "validate" else "demo_general_done"
-                ev = {"type": "text",
-                      "text": translate(req.lang, tkey).format(path=config_path)}
+            else:  # text — summary derived from the real tool outcomes
+                if failures:
+                    ev = {"type": "text",
+                          "text": translate(req.lang, "demo_failed").format(
+                              path=config_path, error=failures[0])}
+                else:
+                    tkey = ("demo_validate_done" if key == "validate"
+                            else "demo_general_done")
+                    ev = {"type": "text",
+                          "text": translate(req.lang, tkey).format(path=config_path)}
 
             markdown = _render_event(ev, start_time)
             if markdown is not None:
