@@ -51,7 +51,9 @@ RULES: list[SecretRule] = [
                    r"[A-Za-z0-9_-]{5,}\b")),
     SecretRule("password_assign", "Password assignment", "明文密码赋值",
                "medium", re.compile(
-                   r"(?i)\b(?:password|passwd|pwd)\s*[:=]\s*"
+                   # identifiers ENDING in password/passwd/pwd too
+                   # (db_password, MYSQL_PASSWORD, root_pwd …)
+                   r"(?i)\b[\w.-]*(?:password|passwd|pwd)\s*[:=]\s*"
                    r"['\"]([^'\"\s]{6,})['\"]")),
     SecretRule("apikey_assign", "API key / token assignment", "API Key 赋值",
                "medium", re.compile(

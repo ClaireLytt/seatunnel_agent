@@ -37,6 +37,9 @@ class TestRules:
         ("jwt = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.dBjftJeZ4CVP",
          "jwt", "medium"),
         ('password = "hunter2-prod"', "password_assign", "medium"),
+        ('db_password = "SuperSecret123!"', "password_assign", "medium"),
+        ("mysql_password: 'Qw3rty!789'", "password_assign", "medium"),
+        ('ROOT_PWD = "N0tAGuess#42"', "password_assign", "medium"),
         ('api_key: "sk-live-0123456789abcdef"', "apikey_assign", "medium"),
         ("dsn = mysql://root:p4ssw0rd@host:3306/db",
          "url_credentials", "medium"),
@@ -56,6 +59,8 @@ class TestRules:
         for line in ('password = "${DB_PASSWORD}"',
                      'api_key: "your-key-here"',
                      'password = "changeme99"',
+                     'db_password = "changeme99"',
+                     'mysql_password = "your-password"',
                      'token = "<insert-token>"'):
             assert scan_text(line) == [], line
         assert is_placeholder("{{ secret }}")
