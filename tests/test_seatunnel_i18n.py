@@ -131,6 +131,6 @@ def test_backend_i18n_holds_only_backend_rendered_keys() -> None:
 
     expected = {"mode_nl", "mode_run", "mode_validate", "mode_diagnose",
                 "no_settings", "stopped",
-                "demo_validate_done", "demo_general_done"}
+                "demo_validate_done", "demo_general_done", "demo_failed"}
     assert set(I18N["en"]) == expected
     assert set(I18N["zh"]) == expected
