@@ -68,7 +68,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e . && pip install pyyaml
-      - run: python -m seatunnel_agent.cli secretscan src scripts --fail-on high
+      - run: python scripts/ci_secretscan.py
 
   # Gradual typing gate over the newest packages ([tool.mypy].files in
   # pyproject); grow the list as modules get annotated.

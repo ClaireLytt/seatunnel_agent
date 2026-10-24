@@ -53,7 +53,7 @@ from .models import (  # noqa: F401 — re-exported, public API
     SkewResult,
     ThresholdConfig,
 )
-from .sqlbase import (  # noqa: F401 — re-exported, public API
+from .sqlbase import (
     _BACKSLASH_ESCAPE_DIALECTS,
     DEFAULT_CHECKSUM_SEGMENTS,
     GINI_MISMATCH_THRESHOLD,
@@ -868,13 +868,13 @@ def get_upstream_tables(table_name: str, sql_list: list[str]) -> list[str]:
 
 # Base primitives + moved feature sections — re-exported so every existing
 # import site (ui_cards, actions, chunked, tests, ...) keeps working.
-from .alerts import (  # noqa: F401
+from .alerts import (
     AlertRule,
     TrendAlert,
     check_trend_alerts,
     parse_alert_rules,
 )
-from .checksum import (  # noqa: F401
+from .checksum import (
     _CUSTOM_AGG_FORBIDDEN,
     build_checksum_sql,
     build_custom_agg_sql,
@@ -884,15 +884,39 @@ from .checksum import (  # noqa: F401
     compare_partitions,
     parse_custom_agg_expressions,
 )
-from .skew import (  # noqa: F401
+from .skew import (
     build_skew_sql,
     compare_skew,
     compute_skew_metrics,
     skew_side_verdict,
 )
-from .sync_config import (  # noqa: F401
+from .sync_config import (
     _escape_hocon,
     build_jdbc_url,
     generate_sync_config,
     get_jdbc_driver,
 )
+
+# Re-exported API of the moved sections (membership marks the imports used;
+# the explicit list is also the compatibility contract for import sites).
+__all__ = [  # grouped by source module, not alphabetized
+    # sqlbase
+    "DEFAULT_CHECKSUM_SEGMENTS", "GINI_MISMATCH_THRESHOLD",
+    "GINI_SKEW_THRESHOLD", "MAX_AGG_COLUMNS", "STR_CAST_LEN",
+    "TOP1_MISMATCH_PP", "TOP1_SKEW_THRESHOLD", "_BACKSLASH_ESCAPE_DIALECTS",
+    "_blank_string_literals", "_canon_timestamp", "_close_enough",
+    "_row_limit", "_where_clause", "cast_to_string", "quote_identifier",
+    "validate_where",
+    # alerts
+    "AlertRule", "TrendAlert", "check_trend_alerts", "parse_alert_rules",
+    # checksum (F1-F3)
+    "_CUSTOM_AGG_FORBIDDEN", "build_checksum_sql", "build_custom_agg_sql",
+    "build_partition_count_sql", "compare_checksums", "compare_custom_aggs",
+    "compare_partitions", "parse_custom_agg_expressions",
+    # skew
+    "build_skew_sql", "compare_skew", "compute_skew_metrics",
+    "skew_side_verdict",
+    # sync config
+    "_escape_hocon", "build_jdbc_url", "generate_sync_config",
+    "get_jdbc_driver",
+]
