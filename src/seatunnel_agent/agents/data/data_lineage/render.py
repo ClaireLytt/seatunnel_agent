@@ -352,67 +352,116 @@ def render_sla_impact(impact: SlaImpactResult) -> str:
 
 _CONF_LABELS = {"high": "高", "medium": "中", "low": "低"}
 
+_HEALTH_I18N: dict[str, dict[str, str]] = {
+    "zh": {
+        "title": "## 血缘治理体检报告",
+        "stats": ("- 表 **{tables}** 张 · 血缘边 **{edges}** 条 · "
+                  "字段级血缘 **{column_edges}** 条 · SLA 表 **{sla_tables}** 张"),
+        "conf_sources": "来源 ",
+        "conf_confidence": "置信度 ",
+        "conf_edge": "- 边 ",
+        "cycles_title": "### 环依赖（{n} 个）",
+        "cycles_intro": "以下环路会导致调度依赖死锁或口径混乱，需要拆解：",
+        "cycles_none": "未检测到环依赖。",
+        "isolated_title": "### 孤立表（{n} 张，无上下游）",
+        "isolated_intro": "既没有上游也没有下游，可能是未接入血缘或已废弃：",
+        "isolated_none": "没有孤立表。",
+        "more_hidden": "- …另有 {n} 张未展示",
+        "no_downstream_title": "### 无下游表（{n} 张，可评估下线）",
+        "no_downstream_intro": "有上游加工但没有任何消费方，建议确认后下线以节省成本：",
+        "no_downstream_none": "没有可下线候选表。",
+    },
+    "en": {
+        "title": "## Lineage Governance Health Report",
+        "stats": ("- tables **{tables}** · lineage edges **{edges}** · "
+                  "column edges **{column_edges}** · SLA tables **{sla_tables}**"),
+        "conf_sources": "sources ",
+        "conf_confidence": "confidence ",
+        "conf_edge": "- edges ",
+        "cycles_title": "### Dependency cycles ({n})",
+        "cycles_intro": ("These cycles deadlock the scheduler or blur metric "
+                         "definitions — break them up:"),
+        "cycles_none": "No dependency cycles detected.",
+        "isolated_title": "### Isolated tables ({n}, no upstream or downstream)",
+        "isolated_intro": ("No upstream and no downstream — possibly not wired "
+                           "into lineage, or already abandoned:"),
+        "isolated_none": "No isolated tables.",
+        "more_hidden": "- … {n} more not shown",
+        "no_downstream_title": "### Tables without downstream ({n}, retirement candidates)",
+        "no_downstream_intro": ("Produced upstream but consumed by nothing — "
+                                "confirm and retire to save cost:"),
+        "no_downstream_none": "No retirement candidates.",
+    },
+}
 
-def _confidence_line(stats: dict) -> list[str]:
+
+def _confidence_line(stats: dict, lang: str = "zh") -> list[str]:
+    tr = _HEALTH_I18N.get(lang, _HEALTH_I18N["zh"])
     sources = stats.get("edge_sources") or {}
     conf = stats.get("edge_confidence") or {}
     if not sources and not conf:
         return []
+    conf_labels = _CONF_LABELS if lang == "zh" else {}
     bits = []
     if sources:
         bits.append(
-            "来源 " + " / ".join(f"{k}:{v}" for k, v in sorted(sources.items()))
+            tr["conf_sources"]
+            + " / ".join(f"{k}:{v}" for k, v in sorted(sources.items()))
         )
     if conf:
         bits.append(
-            "置信度 " + " / ".join(
-                f"{_CONF_LABELS.get(k, k)}:{v}" for k, v in sorted(conf.items())
+            tr["conf_confidence"] + " / ".join(
+                f"{conf_labels.get(k, k)}:{v}" for k, v in sorted(conf.items())
             )
         )
-    return [f"- 边 {' · '.join(bits)}"]
+    return [tr["conf_edge"] + " · ".join(bits)]
 
 
-def render_health(report: HealthReport, sample: int = 30) -> str:
-    """Chinese governance health-check report."""
+def render_health(report: HealthReport, sample: int = 30,
+                  lang: str = "zh") -> str:
+    """Governance health-check report, localized by *lang* (zh default)."""
+    tr = _HEALTH_I18N.get(lang, _HEALTH_I18N["zh"])
     stats = report.stats
     lines = [
-        "## 血缘治理体检报告",
+        tr["title"],
         "",
-        f"- 表 **{stats.get('tables', 0)}** 张 · 血缘边 **{stats.get('edges', 0)}** 条 · "
-        f"字段级血缘 **{stats.get('column_edges', 0)}** 条 · "
-        f"SLA 表 **{stats.get('sla_tables', 0)}** 张",
-        *_confidence_line(stats),
+        tr["stats"].format(
+            tables=stats.get("tables", 0), edges=stats.get("edges", 0),
+            column_edges=stats.get("column_edges", 0),
+            sla_tables=stats.get("sla_tables", 0)),
+        *_confidence_line(stats, lang),
         "",
-        f"### 环依赖（{len(report.cycles)} 个）",
+        tr["cycles_title"].format(n=len(report.cycles)),
         "",
     ]
     if report.cycles:
-        lines.append("以下环路会导致调度依赖死锁或口径混乱，需要拆解：")
+        lines.append(tr["cycles_intro"])
         lines.extend(
             f"- {' → '.join(f'`{n}`' for n in cycle)}" for cycle in report.cycles
         )
     else:
-        lines.append("未检测到环依赖。")
-    lines.extend(["", f"### 孤立表（{len(report.isolated)} 张，无上下游）", ""])
+        lines.append(tr["cycles_none"])
+    lines.extend(["", tr["isolated_title"].format(n=len(report.isolated)), ""])
     if report.isolated:
-        lines.append("既没有上游也没有下游，可能是未接入血缘或已废弃：")
+        lines.append(tr["isolated_intro"])
         lines.extend(f"- `{n}`" for n in report.isolated[:sample])
         if len(report.isolated) > sample:
-            lines.append(f"- …另有 {len(report.isolated) - sample} 张未展示")
+            lines.append(tr["more_hidden"].format(n=len(report.isolated) - sample))
     else:
-        lines.append("没有孤立表。")
+        lines.append(tr["isolated_none"])
     lines.extend([
         "",
-        f"### 无下游表（{len(report.no_downstream)} 张，可评估下线）",
+        tr["no_downstream_title"].format(n=len(report.no_downstream)),
         "",
     ])
     if report.no_downstream:
-        lines.append("有上游加工但没有任何消费方，建议确认后下线以节省成本：")
+        lines.append(tr["no_downstream_intro"])
         lines.extend(f"- `{n}`" for n in report.no_downstream[:sample])
         if len(report.no_downstream) > sample:
-            lines.append(f"- …另有 {len(report.no_downstream) - sample} 张未展示")
+            lines.append(
+                tr["more_hidden"].format(n=len(report.no_downstream) - sample))
     else:
-        lines.append("没有可下线候选表。")
+        lines.append(tr["no_downstream_none"])
     return "\n".join(lines)
 
 

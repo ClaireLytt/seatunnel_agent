@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from seatunnel_agent.agents.data.data_lineage.graph import norm_table
+from seatunnel_agent.agents.data.sql_testgen.i18n import tp
 
 DEFAULT_ROWS = 5
 MAX_ROWS = 100
@@ -116,7 +117,7 @@ def _table_key(t) -> str:
     return norm_table(".".join(parts))
 
 
-def _analyze(tree, dialect: str) -> tuple[
+def _analyze(tree, dialect: str, lang: str = "zh") -> tuple[
         dict[str, dict[str, ColumnSpec]], list[tuple], list[str]]:
     """(tables→columns, equi-join pairs, notes) from the parsed query."""
     from sqlglot import exp
@@ -219,8 +220,8 @@ def _analyze(tree, dialect: str) -> tuple[
                 ensure(target).required_values.append(_literal_value(low))
 
     if unresolved:
-        notes.append("无法归属的列（多表查询中未加表前缀）: "
-                     + ", ".join(sorted(unresolved)))
+        notes.append(tp(lang, "note_unresolved").format(
+            cols=", ".join(sorted(unresolved))))
     return tables, joins, notes
 
 
@@ -257,7 +258,8 @@ def _infer_type(spec: ColumnSpec) -> str:
 
 
 def _apply_ddl(tables: dict[str, dict[str, ColumnSpec]], ddl: str,
-               dialect: str, notes: list[str], warnings: list[str]) -> None:
+               dialect: str, notes: list[str], warnings: list[str],
+               lang: str = "zh") -> None:
     from seatunnel_agent.agents.data.schema_drift.differ import parse_schema_script
 
     schemas, warns = parse_schema_script(ddl, dialect)
@@ -276,7 +278,8 @@ def _apply_ddl(tables: dict[str, dict[str, ColumnSpec]], ddl: str,
         for col, spec in referenced.items():
             if col not in merged:
                 merged[col] = spec
-                notes.append(f"{name}.{col} 不在 DDL 中，类型按用法推断")
+                notes.append(tp(lang, "note_not_in_ddl").format(
+                    column=f"{name}.{col}"))
         tables[name] = merged
 
 
@@ -376,7 +379,7 @@ def _generate_rows(table: TableData, rows: int) -> None:
 # ---------------------------------------------------------------------------
 
 def generate(sql: str, ddl: str = "", rows: int = DEFAULT_ROWS,
-             dialect: str = "hive") -> GenResult:
+             dialect: str = "hive", lang: str = "zh") -> GenResult:
     import sqlglot
     from sqlglot import exp
 
@@ -389,7 +392,7 @@ def generate(sql: str, ddl: str = "", rows: int = DEFAULT_ROWS,
     try:
         tree = sqlglot.parse_one(sql, read=read)
     except sqlglot.errors.ParseError as exc:
-        result.warnings.append(f"查询解析失败: {exc}")
+        result.warnings.append(tp(lang, "note_parse_failed").format(detail=exc))
         return result
     # INSERT ... SELECT: generate data for the SELECT's sources only.
     # Hive's WITH ... INSERT hangs the CTEs on the Insert node — transplant
@@ -402,19 +405,17 @@ def generate(sql: str, ddl: str = "", rows: int = DEFAULT_ROWS,
                 select.set(with_key, tree.args[with_key])
                 break
         tree = select
-        result.notes.append(
-            "INSERT 语句：目标表 "
-            + (_table_key(target) if target is not None else "?")
-            + " 不生成数据，仅为来源表生成")
+        result.notes.append(tp(lang, "note_insert_target").format(
+            table=_table_key(target) if target is not None else "?"))
 
-    tables, joins, notes = _analyze(tree, dialect)
+    tables, joins, notes = _analyze(tree, dialect, lang)
     result.notes.extend(notes)
     if not tables:
-        result.warnings.append("查询中没有找到物理表")
+        result.warnings.append(tp(lang, "note_no_tables"))
         return result
 
     if (ddl or "").strip():
-        _apply_ddl(tables, ddl, dialect, result.notes, result.warnings)
+        _apply_ddl(tables, ddl, dialect, result.notes, result.warnings, lang)
 
     # union-find the equi-join groups into shared value pools
     parent: dict[tuple[str, str], tuple[str, str]] = {}
@@ -461,7 +462,7 @@ def generate(sql: str, ddl: str = "", rows: int = DEFAULT_ROWS,
     for name in sorted(tables):
         columns = tables[name]
         if not columns:
-            result.notes.append(f"{name}: 查询未引用任何列，跳过")
+            result.notes.append(tp(lang, "note_skip_no_columns").format(table=name))
             continue
         table = TableData(name=name, columns=sorted(
             columns.values(), key=lambda c: (c.source != "ddl", c.name)))
@@ -477,7 +478,8 @@ def generate(sql: str, ddl: str = "", rows: int = DEFAULT_ROWS,
                 for t in result.tables for c in t.columns
                 if c.source != "ddl"]
     if inferred:
-        result.notes.append("推断类型: " + ", ".join(inferred))
+        result.notes.append(tp(lang, "note_inferred_types").format(
+            items=", ".join(inferred)))
     return result
 
 

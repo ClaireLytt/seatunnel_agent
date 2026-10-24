@@ -25,6 +25,15 @@ TGN_I18N: dict[str, dict[str, str]] = {
         "val_skipped": "validation skipped: {detail}",
         "val_zero_rows": "⚠️ the query returned 0 rows on the generated "
                          "data — check filters vs. generated values",
+        "note_parse_failed": "Query parse failed: {detail}",
+        "note_insert_target": ("INSERT statement: target table {table} gets "
+                               "no data — only source tables are generated"),
+        "note_no_tables": "No physical tables found in the query",
+        "note_unresolved": ("Columns that could not be attributed (no table "
+                            "prefix in a multi-table query): {cols}"),
+        "note_not_in_ddl": "{column} not in DDL — type inferred from usage",
+        "note_skip_no_columns": "{table}: query references no columns, skipped",
+        "note_inferred_types": "Inferred types: {items}",
         "rpt_disclaimer": (
             "> Deterministic generation — join columns share value pools "
             "and WHERE literals are satisfied, so the query exercises real "
@@ -50,6 +59,13 @@ TGN_I18N: dict[str, dict[str, str]] = {
         "val_exec_error": "SQLite 执行失败（结果不确定）: {detail}",
         "val_skipped": "跳过验证: {detail}",
         "val_zero_rows": "⚠️ 查询在生成数据上返回 0 行 — 请核对过滤条件与生成值",
+        "note_parse_failed": "查询解析失败: {detail}",
+        "note_insert_target": "INSERT 语句：目标表 {table} 不生成数据，仅为来源表生成",
+        "note_no_tables": "查询中没有找到物理表",
+        "note_unresolved": "无法归属的列（多表查询中未加表前缀）: {cols}",
+        "note_not_in_ddl": "{column} 不在 DDL 中，类型按用法推断",
+        "note_skip_no_columns": "{table}: 查询未引用任何列，跳过",
+        "note_inferred_types": "推断类型: {items}",
         "rpt_disclaimer": (
             "> 确定性生成 — 关联列共享取值池、WHERE 字面量被满足，"
             "查询会跑到真实路径。SQLite 验证为尽力而为：引擎特有函数可能无法翻译。"),

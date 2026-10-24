@@ -223,6 +223,21 @@ class TestRouter:
         empty = render_suggestions([], "en")
         assert "No LLM configured" in empty
 
+    def test_render_suggestions_english_descriptions(self):
+        """EN fallback showed Chinese agent descriptions — must be English."""
+        catalog = build_catalog()
+        md = render_suggestions(suggest("review this sql", catalog), "en")
+        assert "sql_review" in md
+        assert not any("一" <= ch <= "鿿" for ch in md)
+
+    def test_every_keyword_tool_has_english_description(self):
+        from seatunnel_agent.agents.ai.orchestrator.router import (
+            _DESCRIPTIONS_EN,
+            _KEYWORDS,
+        )
+        missing = [t for t in _KEYWORDS if t not in _DESCRIPTIONS_EN]
+        assert not missing, f"keyword-routable tools missing EN description: {missing}"
+
 
 class TestReport:
     def test_markdown(self):

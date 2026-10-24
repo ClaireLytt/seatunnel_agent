@@ -36,6 +36,40 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
 }
 
 
+# English one-liners for the keyword-routable tools: catalog descriptions
+# come from (Chinese) docstrings, so the EN fallback needs its own copy.
+_DESCRIPTIONS_EN: dict[str, str] = {
+    "sql_review": ("Static SQL review — performance/quality/standards rules, "
+                   "severity-graded Markdown report."),
+    "sql_transpile": ("SQL dialect translation (hive/spark/doris/starrocks …) "
+                      "with an incompatibility report — deterministic."),
+    "impact_diff": ("Change-impact analysis — diff two SQL versions and report "
+                    "the downstream blast radius with severity levels."),
+    "migrate_to_seatunnel": ("Convert a DataX job JSON or sqoop command into a "
+                             "SeaTunnel config with migration notes."),
+    "skew_check": ("Static data-skew scan over SQL — join/aggregation skew "
+                   "patterns with rewrite suggestions."),
+    "sql_fmt": ("Deterministic SQL pretty-print — statements that do not "
+                "parse are kept verbatim."),
+    "config_lint": ("Param-level lint of SeaTunnel configs against the "
+                    "built-in connector docs, with did-you-mean hints."),
+    "schema_drift": ("Diff two DDL snapshots — breaking / risk / info severity "
+                     "for every structural change."),
+    "pii_scan": ("Find sensitive columns via naming rules × column lineage and "
+                 "flag unmasked downstream spread."),
+    "sql_testgen": ("Generate join-aware test datasets that exercise a query, "
+                    "validated on in-memory SQLite."),
+    "secret_scan": ("Scan text for leaked credentials — provider tokens, "
+                    "private keys, password assignments; previews masked."),
+    "dep_check": ("Dependency health — declared vs installed, unpinned specs, "
+                  "duplicate pins and a license inventory, offline."),
+    "release_notes": ("Grouped changelog from conventional commits plus a "
+                      "semver bump suggestion."),
+    "ci_triage": ("Cluster failed CI job logs into root causes; spot flaky "
+                  "jobs and duration drift."),
+}
+
+
 @dataclass
 class Suggestion:
     tool: str
@@ -84,5 +118,7 @@ def render_suggestions(suggestions: list[Suggestion],
     lines = [head, ""]
     for s in suggestions:
         page = f" → `{s.page}`" if s.page else ""
-        lines.append(f"- **{s.tool}**{page}: {s.description[:120]}")
+        desc = (s.description if zh
+                else _DESCRIPTIONS_EN.get(s.tool, s.description))
+        lines.append(f"- **{s.tool}**{page}: {desc[:120]}")
     return "\n".join(lines)

@@ -837,6 +837,19 @@ def test_render_health_sections():
     assert "血缘治理体检报告" in text
 
 
+def test_render_health_localized_english():
+    """EN UI showed the governance report in Chinese — render follows lang."""
+    from seatunnel_agent.agents.data.data_lineage.render import render_health
+
+    g = linear_graph("a", "b")
+    g.add_edge("b", "a")
+    g.add_node("lonely")
+    text = render_health(g.health_check(), lang="en")
+    assert "Lineage Governance Health Report" in text
+    assert "`lonely`" in text
+    assert not any("一" <= ch <= "鿿" for ch in text)
+
+
 def test_render_path_and_mermaid():
     from seatunnel_agent.agents.data.data_lineage.render import (
         render_path,

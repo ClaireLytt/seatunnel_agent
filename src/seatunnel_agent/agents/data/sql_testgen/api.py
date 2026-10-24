@@ -49,7 +49,7 @@ def generate_data(req: TestgenRequest) -> TestgenResponse:
     start = time.time()
     lang = normalize_lang(req.lang)
     result = generate(req.sql, ddl=req.ddl, rows=req.rows,
-                      dialect=req.dialect)
+                      dialect=req.dialect, lang=lang)
     if not result.tables and result.warnings:
         raise HTTPException(status_code=400,
                             detail="; ".join(result.warnings))

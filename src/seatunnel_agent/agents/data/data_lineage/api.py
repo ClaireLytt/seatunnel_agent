@@ -52,6 +52,7 @@ class SourceRequest(BaseModel):
     use_cache: bool = Field(True, description="使用 Hive 血缘图的本地 TTL 缓存")
     session_id: str = Field(
         "", description="可选：复用该会话里已构建的血缘图（POST /build）")
+    lang: str = Field("zh", description="报告语言 zh|en")
 
 
 class QueryRequest(SourceRequest):
@@ -265,7 +266,7 @@ def health_check(req: SourceRequest) -> dict[str, Any]:
     elapsed_ms = _log_elapsed(start, graph.stats(), query="health_check", mode="health")
     return {
         **report.to_dict(),
-        "markdown": render_health(report),
+        "markdown": render_health(report, lang=req.lang),
         "warnings": warnings,
         "elapsed_ms": elapsed_ms,
     }

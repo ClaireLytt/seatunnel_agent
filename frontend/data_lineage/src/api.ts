@@ -126,8 +126,11 @@ export function slaImpact(
   return request('/sla_impact', { ...src, table, delay_hours: delayHours, depth })
 }
 
-export function healthCheck(src: SourceParams): Promise<{ markdown: string }> {
-  return request('/check', { ...src })
+export function healthCheck(
+  src: SourceParams,
+  lang: 'en' | 'zh' = 'zh',
+): Promise<{ markdown: string }> {
+  return request('/check', { ...src, lang })
 }
 
 export function saveSnapshot(src: SourceParams, name: string): Promise<{ file: string }> {
