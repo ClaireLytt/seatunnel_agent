@@ -41,6 +41,11 @@ class QueryLogger:
         error: str | None = None,
         extra: dict[str, Any] | None = None,
     ) -> None:
+        if not user_query.strip():
+            # Never log an empty question — fall back to the channel tag so
+            # every history row stays attributable ([mcp], [subscription], …).
+            source = (extra or {}).get("source") or "unknown"
+            user_query = f"[{source}]"
         record: dict[str, Any] = {
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "user_query": user_query,
