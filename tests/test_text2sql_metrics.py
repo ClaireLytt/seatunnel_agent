@@ -992,7 +992,8 @@ def test_mcp_trace_and_attribution_tools(tmp_path, monkeypatch) -> None:
     assert "metric_attribution" not in tools2
     assert "trace_metric" in tools2
     # the agent-tool shells are execute-gated too
-    for t in ("forecast_metric", "metric_target_progress", "correlate_metrics"):
+    for t in ("forecast_metric", "metric_target_progress",
+              "correlate_metrics", "tree_attribution"):
         assert t in tools and t not in tools2
 
 
@@ -1027,6 +1028,10 @@ def test_mcp_forecast_tool_end_to_end(tmp_path, monkeypatch) -> None:
     assert out["forecasts"][0]["yhat"] == pytest.approx(240.0, abs=1e-6)
     out = json.loads(tools["correlate_metrics"]("gmv", "gmv"))
     assert "不同的指标" in out["error"]
+    out = json.loads(tools["tree_attribution"](
+        "gmv", curr_start="2026-03-28", compare_mode="mom",
+    ))
+    assert out.get("success") and out["check_ok"], out
 
 
 def test_unified_entry_review_sql(sqlite_runtime) -> None:
@@ -1194,6 +1199,15 @@ def test_api_metrics_forecast_target_correlate(tmp_path, monkeypatch) -> None:
         "metric": "order_cnt", "end_date": "2026-03-28", **base,
     })
     assert resp.status_code == 400 and "未声明" in resp.json()["detail"]
+
+    # tree endpoint: gmv = order_cnt × aov over mom comparison
+    resp = client.post("/api/text2sql/metrics/tree", json={
+        "metric": "gmv", "curr_start": "2026-03-28",
+        "compare_mode": "mom", **base,
+    })
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["tree"] == ["order_cnt", "aov"] and data["check_ok"]
 
 
 def test_api_metrics_forecast_requires_db() -> None:

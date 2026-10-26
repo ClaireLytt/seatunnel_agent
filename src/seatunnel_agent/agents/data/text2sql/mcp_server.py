@@ -357,9 +357,28 @@ def build_tool_functions(
                  "days": days, "end_date": end_date}, rt,
             ))
 
+        def tree_attribution(
+            metric: str, curr_start: str, prev_start: str = "",
+            curr_end: str = "", prev_end: str = "", compare_mode: str = "",
+        ) -> str:
+            """指标树分解:按声明的乘法因子树(如 gmv = traffic × cvr × aov)
+            做对数恒等分解(份额+残差恒等 100%),并对最大 additive 因子自动
+            维度归因。"""
+            from .tools_metric import _tool_tree_attribution
+
+            rt = _tool_runtime()
+            if rt is None:
+                return _json(_NO_DB)
+            return _json(_tool_tree_attribution({
+                "metric": metric, "curr_start": curr_start,
+                "curr_end": curr_end, "prev_start": prev_start,
+                "prev_end": prev_end, "compare_mode": compare_mode,
+            }, rt))
+
         tools["forecast_metric"] = forecast_metric
         tools["metric_target_progress"] = metric_target_progress
         tools["correlate_metrics"] = correlate_metrics
+        tools["tree_attribution"] = tree_attribution
 
         def metric_attribution(
             metric: str,

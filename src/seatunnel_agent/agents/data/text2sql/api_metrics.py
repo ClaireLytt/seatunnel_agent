@@ -272,6 +272,15 @@ class TargetProgressRequest(_ConnectedRequest):
     end_date: str | None = Field(None, description="Progress as-of (default: yesterday)")
 
 
+class TreeAttributionRequest(_ConnectedRequest):
+    metric: str = Field(..., min_length=1)
+    curr_start: str = Field(..., min_length=1)
+    curr_end: str | None = None
+    prev_start: str | None = None
+    prev_end: str | None = None
+    compare_mode: str | None = Field(None, description="mom | wow | yoy")
+
+
 class CorrelateRequest(_ConnectedRequest):
     metric_a: str = Field(..., min_length=1)
     metric_b: str = Field(..., min_length=1)
@@ -328,6 +337,20 @@ def metrics_target(req: TargetProgressRequest) -> dict[str, Any]:
         "end_date": req.end_date or "",
     }
     return _tool_response(_tool_metric_target_progress(inp, _tool_runtime(req)))
+
+
+@router.post("/metrics/tree")
+def metrics_tree(req: TreeAttributionRequest) -> dict[str, Any]:
+    """Deterministic factor-tree decomposition — no LLM involved."""
+    from .tools_metric import _tool_tree_attribution
+
+    inp = {
+        "metric": req.metric,
+        "curr_start": req.curr_start, "curr_end": req.curr_end or "",
+        "prev_start": req.prev_start or "", "prev_end": req.prev_end or "",
+        "compare_mode": req.compare_mode or "",
+    }
+    return _tool_response(_tool_tree_attribution(inp, _tool_runtime(req)))
 
 
 @router.post("/metrics/correlate")

@@ -321,8 +321,9 @@ seatunnel-agent t2s-mcp --ds-type sqlite --database config/demo.db --allow-execu
 `match_metrics` / `explain_metric` / `metric_sql`（确定性展开）/
 `trace_metric`（溯源）。`--allow-execute` 才开放
 `execute_readonly_sql`（仍 SELECT-only + 白名单 + LIMIT）、
-`metric_attribution`、`forecast_metric`、`metric_target_progress`
-与 `correlate_metrics`。凭据只从服务端环境读取，不接受 MCP 参数传入。
+`metric_attribution`、`forecast_metric`、`metric_target_progress`、
+`correlate_metrics` 与 `tree_attribution`。凭据只从服务端环境读取，
+不接受 MCP 参数传入。
 
 ## 跨模块联动
 
@@ -340,7 +341,8 @@ seatunnel-agent t2s-mcp --ds-type sqlite --database config/demo.db --allow-execu
 `seatunnel-agent ui --api` 开放 `/api/text2sql/`：`POST /query`（NL 问答）、
 `GET /metrics`、以及零 LLM 确定性端点 `POST /metrics/query` /
 `/metrics/attribution` / `/metrics/forecast` / `/metrics/target` /
-`/metrics/correlate`（适合 Dify/n8n 编排；OpenAPI 见 `/docs`）。
+`/metrics/correlate` / `/metrics/tree`（适合 Dify/n8n 编排；OpenAPI 见
+`/docs`）。
 设置 `SEATUNNEL_API_KEY` 后所有 `/api` 路由要求 `X-API-Key` 头。
 
 > ⚠️ 安全提示:未设置 `SEATUNNEL_API_KEY` 时 API 完全开放,且订阅接口
