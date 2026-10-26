@@ -38,6 +38,82 @@ def _qlog_7d(entries: list[dict[str, Any]], name: str, today: date) -> dict[str,
     return {"queries_7d": count, "failures_7d": fails}
 
 
+def asset_findings(
+    schema_store: SchemaStore,
+    metric_store: MetricStore,
+    examples: list[dict[str, Any]] | None = None,
+    favorites: list[dict[str, Any]] | None = None,
+    boards: list[dict[str, Any]] | None = None,
+    subs: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Static drift check over the stored assets that execute unattended.
+
+    Examples (the semantic cache's execution path), favorites, board items
+    and subscriptions all carry SQL or metric references that silently rot
+    when the schema or metric catalog changes; each finding names the
+    asset, the problem and a suggested action. Column mismatches are
+    warnings (aliases are invisible to the regex checker), everything else
+    is an error.
+    """
+    import re
+
+    findings: list[dict[str, Any]] = []
+
+    def _check_sql(kind: str, ident: str, sql: str) -> None:
+        # favorite SQL may carry ${macros}: substitute a date-shaped dummy
+        # so the validator sees plain literals
+        sql = re.sub(r"\$\{\w+\}", "'2026-01-01'", sql)
+        r = validate_sql(sql, schema_store)
+        for err in r.errors:
+            findings.append({
+                "kind": kind, "id": ident, "level": "error",
+                "problem": err, "action": "更新该 SQL 或移除此资产",
+            })
+        for w in r.column_warnings:
+            findings.append({
+                "kind": kind, "id": ident, "level": "warning",
+                "problem": w, "action": "确认列是否已被重命名/下线",
+            })
+
+    for e in examples or []:
+        if e.get("sql"):
+            _check_sql("example", f"{e.get('id', '?')} {e.get('question', '')[:40]}",
+                       e["sql"])
+    for f in favorites or []:
+        if f.get("sql"):
+            _check_sql("favorite", f"{f.get('id', '?')} {f.get('name', '')[:40]}",
+                       f["sql"])
+    for b in boards or []:
+        for item in b.get("items", []):
+            if item.get("sql"):
+                _check_sql(
+                    "board",
+                    f"{b.get('name', '?')}/{item.get('title', '')[:40]}",
+                    item["sql"],
+                )
+    fav_ids = {f.get("id") for f in favorites or []}
+    for s in subs or []:
+        ident = f"{s.get('id', '?')} {s.get('name', '')[:40]}"
+        names = [s["metric"]] if s.get("metric") else []
+        names += list(s.get("metrics") or [])
+        for n in names:
+            if metric_store.get(n) is None:
+                findings.append({
+                    "kind": "subscription", "id": ident, "level": "error",
+                    "problem": f"引用的指标 '{n}' 已不存在",
+                    "action": "更新订阅指标或删除订阅",
+                })
+        if s.get("source_type") == "favorite" and s.get("favorite_id") not in fav_ids:
+            findings.append({
+                "kind": "subscription", "id": ident, "level": "error",
+                "problem": f"引用的收藏 '{s.get('favorite_id')}' 已不存在",
+                "action": "重建收藏或删除订阅",
+            })
+    order = {"error": 0, "warning": 1}
+    findings.sort(key=lambda f: (order[f["level"]], f["kind"], f["id"]))
+    return findings
+
+
 def metric_health(
     metric_store: MetricStore,
     schema_store: SchemaStore,

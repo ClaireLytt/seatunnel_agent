@@ -780,6 +780,50 @@ def test_metric_health_rollup(tmp_path) -> None:
     assert rows[0]["metric"] == "order_cnt"  # 红的排最前
 
 
+def test_asset_doctor_findings() -> None:
+    """漂移体检:坏表 error、坏列 warning、缺失指标/收藏 error、好资产静默."""
+    from seatunnel_agent.agents.data.text2sql.health import asset_findings
+
+    schema_store = SchemaStore(parse_ddl(_DDL))
+    metric_store, errors = MetricStore.from_text(_METRICS, schema_store)
+    assert errors == []
+    findings = asset_findings(
+        schema_store, metric_store,
+        examples=[
+            {"id": "e1", "question": "好的", "sql": "SELECT amount FROM sales"},
+            {"id": "e2", "question": "坏表", "sql": "SELECT 1 FROM gone_table"},
+            {"id": "e3", "question": "坏列", "sql": "SELECT ghost_col FROM sales"},
+        ],
+        favorites=[
+            {"id": "f1", "name": "宏收藏",
+             "sql": "SELECT amount FROM sales WHERE dt = '${yesterday}'"},
+        ],
+        boards=[
+            {"name": "板", "items": [
+                {"title": "坏项", "sql": "SELECT 1 FROM nope"},
+            ]},
+        ],
+        subs=[
+            {"id": "s1", "name": "好订阅", "metric": "gmv"},
+            {"id": "s2", "name": "坏指标", "metric": "gone_metric"},
+            {"id": "s3", "name": "坏收藏", "source_type": "favorite",
+             "favorite_id": "missing"},
+        ],
+    )
+    probs = {(f["kind"], f["level"], f["id"].split()[0]) for f in findings}
+    assert ("example", "error", "e2") in probs
+    assert ("example", "warning", "e3") in probs
+    assert ("board", "error", "板/坏项") in probs
+    assert ("subscription", "error", "s2") in probs
+    assert ("subscription", "error", "s3") in probs
+    # 宏收藏替换占位后应通过,好资产零发现
+    assert not any(f["id"].startswith("f1") for f in findings)
+    assert not any(f["id"].startswith("e1") for f in findings)
+    assert not any(f["id"].startswith("s1") for f in findings)
+    # error 排在 warning 前
+    assert findings[0]["level"] == "error" and findings[-1]["level"] == "warning"
+
+
 def test_qlog_insights(tmp_path) -> None:
     from seatunnel_agent.agents.data.text2sql.examples import ExampleStore
     from seatunnel_agent.agents.data.text2sql.qlog import insights

@@ -259,6 +259,16 @@ seatunnel-agent t2s-examples promote --top 10        # dry-run 列候选
 seatunnel-agent t2s-examples promote --top 10 --yes  # 入库
 ```
 
+### 资产漂移体检
+
+```bash
+seatunnel-agent t2s-doctor --ddl config/schema_ddl.sql
+```
+
+示例库(语义缓存的执行路径)/收藏/看板/订阅 对当前 DDL+指标库的静态校验:
+坏表=error、可疑列=warning、订阅引用的指标/收藏缺失=error,逐条给建议;
+有 error 退出码 1,可做 CI 门禁或 schema 变更后的例行检查。
+
 ### 指标健康页
 
 ```bash

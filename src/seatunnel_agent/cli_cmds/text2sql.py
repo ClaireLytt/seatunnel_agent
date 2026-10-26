@@ -352,6 +352,59 @@ def t2s_sub_backtest(sub_id: str, days: int, end_raw: str) -> None:
             )
 
 
+@click.command(name="t2s-doctor")
+@click.option("--ddl", type=click.Path(exists=True), required=True,
+              help="schema DDL 文件（表白名单）")
+@click.option("--metrics-file", "-f", type=click.Path(exists=True),
+              default=None, help="指标定义文件（默认 config/metrics.yaml）")
+def t2s_doctor(ddl: str, metrics_file: str | None) -> None:
+    """资产漂移体检：示例库/收藏/看板/订阅 对当前 DDL+指标库的静态校验。
+    发现 error 级问题时退出码 1（可做 CI 门禁）。"""
+    _ensure_utf8_stdio()
+    from seatunnel_agent.agents.data.text2sql.boards import BoardStore
+    from seatunnel_agent.agents.data.text2sql.examples import ExampleStore
+    from seatunnel_agent.agents.data.text2sql.favorites import FavoritesStore
+    from seatunnel_agent.agents.data.text2sql.health import asset_findings
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+    from seatunnel_agent.agents.data.text2sql.subscriptions import (
+        SubscriptionStore,
+    )
+
+    schema_store = SchemaStore.from_file(ddl)
+    metric_store, errors = _load_metrics_for_cli(metrics_file, ddl)
+    for err in errors:
+        console.print(f"[yellow]指标定义警告: {err}[/yellow]")
+
+    def _safe(loader):
+        try:
+            return loader()
+        except Exception:
+            return []
+
+    findings = asset_findings(
+        schema_store, metric_store,
+        examples=_safe(lambda: ExampleStore().list()),
+        favorites=_safe(lambda: FavoritesStore().list()),
+        boards=_safe(lambda: BoardStore().list()),
+        subs=_safe(lambda: SubscriptionStore().list()),
+    )
+    if not findings:
+        console.print("[green]体检通过：四类资产与当前 schema/指标库一致[/green]")
+        return
+    n_err = sum(1 for f in findings if f["level"] == "error")
+    for f in findings:
+        color = "red" if f["level"] == "error" else "yellow"
+        console.print(
+            f"[{color}]{f['level'].upper()}[/{color}] "
+            f"[{f['kind']}] {f['id']} — {f['problem']}（{f['action']}）"
+        )
+    console.print(
+        f"共 {len(findings)} 条（error {n_err}）"
+    )
+    if n_err:
+        raise SystemExit(1)
+
+
 @click.command(name="t2s-qlog-stats")
 @click.option("--top", type=int, default=10, show_default=True, help="Top N")
 @click.option("--last", type=int, default=2000, show_default=True,
@@ -994,6 +1047,7 @@ def register(cli) -> None:
     cli.add_command(t2s_sub)
     cli.add_command(t2s_cron)
     cli.add_command(t2s_qlog_stats)
+    cli.add_command(t2s_doctor)
     cli.add_command(t2s_eval)
     cli.add_command(dqc)
     cli.add_command(metrics)
