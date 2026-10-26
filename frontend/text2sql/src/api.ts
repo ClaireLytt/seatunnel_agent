@@ -49,8 +49,16 @@ export type ChatEvent =
       row_count: number
       chart_type?: string | null
     }
+  | { type: 'metric_draft'; name: string; yaml: string }
   | { type: 'final'; text: string; stopped?: boolean }
   | { type: 'error'; message: string }
+
+export const confirmMetricDraft = (
+  sessionId: string,
+): Promise<{ persisted: boolean; file: string; name: string; metric_count: number }> =>
+  fetchJson(`${BASE}/session/${sessionId}/metrics/draft/confirm`, {
+    method: 'POST',
+  })
 
 export async function chatStream(
   sessionId: string,

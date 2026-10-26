@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
-import { chatStream, resetSession, stopChat, type ChatEvent, type SessionMeta } from '@/api'
+import {
+  chatStream,
+  confirmMetricDraft,
+  resetSession,
+  stopChat,
+  type ChatEvent,
+  type SessionMeta,
+} from '@/api'
 import { ResultBlock, type ResultData } from '@/ResultBlock'
 import { TemplateBar } from '@/TemplateBar'
 
@@ -11,6 +18,7 @@ type Item =
   | ({ kind: 'result'; question: string } & ResultData)
   | { kind: 'final'; text: string; stopped?: boolean }
   | { kind: 'error'; text: string }
+  | { kind: 'draft'; name: string; yaml: string; saved?: boolean }
 
 export function ChatPanel({
   session,
@@ -70,6 +78,8 @@ export function ChatPanel({
               return [...xs.slice(0, -1), { kind: 'text', text: last.text + e.text }]
             return [...xs, { kind: 'text', text: e.text }]
           })
+        else if (e.type === 'metric_draft')
+          setItems((xs) => [...xs, { kind: 'draft', name: e.name, yaml: e.yaml }])
         else if (e.type === 'result')
           setItems((xs) => [
             ...xs,
@@ -105,6 +115,42 @@ export function ChatPanel({
         {items.map((it, i) =>
           it.kind === 'result' ? (
             <ResultBlock key={i} data={it} sessionId={session.session_id} question={it.question} />
+          ) : it.kind === 'draft' ? (
+            <div
+              key={i}
+              className="st-metric-draft max-w-[90%] rounded border border-line bg-paper px-3 py-2 font-mono text-[12px]"
+            >
+              <div className="mb-1 text-ink">
+                📐 {t('draftTitle', { name: it.name })}
+              </div>
+              <pre className="mb-2 overflow-x-auto rounded border border-line bg-card px-2 py-1 text-muted">
+                {it.yaml}
+              </pre>
+              {it.saved ? (
+                <span style={{ color: 'var(--ok)' }}>✅ {t('draftSaved')}</span>
+              ) : (
+                <button
+                  onClick={async () => {
+                    try {
+                      await confirmMetricDraft(session.session_id)
+                      setItems((xs) =>
+                        xs.map((x, j) =>
+                          j === i && x.kind === 'draft' ? { ...x, saved: true } : x,
+                        ),
+                      )
+                    } catch (e) {
+                      setItems((xs) => [
+                        ...xs,
+                        { kind: 'error', text: e instanceof Error ? e.message : String(e) },
+                      ])
+                    }
+                  }}
+                  className="rounded border border-ink bg-ink px-3 py-0.5 text-paper"
+                >
+                  {t('draftConfirm')}
+                </button>
+              )}
+            </div>
           ) : (
             <div
               key={i}

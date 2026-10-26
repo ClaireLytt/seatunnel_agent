@@ -96,6 +96,9 @@ const resources = {
       subMetric: 'Metric',
       cacheHit: 'cache hit · 0 LLM',
       weeklyReport: 'Weekly report',
+      draftTitle: 'Metric draft: {{name}} (validated, NOT saved)',
+      draftConfirm: 'Confirm & save to metrics.yaml',
+      draftSaved: 'Saved — catalog reloaded',
     },
   },
   zh: {
@@ -193,6 +196,9 @@ const resources = {
       subMetric: '指标',
       cacheHit: '缓存命中 · 零 LLM',
       weeklyReport: '周报',
+      draftTitle: '指标草稿:{{name}}(已校验,未保存)',
+      draftConfirm: '确认写入 metrics.yaml',
+      draftSaved: '已写入,目录已热更新',
     },
   },
 }

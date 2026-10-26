@@ -74,9 +74,16 @@ def _fake_agent_setup(monkeypatch, tmp_path):
     class FakeAgent:
         def __init__(self):
             self._on_event = None
+            from seatunnel_agent.agents.data.text2sql.schema import (
+                SchemaStore,
+                parse_ddl,
+            )
+
             self.runtime = type("R", (), {"ds_type": "sqlite"})()
-            self.runtime.store = type(
-                "S", (), {"tables": [type("T", (), {"full_name": "orders"})()]})()
+            # a REAL schema store: the draft-confirm flow cross-validates
+            # the catalog against it
+            self.runtime.store = SchemaStore(parse_ddl(
+                "CREATE TABLE orders (region string, amount double, dt string);"))
             # feedback endpoint touchpoints (qlog + example store), stubbed
             self.runtime.source = "api"
             self.runtime.logger = type(
@@ -89,6 +96,23 @@ def _fake_agent_setup(monkeypatch, tmp_path):
             self._on_event = cb
 
         def chat(self, message):
+            if "define" in message:
+                # metric-draft flow: tool result + runtime pending draft,
+                # exactly what the real draft_metric tool leaves behind
+                import json as _json
+
+                entry = {"name": "aov", "table": "orders",
+                         "expression": "SUM(amount)", "time_column": "dt"}
+                self.runtime.pending_metric_draft = entry
+                self._on_event("tool_result", {
+                    "name": "draft_metric",
+                    "result": _json.dumps({
+                        "success": True, "name": "aov",
+                        "yaml": "- name: aov\n  table: orders\n",
+                    }),
+                })
+                self._on_event("final_answer", {"text": "draft ready"})
+                return "draft ready"
             if "slow" in message:
                 # never finishes on its own: the Stop endpoint injects
                 # the terminal event into the live stream (sessions.stop).
@@ -873,6 +897,33 @@ def test_t2s_cache_badge_and_result_rows(
         # the result card renders actual preview rows, not just the header
         expect(chat).to_contain_text("bj")
         expect(chat).to_contain_text("100")
+
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_t2s_metric_draft_confirm_card(chat_page_url, tmp_path, monkeypatch):
+    """草稿卡:YAML + 确认按钮 → 确认后落盘并显示已保存."""
+    from playwright.sync_api import expect, sync_playwright
+
+    metrics = tmp_path / "metrics.yaml"
+    monkeypatch.setenv("T2S_METRICS_PATH", str(metrics))
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(chat_page_url, wait_until="networkidle")
+        _connect_fake(page, expect)
+        box = page.get_by_placeholder("Ask about your data")
+        box.fill("define aov for me")
+        box.press("Enter")
+        card = page.locator(".st-metric-draft")
+        expect(card).to_contain_text("NOT saved", timeout=15000)
+        expect(card).to_contain_text("name: aov")
+        assert not metrics.exists()  # 草稿阶段零落盘
+        card.get_by_role("button", name="Confirm & save to metrics.yaml").click()
+        expect(card).to_contain_text("Saved", timeout=15000)
+        assert "aov" in metrics.read_text(encoding="utf-8")
 
         browser.close()
 
