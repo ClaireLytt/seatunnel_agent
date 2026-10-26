@@ -167,8 +167,10 @@ def t2s_sub_list() -> None:
               help="异动监控订阅：昨天 vs 参照期,变动超阈值才推送告警")
 @click.option("--threshold", type=float, default=10.0, show_default=True,
               help="异动阈值百分比（仅 --watch）")
-@click.option("--watch-mode", type=click.Choice(["dod", "wow"]), default="dod",
-              show_default=True, help="参照期：dod=前一天, wow=上周同日（仅 --watch）")
+@click.option("--watch-mode", type=click.Choice(["dod", "wow", "model"]),
+              default="dod", show_default=True,
+              help="参照期：dod=前一天, wow=上周同日, "
+                   "model=预测基线95%区间（仅 --watch；model 忽略阈值）")
 def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
                 dims: tuple[str, ...], lookback: int, params: tuple[str, ...],
                 ds_type: str, connection: str, database: str, webhook: str,

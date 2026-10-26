@@ -40,6 +40,7 @@ metrics:
     default_filters: ["order_status = 'PAID'"]
     unit: 元
     owner: 数据组
+    targets: {month: 3000000}       # 可选:月/季/年目标(additive 指标)
   - name: refund_rate              # 比率型:分子/分母引用加法型指标
     type: ratio
     numerator: refund_amount
@@ -114,6 +115,15 @@ month，默认 day；周/月由工具层把日序列聚成 ISO 周/自然月，�
 week 默认 112、56–364；month 默认 365、210–900）、`end_date`（默认昨天）。
 成本 1 条 SQL；审计落 qlog（`kind=forecast`）。
 
+## 目标达成跟踪
+
+指标声明 `targets: {month|quarter|year: 数值}` 后，"本月 GMV 达成率多少 /
+照这个节奏月底能完成吗" 走 `metric_target_progress` 工具：期初至今实际值
+（1 条确定性 SQL）÷ 目标 = 达成率；期末总量投影优先用预测模型（近 28 天
+日序列，历史 ≥7 天），不足时退化为线性节奏外推（`projection_method` 标明
+口径）。审计落 qlog（`kind=target`）。ratio 指标暂不支持 targets
+（`metrics validate` 会拒绝）。
+
 ## 混合表/指标检索
 
 三通道融合：原关键词打分 × BM25（snake_case 拆分 + 中文 bigram，零依赖）×
@@ -172,6 +182,12 @@ seatunnel-agent t2s-sub add --name GMV日报 --cron "0 9 * * *" \
 # 比率无定义时(分母为0/无数据)记 no_data 跳过,不发假告警
 seatunnel-agent t2s-sub add --name GMV异动 --cron "30 8 * * *" \
     --metric gmv --watch --threshold 8 --watch-mode dod --webhook ...
+
+# 模型基线异动:--watch-mode model 用预测基线(趋势+星期+节假日)代替固定阈值,
+# 昨日实际落在 95% 区间外才告警——周末/节假日的天然波动不再误报;
+# 历史不足 7 天记 no_data 跳过(此模式忽略 --threshold)
+seatunnel-agent t2s-sub add --name GMV异动 --cron "30 8 * * *" \
+    --metric gmv --watch --watch-mode model --webhook ...
 
 # 收藏推数:参数化收藏 + 日期宏(${yesterday}/${today_pt}/${month_start}...)
 seatunnel-agent t2s-sub add --name 周报 --cron "0 10 * * 0" --favorite <id> ...

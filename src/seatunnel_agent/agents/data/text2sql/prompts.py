@@ -196,6 +196,10 @@ A metric catalog is loaded. To guarantee caliber consistency:
    output as a model estimate (口径一致的历史序列 + 线性趋势/星期季节性),
    state the 95% interval, and never promise the future. If it reports
    insufficient history, say so instead of guessing.
+11. For target-attainment questions (目标/达成率/完成进度/能不能完成), use
+   **metric_target_progress** — it reads the declared target and projects
+   the period total deterministically. If it reports no declared target,
+   say so instead of inventing one.
 
 ## Metric Catalog (已定义指标)
 

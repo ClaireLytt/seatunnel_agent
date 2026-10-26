@@ -273,6 +273,137 @@ def _tool_forecast_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
     }
 
 
+def _period_bounds(period: str, anchor: Any) -> tuple[Any, Any]:
+    """(start, end) calendar bounds of the period containing *anchor* (a date)."""
+    from datetime import timedelta
+
+    if period == "month":
+        start = anchor.replace(day=1)
+        nxt = (start + timedelta(days=32)).replace(day=1)
+    elif period == "quarter":
+        start = anchor.replace(month=((anchor.month - 1) // 3) * 3 + 1, day=1)
+        nxt = (start + timedelta(days=93)).replace(day=1)
+    else:  # year
+        start = anchor.replace(month=1, day=1)
+        nxt = start.replace(year=start.year + 1)
+    return start, nxt - timedelta(days=1)
+
+
+def _tool_metric_target_progress(
+    inp: dict[str, Any], rt: Text2SQLRuntime,
+) -> dict[str, Any]:
+    """Target attainment: period-to-date actual vs the metric's declared
+    target, plus a deterministic projection of the period total (forecast
+    when the history supports it, linear pace otherwise)."""
+    from datetime import date, timedelta
+
+    from .forecast import MIN_POINTS, forecast_series
+    from .partition import TimeRange
+
+    metric, err = _resolve_metric(inp, rt)
+    if err is not None:
+        return err
+    period = str(inp.get("period") or "month").strip().lower()
+    target = metric.targets.get(period)
+    if target is None:
+        declared = ", ".join(sorted(metric.targets)) or "无"
+        return {
+            "error": (
+                f"指标 '{metric.name}' 未声明 {period} 目标"
+                f"(metrics.yaml targets,已声明: {declared})"
+            ),
+        }
+    try:
+        end_raw = str(inp.get("end_date", "") or "").strip()
+        end = parse_date(end_raw) if end_raw else date.today() - timedelta(days=1)
+    except MetricError as exc:
+        return {"error": str(exc)}
+    p_start, p_end = _period_bounds(period, end)
+
+    def _run(sql: str) -> QueryResult:
+        validation = validate_sql(sql, rt.store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        return rt.executor.run(
+            enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type),
+            max_rows=rt.default_limit,
+        )
+
+    try:
+        total_sql = build_metric_sql(
+            metric, rt.metrics, rt.store,
+            time_range=TimeRange(start=p_start, end=end),
+        )
+        result = _run(total_sql)
+    except MetricError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        return {"error": _sanitize_db_error(str(exc))}
+    actual = (
+        float(result.rows[0][-1])
+        if result.rows and result.rows[0][-1] is not None else 0.0
+    )
+
+    elapsed = (end - p_start).days + 1
+    total_days = (p_end - p_start).days + 1
+    remaining = (p_end - end).days
+    projected = actual
+    method = "actual"
+    if remaining > 0:
+        # forecast the remaining days from the trailing 28-day series;
+        # fall back to linear pace when the history is too short
+        try:
+            h_start = end - timedelta(days=27)
+            series_sql = build_metric_series_sql(
+                metric, rt.metrics, rt.store,
+                TimeRange(start=h_start, end=end),
+            )
+            s_result = _run(series_sql)
+            points = sorted(
+                (parse_date(str(r[0]).strip()[:10]),
+                 None if r[-1] is None else float(r[-1]))
+                for r in s_result.rows if r[0] is not None
+            )
+            if len([1 for _, v in points if v is not None]) >= MIN_POINTS:
+                fc = forecast_series(points, horizon=remaining, fill="zero")
+                projected = actual + sum(row["yhat"] for row in fc["forecasts"])
+                method = fc["method"]
+            else:
+                raise ValueError("history too short")
+        except (MetricError, ValueError, TypeError):
+            projected = actual / elapsed * total_days if elapsed else actual
+            method = "linear_pace"
+        except Exception as exc:
+            return {"error": _sanitize_db_error(str(exc))}
+
+    rt.logger.log(
+        user_query=str(inp.get("user_query", "")),
+        generated_sql=total_sql, status="success",
+        matched_tables=[metric.table] if metric.table else [],
+        exec_time_ms=result.elapsed_ms, row_count=result.row_count,
+        extra={"source": rt.source, "metric": metric.name, "kind": "target"},
+    )
+    return {
+        "success": True,
+        "metric": metric.name,
+        "display_name": metric.display_name,
+        "unit": metric.unit,
+        "period": period,
+        "period_start": p_start.isoformat(),
+        "period_end": p_end.isoformat(),
+        "as_of": end.isoformat(),
+        "days_elapsed": elapsed,
+        "days_total": total_days,
+        "target": target,
+        "actual": round(actual, 4),
+        "completion_pct": round(actual / target * 100, 2),
+        "projected_total": round(projected, 4),
+        "projected_completion_pct": round(projected / target * 100, 2),
+        "projection_method": method,
+        "sql": total_sql,
+    }
+
+
 def _attribution_execute(rt: Text2SQLRuntime, user_query: str, metric_name: str = ""):
     """Build the validated/cached/logged execute_fn for run_attribution."""
 

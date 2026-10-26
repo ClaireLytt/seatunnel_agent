@@ -24,6 +24,7 @@ from .tools_metric import (  # noqa: F401 (re-exported for compatibility)
     _tool_build_metric_sql,
     _tool_forecast_metric,
     _tool_match_metrics,
+    _tool_metric_target_progress,
     _tool_run_attribution,
     _tool_trace_metric,
 )
@@ -470,6 +471,45 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "metric_target_progress",
+        "description": (
+            "Target attainment for a defined metric (目标/达成率/完成进度: "
+            "本月GMV达成率多少 / 照这个节奏月底能完成吗). Reads the metric's "
+            "declared target (metrics.yaml targets: month/quarter/year), "
+            "computes the period-to-date actual with one deterministic SQL, "
+            "and projects the period total — forecast-based when 7+ days of "
+            "history exist, linear pace otherwise. Returns target, actual, "
+            "completion_pct, projected_total and projected_completion_pct. "
+            "Costs 1-2 SQL queries. Present the projection as an estimate."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "description": "Metric name as returned by match_metrics",
+                },
+                "period": {
+                    "type": "string",
+                    "enum": ["month", "quarter", "year"],
+                    "description": "Target period (default month)",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": (
+                        "Progress as-of this day, YYYY-MM-DD or yyyyMMdd "
+                        "(default: yesterday)"
+                    ),
+                },
+                "user_query": {
+                    "type": "string",
+                    "description": "The user's original question (for the audit log)",
+                },
+            },
+            "required": ["metric"],
+        },
+    },
+    {
         "name": "get_result_page",
         "description": (
             "Return a specific page of the most recent query result. "
@@ -686,6 +726,7 @@ _TOOL_HANDLERS = {
     "build_metric_sql": _tool_build_metric_sql,
     "run_attribution": _tool_run_attribution,
     "forecast_metric": _tool_forecast_metric,
+    "metric_target_progress": _tool_metric_target_progress,
     "trace_metric": _tool_trace_metric,
     "review_sql": _tool_review_sql,
     "skew_check": _tool_skew_check,

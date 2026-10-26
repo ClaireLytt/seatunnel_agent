@@ -49,6 +49,7 @@ from .metrics import (
     MetricStore,
     build_metric_sql,
     load_metric_store,
+    parse_date,
     ratio_sides,
 )
 from .notify import (  # noqa: F401 — re-exported, public API
@@ -77,7 +78,9 @@ _CARD_MAX_ROWS = 10
 SOURCE_TYPES = ("metric", "favorite", "metric_watch")
 
 #: metric_watch comparison modes: dod = 昨天 vs 前天, wow = 昨天 vs 上周同日
-WATCH_MODES = ("dod", "wow")
+WATCH_MODES = ("dod", "wow", "model")
+#: model mode fits the forecast baseline on this many trailing days
+_MODEL_HISTORY_DAYS = 28
 
 
 # ----------------------------------------------------------------------
@@ -329,20 +332,79 @@ def _run_metric_watch(
             return None if metric.is_ratio else 0.0
         return float(result.rows[0][-1])
 
-    curr, prev = _total(yesterday), _total(ref)
-    if curr is None or prev is None:
+    threshold = float(sub.get("threshold_pct", 10.0))
+    mode = str(sub.get("watch_mode") or "dod")
+
+    def _no_data(note: str, prev_val: float | None = None) -> dict[str, Any]:
         return {
             "status": "no_data", "error": "", "sql": "",
-            "curr": curr, "prev": prev, "delta": None,
+            "curr": None, "prev": prev_val, "delta": None,
             "change_rate_pct": None,
-            "threshold_pct": float(sub.get("threshold_pct", 10.0)),
+            "threshold_pct": threshold,
             "curr_day": yesterday.isoformat(), "ref_day": ref.isoformat(),
-            "note": "比率在该日无定义（分母为 0 或无数据），跳过告警",
+            "note": note,
         }
-    delta = curr - prev
-    rate = (delta / abs(prev)) if prev else None
-    threshold = float(sub.get("threshold_pct", 10.0))
-    triggered = (abs(rate) * 100 >= threshold) if rate is not None else curr != 0
+
+    band: dict[str, float] | None = None
+    if mode == "model":
+        # forecast baseline: alert when yesterday falls outside the fitted
+        # 95% interval (trend + weekday + CN-holiday aware; no fixed
+        # threshold so weekend/holiday swings stop false-alerting)
+        from .forecast import forecast_series
+        from .metrics import build_metric_series_sql
+
+        series_sql = build_metric_series_sql(
+            metric, metric_store, schema_store,
+            TimeRange(start=yesterday - timedelta(days=_MODEL_HISTORY_DAYS),
+                      end=yesterday),
+        )
+        validation = validate_sql(series_sql, schema_store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        s_result = executor.run(
+            enforce_limit(series_sql, dialect=ds_type), max_rows=1000,
+        )
+        by_day: dict[date, float | None] = {}
+        for r in s_result.rows:
+            if r[0] is None:
+                continue
+            d = parse_date(str(r[0]).strip()[:10])
+            by_day[d] = None if r[-1] is None else float(r[-1])
+        curr = by_day.get(yesterday)
+        if curr is None:
+            if metric.is_ratio:
+                return _no_data("比率在该日无定义（分母为 0 或无数据），跳过告警")
+            curr = 0.0
+        history = [(d, v) for d, v in by_day.items() if d < yesterday]
+        try:
+            fc = forecast_series(
+                history,
+                horizon=(yesterday - max(d for d, _ in history)).days
+                if history else 1,
+                fill="ffill" if metric.is_ratio else "zero",
+            )
+        except ValueError as exc:
+            return _no_data(f"历史不足，无法拟合基线: {exc}")
+        row = next(
+            (f for f in fc["forecasts"] if f["day"] == yesterday.isoformat()),
+            None,
+        )
+        if row is None:
+            return _no_data("预测基线未覆盖昨日，跳过告警")
+        band = {"yhat": row["yhat"], "lo": row["lo"], "hi": row["hi"]}
+        prev = float(row["yhat"])
+        delta = curr - prev
+        rate = (delta / abs(prev)) if prev else None
+        triggered = curr < band["lo"] or curr > band["hi"]
+    else:
+        curr, prev = _total(yesterday), _total(ref)
+        if curr is None or prev is None:
+            return _no_data(
+                "比率在该日无定义（分母为 0 或无数据），跳过告警", prev,
+            )
+        delta = curr - prev
+        rate = (delta / abs(prev)) if prev else None
+        triggered = (abs(rate) * 100 >= threshold) if rate is not None else curr != 0
 
     outcome: dict[str, Any] = {
         "status": "alerted" if triggered else "no_change",
@@ -353,6 +415,8 @@ def _run_metric_watch(
         "threshold_pct": threshold,
         "curr_day": yesterday.isoformat(), "ref_day": ref.isoformat(),
     }
+    if band is not None:
+        outcome["baseline"] = band
     if not triggered:
         return outcome  # silence by design — no card below the threshold
 
@@ -400,12 +464,21 @@ def _run_metric_watch(
     # per-dim deltas of a ratio are informative but not additive contributions
     label = "各维度变化" if metric.is_ratio else "主要贡献"
     contributor_block = f"\n{label} ({dim}):{top_lines}" if top_lines else ""
-    body = (
-        f"**{metric.display_name}** 异动告警（阈值 ±{threshold:g}%）\n"
-        f"{ref.isoformat()}: {prev:,.2f}{unit} → "
-        f"{yesterday.isoformat()}: {curr:,.2f}{unit}\n"
-        f"变动 {delta:+,.2f}{unit} ({rate_txt})" + contributor_block
-    )
+    if band is not None:
+        body = (
+            f"**{metric.display_name}** 异动告警（模型基线 95% 区间外）\n"
+            f"{yesterday.isoformat()} 实际 {curr:,.2f}{unit}，"
+            f"预期 {band['yhat']:,.2f}{unit} "
+            f"[{band['lo']:,.2f}, {band['hi']:,.2f}]\n"
+            f"偏离 {delta:+,.2f}{unit} ({rate_txt})" + contributor_block
+        )
+    else:
+        body = (
+            f"**{metric.display_name}** 异动告警（阈值 ±{threshold:g}%）\n"
+            f"{ref.isoformat()}: {prev:,.2f}{unit} → "
+            f"{yesterday.isoformat()}: {curr:,.2f}{unit}\n"
+            f"变动 {delta:+,.2f}{unit} ({rate_txt})" + contributor_block
+        )
     if webhook:
         pushed, msg = push_fn(webhook, f"⚠️ {name}", body, ok=False)
         if not pushed:

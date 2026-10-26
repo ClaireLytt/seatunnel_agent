@@ -117,6 +117,8 @@ class MetricDef:
     # ratio fields (names of additive metrics)
     numerator: str = ""
     denominator: str = ""
+    # period targets for progress tracking: {"month"|"quarter"|"year": value}
+    targets: dict[str, float] = field(default_factory=dict)
 
     @property
     def is_ratio(self) -> bool:
@@ -206,6 +208,44 @@ def _parse_joins(raw: dict, where: str, errors: list[str]) -> tuple[JoinSpec, ..
     return tuple(joins)
 
 
+TARGET_PERIODS = ("month", "quarter", "year")
+
+
+def _parse_targets(
+    raw: dict, where: str, mtype: str, errors: list[str],
+) -> dict[str, float]:
+    """``targets: {month: 3000000}`` — positive numbers on additive metrics
+    (a ratio target is a level, not a sum; progress projection can't
+    aggregate it, so it is rejected up front)."""
+    targets_raw = raw.get("targets")
+    if targets_raw is None:
+        return {}
+    if not isinstance(targets_raw, dict):
+        errors.append(f"{where}: targets 必须是 {{period: 数值}} 映射")
+        return {}
+    if mtype == "ratio":
+        errors.append(f"{where}: ratio 指标暂不支持 targets")
+        return {}
+    out: dict[str, float] = {}
+    for period, value in targets_raw.items():
+        p = str(period).strip().lower()
+        if p not in TARGET_PERIODS:
+            errors.append(
+                f"{where}: targets 周期只支持 {', '.join(TARGET_PERIODS)} (got '{period}')"
+            )
+            continue
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            errors.append(f"{where}: targets.{p} 必须是数值 (got {value!r})")
+            continue
+        if v <= 0:
+            errors.append(f"{where}: targets.{p} 必须 > 0")
+            continue
+        out[p] = v
+    return out
+
+
 def _parse_one(raw: dict, index: int, errors: list[str]) -> MetricDef | None:
     where = f"metrics[{index}]"
     name = str(raw.get("name", "")).strip()
@@ -251,6 +291,7 @@ def _parse_one(raw: dict, index: int, errors: list[str]) -> MetricDef | None:
         joins=_parse_joins(raw, where, errors),
         numerator=str(raw.get("numerator", "") or "").strip(),
         denominator=str(raw.get("denominator", "") or "").strip(),
+        targets=_parse_targets(raw, where, mtype, errors),
     )
     if mtype == "ratio" and metric.joins:
         errors.append(f"{where}: ratio 指标不能直接声明 joins（在分子/分母上声明）")

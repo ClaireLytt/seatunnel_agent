@@ -1734,3 +1734,41 @@ def test_api_metrics_attribution_ratio_factor_split(sqlite_runtime, monkeypatch)
     assert abs(
         split["numerator_effect"] + split["denominator_effect"] - split["delta"]
     ) < 1e-4
+
+
+# ----------------------------------------------------------------------
+# targets parsing (metric_target_progress 的口径来源)
+# ----------------------------------------------------------------------
+
+
+def test_targets_parsed() -> None:
+    yaml_text = """
+metrics:
+  - name: gmv
+    table: t
+    expression: SUM(x)
+    targets: {month: 3000000, year: 40000000}
+"""
+    store, errors = MetricStore.from_text(yaml_text)
+    assert errors == []
+    assert store.get("gmv").targets == {"month": 3000000.0, "year": 40000000.0}
+
+
+def test_targets_validation_errors() -> None:
+    yaml_text = """
+metrics:
+  - name: gmv
+    table: t
+    expression: SUM(x)
+    targets: {weekly: 1, month: -5, year: abc}
+  - name: refund_rate
+    type: ratio
+    numerator: a
+    denominator: b
+    targets: {month: 0.05}
+"""
+    store, errors = MetricStore.from_text(yaml_text)
+    assert any("周期只支持" in e for e in errors)
+    assert any("必须 > 0" in e for e in errors)
+    assert any("必须是数值" in e for e in errors)
+    assert any("ratio 指标暂不支持 targets" in e for e in errors)

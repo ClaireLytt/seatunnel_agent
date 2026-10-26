@@ -46,6 +46,7 @@ metrics:
     expression: SUM(amount)
     time_column: dt
     dimensions: [channel]
+    targets: {month: 10000}
   - name: refund_amount
     display_name: 退款额
     description: 退款合计
@@ -464,3 +465,63 @@ def test_forecast_tool_errors(runtime) -> None:
     out = json.loads(execute_text2sql_tool("forecast_metric", {
         "metric": "gmv", "end_date": "2030-01-01"}, runtime))
     assert "历史数据不足" in out["error"]
+
+
+# ----------------------------------------------------------------------
+# metric_target_progress tool (sqlite end-to-end)
+# ----------------------------------------------------------------------
+
+
+def test_target_progress_tool_registered() -> None:
+    assert any(t["name"] == "metric_target_progress" for t in TOOL_DEFINITIONS)
+
+
+def test_target_progress_end_to_end(runtime) -> None:
+    out = json.loads(execute_text2sql_tool("metric_target_progress", {
+        "metric": "gmv", "period": "month", "end_date": "2026-03-28",
+    }, runtime))
+    assert out.get("success"), out
+    # daily totals 150+5i, 28 days: 28*150 + 5*378 = 6090
+    assert out["actual"] == pytest.approx(6090.0, abs=1e-6)
+    assert out["completion_pct"] == pytest.approx(60.9, abs=0.01)
+    # remaining 3 days forecast on the exact linear trend: 290+295+300
+    assert out["projected_total"] == pytest.approx(6975.0, abs=0.01)
+    assert out["projected_completion_pct"] == pytest.approx(69.75, abs=0.01)
+    assert out["projection_method"].startswith("ols_trend")
+    assert out["days_elapsed"] == 28 and out["days_total"] == 31
+
+
+def test_target_progress_linear_pace_fallback(tmp_path, stores) -> None:
+    """3 天历史不足以拟合 → 线性节奏外推."""
+    schema_store, metric_store = stores
+    db = tmp_path / "short.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE sales("
+        "order_id TEXT, amount REAL, refund REAL, channel TEXT, dt TEXT)")
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?,?)", [
+        (f"o{i}", 100.0, 0.0, "app", f"2026-03-0{i+1}") for i in range(3)
+    ])
+    conn.commit()
+    conn.close()
+    rt = Text2SQLRuntime(
+        store=schema_store, metrics=metric_store, ds_type="sqlite",
+        db_config=DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)),
+        logger=QueryLogger(log_dir=tmp_path),
+    )
+    out = json.loads(execute_text2sql_tool("metric_target_progress", {
+        "metric": "gmv", "end_date": "2026-03-03",
+    }, rt))
+    assert out.get("success"), out
+    assert out["actual"] == pytest.approx(300.0)
+    # 300 / 3 天 * 31 天
+    assert out["projected_total"] == pytest.approx(3100.0)
+    assert out["projection_method"] == "linear_pace"
+
+
+def test_target_progress_no_target_declared(runtime) -> None:
+    out = json.loads(execute_text2sql_tool("metric_target_progress", {
+        "metric": "gmv", "period": "quarter",
+    }, runtime))
+    assert "未声明 quarter 目标" in out["error"]
