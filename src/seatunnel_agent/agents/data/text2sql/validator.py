@@ -86,14 +86,70 @@ def _strip_literals_and_comments(sql: str) -> str:
     return "".join(out)
 
 
-def extract_tables(sql: str) -> list[str]:
-    """Extract table names referenced after FROM/JOIN (best effort)."""
-    cleaned = _strip_literals_and_comments(sql)
+_COMMA_NAME_RE = re.compile(
+    r"\s*,\s*([`\"]?\w+[`\"]?(?:\.[`\"]?\w+[`\"]?)?)",
+)
+_ALIAS_RE = re.compile(r"\s+(?:as\s+)?([a-zA-Z_]\w*)", re.IGNORECASE)
+_CLAUSE_KEYWORDS = frozenset({
+    "where", "group", "order", "having", "limit", "join", "union", "on",
+    "left", "right", "inner", "outer", "cross", "full", "lateral",
+})
+
+
+def _extract_tables_ast(sql: str) -> list[str] | None:
+    """Exact table list via the sqlglot AST; None when the SQL doesn't parse."""
+    try:
+        import sqlglot
+        from sqlglot import exp
+
+        statements = sqlglot.parse(sql, error_level=sqlglot.ErrorLevel.RAISE)
+    except Exception:
+        return None
     names: list[str] = []
-    for m in _TABLE_REF_RE.finditer(cleaned):
-        name = m.group(1).replace("`", "").replace('"', "").lower()
+    for stmt in statements:
+        if stmt is None:
+            return None
+        for node in stmt.walk():
+            if isinstance(node, exp.Table) and node.name:
+                name = ".".join(p for p in (node.db, node.name) if p).lower()
+                if name not in names:
+                    names.append(name)
+    return names
+
+
+def extract_tables(sql: str) -> list[str]:
+    """Extract all table names referenced by the query.
+
+    Prefers the sqlglot AST (covers comma joins, subqueries, UNION arms);
+    falls back to a FROM/JOIN regex — including comma-separated implicit
+    joins — when the SQL does not parse.
+    """
+    stripped = sql.strip().rstrip(";").strip()
+    ast_names = _extract_tables_ast(stripped)
+    if ast_names is not None:
+        return ast_names
+    cleaned = _strip_literals_and_comments(stripped)
+    names: list[str] = []
+
+    def _add(raw: str) -> None:
+        name = raw.replace("`", "").replace('"', "").lower()
         if name not in names:
             names.append(name)
+
+    for m in _TABLE_REF_RE.finditer(cleaned):
+        _add(m.group(1))
+        # comma-separated continuation after FROM/JOIN (implicit joins):
+        # FROM a [alias], b [alias], c ...
+        pos = m.end()
+        while True:
+            am = _ALIAS_RE.match(cleaned, pos)
+            if am and am.group(1).lower() not in _CLAUSE_KEYWORDS:
+                pos = am.end()
+            cm = _COMMA_NAME_RE.match(cleaned, pos)
+            if not cm:
+                break
+            _add(cm.group(1))
+            pos = cm.end()
     return names
 
 
@@ -321,6 +377,47 @@ def _enforce_limit_standard(
     return f"{stripped}\nLIMIT {default_limit}"
 
 
+def _split_trailing_comments(sql: str) -> tuple[str, str]:
+    """Split trailing line/block comments off so LIMIT detection sees the
+    real statement tail (``... LIMIT 5 -- note`` must not grow a second
+    LIMIT). Literal-aware: ``--`` inside a string never counts as a comment.
+    """
+    i = 0
+    n = len(sql)
+    last_code_end = 0
+    while i < n:
+        ch = sql[i]
+        if ch == "'":
+            i += 1
+            while i < n:
+                if sql[i] == "\\":
+                    i += 2
+                    continue
+                if sql[i] == "'":
+                    i += 1
+                    break
+                i += 1
+            last_code_end = i
+        elif ch == '"':
+            i += 1
+            while i < n and sql[i] != '"':
+                i += 1
+            i = min(i + 1, n)
+            last_code_end = i
+        elif sql.startswith("--", i):
+            while i < n and sql[i] != "\n":
+                i += 1
+        elif sql.startswith("/*", i):
+            end = sql.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+        elif ch.isspace():
+            i += 1
+        else:
+            i += 1
+            last_code_end = i
+    return sql[:last_code_end], sql[last_code_end:]
+
+
 def enforce_limit(
     sql: str,
     default_limit: int = 1000,
@@ -329,6 +426,9 @@ def enforce_limit(
 ) -> str:
     """Ensure the query carries a row limit; cap existing limits at *max_limit*."""
     stripped = sql.strip().rstrip(";").strip()
+    body, tail = _split_trailing_comments(stripped)
+    if not body:  # comment-only input: leave untouched
+        return stripped
     if dialect == "sqlserver":
-        return _enforce_limit_sqlserver(stripped, default_limit, max_limit)
-    return _enforce_limit_standard(stripped, default_limit, max_limit)
+        return _enforce_limit_sqlserver(body, default_limit, max_limit) + tail
+    return _enforce_limit_standard(body, default_limit, max_limit) + tail

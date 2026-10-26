@@ -160,6 +160,22 @@ class TestEnforceLimit:
     def test_appends_default_limit(self):
         assert enforce_limit("SELECT 1").endswith("LIMIT 1000")
 
+    def test_trailing_comment_keeps_existing_limit(self):
+        sql = "SELECT 1 LIMIT 5 -- tail note"
+        assert enforce_limit(sql) == sql
+
+    def test_trailing_block_comment_caps_limit(self):
+        out = enforce_limit("SELECT 1 LIMIT 999999 /* note */")
+        assert out == "SELECT 1 LIMIT 100000 /* note */"
+
+    def test_appends_before_trailing_comment_not_commented_out(self):
+        out = enforce_limit("SELECT 1 -- note")
+        assert out == "SELECT 1\nLIMIT 1000 -- note"
+
+    def test_dashes_inside_literal_not_a_comment(self):
+        sql = "SELECT 1 WHERE x = 'a--b' LIMIT 5"
+        assert enforce_limit(sql) == sql
+
     def test_keeps_existing_limit(self):
         assert enforce_limit("SELECT 1 LIMIT 10") == "SELECT 1 LIMIT 10"
 
@@ -1009,6 +1025,38 @@ class TestValidatorSetAdd:
 # ------------------------------------------------------------------
 # Validator: read-only bypass via SELECT INTO / OUTFILE / COPY
 # ------------------------------------------------------------------
+
+class TestValidatorCommaJoinWhitelist:
+    """Implicit comma joins must put every table through the whitelist."""
+
+    def test_comma_join_second_table_rejected(self, store):
+        r = validate_sql("SELECT * FROM atest.student, secret_t", store)
+        assert not r.ok
+        assert any("secret_t" in e for e in r.errors)
+
+    def test_comma_join_with_aliases_rejected(self, store):
+        r = validate_sql(
+            "SELECT * FROM atest.student a, secret_t b WHERE a.id = b.id",
+            store,
+        )
+        assert not r.ok
+        assert any("secret_t" in e for e in r.errors)
+
+    def test_subquery_comma_join_rejected(self, store):
+        r = validate_sql("SELECT * FROM (SELECT 1) x, secret_t", store)
+        assert not r.ok
+        assert any("secret_t" in e for e in r.errors)
+
+    def test_comma_join_all_whitelisted_ok(self, store):
+        r = validate_sql(
+            "SELECT * FROM atest.student a, zz.dwm_scm_detail_di b "
+            "WHERE a.id = b.pt", store,
+        )
+        assert r.ok, r.errors
+
+    def test_extract_tables_comma_join(self):
+        assert extract_tables("SELECT * FROM a, b, c") == ["a", "b", "c"]
+
 
 class TestValidatorReadOnlyBypass:
     def test_select_into_outfile_rejected(self, store):
