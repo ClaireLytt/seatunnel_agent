@@ -28,6 +28,14 @@ _MAX_SQL_CHARS = 4000
 
 _DEFAULT_EXAMPLES_PATH = os.getenv("T2S_EXAMPLES_PATH", "config/t2s_examples.json")
 
+_TRAILING_PUNCT = "?？!！。.,，;；"
+
+
+def normalize_question(q: str) -> str:
+    """Whitespace-collapsed, lowercased, trailing-punctuation-stripped key
+    for exact-repeat matching (the semantic cache's equality test)."""
+    return " ".join(q.split()).lower().rstrip(_TRAILING_PUNCT)
+
 
 class ExampleStore(JsonFileStore):
     """JSON-file-backed store of verified question→SQL pairs."""
@@ -100,6 +108,21 @@ class ExampleStore(JsonFileStore):
             return True
 
     # -- retrieval -----------------------------------------------------
+
+    def exact_match(self, question: str) -> dict[str, Any] | None:
+        """The verified pair whose question normalizes to the same text,
+        or None. Conservative on purpose: only a byte-equivalent repeat
+        (after whitespace/case/trailing-punctuation normalization) may
+        skip the LLM — a paraphrase can change dates or filters."""
+        key = normalize_question(question)
+        if not key:
+            return None
+        for it in reversed(self._read()):  # latest confirmation wins
+            if it.get("verified") and normalize_question(
+                it.get("question", "")
+            ) == key and it.get("sql"):
+                return it
+        return None
 
     def top(self, question: str, k: int = 3) -> list[dict[str, Any]]:
         """BM25 top-K verified examples for ``question`` (score > 0 only)."""

@@ -110,9 +110,56 @@ class Text2SQLAgent:
     def run(self, question: str) -> str:
         """Answer a single question with fresh history."""
         self.last_user_question = question
+        cached = self._semantic_cache_answer(question)
+        if cached is not None:
+            self.console.print(
+                Panel(question, title="Text2SQL (缓存)", border_style="green"))
+            return cached
         self.messages = [{"role": "user", "content": self._augment(question)}]
         self.console.print(Panel(question, title="Text2SQL", border_style="cyan"))
         return self._agent_loop()
+
+    def _semantic_cache_answer(self, question: str) -> str | None:
+        """Serve an exact repeat of a 👍-verified question without the LLM.
+
+        The cached SQL still goes through the full execute_sql tool
+        (validator, whitelist, LIMIT, masking, qlog); any failure — schema
+        drift, stale table — falls back to the normal LLM flow. Single-
+        question entry only: multi-turn follow-ups depend on chat context.
+        ``T2S_SEMANTIC_CACHE=0`` disables it.
+        """
+        import json
+        import os
+
+        if os.getenv("T2S_SEMANTIC_CACHE", "").strip() == "0":
+            return None
+        if self.example_store is None:
+            return None
+        try:
+            entry = self.example_store.exact_match(question)
+        except Exception:
+            return None
+        if entry is None:
+            return None
+        from .tools import execute_text2sql_tool
+
+        try:
+            out = json.loads(execute_text2sql_tool(
+                "execute_sql",
+                {"sql": entry["sql"], "user_query": question},
+                self.runtime,
+            ))
+        except Exception:
+            return None
+        if not out.get("success"):
+            return None  # schema drift etc. — let the LLM re-derive
+        sql = out.get("sql", entry["sql"])
+        return (
+            "⚡ 命中已验证示例（语义缓存，未调用 LLM）\n\n"
+            f"```sql\n{sql}\n```\n\n"
+            f"返回 {out.get('row_count', 0)} 行。"
+            "若结果不符，点 👎 移除该示例后重新提问即可走完整生成流程。"
+        )
 
     def _augment(self, question: str) -> str:
         """Attach verified few-shot examples (BM25 top-K) to the question."""
