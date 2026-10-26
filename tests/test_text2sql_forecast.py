@@ -156,6 +156,70 @@ def test_forecast_mostly_none_history_rejected() -> None:
 
 
 # ----------------------------------------------------------------------
+# CN holiday calendar + holiday offsets
+# ----------------------------------------------------------------------
+
+
+def test_calendar_cn_official_counts() -> None:
+    from seatunnel_agent.agents.data.text2sql import calendar_cn as cal
+
+    by_year = {y: sum(1 for d in cal.HOLIDAYS if d.year == y)
+               for y in (2024, 2025, 2026)}
+    # per the State Council notices: 2024=1+8+3+5+1+3+7, 2025=1+8+3+5+3+8,
+    # 2026=3+9+3+5+3+3+7
+    assert by_year == {2024: 28, 2025: 28, 2026: 33}
+    makeup = {y: sum(1 for d in cal.MAKEUP_WORKDAYS if d.year == y)
+              for y in (2024, 2025, 2026)}
+    assert makeup == {2024: 8, 2025: 5, 2026: 6}
+    # makeup workdays are weekends by definition, never also holidays
+    assert all(d.weekday() >= 5 for d in cal.MAKEUP_WORKDAYS)
+    assert not (cal.HOLIDAYS & cal.MAKEUP_WORKDAYS)
+    assert not cal.covers(date(2027, 1, 1))
+    assert not cal.is_holiday(date(2027, 2, 8))  # uncovered year degrades
+
+
+def test_forecast_holiday_offset_applied() -> None:
+    # flat level 100 with a -40 dip on the 2026 Mid-Autumn days (9/25-27);
+    # the forecast window covers National Day (10/1-7), which must inherit
+    # the holiday offset and carry the is_holiday flag
+    from seatunnel_agent.agents.data.text2sql import calendar_cn as cal
+
+    start = date(2026, 9, 3)
+    pts = [
+        (start + timedelta(days=i),
+         60.0 if cal.is_holiday(start + timedelta(days=i)) else 100.0)
+        for i in range(28)  # ends 2026-09-30
+    ]
+    out = forecast_series(pts, horizon=8)  # 10/1 .. 10/8
+    assert out["method"].endswith("+cn_holiday")
+    assert out["holiday_offset"] < -10
+    by_day = {f["day"]: f for f in out["forecasts"]}
+    # a holiday forecast sits clearly below the non-holiday day after it
+    assert by_day["2026-10-01"]["yhat"] < by_day["2026-10-08"]["yhat"] - 10
+    assert by_day["2026-10-01"].get("is_holiday") is True
+    assert "is_holiday" not in by_day["2026-10-08"]
+
+
+def test_forecast_no_holidays_in_window_is_unchanged() -> None:
+    # March 2026 has no statutory holidays: offsets stay 0, method unchanged
+    out = forecast_series(_linear(28), horizon=3)
+    assert out["holiday_offset"] == 0.0
+    assert out["makeup_workday_offset"] == 0.0
+    assert out["method"] == "ols_trend+weekday_seasonality"
+    assert all("is_holiday" not in f for f in out["forecasts"])
+
+
+def test_forecast_single_holiday_day_not_enough() -> None:
+    # only one holiday day in history (< HOLIDAY_MIN_DAYS): no adjustment
+    start = date(2025, 12, 19)  # 28 days -> ends 2026-01-15, 元旦 1/1-3
+    pts = [(start + timedelta(days=i), 100.0) for i in range(14)]
+    # window 12/19 .. 1/1 contains exactly one holiday day (2026-01-01)
+    out = forecast_series(pts, horizon=2)
+    assert out["holiday_offset"] == 0.0
+    assert not out["method"].endswith("+cn_holiday")
+
+
+# ----------------------------------------------------------------------
 # build_metric_series_sql
 # ----------------------------------------------------------------------
 

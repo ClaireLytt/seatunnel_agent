@@ -2,7 +2,10 @@
 
 Model: ordinary least squares linear trend + additive weekday seasonality
 (offsets are the per-weekday mean of the detrended residuals, available
-once the history covers at least two full weeks). The prediction interval
+once the history covers at least two full weeks), plus additive CN
+statutory-holiday / makeup-workday offsets (per-class residual means from
+:mod:`calendar_cn`, active once the history contains at least
+``HOLIDAY_MIN_DAYS`` days of that class). The prediction interval
 is ``yhat ± 1.96 × σ`` where σ is the sample standard deviation of the
 final residuals — a self-check of how well the model fits the history.
 
@@ -15,10 +18,15 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
+from . import calendar_cn
+
 #: minimum history points required to fit anything at all
 MIN_POINTS = 7
 #: weekday seasonality kicks in only with two full weeks of history
 SEASONALITY_MIN_POINTS = 14
+#: holiday / makeup-workday offsets need at least this many observed days
+#: of that class in the history (below that the mean is just noise)
+HOLIDAY_MIN_DAYS = 2
 
 
 def _fill_gaps(
@@ -96,8 +104,33 @@ def forecast_series(
             if vals:
                 offsets[wd] = sum(vals) / len(vals)
 
+    # exogenous CN-calendar offsets (节假日/调休补班) from the residuals
+    # left after trend + weekday; each class needs HOLIDAY_MIN_DAYS observed
+    # days, and days in years the static calendar does not cover are never
+    # flagged (calendar_cn degrades to False instead of guessing)
+    def _class_offset(flag) -> float:
+        vals = [
+            v - _trend(i) - offsets[d.weekday()]
+            for i, (d, v) in enumerate(series)
+            if flag(d)
+        ]
+        if len(vals) < HOLIDAY_MIN_DAYS:
+            return 0.0
+        return sum(vals) / len(vals)
+
+    holiday_offset = _class_offset(calendar_cn.is_holiday)
+    makeup_offset = _class_offset(calendar_cn.is_makeup_workday)
+    holiday_adjusted = holiday_offset != 0.0 or makeup_offset != 0.0
+
+    def _calendar_offset(d: date) -> float:
+        if calendar_cn.is_holiday(d):
+            return holiday_offset
+        if calendar_cn.is_makeup_workday(d):
+            return makeup_offset
+        return 0.0
+
     residuals = [
-        v - _trend(i) - offsets[d.weekday()]
+        v - _trend(i) - offsets[d.weekday()] - _calendar_offset(d)
         for i, (d, v) in enumerate(series)
     ]
     if n > 1:
@@ -110,22 +143,30 @@ def forecast_series(
     forecasts = []
     for k in range(1, horizon + 1):
         day = last_day + timedelta(days=k)
-        yhat = _trend(n - 1 + k) + offsets[day.weekday()]
+        yhat = _trend(n - 1 + k) + offsets[day.weekday()] + _calendar_offset(day)
         band = 1.96 * sigma
-        forecasts.append({
+        row = {
             "day": day.isoformat(),
             "yhat": round(yhat, 4),
             "lo": round(yhat - band, 4),
             "hi": round(yhat + band, 4),
-        })
+        }
+        if calendar_cn.is_holiday(day):
+            row["is_holiday"] = True
+        forecasts.append(row)
 
+    method = "ols_trend+weekday_seasonality" if seasonal else "ols_trend"
+    if holiday_adjusted:
+        method += "+cn_holiday"
     return {
-        "method": "ols_trend+weekday_seasonality" if seasonal else "ols_trend",
+        "method": method,
         "history_days": n,
         "history_start": series[0][0].isoformat(),
         "history_end": last_day.isoformat(),
         "horizon": horizon,
         "slope_per_day": round(slope, 6),
         "sigma": round(sigma, 6),
+        "holiday_offset": round(holiday_offset, 6),
+        "makeup_workday_offset": round(makeup_offset, 6),
         "forecasts": forecasts,
     }
