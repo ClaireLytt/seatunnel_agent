@@ -264,6 +264,28 @@ export interface BacktestResult {
   }>
 }
 
+export interface HealthRow {
+  metric: string
+  display_name: string
+  status: string
+  latest_day?: string | null
+  lag_days?: number | null
+  freshness_error?: string
+  alerting: boolean
+  alerting_since?: string
+  queries_7d: number
+  failures_7d: number
+  alerts_7d: number
+  month_completion_pct?: number
+  target_error?: string
+  subscriptions: number
+}
+
+export const fetchMetricHealth = (
+  sessionId: string,
+): Promise<{ rows: HealthRow[] }> =>
+  fetchJson(`${BASE}/session/${sessionId}/metrics/health`)
+
 export const backtestSubscription = (
   id: string,
   days = 90,

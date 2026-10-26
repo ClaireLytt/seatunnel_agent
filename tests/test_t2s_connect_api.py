@@ -83,3 +83,43 @@ def test_connect_rejects_empty_sqlite(client, tmp_path):
 
 def test_session_unknown_id_404(client):
     assert client.get("/api/text2sql/session/doesnotexist").status_code == 404
+
+
+def test_session_metrics_health(client, tmp_path, monkeypatch):
+    import sqlite3 as _sq
+    from datetime import date, timedelta
+
+    monkeypatch.setenv("API_KEY", "test")  # agent 构造要求,health 本身零 LLM
+    db = tmp_path / "h.db"
+    con = _sq.connect(db)
+    con.execute("CREATE TABLE sales (order_id TEXT, amount REAL, dt TEXT)")
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    con.execute("INSERT INTO sales VALUES ('o1', 100.0, ?)", (yesterday,))
+    con.commit()
+    con.close()
+    metrics_yaml = (
+        "metrics:\n"
+        "  - name: gmv\n"
+        "    table: sales\n"
+        "    expression: SUM(amount)\n"
+        "    time_column: dt\n"
+    )
+    r = client.post("/api/text2sql/connect", json={
+        "ds_type": "sqlite",
+        "db_config": {"database": str(db)},
+        "metrics_yaml": metrics_yaml,
+    })
+    assert r.status_code == 200, r.text
+    sid = r.json()["session_id"]
+    monkeypatch.chdir(tmp_path)  # qlog/订阅文件相对 cwd 解析
+
+    h = client.get(f"/api/text2sql/session/{sid}/metrics/health")
+    assert h.status_code == 200, h.text
+    rows = h.json()["rows"]
+    assert rows and rows[0]["metric"] == "gmv"
+    assert rows[0]["latest_day"] == yesterday
+    assert rows[0]["status"] in ("green", "yellow")
+
+    assert client.get(
+        "/api/text2sql/session/nope/metrics/health"
+    ).status_code == 404

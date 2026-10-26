@@ -313,6 +313,32 @@ def _tool_response(out: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+@router.get("/session/{session_id}/metrics/health")
+def session_metrics_health(session_id: str) -> dict[str, Any]:
+    """Per-metric health rollup on the session's live connection — no LLM."""
+    from datetime import date
+
+    from .api_shared import entry_or_404
+    from .health import metric_health
+    from .qlog import QueryLogger
+
+    rt = entry_or_404(session_id).agent.runtime
+    if rt.metrics is None or len(rt.metrics) == 0:
+        raise HTTPException(status_code=400, detail="没有指标定义(metrics.yaml)")
+    try:
+        from .subscriptions import SubscriptionStore
+
+        subs = SubscriptionStore().list()
+    except Exception:
+        subs = []
+    rows = metric_health(
+        rt.metrics, rt.store, rt.executor,
+        QueryLogger().recent(5000), subs,
+        today=date.today(), ds_type=rt.ds_type,
+    )
+    return {"rows": rows}
+
+
 @router.post("/metrics/forecast")
 def metrics_forecast(req: ForecastRequest) -> dict[str, Any]:
     """Deterministic metric forecast — no LLM involved."""
