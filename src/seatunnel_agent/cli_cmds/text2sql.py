@@ -270,6 +270,8 @@ def t2s_sub_run(sub_id: str) -> None:
         raise click.ClickException(f"订阅 '{sub_id}' 不存在")
     outcome = run_subscription(sub)
     store.record_run(sub_id, outcome.get("status", "error"), outcome.get("error", ""))
+    if "alert_state" in outcome:
+        store.record_alert_state(sub_id, outcome["alert_state"])
     if outcome["status"] == "success":
         console.print(f"[green]执行成功: {outcome['row_count']} 行[/green]")
         console.print(outcome["sql"])

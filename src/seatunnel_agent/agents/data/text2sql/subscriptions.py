@@ -234,6 +234,16 @@ class SubscriptionStore:
                     self._write(data)
                     return
 
+    def record_alert_state(self, sub_id: str, state: dict[str, Any]) -> None:
+        """Persist a watch subscription's alert memory (repeat suppression)."""
+        with self._lock, self._write_lock():
+            data = self._read_for_write()
+            for entry in data:
+                if entry.get("id") == sub_id:
+                    entry["alert_state"] = dict(state)
+                    self._write(data)
+                    return
+
 
 # ----------------------------------------------------------------------
 # Running a subscription
@@ -547,8 +557,38 @@ def _run_metric_watch(
     }
     if band is not None:
         outcome["baseline"] = band
+
+    # alert memory: a persisting anomaly pushes once (first day), the same-
+    # direction repeat is suppressed, and the return to normal pushes one
+    # green recovery card — three cards for a three-day incident, not four
+    state = dict(sub.get("alert_state") or {})
+    direction = "up" if delta > 0 else "down"
+    unit = f" {metric.unit}" if metric.unit else ""
     if not triggered:
+        if state.get("active"):
+            outcome["status"] = "recovered"
+            outcome["alert_state"] = {}
+            since = state.get("since", "?")
+            body = (
+                f"**{metric.display_name}** 异动已恢复\n"
+                f"{yesterday.isoformat()}: {curr:,.2f}{unit} 回到正常区间"
+                f"（自 {since} 起告警）"
+            )
+            if webhook:
+                pushed, msg = push_fn(webhook, f"✅ {name}", body, ok=True)
+                if not pushed:
+                    outcome["status"] = "push_failed"
+                    outcome["error"] = msg
+            return outcome
         return outcome  # silence by design — no card below the threshold
+    if state.get("active") and state.get("direction") == direction:
+        outcome["status"] = "suppressed"
+        outcome["alert_state"] = state  # keep the original 'since'
+        return outcome  # same incident, already alerted — no repeat card
+    outcome["alert_state"] = {
+        "active": True, "direction": direction,
+        "since": yesterday.isoformat(),
+    }
 
     # top contributors on the first allowed dimension (best-effort).
     # Ratio metrics have no dimensions of their own: fall back to the
@@ -1077,6 +1117,10 @@ class Scheduler:
                         sub_id, outcome.get("status", "error"),
                         outcome.get("error", ""),
                     )
+                    if "alert_state" in outcome:
+                        self.store.record_alert_state(
+                            sub_id, outcome["alert_state"],
+                        )
                 except Exception as exc:  # run_fn contract says it never raises, but
                     logger.exception("Subscription %s failed", sub_id)
                     self.store.record_run(sub_id, "error", str(exc))

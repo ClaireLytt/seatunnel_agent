@@ -620,6 +620,78 @@ def test_digest_card(tmp_path) -> None:
     assert by_metric["gmv"]["month_completion_pct"] == pytest.approx(2.1)
 
 
+def test_watch_repeat_alert_suppressed_and_recovers(sales_db, stores) -> None:
+    """持续异常只推首日;同向重复被抑制;恢复日推一张绿卡."""
+    schema_store, metric_store = stores
+    pushes: list[tuple] = []
+
+    def fake_push(url, title, body, ok=True, **kw):
+        pushes.append((title, body, ok))
+        return True, "ok"
+
+    # day 1: 03-02=160 vs 03-01=150 → +6.67% 超 5% 阈值 → 告警 + 置状态
+    out1 = run_subscription(
+        _watch_sub(sales_db), schema_store, metric_store,
+        today=date(2026, 3, 3), push_fn=fake_push,
+    )
+    assert out1["status"] == "alerted"
+    assert out1["alert_state"] == {
+        "active": True, "direction": "up", "since": "2026-03-02",
+    }
+    assert len(pushes) == 1
+
+    # day 2(同样的数据形态,带着 day1 的状态)→ 同向重复 → 抑制,不推卡
+    sub2 = _watch_sub(sales_db, alert_state=out1["alert_state"])
+    out2 = run_subscription(
+        sub2, schema_store, metric_store,
+        today=date(2026, 3, 3), push_fn=fake_push,
+    )
+    assert out2["status"] == "suppressed"
+    assert out2["alert_state"]["since"] == "2026-03-02"  # 保留首日
+    assert len(pushes) == 1  # 没有新卡
+
+    # 恢复日:阈值调高到不触发,带着 active 状态 → 推绿卡,状态清空
+    sub3 = _watch_sub(
+        sales_db, threshold_pct=50.0, alert_state=out1["alert_state"],
+    )
+    out3 = run_subscription(
+        sub3, schema_store, metric_store,
+        today=date(2026, 3, 3), push_fn=fake_push,
+    )
+    assert out3["status"] == "recovered"
+    assert out3["alert_state"] == {}
+    title, body, ok = pushes[-1]
+    assert ok is True and "已恢复" in body and "2026-03-02" in body
+
+
+def test_watch_direction_change_alerts_again(sales_db, stores) -> None:
+    """方向反转(up→down)视为新事件,不被抑制."""
+    schema_store, metric_store = stores
+    pushes: list = []
+    sub = _watch_sub(
+        sales_db,
+        alert_state={"active": True, "direction": "down", "since": "2026-02-28"},
+    )
+    out = run_subscription(
+        sub, schema_store, metric_store, today=date(2026, 3, 3),
+        push_fn=lambda *a, **k: (pushes.append(a), (True, "ok"))[1],
+    )
+    assert out["status"] == "alerted"  # 当前是 up,与 down 状态不同向
+    assert out["alert_state"]["direction"] == "up"
+    assert len(pushes) == 1
+
+
+def test_store_record_alert_state(tmp_path) -> None:
+    store = SubscriptionStore(tmp_path / "subs.json")
+    entry = store.add(name="w", cron="0 9 * * *", source_type="metric_watch",
+                      metric="gmv")
+    store.record_alert_state(
+        entry["id"], {"active": True, "direction": "up", "since": "2026-03-02"},
+    )
+    reread = store.get(entry["id"])
+    assert reread["alert_state"]["direction"] == "up"
+
+
 def test_digest_store_validation(tmp_path) -> None:
     store = SubscriptionStore(tmp_path / "subs.json")
     with pytest.raises(ValueError, match="最多"):

@@ -190,7 +190,9 @@ seatunnel-agent t2s-sub add --name GMV日报 --cron "0 9 * * *" \
     --metric gmv -d channel --webhook https://open.feishu.cn/...
 
 # 异动监控:变动超 ±8% 才推告警,否则静默;additive 指标的告警卡自动跑归因,
-# 附 Top3 贡献成员的贡献率(新增/消失成员单独标记)——告警即答案
+# 附 Top3 贡献成员的贡献率(新增/消失成员单独标记)——告警即答案。
+# 告警记忆:持续同向异常只推首日一张卡,恢复正常时推一张绿色"已恢复"卡
+# (三天的事故 = 两张卡,不是三张;方向反转视为新事件)
 # 比率指标(如退款率)同样支持;卡片中维度拆解标注为"各维度变化";
 # 比率无定义时(分母为0/无数据)记 no_data 跳过,不发假告警
 seatunnel-agent t2s-sub add --name GMV异动 --cron "30 8 * * *" \
