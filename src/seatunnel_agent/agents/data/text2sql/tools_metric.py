@@ -554,6 +554,111 @@ def _tool_correlate_metrics(
     }
 
 
+def _tool_tree_attribution(
+    inp: dict[str, Any], rt: Text2SQLRuntime,
+) -> dict[str, Any]:
+    """North-star decomposition: split the parent's move across its declared
+    multiplicative factors (log identity, self-checked), then dimension-
+    attribute the biggest additive factor. Deterministic, LLM-free."""
+    from .attribution import attribution_to_dict, run_attribution, tree_factor_split
+    from .partition import TimeRange
+
+    metric, err = _resolve_metric(inp, rt)
+    if err is not None:
+        return err
+    if not metric.tree:
+        return {
+            "error": (
+                f"指标 '{metric.name}' 未声明 tree(metrics.yaml 的乘法因子树,"
+                "如 tree: [traffic, cvr, aov])"
+            ),
+        }
+    assert rt.metrics is not None  # guaranteed by _resolve_metric above
+    factors = []
+    for n in metric.tree:
+        f = rt.metrics.get(n)
+        if f is None:
+            return {"error": f"tree 因子 '{n}' 未定义"}
+        factors.append(f)
+    try:
+        curr_range, prev_range = _attribution_ranges(inp)
+    except MetricError as exc:
+        return {"error": str(exc)}
+
+    def _total(m: Any, tr: TimeRange) -> float | None:
+        sql = build_metric_sql(m, rt.metrics, rt.store, time_range=tr)
+        validation = validate_sql(sql, rt.store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        result = rt.executor.run(
+            enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type),
+            max_rows=10,
+        )
+        if not result.rows or result.rows[0][-1] is None:
+            return None if m.is_ratio else 0.0
+        return float(result.rows[0][-1])
+
+    try:
+        parent_prev, parent_curr = _total(metric, prev_range), _total(metric, curr_range)
+        triples = []
+        for f in factors:
+            triples.append((f.name, _total(f, prev_range), _total(f, curr_range)))
+    except MetricError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        return {"error": _sanitize_db_error(str(exc))}
+
+    if parent_prev is None or parent_curr is None:
+        return {"error": "父指标在对比期无定义(分母为 0 或无数据)"}
+    clean: list[tuple[str, float, float]] = []
+    for n, p, c in triples:
+        if p is None or c is None:
+            return {
+                "error": f"因子 '{n}' 在对比期无定义(分母为 0 或无数据)",
+            }
+        clean.append((n, p, c))
+    split = tree_factor_split(parent_prev, parent_curr, clean)
+    if split is None:
+        return {
+            "error": (
+                "对数分解不可用:父指标或某因子在该期 ≤0/无数据,"
+                "或父指标两期无变化"
+            ),
+            "values": {n: {"prev": p, "curr": c} for n, p, c in triples},
+        }
+
+    out: dict[str, Any] = {
+        "success": True,
+        "metric": metric.name,
+        "display_name": metric.display_name,
+        "tree": list(metric.tree),
+        **split,
+    }
+    # drill the biggest additive factor one level down (best-effort)
+    top = max(split["factors"], key=lambda r: abs(r["share_pct"]))
+    out["top_factor"] = top["factor"]
+    top_metric = rt.metrics.get(top["factor"])
+    if top_metric is not None and not top_metric.is_ratio and top_metric.dimensions:
+        try:
+            attri = run_attribution(
+                top_metric, rt.metrics, rt.store,
+                _attribution_execute(rt, inp.get("user_query", ""), metric.name),
+                curr_range=curr_range, prev_range=prev_range,
+            )
+            out["top_factor_attribution"] = attribution_to_dict(attri)
+        except Exception:
+            pass  # the factor split already answered the headline question
+
+    rt.logger.log(
+        user_query=str(inp.get("user_query", "")),
+        generated_sql="", status="success",
+        matched_tables=[metric.table] if metric.table else [],
+        exec_time_ms=0, row_count=0,
+        extra={"source": rt.source, "metric": metric.name, "kind": "tree"},
+    )
+    return out
+
+
 def _attribution_execute(rt: Text2SQLRuntime, user_query: str, metric_name: str = ""):
     """Build the validated/cached/logged execute_fn for run_attribution."""
 
@@ -617,10 +722,8 @@ def _derive_prev_range(curr: Any, mode: str) -> Any:
     raise MetricError(f"compare_mode 只支持 mom/wow/yoy (got '{mode}')")
 
 
-def _run_one_attribution(
-    inp: dict[str, Any], rt: Text2SQLRuntime, metric: Any,
-) -> Any:
-    from .attribution import run_attribution
+def _attribution_ranges(inp: dict[str, Any]) -> tuple[Any, Any]:
+    """(curr_range, prev_range) from curr_* / prev_* / compare_mode input."""
     from .metrics import parse_time_range
 
     curr_range = parse_time_range(
@@ -637,6 +740,15 @@ def _run_one_attribution(
         )
     if prev_range is None:
         raise MetricError("归因分析必须提供 prev_start 或 compare_mode")
+    return curr_range, prev_range
+
+
+def _run_one_attribution(
+    inp: dict[str, Any], rt: Text2SQLRuntime, metric: Any,
+) -> Any:
+    from .attribution import run_attribution
+
+    curr_range, prev_range = _attribution_ranges(inp)
     dim = str(inp.get("dimension", "") or "").strip()
     assert rt.metrics is not None  # guaranteed by _resolve_metric above
     return run_attribution(

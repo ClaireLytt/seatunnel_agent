@@ -669,6 +669,7 @@ metrics:
     expression: SUM(amount)
     time_column: dt
     dimensions: [channel]
+    tree: [order_cnt, aov]
   - name: order_cnt
     display_name: 订单量
     table: sales
@@ -927,6 +928,30 @@ def test_api_key_auth(monkeypatch) -> None:
     ).status_code == 200
 
 
+def test_tree_attribution_tool_end_to_end(sqlite_runtime) -> None:
+    """指标树工具:gmv = order_cnt × aov 精确树,份额恒等、残差≈0."""
+    out = json.loads(execute_text2sql_tool("tree_attribution", {
+        "metric": "gmv", "curr_start": "2026-03-02", "prev_start": "2026-03-01",
+    }, sqlite_runtime))
+    assert out.get("success"), out
+    assert out["tree"] == ["order_cnt", "aov"]
+    assert out["parent_change_pct"] == pytest.approx(6.67, abs=0.01)
+    shares = {r["factor"]: r["share_pct"] for r in out["factors"]}
+    # 单量 3→3 不变,份额 0;客单价承担全部变化
+    assert shares["order_cnt"] == pytest.approx(0.0, abs=0.01)
+    assert shares["aov"] == pytest.approx(100.0, abs=0.1)
+    assert out["residual_share_pct"] == pytest.approx(0.0, abs=0.1)
+    assert out["check_ok"] and out["top_factor"] == "aov"
+
+
+def test_tree_attribution_tool_requires_tree(sqlite_runtime) -> None:
+    out = json.loads(execute_text2sql_tool("tree_attribution", {
+        "metric": "order_cnt", "curr_start": "2026-03-02",
+        "prev_start": "2026-03-01",
+    }, sqlite_runtime))
+    assert "未声明 tree" in out["error"]
+
+
 def test_mcp_trace_and_attribution_tools(tmp_path, monkeypatch) -> None:
     import sqlite3
 
@@ -1136,9 +1161,8 @@ def test_api_metrics_forecast_target_correlate(tmp_path, monkeypatch) -> None:
         "ds_type": "sqlite",
         "db_config": {"database": str(db)},
         "metrics_yaml": _SQLITE_METRICS.replace(
-            "    time_column: dt\n    dimensions: [channel]\n  - name: order_cnt",
-            "    time_column: dt\n    dimensions: [channel]\n"
-            "    targets: {month: 10000}\n  - name: order_cnt",
+            "    tree: [order_cnt, aov]\n",
+            "    tree: [order_cnt, aov]\n    targets: {month: 10000}\n",
             1,
         ),
     }
@@ -1859,6 +1883,59 @@ metrics:
     store, errors = MetricStore.from_text(yaml_text)
     assert errors == []
     assert store.get("gmv").targets == {"month": 3000000.0, "year": 40000000.0}
+
+
+def test_tree_factor_split_identity() -> None:
+    """对数分解恒等式:份额 + 残差 = 100%;精确树残差≈0."""
+    from seatunnel_agent.agents.data.text2sql.attribution import tree_factor_split
+
+    # exact tree: parent = f1*f2*f3 both periods
+    out = tree_factor_split(
+        1000.0 * 0.05 * 200.0, 800.0 * 0.06 * 210.0,
+        [("traffic", 1000.0, 800.0), ("cvr", 0.05, 0.06), ("aov", 200.0, 210.0)],
+    )
+    assert out is not None and out["check_ok"], out
+    assert abs(out["residual_share_pct"]) < 0.01
+    shares = {r["factor"]: r["share_pct"] for r in out["factors"]}
+    # traffic 跌是主因(负贡献绝对值最大)
+    assert abs(shares["traffic"]) > abs(shares["cvr"]) > abs(shares["aov"])
+    assert sum(shares.values()) + out["residual_share_pct"] == pytest.approx(
+        100.0, abs=0.5,
+    )
+    # degenerate cases
+    assert tree_factor_split(100.0, 100.0, [("a", 1.0, 1.0)]) is None  # 无变化
+    assert tree_factor_split(0.0, 10.0, [("a", 1.0, 2.0)]) is None     # 非正值
+
+
+def test_tree_parse_and_validation() -> None:
+    yaml_text = """
+metrics:
+  - name: gmv
+    table: t
+    expression: SUM(x)
+    tree: [traffic, cvr]
+  - name: traffic
+    table: t
+    expression: COUNT(*)
+  - name: bad_self
+    table: t
+    expression: SUM(y)
+    tree: [bad_self, traffic]
+  - name: bad_short
+    table: t
+    expression: SUM(z)
+    tree: [traffic]
+"""
+    store, errors = MetricStore.from_text(yaml_text)
+    assert store.get("gmv").tree == ("traffic", "cvr")
+    assert any("至少需要 2 个因子" in e for e in errors)
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
+
+    schema_errors = store.validate(
+        SchemaStore(parse_ddl("CREATE TABLE t (x INT, y INT, z INT);"))
+    )
+    assert any("tree 不能引用自身" in e for e in schema_errors)
+    assert any("tree 因子 'cvr' 未定义" in e for e in schema_errors)
 
 
 def test_targets_validation_errors() -> None:

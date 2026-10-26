@@ -128,6 +128,9 @@ class MetricDef:
     denominator: str = ""
     # period targets for progress tracking: {"month"|"quarter"|"year": value}
     targets: dict[str, float] = field(default_factory=dict)
+    # multiplicative factor tree: this metric ≈ product of these metrics
+    # (e.g. gmv = traffic × cvr × aov); names of defined metrics
+    tree: tuple[str, ...] = ()
 
     @property
     def is_ratio(self) -> bool:
@@ -255,6 +258,30 @@ def _parse_targets(
     return out
 
 
+_TREE_MAX_FACTORS = 5
+
+
+def _parse_tree(raw: dict, where: str, errors: list[str]) -> tuple[str, ...]:
+    """``tree: [traffic, cvr, aov]`` — the metric as a product of factors."""
+    tree_raw = raw.get("tree")
+    if tree_raw is None:
+        return ()
+    if not isinstance(tree_raw, list):
+        errors.append(f"{where}: tree 必须是指标名列表")
+        return ()
+    names = [str(n).strip() for n in tree_raw if str(n).strip()]
+    if len(names) < 2:
+        errors.append(f"{where}: tree 至少需要 2 个因子")
+        return ()
+    if len(names) > _TREE_MAX_FACTORS:
+        errors.append(f"{where}: tree 最多 {_TREE_MAX_FACTORS} 个因子")
+        return ()
+    if len(set(names)) != len(names):
+        errors.append(f"{where}: tree 因子不能重复")
+        return ()
+    return tuple(names)
+
+
 def _parse_one(raw: dict, index: int, errors: list[str]) -> MetricDef | None:
     where = f"metrics[{index}]"
     name = str(raw.get("name", "")).strip()
@@ -301,6 +328,7 @@ def _parse_one(raw: dict, index: int, errors: list[str]) -> MetricDef | None:
         numerator=str(raw.get("numerator", "") or "").strip(),
         denominator=str(raw.get("denominator", "") or "").strip(),
         targets=_parse_targets(raw, where, mtype, errors),
+        tree=_parse_tree(raw, where, errors),
     )
     if mtype == "ratio" and metric.joins:
         errors.append(f"{where}: ratio 指标不能直接声明 joins（在分子/分母上声明）")
@@ -405,6 +433,13 @@ class MetricStore:
                 errors.extend(self._validate_ratio(m))
             else:
                 errors.extend(self._validate_additive(m, schema_store))
+            for n in m.tree:
+                if n == m.name:
+                    errors.append(f"metric '{m.name}': tree 不能引用自身")
+                elif self.get(n) is None:
+                    errors.append(
+                        f"metric '{m.name}': tree 因子 '{n}' 未定义"
+                    )
         return errors
 
     def _validate_additive(
@@ -556,7 +591,7 @@ class MetricStore:
 #: fields whose change alters the metric's caliber (numbers move)
 CALIBER_FIELDS = (
     "table", "expression", "time_column", "dimensions", "default_filters",
-    "joins", "numerator", "denominator", "metric_type", "targets",
+    "joins", "numerator", "denominator", "metric_type", "targets", "tree",
 )
 
 

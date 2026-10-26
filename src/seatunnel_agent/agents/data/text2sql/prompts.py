@@ -203,6 +203,10 @@ A metric catalog is loaded. To guarantee caliber consistency:
 12. For co-movement questions between two metrics (相关/联动/一起涨跌/是不是
    因为), use **correlate_metrics** and present r as association only —
    correlation is not causation; offer run_attribution for the "why".
+13. When a metric declares a factor tree and the question is "why did it
+   move" (为什么涨/跌), call **tree_attribution** FIRST — it answers at the
+   factor level (流量跌了还是转化跌了) and already drills the top factor;
+   fall back to run_attribution when no tree is declared.
 
 ## Metric Catalog (已定义指标)
 

@@ -28,6 +28,7 @@ from .tools_metric import (  # noqa: F401 (re-exported for compatibility)
     _tool_metric_target_progress,
     _tool_run_attribution,
     _tool_trace_metric,
+    _tool_tree_attribution,
 )
 from .tools_sql import (  # noqa: F401 (re-exported for compatibility)
     _build_sql_error,
@@ -511,6 +512,43 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "tree_attribution",
+        "description": (
+            "North-star factor decomposition for a metric with a declared "
+            "multiplicative tree (指标树/因子拆解: GMV跌了是流量还是转化的问题). "
+            "Splits the parent's move across its factors by the exact log "
+            "identity (shares + residual sum to 100%, self-checked), then "
+            "dimension-attributes the biggest additive factor. Use this "
+            "BEFORE run_attribution when the metric declares a tree. "
+            "Costs 2×(1+K) SQL plus the drilldown. Dates like "
+            "run_attribution: curr_start [curr_end] + prev_start or "
+            "compare_mode (mom/wow/yoy)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "description": "Parent metric name (must declare tree)",
+                },
+                "curr_start": {"type": "string"},
+                "curr_end": {"type": "string"},
+                "prev_start": {"type": "string"},
+                "prev_end": {"type": "string"},
+                "compare_mode": {
+                    "type": "string",
+                    "enum": ["mom", "wow", "yoy"],
+                    "description": "Derive the comparison period (环比/上周同期/同比)",
+                },
+                "user_query": {
+                    "type": "string",
+                    "description": "The user's original question (for the audit log)",
+                },
+            },
+            "required": ["metric", "curr_start"],
+        },
+    },
+    {
         "name": "correlate_metrics",
         "description": (
             "Correlation between two defined metrics' daily series (相关性/"
@@ -768,6 +806,7 @@ _TOOL_HANDLERS = {
     "forecast_metric": _tool_forecast_metric,
     "metric_target_progress": _tool_metric_target_progress,
     "correlate_metrics": _tool_correlate_metrics,
+    "tree_attribution": _tool_tree_attribution,
     "trace_metric": _tool_trace_metric,
     "review_sql": _tool_review_sql,
     "skew_check": _tool_skew_check,

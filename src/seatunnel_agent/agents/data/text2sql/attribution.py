@@ -413,3 +413,57 @@ def attribution_to_dict(result: AttributionResult, max_rows: int = 10) -> dict[s
             for b in result.dimensions
         ],
     }
+
+
+def tree_factor_split(
+    parent_prev: float,
+    parent_curr: float,
+    factors: list[tuple[str, float, float]],
+) -> dict[str, Any] | None:
+    """Log (LMDI-style) decomposition of a multiplicative metric tree.
+
+    With parent ~= f1 x f2 x ... : dln(parent) = sum(dln(f_i)) + residual,
+    where the residual absorbs the measurement gap between the parent and
+    the factor product (0 when the tree is exact). Each factor's
+    ``share_pct`` is its dln as a share of the parent's dln, so shares plus
+    the residual share sum to 100 by construction (identity, self-checked).
+    Returns None when any value is <= 0 (log undefined) or the parent did
+    not move.
+    """
+    import math
+
+    values = [parent_prev, parent_curr]
+    for _, p, c in factors:
+        values += [p, c]
+    if any(v is None or v <= 0 for v in values):
+        return None
+    dln_parent = math.log(parent_curr / parent_prev)
+    if dln_parent == 0:
+        return None
+    rows: list[dict[str, Any]] = []
+    shares: list[float] = []
+    dln_sum = 0.0
+    for name, p, c in factors:
+        dln = math.log(c / p)
+        dln_sum += dln
+        shares.append(round(dln / dln_parent * 100, 2))
+        rows.append({
+            "factor": name,
+            "prev": p,
+            "curr": c,
+            "change_pct": round((c / p - 1) * 100, 2),
+            "share_pct": round(dln / dln_parent * 100, 2),
+        })
+    residual = dln_parent - dln_sum
+    residual_share = residual / dln_parent * 100
+    check_ok = abs(
+        sum(shares) + residual_share - 100.0
+    ) < 0.5  # rounding tolerance on the printed shares
+    return {
+        "parent_prev": parent_prev,
+        "parent_curr": parent_curr,
+        "parent_change_pct": round((parent_curr / parent_prev - 1) * 100, 2),
+        "factors": rows,
+        "residual_share_pct": round(residual_share, 2),
+        "check_ok": check_ok,
+    }
