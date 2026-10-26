@@ -11,7 +11,7 @@
    - 未完成桩子(raise NotImplementedError、单行空 except: pass、src/ 新增 TODO)
 
 用法:python scripts/check_workflow.py [--range <rev-range>]
-本地默认核对 origin/<当前分支>..HEAD;CI 中传 --range origin/<base>...HEAD 核对整个 PR。
+本地默认核对 origin/main...HEAD(与 CI 同口径);CI 中传 --range origin/<base>...HEAD。
 任一项 FAIL 时退出码非 0,本批次不得标记完成。
 """
 
@@ -133,6 +133,23 @@ def _unpushed_range() -> str | None:
     except subprocess.CalledProcessError:
         return None  # 无远端分支:视全部提交为未推送没有意义,跳过范围检查
     return f"origin/{branch}..HEAD"
+
+
+def _default_range() -> str | None:
+    """本地默认范围与 CI 对齐:优先 origin/main...HEAD(整个分支)。
+
+    教训(pitfalls 2026-10-24):push 后 origin/<branch>..HEAD 是空集,
+    floor 等范围检查全部假绿,问题拖到 CI 才暴露。在 main 自身或没有
+    origin/main 时退回未推送范围。"""
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD").strip()
+    if branch != "main":
+        try:
+            _git("rev-parse", "--verify", "origin/main")
+        except subprocess.CalledProcessError:
+            pass
+        else:
+            return "origin/main...HEAD"
+    return _unpushed_range()
 
 
 def check_no_ai_attribution(rng: str | None) -> tuple[bool, str]:
