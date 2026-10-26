@@ -110,6 +110,20 @@ def test_forecast_recovers_weekday_seasonality() -> None:
     assert by_day[sat] - by_day[mon] == pytest.approx(30.0, abs=1.0)
 
 
+def test_forecast_seasonality_does_not_leak_into_trend() -> None:
+    """周期形态不得污染趋势斜率:工作日 100/周末 50 的纯周期序列,
+    斜率必须≈0,下周一预测必须≈100(回拟合收敛修复的锁定测试)."""
+    start = date(2026, 3, 2)  # a Monday
+    pts = [
+        (start + timedelta(days=i),
+         50.0 if (start + timedelta(days=i)).weekday() >= 5 else 100.0)
+        for i in range(28)
+    ]
+    out = forecast_series(pts, horizon=1)
+    assert out["slope_per_day"] == pytest.approx(0.0, abs=1e-6)
+    assert out["forecasts"][0]["yhat"] == pytest.approx(100.0, abs=1e-3)
+
+
 def test_forecast_gap_fill_modes() -> None:
     pts = _linear(14)
     del pts[5]  # a missing day

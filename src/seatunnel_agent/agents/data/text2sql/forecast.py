@@ -125,12 +125,34 @@ def forecast_series(
     seasonal = grain == "day" and n >= SEASONALITY_MIN_POINTS
     offsets = dict.fromkeys(range(7), 0.0)
     if seasonal:
-        buckets: dict[int, list[float]] = {wd: [] for wd in range(7)}
-        for i, (d, v) in enumerate(series):
-            buckets[d.weekday()].append(v - _trend(i))
-        for wd, vals in buckets.items():
-            if vals:
-                offsets[wd] = sum(vals) / len(vals)
+        def _weekday_offsets() -> dict[int, float]:
+            buckets: dict[int, list[float]] = {wd: [] for wd in range(7)}
+            for i, (d, v) in enumerate(series):
+                buckets[d.weekday()].append(v - _trend(i))
+            return {
+                wd: (sum(vals) / len(vals) if vals else 0.0)
+                for wd, vals in buckets.items()
+            }
+
+        # a strong weekly pattern leaks into the plain OLS slope (weekends
+        # sit late in each week, so period-7 structure correlates with the
+        # day index); backfit to convergence — refit the trend on the
+        # deseasonalized series, recompute the offsets, repeat — which
+        # removes the leak while leaving a true linear trend untouched
+        for _ in range(20):
+            offsets = _weekday_offsets()
+            ys_deseason = [v - offsets[d.weekday()] for d, v in series]
+            mean_yd = sum(ys_deseason) / n
+            sxy_d = sum(
+                (i - mean_x) * (ys_deseason[i] - mean_yd) for i in range(n)
+            )
+            new_slope = sxy_d / sxx if sxx else 0.0
+            converged = abs(new_slope - slope) < 1e-9
+            slope = new_slope
+            intercept = mean_yd - slope * mean_x
+            if converged:
+                break
+        offsets = _weekday_offsets()
 
     # exogenous CN-calendar offsets (节假日/调休补班) from the residuals
     # left after trend + weekday; each class needs HOLIDAY_MIN_DAYS observed

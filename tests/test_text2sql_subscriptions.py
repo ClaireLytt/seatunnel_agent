@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
 pytest.importorskip("yaml")
 
-from seatunnel_agent.agents.data.text2sql.metrics import MetricStore
+from seatunnel_agent.agents.data.text2sql.metrics import MetricError, MetricStore
 from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
 from seatunnel_agent.agents.data.text2sql.subscriptions import (
     Scheduler,
@@ -496,6 +496,78 @@ def test_freshness_store_validation(tmp_path) -> None:
     entry = store.add(name="f", cron="0 9 * * *", source_type="freshness",
                       metric="gmv", max_lag_days=2)
     assert entry["max_lag_days"] == 2
+
+
+def test_backtest_model_vs_threshold(tmp_path, stores) -> None:
+    """工作日 100 / 周末 50 的 6 周序列 + 一个真尖峰:
+    dod 阈值 20% 每个周末边界都误报,model 基线学会星期形态只报尖峰."""
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        DatabaseConfig,
+        create_executor,
+    )
+    from seatunnel_agent.agents.data.text2sql.subscriptions import backtest_watch
+
+    schema_store, metric_store = stores
+    start = date(2026, 3, 2)  # Monday
+    days = []
+    for i in range(42):
+        d = start + timedelta(days=i)
+        amt = 50.0 if d.weekday() >= 5 else 100.0
+        days.append((d.isoformat(), amt))
+    spike_day = start + timedelta(days=38)  # a weekday
+    days = [(ds, 1000.0 if ds == spike_day.isoformat() else v) for ds, v in days]
+    db = _series_db(tmp_path, days)
+    executor = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=db))
+    end = start + timedelta(days=41)
+
+    model = backtest_watch(
+        _watch_sub(db, watch_mode="model"), schema_store, metric_store,
+        executor, end=end, days=14,
+    )
+    assert model["alert_count"] == 1, model["alerts"]
+    assert model["alerts"][0]["day"] == spike_day.isoformat()
+
+    dod = backtest_watch(
+        _watch_sub(db, watch_mode="dod", threshold_pct=20.0),
+        schema_store, metric_store, executor, end=end, days=14,
+    )
+    # every weekday<->weekend boundary trips the fixed threshold
+    assert dod["alert_count"] > 3
+    assert any(a["day"] == spike_day.isoformat() for a in dod["alerts"])
+
+
+def test_backtest_unknown_metric(tmp_path, stores) -> None:
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        DatabaseConfig,
+        create_executor,
+    )
+    from seatunnel_agent.agents.data.text2sql.subscriptions import backtest_watch
+
+    schema_store, metric_store = stores
+    db = _series_db(tmp_path, [("2026-03-01", 1.0)])
+    executor = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=db))
+    with pytest.raises(MetricError):
+        backtest_watch(
+            _watch_sub(db, metric="nope"), schema_store, metric_store,
+            executor, end=date(2026, 3, 15),
+        )
+
+
+def test_metric_watch_dod_missing_day_lagging_table(tmp_path, stores) -> None:
+    """dod 模式同样受断更保护:表停在 03-13,昨日无行 → no_data 而非 -100%."""
+    schema_store, metric_store = stores
+    db = _series_db(tmp_path, [(f"2026-03-{d:02d}", 100.0) for d in range(1, 14)])
+    pushes: list = []
+    outcome = run_subscription(
+        _watch_sub(db, watch_mode="dod"), schema_store, metric_store,
+        today=date(2026, 3, 16),
+        push_fn=lambda *a, **k: (pushes.append(a), (True, "ok"))[1],
+    )
+    assert outcome["status"] == "no_data", outcome
+    assert "数据未更新至昨日" in outcome["note"]
+    assert pushes == []
 
 
 def test_metric_watch_store_validation(tmp_path) -> None:

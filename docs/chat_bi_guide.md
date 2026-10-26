@@ -204,6 +204,10 @@ seatunnel-agent t2s-sub add --name GMV异动 --cron "30 8 * * *" \
 seatunnel-agent t2s-sub add --name GMV断更 --cron "0 8 * * *" \
     --metric gmv --freshness --max-lag-days 1 --webhook ...
 
+# 回测:上线前回放告警规则,看过去 N 天哪些天会触发(调 threshold/watch-mode 用;
+# 1 条序列 SQL + 纯 Python 重放)
+seatunnel-agent t2s-sub backtest <订阅ID> --days 90
+
 # 收藏推数:参数化收藏 + 日期宏(${yesterday}/${today_pt}/${month_start}...)
 seatunnel-agent t2s-sub add --name 周报 --cron "0 10 * * 0" --favorite <id> ...
 

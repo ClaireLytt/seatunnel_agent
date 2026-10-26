@@ -268,6 +268,78 @@ def t2s_sub_run(sub_id: str) -> None:
         raise SystemExit(1)
 
 
+@t2s_sub.command("backtest")
+@click.argument("sub_id")
+@click.option("--days", type=int, default=90, show_default=True,
+              help="回测窗口天数（7-365）")
+@click.option("--end", "end_raw", default="", help="回测截止日 YYYY-MM-DD（默认昨天）")
+def t2s_sub_backtest(sub_id: str, days: int, end_raw: str) -> None:
+    """回放告警规则：过去 N 天里哪些天会触发告警（上线前调参用）。"""
+    _ensure_utf8_stdio()
+    from datetime import date, timedelta
+
+    from seatunnel_agent.agents.data.text2sql.executor import create_executor
+    from seatunnel_agent.agents.data.text2sql.metrics import (
+        load_metric_store,
+        parse_date,
+    )
+    from seatunnel_agent.agents.data.text2sql.subscriptions import (
+        SubscriptionStore,
+        backtest_watch,
+        resolve_db_config,
+    )
+
+    store = SubscriptionStore()
+    sub = store.get(sub_id)
+    if sub is None:
+        raise click.ClickException(f"订阅 '{sub_id}' 不存在")
+    if sub.get("source_type") != "metric_watch":
+        raise click.ClickException("backtest 只支持 metric_watch 订阅")
+    db_config = resolve_db_config(sub)
+    if db_config is None:
+        raise click.ClickException("无法解析数据库连接")
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        schema_ddl_path_from_env,
+    )
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+
+    ddl = Path(schema_ddl_path_from_env())
+    if not ddl.is_file():
+        raise click.ClickException(f"schema DDL 不存在: {ddl}")
+    schema_store = SchemaStore.from_file(ddl)
+    metric_store, _errors = load_metric_store(schema_store)
+    end = parse_date(end_raw) if end_raw else date.today() - timedelta(days=1)
+    try:
+        out = backtest_watch(
+            sub, schema_store, metric_store, create_executor(db_config),
+            end=end, days=days,
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc))
+    console.print(
+        f"[bold]{out['metric']}[/bold] watch_mode={out['watch_mode']} "
+        f"窗口 {out['window']['start']}..{out['window']['end']}  "
+        f"评估 {out['days_evaluated']} 天 / 无数据 {out['no_data_days']} 天"
+    )
+    console.print(
+        f"会触发告警 [bold]{out['alert_count']}[/bold] 次"
+        + (f"（告警率 {out['alert_rate_pct']}%）" if out["alert_rate_pct"] is not None else "")
+    )
+    for a in out["alerts"]:
+        if "expected" in a:
+            console.print(
+                f"  {a['day']}  实际 {a['actual']:,.2f}  "
+                f"预期 {a['expected']:,.2f} [{a['lo']:,.2f}, {a['hi']:,.2f}]"
+            )
+        else:
+            console.print(
+                f"  {a['day']}  实际 {a['actual']:,.2f}  "
+                f"参照 {a['prev']:,.2f}  变动 {a['change_rate_pct']}%"
+            )
+
+
 @click.command(name="t2s-cron")
 @click.option("--once", is_flag=True, help="只检查一次到期订阅后退出（供外部调度器调用）")
 @click.option("--tick", type=int, default=20, show_default=True, help="轮询间隔秒")

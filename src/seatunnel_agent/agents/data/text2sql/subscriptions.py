@@ -507,6 +507,24 @@ def _run_metric_watch(
             return _no_data(
                 "比率在该日无定义（分母为 0 或无数据），跳过告警", prev,
             )
+        if curr == 0.0 and not metric.is_ratio:
+            # "no rows yesterday" and "a true 0" look identical here; probe
+            # table freshness so a lagging pipeline reports an outage
+            # instead of a fake -100% alert (same guard as model mode)
+            try:
+                lagging = {
+                    t: d for t, d in _max_time_value(
+                        metric, metric_store, schema_store, executor, ds_type,
+                    ).items() if d is None or d < yesterday
+                }
+            except MetricError:
+                lagging = {}
+            if lagging:
+                latest = ", ".join(
+                    f"{t} 最新 {d.isoformat() if d else '无数据'}"
+                    for t, d in lagging.items()
+                )
+                return _no_data(f"数据未更新至昨日（{latest}），跳过告警", prev)
         delta = curr - prev
         rate = (delta / abs(prev)) if prev else None
         triggered = (abs(rate) * 100 >= threshold) if rate is not None else curr != 0
@@ -637,6 +655,129 @@ def _run_metric_watch(
             outcome["status"] = "push_failed"
             outcome["error"] = msg
     return outcome
+
+
+def backtest_watch(
+    sub: dict[str, Any],
+    schema_store: SchemaStore,
+    metric_store: MetricStore,
+    executor,
+    end: date,
+    days: int = 90,
+) -> dict[str, Any]:
+    """Replay a metric_watch subscription's alert rule over history: which
+    days WOULD have alerted. One series SQL, pure-python replay — lets the
+    user tune threshold/watch_mode before the subscription goes live."""
+    from .forecast import forecast_series
+    from .metrics import build_metric_series_sql
+
+    metric = metric_store.get(sub.get("metric", ""))
+    if metric is None:
+        raise MetricError(f"指标 '{sub.get('metric')}' 未定义")
+    mode = str(sub.get("watch_mode") or "dod")
+    threshold = float(sub.get("threshold_pct", 10.0))
+    days = max(7, min(days, 365))
+    eval_start = end - timedelta(days=days - 1)
+    warmup = _MODEL_HISTORY_DAYS if mode == "model" else 7
+    start = eval_start - timedelta(days=warmup)
+
+    series_sql = build_metric_series_sql(
+        metric, metric_store, schema_store, TimeRange(start=start, end=end),
+    )
+    validation = validate_sql(series_sql, schema_store)
+    if not validation.ok:
+        raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+    result = executor.run(
+        enforce_limit(series_sql, default_limit=100000,
+                      dialect=sub.get("ds_type", "hive")),
+        max_rows=100000,
+    )
+    by_day: dict[date, float | None] = {}
+    for r in result.rows:
+        if r[0] is None:
+            continue
+        by_day[parse_date(str(r[0]).strip()[:10])] = (
+            None if r[-1] is None else float(r[-1])
+        )
+
+    def _val(d: date) -> float | None:
+        v = by_day.get(d)
+        if v is None:
+            return None if metric.is_ratio else 0.0
+        return v
+
+    alerts: list[dict[str, Any]] = []
+    no_data_days = 0
+    evaluated = 0
+    for i in range(days):
+        d = eval_start + timedelta(days=i)
+        curr = _val(d)
+        if curr is None:
+            no_data_days += 1
+            continue
+        if mode == "model":
+            history = [
+                (dd, by_day.get(dd))
+                for dd in (
+                    d - timedelta(days=k)
+                    for k in range(_MODEL_HISTORY_DAYS, 0, -1)
+                )
+            ]
+            try:
+                observed = [(dd, v) for dd, v in history if v is not None]
+                last = max(dd for dd, _ in observed) if observed else None
+                fc = forecast_series(
+                    history,
+                    horizon=(d - last).days if last else 1,
+                    fill="ffill" if metric.is_ratio else "zero",
+                )
+            except ValueError:
+                no_data_days += 1
+                continue
+            row = next(
+                (f for f in fc["forecasts"] if f["day"] == d.isoformat()),
+                None,
+            )
+            if row is None:
+                no_data_days += 1
+                continue
+            evaluated += 1
+            if curr < row["lo"] or curr > row["hi"]:
+                alerts.append({
+                    "day": d.isoformat(), "actual": round(curr, 4),
+                    "expected": row["yhat"],
+                    "lo": row["lo"], "hi": row["hi"],
+                })
+        else:
+            prev = _val(d - timedelta(days=7 if mode == "wow" else 1))
+            if prev is None:
+                no_data_days += 1
+                continue
+            evaluated += 1
+            rate = ((curr - prev) / abs(prev)) if prev else None
+            trig = (abs(rate) * 100 >= threshold) if rate is not None else curr != 0
+            if trig:
+                alerts.append({
+                    "day": d.isoformat(), "actual": round(curr, 4),
+                    "prev": round(prev, 4),
+                    "change_rate_pct": (
+                        round(rate * 100, 2) if rate is not None else None
+                    ),
+                })
+    return {
+        "metric": metric.name,
+        "watch_mode": mode,
+        "threshold_pct": threshold,
+        "window": {"start": eval_start.isoformat(), "end": end.isoformat()},
+        "days_evaluated": evaluated,
+        "no_data_days": no_data_days,
+        "alert_count": len(alerts),
+        "alert_rate_pct": (
+            round(len(alerts) / evaluated * 100, 2) if evaluated else None
+        ),
+        "alerts": alerts,
+        "sql": series_sql,
+    }
 
 
 def run_subscription(
