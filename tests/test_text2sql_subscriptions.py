@@ -692,6 +692,80 @@ def test_store_record_alert_state(tmp_path) -> None:
     assert reread["alert_state"]["direction"] == "up"
 
 
+def test_digest_card_english(tmp_path) -> None:
+    """lang=en 的订阅收到英文卡片(i18n 字典生效)."""
+    schema_store = SchemaStore(parse_ddl(_DDL))
+    metric_store, errors = MetricStore.from_text(_DIGEST_METRICS, schema_store)
+    assert errors == []
+    db = _series_db(tmp_path, [("2026-03-14", 100.0), ("2026-03-15", 110.0)])
+    pushes: list[tuple] = []
+
+    def fake_push(url, title, body, ok=True, **kw):
+        pushes.append(body)
+        return True, "ok"
+
+    sub = _watch_sub(db, source_type="digest", metrics=["gmv", "nope"], lang="en")
+    outcome = run_subscription(
+        sub, schema_store, metric_store,
+        today=date(2026, 3, 16), push_fn=fake_push,
+    )
+    assert outcome["status"] == "success", outcome
+    body = pushes[0]
+    assert "Daily digest" in body and "(DoD +10.0%)" in body
+    assert "- nope: not defined" in body
+    assert "经营日报" not in body
+
+
+def test_watch_alert_card_english(tmp_path, stores) -> None:
+    schema_store, metric_store = stores
+    days = [(f"2026-03-{d:02d}", 100.0) for d in range(1, 15)]
+    days.append(("2026-03-15", 500.0))
+    db = _series_db(tmp_path, days)
+    pushes: list[str] = []
+
+    def fake_push(url, title, body, ok=True, **kw):
+        pushes.append(body)
+        return True, "ok"
+
+    outcome = run_subscription(
+        _watch_sub(db, watch_mode="model", lang="en"), schema_store,
+        metric_store, today=date(2026, 3, 16), push_fn=fake_push,
+    )
+    assert outcome["status"] == "alerted", outcome
+    body = pushes[0]
+    assert "anomaly alert" in body and "expected" in body
+    assert "异动告警" not in body
+
+
+def test_qlog_insights(tmp_path) -> None:
+    from seatunnel_agent.agents.data.text2sql.examples import ExampleStore
+    from seatunnel_agent.agents.data.text2sql.qlog import insights
+
+    ex = ExampleStore(tmp_path / "ex.json")
+    ex.add("各渠道GMV", "SELECT 1")
+    entries = [
+        {"user_query": "各渠道GMV", "status": "success",
+         "source": "ui", "exec_time_ms": 100},
+        {"user_query": "各渠道GMV？", "status": "success",
+         "source": "ui", "exec_time_ms": 90},
+        {"user_query": "退款率趋势", "status": "error",
+         "error": "boom", "source": "api", "exec_time_ms": 9000},
+        {"user_query": "[subscription] GMV日报", "status": "success",
+         "source": "subscription"},
+    ]
+    out = insights(entries, example_store=ex, top=5)
+    assert out["total"] == 4 and out["interactive_total"] == 3
+    assert out["sources"]["subscription"] == 1
+    top = out["top_questions"]
+    assert top[0]["question"] == "各渠道GMV" and top[0]["count"] == 2
+    assert top[0]["has_example"] is True
+    assert any(q["question"] == "退款率趋势" and not q["has_example"] for q in top)
+    # 2 of 3 interactive queries covered by a verified example
+    assert out["cache_coverage_pct"] == pytest.approx(66.7)
+    assert out["failures"][0]["last_error"] == "boom"
+    assert out["slow_queries"][0]["exec_time_ms"] == 9000
+
+
 def test_digest_store_validation(tmp_path) -> None:
     store = SubscriptionStore(tmp_path / "subs.json")
     with pytest.raises(ValueError, match="最多"):

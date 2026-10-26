@@ -352,6 +352,54 @@ def t2s_sub_backtest(sub_id: str, days: int, end_raw: str) -> None:
             )
 
 
+@click.command(name="t2s-qlog-stats")
+@click.option("--top", type=int, default=10, show_default=True, help="Top N")
+@click.option("--last", type=int, default=2000, show_default=True,
+              help="只统计最近 N 条记录")
+@click.option("--log-dir", default="logs", show_default=True)
+def t2s_qlog_stats(top: int, last: int, log_dir: str) -> None:
+    """qlog 洞察：高频问题×示例覆盖(语义缓存收益)、失败聚类、慢查询、来源分布。"""
+    _ensure_utf8_stdio()
+    from seatunnel_agent.agents.data.text2sql.examples import ExampleStore
+    from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger, insights
+
+    entries = QueryLogger(log_dir=log_dir).recent(last)
+    try:
+        ex: ExampleStore | None = ExampleStore()
+    except Exception:
+        ex = None
+    out = insights(entries, example_store=ex, top=top)
+    console.print(
+        f"记录 {out['total']} 条（交互式 {out['interactive_total']} 条），"
+        f"来源分布 {out['sources']}"
+    )
+    if out["cache_coverage_pct"] is not None:
+        console.print(
+            f"语义缓存覆盖率：[bold]{out['cache_coverage_pct']}%[/bold] "
+            "的交互式查询其问题已有验证示例"
+        )
+    if out["top_questions"]:
+        console.print("[bold]高频问题（✅=已固化示例，建议把 ❌ 的固化）:[/bold]")
+        for q in out["top_questions"]:
+            mark = "✅" if q["has_example"] else "❌"
+            console.print(
+                f"  {mark} ×{q['count']}（成功 {q['success']}）{q['question']}"
+            )
+    if out["failures"]:
+        console.print("[bold]失败聚类:[/bold]")
+        for f in out["failures"]:
+            console.print(
+                f"  ×{f['count']} {f['question']}"
+                + (f" — {f.get('last_error', '')}" if f.get("last_error") else "")
+            )
+    if out["slow_queries"]:
+        console.print("[bold]慢查询 Top:[/bold]")
+        for s in out["slow_queries"][:5]:
+            console.print(
+                f"  {s['exec_time_ms']}ms [{s['source']}] {s['user_query']}"
+            )
+
+
 @click.command(name="t2s-cron")
 @click.option("--once", is_flag=True, help="只检查一次到期订阅后退出（供外部调度器调用）")
 @click.option("--tick", type=int, default=20, show_default=True, help="轮询间隔秒")
@@ -830,6 +878,7 @@ def register(cli) -> None:
     cli.add_command(t2s_mcp)
     cli.add_command(t2s_sub)
     cli.add_command(t2s_cron)
+    cli.add_command(t2s_qlog_stats)
     cli.add_command(t2s_eval)
     cli.add_command(dqc)
     cli.add_command(metrics)

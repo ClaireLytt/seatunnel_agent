@@ -76,6 +76,72 @@ _MAX_SUBSCRIPTIONS = 100
 _CARD_MAX_ROWS = 10
 
 SOURCE_TYPES = ("metric", "favorite", "metric_watch", "freshness", "digest")
+
+#: push-card strings per subscription ``lang`` (zh default, en fallback-safe)
+_CARD_STRINGS: dict[str, dict[str, str]] = {
+    "zh": {
+        "fail_body": "订阅执行失败：\n{error}",
+        "fresh_title": "**{metric}** 数据断更告警（允许滞后 {lag} 天）",
+        "fresh_line": "- {table}: 最新 {latest}（要求 ≥ {expected}）",
+        "no_data": "无数据",
+        "recovered": (
+            "**{metric}** 异动已恢复\n"
+            "{day}: {value}{unit} 回到正常区间（自 {since} 起告警）"
+        ),
+        "alert_model_head": "**{metric}** 异动告警（模型基线 95% 区间外）",
+        "alert_model_line": "{day} 实际 {curr}{unit}，预期 {yhat}{unit} [{lo}, {hi}]",
+        "alert_model_delta": "偏离 {delta}{unit} ({rate})",
+        "alert_head": "**{metric}** 异动告警（阈值 ±{threshold:g}%）",
+        "alert_line": "{ref}: {prev}{unit} → {day}: {curr}{unit}",
+        "alert_delta": "变动 {delta}{unit} ({rate})",
+        "rate_na": "N/A(基期为0)",
+        "contrib_additive": "主要贡献",
+        "contrib_ratio": "各维度变化",
+        "contrib_pct": "，贡献 {pct}%",
+        "member_new": "（新增）",
+        "member_gone": "（消失）",
+        "digest_title": "**经营日报** {day}",
+        "digest_undefined": "- {metric}: 未定义",
+        "digest_failed": "- {metric}: 查询失败",
+        "digest_no_data": "- {metric}: 无数据",
+        "digest_dod": "（环比 {pct:+.1f}%）",
+        "digest_target": " · 月目标达成 {pct:g}%",
+    },
+    "en": {
+        "fail_body": "Subscription run failed:\n{error}",
+        "fresh_title": "**{metric}** data freshness alert (allowed lag: {lag} d)",
+        "fresh_line": "- {table}: latest {latest} (expected >= {expected})",
+        "no_data": "no data",
+        "recovered": (
+            "**{metric}** anomaly recovered\n"
+            "{day}: {value}{unit} back inside the normal range "
+            "(alerting since {since})"
+        ),
+        "alert_model_head": "**{metric}** anomaly alert (outside the model 95% interval)",
+        "alert_model_line": "{day} actual {curr}{unit}, expected {yhat}{unit} [{lo}, {hi}]",
+        "alert_model_delta": "deviation {delta}{unit} ({rate})",
+        "alert_head": "**{metric}** anomaly alert (threshold +/-{threshold:g}%)",
+        "alert_line": "{ref}: {prev}{unit} -> {day}: {curr}{unit}",
+        "alert_delta": "change {delta}{unit} ({rate})",
+        "rate_na": "N/A (base period is 0)",
+        "contrib_additive": "top contributors",
+        "contrib_ratio": "per-dimension change",
+        "contrib_pct": ", contribution {pct}%",
+        "member_new": " (new)",
+        "member_gone": " (gone)",
+        "digest_title": "**Daily digest** {day}",
+        "digest_undefined": "- {metric}: not defined",
+        "digest_failed": "- {metric}: query failed",
+        "digest_no_data": "- {metric}: no data",
+        "digest_dod": " (DoD {pct:+.1f}%)",
+        "digest_target": " - month target {pct:g}%",
+    },
+}
+
+
+def _card_text(lang: str, key: str, **fmt: Any) -> str:
+    table = _CARD_STRINGS.get(lang) or _CARD_STRINGS["zh"]
+    return table.get(key, _CARD_STRINGS["zh"][key]).format(**fmt)
 #: digest cards cap: 2 SQL per metric must stay a bounded morning cost
 _DIGEST_MAX_METRICS = 10
 
@@ -374,14 +440,18 @@ def _run_freshness(
     }
     if not stale:
         return outcome  # fresh — silence by design
+    lang = sub.get("lang", "zh")
     lines = [
-        f"- {t}: 最新 {d.isoformat() if d else '无数据'}"
-        f"（要求 ≥ {expected.isoformat()}）"
+        _card_text(
+            lang, "fresh_line", table=t,
+            latest=d.isoformat() if d else _card_text(lang, "no_data"),
+            expected=expected.isoformat(),
+        )
         for t, d in stale.items()
     ]
     body = (
-        f"**{metric.display_name}** 数据断更告警"
-        f"（允许滞后 {max_lag} 天）\n" + "\n".join(lines)
+        _card_text(lang, "fresh_title", metric=metric.display_name, lag=max_lag)
+        + "\n" + "\n".join(lines)
     )
     if webhook:
         pushed, msg = push_fn(webhook, f"⏰ {name}", body, ok=False)
@@ -568,11 +638,11 @@ def _run_metric_watch(
         if state.get("active"):
             outcome["status"] = "recovered"
             outcome["alert_state"] = {}
-            since = state.get("since", "?")
-            body = (
-                f"**{metric.display_name}** 异动已恢复\n"
-                f"{yesterday.isoformat()}: {curr:,.2f}{unit} 回到正常区间"
-                f"（自 {since} 起告警）"
+            body = _card_text(
+                sub.get("lang", "zh"), "recovered",
+                metric=metric.display_name, day=yesterday.isoformat(),
+                value=f"{curr:,.2f}", unit=unit,
+                since=state.get("since", "?"),
             )
             if webhook:
                 pushed, msg = push_fn(webhook, f"✅ {name}", body, ok=True)
@@ -630,10 +700,16 @@ def _run_metric_watch(
             rows = attri.dimensions[0].rows[:3] if attri.dimensions else []
             parts = []
             contributors = []
+            _lang = sub.get("lang", "zh")
             for row in rows:
-                mark = "（新增）" if row.is_new else "（消失）" if row.is_gone else ""
+                mark = (
+                    _card_text(_lang, "member_new") if row.is_new
+                    else _card_text(_lang, "member_gone") if row.is_gone
+                    else ""
+                )
                 pct = (
-                    f"，贡献 {row.contribution * 100:+.1f}%"
+                    _card_text(_lang, "contrib_pct",
+                               pct=f"{row.contribution * 100:+.1f}")
                     if row.contribution is not None else ""
                 )
                 parts.append(f"- {row.value}{mark}: {row.delta:+,.2f}{pct}")
@@ -676,25 +752,43 @@ def _run_metric_watch(
         except Exception:
             pass  # contributors are a bonus
 
-    rate_txt = f"{rate * 100:+.2f}%" if rate is not None else "N/A(基期为0)"
+    lang = sub.get("lang", "zh")
+    rate_txt = (
+        f"{rate * 100:+.2f}%" if rate is not None
+        else _card_text(lang, "rate_na")
+    )
     unit = f" {metric.unit}" if metric.unit else ""
     # per-dim deltas of a ratio are informative but not additive contributions
-    label = "各维度变化" if metric.is_ratio else "主要贡献"
+    label = _card_text(lang, "contrib_ratio" if metric.is_ratio else "contrib_additive")
     contributor_block = f"\n{label} ({dim}):{top_lines}" if top_lines else ""
     if band is not None:
         body = (
-            f"**{metric.display_name}** 异动告警（模型基线 95% 区间外）\n"
-            f"{yesterday.isoformat()} 实际 {curr:,.2f}{unit}，"
-            f"预期 {band['yhat']:,.2f}{unit} "
-            f"[{band['lo']:,.2f}, {band['hi']:,.2f}]\n"
-            f"偏离 {delta:+,.2f}{unit} ({rate_txt})" + contributor_block
+            _card_text(lang, "alert_model_head", metric=metric.display_name)
+            + "\n"
+            + _card_text(
+                lang, "alert_model_line", day=yesterday.isoformat(),
+                curr=f"{curr:,.2f}", yhat=f"{band['yhat']:,.2f}",
+                lo=f"{band['lo']:,.2f}", hi=f"{band['hi']:,.2f}", unit=unit,
+            )
+            + "\n"
+            + _card_text(lang, "alert_model_delta",
+                         delta=f"{delta:+,.2f}", unit=unit, rate=rate_txt)
+            + contributor_block
         )
     else:
         body = (
-            f"**{metric.display_name}** 异动告警（阈值 ±{threshold:g}%）\n"
-            f"{ref.isoformat()}: {prev:,.2f}{unit} → "
-            f"{yesterday.isoformat()}: {curr:,.2f}{unit}\n"
-            f"变动 {delta:+,.2f}{unit} ({rate_txt})" + contributor_block
+            _card_text(lang, "alert_head",
+                       metric=metric.display_name, threshold=threshold)
+            + "\n"
+            + _card_text(
+                lang, "alert_line", ref=ref.isoformat(),
+                prev=f"{prev:,.2f}", day=yesterday.isoformat(),
+                curr=f"{curr:,.2f}", unit=unit,
+            )
+            + "\n"
+            + _card_text(lang, "alert_delta",
+                         delta=f"{delta:+,.2f}", unit=unit, rate=rate_txt)
+            + contributor_block
         )
     if webhook:
         pushed, msg = push_fn(webhook, f"⚠️ {name}", body, ok=False)
@@ -725,6 +819,7 @@ def _run_digest(
     names = names[:_DIGEST_MAX_METRICS]
     yesterday = today - timedelta(days=1)
     ds_type = sub.get("ds_type", "hive")
+    lang = sub.get("lang", "zh")
 
     def _run(sql: str, max_rows: int = 10):
         validation = validate_sql(sql, schema_store)
@@ -737,7 +832,7 @@ def _run_digest(
     for mname in names:
         metric = metric_store.get(mname)
         if metric is None:
-            lines.append(f"- {mname}: 未定义")
+            lines.append(_card_text(lang, "digest_undefined", metric=mname))
             rows_out.append({"metric": mname, "error": "未定义"})
             continue
         try:
@@ -758,12 +853,12 @@ def _run_digest(
             if prev is None and not metric.is_ratio:
                 prev = 0.0
         except Exception as exc:  # per-line best effort: one bad metric must not kill the card
-            lines.append(f"- {metric.display_name}: 查询失败")
+            lines.append(_card_text(lang, "digest_failed", metric=metric.display_name))
             rows_out.append({"metric": mname, "error": str(exc)})
             continue
         unit = f" {metric.unit}" if metric.unit else ""
         if curr is None:
-            line = f"- {metric.display_name}: 无数据"
+            line = _card_text(lang, "digest_no_data", metric=metric.display_name)
             rows_out.append({"metric": mname, "curr": None})
             lines.append(line)
             continue
@@ -771,7 +866,7 @@ def _run_digest(
         dod_pct = None
         if prev is not None and prev != 0:
             dod_pct = round((curr - prev) / abs(prev) * 100, 2)
-            dod_txt = f"（环比 {dod_pct:+.1f}%）"
+            dod_txt = _card_text(lang, "digest_dod", pct=dod_pct)
         line = f"- {metric.display_name}: {curr:,.2f}{unit}{dod_txt}"
         target = metric.targets.get("month")
         completion = None
@@ -790,7 +885,7 @@ def _run_digest(
                     else 0.0
                 )
                 completion = round(mtd / target * 100, 1)
-                line += f" · 月目标达成 {completion:g}%"
+                line += _card_text(lang, "digest_target", pct=completion)
             except Exception:
                 pass  # the digest line still carries value + DoD
         lines.append(line)
@@ -799,7 +894,10 @@ def _run_digest(
             "dod_pct": dod_pct, "month_completion_pct": completion,
         })
 
-    body = f"**经营日报** {yesterday.isoformat()}\n" + "\n".join(lines)
+    body = (
+        _card_text(lang, "digest_title", day=yesterday.isoformat())
+        + "\n" + "\n".join(lines)
+    )
     outcome: dict[str, Any] = {
         "status": "success", "error": "", "sql": "",
         "day": yesterday.isoformat(), "rows": rows_out,
@@ -950,7 +1048,11 @@ def run_subscription(
 
     def _fail(error: str) -> dict[str, Any]:
         if webhook:
-            push_fn(webhook, f"❌ {name}", f"订阅执行失败：\n{error}", ok=False)
+            push_fn(
+                webhook, f"❌ {name}",
+                _card_text(sub.get("lang", "zh"), "fail_body", error=error),
+                ok=False,
+            )
         return {"status": "error", "error": error, "sql": ""}
 
     try:
