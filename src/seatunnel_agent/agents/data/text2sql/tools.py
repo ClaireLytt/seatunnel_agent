@@ -22,10 +22,14 @@ from .tools_metric import (  # noqa: F401 (re-exported for compatibility)
     _metric_payload,
     _resolve_metric,
     _tool_build_metric_sql,
+    _tool_correlate_metrics,
+    _tool_draft_metric,
     _tool_forecast_metric,
     _tool_match_metrics,
+    _tool_metric_target_progress,
     _tool_run_attribution,
     _tool_trace_metric,
+    _tool_tree_attribution,
 )
 from .tools_sql import (  # noqa: F401 (re-exported for compatibility)
     _build_sql_error,
@@ -413,8 +417,13 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "GMV / 未来7天订单量会怎样). Builds the metric's caliber-consistent "
             "daily series via the semantic layer, then fits a deterministic "
             "LLM-free model (OLS linear trend + weekday seasonality once the "
-            "history covers two full weeks) and returns per-day point "
-            "forecasts with a 95% interval. Works for ratio metrics too. "
+            "history covers two full weeks, plus CN statutory-holiday/makeup-"
+            "workday offsets when the history contains such days) and returns "
+            "per-period point "
+            "forecasts with a 95% interval. grain=week/month aggregates the "
+            "daily series into ISO weeks / calendar months (additive metrics "
+            "only; partial edge periods are dropped). Works for ratio metrics "
+            "at day grain. "
             "Costs 1 SQL query. Present the numbers as a model estimate, "
             "never as a guarantee; mention the interval width when σ is "
             "large relative to the forecast."
@@ -428,13 +437,25 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
                 "horizon_days": {
                     "type": "integer",
-                    "description": "Days to forecast ahead (default 7, max 30)",
+                    "description": (
+                        "Periods to forecast ahead (default 7, max 30; "
+                        "a period is one day/week/month per grain)"
+                    ),
                 },
                 "history_days": {
                     "type": "integer",
                     "description": (
-                        "History window length used to fit the model "
-                        "(default 28, min 14, max 180)"
+                        "History window length in DAYS used to fit the model "
+                        "(day grain: default 28, 14-180; week: default 112, "
+                        "56-364; month: default 365, 210-900)"
+                    ),
+                },
+                "grain": {
+                    "type": "string",
+                    "enum": ["day", "week", "month"],
+                    "description": (
+                        "Series grain (default day). 预测下周/未来几周 -> week, "
+                        "未来几个月 -> month"
                     ),
                 },
                 "end_date": {
@@ -450,6 +471,157 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
             },
             "required": ["metric"],
+        },
+    },
+    {
+        "name": "metric_target_progress",
+        "description": (
+            "Target attainment for a defined metric (目标/达成率/完成进度: "
+            "本月GMV达成率多少 / 照这个节奏月底能完成吗). Reads the metric's "
+            "declared target (metrics.yaml targets: month/quarter/year), "
+            "computes the period-to-date actual with one deterministic SQL, "
+            "and projects the period total — forecast-based when 7+ days of "
+            "history exist, linear pace otherwise. Returns target, actual, "
+            "completion_pct, projected_total and projected_completion_pct. "
+            "Costs 1-2 SQL queries. Present the projection as an estimate."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "description": "Metric name as returned by match_metrics",
+                },
+                "period": {
+                    "type": "string",
+                    "enum": ["month", "quarter", "year"],
+                    "description": "Target period (default month)",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": (
+                        "Progress as-of this day, YYYY-MM-DD or yyyyMMdd "
+                        "(default: yesterday)"
+                    ),
+                },
+                "user_query": {
+                    "type": "string",
+                    "description": "The user's original question (for the audit log)",
+                },
+            },
+            "required": ["metric"],
+        },
+    },
+    {
+        "name": "tree_attribution",
+        "description": (
+            "North-star factor decomposition for a metric with a declared "
+            "multiplicative tree (指标树/因子拆解: GMV跌了是流量还是转化的问题). "
+            "Splits the parent's move across its factors by the exact log "
+            "identity (shares + residual sum to 100%, self-checked), then "
+            "dimension-attributes the biggest additive factor. Use this "
+            "BEFORE run_attribution when the metric declares a tree. "
+            "Costs 2×(1+K) SQL plus the drilldown. Dates like "
+            "run_attribution: curr_start [curr_end] + prev_start or "
+            "compare_mode (mom/wow/yoy)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric": {
+                    "type": "string",
+                    "description": "Parent metric name (must declare tree)",
+                },
+                "curr_start": {"type": "string"},
+                "curr_end": {"type": "string"},
+                "prev_start": {"type": "string"},
+                "prev_end": {"type": "string"},
+                "compare_mode": {
+                    "type": "string",
+                    "enum": ["mom", "wow", "yoy"],
+                    "description": "Derive the comparison period (环比/上周同期/同比)",
+                },
+                "user_query": {
+                    "type": "string",
+                    "description": "The user's original question (for the audit log)",
+                },
+            },
+            "required": ["metric", "curr_start"],
+        },
+    },
+    {
+        "name": "draft_metric",
+        "description": (
+            "Draft a NEW metric definition from the user's description "
+            "(定义指标/新建口径: 帮我定义客单价=GMV/订单数). Validates against "
+            "the live catalog and schema; NOTHING persists — tell the user "
+            "the draft passed validation and that it awaits their explicit "
+            "confirmation before being written to metrics.yaml. Never claim "
+            "the metric was saved. Additive metrics need table/expression/"
+            "time_column; ratio metrics need numerator/denominator "
+            "referencing defined additive metrics."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string",
+                         "description": "snake_case unique id"},
+                "display_name": {"type": "string"},
+                "type": {"type": "string", "enum": ["additive", "ratio"]},
+                "description": {"type": "string",
+                                "description": "口径说明(中文)"},
+                "aliases": {"type": "array", "items": {"type": "string"}},
+                "unit": {"type": "string"},
+                "table": {"type": "string"},
+                "expression": {"type": "string",
+                               "description": "e.g. SUM(pay_amount)"},
+                "time_column": {"type": "string"},
+                "dimensions": {"type": "array", "items": {"type": "string"}},
+                "default_filters": {"type": "array",
+                                    "items": {"type": "string"}},
+                "numerator": {"type": "string"},
+                "denominator": {"type": "string"},
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "correlate_metrics",
+        "description": (
+            "Correlation between two defined metrics' daily series (相关性/"
+            "联动: 退款率涨是不是跟GMV有关 / A和B一起变吗). Deterministic "
+            "Pearson r at lag 0 plus the strongest lead/lag within ±7 days "
+            "(positive lag = metric_a leads). Costs 2 SQL queries. Present "
+            "r as association only — correlation is NOT causation; suggest "
+            "run_attribution to localize an actual change."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric_a": {
+                    "type": "string",
+                    "description": "First metric name (as from match_metrics)",
+                },
+                "metric_b": {
+                    "type": "string",
+                    "description": "Second metric name",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Trailing window in days (default 28, 14-180)",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": (
+                        "Last day, YYYY-MM-DD or yyyyMMdd (default: yesterday)"
+                    ),
+                },
+                "user_query": {
+                    "type": "string",
+                    "description": "The user's original question (for the audit log)",
+                },
+            },
+            "required": ["metric_a", "metric_b"],
         },
     },
     {
@@ -607,7 +779,9 @@ def _tool_export_csv(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]
     if rt.last_result is None:
         return {"error": "No query result to export. Run execute_sql first."}
     from .masking import apply_masking
-    rows, _masked = apply_masking(rt.last_result.columns, rt.last_result.rows)
+    rows, _masked = apply_masking(
+        rt.last_result.columns, rt.last_result.rows, sql=rt.last_sql,
+    )
     try:
         path = export_csv(
             rt.last_result.columns,
@@ -625,7 +799,9 @@ def _tool_export_excel(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, An
         return {"error": "No query result to export. Run execute_sql first."}
     from .exporter import export_excel
     from .masking import apply_masking
-    rows, _masked = apply_masking(rt.last_result.columns, rt.last_result.rows)
+    rows, _masked = apply_masking(
+        rt.last_result.columns, rt.last_result.rows, sql=rt.last_sql,
+    )
     try:
         path = export_excel(
             rt.last_result.columns,
@@ -643,7 +819,9 @@ def _tool_export_pdf(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]
         return {"error": "No query result to export. Run execute_sql first."}
     from .exporter import export_pdf
     from .masking import apply_masking
-    rows, _masked = apply_masking(rt.last_result.columns, rt.last_result.rows)
+    rows, _masked = apply_masking(
+        rt.last_result.columns, rt.last_result.rows, sql=rt.last_sql,
+    )
     try:
         path = export_pdf(
             rt.last_result.columns,
@@ -663,6 +841,10 @@ _TOOL_HANDLERS = {
     "build_metric_sql": _tool_build_metric_sql,
     "run_attribution": _tool_run_attribution,
     "forecast_metric": _tool_forecast_metric,
+    "metric_target_progress": _tool_metric_target_progress,
+    "correlate_metrics": _tool_correlate_metrics,
+    "tree_attribution": _tool_tree_attribution,
+    "draft_metric": _tool_draft_metric,
     "trace_metric": _tool_trace_metric,
     "review_sql": _tool_review_sql,
     "skew_check": _tool_skew_check,

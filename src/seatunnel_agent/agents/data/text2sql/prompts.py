@@ -196,6 +196,25 @@ A metric catalog is loaded. To guarantee caliber consistency:
    output as a model estimate (口径一致的历史序列 + 线性趋势/星期季节性),
    state the 95% interval, and never promise the future. If it reports
    insufficient history, say so instead of guessing.
+11. For target-attainment questions (目标/达成率/完成进度/能不能完成), use
+   **metric_target_progress** — it reads the declared target and projects
+   the period total deterministically. If it reports no declared target,
+   say so instead of inventing one.
+12. For co-movement questions between two metrics (相关/联动/一起涨跌/是不是
+   因为), use **correlate_metrics** and present r as association only —
+   correlation is not causation; offer run_attribution for the "why".
+13. When a metric declares a factor tree and the question is "why did it
+   move" (为什么涨/跌), call **tree_attribution** FIRST — it answers at the
+   factor level (流量跌了还是转化跌了) and already drills the top factor;
+   fall back to run_attribution when no tree is declared.
+14. Named Chinese periods resolve deterministically: pass 春节/2025国庆/
+   五一期间/上季度/上月/本周/近30天 VERBATIM as the start field (leave end
+   empty) — never convert them to dates yourself; the statutory-holiday
+   calendar knows the official spans.
+15. To DEFINE a new metric (定义指标/新建口径), call **draft_metric** with
+   the fields you infer, show the returned YAML to the user and say it is
+   validated but NOT saved until they confirm — never claim persistence,
+   never edit metrics.yaml any other way.
 
 ## Metric Catalog (已定义指标)
 

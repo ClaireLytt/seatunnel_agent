@@ -77,10 +77,12 @@ def build_partition_clause(
             return (f"{partition_col} >= '{pt_value(tr.start)}' "
                     f"AND {partition_col} <= '{pt_value(tr.end)}'")
         d = tr.start or tr.end
+        assert d is not None  # guarded by `not tr.is_empty`
         return f"{partition_col} = '{pt_value(d)}'"
 
     if kind == "full" and not tr.is_empty:
         d = tr.end or tr.start
+        assert d is not None  # guarded by `not tr.is_empty`
         return f"{partition_col} = '{pt_value(d)}'"
 
     if max_partition:
@@ -100,3 +102,99 @@ def has_partition_filter(sql: str, partition_col: str = "pt") -> bool:
         re.IGNORECASE,
     )
     return bool(pattern.search(sql))
+
+
+def _parse_pt(value: str) -> date | None:
+    """A partition literal as a date (yyyyMMdd / YYYY-MM-DD), else None."""
+    digits = re.sub(r"\D", "", value)
+    if len(digits) != 8:
+        return None
+    try:
+        return date(int(digits[:4]), int(digits[4:6]), int(digits[6:8]))
+    except ValueError:
+        return None
+
+
+def scan_cost_hints(
+    sql: str,
+    store,
+    warn_partitions: int = 90,
+) -> list[dict]:
+    """Pre-execution scan-cost advisories for partitioned tables.
+
+    The hard guard already rejects a MISSING partition filter; this catches
+    the filters that pass it but still scan wide: a one-sided bound
+    (``pt >= '2024-01-01'`` with no upper limit) and a bounded range or IN
+    list covering more than *warn_partitions* daily partitions. Date-shaped
+    partition values only — exotic formats produce no hint rather than a
+    wrong one.
+    """
+    from .validator import extract_tables
+
+    hints: list[dict] = []
+    for tname in extract_tables(sql):
+        table = store.get(tname)
+        if table is None or not table.is_partitioned:
+            continue
+        name = table.partition_columns[0].name
+        pcol = re.escape(name)
+
+        eq = re.findall(rf"\b{pcol}\s*=\s*'([^']*)'", sql, re.IGNORECASE)
+        in_m = re.search(rf"\b{pcol}\s+in\s*\(([^)]*)\)", sql, re.IGNORECASE)
+        between = re.search(
+            rf"\b{pcol}\s+between\s+'([^']*)'\s+and\s+'([^']*)'",
+            sql, re.IGNORECASE,
+        )
+        lower = re.search(rf"\b{pcol}\s*>=?\s*'([^']*)'", sql, re.IGNORECASE)
+        upper = re.search(rf"\b{pcol}\s*<=?\s*'([^']*)'", sql, re.IGNORECASE)
+
+        if eq:
+            continue  # exact partition(s) — cheapest shape
+        if in_m:
+            n = len([v for v in in_m.group(1).split(",") if v.strip()])
+            if n > warn_partitions:
+                hints.append({
+                    "table": table.full_name, "partition_column": name,
+                    "kind": "wide_in_list", "estimated_partitions": n,
+                    "message": (
+                        f"{table.full_name}: IN 列表包含 {n} 个分区值,"
+                        f"超过 {warn_partitions} 的提示阈值"
+                    ),
+                })
+            continue
+        span: tuple[date, date] | None = None
+        if between:
+            s, e = _parse_pt(between.group(1)), _parse_pt(between.group(2))
+            if s and e:
+                span = (s, e)
+        elif lower and upper:
+            s, e = _parse_pt(lower.group(1)), _parse_pt(upper.group(1))
+            if s and e:
+                span = (s, e)
+        elif lower or upper:
+            bound = lower if lower is not None else upper
+            assert bound is not None
+            hints.append({
+                "table": table.full_name, "partition_column": name,
+                "kind": "one_sided_bound",
+                "estimated_partitions": None,
+                "message": (
+                    f"{table.full_name}: 分区过滤只有单边界"
+                    f"({name} {'>=' if lower else '<='} '{bound.group(1)}'),"
+                    "另一侧不受限,可能扫描大量分区——建议补齐时间范围上下界"
+                ),
+            })
+            continue
+        if span:
+            n = (span[1] - span[0]).days + 1
+            if n > warn_partitions:
+                hints.append({
+                    "table": table.full_name, "partition_column": name,
+                    "kind": "wide_range", "estimated_partitions": n,
+                    "message": (
+                        f"{table.full_name}: 时间范围横跨约 {n} 个分区"
+                        f"({span[0].isoformat()} ~ {span[1].isoformat()}),"
+                        f"超过 {warn_partitions} 的提示阈值"
+                    ),
+                })
+    return hints

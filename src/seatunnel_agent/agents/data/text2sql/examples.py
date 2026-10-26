@@ -26,7 +26,21 @@ from seatunnel_agent.common.json_file_store import JsonFileStore
 _MAX_EXAMPLES = 500
 _MAX_SQL_CHARS = 4000
 
-_DEFAULT_EXAMPLES_PATH = os.getenv("T2S_EXAMPLES_PATH", "config/t2s_examples.json")
+_DEFAULT_EXAMPLES_FILE = "config/t2s_examples.json"
+
+
+def _default_examples_path() -> str:
+    """Read the env at call time so tests and long-lived servers can
+    repoint the store without re-importing the module."""
+    return os.getenv("T2S_EXAMPLES_PATH", _DEFAULT_EXAMPLES_FILE)
+
+_TRAILING_PUNCT = "?？!！。.,，;；"
+
+
+def normalize_question(q: str) -> str:
+    """Whitespace-collapsed, lowercased, trailing-punctuation-stripped key
+    for exact-repeat matching (the semantic cache's equality test)."""
+    return " ".join(q.split()).lower().rstrip(_TRAILING_PUNCT)
 
 
 class ExampleStore(JsonFileStore):
@@ -34,7 +48,7 @@ class ExampleStore(JsonFileStore):
 
     def __init__(self, path: str | Path | None = None) -> None:
         super().__init__(
-            path if path is not None else _DEFAULT_EXAMPLES_PATH,
+            path if path is not None else _default_examples_path(),
             max_items=_MAX_EXAMPLES,
         )
 
@@ -101,6 +115,21 @@ class ExampleStore(JsonFileStore):
 
     # -- retrieval -----------------------------------------------------
 
+    def exact_match(self, question: str) -> dict[str, Any] | None:
+        """The verified pair whose question normalizes to the same text,
+        or None. Conservative on purpose: only a byte-equivalent repeat
+        (after whitespace/case/trailing-punctuation normalization) may
+        skip the LLM — a paraphrase can change dates or filters."""
+        key = normalize_question(question)
+        if not key:
+            return None
+        for it in reversed(self._read()):  # latest confirmation wins
+            if it.get("verified") and normalize_question(
+                it.get("question", "")
+            ) == key and it.get("sql"):
+                return it
+        return None
+
     def top(self, question: str, k: int = 3) -> list[dict[str, Any]]:
         """BM25 top-K verified examples for ``question`` (score > 0 only)."""
         items = [
@@ -122,6 +151,44 @@ class ExampleStore(JsonFileStore):
             reverse=True,
         )
         return [it for _s, it in ranked[:k]]
+
+
+def promote_candidates(
+    entries: list[dict[str, Any]],
+    store: ExampleStore,
+    top: int = 10,
+    min_count: int = 2,
+) -> list[dict[str, Any]]:
+    """Curation candidates from qlog: repeated interactive questions that
+    succeeded but have no verified example yet. Each carries the LATEST
+    successful generated SQL, ready to promote into the store (and thus
+    the semantic cache)."""
+    by_q: dict[str, dict[str, Any]] = {}
+    for e in entries:  # qlog order: oldest -> newest, so last write wins
+        q_raw = str(e.get("user_query", "")).strip()
+        if not q_raw or q_raw.startswith("["):
+            continue
+        key = normalize_question(q_raw)
+        if not key:
+            continue
+        slot = by_q.setdefault(key, {"question": q_raw, "count": 0, "sql": ""})
+        slot["count"] += 1
+        if e.get("status") == "success" and str(e.get("generated_sql") or "").strip():
+            slot["sql"] = str(e["generated_sql"]).strip()
+            slot["question"] = q_raw
+        if e.get("tables") or e.get("matched_tables"):
+            slot["tables"] = list(e.get("matched_tables") or [])
+    ranked = sorted(by_q.values(), key=lambda s: s["count"], reverse=True)
+    out: list[dict[str, Any]] = []
+    for s in ranked:
+        if len(out) >= top:
+            break
+        if s["count"] < min_count or not s["sql"]:
+            continue
+        if store.exact_match(s["question"]) is not None:
+            continue
+        out.append(s)
+    return out
 
 
 def augment_question(question: str, store: ExampleStore | None, k: int = 3) -> str:

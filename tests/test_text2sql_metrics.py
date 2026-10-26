@@ -669,6 +669,7 @@ metrics:
     expression: SUM(amount)
     time_column: dt
     dimensions: [channel]
+    tree: [order_cnt, aov]
   - name: order_cnt
     display_name: 订单量
     table: sales
@@ -927,6 +928,30 @@ def test_api_key_auth(monkeypatch) -> None:
     ).status_code == 200
 
 
+def test_tree_attribution_tool_end_to_end(sqlite_runtime) -> None:
+    """指标树工具:gmv = order_cnt × aov 精确树,份额恒等、残差≈0."""
+    out = json.loads(execute_text2sql_tool("tree_attribution", {
+        "metric": "gmv", "curr_start": "2026-03-02", "prev_start": "2026-03-01",
+    }, sqlite_runtime))
+    assert out.get("success"), out
+    assert out["tree"] == ["order_cnt", "aov"]
+    assert out["parent_change_pct"] == pytest.approx(6.67, abs=0.01)
+    shares = {r["factor"]: r["share_pct"] for r in out["factors"]}
+    # 单量 3→3 不变,份额 0;客单价承担全部变化
+    assert shares["order_cnt"] == pytest.approx(0.0, abs=0.01)
+    assert shares["aov"] == pytest.approx(100.0, abs=0.1)
+    assert out["residual_share_pct"] == pytest.approx(0.0, abs=0.1)
+    assert out["check_ok"] and out["top_factor"] == "aov"
+
+
+def test_tree_attribution_tool_requires_tree(sqlite_runtime) -> None:
+    out = json.loads(execute_text2sql_tool("tree_attribution", {
+        "metric": "order_cnt", "curr_start": "2026-03-02",
+        "prev_start": "2026-03-01",
+    }, sqlite_runtime))
+    assert "未声明 tree" in out["error"]
+
+
 def test_mcp_trace_and_attribution_tools(tmp_path, monkeypatch) -> None:
     import sqlite3
 
@@ -966,6 +991,47 @@ def test_mcp_trace_and_attribution_tools(tmp_path, monkeypatch) -> None:
     )
     assert "metric_attribution" not in tools2
     assert "trace_metric" in tools2
+    # the agent-tool shells are execute-gated too
+    for t in ("forecast_metric", "metric_target_progress",
+              "correlate_metrics", "tree_attribution"):
+        assert t in tools and t not in tools2
+
+
+def test_mcp_forecast_tool_end_to_end(tmp_path, monkeypatch) -> None:
+    import sqlite3
+    from datetime import date, timedelta
+
+    from seatunnel_agent.agents.data.text2sql.mcp_server import build_tool_functions
+
+    db = tmp_path / "s.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE sales(order_id TEXT, amount REAL, channel TEXT, dt TEXT)")
+    start = date(2026, 3, 1)
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?)", [
+        (f"o{i}", 100.0 + 5.0 * i, "app", (start + timedelta(days=i)).isoformat())
+        for i in range(28)
+    ])
+    conn.commit()
+    conn.close()
+    ddl = tmp_path / "schema.sql"
+    ddl.write_text(_SQLITE_DDL, encoding="utf-8")
+    metrics = tmp_path / "metrics.yaml"
+    metrics.write_text(_SQLITE_METRICS, encoding="utf-8")
+    tools = build_tool_functions(
+        ddl_path=str(ddl), metrics_path=str(metrics),
+        ds_type="sqlite", allow_execute=True, database=str(db),
+    )
+    out = json.loads(tools["forecast_metric"](
+        "gmv", horizon_days=3, end_date="2026-03-28",
+    ))
+    assert out.get("success"), out
+    assert out["forecasts"][0]["yhat"] == pytest.approx(240.0, abs=1e-6)
+    out = json.loads(tools["correlate_metrics"]("gmv", "gmv"))
+    assert "不同的指标" in out["error"]
+    out = json.loads(tools["tree_attribution"](
+        "gmv", curr_start="2026-03-28", compare_mode="mom",
+    ))
+    assert out.get("success") and out["check_ok"], out
 
 
 def test_unified_entry_review_sql(sqlite_runtime) -> None:
@@ -1072,6 +1138,85 @@ def test_api_metrics_attribution_sqlite(sqlite_runtime, monkeypatch) -> None:
     assert data["type"] == "additive"
     assert data["prev_total"] == 150.0 and data["curr_total"] == 160.0
     assert data["best_dimension"] == "channel"
+
+
+def test_api_metrics_forecast_target_correlate(tmp_path, monkeypatch) -> None:
+    """三个零 LLM 编排端点端到端(真 sqlite,28 天线性序列)."""
+    import sqlite3
+    from datetime import date, timedelta
+
+    pytest.importorskip("fastapi")
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
+
+    db = tmp_path / "s.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE sales(order_id TEXT, amount REAL, channel TEXT, dt TEXT)")
+    start = date(2026, 3, 1)
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?)", [
+        (f"o{i}", 100.0 + 5.0 * i, "app", (start + timedelta(days=i)).isoformat())
+        for i in range(28)
+    ])
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        SchemaStore, "from_db",
+        classmethod(lambda cls, ex: cls(parse_ddl(_SQLITE_DDL))),
+    )
+    base = {
+        "ds_type": "sqlite",
+        "db_config": {"database": str(db)},
+        "metrics_yaml": _SQLITE_METRICS.replace(
+            "    tree: [order_cnt, aov]\n",
+            "    tree: [order_cnt, aov]\n    targets: {month: 10000}\n",
+            1,
+        ),
+    }
+    client = _client()
+
+    resp = client.post("/api/text2sql/metrics/forecast", json={
+        "metric": "gmv", "horizon_days": 3, "end_date": "2026-03-28", **base,
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["forecasts"][0]["yhat"] == pytest.approx(240.0, abs=1e-6)
+
+    resp = client.post("/api/text2sql/metrics/target", json={
+        "metric": "gmv", "end_date": "2026-03-28", **base,
+    })
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["target"] == 10000
+    assert data["actual"] == pytest.approx(sum(100.0 + 5.0 * i for i in range(28)))
+
+    resp = client.post("/api/text2sql/metrics/correlate", json={
+        "metric_a": "gmv", "metric_b": "order_cnt",
+        "end_date": "2026-03-28", **base,
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["n_pairs"] == 28
+
+    # tool errors surface as 400
+    resp = client.post("/api/text2sql/metrics/target", json={
+        "metric": "order_cnt", "end_date": "2026-03-28", **base,
+    })
+    assert resp.status_code == 400 and "未声明" in resp.json()["detail"]
+
+    # tree endpoint: gmv = order_cnt × aov over mom comparison
+    resp = client.post("/api/text2sql/metrics/tree", json={
+        "metric": "gmv", "curr_start": "2026-03-28",
+        "compare_mode": "mom", **base,
+    })
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["tree"] == ["order_cnt", "aov"] and data["check_ok"]
+
+
+def test_api_metrics_forecast_requires_db() -> None:
+    pytest.importorskip("fastapi")
+    resp = _client().post("/api/text2sql/metrics/forecast", json={
+        "metric": "gmv", "schema_ddl": _DDL, "metrics_yaml": _METRICS_YAML,
+    })
+    assert resp.status_code == 400
+    assert "db_config" in resp.json()["detail"]
 
 
 def test_api_metrics_attribution_requires_db() -> None:
@@ -1734,3 +1879,315 @@ def test_api_metrics_attribution_ratio_factor_split(sqlite_runtime, monkeypatch)
     assert abs(
         split["numerator_effect"] + split["denominator_effect"] - split["delta"]
     ) < 1e-4
+
+
+# ----------------------------------------------------------------------
+# targets parsing (metric_target_progress 的口径来源)
+# ----------------------------------------------------------------------
+
+
+def test_targets_parsed() -> None:
+    yaml_text = """
+metrics:
+  - name: gmv
+    table: t
+    expression: SUM(x)
+    targets: {month: 3000000, year: 40000000}
+"""
+    store, errors = MetricStore.from_text(yaml_text)
+    assert errors == []
+    assert store.get("gmv").targets == {"month": 3000000.0, "year": 40000000.0}
+
+
+def test_scan_cost_hints() -> None:
+    """成本预估:单边界/宽区间/宽 IN 提示,精确分区与小区间静默."""
+    from seatunnel_agent.agents.data.text2sql.partition import scan_cost_hints
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
+
+    store = SchemaStore(parse_ddl(
+        "CREATE TABLE dw.fact (amount double) PARTITIONED BY (pt string);"
+        "CREATE TABLE dw.dim (name string);"
+    ))
+    # 单边界:只提 >= 不提上界
+    h = scan_cost_hints("SELECT 1 FROM dw.fact WHERE pt >= '2024-01-01'", store)
+    assert len(h) == 1 and h[0]["kind"] == "one_sided_bound"
+    # 宽区间:401 天(2024 闰年,含两端)
+    h = scan_cost_hints(
+        "SELECT 1 FROM dw.fact WHERE pt >= '20240101' AND pt <= '20250204'",
+        store,
+    )
+    assert h[0]["kind"] == "wide_range"
+    assert h[0]["estimated_partitions"] == 401
+    # BETWEEN 等价
+    h = scan_cost_hints(
+        "SELECT 1 FROM dw.fact WHERE pt BETWEEN '2024-01-01' AND '2025-02-04'",
+        store,
+    )
+    assert h and h[0]["estimated_partitions"] == 401
+    # 静默:精确分区 / 小区间 / 非分区表
+    assert scan_cost_hints("SELECT 1 FROM dw.fact WHERE pt = '20240101'", store) == []
+    assert scan_cost_hints(
+        "SELECT 1 FROM dw.fact WHERE pt >= '20240101' AND pt <= '20240107'",
+        store,
+    ) == []
+    assert scan_cost_hints("SELECT 1 FROM dw.dim", store) == []
+    # 宽 IN
+    vals = ",".join(f"'{20240101 + i}'" for i in range(100))
+    h = scan_cost_hints(f"SELECT 1 FROM dw.fact WHERE pt IN ({vals})", store)
+    assert h and h[0]["kind"] == "wide_in_list" and h[0]["estimated_partitions"] == 100
+
+
+def test_weekly_report_skeleton_and_cli(tmp_path, monkeypatch) -> None:
+    """周报:骨架数字确定、渲染含表格/告警/归因;CLI --no-llm 真跑落盘."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.text2sql.demo import build_demo
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        DatabaseConfig,
+        create_executor,
+    )
+    from seatunnel_agent.agents.data.text2sql.report import (
+        build_weekly_skeleton,
+        render_skeleton_md,
+    )
+    from seatunnel_agent.cli import cli
+
+    info = build_demo(tmp_path / "demo", days=35)
+    schema_store = SchemaStore.from_file(info["ddl"])
+    store, errors = MetricStore.from_text(
+        (tmp_path / "demo" / "metrics.yaml").read_text(encoding="utf-8"),
+        schema_store,
+    )
+    assert errors == []
+    from datetime import date
+
+    executor = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=info["db"]))
+    sk = build_weekly_skeleton(
+        store, schema_store, executor,
+        subs=[{"name": "GMV异动", "metric": "gmv",
+               "alert_state": {"active": True, "since": "2026-10-20"}}],
+        today=date.today(), ds_type="sqlite",
+    )
+    by = {r["metric"]: r for r in sk["metrics"]}
+    assert by["gmv"]["curr"] > 0 and "wow_pct" in by["gmv"]
+    assert "month_completion_pct" in by["gmv"]
+    assert sk["alerting"][0]["metric"] == "gmv"
+    assert sk["attribution"] is not None
+    md = render_skeleton_md(sk)
+    assert "经营周报" in md and "| GMV |" in md
+    assert "告警中" in md and "GMV异动" in md
+    assert "最大变动指标归因" in md
+
+    monkeypatch.chdir(tmp_path)
+    r = CliRunner().invoke(cli, [
+        "t2s-report", "--ddl", info["ddl"], "-f", info["metrics"],
+        "--ds-type", "sqlite", "--database", info["db"],
+        "--out", str(tmp_path / "out"), "--no-llm",
+    ])
+    assert r.exit_code == 0, r.output
+    files = list((tmp_path / "out").glob("weekly_*.md"))
+    assert len(files) == 1
+    assert "经营周报" in files[0].read_text(encoding="utf-8")
+
+
+def test_build_demo_self_consistent(tmp_path) -> None:
+    import sqlite3
+
+    from seatunnel_agent.agents.data.text2sql.demo import build_demo
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+
+    info = build_demo(tmp_path / "demo", days=35)
+    schema_store = SchemaStore.from_file(info["ddl"])
+    store, errors = MetricStore.from_text(
+        (tmp_path / "demo" / "metrics.yaml").read_text(encoding="utf-8"),
+        schema_store,
+    )
+    assert errors == []
+    assert {m.name for m in store.metrics} == {
+        "gmv", "order_cnt", "aov", "refund_amount", "refund_rate",
+    }
+    assert store.get("gmv").tree == ("order_cnt", "aov")
+    assert store.get("gmv").targets["month"] > 0
+    conn = sqlite3.connect(info["db"])
+    n_days = conn.execute("SELECT COUNT(DISTINCT dt) FROM sales").fetchone()[0]
+    spike = conn.execute(
+        "SELECT SUM(refund_amount)/SUM(pay_amount) FROM sales WHERE dt = ?",
+        (info["anomaly_day"],),
+    ).fetchone()[0]
+    normal = conn.execute(
+        "SELECT SUM(refund_amount)/SUM(pay_amount) FROM sales WHERE dt != ?",
+        (info["anomaly_day"],),
+    ).fetchone()[0]
+    conn.close()
+    assert n_days == 35 and info["rows"] > 500
+    assert spike > normal * 2  # 人造退款尖峰可被异动/归因看见
+
+
+def test_cost_block_env(monkeypatch) -> None:
+    from seatunnel_agent.agents.data.text2sql.tools_sql import _cost_block
+
+    hints = [{"estimated_partitions": 400}]
+    monkeypatch.delenv("T2S_COST_BLOCK_PARTITIONS", raising=False)
+    assert _cost_block(hints) is None  # 未设置 = 只提示
+    monkeypatch.setenv("T2S_COST_BLOCK_PARTITIONS", "365")
+    assert "硬拦截" in _cost_block(hints)
+    monkeypatch.setenv("T2S_COST_BLOCK_PARTITIONS", "500")
+    assert _cost_block(hints) is None
+
+
+def test_resolve_named_range() -> None:
+    """中文业务时间词的确定性解析:相对期 + 法定节假日(含别名/年份/后缀)."""
+    from datetime import date
+
+    from seatunnel_agent.agents.data.text2sql.metrics import resolve_named_range
+
+    today = date(2026, 10, 27)  # 周二
+    assert resolve_named_range("昨天", today) == (date(2026, 10, 26),) * 2
+    assert resolve_named_range("上周", today) == (date(2026, 10, 19), date(2026, 10, 25))
+    assert resolve_named_range("上月", today) == (date(2026, 9, 1), date(2026, 9, 30))
+    assert resolve_named_range("上季度", today) == (date(2026, 7, 1), date(2026, 9, 30))
+    assert resolve_named_range("去年", today) == (date(2025, 1, 1), date(2025, 12, 31))
+    assert resolve_named_range("近30天", today) == (date(2026, 9, 27), date(2026, 10, 26))
+    # 节假日:无年份取今天之前最近一次;别名与"期间"后缀;显式年份;未覆盖年份 None
+    assert resolve_named_range("国庆", today) == (date(2026, 10, 1), date(2026, 10, 7))
+    assert resolve_named_range("春节期间", today) == (date(2026, 2, 15), date(2026, 2, 23))
+    assert resolve_named_range("2025国庆", today) == (date(2025, 10, 1), date(2025, 10, 8))
+    assert resolve_named_range("五一", today) == (date(2026, 5, 1), date(2026, 5, 5))
+    assert resolve_named_range("2030春节", today) is None
+    assert resolve_named_range("随便什么", today) is None
+
+
+def test_parse_time_range_accepts_named_period(monkeypatch) -> None:
+    from datetime import date
+
+    from seatunnel_agent.agents.data.text2sql import metrics as metrics_mod
+
+    tr = metrics_mod.parse_time_range("2026春节", "")
+    assert tr is not None
+    assert tr.start == date(2026, 2, 15) and tr.end == date(2026, 2, 23)
+    # 普通日期路径不受影响
+    tr2 = metrics_mod.parse_time_range("2026-03-01", "2026-03-02")
+    assert tr2.start == date(2026, 3, 1) and tr2.end == date(2026, 3, 2)
+
+
+def test_tree_factor_split_identity() -> None:
+    """对数分解恒等式:份额 + 残差 = 100%;精确树残差≈0."""
+    from seatunnel_agent.agents.data.text2sql.attribution import tree_factor_split
+
+    # exact tree: parent = f1*f2*f3 both periods
+    out = tree_factor_split(
+        1000.0 * 0.05 * 200.0, 800.0 * 0.06 * 210.0,
+        [("traffic", 1000.0, 800.0), ("cvr", 0.05, 0.06), ("aov", 200.0, 210.0)],
+    )
+    assert out is not None and out["check_ok"], out
+    assert abs(out["residual_share_pct"]) < 0.01
+    shares = {r["factor"]: r["share_pct"] for r in out["factors"]}
+    # traffic 跌是主因(负贡献绝对值最大)
+    assert abs(shares["traffic"]) > abs(shares["cvr"]) > abs(shares["aov"])
+    assert sum(shares.values()) + out["residual_share_pct"] == pytest.approx(
+        100.0, abs=0.5,
+    )
+    # degenerate cases
+    assert tree_factor_split(100.0, 100.0, [("a", 1.0, 1.0)]) is None  # 无变化
+    assert tree_factor_split(0.0, 10.0, [("a", 1.0, 2.0)]) is None     # 非正值
+
+
+def test_tree_parse_and_validation() -> None:
+    yaml_text = """
+metrics:
+  - name: gmv
+    table: t
+    expression: SUM(x)
+    tree: [traffic, cvr]
+  - name: traffic
+    table: t
+    expression: COUNT(*)
+  - name: bad_self
+    table: t
+    expression: SUM(y)
+    tree: [bad_self, traffic]
+  - name: bad_short
+    table: t
+    expression: SUM(z)
+    tree: [traffic]
+"""
+    store, errors = MetricStore.from_text(yaml_text)
+    assert store.get("gmv").tree == ("traffic", "cvr")
+    assert any("至少需要 2 个因子" in e for e in errors)
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
+
+    schema_errors = store.validate(
+        SchemaStore(parse_ddl("CREATE TABLE t (x INT, y INT, z INT);"))
+    )
+    assert any("tree 不能引用自身" in e for e in schema_errors)
+    assert any("tree 因子 'cvr' 未定义" in e for e in schema_errors)
+
+
+def test_targets_validation_errors() -> None:
+    yaml_text = """
+metrics:
+  - name: gmv
+    table: t
+    expression: SUM(x)
+    targets: {weekly: 1, month: -5, year: abc}
+  - name: refund_rate
+    type: ratio
+    numerator: a
+    denominator: b
+    targets: {month: 0.05}
+"""
+    store, errors = MetricStore.from_text(yaml_text)
+    assert any("周期只支持" in e for e in errors)
+    assert any("必须 > 0" in e for e in errors)
+    assert any("必须是数值" in e for e in errors)
+    assert any("ratio 指标暂不支持 targets" in e for e in errors)
+
+
+# ----------------------------------------------------------------------
+# caliber diff (metrics validate 的口径变更追溯)
+# ----------------------------------------------------------------------
+
+
+def test_diff_metric_stores() -> None:
+    from seatunnel_agent.agents.data.text2sql.metrics import diff_metric_stores
+
+    old, _ = MetricStore.from_text("""
+metrics:
+  - name: gmv
+    table: t
+    expression: SUM(x)
+    default_filters: ["status = 'PAID'"]
+  - name: dying
+    table: t
+    expression: SUM(y)
+""")
+    new, _ = MetricStore.from_text("""
+metrics:
+  - name: gmv
+    table: t
+    expression: SUM(pay_amount)
+    default_filters: ["status = 'PAID'"]
+  - name: fresh
+    table: t
+    expression: COUNT(*)
+""")
+    d = diff_metric_stores(old, new)
+    assert d["added"] == ["fresh"] and d["removed"] == ["dying"]
+    assert len(d["changed"]) == 1
+    ch = d["changed"][0]
+    assert ch["name"] == "gmv"
+    assert ch["fields"] == [
+        {"field": "expression", "old": "SUM(x)", "new": "SUM(pay_amount)"},
+    ]
+
+
+def test_diff_metric_stores_display_only_change_silent() -> None:
+    from seatunnel_agent.agents.data.text2sql.metrics import diff_metric_stores
+
+    old, _ = MetricStore.from_text(
+        "metrics:\n  - {name: gmv, table: t, expression: SUM(x), display_name: A}\n")
+    new, _ = MetricStore.from_text(
+        "metrics:\n  - {name: gmv, table: t, expression: SUM(x), display_name: B}\n")
+    d = diff_metric_stores(old, new)
+    assert d == {"added": [], "removed": [], "changed": []}

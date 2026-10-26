@@ -11,7 +11,7 @@
    - 未完成桩子(raise NotImplementedError、单行空 except: pass、src/ 新增 TODO)
 
 用法:python scripts/check_workflow.py [--range <rev-range>]
-本地默认核对 origin/<当前分支>..HEAD;CI 中传 --range origin/<base>...HEAD 核对整个 PR。
+本地默认核对 origin/main...HEAD(与 CI 同口径);CI 中传 --range origin/<base>...HEAD。
 任一项 FAIL 时退出码非 0,本批次不得标记完成。
 """
 
@@ -21,6 +21,7 @@ import argparse
 import re
 import subprocess
 import sys
+from pathlib import Path
 
 FORBIDDEN_TRAILERS = ("co-authored-by", "generated with")
 
@@ -135,6 +136,23 @@ def _unpushed_range() -> str | None:
     return f"origin/{branch}..HEAD"
 
 
+def _default_range() -> str | None:
+    """本地默认范围与 CI 对齐:优先 origin/main...HEAD(整个分支)。
+
+    教训(pitfalls 2026-10-24):push 后 origin/<branch>..HEAD 是空集,
+    floor 等范围检查全部假绿,问题拖到 CI 才暴露。在 main 自身或没有
+    origin/main 时退回未推送范围。"""
+    branch = _git("rev-parse", "--abbrev-ref", "HEAD").strip()
+    if branch != "main":
+        try:
+            _git("rev-parse", "--verify", "origin/main")
+        except subprocess.CalledProcessError:
+            pass
+        else:
+            return "origin/main...HEAD"
+    return _unpushed_range()
+
+
 def check_no_ai_attribution(rng: str | None) -> tuple[bool, str]:
     rng = rng or "HEAD~10..HEAD"
     body = _git("log", "--format=%B", rng).lower()
@@ -166,6 +184,30 @@ def check_report_committed(rng: str | None) -> tuple[bool, str]:
     return True, "本批无 src/tests 改动,不要求报告"
 
 
+def check_report_has_workflow_output(rng: str | None) -> tuple[bool, str]:
+    """批次报告必须粘贴 check_workflow 自身输出(CLAUDE.md §7),不收占位句。"""
+    if rng is None:
+        return True, "无远端分支,跳过报告输出检查"
+    files = _git("diff", "--name-only", rng).splitlines()
+    reports = [
+        f for f in files
+        if f.startswith("docs/reports/") and f != "docs/reports/TEMPLATE.md"
+    ]
+    missing: list[str] = []
+    for f in reports:
+        try:
+            text = Path(f).read_text(encoding="utf-8")
+        except OSError:
+            continue  # 报告被删/改名,落盘检查已覆盖存在性
+        if "check_workflow" not in text or not re.search(r"\[(?:PASS|FAIL)\]", text):
+            missing.append(f)
+    if missing:
+        return False, "报告未粘贴 check_workflow 输出([PASS]/[FAIL] 行): " + ", ".join(missing)
+    if reports:
+        return True, "报告含 check_workflow 输出"
+    return True, "本批无新报告,不检查输出"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--range", dest="rng", default=None, help="要核对的 rev 范围")
@@ -175,6 +217,7 @@ def main() -> int:
         ("AI 署名", check_no_ai_attribution(rng)),
         ("工作区", check_clean_worktree()),
         ("报告落盘", check_report_committed(rng)),
+        ("报告含验证输出", check_report_has_workflow_output(rng)),
         ("floor", check_floor(rng)),
     ]
     # Windows 默认 cp1252 无法打印中文检查名,统一切 UTF-8

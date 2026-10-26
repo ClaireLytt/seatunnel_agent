@@ -169,3 +169,158 @@ def test_malformed_entries_never_crash(tmp_path) -> None:
     assert [h["id"] for h in hits] == ["ok1"]  # only complete entries retrieved
     out = augment_question("各城市销售额", store)
     assert "SELECT city FROM sales" in out
+
+
+# ----------------------------------------------------------------------
+# semantic cache (exact repeat skips the LLM)
+# ----------------------------------------------------------------------
+
+
+def test_normalize_and_exact_match(store: ExampleStore) -> None:
+    from seatunnel_agent.agents.data.text2sql.examples import normalize_question
+
+    assert normalize_question("  各城市 销售额？ ") == "各城市 销售额"
+    store.add("各城市销售额", "SELECT 1")
+    assert store.exact_match("各城市销售额？")["sql"] == "SELECT 1"
+    assert store.exact_match("各省销售额") is None
+
+
+def _cache_agent(tmp_path, monkeypatch, llm_calls, sql):
+    import sqlite3
+
+    from seatunnel_agent.agents.data.text2sql import agent as agent_mod
+    from seatunnel_agent.agents.data.text2sql.executor import DatabaseConfig
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
+    from seatunnel_agent.common.config import Settings
+
+    db = tmp_path / "c.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE sales(city TEXT, amount REAL)")
+    conn.execute("INSERT INTO sales VALUES ('bj', 10.0)")
+    conn.commit()
+    conn.close()
+
+    class _FakeResp:
+        raw_content = [{"type": "text", "text": "llm answer"}]
+        usage = None
+        thinking_text = ""
+        reply_text = "llm answer"
+        wants_tool_use = False
+        tool_calls = []
+
+    class _FakeLLM:
+        def __init__(self, *a, **k):
+            pass
+
+        def chat(self, system, messages, on_text_delta=None):
+            llm_calls.append(1)
+            return _FakeResp()
+
+        def append_assistant(self, raw):
+            return {"role": "assistant", "content": raw}
+
+    monkeypatch.setattr(agent_mod, "LLMClient", _FakeLLM)
+    ex = ExampleStore(tmp_path / "ex.json")
+    ex.add("各城市销售额", sql)
+    return agent_mod.Text2SQLAgent(
+        settings=Settings(api_key="test"),
+        store=SchemaStore(parse_ddl("CREATE TABLE sales(city string, amount double);")),
+        ds_type="sqlite",
+        db_config=DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)),
+        example_store=ex,
+    )
+
+
+def test_semantic_cache_hit_skips_llm(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("T2S_SEMANTIC_CACHE", raising=False)
+    llm_calls: list = []
+    agent = _cache_agent(
+        tmp_path, monkeypatch, llm_calls,
+        "SELECT city, SUM(amount) FROM sales GROUP BY city",
+    )
+    answer = agent.run("各城市销售额？")  # 标点不同仍命中
+    assert "语义缓存" in answer and "返回 1 行" in answer
+    assert llm_calls == []  # LLM 一次没调
+    assert agent.runtime.last_result is not None  # 结果卡可用
+
+
+def test_semantic_cache_falls_back_on_bad_sql(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("T2S_SEMANTIC_CACHE", raising=False)
+    llm_calls: list = []
+    agent = _cache_agent(
+        tmp_path, monkeypatch, llm_calls, "SELECT x FROM gone_table",
+    )
+    answer = agent.run("各城市销售额")
+    assert answer == "llm answer"  # 缓存 SQL 过不了白名单 → 回落 LLM
+    assert llm_calls == [1]
+
+
+def test_promote_candidates(store: ExampleStore) -> None:
+    from seatunnel_agent.agents.data.text2sql.examples import promote_candidates
+
+    store.add("已固化的问题", "SELECT 0")
+    entries = [
+        {"user_query": "各渠道GMV", "status": "success",
+         "generated_sql": "SELECT old", "matched_tables": ["sales"]},
+        {"user_query": "各渠道GMV？", "status": "success",
+         "generated_sql": "SELECT new", "matched_tables": ["sales"]},
+        {"user_query": "只出现一次", "status": "success", "generated_sql": "SELECT 1"},
+        {"user_query": "总是失败", "status": "error", "generated_sql": ""},
+        {"user_query": "总是失败", "status": "error", "generated_sql": ""},
+        {"user_query": "已固化的问题", "status": "success", "generated_sql": "SELECT 0"},
+        {"user_query": "已固化的问题", "status": "success", "generated_sql": "SELECT 0"},
+        {"user_query": "[subscription] 日报", "status": "success",
+         "generated_sql": "SELECT 9"},
+    ]
+    cands = promote_candidates(entries, store, top=10, min_count=2)
+    assert len(cands) == 1
+    c = cands[0]
+    assert c["count"] == 2
+    assert c["sql"] == "SELECT new"  # 最新一次成功的 SQL
+    assert c["tables"] == ["sales"]
+
+
+def test_semantic_cache_first_chat_turn(tmp_path, monkeypatch) -> None:
+    """UI 走 chat():首轮空历史命中缓存且零 LLM,问答补进历史;次轮走 LLM."""
+    monkeypatch.delenv("T2S_SEMANTIC_CACHE", raising=False)
+    llm_calls: list = []
+    agent = _cache_agent(
+        tmp_path, monkeypatch, llm_calls,
+        "SELECT city, SUM(amount) FROM sales GROUP BY city",
+    )
+    answer = agent.chat("各城市销售额")
+    assert "语义缓存" in answer and llm_calls == []
+    # 问答已入历史,追问有上下文且不再走缓存
+    assert len(agent.messages) == 2
+    assert agent.messages[1]["content"] == answer
+    agent.chat("再按省份拆")
+    assert llm_calls == [1]
+
+
+def test_result_snapshot_reads_preview_rows() -> None:
+    """回归:execute_sql 成功载荷的行叫 preview_rows,结果卡曾因此空行."""
+    from seatunnel_agent.agents.data.text2sql.chart import result_snapshot
+
+    snap = result_snapshot(json.dumps({
+        "success": True, "sql": "SELECT 1",
+        "columns": ["city", "amt"],
+        "preview_rows": [["bj", 100.0]],
+        "row_count": 1,
+    }))
+    assert snap["rows"] == [["bj", 100.0]]
+    # 其他调用方的 rows 键优先级不变
+    snap2 = result_snapshot(json.dumps({
+        "columns": ["a"], "rows": [[1]], "row_count": 1,
+    }))
+    assert snap2["rows"] == [[1]]
+
+
+def test_semantic_cache_env_off(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("T2S_SEMANTIC_CACHE", "0")
+    llm_calls: list = []
+    agent = _cache_agent(
+        tmp_path, monkeypatch, llm_calls,
+        "SELECT city, SUM(amount) FROM sales GROUP BY city",
+    )
+    agent.run("各城市销售额")
+    assert llm_calls == [1]

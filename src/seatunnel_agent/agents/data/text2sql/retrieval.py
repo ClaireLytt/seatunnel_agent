@@ -33,6 +33,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from .matcher import TableMatch, _score_table, tokenize
 from .schema import SchemaStore, TableSchema
@@ -199,7 +200,7 @@ class HybridRetriever:
     question."""
 
     store: SchemaStore
-    metric_store: object = None  # optional MetricStore for rank_metrics
+    metric_store: Any = None  # optional MetricStore for rank_metrics
     index_dir: Path = field(default_factory=lambda: _INDEX_DIR)
     embed_fn: object = None  # test hook: (texts) -> vectors; None = env config
 

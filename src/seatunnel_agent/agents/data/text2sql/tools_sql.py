@@ -49,6 +49,51 @@ def _log_and_reject(
     return _build_sql_error(rt, error_msg, **extra)
 
 
+def _cost_hints(sql: str, rt: Text2SQLRuntime) -> list[dict[str, Any]]:
+    """Pre-execution scan-cost advisories (partition engines only).
+
+    ``T2S_COST_WARN_PARTITIONS`` tunes the width threshold (default 90)."""
+    import os
+
+    if rt.ds_type not in PARTITION_ENGINES:
+        return []
+    from .partition import scan_cost_hints
+
+    try:
+        warn = int(os.getenv("T2S_COST_WARN_PARTITIONS", "") or 90)
+    except ValueError:
+        warn = 90
+    try:
+        return scan_cost_hints(sql, rt.store, warn_partitions=warn)
+    except Exception:
+        return []  # advisories must never break execution
+
+
+def _cost_block(hints: list[dict[str, Any]]) -> str | None:
+    """Optional hard stop: ``T2S_COST_BLOCK_PARTITIONS=N`` rejects queries
+    whose estimated partition count reaches N (unset = advise only)."""
+    import os
+
+    raw = os.getenv("T2S_COST_BLOCK_PARTITIONS", "").strip()
+    if not raw:
+        return None
+    try:
+        limit = int(raw)
+    except ValueError:
+        return None
+    worst = max(
+        (h["estimated_partitions"] for h in hints
+         if h.get("estimated_partitions")),
+        default=None,
+    )
+    if worst is not None and worst >= limit:
+        return (
+            f"查询预计扫描约 {worst} 个分区,达到 T2S_COST_BLOCK_PARTITIONS="
+            f"{limit} 的硬拦截阈值。请缩小时间范围后重试。"
+        )
+    return None
+
+
 def _check_partition_filters(sql: str, validation: ValidationResult, rt: Text2SQLRuntime) -> str | None:
     """Return an error message if any partitioned table lacks a partition filter."""
     if rt.ds_type not in PARTITION_ENGINES:
@@ -78,7 +123,7 @@ def _build_success(
     from .masking import apply_masking
 
     preview, masked_cols = apply_masking(
-        result.columns, result.rows[:_PREVIEW_ROWS],
+        result.columns, result.rows[:_PREVIEW_ROWS], sql=sql,
     )
     out: dict[str, Any] = {
         "success": True,
@@ -289,6 +334,11 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
     if partition_err:
         return _log_and_reject(rt, user_query, sql, validation.tables, partition_err)
 
+    cost_hints = _cost_hints(sql, rt)
+    block_err = _cost_block(cost_hints)
+    if block_err:
+        return _log_and_reject(rt, user_query, sql, validation.tables, block_err)
+
     final_sql = enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type)
 
     cached = rt.cache.get(final_sql, rt.ds_type)
@@ -338,6 +388,8 @@ def _tool_execute_sql(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any
     hints = _skew_hints(sql, rt, result.elapsed_ms)
     if hints:
         out["skew_hints"] = hints
+    if cost_hints:
+        out["cost_hints"] = cost_hints
     if rt.prev_result is not None:
         from .differ import diff_results
         diff = diff_results(

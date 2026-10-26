@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { BoardsView } from '@/BoardsView'
 import { ChatPanel } from '@/ChatPanel'
 import { FavoritesView } from '@/FavoritesView'
+import { HealthView } from '@/HealthView'
 import { HistoryView } from '@/HistoryView'
 import { MetricsView } from '@/MetricsView'
 import { SchemaBrowser } from '@/SchemaBrowser'
@@ -29,7 +30,9 @@ export default function App() {
               ? 'boards'
               : location.hash === '#subscriptions'
                 ? 'subscriptions'
-                : 'chat'
+                : location.hash === '#health'
+                  ? 'health'
+                  : 'chat'
   const [view, setView] = useState(viewFromHash())
   const [seed, setSeed] = useState<{ role: string; content: string }[] | undefined>()
   const [prefill, setPrefill] = useState('')
@@ -100,6 +103,12 @@ export default function App() {
           >
             🔔 {t('subsTitle')}
           </a>
+          <a
+            href="#health"
+            className="font-mono text-sm text-ink underline-offset-4 hover:underline"
+          >
+            🩺 {t('healthTitle')}
+          </a>
         </div>
         {session && (
           <a
@@ -121,6 +130,8 @@ export default function App() {
           <BoardsView session={session} />
         ) : view === 'subscriptions' ? (
           <SubscriptionsView />
+        ) : view === 'health' ? (
+          <HealthView session={session} />
         ) : view === 'favorites' ? (
           <FavoritesView />
         ) : view === 'metrics' ? (

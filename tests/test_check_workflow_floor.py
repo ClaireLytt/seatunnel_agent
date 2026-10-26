@@ -107,3 +107,56 @@ def test_out_of_scope_paths_ignored() -> None:
 def test_exempt_files_ignored() -> None:
     diff = _diff("scripts/check_workflow.py", added=['PATTERN = "# noqa"'])
     assert _findings(diff) == []
+
+
+# ----------------------------------------------------------------------
+# report must paste check_workflow output (CLAUDE.md section 7)
+# ----------------------------------------------------------------------
+
+_REPORT_CHECK = check_workflow.check_report_has_workflow_output
+
+
+def _fake_git(files: list[str]):
+    def inner(*args: str) -> str:
+        if args[0] == "diff":
+            return "\n".join(files)
+        return ""
+    return inner
+
+
+def test_report_with_pasted_output_passes(tmp_path, monkeypatch) -> None:
+    rpt = tmp_path / "docs" / "reports" / "20260101-x.md"
+    rpt.parent.mkdir(parents=True)
+    rpt.write_text(
+        "## check\npython scripts/check_workflow.py\n[PASS] ok\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        check_workflow, "_git", _fake_git(["docs/reports/20260101-x.md"]),
+    )
+    ok, msg = _REPORT_CHECK("origin/main...HEAD")
+    assert ok, msg
+
+
+def test_report_with_placeholder_fails(tmp_path, monkeypatch) -> None:
+    rpt = tmp_path / "docs" / "reports" / "20260101-x.md"
+    rpt.parent.mkdir(parents=True)
+    rpt.write_text("check_workflow -> (output in chat)\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        check_workflow, "_git", _fake_git(["docs/reports/20260101-x.md"]),
+    )
+    ok, msg = _REPORT_CHECK("origin/main...HEAD")
+    assert not ok and "20260101-x.md" in msg
+
+
+def test_no_new_report_is_silent(monkeypatch) -> None:
+    monkeypatch.setattr(check_workflow, "_git", _fake_git(["src/x.py"]))
+    ok, _ = _REPORT_CHECK("origin/main...HEAD")
+    assert ok
+
+
+def test_no_remote_range_skips() -> None:
+    ok, _ = _REPORT_CHECK(None)
+    assert ok

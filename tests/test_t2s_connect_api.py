@@ -46,7 +46,8 @@ def test_datasources_lists_dialects_with_env_defaults(client, monkeypatch):
     assert "password" not in items["mysql"]["defaults"]
 
 
-def test_connect_returns_session_with_tables(client, demo_db):
+def test_connect_returns_session_with_tables(client, demo_db, monkeypatch):
+    monkeypatch.setenv("API_KEY", "test")  # 单跑隔离:连接构造 agent 需要
     r = client.post("/api/text2sql/connect", json={
         "ds_type": "sqlite",
         "db_config": {"database": demo_db},
@@ -83,3 +84,111 @@ def test_connect_rejects_empty_sqlite(client, tmp_path):
 
 def test_session_unknown_id_404(client):
     assert client.get("/api/text2sql/session/doesnotexist").status_code == 404
+
+
+def test_metric_draft_and_confirm_flow(client, tmp_path, monkeypatch):
+    """NL 建指标:草稿校验不落盘 → 确认才写文件并热更新会话目录."""
+    import sqlite3 as _sq
+
+    monkeypatch.setenv("API_KEY", "test")
+    db = tmp_path / "d.db"
+    con = _sq.connect(db)
+    con.execute("CREATE TABLE sales (order_id TEXT, amount REAL, dt TEXT)")
+    con.commit()
+    con.close()
+    metrics = tmp_path / "metrics.yaml"
+    metrics.write_text(
+        "metrics:\n  - name: gmv\n    table: sales\n"
+        "    expression: SUM(amount)\n    time_column: dt\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("T2S_METRICS_PATH", str(metrics))
+    r = client.post("/api/text2sql/connect", json={
+        "ds_type": "sqlite", "db_config": {"database": str(db)},
+    })
+    assert r.status_code == 200, r.text
+    sid = r.json()["session_id"]
+
+    # 坏草稿:表不在白名单 → 400,文件不动
+    bad = client.post(f"/api/text2sql/session/{sid}/metrics/draft", json={
+        "name": "bad_metric", "table": "nope", "expression": "SUM(x)",
+        "time_column": "dt",
+    })
+    assert bad.status_code == 400
+    assert "bad_metric" not in metrics.read_text(encoding="utf-8")
+
+    # 好草稿:校验通过但未落盘
+    good = client.post(f"/api/text2sql/session/{sid}/metrics/draft", json={
+        "name": "order_cnt", "display_name": "订单量", "table": "sales",
+        "expression": "COUNT(order_id)", "time_column": "dt",
+    })
+    assert good.status_code == 200, good.text
+    assert good.json()["persisted"] is False
+    assert "order_cnt" not in metrics.read_text(encoding="utf-8")
+
+    # 确认:写入文件 + 会话指标目录热更新
+    ok = client.post(f"/api/text2sql/session/{sid}/metrics/draft/confirm")
+    assert ok.status_code == 200, ok.text
+    data = ok.json()
+    assert data["persisted"] is True and data["metric_count"] == 2
+    text = metrics.read_text(encoding="utf-8")
+    assert "order_cnt" in text and "gmv" in text  # 原有条目保留
+
+    # 重复确认:无草稿 → 400;重名草稿 → 400
+    assert client.post(
+        f"/api/text2sql/session/{sid}/metrics/draft/confirm"
+    ).status_code == 400
+    dup = client.post(f"/api/text2sql/session/{sid}/metrics/draft", json={
+        "name": "order_cnt", "table": "sales",
+        "expression": "COUNT(*)", "time_column": "dt",
+    })
+    assert dup.status_code == 400 and "已存在" in dup.json()["detail"]
+
+
+def test_session_metrics_health(client, tmp_path, monkeypatch):
+    import sqlite3 as _sq
+    from datetime import date, timedelta
+
+    monkeypatch.setenv("API_KEY", "test")  # agent 构造要求,health 本身零 LLM
+    db = tmp_path / "h.db"
+    con = _sq.connect(db)
+    con.execute("CREATE TABLE sales (order_id TEXT, amount REAL, dt TEXT)")
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    con.execute("INSERT INTO sales VALUES ('o1', 100.0, ?)", (yesterday,))
+    con.commit()
+    con.close()
+    metrics_yaml = (
+        "metrics:\n"
+        "  - name: gmv\n"
+        "    table: sales\n"
+        "    expression: SUM(amount)\n"
+        "    time_column: dt\n"
+    )
+    r = client.post("/api/text2sql/connect", json={
+        "ds_type": "sqlite",
+        "db_config": {"database": str(db)},
+        "metrics_yaml": metrics_yaml,
+    })
+    assert r.status_code == 200, r.text
+    sid = r.json()["session_id"]
+    monkeypatch.chdir(tmp_path)  # qlog/订阅文件相对 cwd 解析
+
+    h = client.get(f"/api/text2sql/session/{sid}/metrics/health")
+    assert h.status_code == 200, h.text
+    rows = h.json()["rows"]
+    assert rows and rows[0]["metric"] == "gmv"
+    assert rows[0]["latest_day"] == yesterday
+    assert rows[0]["status"] in ("green", "yellow")
+
+    assert client.get(
+        "/api/text2sql/session/nope/metrics/health"
+    ).status_code == 404
+
+    # weekly report on the same live session
+    w = client.get(f"/api/text2sql/session/{sid}/report/weekly")
+    assert w.status_code == 200, w.text
+    md = w.json()["markdown"]
+    assert "经营周报" in md and "GMV" in md.upper() or "gmv" in md
+    assert client.get(
+        "/api/text2sql/session/nope/report/weekly"
+    ).status_code == 404

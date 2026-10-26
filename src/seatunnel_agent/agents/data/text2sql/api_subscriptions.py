@@ -31,6 +31,13 @@ class SubscriptionCreateRequest(BaseModel):
     database: str = ""
     webhook_url: str = ""
     lang: str = "zh"
+    # metric_watch
+    threshold_pct: float = 10.0
+    watch_mode: str = "dod"
+    # freshness
+    max_lag_days: int = 1
+    # digest
+    metrics: list[str] = Field(default_factory=list)
 
 
 @router.post("/subscriptions", status_code=201)
@@ -47,6 +54,10 @@ def subscriptions_create(req: SubscriptionCreateRequest) -> dict[str, Any]:
             database=req.database,
             webhook_url=req.webhook_url,
             lang=req.lang,
+            threshold_pct=req.threshold_pct,
+            watch_mode=req.watch_mode,
+            max_lag_days=req.max_lag_days,
+            metrics=req.metrics,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -71,6 +82,48 @@ def subscriptions_patch(sub_id: str, req: SubscriptionPatchRequest) -> dict[str,
     return {"enabled": req.enabled}
 
 
+@router.post("/subscriptions/{sub_id}/backtest")
+def subscriptions_backtest(sub_id: str, days: int = 90) -> dict[str, Any]:
+    """Replay the watch rule over history — zero LLM, one series SQL."""
+    from datetime import date, timedelta
+    from pathlib import Path
+
+    sub = _sub_store.get(sub_id)
+    if sub is None:
+        raise HTTPException(status_code=404, detail="unknown subscription")
+    if sub.get("source_type") != "metric_watch":
+        raise HTTPException(
+            status_code=400, detail="backtest 只支持 metric_watch 订阅",
+        )
+    from .executor import create_executor, schema_ddl_path_from_env
+    from .metrics import MetricError, load_metric_store
+    from .schema import SchemaStore
+    from .subscriptions import backtest_watch, resolve_db_config
+
+    ddl = Path(schema_ddl_path_from_env())
+    if not ddl.is_file():
+        raise HTTPException(status_code=400, detail=f"schema DDL 不存在: {ddl}")
+    schema_store = SchemaStore.from_file(ddl)
+    metric_store, _errors = load_metric_store(schema_store)
+    db_config = resolve_db_config(sub)
+    if db_config is None:
+        raise HTTPException(status_code=400, detail="无法解析数据库连接")
+    try:
+        return backtest_watch(
+            sub, schema_store, metric_store, create_executor(db_config),
+            end=date.today() - timedelta(days=1),
+            days=max(7, min(days, 365)),
+        )
+    except MetricError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        from .runtime import _sanitize_db_error
+
+        raise HTTPException(
+            status_code=500, detail=_sanitize_db_error(str(exc)),
+        )
+
+
 @router.post("/subscriptions/{sub_id}/run")
 def subscriptions_run(sub_id: str) -> dict[str, Any]:
     sub = _sub_store.get(sub_id)
@@ -81,8 +134,15 @@ def subscriptions_run(sub_id: str) -> dict[str, Any]:
 
     def _run() -> None:
         try:
-            run_subscription(sub, _sub_store)
-            result["status"] = "ok"
+            outcome = run_subscription(sub)
+            _sub_store.record_run(
+                sub_id, outcome.get("status", "error"), outcome.get("error", ""),
+            )
+            if "alert_state" in outcome:
+                _sub_store.record_alert_state(sub_id, outcome["alert_state"])
+            result["status"] = outcome.get("status", "error")
+            if outcome.get("error"):
+                result["error"] = str(outcome["error"])[:500]
         except Exception as exc:
             result["status"] = "error"
             result["error"] = str(exc)[:500]

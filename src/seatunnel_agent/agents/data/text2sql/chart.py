@@ -161,7 +161,7 @@ def detect_chart_type(
 
     ncols = len(columns)
     padded = [tuple(r) + (None,) * (ncols - len(r)) if len(r) < ncols else tuple(r) for r in rows]
-    col_values = list(zip(*padded)) if padded else [[] for _ in columns]
+    col_values = list(zip(*padded)) if padded else [() for _ in columns]
     cat_cols, num_cols, date_cols = _classify_columns(col_values)
 
     # Attribution breakdown signature (see attribution.breakdown_table):
@@ -302,7 +302,9 @@ def result_snapshot(raw: object) -> dict:
             res = {}
     res = res if isinstance(res, dict) else {}
     cols = res.get("columns", [])
-    rows = res.get("rows", [])
+    # execute_sql's success payload names the (masked) preview "preview_rows";
+    # "rows" kept first for other callers' payloads
+    rows = res.get("rows") or res.get("preview_rows") or []
     try:
         chart = detect_chart_type(cols, [tuple(r) for r in rows])
     except Exception:

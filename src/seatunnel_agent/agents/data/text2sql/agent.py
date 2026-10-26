@@ -103,6 +103,17 @@ class Text2SQLAgent:
     def chat(self, message: str) -> str:
         """Continue a multi-turn conversation, preserving history."""
         self.last_user_question = message
+        if not self.messages:
+            # an empty history has single-question semantics, so the first
+            # turn may hit the semantic cache; the exchange is recorded so
+            # follow-ups still carry context
+            cached = self._semantic_cache_answer(message)
+            if cached is not None:
+                self.messages.append({"role": "user", "content": message})
+                self.messages.append({"role": "assistant", "content": cached})
+                self.console.print(
+                    Panel(message, title="Text2SQL (缓存)", border_style="green"))
+                return cached
         self.messages.append({"role": "user", "content": self._augment(message)})
         self.console.print(Panel(message, title="Text2SQL", border_style="cyan"))
         return self._agent_loop()
@@ -110,9 +121,62 @@ class Text2SQLAgent:
     def run(self, question: str) -> str:
         """Answer a single question with fresh history."""
         self.last_user_question = question
+        cached = self._semantic_cache_answer(question)
+        if cached is not None:
+            self.console.print(
+                Panel(question, title="Text2SQL (缓存)", border_style="green"))
+            return cached
         self.messages = [{"role": "user", "content": self._augment(question)}]
         self.console.print(Panel(question, title="Text2SQL", border_style="cyan"))
         return self._agent_loop()
+
+    def _semantic_cache_answer(self, question: str) -> str | None:
+        """Serve an exact repeat of a 👍-verified question without the LLM.
+
+        The cached SQL still goes through the full execute_sql tool
+        (validator, whitelist, LIMIT, masking, qlog); any failure — schema
+        drift, stale table — falls back to the normal LLM flow. Single-
+        question entry only: multi-turn follow-ups depend on chat context.
+        ``T2S_SEMANTIC_CACHE=0`` disables it.
+        """
+        import json
+        import os
+
+        if os.getenv("T2S_SEMANTIC_CACHE", "").strip() == "0":
+            return None
+        if self.example_store is None:
+            return None
+        try:
+            entry = self.example_store.exact_match(question)
+        except Exception:
+            return None
+        if entry is None:
+            return None
+        from .tools import execute_text2sql_tool
+
+        try:
+            raw = execute_text2sql_tool(
+                "execute_sql",
+                {"sql": entry["sql"], "user_query": question},
+                self.runtime,
+            )
+            out = json.loads(raw)
+        except Exception:
+            return None
+        if not out.get("success"):
+            return None  # schema drift etc. — let the LLM re-derive
+        sql = out.get("sql", entry["sql"])
+        answer = (
+            "⚡ 命中已验证示例（语义缓存，未调用 LLM）\n\n"
+            f"```sql\n{sql}\n```\n\n"
+            f"返回 {out.get('row_count', 0)} 行。"
+            "若结果不符，点 👎 移除该示例后重新提问即可走完整生成流程。"
+        )
+        # the UI streams via events: ship the result card and final text the
+        # same way the agent loop would
+        self._emit("tool_result", {"name": "execute_sql", "result": raw})
+        self._emit("final_answer", {"text": answer})
+        return answer
 
     def _augment(self, question: str) -> str:
         """Attach verified few-shot examples (BM25 top-K) to the question."""

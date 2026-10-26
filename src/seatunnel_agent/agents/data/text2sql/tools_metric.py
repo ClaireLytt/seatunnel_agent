@@ -127,9 +127,21 @@ def _tool_forecast_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
         return err
     name = metric.name
 
+    grain = str(inp.get("grain") or "day").strip().lower()
+    # (min, max, default) history window in DAYS per grain; the month cap
+    # stays under default_limit=1000 daily rows so the truncation guard
+    # below never fires on a legitimate request
+    _history_bounds = {
+        "day": (14, 180, 28),
+        "week": (56, 364, 112),
+        "month": (210, 900, 365),
+    }
+    if grain not in _history_bounds:
+        return {"error": "grain must be one of: day, week, month"}
+    lo, hi, default = _history_bounds[grain]
     try:
         horizon = max(1, min(int(inp.get("horizon_days") or 7), 30))
-        history = max(14, min(int(inp.get("history_days") or 28), 180))
+        history = max(lo, min(int(inp.get("history_days") or default), hi))
     except (TypeError, ValueError):
         return {"error": "horizon_days / history_days must be integers"}
 
@@ -196,10 +208,43 @@ def _tool_forecast_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
     except (MetricError, TypeError, ValueError) as exc:
         return {"error": f"cannot parse the daily series: {exc}", "sql": sql}
 
+    if grain != "day":
+        if metric.is_ratio:
+            # weekly/monthly ratios cannot be recombined from daily ratios
+            # (same reason sub-day ratio rows are refused above)
+            return {
+                "error": (
+                    "比率指标无法从日序列重新聚合为周/月粒度,"
+                    "请用 grain=day,或分别预测分子/分母"
+                ),
+                "sql": sql,
+            }
+        from datetime import timedelta as _td
+
+        def _period_start(d: date) -> date:
+            if grain == "week":
+                return d - _td(days=d.weekday())  # ISO week, Monday
+            return d.replace(day=1)
+
+        from .forecast import _next_period
+
+        buckets: dict[date, float] = {}
+        for d, v in points:
+            buckets[_period_start(d)] = (
+                buckets.get(_period_start(d), 0.0) + (v or 0.0)
+            )
+        # drop partial edge periods: a half-covered week/month would read
+        # as a fake dip and bend the trend
+        points = sorted(
+            (p, total) for p, total in buckets.items()
+            if p >= start and _next_period(p, grain) - _td(days=1) <= end
+        )
+
     try:
         fc = forecast_series(
             points, horizon=horizon,
             fill="ffill" if metric.is_ratio else "zero",
+            grain=grain,
         )
     except ValueError as exc:
         return {
@@ -226,6 +271,422 @@ def _tool_forecast_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
         ],
         **fc,
     }
+
+
+def _period_bounds(period: str, anchor: Any) -> tuple[Any, Any]:
+    """(start, end) calendar bounds of the period containing *anchor* (a date)."""
+    from datetime import timedelta
+
+    if period == "month":
+        start = anchor.replace(day=1)
+        nxt = (start + timedelta(days=32)).replace(day=1)
+    elif period == "quarter":
+        start = anchor.replace(month=((anchor.month - 1) // 3) * 3 + 1, day=1)
+        nxt = (start + timedelta(days=93)).replace(day=1)
+    else:  # year
+        start = anchor.replace(month=1, day=1)
+        nxt = start.replace(year=start.year + 1)
+    return start, nxt - timedelta(days=1)
+
+
+def _tool_metric_target_progress(
+    inp: dict[str, Any], rt: Text2SQLRuntime,
+) -> dict[str, Any]:
+    """Target attainment: period-to-date actual vs the metric's declared
+    target, plus a deterministic projection of the period total (forecast
+    when the history supports it, linear pace otherwise)."""
+    from datetime import date, timedelta
+
+    from .forecast import MIN_POINTS, forecast_series
+    from .partition import TimeRange
+
+    metric, err = _resolve_metric(inp, rt)
+    if err is not None:
+        return err
+    period = str(inp.get("period") or "month").strip().lower()
+    target = metric.targets.get(period)
+    if target is None:
+        declared = ", ".join(sorted(metric.targets)) or "无"
+        return {
+            "error": (
+                f"指标 '{metric.name}' 未声明 {period} 目标"
+                f"(metrics.yaml targets,已声明: {declared})"
+            ),
+        }
+    try:
+        end_raw = str(inp.get("end_date", "") or "").strip()
+        end = parse_date(end_raw) if end_raw else date.today() - timedelta(days=1)
+    except MetricError as exc:
+        return {"error": str(exc)}
+    p_start, p_end = _period_bounds(period, end)
+
+    def _run(sql: str) -> QueryResult:
+        validation = validate_sql(sql, rt.store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        return rt.executor.run(
+            enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type),
+            max_rows=rt.default_limit,
+        )
+
+    try:
+        total_sql = build_metric_sql(
+            metric, rt.metrics, rt.store,
+            time_range=TimeRange(start=p_start, end=end),
+        )
+        result = _run(total_sql)
+    except MetricError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        return {"error": _sanitize_db_error(str(exc))}
+    actual = (
+        float(result.rows[0][-1])
+        if result.rows and result.rows[0][-1] is not None else 0.0
+    )
+
+    elapsed = (end - p_start).days + 1
+    total_days = (p_end - p_start).days + 1
+    remaining = (p_end - end).days
+    projected = actual
+    method = "actual"
+    if remaining > 0:
+        # forecast the remaining days from the trailing 28-day series;
+        # fall back to linear pace when the history is too short
+        try:
+            h_start = end - timedelta(days=27)
+            series_sql = build_metric_series_sql(
+                metric, rt.metrics, rt.store,
+                TimeRange(start=h_start, end=end),
+            )
+            s_result = _run(series_sql)
+            points = sorted(
+                (parse_date(str(r[0]).strip()[:10]),
+                 None if r[-1] is None else float(r[-1]))
+                for r in s_result.rows if r[0] is not None
+            )
+            if len([1 for _, v in points if v is not None]) >= MIN_POINTS:
+                fc = forecast_series(points, horizon=remaining, fill="zero")
+                projected = actual + sum(row["yhat"] for row in fc["forecasts"])
+                method = fc["method"]
+            else:
+                raise ValueError("history too short")
+        except (MetricError, ValueError, TypeError):
+            projected = actual / elapsed * total_days if elapsed else actual
+            method = "linear_pace"
+        except Exception as exc:
+            return {"error": _sanitize_db_error(str(exc))}
+
+    rt.logger.log(
+        user_query=str(inp.get("user_query", "")),
+        generated_sql=total_sql, status="success",
+        matched_tables=[metric.table] if metric.table else [],
+        exec_time_ms=result.elapsed_ms, row_count=result.row_count,
+        extra={"source": rt.source, "metric": metric.name, "kind": "target"},
+    )
+    return {
+        "success": True,
+        "metric": metric.name,
+        "display_name": metric.display_name,
+        "unit": metric.unit,
+        "period": period,
+        "period_start": p_start.isoformat(),
+        "period_end": p_end.isoformat(),
+        "as_of": end.isoformat(),
+        "days_elapsed": elapsed,
+        "days_total": total_days,
+        "target": target,
+        "actual": round(actual, 4),
+        "completion_pct": round(actual / target * 100, 2),
+        "projected_total": round(projected, 4),
+        "projected_completion_pct": round(projected / target * 100, 2),
+        "projection_method": method,
+        "sql": total_sql,
+    }
+
+
+def _pearson(xs: list[float], ys: list[float]) -> float | None:
+    """Pearson r; None when either side has zero variance."""
+    n = len(xs)
+    mx, my = sum(xs) / n, sum(ys) / n
+    sxx = sum((x - mx) ** 2 for x in xs)
+    syy = sum((y - my) ** 2 for y in ys)
+    if sxx == 0 or syy == 0:
+        return None
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    return sxy / (sxx * syy) ** 0.5
+
+
+_CORR_MIN_PAIRS = 7
+_CORR_MAX_LAG = 7
+
+
+def _tool_correlate_metrics(
+    inp: dict[str, Any], rt: Text2SQLRuntime,
+) -> dict[str, Any]:
+    """Deterministic correlation between two metrics' daily series: Pearson
+    r at lag 0 plus the strongest lead/lag within ±7 days. 2 SQL queries;
+    the LLM narrates, never computes."""
+    from datetime import date, timedelta
+
+    from .partition import TimeRange
+
+    if rt.metrics is None or len(rt.metrics) == 0:
+        return {"error": "No metric definitions loaded (metrics.yaml)"}
+    name_a = str(inp.get("metric_a", "")).strip()
+    name_b = str(inp.get("metric_b", "")).strip()
+    if name_a == name_b:
+        return {"error": "metric_a 和 metric_b 必须是两个不同的指标"}
+    pair = []
+    for key, nm in (("metric_a", name_a), ("metric_b", name_b)):
+        m = rt.metrics.get(nm)
+        if m is None:
+            known = ", ".join(mm.name for mm in rt.metrics.metrics)
+            return {"error": f"{key} '{nm}' is not defined. Known metrics: {known}"}
+        pair.append(m)
+    metric_a, metric_b = pair
+
+    try:
+        days = max(14, min(int(inp.get("days") or 28), 180))
+    except (TypeError, ValueError):
+        return {"error": "days must be an integer"}
+    try:
+        end_raw = str(inp.get("end_date", "") or "").strip()
+        end = parse_date(end_raw) if end_raw else date.today() - timedelta(days=1)
+    except MetricError as exc:
+        return {"error": str(exc)}
+    start = end - timedelta(days=days - 1)
+
+    def _daily(metric: Any) -> tuple[dict[Any, float], str]:
+        sql = build_metric_series_sql(
+            metric, rt.metrics, rt.store, TimeRange(start=start, end=end),
+        )
+        validation = validate_sql(sql, rt.store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        result = rt.executor.run(
+            enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type),
+            max_rows=rt.default_limit,
+        )
+        out: dict[Any, float] = {}
+        for r in result.rows:
+            if r[0] is None or r[-1] is None:
+                continue
+            out[parse_date(str(r[0]).strip()[:10])] = float(r[-1])
+        return out, sql
+
+    try:
+        series_a, sql_a = _daily(metric_a)
+        series_b, sql_b = _daily(metric_b)
+    except MetricError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        return {"error": _sanitize_db_error(str(exc))}
+
+    def _value(metric: Any, series: dict, d: Any) -> float | None:
+        # additive: a missing day is a true 0; ratio: undefined, drop the pair
+        if d in series:
+            return series[d]
+        return None if metric.is_ratio else 0.0
+
+    all_days = [start + timedelta(days=i) for i in range(days)]
+
+    def _aligned(lag: int) -> tuple[list[float], list[float]]:
+        """Pairs (a[d], b[d+lag]): positive lag means a LEADS b by lag days."""
+        xs: list[float] = []
+        ys: list[float] = []
+        for d in all_days:
+            d2 = d + timedelta(days=lag)
+            if not start <= d2 <= end:
+                continue
+            va = _value(metric_a, series_a, d)
+            vb = _value(metric_b, series_b, d2)
+            if va is None or vb is None:
+                continue
+            xs.append(va)
+            ys.append(vb)
+        return xs, ys
+
+    xs, ys = _aligned(0)
+    if len(xs) < _CORR_MIN_PAIRS:
+        return {
+            "error": (
+                f"有效对齐天数不足(需要 ≥{_CORR_MIN_PAIRS},得到 {len(xs)}),"
+                "请增大 days 或确认该区间有数据"
+            ),
+        }
+    r0 = _pearson(xs, ys)
+
+    best: dict[str, Any] | None = None
+    for lag in range(-_CORR_MAX_LAG, _CORR_MAX_LAG + 1):
+        if lag == 0:
+            continue
+        lxs, lys = _aligned(lag)
+        if len(lxs) < _CORR_MIN_PAIRS:
+            continue
+        r = _pearson(lxs, lys)
+        if r is None:
+            continue
+        if best is None or abs(r) > abs(best["r"]):
+            best = {"lag_days": lag, "r": round(r, 4), "n": len(lxs)}
+
+    rt.logger.log(
+        user_query=str(inp.get("user_query", "")),
+        generated_sql=sql_a, status="success",
+        matched_tables=[t for t in (metric_a.table, metric_b.table) if t],
+        exec_time_ms=0, row_count=len(xs),
+        extra={
+            "source": rt.source, "kind": "correlation",
+            "metric": f"{metric_a.name}~{metric_b.name}",
+        },
+    )
+    return {
+        "success": True,
+        "metric_a": metric_a.name,
+        "metric_b": metric_b.name,
+        "window": {"start": start.isoformat(), "end": end.isoformat()},
+        "n_pairs": len(xs),
+        "pearson_r": None if r0 is None else round(r0, 4),
+        "zero_variance": r0 is None,
+        "best_lag": best,
+        "lag_semantics": "best_lag.lag_days > 0 表示 metric_a 领先 metric_b",
+        "sql_a": sql_a,
+        "sql_b": sql_b,
+    }
+
+
+_DRAFT_FIELDS = (
+    "name", "display_name", "type", "description", "aliases", "unit",
+    "table", "expression", "time_column", "dimensions", "default_filters",
+    "numerator", "denominator", "targets", "tree",
+)
+
+
+def _tool_draft_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    """Draft a metric definition and validate it against the live catalog —
+    NOTHING persists here. The user confirms (UI/REST) before the entry is
+    appended to metrics.yaml; the LLM never writes the caliber whitelist."""
+    from .metrics import draft_metric_entry
+
+    raw = {k: inp.get(k) for k in _DRAFT_FIELDS}
+    entry, errors, snippet = draft_metric_entry(raw, rt.store)
+    if errors or entry is None:
+        return {"error": "; ".join(errors), "yaml": snippet}
+    rt.pending_metric_draft = entry
+    return {
+        "success": True,
+        "name": entry.get("name", ""),
+        "yaml": snippet,
+        "persisted": False,
+        "next_step": (
+            "草稿已通过校验但未落盘——请用户确认后调用 "
+            "POST /session/{id}/metrics/draft/confirm 持久化"
+        ),
+    }
+
+
+def _tool_tree_attribution(
+    inp: dict[str, Any], rt: Text2SQLRuntime,
+) -> dict[str, Any]:
+    """North-star decomposition: split the parent's move across its declared
+    multiplicative factors (log identity, self-checked), then dimension-
+    attribute the biggest additive factor. Deterministic, LLM-free."""
+    from .attribution import attribution_to_dict, run_attribution, tree_factor_split
+    from .partition import TimeRange
+
+    metric, err = _resolve_metric(inp, rt)
+    if err is not None:
+        return err
+    if not metric.tree:
+        return {
+            "error": (
+                f"指标 '{metric.name}' 未声明 tree(metrics.yaml 的乘法因子树,"
+                "如 tree: [traffic, cvr, aov])"
+            ),
+        }
+    assert rt.metrics is not None  # guaranteed by _resolve_metric above
+    factors = []
+    for n in metric.tree:
+        f = rt.metrics.get(n)
+        if f is None:
+            return {"error": f"tree 因子 '{n}' 未定义"}
+        factors.append(f)
+    try:
+        curr_range, prev_range = _attribution_ranges(inp)
+    except MetricError as exc:
+        return {"error": str(exc)}
+
+    def _total(m: Any, tr: TimeRange) -> float | None:
+        sql = build_metric_sql(m, rt.metrics, rt.store, time_range=tr)
+        validation = validate_sql(sql, rt.store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        result = rt.executor.run(
+            enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type),
+            max_rows=10,
+        )
+        if not result.rows or result.rows[0][-1] is None:
+            return None if m.is_ratio else 0.0
+        return float(result.rows[0][-1])
+
+    try:
+        parent_prev, parent_curr = _total(metric, prev_range), _total(metric, curr_range)
+        triples = []
+        for f in factors:
+            triples.append((f.name, _total(f, prev_range), _total(f, curr_range)))
+    except MetricError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        return {"error": _sanitize_db_error(str(exc))}
+
+    if parent_prev is None or parent_curr is None:
+        return {"error": "父指标在对比期无定义(分母为 0 或无数据)"}
+    clean: list[tuple[str, float, float]] = []
+    for n, p, c in triples:
+        if p is None or c is None:
+            return {
+                "error": f"因子 '{n}' 在对比期无定义(分母为 0 或无数据)",
+            }
+        clean.append((n, p, c))
+    split = tree_factor_split(parent_prev, parent_curr, clean)
+    if split is None:
+        return {
+            "error": (
+                "对数分解不可用:父指标或某因子在该期 ≤0/无数据,"
+                "或父指标两期无变化"
+            ),
+            "values": {n: {"prev": p, "curr": c} for n, p, c in triples},
+        }
+
+    out: dict[str, Any] = {
+        "success": True,
+        "metric": metric.name,
+        "display_name": metric.display_name,
+        "tree": list(metric.tree),
+        **split,
+    }
+    # drill the biggest additive factor one level down (best-effort)
+    top = max(split["factors"], key=lambda r: abs(r["share_pct"]))
+    out["top_factor"] = top["factor"]
+    top_metric = rt.metrics.get(top["factor"])
+    if top_metric is not None and not top_metric.is_ratio and top_metric.dimensions:
+        try:
+            attri = run_attribution(
+                top_metric, rt.metrics, rt.store,
+                _attribution_execute(rt, inp.get("user_query", ""), metric.name),
+                curr_range=curr_range, prev_range=prev_range,
+            )
+            out["top_factor_attribution"] = attribution_to_dict(attri)
+        except Exception:
+            pass  # the factor split already answered the headline question
+
+    rt.logger.log(
+        user_query=str(inp.get("user_query", "")),
+        generated_sql="", status="success",
+        matched_tables=[metric.table] if metric.table else [],
+        exec_time_ms=0, row_count=0,
+        extra={"source": rt.source, "metric": metric.name, "kind": "tree"},
+    )
+    return out
 
 
 def _attribution_execute(rt: Text2SQLRuntime, user_query: str, metric_name: str = ""):
@@ -291,10 +752,8 @@ def _derive_prev_range(curr: Any, mode: str) -> Any:
     raise MetricError(f"compare_mode 只支持 mom/wow/yoy (got '{mode}')")
 
 
-def _run_one_attribution(
-    inp: dict[str, Any], rt: Text2SQLRuntime, metric: Any,
-) -> Any:
-    from .attribution import run_attribution
+def _attribution_ranges(inp: dict[str, Any]) -> tuple[Any, Any]:
+    """(curr_range, prev_range) from curr_* / prev_* / compare_mode input."""
     from .metrics import parse_time_range
 
     curr_range = parse_time_range(
@@ -311,7 +770,17 @@ def _run_one_attribution(
         )
     if prev_range is None:
         raise MetricError("归因分析必须提供 prev_start 或 compare_mode")
+    return curr_range, prev_range
+
+
+def _run_one_attribution(
+    inp: dict[str, Any], rt: Text2SQLRuntime, metric: Any,
+) -> Any:
+    from .attribution import run_attribution
+
+    curr_range, prev_range = _attribution_ranges(inp)
     dim = str(inp.get("dimension", "") or "").strip()
+    assert rt.metrics is not None  # guaranteed by _resolve_metric above
     return run_attribution(
         metric, rt.metrics, rt.store,
         _attribution_execute(rt, inp.get("user_query", ""), metric.name),
@@ -444,9 +913,10 @@ def _tool_trace_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, An
     depth = max(1, min(int(inp.get("depth", 3) or 3), 10))
 
     # caliber level (always available)
+    assert rt.metrics is not None  # guaranteed by _resolve_metric above
     if metric.is_ratio:
-        parts = [rt.metrics.get(metric.numerator), rt.metrics.get(metric.denominator)]
-        parts = [p for p in parts if p is not None and not p.is_ratio]
+        maybe = [rt.metrics.get(metric.numerator), rt.metrics.get(metric.denominator)]
+        parts = [p for p in maybe if p is not None and not p.is_ratio]
     else:
         parts = [metric]
     out: dict[str, Any] = {

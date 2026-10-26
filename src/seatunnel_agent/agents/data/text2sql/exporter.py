@@ -13,9 +13,16 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+# pinned to a release tag (not the mutable main branch); set
+# T2S_FONT_SHA256 to additionally verify the downloaded bytes. The old
+# .../NotoSansSC-Regular.otf URL never existed (silent 404 fallback).
 NOTO_SANS_SC_URL = (
-    "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/"
-    "SimplifiedChinese/NotoSansSC-Regular.otf"
+    "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/"
+    "Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf"
+)
+# sha256 of the tag-pinned file above (verified by a real download)
+NOTO_SANS_SC_SHA256 = (
+    "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
 )
 FONT_CACHE_DIR = Path.home() / ".seatunnel-agent" / "fonts"
 NOTO_FONT_PATH = FONT_CACHE_DIR / "NotoSansSC-Regular.otf"
@@ -28,8 +35,20 @@ def download_noto_font(timeout: int = _FONT_DOWNLOAD_TIMEOUT_S) -> Path | None:
         FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         import urllib.request
         resp = urllib.request.urlopen(NOTO_SANS_SC_URL, timeout=timeout)
-        with open(NOTO_FONT_PATH, "wb") as f:
-            f.write(resp.read())
+        data = resp.read()
+        expected = (
+            os.getenv("T2S_FONT_SHA256", "").strip().lower()
+            or NOTO_SANS_SC_SHA256
+        )
+        import hashlib
+        if hashlib.sha256(data).hexdigest() != expected:
+            return None
+        # 写临时文件后原子落位:并发下载/同时读取(chart.py 后台线程 +
+        # export_pdf)不会看到写了一半的字体文件
+        tmp = NOTO_FONT_PATH.with_suffix(f".tmp-{os.getpid()}")
+        with open(tmp, "wb") as f:
+            f.write(data)
+        os.replace(tmp, NOTO_FONT_PATH)
         return NOTO_FONT_PATH if NOTO_FONT_PATH.is_file() else None
     except Exception:
         return None
@@ -162,7 +181,8 @@ def export_pdf(
 
     _font_family = "Helvetica"
     if NOTO_FONT_PATH.is_file():
-        pdf.add_font("NotoSansSC", "", str(NOTO_FONT_PATH), uni=True)
+        # fpdf2 >= 2.5.2 dropped the `uni` kwarg (unicode is implied)
+        pdf.add_font("NotoSansSC", "", str(NOTO_FONT_PATH))
         _font_family = "NotoSansSC"
     else:
         import unicodedata
@@ -171,7 +191,7 @@ def export_pdf(
             for col in columns for ch in str(col)
         )
         if has_cjk and download_noto_font() is not None:
-            pdf.add_font("NotoSansSC", "", str(NOTO_FONT_PATH), uni=True)
+            pdf.add_font("NotoSansSC", "", str(NOTO_FONT_PATH))
             _font_family = "NotoSansSC"
 
     pdf.add_page()

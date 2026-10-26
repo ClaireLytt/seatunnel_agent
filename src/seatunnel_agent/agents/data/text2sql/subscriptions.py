@@ -29,6 +29,10 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+# the `list` METHOD on SubscriptionStore shadows the builtin inside the
+# class body, so parameter annotations there use this module-level alias
+_StrList = list[str]
+
 from seatunnel_agent.common.filelock import file_lock
 from seatunnel_agent.common.utils import (
     read_json_list,
@@ -49,6 +53,7 @@ from .metrics import (
     MetricStore,
     build_metric_sql,
     load_metric_store,
+    parse_date,
     ratio_sides,
 )
 from .notify import (  # noqa: F401 — re-exported, public API
@@ -74,10 +79,80 @@ logger = logging.getLogger(__name__)
 _MAX_SUBSCRIPTIONS = 100
 _CARD_MAX_ROWS = 10
 
-SOURCE_TYPES = ("metric", "favorite", "metric_watch")
+SOURCE_TYPES = ("metric", "favorite", "metric_watch", "freshness", "digest")
+
+#: push-card strings per subscription ``lang`` (zh default, en fallback-safe)
+_CARD_STRINGS: dict[str, dict[str, str]] = {
+    "zh": {
+        "fail_body": "订阅执行失败：\n{error}",
+        "fresh_title": "**{metric}** 数据断更告警（允许滞后 {lag} 天）",
+        "fresh_line": "- {table}: 最新 {latest}（要求 ≥ {expected}）",
+        "no_data": "无数据",
+        "recovered": (
+            "**{metric}** 异动已恢复\n"
+            "{day}: {value}{unit} 回到正常区间（自 {since} 起告警）"
+        ),
+        "alert_model_head": "**{metric}** 异动告警（模型基线 95% 区间外）",
+        "alert_model_line": "{day} 实际 {curr}{unit}，预期 {yhat}{unit} [{lo}, {hi}]",
+        "alert_model_delta": "偏离 {delta}{unit} ({rate})",
+        "alert_head": "**{metric}** 异动告警（阈值 ±{threshold:g}%）",
+        "alert_line": "{ref}: {prev}{unit} → {day}: {curr}{unit}",
+        "alert_delta": "变动 {delta}{unit} ({rate})",
+        "rate_na": "N/A(基期为0)",
+        "contrib_additive": "主要贡献",
+        "contrib_ratio": "各维度变化",
+        "contrib_pct": "，贡献 {pct}%",
+        "member_new": "（新增）",
+        "member_gone": "（消失）",
+        "digest_title": "**经营日报** {day}",
+        "digest_undefined": "- {metric}: 未定义",
+        "digest_failed": "- {metric}: 查询失败",
+        "digest_no_data": "- {metric}: 无数据",
+        "digest_dod": "（环比 {pct:+.1f}%）",
+        "digest_target": " · 月目标达成 {pct:g}%",
+    },
+    "en": {
+        "fail_body": "Subscription run failed:\n{error}",
+        "fresh_title": "**{metric}** data freshness alert (allowed lag: {lag} d)",
+        "fresh_line": "- {table}: latest {latest} (expected >= {expected})",
+        "no_data": "no data",
+        "recovered": (
+            "**{metric}** anomaly recovered\n"
+            "{day}: {value}{unit} back inside the normal range "
+            "(alerting since {since})"
+        ),
+        "alert_model_head": "**{metric}** anomaly alert (outside the model 95% interval)",
+        "alert_model_line": "{day} actual {curr}{unit}, expected {yhat}{unit} [{lo}, {hi}]",
+        "alert_model_delta": "deviation {delta}{unit} ({rate})",
+        "alert_head": "**{metric}** anomaly alert (threshold +/-{threshold:g}%)",
+        "alert_line": "{ref}: {prev}{unit} -> {day}: {curr}{unit}",
+        "alert_delta": "change {delta}{unit} ({rate})",
+        "rate_na": "N/A (base period is 0)",
+        "contrib_additive": "top contributors",
+        "contrib_ratio": "per-dimension change",
+        "contrib_pct": ", contribution {pct}%",
+        "member_new": " (new)",
+        "member_gone": " (gone)",
+        "digest_title": "**Daily digest** {day}",
+        "digest_undefined": "- {metric}: not defined",
+        "digest_failed": "- {metric}: query failed",
+        "digest_no_data": "- {metric}: no data",
+        "digest_dod": " (DoD {pct:+.1f}%)",
+        "digest_target": " - month target {pct:g}%",
+    },
+}
+
+
+def _card_text(lang: str, key: str, **fmt: Any) -> str:
+    table = _CARD_STRINGS.get(lang) or _CARD_STRINGS["zh"]
+    return table.get(key, _CARD_STRINGS["zh"][key]).format(**fmt)
+#: digest cards cap: 2 SQL per metric must stay a bounded morning cost
+_DIGEST_MAX_METRICS = 10
 
 #: metric_watch comparison modes: dod = 昨天 vs 前天, wow = 昨天 vs 上周同日
-WATCH_MODES = ("dod", "wow")
+WATCH_MODES = ("dod", "wow", "model")
+#: model mode fits the forecast baseline on this many trailing days
+_MODEL_HISTORY_DAYS = 28
 
 
 # ----------------------------------------------------------------------
@@ -129,12 +204,14 @@ class SubscriptionStore:
         source_type: str,
         *,
         metric: str = "",
-        dimensions: list[str] | None = None,
+        dimensions: _StrList | None = None,
         lookback_days: int = 1,
         favorite_id: str = "",
         params: dict[str, str] | None = None,
         threshold_pct: float = 10.0,
         watch_mode: str = "dod",
+        max_lag_days: int = 1,
+        metrics: _StrList | None = None,
         ds_type: str = "hive",
         connection: str = "",
         database: str = "",
@@ -146,8 +223,13 @@ class SubscriptionStore:
         parse_cron(cron)  # validate early
         if source_type not in SOURCE_TYPES:
             raise ValueError(f"source_type 只支持 {', '.join(SOURCE_TYPES)}")
-        if source_type in ("metric", "metric_watch") and not metric.strip():
+        if source_type in ("metric", "metric_watch", "freshness") and not metric.strip():
             raise ValueError(f"{source_type} 订阅必须给出指标名")
+        if max_lag_days < 1:
+            raise ValueError("max_lag_days 必须 >= 1")
+        metrics_list = [m.strip() for m in (metrics or []) if m.strip()]
+        if source_type == "digest" and len(metrics_list) > _DIGEST_MAX_METRICS:
+            raise ValueError(f"digest 订阅最多 {_DIGEST_MAX_METRICS} 个指标")
         if watch_mode not in WATCH_MODES:
             raise ValueError(f"watch_mode 只支持 {', '.join(WATCH_MODES)}")
         if threshold_pct <= 0:
@@ -168,6 +250,8 @@ class SubscriptionStore:
             "params": dict(params or {}),
             "threshold_pct": float(threshold_pct),
             "watch_mode": watch_mode,
+            "max_lag_days": int(max_lag_days),
+            "metrics": metrics_list,
             "ds_type": ds_type,
             "connection": connection.strip(),
             "database": database.strip(),
@@ -220,6 +304,16 @@ class SubscriptionStore:
                     self._write(data)
                     return
 
+    def record_alert_state(self, sub_id: str, state: dict[str, Any]) -> None:
+        """Persist a watch subscription's alert memory (repeat suppression)."""
+        with self._lock, self._write_lock():
+            data = self._read_for_write()
+            for entry in data:
+                if entry.get("id") == sub_id:
+                    entry["alert_state"] = dict(state)
+                    self._write(data)
+                    return
+
 
 # ----------------------------------------------------------------------
 # Running a subscription
@@ -231,9 +325,11 @@ def resolve_db_config(sub: dict[str, Any]) -> DatabaseConfig | None:
     ds_type = sub.get("ds_type", "hive")
     preset_name = (sub.get("connection") or "").strip()
     if preset_name:
-        from seatunnel_agent.agents.data.data_comparison.presets import PresetsStore
+        from seatunnel_agent.agents.data.data_comparison.presets import (
+            ConnectionPresetsStore,
+        )
 
-        preset = PresetsStore().get_by_name(preset_name)
+        preset = ConnectionPresetsStore().get_by_name(preset_name)
         if preset is None:
             return None
         return DatabaseConfig(
@@ -288,6 +384,157 @@ def _build_subscription_sql(
         raise MetricError(str(exc))
 
 
+#: process-local daily-series cache: the morning burst (digest + several
+#: watches on the same metric) re-fetches identical series otherwise.
+#: key -> (expiry_ts, start, end, {day: value})
+_SERIES_CACHE: dict[tuple, tuple[float, date, date, dict[date, float | None]]] = {}
+_SERIES_CACHE_LOCK = threading.Lock()
+
+
+def _series_cache_ttl() -> int:
+    try:
+        return int(os.getenv("T2S_SERIES_CACHE_TTL", "") or 600)
+    except ValueError:
+        return 600
+
+
+def fetch_daily_series(
+    metric,
+    metric_store: MetricStore,
+    schema_store: SchemaStore,
+    executor,
+    start: date,
+    end: date,
+    ds_type: str,
+) -> dict[date, float | None]:
+    """{day: value} for the metric's daily series, TTL-cached per (db, metric).
+
+    A fresh cached entry COVERING the requested window is sliced instead of
+    re-queried, so a digest right after a model watch reuses its fetch.
+    ``T2S_SERIES_CACHE_TTL=0`` disables caching.
+    """
+    import time as _time
+
+    from .metrics import build_metric_series_sql
+
+    cfg = getattr(executor, "config", None)
+    key = (
+        getattr(cfg, "ds_type", ds_type), getattr(cfg, "host", ""),
+        getattr(cfg, "port", 0), getattr(cfg, "database", ""),
+        metric.name,
+    )
+    ttl = _series_cache_ttl()
+    now = _time.time()
+    if ttl > 0:
+        with _SERIES_CACHE_LOCK:
+            hit = _SERIES_CACHE.get(key)
+            if hit and hit[0] > now and hit[1] <= start and hit[2] >= end:
+                return {
+                    d: v for d, v in hit[3].items() if start <= d <= end
+                }
+    sql = build_metric_series_sql(
+        metric, metric_store, schema_store, TimeRange(start=start, end=end),
+    )
+    validation = validate_sql(sql, schema_store)
+    if not validation.ok:
+        raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+    result = executor.run(enforce_limit(sql, dialect=ds_type), max_rows=1000)
+    by_day: dict[date, float | None] = {}
+    for r in result.rows:
+        if r[0] is None:
+            continue
+        by_day[parse_date(str(r[0]).strip()[:10])] = (
+            None if r[-1] is None else float(r[-1])
+        )
+    if ttl > 0:
+        with _SERIES_CACHE_LOCK:
+            _SERIES_CACHE[key] = (now + ttl, start, end, dict(by_day))
+    return by_day
+
+
+def _max_time_value(
+    metric, metric_store: MetricStore, schema_store: SchemaStore,
+    executor, ds_type: str,
+):
+    """MAX(time_column) per underlying table of *metric* (both ratio sides).
+
+    Returns {table: date|None}; raises MetricError when a side has no
+    time_column.
+    """
+    sides = list(ratio_sides(metric, metric_store)) if metric.is_ratio else [metric]
+    out: dict[str, Any] = {}
+    for side in sides:
+        if not side.time_column:
+            raise MetricError(f"指标 '{side.name}' 没有 time_column,无法判断新鲜度")
+        sql = f"SELECT MAX({side.time_column}) AS max_dt FROM {side.table}"
+        validation = validate_sql(sql, schema_store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        result = executor.run(enforce_limit(sql, dialect=ds_type), max_rows=10)
+        raw = result.rows[0][0] if result.rows else None
+        out[side.table] = (
+            None if raw is None else parse_date(str(raw).strip()[:10])
+        )
+    return out
+
+
+def _run_freshness(
+    sub: dict[str, Any],
+    schema_store: SchemaStore,
+    metric_store: MetricStore,
+    executor,
+    today: date,
+    push_fn: Callable[..., tuple[bool, str]],
+) -> dict[str, Any]:
+    """Data-freshness watch: alert when MAX(time_column) lags more than
+    max_lag_days behind today (1 tiny SQL per underlying table)."""
+    name = sub.get("name", "?")
+    webhook = (sub.get("webhook_url") or "").strip()
+    metric = metric_store.get(sub.get("metric", ""))
+    if metric is None:
+        raise MetricError(f"指标 '{sub.get('metric')}' 未定义")
+    max_lag = int(sub.get("max_lag_days", 1))
+    expected = today - timedelta(days=max_lag)
+
+    max_by_table = _max_time_value(
+        metric, metric_store, schema_store, executor,
+        sub.get("ds_type", "hive"),
+    )
+    stale = {
+        t: d for t, d in max_by_table.items() if d is None or d < expected
+    }
+    outcome: dict[str, Any] = {
+        "status": "alerted" if stale else "fresh",
+        "error": "", "sql": "",
+        "max_by_table": {
+            t: (d.isoformat() if d else None) for t, d in max_by_table.items()
+        },
+        "max_lag_days": max_lag,
+        "expected_min_day": expected.isoformat(),
+    }
+    if not stale:
+        return outcome  # fresh — silence by design
+    lang = sub.get("lang", "zh")
+    lines = [
+        _card_text(
+            lang, "fresh_line", table=t,
+            latest=d.isoformat() if d else _card_text(lang, "no_data"),
+            expected=expected.isoformat(),
+        )
+        for t, d in stale.items()
+    ]
+    body = (
+        _card_text(lang, "fresh_title", metric=metric.display_name, lag=max_lag)
+        + "\n" + "\n".join(lines)
+    )
+    if webhook:
+        pushed, msg = push_fn(webhook, f"⏰ {name}", body, ok=False)
+        if not pushed:
+            outcome["status"] = "push_failed"
+            outcome["error"] = msg
+    return outcome
+
+
 def _run_metric_watch(
     sub: dict[str, Any],
     schema_store: SchemaStore,
@@ -306,7 +553,11 @@ def _run_metric_watch(
         raise MetricError(f"指标 '{sub.get('metric')}' 未定义")
 
     yesterday = today - timedelta(days=1)
-    ref = yesterday - timedelta(days=7 if sub.get("watch_mode") == "wow" else 1)
+    # drilldown reference: wow and model compare the same weekday last week
+    # (seasonally comparable); dod compares the previous day
+    ref = yesterday - timedelta(
+        days=7 if sub.get("watch_mode") in ("wow", "model") else 1,
+    )
     ds_type = sub.get("ds_type", "hive")
 
     def _run_day_sql(day: date, max_rows: int, dimensions=None):
@@ -329,20 +580,104 @@ def _run_metric_watch(
             return None if metric.is_ratio else 0.0
         return float(result.rows[0][-1])
 
-    curr, prev = _total(yesterday), _total(ref)
-    if curr is None or prev is None:
+    threshold = float(sub.get("threshold_pct", 10.0))
+    mode = str(sub.get("watch_mode") or "dod")
+
+    def _no_data(note: str, prev_val: float | None = None) -> dict[str, Any]:
         return {
             "status": "no_data", "error": "", "sql": "",
-            "curr": curr, "prev": prev, "delta": None,
+            "curr": None, "prev": prev_val, "delta": None,
             "change_rate_pct": None,
-            "threshold_pct": float(sub.get("threshold_pct", 10.0)),
+            "threshold_pct": threshold,
             "curr_day": yesterday.isoformat(), "ref_day": ref.isoformat(),
-            "note": "比率在该日无定义（分母为 0 或无数据），跳过告警",
+            "note": note,
         }
-    delta = curr - prev
-    rate = (delta / abs(prev)) if prev else None
-    threshold = float(sub.get("threshold_pct", 10.0))
-    triggered = (abs(rate) * 100 >= threshold) if rate is not None else curr != 0
+
+    band: dict[str, float] | None = None
+    curr: float | None
+    prev: float | None
+    if mode == "model":
+        # forecast baseline: alert when yesterday falls outside the fitted
+        # 95% interval (trend + weekday + CN-holiday aware; no fixed
+        # threshold so weekend/holiday swings stop false-alerting)
+        from .forecast import forecast_series
+
+        by_day = fetch_daily_series(
+            metric, metric_store, schema_store, executor,
+            start=yesterday - timedelta(days=_MODEL_HISTORY_DAYS),
+            end=yesterday, ds_type=ds_type,
+        )
+        curr = by_day.get(yesterday)
+        if curr is None:
+            if metric.is_ratio:
+                return _no_data("比率在该日无定义（分母为 0 或无数据），跳过告警")
+            # a missing day is only a true 0 when the table HAS data through
+            # yesterday; a lagging pipeline must not fire a fake -100% alert
+            try:
+                max_by_table = _max_time_value(
+                    metric, metric_store, schema_store, executor, ds_type,
+                )
+            except MetricError:
+                max_by_table = {}
+            lagging = {
+                t: d for t, d in max_by_table.items()
+                if d is None or d < yesterday
+            }
+            if lagging:
+                latest = ", ".join(
+                    f"{t} 最新 {d.isoformat() if d else '无数据'}"
+                    for t, d in lagging.items()
+                )
+                return _no_data(f"数据未更新至昨日（{latest}），跳过告警")
+            curr = 0.0
+        history = [(d, v) for d, v in by_day.items() if d < yesterday]
+        try:
+            fc = forecast_series(
+                history,
+                horizon=(yesterday - max(d for d, _ in history)).days
+                if history else 1,
+                fill="ffill" if metric.is_ratio else "zero",
+            )
+        except ValueError as exc:
+            return _no_data(f"历史不足，无法拟合基线: {exc}")
+        row = next(
+            (f for f in fc["forecasts"] if f["day"] == yesterday.isoformat()),
+            None,
+        )
+        if row is None:
+            return _no_data("预测基线未覆盖昨日，跳过告警")
+        band = {"yhat": row["yhat"], "lo": row["lo"], "hi": row["hi"]}
+        prev = float(row["yhat"])
+        delta = curr - prev
+        rate = (delta / abs(prev)) if prev else None
+        triggered = curr < band["lo"] or curr > band["hi"]
+    else:
+        curr, prev = _total(yesterday), _total(ref)
+        if curr is None or prev is None:
+            return _no_data(
+                "比率在该日无定义（分母为 0 或无数据），跳过告警", prev,
+            )
+        if curr == 0.0 and not metric.is_ratio:
+            # "no rows yesterday" and "a true 0" look identical here; probe
+            # table freshness so a lagging pipeline reports an outage
+            # instead of a fake -100% alert (same guard as model mode)
+            try:
+                lagging = {
+                    t: d for t, d in _max_time_value(
+                        metric, metric_store, schema_store, executor, ds_type,
+                    ).items() if d is None or d < yesterday
+                }
+            except MetricError:
+                lagging = {}
+            if lagging:
+                latest = ", ".join(
+                    f"{t} 最新 {d.isoformat() if d else '无数据'}"
+                    for t, d in lagging.items()
+                )
+                return _no_data(f"数据未更新至昨日（{latest}），跳过告警", prev)
+        delta = curr - prev
+        rate = (delta / abs(prev)) if prev else None
+        triggered = (abs(rate) * 100 >= threshold) if rate is not None else curr != 0
 
     outcome: dict[str, Any] = {
         "status": "alerted" if triggered else "no_change",
@@ -353,8 +688,61 @@ def _run_metric_watch(
         "threshold_pct": threshold,
         "curr_day": yesterday.isoformat(), "ref_day": ref.isoformat(),
     }
+    if band is not None:
+        outcome["baseline"] = band
+
+    # alert memory: a persisting anomaly pushes once (first day), the same-
+    # direction repeat is suppressed, and the return to normal pushes one
+    # green recovery card — three cards for a three-day incident, not four
+    state = dict(sub.get("alert_state") or {})
+    direction = "up" if delta > 0 else "down"
+    unit = f" {metric.unit}" if metric.unit else ""
+
+    def _log_alert_event(kind: str) -> None:
+        """Alert history lands in qlog — alert_state keeps only the latest
+        incident, so counts like '7-day alerts' need these events."""
+        try:
+            from .qlog import QueryLogger
+            QueryLogger().log(
+                user_query=f"[watch] {name}", generated_sql="",
+                status="success", matched_tables=[],
+                exec_time_ms=0, row_count=0,
+                extra={
+                    "source": "subscription", "metric": metric.name,
+                    "kind": kind, "day": yesterday.isoformat(),
+                    "direction": direction,
+                },
+            )
+        except Exception:
+            pass  # history is an advisory trail, never breaks the watch
+
     if not triggered:
+        if state.get("active"):
+            outcome["status"] = "recovered"
+            outcome["alert_state"] = {}
+            _log_alert_event("alert_recovered")
+            body = _card_text(
+                sub.get("lang", "zh"), "recovered",
+                metric=metric.display_name, day=yesterday.isoformat(),
+                value=f"{curr:,.2f}", unit=unit,
+                since=state.get("since", "?"),
+            )
+            if webhook:
+                pushed, msg = push_fn(webhook, f"✅ {name}", body, ok=True)
+                if not pushed:
+                    outcome["status"] = "push_failed"
+                    outcome["error"] = msg
+            return outcome
         return outcome  # silence by design — no card below the threshold
+    if state.get("active") and state.get("direction") == direction:
+        outcome["status"] = "suppressed"
+        outcome["alert_state"] = state  # keep the original 'since'
+        return outcome  # same incident, already alerted — no repeat card
+    outcome["alert_state"] = {
+        "active": True, "direction": direction,
+        "since": yesterday.isoformat(),
+    }
+    _log_alert_event("alert")
 
     # top contributors on the first allowed dimension (best-effort).
     # Ratio metrics have no dimensions of their own: fall back to the
@@ -370,7 +758,60 @@ def _run_metric_watch(
             allowed_dims = [d for d in num.dimensions if d.lower() in den_set]
     top_lines = ""
     dim = (sub.get("dimensions") or allowed_dims[:1] or [None])[0]
-    if dim:
+    if dim and not metric.is_ratio:
+        # additive: full attribution on the alert dimension — contribution
+        # percentages sum to the total change rate (identity-checked), and
+        # new/gone members are marked. The alert card answers "why" itself.
+        try:
+            from .attribution import run_attribution
+
+            def _exec(sql: str) -> tuple[list[str], list[tuple]]:
+                validation = validate_sql(sql, schema_store)
+                if not validation.ok:
+                    raise MetricError(
+                        "SQL rejected: " + "; ".join(validation.errors))
+                result = executor.run(
+                    enforce_limit(sql, dialect=ds_type), max_rows=1000,
+                )
+                return result.columns, result.rows
+
+            attri = run_attribution(
+                metric, metric_store, schema_store, _exec,
+                curr_range=TimeRange(start=yesterday, end=yesterday),
+                prev_range=TimeRange(start=ref, end=ref),
+                dimensions=[dim],
+            )
+            rows = attri.dimensions[0].rows[:3] if attri.dimensions else []
+            parts = []
+            contributors = []
+            _lang = sub.get("lang", "zh")
+            for row in rows:
+                mark = (
+                    _card_text(_lang, "member_new") if row.is_new
+                    else _card_text(_lang, "member_gone") if row.is_gone
+                    else ""
+                )
+                pct = (
+                    _card_text(_lang, "contrib_pct",
+                               pct=f"{row.contribution * 100:+.1f}")
+                    if row.contribution is not None else ""
+                )
+                parts.append(f"- {row.value}{mark}: {row.delta:+,.2f}{pct}")
+                contributors.append({
+                    "value": row.value, "delta": round(row.delta, 4),
+                    "contribution_pct": (
+                        round(row.contribution * 100, 2)
+                        if row.contribution is not None else None
+                    ),
+                })
+            if parts:
+                top_lines = "\n" + "\n".join(parts)
+                outcome["top_contributors"] = contributors
+        except Exception:
+            pass  # contributors are a bonus
+    elif dim:
+        # ratio: per-member deltas are informative but not additive
+        # contributions — keep the plain two-day comparison
         try:
             def _by_dim(day: date) -> dict[str, float]:
                 result = _run_day_sql(day, max_rows=1000, dimensions=[dim])
@@ -395,23 +836,278 @@ def _run_metric_watch(
         except Exception:
             pass  # contributors are a bonus
 
-    rate_txt = f"{rate * 100:+.2f}%" if rate is not None else "N/A(基期为0)"
+    lang = sub.get("lang", "zh")
+    rate_txt = (
+        f"{rate * 100:+.2f}%" if rate is not None
+        else _card_text(lang, "rate_na")
+    )
     unit = f" {metric.unit}" if metric.unit else ""
     # per-dim deltas of a ratio are informative but not additive contributions
-    label = "各维度变化" if metric.is_ratio else "主要贡献"
+    label = _card_text(lang, "contrib_ratio" if metric.is_ratio else "contrib_additive")
     contributor_block = f"\n{label} ({dim}):{top_lines}" if top_lines else ""
-    body = (
-        f"**{metric.display_name}** 异动告警（阈值 ±{threshold:g}%）\n"
-        f"{ref.isoformat()}: {prev:,.2f}{unit} → "
-        f"{yesterday.isoformat()}: {curr:,.2f}{unit}\n"
-        f"变动 {delta:+,.2f}{unit} ({rate_txt})" + contributor_block
-    )
+    if band is not None:
+        body = (
+            _card_text(lang, "alert_model_head", metric=metric.display_name)
+            + "\n"
+            + _card_text(
+                lang, "alert_model_line", day=yesterday.isoformat(),
+                curr=f"{curr:,.2f}", yhat=f"{band['yhat']:,.2f}",
+                lo=f"{band['lo']:,.2f}", hi=f"{band['hi']:,.2f}", unit=unit,
+            )
+            + "\n"
+            + _card_text(lang, "alert_model_delta",
+                         delta=f"{delta:+,.2f}", unit=unit, rate=rate_txt)
+            + contributor_block
+        )
+    else:
+        body = (
+            _card_text(lang, "alert_head",
+                       metric=metric.display_name, threshold=threshold)
+            + "\n"
+            + _card_text(
+                lang, "alert_line", ref=ref.isoformat(),
+                prev=f"{prev:,.2f}", day=yesterday.isoformat(),
+                curr=f"{curr:,.2f}", unit=unit,
+            )
+            + "\n"
+            + _card_text(lang, "alert_delta",
+                         delta=f"{delta:+,.2f}", unit=unit, rate=rate_txt)
+            + contributor_block
+        )
     if webhook:
         pushed, msg = push_fn(webhook, f"⚠️ {name}", body, ok=False)
         if not pushed:
             outcome["status"] = "push_failed"
             outcome["error"] = msg
     return outcome
+
+
+def _run_digest(
+    sub: dict[str, Any],
+    schema_store: SchemaStore,
+    metric_store: MetricStore,
+    executor,
+    today: date,
+    push_fn: Callable[..., tuple[bool, str]],
+) -> dict[str, Any]:
+    """Morning digest card: one line per metric — yesterday's value, DoD
+    change, and month-target completion when declared. ≤2 SQL per metric,
+    deterministic, LLM-free."""
+    name = sub.get("name", "?")
+    webhook = (sub.get("webhook_url") or "").strip()
+    names = list(sub.get("metrics") or []) or [
+        m.name for m in metric_store.metrics
+    ]
+    names = names[:_DIGEST_MAX_METRICS]
+    yesterday = today - timedelta(days=1)
+    ds_type = sub.get("ds_type", "hive")
+    lang = sub.get("lang", "zh")
+
+    def _run(sql: str, max_rows: int = 10):
+        validation = validate_sql(sql, schema_store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        return executor.run(enforce_limit(sql, dialect=ds_type), max_rows=max_rows)
+
+    lines: list[str] = []
+    rows_out: list[dict[str, Any]] = []
+    for mname in names:
+        metric = metric_store.get(mname)
+        if metric is None:
+            lines.append(_card_text(lang, "digest_undefined", metric=mname))
+            rows_out.append({"metric": mname, "error": "未定义"})
+            continue
+        try:
+            by_day = fetch_daily_series(
+                metric, metric_store, schema_store, executor,
+                start=yesterday - timedelta(days=1), end=yesterday,
+                ds_type=ds_type,
+            )
+            curr = by_day.get(yesterday)
+            prev = by_day.get(yesterday - timedelta(days=1))
+            if curr is None and not metric.is_ratio:
+                curr = 0.0
+            if prev is None and not metric.is_ratio:
+                prev = 0.0
+        except Exception as exc:  # per-line best effort: one bad metric must not kill the card
+            lines.append(_card_text(lang, "digest_failed", metric=metric.display_name))
+            rows_out.append({"metric": mname, "error": str(exc)})
+            continue
+        unit = f" {metric.unit}" if metric.unit else ""
+        if curr is None:
+            line = _card_text(lang, "digest_no_data", metric=metric.display_name)
+            rows_out.append({"metric": mname, "curr": None})
+            lines.append(line)
+            continue
+        dod_txt = ""
+        dod_pct = None
+        if prev is not None and prev != 0:
+            dod_pct = round((curr - prev) / abs(prev) * 100, 2)
+            dod_txt = _card_text(lang, "digest_dod", pct=dod_pct)
+        line = f"- {metric.display_name}: {curr:,.2f}{unit}{dod_txt}"
+        target = metric.targets.get("month")
+        completion = None
+        if target:
+            try:
+                mtd_sql = build_metric_sql(
+                    metric, metric_store, schema_store,
+                    time_range=TimeRange(
+                        start=yesterday.replace(day=1), end=yesterday,
+                    ),
+                )
+                mtd_result = _run(mtd_sql)
+                mtd = (
+                    float(mtd_result.rows[0][-1])
+                    if mtd_result.rows and mtd_result.rows[0][-1] is not None
+                    else 0.0
+                )
+                completion = round(mtd / target * 100, 1)
+                line += _card_text(lang, "digest_target", pct=completion)
+            except Exception:
+                pass  # the digest line still carries value + DoD
+        lines.append(line)
+        rows_out.append({
+            "metric": mname, "curr": round(curr, 4),
+            "dod_pct": dod_pct, "month_completion_pct": completion,
+        })
+
+    body = (
+        _card_text(lang, "digest_title", day=yesterday.isoformat())
+        + "\n" + "\n".join(lines)
+    )
+    outcome: dict[str, Any] = {
+        "status": "success", "error": "", "sql": "",
+        "day": yesterday.isoformat(), "rows": rows_out,
+    }
+    if webhook:
+        pushed, msg = push_fn(webhook, f"📊 {name}", body, ok=True)
+        if not pushed:
+            outcome["status"] = "push_failed"
+            outcome["error"] = msg
+    return outcome
+
+
+def backtest_watch(
+    sub: dict[str, Any],
+    schema_store: SchemaStore,
+    metric_store: MetricStore,
+    executor,
+    end: date,
+    days: int = 90,
+) -> dict[str, Any]:
+    """Replay a metric_watch subscription's alert rule over history: which
+    days WOULD have alerted. One series SQL, pure-python replay — lets the
+    user tune threshold/watch_mode before the subscription goes live."""
+    from .forecast import forecast_series
+    from .metrics import build_metric_series_sql
+
+    metric = metric_store.get(sub.get("metric", ""))
+    if metric is None:
+        raise MetricError(f"指标 '{sub.get('metric')}' 未定义")
+    mode = str(sub.get("watch_mode") or "dod")
+    threshold = float(sub.get("threshold_pct", 10.0))
+    days = max(7, min(days, 365))
+    eval_start = end - timedelta(days=days - 1)
+    warmup = _MODEL_HISTORY_DAYS if mode == "model" else 7
+    start = eval_start - timedelta(days=warmup)
+
+    series_sql = build_metric_series_sql(
+        metric, metric_store, schema_store, TimeRange(start=start, end=end),
+    )
+    validation = validate_sql(series_sql, schema_store)
+    if not validation.ok:
+        raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+    result = executor.run(
+        enforce_limit(series_sql, default_limit=100000,
+                      dialect=sub.get("ds_type", "hive")),
+        max_rows=100000,
+    )
+    by_day: dict[date, float | None] = {}
+    for r in result.rows:
+        if r[0] is None:
+            continue
+        by_day[parse_date(str(r[0]).strip()[:10])] = (
+            None if r[-1] is None else float(r[-1])
+        )
+
+    def _val(d: date) -> float | None:
+        v = by_day.get(d)
+        if v is None:
+            return None if metric.is_ratio else 0.0
+        return v
+
+    alerts: list[dict[str, Any]] = []
+    no_data_days = 0
+    evaluated = 0
+    for i in range(days):
+        d = eval_start + timedelta(days=i)
+        curr = _val(d)
+        if curr is None:
+            no_data_days += 1
+            continue
+        if mode == "model":
+            history = [
+                (dd, by_day.get(dd))
+                for dd in (
+                    d - timedelta(days=k)
+                    for k in range(_MODEL_HISTORY_DAYS, 0, -1)
+                )
+            ]
+            try:
+                observed = [(dd, v) for dd, v in history if v is not None]
+                last = max(dd for dd, _ in observed) if observed else None
+                fc = forecast_series(
+                    history,
+                    horizon=(d - last).days if last else 1,
+                    fill="ffill" if metric.is_ratio else "zero",
+                )
+            except ValueError:
+                no_data_days += 1
+                continue
+            row = next(
+                (f for f in fc["forecasts"] if f["day"] == d.isoformat()),
+                None,
+            )
+            if row is None:
+                no_data_days += 1
+                continue
+            evaluated += 1
+            if curr < row["lo"] or curr > row["hi"]:
+                alerts.append({
+                    "day": d.isoformat(), "actual": round(curr, 4),
+                    "expected": row["yhat"],
+                    "lo": row["lo"], "hi": row["hi"],
+                })
+        else:
+            prev = _val(d - timedelta(days=7 if mode == "wow" else 1))
+            if prev is None:
+                no_data_days += 1
+                continue
+            evaluated += 1
+            rate = ((curr - prev) / abs(prev)) if prev else None
+            trig = (abs(rate) * 100 >= threshold) if rate is not None else curr != 0
+            if trig:
+                alerts.append({
+                    "day": d.isoformat(), "actual": round(curr, 4),
+                    "prev": round(prev, 4),
+                    "change_rate_pct": (
+                        round(rate * 100, 2) if rate is not None else None
+                    ),
+                })
+    return {
+        "metric": metric.name,
+        "watch_mode": mode,
+        "threshold_pct": threshold,
+        "window": {"start": eval_start.isoformat(), "end": end.isoformat()},
+        "days_evaluated": evaluated,
+        "no_data_days": no_data_days,
+        "alert_count": len(alerts),
+        "alert_rate_pct": (
+            round(len(alerts) / evaluated * 100, 2) if evaluated else None
+        ),
+        "alerts": alerts,
+        "sql": series_sql,
+    }
 
 
 def run_subscription(
@@ -429,7 +1125,11 @@ def run_subscription(
 
     def _fail(error: str) -> dict[str, Any]:
         if webhook:
-            push_fn(webhook, f"❌ {name}", f"订阅执行失败：\n{error}", ok=False)
+            push_fn(
+                webhook, f"❌ {name}",
+                _card_text(sub.get("lang", "zh"), "fail_body", error=error),
+                ok=False,
+            )
         return {"status": "error", "error": error, "sql": ""}
 
     try:
@@ -443,11 +1143,15 @@ def run_subscription(
         if metric_store is None:
             metric_store, _errors = load_metric_store(schema_store)
 
-        if sub.get("source_type") == "metric_watch":
+        if sub.get("source_type") in ("metric_watch", "freshness", "digest"):
             db_config = resolve_db_config(sub)
             if db_config is None:
                 return _fail("无法解析数据库连接（检查连接预设名或环境变量配置）")
-            return _run_metric_watch(
+            runner = {
+                "freshness": _run_freshness,
+                "digest": _run_digest,
+            }.get(sub.get("source_type", ""), _run_metric_watch)
+            return runner(
                 sub, schema_store, metric_store,
                 create_executor(db_config), today or date.today(), push_fn,
             )
@@ -482,7 +1186,9 @@ def run_subscription(
 
     pushed, push_msg = True, ""
     if webhook:
-        body = render_card_markdown(result.columns, [tuple(r) for r in result.rows])
+        body = render_card_markdown(
+            result.columns, [tuple(r) for r in result.rows], sql=final_sql,
+        )
         # chart embedding: best-effort, needs FEISHU_APP_ID/SECRET for upload
         img_key = ""
         if detect_channel(webhook) == "feishu":
@@ -568,8 +1274,25 @@ class Scheduler:
         if self._last_minute is None or current > self._last_minute:
             self._last_minute = current
 
+        from .notify import aggregate_pushes, aggregation_enabled, flush_aggregated
+
         fired: list[str] = []
         subs = self.store.list()
+        if aggregation_enabled():
+            # one check cycle = one card per webhook, however many alerts
+            with aggregate_pushes() as buffer:
+                self._run_due(minutes, subs, fired)
+            flush_aggregated(buffer)
+        else:
+            self._run_due(minutes, subs, fired)
+        return fired
+
+    def _run_due(
+        self,
+        minutes: list[datetime],
+        subs: list[dict[str, Any]],
+        fired: list[str],
+    ) -> None:
         for minute in minutes:
             minute_key = minute.strftime("%Y-%m-%d %H:%M")
             for sub in subs:
@@ -590,10 +1313,13 @@ class Scheduler:
                         sub_id, outcome.get("status", "error"),
                         outcome.get("error", ""),
                     )
+                    if "alert_state" in outcome:
+                        self.store.record_alert_state(
+                            sub_id, outcome["alert_state"],
+                        )
                 except Exception as exc:  # run_fn contract says it never raises, but
                     logger.exception("Subscription %s failed", sub_id)
                     self.store.record_run(sub_id, "error", str(exc))
-        return fired
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():

@@ -164,6 +164,19 @@ def chat_stream(req: ChatRequest) -> StreamingResponse:
                 elif etype == "tool_result" and data.get("name") == "execute_sql":
                     from .chart import result_snapshot
                     yield _sse(result_snapshot(data.get("result")))
+                elif etype == "tool_result" and data.get("name") == "draft_metric":
+                    import json as _json
+                    raw = data.get("result")
+                    try:
+                        res = _json.loads(raw) if isinstance(raw, str) else (raw or {})
+                    except (TypeError, ValueError):
+                        res = {}
+                    if isinstance(res, dict) and res.get("success"):
+                        yield _sse({
+                            "type": "metric_draft",
+                            "name": res.get("name", ""),
+                            "yaml": res.get("yaml", ""),
+                        })
                 elif etype == "final_answer":
                     yield _sse({"type": "final",
                                 "text": data.get("text", ""),

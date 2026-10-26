@@ -180,7 +180,7 @@ def metrics_attribution(req: AttributionRequest) -> dict[str, Any]:
         )
 
     from .attribution import attribution_to_dict, run_attribution
-    from .metrics import parse_time_range
+    from .metrics import require_time_range
     from .tools import _sanitize_db_error
     from .validator import enforce_limit, validate_sql
 
@@ -202,8 +202,8 @@ def metrics_attribution(req: AttributionRequest) -> dict[str, Any]:
     def _attribute_raw(target):
         return run_attribution(
             target, metric_store, store, _execute,
-            curr_range=parse_time_range(req.curr_start, req.curr_end or ""),
-            prev_range=parse_time_range(req.prev_start, req.prev_end or ""),
+            curr_range=require_time_range(req.curr_start, req.curr_end or ""),
+            prev_range=require_time_range(req.prev_start, req.prev_end or ""),
             dimensions=[req.dimension] if req.dimension else None,
             extra_filters=req.extra_filters,
         )
@@ -241,3 +241,241 @@ def metrics_attribution(req: AttributionRequest) -> dict[str, Any]:
             status_code=500,
             detail=f"Attribution failed: {_sanitize_db_error(str(exc))}",
         )
+
+
+# ----------------------------------------------------------------------
+# forecast / target / correlate — zero-LLM endpoints for orchestration
+# (thin shells over the agent tool functions, same runtime semantics)
+# ----------------------------------------------------------------------
+
+
+class _ConnectedRequest(BaseModel):
+    ds_type: str = Field("hive", description="Data source type")
+    db_config: dict[str, Any] | None = Field(None, description="Database connection config (required)")
+    schema_ddl: str | None = Field(None, description="Inline DDL for table definitions")
+    metrics_yaml: str | None = Field(
+        None, description="Inline metrics.yaml content (defaults to config/metrics.yaml)"
+    )
+
+
+class ForecastRequest(_ConnectedRequest):
+    metric: str = Field(..., min_length=1)
+    horizon_days: int = Field(7, description="Periods ahead (max 30)")
+    grain: str = Field("day", description="day | week | month")
+    history_days: int | None = Field(None, description="History window in days")
+    end_date: str | None = Field(None, description="Last history day (default: yesterday)")
+
+
+class TargetProgressRequest(_ConnectedRequest):
+    metric: str = Field(..., min_length=1)
+    period: str = Field("month", description="month | quarter | year")
+    end_date: str | None = Field(None, description="Progress as-of (default: yesterday)")
+
+
+class TreeAttributionRequest(_ConnectedRequest):
+    metric: str = Field(..., min_length=1)
+    curr_start: str = Field(..., min_length=1)
+    curr_end: str | None = None
+    prev_start: str | None = None
+    prev_end: str | None = None
+    compare_mode: str | None = Field(None, description="mom | wow | yoy")
+
+
+class CorrelateRequest(_ConnectedRequest):
+    metric_a: str = Field(..., min_length=1)
+    metric_b: str = Field(..., min_length=1)
+    days: int = Field(28, description="Trailing window in days (14-180)")
+    end_date: str | None = Field(None, description="Last day (default: yesterday)")
+
+
+def _tool_runtime(req: _ConnectedRequest):
+    from .runtime import Text2SQLRuntime
+
+    store, db_config = load_schema_store(req.ds_type, req.db_config, req.schema_ddl)
+    if db_config is None:
+        raise HTTPException(status_code=400, detail="this endpoint requires db_config")
+    metric_store, metric_errors = load_metric_store(store, req.metrics_yaml)
+    if metric_errors:
+        raise HTTPException(
+            status_code=400, detail="Invalid metrics: " + "; ".join(metric_errors),
+        )
+    rt = Text2SQLRuntime(
+        store=store, metrics=metric_store, ds_type=req.ds_type,
+        db_config=db_config,
+    )
+    rt.source = "api"
+    return rt
+
+
+def _tool_response(out: dict[str, Any]) -> dict[str, Any]:
+    if out.get("error"):
+        raise HTTPException(status_code=400, detail=out["error"])
+    return out
+
+
+@router.get("/session/{session_id}/metrics/health")
+def session_metrics_health(session_id: str) -> dict[str, Any]:
+    """Per-metric health rollup on the session's live connection — no LLM."""
+    from datetime import date
+
+    from .api_shared import entry_or_404
+    from .health import metric_health
+    from .qlog import QueryLogger
+
+    rt = entry_or_404(session_id).agent.runtime
+    if rt.metrics is None or len(rt.metrics) == 0:
+        raise HTTPException(status_code=400, detail="没有指标定义(metrics.yaml)")
+    try:
+        from .subscriptions import SubscriptionStore
+
+        subs = SubscriptionStore().list()
+    except Exception:
+        subs = []
+    rows = metric_health(
+        rt.metrics, rt.store, rt.executor,
+        QueryLogger().recent(5000), subs,
+        today=date.today(), ds_type=rt.ds_type,
+    )
+    return {"rows": rows}
+
+
+class MetricDraftRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    display_name: str = ""
+    type: str = "additive"
+    description: str = ""
+    aliases: list[str] = Field(default_factory=list)
+    unit: str = ""
+    table: str = ""
+    expression: str = ""
+    time_column: str = ""
+    dimensions: list[str] = Field(default_factory=list)
+    default_filters: list[str] = Field(default_factory=list)
+    numerator: str = ""
+    denominator: str = ""
+
+
+@router.post("/session/{session_id}/metrics/draft")
+def session_metric_draft(session_id: str, req: MetricDraftRequest) -> dict[str, Any]:
+    """Validate a metric draft against the live catalog — nothing persists."""
+    from .api_shared import entry_or_404
+    from .metrics import draft_metric_entry
+
+    rt = entry_or_404(session_id).agent.runtime
+    entry, errors, snippet = draft_metric_entry(req.model_dump(), rt.store)
+    if errors or entry is None:
+        raise HTTPException(status_code=400, detail="; ".join(errors))
+    rt.pending_metric_draft = entry
+    return {"name": entry.get("name", ""), "yaml": snippet, "persisted": False}
+
+
+@router.post("/session/{session_id}/metrics/draft/confirm")
+def session_metric_draft_confirm(session_id: str) -> dict[str, Any]:
+    """Persist the pending draft (the user's explicit confirmation step)."""
+    from .api_shared import entry_or_404
+    from .metrics import append_metric_entry, load_metric_store
+    from .prompts import build_text2sql_prompt
+
+    agent = entry_or_404(session_id).agent
+    rt = agent.runtime
+    draft = rt.pending_metric_draft
+    if not draft:
+        raise HTTPException(status_code=400, detail="没有待确认的指标草稿")
+    path = append_metric_entry(draft)
+    rt.pending_metric_draft = None
+    # reload the live catalog + the system prompt so the session sees it
+    metric_store, errors = load_metric_store(rt.store)
+    if errors:
+        raise HTTPException(
+            status_code=500,
+            detail="落盘后校验失败(文件已写入,请人工检查): " + "; ".join(errors),
+        )
+    rt.metrics = metric_store
+    agent._system_prompt = build_text2sql_prompt(
+        rt.store, dialect=rt.ds_type, metric_store=metric_store,
+    )
+    return {
+        "persisted": True,
+        "file": str(path),
+        "name": str(draft.get("name", "")),
+        "metric_count": len(metric_store),
+    }
+
+
+@router.get("/session/{session_id}/report/weekly")
+def session_weekly_report(session_id: str) -> dict[str, Any]:
+    """Deterministic weekly-report skeleton as Markdown — no LLM."""
+    from datetime import date
+
+    from .api_shared import entry_or_404
+    from .report import build_weekly_skeleton, render_skeleton_md
+
+    rt = entry_or_404(session_id).agent.runtime
+    if rt.metrics is None or len(rt.metrics) == 0:
+        raise HTTPException(status_code=400, detail="没有指标定义(metrics.yaml)")
+    try:
+        from .subscriptions import SubscriptionStore
+
+        subs = SubscriptionStore().list()
+    except Exception:
+        subs = []
+    sk = build_weekly_skeleton(
+        rt.metrics, rt.store, rt.executor, subs,
+        today=date.today(), ds_type=rt.ds_type,
+    )
+    return {
+        "week": sk["week"],
+        "markdown": render_skeleton_md(sk),
+    }
+
+
+@router.post("/metrics/forecast")
+def metrics_forecast(req: ForecastRequest) -> dict[str, Any]:
+    """Deterministic metric forecast — no LLM involved."""
+    from .tools_metric import _tool_forecast_metric
+
+    inp = {
+        "metric": req.metric, "horizon_days": req.horizon_days,
+        "grain": req.grain, "end_date": req.end_date or "",
+    }
+    if req.history_days:
+        inp["history_days"] = req.history_days
+    return _tool_response(_tool_forecast_metric(inp, _tool_runtime(req)))
+
+
+@router.post("/metrics/target")
+def metrics_target(req: TargetProgressRequest) -> dict[str, Any]:
+    """Deterministic target-attainment progress — no LLM involved."""
+    from .tools_metric import _tool_metric_target_progress
+
+    inp = {
+        "metric": req.metric, "period": req.period,
+        "end_date": req.end_date or "",
+    }
+    return _tool_response(_tool_metric_target_progress(inp, _tool_runtime(req)))
+
+
+@router.post("/metrics/tree")
+def metrics_tree(req: TreeAttributionRequest) -> dict[str, Any]:
+    """Deterministic factor-tree decomposition — no LLM involved."""
+    from .tools_metric import _tool_tree_attribution
+
+    inp = {
+        "metric": req.metric,
+        "curr_start": req.curr_start, "curr_end": req.curr_end or "",
+        "prev_start": req.prev_start or "", "prev_end": req.prev_end or "",
+        "compare_mode": req.compare_mode or "",
+    }
+    return _tool_response(_tool_tree_attribution(inp, _tool_runtime(req)))
+
+
+@router.post("/metrics/correlate")
+def metrics_correlate(req: CorrelateRequest) -> dict[str, Any]:
+    """Deterministic two-metric correlation — no LLM involved."""
+    from .tools_metric import _tool_correlate_metrics
+
+    inp = {
+        "metric_a": req.metric_a, "metric_b": req.metric_b,
+        "days": req.days, "end_date": req.end_date or "",
+    }
+    return _tool_response(_tool_correlate_metrics(inp, _tool_runtime(req)))

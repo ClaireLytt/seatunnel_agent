@@ -167,28 +167,51 @@ def t2s_sub_list() -> None:
               help="异动监控订阅：昨天 vs 参照期,变动超阈值才推送告警")
 @click.option("--threshold", type=float, default=10.0, show_default=True,
               help="异动阈值百分比（仅 --watch）")
-@click.option("--watch-mode", type=click.Choice(["dod", "wow"]), default="dod",
-              show_default=True, help="参照期：dod=前一天, wow=上周同日（仅 --watch）")
+@click.option("--watch-mode", type=click.Choice(["dod", "wow", "model"]),
+              default="dod", show_default=True,
+              help="参照期：dod=前一天, wow=上周同日, "
+                   "model=预测基线95%区间（仅 --watch；model 忽略阈值）")
+@click.option("--freshness", is_flag=True,
+              help="数据新鲜度订阅：MAX(time_column) 滞后超 --max-lag-days 才告警")
+@click.option("--max-lag-days", type=int, default=1, show_default=True,
+              help="允许的数据滞后天数（仅 --freshness）")
+@click.option("--digest", "digest_metrics", default=None,
+              help="经营日报订阅：逗号分隔的指标名（空字符串=全部指标），"
+                   "每指标一行 值/环比/月目标达成")
 def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
                 dims: tuple[str, ...], lookback: int, params: tuple[str, ...],
                 ds_type: str, connection: str, database: str, webhook: str,
-                watch: bool, threshold: float, watch_mode: str) -> None:
-    """新建订阅（--metric 定时推数 / --metric --watch 异动告警 / --favorite 收藏推数）。"""
+                watch: bool, threshold: float, watch_mode: str,
+                freshness: bool, max_lag_days: int,
+                digest_metrics: str | None) -> None:
+    """新建订阅（--metric 定时推数 / --metric --watch 异动告警 /
+    --metric --freshness 断更告警 / --digest 经营日报 / --favorite 收藏推数）。"""
     _ensure_utf8_stdio()
     from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore
 
-    if bool(metric) == bool(favorite_id):
+    if digest_metrics is not None:
+        if metric or favorite_id or watch or freshness:
+            raise click.UsageError("--digest 不能与 --metric/--favorite/--watch/--freshness 同用")
+    elif bool(metric) == bool(favorite_id):
         raise click.UsageError("--metric 与 --favorite 必须二选一")
     if watch and not metric:
         raise click.UsageError("--watch 只能与 --metric 搭配")
+    if freshness and not metric:
+        raise click.UsageError("--freshness 只能与 --metric 搭配")
+    if freshness and watch:
+        raise click.UsageError("--watch 与 --freshness 不能同时使用")
     param_map: dict[str, str] = {}
     for p in params:
         if "=" not in p:
             raise click.UsageError(f"--param 格式应为 key=value: {p}")
         k, v = p.split("=", 1)
         param_map[k.strip()] = v
-    if watch:
+    if digest_metrics is not None:
+        source_type = "digest"
+    elif watch:
         source_type = "metric_watch"
+    elif freshness:
+        source_type = "freshness"
     else:
         source_type = "metric" if metric else "favorite"
     try:
@@ -198,6 +221,8 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
             metric=metric, dimensions=list(dims), lookback_days=lookback,
             favorite_id=favorite_id, params=param_map,
             threshold_pct=threshold, watch_mode=watch_mode,
+            max_lag_days=max_lag_days,
+            metrics=[m.strip() for m in (digest_metrics or "").split(",") if m.strip()],
             ds_type=ds_type, connection=connection, database=database,
             webhook_url=webhook,
         )
@@ -245,12 +270,288 @@ def t2s_sub_run(sub_id: str) -> None:
         raise click.ClickException(f"订阅 '{sub_id}' 不存在")
     outcome = run_subscription(sub)
     store.record_run(sub_id, outcome.get("status", "error"), outcome.get("error", ""))
+    if "alert_state" in outcome:
+        store.record_alert_state(sub_id, outcome["alert_state"])
     if outcome["status"] == "success":
         console.print(f"[green]执行成功: {outcome['row_count']} 行[/green]")
         console.print(outcome["sql"])
     else:
         console.print(f"[red]执行失败: {outcome.get('error', '')}[/red]")
         raise SystemExit(1)
+
+
+@t2s_sub.command("backtest")
+@click.argument("sub_id")
+@click.option("--days", type=int, default=90, show_default=True,
+              help="回测窗口天数（7-365）")
+@click.option("--end", "end_raw", default="", help="回测截止日 YYYY-MM-DD（默认昨天）")
+def t2s_sub_backtest(sub_id: str, days: int, end_raw: str) -> None:
+    """回放告警规则：过去 N 天里哪些天会触发告警（上线前调参用）。"""
+    _ensure_utf8_stdio()
+    from datetime import date, timedelta
+
+    from seatunnel_agent.agents.data.text2sql.executor import create_executor
+    from seatunnel_agent.agents.data.text2sql.metrics import (
+        load_metric_store,
+        parse_date,
+    )
+    from seatunnel_agent.agents.data.text2sql.subscriptions import (
+        SubscriptionStore,
+        backtest_watch,
+        resolve_db_config,
+    )
+
+    store = SubscriptionStore()
+    sub = store.get(sub_id)
+    if sub is None:
+        raise click.ClickException(f"订阅 '{sub_id}' 不存在")
+    if sub.get("source_type") != "metric_watch":
+        raise click.ClickException("backtest 只支持 metric_watch 订阅")
+    db_config = resolve_db_config(sub)
+    if db_config is None:
+        raise click.ClickException("无法解析数据库连接")
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        schema_ddl_path_from_env,
+    )
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+
+    ddl = Path(schema_ddl_path_from_env())
+    if not ddl.is_file():
+        raise click.ClickException(f"schema DDL 不存在: {ddl}")
+    schema_store = SchemaStore.from_file(ddl)
+    metric_store, _errors = load_metric_store(schema_store)
+    end = parse_date(end_raw) if end_raw else date.today() - timedelta(days=1)
+    try:
+        out = backtest_watch(
+            sub, schema_store, metric_store, create_executor(db_config),
+            end=end, days=days,
+        )
+    except Exception as exc:
+        raise click.ClickException(str(exc))
+    console.print(
+        f"[bold]{out['metric']}[/bold] watch_mode={out['watch_mode']} "
+        f"窗口 {out['window']['start']}..{out['window']['end']}  "
+        f"评估 {out['days_evaluated']} 天 / 无数据 {out['no_data_days']} 天"
+    )
+    console.print(
+        f"会触发告警 [bold]{out['alert_count']}[/bold] 次"
+        + (f"（告警率 {out['alert_rate_pct']}%）" if out["alert_rate_pct"] is not None else "")
+    )
+    for a in out["alerts"]:
+        if "expected" in a:
+            console.print(
+                f"  {a['day']}  实际 {a['actual']:,.2f}  "
+                f"预期 {a['expected']:,.2f} [{a['lo']:,.2f}, {a['hi']:,.2f}]"
+            )
+        else:
+            console.print(
+                f"  {a['day']}  实际 {a['actual']:,.2f}  "
+                f"参照 {a['prev']:,.2f}  变动 {a['change_rate_pct']}%"
+            )
+
+
+@click.command(name="t2s-report")
+@click.option("--ddl", type=click.Path(exists=True), required=True,
+              help="schema DDL 文件（表白名单）")
+@click.option("--metrics-file", "-f", type=click.Path(exists=True),
+              default=None, help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--ds-type", default="hive", show_default=True)
+@click.option("--connection", default="", help="连接预设名")
+@click.option("--database", default="", help="sqlite 数据库路径（仅 sqlite）")
+@click.option("--out", "out_dir", default="reports/t2s", show_default=True,
+              help="报告输出目录")
+@click.option("--no-llm", is_flag=True, help="只输出确定性表格骨架,不叙述")
+def t2s_report(ddl: str, metrics_file: str | None, ds_type: str,
+               connection: str, database: str, out_dir: str,
+               no_llm: bool) -> None:
+    """经营周报：确定性骨架（周值/环比/目标/告警/最大变动归因）+ 可选
+    LLM 叙述（禁改数字），落盘 Markdown。"""
+    _ensure_utf8_stdio()
+    from datetime import date
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.text2sql.executor import create_executor
+    from seatunnel_agent.agents.data.text2sql.report import (
+        build_weekly_skeleton,
+        narrate,
+        render_skeleton_md,
+    )
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+    from seatunnel_agent.agents.data.text2sql.subscriptions import (
+        SubscriptionStore,
+        resolve_db_config,
+    )
+
+    store, errors = _load_metrics_for_cli(metrics_file, ddl)
+    if errors:
+        for err in errors:
+            console.print(f"[red]{err}[/red]")
+        raise SystemExit(1)
+    if len(store) == 0:
+        raise click.ClickException("没有指标定义")
+    db_config = resolve_db_config({
+        "ds_type": ds_type, "connection": connection, "database": database,
+    })
+    if db_config is None:
+        raise click.ClickException("无法解析数据库连接")
+    try:
+        subs = SubscriptionStore().list()
+    except Exception:
+        subs = []
+    sk = build_weekly_skeleton(
+        store, SchemaStore.from_file(ddl), create_executor(db_config),
+        subs, today=date.today(), ds_type=ds_type,
+    )
+    md = render_skeleton_md(sk)
+    if not no_llm:
+        from seatunnel_agent.common.config import load_settings
+
+        prose = narrate(md, load_settings())
+        if prose:
+            md = md + "\n## 摘要\n\n" + prose + "\n"
+        else:
+            console.print("[yellow]LLM 不可用,输出纯表格骨架[/yellow]")
+    target = Path(out_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    path = target / f"weekly_{sk['week']['end'].replace('-', '')}.md"
+    path.write_text(md, encoding="utf-8")
+    console.print(f"[green]周报已落盘: {path}[/green]")
+
+
+@click.command(name="chatbi-demo")
+@click.option("--dir", "target_dir", default="demo/chatbi", show_default=True,
+              help="演示资产输出目录")
+@click.option("--days", type=int, default=60, show_default=True,
+              help="演示数据天数")
+def chatbi_demo(target_dir: str, days: int) -> None:
+    """生成自包含的 Chat BI 演示环境:sqlite 数据(星期形态/退款尖峰/
+    节假日效应)+ 全特性 metrics.yaml + DDL + 10 个演示问题。"""
+    _ensure_utf8_stdio()
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.text2sql.demo import build_demo
+    from seatunnel_agent.agents.data.text2sql.metrics import MetricStore
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+
+    info = build_demo(target_dir, days=max(30, min(days, 365)))
+    # self-check: the generated assets must validate against each other
+    schema_store = SchemaStore.from_file(info["ddl"])
+    _store, errors = MetricStore.from_text(
+        Path(info["metrics"]).read_text(encoding="utf-8"), schema_store,
+    )
+    if errors:
+        raise click.ClickException("演示指标定义自检失败: " + "; ".join(errors))
+    console.print(f"[green]演示环境已生成[/green]（{info['rows']} 行 / "
+                  f"{info['days']} 天，退款尖峰日 {info['anomaly_day']}）")
+    console.print(f"  数据库: {info['db']}")
+    console.print(f"  问题清单: {info['questions']}")
+    console.print("启动（PowerShell 示例）：")
+    console.print(f"  $env:SCHEMA_DDL_PATH = '{info['ddl']}'")
+    console.print(f"  $env:T2S_METRICS_PATH = '{info['metrics']}'")
+    console.print("  seatunnel-agent ui   # 进入 /text2sql，按 QUESTIONS.md 逐条问")
+
+
+@click.command(name="t2s-doctor")
+@click.option("--ddl", type=click.Path(exists=True), required=True,
+              help="schema DDL 文件（表白名单）")
+@click.option("--metrics-file", "-f", type=click.Path(exists=True),
+              default=None, help="指标定义文件（默认 config/metrics.yaml）")
+def t2s_doctor(ddl: str, metrics_file: str | None) -> None:
+    """资产漂移体检：示例库/收藏/看板/订阅 对当前 DDL+指标库的静态校验。
+    发现 error 级问题时退出码 1（可做 CI 门禁）。"""
+    _ensure_utf8_stdio()
+    from seatunnel_agent.agents.data.text2sql.boards import BoardStore
+    from seatunnel_agent.agents.data.text2sql.examples import ExampleStore
+    from seatunnel_agent.agents.data.text2sql.favorites import FavoritesStore
+    from seatunnel_agent.agents.data.text2sql.health import asset_findings
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+    from seatunnel_agent.agents.data.text2sql.subscriptions import (
+        SubscriptionStore,
+    )
+
+    schema_store = SchemaStore.from_file(ddl)
+    metric_store, errors = _load_metrics_for_cli(metrics_file, ddl)
+    for err in errors:
+        console.print(f"[yellow]指标定义警告: {err}[/yellow]")
+
+    def _safe(loader):
+        try:
+            return loader()
+        except Exception:
+            return []
+
+    findings = asset_findings(
+        schema_store, metric_store,
+        examples=_safe(lambda: ExampleStore().list()),
+        favorites=_safe(lambda: FavoritesStore().list()),
+        boards=_safe(lambda: BoardStore().list()),
+        subs=_safe(lambda: SubscriptionStore().list()),
+    )
+    if not findings:
+        console.print("[green]体检通过：四类资产与当前 schema/指标库一致[/green]")
+        return
+    n_err = sum(1 for f in findings if f["level"] == "error")
+    for f in findings:
+        color = "red" if f["level"] == "error" else "yellow"
+        console.print(
+            f"[{color}]{f['level'].upper()}[/{color}] "
+            f"[{f['kind']}] {f['id']} — {f['problem']}（{f['action']}）"
+        )
+    console.print(
+        f"共 {len(findings)} 条（error {n_err}）"
+    )
+    if n_err:
+        raise SystemExit(1)
+
+
+@click.command(name="t2s-qlog-stats")
+@click.option("--top", type=int, default=10, show_default=True, help="Top N")
+@click.option("--last", type=int, default=2000, show_default=True,
+              help="只统计最近 N 条记录")
+@click.option("--log-dir", default="logs", show_default=True)
+def t2s_qlog_stats(top: int, last: int, log_dir: str) -> None:
+    """qlog 洞察：高频问题×示例覆盖(语义缓存收益)、失败聚类、慢查询、来源分布。"""
+    _ensure_utf8_stdio()
+    from seatunnel_agent.agents.data.text2sql.examples import ExampleStore
+    from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger, insights
+
+    entries = QueryLogger(log_dir=log_dir).recent(last)
+    try:
+        ex: ExampleStore | None = ExampleStore()
+    except Exception:
+        ex = None
+    out = insights(entries, example_store=ex, top=top)
+    console.print(
+        f"记录 {out['total']} 条（交互式 {out['interactive_total']} 条），"
+        f"来源分布 {out['sources']}"
+    )
+    if out["cache_coverage_pct"] is not None:
+        console.print(
+            f"语义缓存覆盖率：[bold]{out['cache_coverage_pct']}%[/bold] "
+            "的交互式查询其问题已有验证示例"
+        )
+    if out["top_questions"]:
+        console.print("[bold]高频问题（✅=已固化示例，建议把 ❌ 的固化）:[/bold]")
+        for q in out["top_questions"]:
+            mark = "✅" if q["has_example"] else "❌"
+            console.print(
+                f"  {mark} ×{q['count']}（成功 {q['success']}）{q['question']}"
+            )
+    if out["failures"]:
+        console.print("[bold]失败聚类:[/bold]")
+        for f in out["failures"]:
+            console.print(
+                f"  ×{f['count']} {f['question']}"
+                + (f" — {f.get('last_error', '')}" if f.get("last_error") else "")
+            )
+    if out["slow_queries"]:
+        console.print("[bold]慢查询 Top:[/bold]")
+        for s in out["slow_queries"][:5]:
+            console.print(
+                f"  {s['exec_time_ms']}ms [{s['source']}] {s['user_query']}"
+            )
 
 
 @click.command(name="t2s-cron")
@@ -549,6 +850,140 @@ def metrics_validate(metrics_file: str | None, ddl: str) -> None:
             console.print(f"[red]{err}[/red]")
         raise SystemExit(1)
     console.print(f"[green]校验通过：{len(store)} 个指标定义与 DDL 一致[/green]")
+    _report_caliber_changes(metrics_file, store)
+
+
+def _report_caliber_changes(metrics_file: str | None, new_store) -> None:
+    """Diff the working copy against the last committed metrics.yaml (git)
+    and name the changed calibers plus the subscriptions they feed —
+    a caliber edit must never be invisible. Best-effort: no git, no diff."""
+    import subprocess
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.text2sql.metrics import (
+        MetricStore,
+        diff_metric_stores,
+    )
+
+    path = Path(metrics_file) if metrics_file else Path("config/metrics.yaml")
+    try:
+        out = subprocess.run(
+            ["git", "show", f"HEAD:{path.as_posix()}"],
+            capture_output=True, text=True, encoding="utf-8", timeout=15,
+        )
+    except Exception:
+        return
+    if out.returncode != 0 or not out.stdout.strip():
+        return  # not tracked yet / no git — nothing to compare
+    old_store, _errs = MetricStore.from_text(out.stdout)
+    diff = diff_metric_stores(old_store, new_store)
+    if not (diff["added"] or diff["removed"] or diff["changed"]):
+        return
+    console.print("[yellow]口径相对上一提交发生变化:[/yellow]")
+    for n in diff["added"]:
+        console.print(f"  + 新增指标 {n}")
+    for n in diff["removed"]:
+        console.print(f"  - 删除指标 {n}")
+    for ch in diff["changed"]:
+        for f in ch["fields"]:
+            console.print(
+                f"  ~ {ch['name']}.{f['field']}: {f['old']!r} → {f['new']!r}"
+            )
+    touched = set(diff["removed"]) | {c["name"] for c in diff["changed"]}
+    if not touched:
+        return
+    try:
+        from seatunnel_agent.agents.data.text2sql.subscriptions import (
+            SubscriptionStore,
+        )
+
+        affected = [
+            s for s in SubscriptionStore().list()
+            if s.get("metric") in touched
+            or touched & set(s.get("metrics") or [])
+        ]
+    except Exception:
+        return
+    for s in affected:
+        console.print(
+            f"  [yellow]受影响订阅: {s['id']} {s['name']}"
+            f"（{s['source_type']}）[/yellow]"
+        )
+
+
+@metrics.command("health")
+@click.option("--ddl", type=click.Path(exists=True), required=True,
+              help="schema DDL 文件（表白名单）")
+@click.option("--file", "-f", "metrics_file", type=click.Path(exists=True),
+              default=None, help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--ds-type", default="hive", show_default=True)
+@click.option("--connection", default="", help="连接预设名")
+@click.option("--database", default="", help="sqlite 数据库路径（仅 sqlite）")
+@click.option("--log-dir", default="logs", show_default=True)
+def metrics_health(
+    ddl: str, metrics_file: str | None, ds_type: str,
+    connection: str, database: str, log_dir: str,
+) -> None:
+    """指标健康页：每指标一行 新鲜度/告警中/7天查询与失败/月目标达成,红黄绿排序。"""
+    _ensure_utf8_stdio()
+    from datetime import date
+
+    from seatunnel_agent.agents.data.text2sql.executor import create_executor
+    from seatunnel_agent.agents.data.text2sql.health import metric_health
+    from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
+    from seatunnel_agent.agents.data.text2sql.subscriptions import (
+        SubscriptionStore,
+        resolve_db_config,
+    )
+
+    store, errors = _load_metrics_for_cli(metrics_file, ddl)
+    if errors:
+        for err in errors:
+            console.print(f"[red]{err}[/red]")
+        raise SystemExit(1)
+    if len(store) == 0:
+        raise click.ClickException("没有指标定义")
+    db_config = resolve_db_config({
+        "ds_type": ds_type, "connection": connection, "database": database,
+    })
+    if db_config is None:
+        raise click.ClickException("无法解析数据库连接")
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+
+    schema_store = SchemaStore.from_file(ddl)
+    try:
+        subs = SubscriptionStore().list()
+    except Exception:
+        subs = []
+    rows = metric_health(
+        store, schema_store, create_executor(db_config),
+        QueryLogger(log_dir=log_dir).recent(5000), subs,
+        today=date.today(), ds_type=ds_type,
+    )
+    dot = {"red": "[red]●[/red]", "yellow": "[yellow]●[/yellow]",
+           "green": "[green]●[/green]"}
+    for r in rows:
+        bits = []
+        if r.get("latest_day"):
+            bits.append(f"最新 {r['latest_day']}（滞后 {r['lag_days']} 天）")
+        if r.get("freshness_error"):
+            bits.append(f"新鲜度检查失败: {r['freshness_error']}")
+        if r.get("alerting"):
+            bits.append(f"告警中（自 {r.get('alerting_since', '?')}）")
+        bits.append(
+            f"7天 {r['queries_7d']} 查询/{r['failures_7d']} 失败"
+            f"/{r['alerts_7d']} 次告警"
+        )
+        if "month_completion_pct" in r:
+            bits.append(f"月目标 {r['month_completion_pct']:g}%")
+        if r.get("target_error"):
+            bits.append(f"目标计算失败: {r['target_error']}")
+        if r["subscriptions"]:
+            bits.append(f"{r['subscriptions']} 个订阅")
+        console.print(
+            f"{dot[r['status']]} [bold]{r['metric']}[/bold]"
+            f"（{r['display_name']}） " + " · ".join(bits)
+        )
 
 
 @metrics.command("sql")
@@ -650,6 +1085,49 @@ def t2s_examples_add(question: str, sql: str, examples_file: str | None) -> None
     console.print(f"[green]已添加示例 {entry['id']}（现共 {len(store)} 条）[/green]")
 
 
+@t2s_examples.command("promote")
+@click.option("--top", type=int, default=10, show_default=True, help="最多固化条数")
+@click.option("--min-count", type=int, default=2, show_default=True,
+              help="最低出现次数")
+@click.option("--last", type=int, default=2000, show_default=True,
+              help="只看最近 N 条 qlog")
+@click.option("--log-dir", default="logs", show_default=True)
+@click.option("--yes", is_flag=True, help="确认入库（缺省只列出候选,不写入）")
+@click.option("--file", "-f", "examples_file", type=click.Path(),
+              default=None, help="示例库文件（默认 config/t2s_examples.json）")
+def t2s_examples_promote(
+    top: int, min_count: int, last: int, log_dir: str,
+    yes: bool, examples_file: str | None,
+) -> None:
+    """把 qlog 里高频且成功、但尚无验证示例的问题批量固化进示例库
+    （= 下次同问走零成本语义缓存）。默认 dry-run。"""
+    _ensure_utf8_stdio()
+    from seatunnel_agent.agents.data.text2sql.examples import (
+        ExampleStore,
+        promote_candidates,
+    )
+    from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
+
+    store = ExampleStore(examples_file)
+    cands = promote_candidates(
+        QueryLogger(log_dir=log_dir).recent(last), store,
+        top=top, min_count=min_count,
+    )
+    if not cands:
+        console.print("没有可固化的候选（高频、成功、且尚无示例的问题）")
+        return
+    for c in cands:
+        console.print(f"×{c['count']} {c['question']}")
+        console.print(f"    {c['sql']}")
+    if not yes:
+        console.print(f"[yellow]dry-run：加 --yes 把以上 {len(cands)} 条入库[/yellow]")
+        return
+    for c in cands:
+        store.add(c["question"], c["sql"], tables=c.get("tables"),
+                  source="promoted")
+    console.print(f"[green]已固化 {len(cands)} 条示例[/green]")
+
+
 @t2s_examples.command("rm")
 @click.argument("example_id")
 @click.option("--file", "-f", "examples_file", type=click.Path(),
@@ -672,6 +1150,10 @@ def register(cli) -> None:
     cli.add_command(t2s_mcp)
     cli.add_command(t2s_sub)
     cli.add_command(t2s_cron)
+    cli.add_command(t2s_qlog_stats)
+    cli.add_command(t2s_doctor)
+    cli.add_command(chatbi_demo)
+    cli.add_command(t2s_report)
     cli.add_command(t2s_eval)
     cli.add_command(dqc)
     cli.add_command(metrics)

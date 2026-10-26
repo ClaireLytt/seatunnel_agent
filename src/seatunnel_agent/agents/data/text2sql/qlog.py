@@ -104,3 +104,95 @@ class QueryLogger:
                     pass
                 raise
             return len(abs_indices)
+
+
+def insights(
+    entries: list[dict[str, Any]],
+    example_store: Any = None,
+    top: int = 10,
+) -> dict[str, Any]:
+    """Flywheel-operations summary over qlog entries, LLM-free.
+
+    Surfaces the questions worth curating: the top repeated interactive
+    questions and whether each already has a verified example (= semantic
+    cache coverage), the failure clusters, the slowest queries and the
+    source mix. Non-interactive rows (bracketed channel tags such as
+    "[subscription] ...") are excluded from the question ranking.
+    """
+    from .examples import normalize_question
+
+    by_question: dict[str, dict[str, Any]] = {}
+    sources: dict[str, int] = {}
+    failures: dict[str, dict[str, Any]] = {}
+    interactive_total = 0
+    for e in entries:
+        src = str(e.get("source", "") or "unknown")
+        sources[src] = sources.get(src, 0) + 1
+        q_raw = str(e.get("user_query", "")).strip()
+        if not q_raw or q_raw.startswith("["):
+            continue
+        key = normalize_question(q_raw)
+        if not key:
+            continue
+        interactive_total += 1
+        slot = by_question.setdefault(
+            key, {"question": q_raw, "count": 0, "ok": 0},
+        )
+        slot["count"] += 1
+        if e.get("status") == "success":
+            slot["ok"] += 1
+        else:
+            f = failures.setdefault(key, {"question": q_raw, "count": 0})
+            f["count"] += 1
+            if e.get("error"):
+                f["last_error"] = str(e.get("error"))[:200]
+
+    def _has_example(q: str) -> bool:
+        if example_store is None:
+            return False
+        try:
+            return example_store.exact_match(q) is not None
+        except Exception:
+            return False
+
+    ranked = sorted(
+        by_question.values(), key=lambda s: s["count"], reverse=True,
+    )[:top]
+    top_questions = [
+        {
+            "question": s["question"],
+            "count": s["count"],
+            "success": s["ok"],
+            "has_example": _has_example(s["question"]),
+        }
+        for s in ranked
+    ]
+    covered = sum(
+        s["count"] for s in by_question.values()
+        if _has_example(s["question"])
+    )
+    slow = sorted(
+        (e for e in entries if e.get("exec_time_ms")),
+        key=lambda e: e.get("exec_time_ms") or 0, reverse=True,
+    )[:top]
+    return {
+        "total": len(entries),
+        "interactive_total": interactive_total,
+        "cache_coverage_pct": (
+            round(covered / interactive_total * 100, 1)
+            if interactive_total else None
+        ),
+        "top_questions": top_questions,
+        "failures": sorted(
+            failures.values(), key=lambda f: f["count"], reverse=True,
+        )[:top],
+        "slow_queries": [
+            {
+                "user_query": e.get("user_query", ""),
+                "exec_time_ms": e.get("exec_time_ms"),
+                "source": e.get("source", ""),
+            }
+            for e in slow
+        ],
+        "sources": sources,
+    }

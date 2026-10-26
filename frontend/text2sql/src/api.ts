@@ -49,8 +49,16 @@ export type ChatEvent =
       row_count: number
       chart_type?: string | null
     }
+  | { type: 'metric_draft'; name: string; yaml: string }
   | { type: 'final'; text: string; stopped?: boolean }
   | { type: 'error'; message: string }
+
+export const confirmMetricDraft = (
+  sessionId: string,
+): Promise<{ persisted: boolean; file: string; name: string; metric_count: number }> =>
+  fetchJson(`${BASE}/session/${sessionId}/metrics/draft/confirm`, {
+    method: 'POST',
+  })
 
 export async function chatStream(
   sessionId: string,
@@ -204,6 +212,7 @@ export interface Subscription {
   cron: string
   source_type: string
   metric: string
+  metrics?: string[]
   favorite_id: string
   webhook_url: string
   enabled: boolean
@@ -216,7 +225,13 @@ export const fetchSubscriptions = (): Promise<{ subscriptions: Subscription[] }>
   fetchJson(`${BASE}/subscriptions`)
 
 export const createSubscription = (
-  data: { name: string; cron: string; source_type: string; metric?: string; favorite_id?: string; ds_type?: string; connection?: string; database?: string; webhook_url?: string; lang?: string },
+  data: {
+    name: string; cron: string; source_type: string; metric?: string
+    favorite_id?: string; ds_type?: string; connection?: string
+    database?: string; webhook_url?: string; lang?: string
+    threshold_pct?: number; watch_mode?: string; max_lag_days?: number
+    metrics?: string[]
+  },
 ): Promise<{ subscription: Subscription }> =>
   fetchJson(`${BASE}/subscriptions`, {
     method: 'POST',
@@ -236,6 +251,61 @@ export const patchSubscription = (id: string, enabled: boolean): Promise<{ enabl
 
 export const runSubscription = (id: string): Promise<{ status: string; error?: string }> =>
   fetchJson(`${BASE}/subscriptions/${id}/run`, { method: 'POST' })
+
+export interface BacktestResult {
+  metric: string
+  watch_mode: string
+  threshold_pct: number
+  window: { start: string; end: string }
+  days_evaluated: number
+  no_data_days: number
+  alert_count: number
+  alert_rate_pct: number | null
+  alerts: Array<{
+    day: string
+    actual: number
+    prev?: number
+    change_rate_pct?: number | null
+    expected?: number
+    lo?: number
+    hi?: number
+  }>
+}
+
+export interface HealthRow {
+  metric: string
+  display_name: string
+  status: string
+  latest_day?: string | null
+  lag_days?: number | null
+  freshness_error?: string
+  alerting: boolean
+  alerting_since?: string
+  queries_7d: number
+  failures_7d: number
+  alerts_7d: number
+  month_completion_pct?: number
+  target_error?: string
+  subscriptions: number
+}
+
+export const fetchMetricHealth = (
+  sessionId: string,
+): Promise<{ rows: HealthRow[] }> =>
+  fetchJson(`${BASE}/session/${sessionId}/metrics/health`)
+
+export const fetchWeeklyReport = (
+  sessionId: string,
+): Promise<{ week: { start: string; end: string }; markdown: string }> =>
+  fetchJson(`${BASE}/session/${sessionId}/report/weekly`)
+
+export const backtestSubscription = (
+  id: string,
+  days = 90,
+): Promise<BacktestResult> =>
+  fetchJson(`${BASE}/subscriptions/${id}/backtest?days=${days}`, {
+    method: 'POST',
+  })
 
 export interface QlogRecord {
   timestamp: string

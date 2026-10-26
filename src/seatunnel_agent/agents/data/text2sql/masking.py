@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import re
+from typing import Any
 
 _KIND_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("phone", re.compile(r"mobile|phone|telephone|(?:^|_)tel(?:_|$)|手机|电话",
@@ -50,7 +51,7 @@ def sensitive_kind(column_name: str) -> str | None:
     return None
 
 
-def mask_value(value, kind: str) -> str:
+def mask_value(value: Any, kind: str) -> Any:
     """Mask a single value; deterministic and shape-preserving-ish."""
     if value is None:
         return value
@@ -73,18 +74,70 @@ def mask_value(value, kind: str) -> str:
     return s[0] + "*" * (len(s) - 2) + s[-1]
 
 
+_ALIAS_PAIR_RE = re.compile(
+    r"([\w.()`\"]+(?:\([^()]*\))?)\s+as\s+([`\"]?\w+[`\"]?)",
+    re.IGNORECASE,
+)
+
+
+def _alias_kinds_ast(sql: str) -> dict[str, str] | None:
+    """Alias → kind via the sqlglot projection list (catches bare
+    ``SELECT t.user_phone p`` without AS); None when the SQL doesn't parse."""
+    try:
+        import sqlglot
+        from sqlglot import exp
+
+        statements = sqlglot.parse(sql)
+    except Exception:
+        return None
+    out: dict[str, str] = {}
+    for stmt in statements:
+        if stmt is None:
+            return None
+        for node in stmt.walk():
+            if isinstance(node, exp.Alias) and node.alias:
+                kind = sensitive_kind(node.this.sql())
+                if kind:
+                    out.setdefault(node.alias.lower(), kind)
+    return out
+
+
+def alias_kinds(sql: str) -> dict[str, str]:
+    """Map result aliases to the mask kind of their source expression.
+
+    ``SELECT user_phone AS p`` must not leak the raw phone just because the
+    alias ``p`` looks innocent: any aliased expression that mentions a
+    sensitive column name taints the alias. sqlglot AST first (covers
+    AS-less aliases), ``<expr> AS <alias>`` regex when the SQL won't parse.
+    """
+    ast_out = _alias_kinds_ast(sql)
+    if ast_out is not None:
+        return ast_out
+    out: dict[str, str] = {}
+    for m in _ALIAS_PAIR_RE.finditer(sql):
+        expr, alias = m.group(1), m.group(2).strip('`"').lower()
+        if alias in out:
+            continue
+        kind = sensitive_kind(expr)
+        if kind:
+            out[alias] = kind
+    return out
+
+
 def apply_masking(
-    columns: list[str], rows: list,
+    columns: list[str], rows: list, sql: str = "",
 ) -> tuple[list, list[str]]:
     """Mask sensitive columns; returns (rows, masked_column_names).
 
+    When *sql* is given, aliases of sensitive source columns are masked too.
     No-op (same rows object) when masking is disabled or nothing matches.
     """
     if not masking_enabled() or not columns:
         return rows, []
+    by_alias = alias_kinds(sql) if sql else {}
     kinds: dict[int, str] = {}
     for i, col in enumerate(columns):
-        kind = sensitive_kind(col)
+        kind = sensitive_kind(col) or by_alias.get((col or "").strip().lower())
         if kind:
             kinds[i] = kind
     if not kinds:

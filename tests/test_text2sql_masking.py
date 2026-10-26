@@ -113,3 +113,45 @@ def test_subscription_card_masks(monkeypatch) -> None:
 
     md = render_card_markdown(["mobile"], [("13812345678",)])
     assert "13812345678" not in md and "138****78" in md
+
+
+def test_alias_kinds_maps_sensitive_source() -> None:
+    from seatunnel_agent.agents.data.text2sql.masking import alias_kinds
+
+    kinds = alias_kinds("SELECT user_phone AS p, name AS n FROM users")
+    assert kinds == {"p": "phone"}
+
+
+def test_apply_masking_with_sql_masks_alias(monkeypatch) -> None:
+    monkeypatch.delenv("T2S_MASKING", raising=False)
+    sql = "SELECT user_phone AS p FROM users"
+    rows, masked = apply_masking(["p"], [("13812345678",)], sql=sql)
+    assert masked == ["p"]
+    assert rows[0][0] == "138****78"
+
+
+def test_apply_masking_without_sql_keeps_old_behavior(monkeypatch) -> None:
+    monkeypatch.delenv("T2S_MASKING", raising=False)
+    rows, masked = apply_masking(["p"], [("13812345678",)])
+    assert masked == [] and rows[0][0] == "13812345678"
+
+
+def test_alias_kinds_bare_alias_without_as(monkeypatch) -> None:
+    monkeypatch.delenv("T2S_MASKING", raising=False)
+    from seatunnel_agent.agents.data.text2sql.masking import alias_kinds
+
+    kinds = alias_kinds("SELECT t.user_phone p FROM users t")
+    assert kinds == {"p": "phone"}
+
+
+def test_webhook_host_whitelist(monkeypatch) -> None:
+    from seatunnel_agent.agents.data.text2sql.notify import allowed_webhook
+
+    monkeypatch.delenv("T2S_WEBHOOK_ALLOW_HOSTS", raising=False)
+    assert allowed_webhook("https://evil.example/x")[0]  # unset: open
+
+    monkeypatch.setenv("T2S_WEBHOOK_ALLOW_HOSTS", "open.feishu.cn,qyapi.weixin.qq.com")
+    assert allowed_webhook("https://open.feishu.cn/hook/abc")[0]
+    ok, why = allowed_webhook("https://evil.example/x")
+    assert not ok and "evil.example" in why
+    assert allowed_webhook("mailto:a@b.com")[0]  # email exempt

@@ -16,9 +16,12 @@ Two metric kinds:
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from pathlib import Path
+from typing import Any
 
 from .matcher import tokenize
 from .partition import TimeRange
@@ -70,11 +73,80 @@ def parse_date(raw: str):
     raise MetricError(f"无法解析日期 '{raw}'（支持 YYYY-MM-DD / yyyyMMdd）")
 
 
+def require_time_range(start_raw: str, end_raw: str) -> TimeRange:
+    """Like :func:`parse_time_range` but a missing range is an error."""
+    tr = parse_time_range(start_raw, end_raw)
+    if tr is None:
+        raise MetricError("必须提供时间范围（start/end 至少其一）")
+    return tr
+
+
+def resolve_named_range(
+    text: str, today: date | None = None,
+) -> tuple[date, date] | None:
+    """(start, end) for a Chinese business-time phrase, or None.
+
+    Covers relative periods (昨天/本周/上月/上季度/近N天…) and statutory
+    holidays via :mod:`calendar_cn` (春节/2025国庆/五一期间…). Deterministic
+    so the LLM passes the phrase through instead of guessing dates.
+    """
+    from . import calendar_cn
+
+    t = (text or "").strip()
+    if not t:
+        return None
+    today = today or date.today()
+    yesterday = today - timedelta(days=1)
+    if t in ("今天", "今日"):
+        return today, today
+    if t in ("昨天", "昨日"):
+        return yesterday, yesterday
+    if t == "本周":
+        start = today - timedelta(days=today.weekday())
+        return start, today
+    if t == "上周":
+        this_mon = today - timedelta(days=today.weekday())
+        return this_mon - timedelta(days=7), this_mon - timedelta(days=1)
+    if t in ("本月", "这个月"):
+        return today.replace(day=1), today
+    if t in ("上月", "上个月"):
+        first = today.replace(day=1)
+        prev_last = first - timedelta(days=1)
+        return prev_last.replace(day=1), prev_last
+    if t in ("本季度", "这个季度"):
+        qs = today.replace(month=((today.month - 1) // 3) * 3 + 1, day=1)
+        return qs, today
+    if t in ("上季度", "上个季度"):
+        qs = today.replace(month=((today.month - 1) // 3) * 3 + 1, day=1)
+        prev_last = qs - timedelta(days=1)
+        prev_qs = prev_last.replace(
+            month=((prev_last.month - 1) // 3) * 3 + 1, day=1,
+        )
+        return prev_qs, prev_last
+    if t in ("今年", "本年"):
+        return today.replace(month=1, day=1), today
+    if t == "去年":
+        return (date(today.year - 1, 1, 1), date(today.year - 1, 12, 31))
+    m = re.fullmatch(r"[近最]近?\s*(\d{1,3})\s*[天日]", t)
+    if m:
+        n = max(1, int(m.group(1)))
+        return yesterday - timedelta(days=n - 1), yesterday
+    return calendar_cn.named_holiday_range(t, today)
+
+
 def parse_time_range(start_raw: str, end_raw: str) -> TimeRange | None:
-    """Build a TimeRange from optional start/end strings (None if both empty)."""
+    """Build a TimeRange from optional start/end strings (None if both empty).
+
+    A lone start string may also be a named Chinese period (春节 / 上季度 /
+    近30天), resolved deterministically to its calendar span.
+    """
     start_raw, end_raw = (start_raw or "").strip(), (end_raw or "").strip()
     if not start_raw and not end_raw:
         return None
+    if start_raw and not end_raw:
+        named = resolve_named_range(start_raw)
+        if named:
+            return TimeRange(start=named[0], end=named[1])
     start = parse_date(start_raw) if start_raw else None
     end = parse_date(end_raw) if end_raw else None
     return TimeRange(start=start or end, end=end or start)
@@ -117,6 +189,11 @@ class MetricDef:
     # ratio fields (names of additive metrics)
     numerator: str = ""
     denominator: str = ""
+    # period targets for progress tracking: {"month"|"quarter"|"year": value}
+    targets: dict[str, float] = field(default_factory=dict)
+    # multiplicative factor tree: this metric ≈ product of these metrics
+    # (e.g. gmv = traffic × cvr × aov); names of defined metrics
+    tree: tuple[str, ...] = ()
 
     @property
     def is_ratio(self) -> bool:
@@ -206,6 +283,68 @@ def _parse_joins(raw: dict, where: str, errors: list[str]) -> tuple[JoinSpec, ..
     return tuple(joins)
 
 
+TARGET_PERIODS = ("month", "quarter", "year")
+
+
+def _parse_targets(
+    raw: dict, where: str, mtype: str, errors: list[str],
+) -> dict[str, float]:
+    """``targets: {month: 3000000}`` — positive numbers on additive metrics
+    (a ratio target is a level, not a sum; progress projection can't
+    aggregate it, so it is rejected up front)."""
+    targets_raw = raw.get("targets")
+    if targets_raw is None:
+        return {}
+    if not isinstance(targets_raw, dict):
+        errors.append(f"{where}: targets 必须是 {{period: 数值}} 映射")
+        return {}
+    if mtype == "ratio":
+        errors.append(f"{where}: ratio 指标暂不支持 targets")
+        return {}
+    out: dict[str, float] = {}
+    for period, value in targets_raw.items():
+        p = str(period).strip().lower()
+        if p not in TARGET_PERIODS:
+            errors.append(
+                f"{where}: targets 周期只支持 {', '.join(TARGET_PERIODS)} (got '{period}')"
+            )
+            continue
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            errors.append(f"{where}: targets.{p} 必须是数值 (got {value!r})")
+            continue
+        if v <= 0:
+            errors.append(f"{where}: targets.{p} 必须 > 0")
+            continue
+        out[p] = v
+    return out
+
+
+_TREE_MAX_FACTORS = 5
+
+
+def _parse_tree(raw: dict, where: str, errors: list[str]) -> tuple[str, ...]:
+    """``tree: [traffic, cvr, aov]`` — the metric as a product of factors."""
+    tree_raw = raw.get("tree")
+    if tree_raw is None:
+        return ()
+    if not isinstance(tree_raw, list):
+        errors.append(f"{where}: tree 必须是指标名列表")
+        return ()
+    names = [str(n).strip() for n in tree_raw if str(n).strip()]
+    if len(names) < 2:
+        errors.append(f"{where}: tree 至少需要 2 个因子")
+        return ()
+    if len(names) > _TREE_MAX_FACTORS:
+        errors.append(f"{where}: tree 最多 {_TREE_MAX_FACTORS} 个因子")
+        return ()
+    if len(set(names)) != len(names):
+        errors.append(f"{where}: tree 因子不能重复")
+        return ()
+    return tuple(names)
+
+
 def _parse_one(raw: dict, index: int, errors: list[str]) -> MetricDef | None:
     where = f"metrics[{index}]"
     name = str(raw.get("name", "")).strip()
@@ -251,6 +390,8 @@ def _parse_one(raw: dict, index: int, errors: list[str]) -> MetricDef | None:
         joins=_parse_joins(raw, where, errors),
         numerator=str(raw.get("numerator", "") or "").strip(),
         denominator=str(raw.get("denominator", "") or "").strip(),
+        targets=_parse_targets(raw, where, mtype, errors),
+        tree=_parse_tree(raw, where, errors),
     )
     if mtype == "ratio" and metric.joins:
         errors.append(f"{where}: ratio 指标不能直接声明 joins（在分子/分母上声明）")
@@ -355,6 +496,13 @@ class MetricStore:
                 errors.extend(self._validate_ratio(m))
             else:
                 errors.extend(self._validate_additive(m, schema_store))
+            for n in m.tree:
+                if n == m.name:
+                    errors.append(f"metric '{m.name}': tree 不能引用自身")
+                elif self.get(n) is None:
+                    errors.append(
+                        f"metric '{m.name}': tree 因子 '{n}' 未定义"
+                    )
         return errors
 
     def _validate_additive(
@@ -501,6 +649,105 @@ class MetricStore:
 
         match.hits = list(dict.fromkeys(match.hits))[:8]
         return match
+
+
+#: fields whose change alters the metric's caliber (numbers move)
+CALIBER_FIELDS = (
+    "table", "expression", "time_column", "dimensions", "default_filters",
+    "joins", "numerator", "denominator", "metric_type", "targets", "tree",
+)
+
+
+def diff_metric_stores(
+    old: MetricStore, new: MetricStore,
+) -> dict[str, Any]:
+    """Caliber diff between two metric stores: added / removed names, and
+    per-metric field changes for :data:`CALIBER_FIELDS`."""
+    old_names = {m.name for m in old.metrics}
+    new_names = {m.name for m in new.metrics}
+    changed: list[dict[str, Any]] = []
+    for name in sorted(old_names & new_names):
+        m_old, m_new = old.get(name), new.get(name)
+        fields: list[dict[str, Any]] = []
+        for f in CALIBER_FIELDS:
+            v_old, v_new = getattr(m_old, f), getattr(m_new, f)
+            if v_old != v_new:
+                fields.append({"field": f, "old": v_old, "new": v_new})
+        if fields:
+            changed.append({"name": name, "fields": fields})
+    return {
+        "added": sorted(new_names - old_names),
+        "removed": sorted(old_names - new_names),
+        "changed": changed,
+    }
+
+
+def metrics_file_path() -> Path:
+    """The metrics.yaml the default loader reads (env override honored)."""
+    env_path = os.getenv("T2S_METRICS_PATH", "").strip()
+    return Path(env_path) if env_path else DEFAULT_METRICS_PATH
+
+
+def draft_metric_entry(
+    raw: dict[str, Any], schema_store: SchemaStore | None,
+) -> tuple[dict[str, Any] | None, list[str], str]:
+    """Validate ONE candidate metric entry against the current catalog.
+
+    Returns (clean_entry, errors, yaml_snippet). The candidate is checked
+    exactly the way `metrics validate` would see it after persisting: the
+    current file's entries plus this one, parsed and cross-validated — so a
+    confirmed draft can never break the catalog.
+    """
+    import yaml
+
+    entry = {k: v for k, v in raw.items() if v not in (None, "", [], {})}
+    current: list[dict[str, Any]] = []
+    target = metrics_file_path()
+    if target.is_file():
+        loaded = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+        current = list(loaded.get("metrics", []) or [])
+    name = str(entry.get("name", "")).strip()
+    if any(str(m.get("name", "")).strip() == name for m in current):
+        return None, [f"指标 '{name}' 已存在(改名或先删除)"], ""
+    candidate_text = yaml.safe_dump(
+        {"metrics": current + [entry]}, allow_unicode=True, sort_keys=False,
+    )
+    store, errors = MetricStore.from_text(candidate_text, schema_store)
+    if not errors and schema_store is not None:
+        errors = store.validate(schema_store)
+    snippet = yaml.safe_dump([entry], allow_unicode=True, sort_keys=False)
+    if errors:
+        return None, errors, snippet
+    return entry, [], snippet
+
+
+def append_metric_entry(entry: dict[str, Any]) -> Path:
+    """Append a validated entry to the metrics file (atomic replace)."""
+    import tempfile
+
+    import yaml
+
+    target = metrics_file_path()
+    current: list[dict[str, Any]] = []
+    if target.is_file():
+        loaded = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+        current = list(loaded.get("metrics", []) or [])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = yaml.safe_dump(
+        {"metrics": current + [entry]}, allow_unicode=True, sort_keys=False,
+    )
+    fd, tmp = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, str(target))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return target
 
 
 def load_metric_store(

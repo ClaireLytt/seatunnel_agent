@@ -46,6 +46,7 @@ def _time_filter(
         if start and end and start != end:
             return f"{tcol} >= '{fmt(start)}' AND {tcol} <= '{fmt(end)}'"
         d = start or end
+        assert d is not None  # guarded by `not time_range.is_empty`
         return f"{tcol} = '{fmt(d)}'"
 
     if max_partition and is_partition_col:

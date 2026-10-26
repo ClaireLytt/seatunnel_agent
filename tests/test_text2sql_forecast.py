@@ -46,6 +46,7 @@ metrics:
     expression: SUM(amount)
     time_column: dt
     dimensions: [channel]
+    targets: {month: 10000}
   - name: refund_amount
     display_name: 退款额
     description: 退款合计
@@ -109,6 +110,20 @@ def test_forecast_recovers_weekday_seasonality() -> None:
     assert by_day[sat] - by_day[mon] == pytest.approx(30.0, abs=1.0)
 
 
+def test_forecast_seasonality_does_not_leak_into_trend() -> None:
+    """周期形态不得污染趋势斜率:工作日 100/周末 50 的纯周期序列,
+    斜率必须≈0,下周一预测必须≈100(回拟合收敛修复的锁定测试)."""
+    start = date(2026, 3, 2)  # a Monday
+    pts = [
+        (start + timedelta(days=i),
+         50.0 if (start + timedelta(days=i)).weekday() >= 5 else 100.0)
+        for i in range(28)
+    ]
+    out = forecast_series(pts, horizon=1)
+    assert out["slope_per_day"] == pytest.approx(0.0, abs=1e-6)
+    assert out["forecasts"][0]["yhat"] == pytest.approx(100.0, abs=1e-3)
+
+
 def test_forecast_gap_fill_modes() -> None:
     pts = _linear(14)
     del pts[5]  # a missing day
@@ -153,6 +168,167 @@ def test_forecast_mostly_none_history_rejected() -> None:
     pts[0] = (pts[0][0], 100.0)
     with pytest.raises(ValueError, match="observed"):
         forecast_series(pts, horizon=1)
+
+
+# ----------------------------------------------------------------------
+# CN holiday calendar + holiday offsets
+# ----------------------------------------------------------------------
+
+
+def test_calendar_cn_official_counts() -> None:
+    from seatunnel_agent.agents.data.text2sql import calendar_cn as cal
+
+    by_year = {y: sum(1 for d in cal.HOLIDAYS if d.year == y)
+               for y in (2024, 2025, 2026)}
+    # per the State Council notices: 2024=1+8+3+5+1+3+7, 2025=1+8+3+5+3+8,
+    # 2026=3+9+3+5+3+3+7
+    assert by_year == {2024: 28, 2025: 28, 2026: 33}
+    makeup = {y: sum(1 for d in cal.MAKEUP_WORKDAYS if d.year == y)
+              for y in (2024, 2025, 2026)}
+    assert makeup == {2024: 8, 2025: 5, 2026: 6}
+    # makeup workdays are weekends by definition, never also holidays
+    assert all(d.weekday() >= 5 for d in cal.MAKEUP_WORKDAYS)
+    assert not (cal.HOLIDAYS & cal.MAKEUP_WORKDAYS)
+    assert not cal.covers(date(2027, 1, 1))
+    assert not cal.is_holiday(date(2027, 2, 8))  # uncovered year degrades
+
+
+def test_forecast_holiday_offset_applied() -> None:
+    # flat level 100 with a -40 dip on the 2026 Mid-Autumn days (9/25-27);
+    # the forecast window covers National Day (10/1-7), which must inherit
+    # the holiday offset and carry the is_holiday flag
+    from seatunnel_agent.agents.data.text2sql import calendar_cn as cal
+
+    start = date(2026, 9, 3)
+    pts = [
+        (start + timedelta(days=i),
+         60.0 if cal.is_holiday(start + timedelta(days=i)) else 100.0)
+        for i in range(28)  # ends 2026-09-30
+    ]
+    out = forecast_series(pts, horizon=8)  # 10/1 .. 10/8
+    assert out["method"].endswith("+cn_holiday")
+    assert out["holiday_offset"] < -10
+    by_day = {f["day"]: f for f in out["forecasts"]}
+    # a holiday forecast sits clearly below the non-holiday day after it
+    assert by_day["2026-10-01"]["yhat"] < by_day["2026-10-08"]["yhat"] - 10
+    assert by_day["2026-10-01"].get("is_holiday") is True
+    assert "is_holiday" not in by_day["2026-10-08"]
+
+
+def test_forecast_no_holidays_in_window_is_unchanged() -> None:
+    # March 2026 has no statutory holidays: offsets stay 0, method unchanged
+    out = forecast_series(_linear(28), horizon=3)
+    assert out["holiday_offset"] == 0.0
+    assert out["makeup_workday_offset"] == 0.0
+    assert out["method"] == "ols_trend+weekday_seasonality"
+    assert all("is_holiday" not in f for f in out["forecasts"])
+
+
+def test_forecast_single_holiday_day_not_enough() -> None:
+    # only one holiday day in history (< HOLIDAY_MIN_DAYS): no adjustment
+    start = date(2025, 12, 19)  # 28 days -> ends 2026-01-15, 元旦 1/1-3
+    pts = [(start + timedelta(days=i), 100.0) for i in range(14)]
+    # window 12/19 .. 1/1 contains exactly one holiday day (2026-01-01)
+    out = forecast_series(pts, horizon=2)
+    assert out["holiday_offset"] == 0.0
+    assert not out["method"].endswith("+cn_holiday")
+
+
+# ----------------------------------------------------------------------
+# week / month grain
+# ----------------------------------------------------------------------
+
+
+def test_forecast_week_grain_linear_trend() -> None:
+    start = date(2026, 3, 2)  # a Monday
+    pts = [(start + timedelta(weeks=i), 1000.0 + 70.0 * i) for i in range(10)]
+    out = forecast_series(pts, horizon=2, grain="week")
+    assert out["grain"] == "week"
+    assert out["method"] == "ols_trend"  # no weekday seasonality at week grain
+    assert out["slope_per_period"] == pytest.approx(70.0, abs=1e-6)
+    assert "slope_per_day" not in out
+    assert out["history_periods"] == 10
+    # next periods step by 7 days from the last Monday (2026-05-04)
+    assert [f["day"] for f in out["forecasts"]] == ["2026-05-11", "2026-05-18"]
+    assert [f["yhat"] for f in out["forecasts"]] == pytest.approx(
+        [1700.0, 1770.0])
+
+
+def test_forecast_month_grain_steps_by_month() -> None:
+    pts = [(date(2025, m, 1), 100.0 * m) for m in range(1, 11)]
+    out = forecast_series(pts, horizon=3, grain="month")
+    assert [f["day"] for f in out["forecasts"]] == [
+        "2025-11-01", "2025-12-01", "2026-01-01"]
+    assert out["forecasts"][0]["yhat"] == pytest.approx(1100.0, abs=1e-6)
+
+
+def test_forecast_misaligned_period_rejected() -> None:
+    pts = [(date(2026, 3, 2) + timedelta(weeks=i), 100.0) for i in range(8)]
+    pts.append((date(2026, 3, 4), 100.0))  # a Wednesday among Mondays
+    with pytest.raises(ValueError, match="misaligned"):
+        forecast_series(pts, horizon=1, grain="week")
+    with pytest.raises(ValueError, match="grain"):
+        forecast_series(pts[:8], horizon=1, grain="quarter")
+
+
+def test_forecast_tool_week_grain(runtime) -> None:
+    # fixture loads 2026-03-01..03-28; full ISO weeks are 3/2-8, 3/9-15,
+    # 3/16-22 — the partial edge weeks (3/1 alone, 3/23-28) must be dropped,
+    # which leaves too few points -> clear error, no silent bad fit
+    out = json.loads(execute_text2sql_tool("forecast_metric", {
+        "metric": "gmv", "horizon_days": 2, "grain": "week",
+        "history_days": 56, "end_date": "2026-03-28",
+    }, runtime))
+    assert not out.get("success")
+    assert "历史数据不足" in out["error"]
+
+
+def test_forecast_tool_week_grain_end_to_end(tmp_path, stores) -> None:
+    schema_store, metric_store = stores
+    db = tmp_path / "sales.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE sales("
+        "order_id TEXT, amount REAL, refund REAL, channel TEXT, dt TEXT)")
+    start = date(2026, 1, 5)  # a Monday; 12 full weeks -> ends 2026-03-29
+    rows = []
+    for i in range(12 * 7):
+        d = (start + timedelta(days=i)).isoformat()
+        rows.append((f"o{i}", 100.0, 10.0, "app", d))
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    rt = Text2SQLRuntime(
+        store=schema_store, metrics=metric_store, ds_type="sqlite",
+        db_config=DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)),
+        logger=QueryLogger(log_dir=tmp_path),
+    )
+    out = json.loads(execute_text2sql_tool("forecast_metric", {
+        "metric": "gmv", "horizon_days": 2, "grain": "week",
+        "history_days": 84, "end_date": "2026-03-29",
+    }, rt))
+    assert out.get("success"), out
+    assert out["grain"] == "week"
+    assert out["history_periods"] == 12
+    # flat 700/week -> flat forecast, Mondays after the last full week
+    assert out["forecasts"][0]["day"] == "2026-03-30"
+    assert out["forecasts"][0]["yhat"] == pytest.approx(700.0, abs=1e-6)
+
+
+def test_forecast_tool_ratio_refuses_week_grain(runtime) -> None:
+    out = json.loads(execute_text2sql_tool("forecast_metric", {
+        "metric": "refund_rate", "grain": "week", "end_date": "2026-03-28",
+    }, runtime))
+    assert not out.get("success")
+    assert "比率指标" in out["error"]
+
+
+def test_forecast_tool_bad_grain(runtime) -> None:
+    out = json.loads(execute_text2sql_tool("forecast_metric", {
+        "metric": "gmv", "grain": "quarter",
+    }, runtime))
+    assert out["error"].startswith("grain must be")
 
 
 # ----------------------------------------------------------------------
@@ -303,3 +479,145 @@ def test_forecast_tool_errors(runtime) -> None:
     out = json.loads(execute_text2sql_tool("forecast_metric", {
         "metric": "gmv", "end_date": "2030-01-01"}, runtime))
     assert "历史数据不足" in out["error"]
+
+
+# ----------------------------------------------------------------------
+# metric_target_progress tool (sqlite end-to-end)
+# ----------------------------------------------------------------------
+
+
+def test_target_progress_tool_registered() -> None:
+    assert any(t["name"] == "metric_target_progress" for t in TOOL_DEFINITIONS)
+
+
+def test_target_progress_end_to_end(runtime) -> None:
+    out = json.loads(execute_text2sql_tool("metric_target_progress", {
+        "metric": "gmv", "period": "month", "end_date": "2026-03-28",
+    }, runtime))
+    assert out.get("success"), out
+    # daily totals 150+5i, 28 days: 28*150 + 5*378 = 6090
+    assert out["actual"] == pytest.approx(6090.0, abs=1e-6)
+    assert out["completion_pct"] == pytest.approx(60.9, abs=0.01)
+    # remaining 3 days forecast on the exact linear trend: 290+295+300
+    assert out["projected_total"] == pytest.approx(6975.0, abs=0.01)
+    assert out["projected_completion_pct"] == pytest.approx(69.75, abs=0.01)
+    assert out["projection_method"].startswith("ols_trend")
+    assert out["days_elapsed"] == 28 and out["days_total"] == 31
+
+
+def test_target_progress_linear_pace_fallback(tmp_path, stores) -> None:
+    """3 天历史不足以拟合 → 线性节奏外推."""
+    schema_store, metric_store = stores
+    db = tmp_path / "short.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE sales("
+        "order_id TEXT, amount REAL, refund REAL, channel TEXT, dt TEXT)")
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?,?)", [
+        (f"o{i}", 100.0, 0.0, "app", f"2026-03-0{i+1}") for i in range(3)
+    ])
+    conn.commit()
+    conn.close()
+    rt = Text2SQLRuntime(
+        store=schema_store, metrics=metric_store, ds_type="sqlite",
+        db_config=DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)),
+        logger=QueryLogger(log_dir=tmp_path),
+    )
+    out = json.loads(execute_text2sql_tool("metric_target_progress", {
+        "metric": "gmv", "end_date": "2026-03-03",
+    }, rt))
+    assert out.get("success"), out
+    assert out["actual"] == pytest.approx(300.0)
+    # 300 / 3 天 * 31 天
+    assert out["projected_total"] == pytest.approx(3100.0)
+    assert out["projection_method"] == "linear_pace"
+
+
+def test_target_progress_no_target_declared(runtime) -> None:
+    out = json.loads(execute_text2sql_tool("metric_target_progress", {
+        "metric": "gmv", "period": "quarter",
+    }, runtime))
+    assert "未声明 quarter 目标" in out["error"]
+
+
+# ----------------------------------------------------------------------
+# correlate_metrics tool (sqlite end-to-end)
+# ----------------------------------------------------------------------
+
+# a fixed, non-monotonic daily pattern so lag detection has signal
+_NOISE = [5.0, 9.0, 2.0, 8.0, 1.0, 7.0, 3.0, 10.0, 4.0, 6.0,
+          12.0, 2.0, 9.0, 5.0, 11.0, 3.0, 8.0, 1.0, 10.0, 6.0,
+          4.0, 13.0, 2.0, 7.0, 9.0, 3.0, 12.0, 5.0]
+
+
+def _corr_runtime(tmp_path, stores, refund_of) -> Text2SQLRuntime:
+    """sqlite runtime whose refund series is refund_of(i, amounts)."""
+    schema_store, metric_store = stores
+    db = tmp_path / "corr.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE sales("
+        "order_id TEXT, amount REAL, refund REAL, channel TEXT, dt TEXT)")
+    start = date(2026, 3, 1)
+    rows = []
+    for i, amt in enumerate(_NOISE):
+        d = (start + timedelta(days=i)).isoformat()
+        rows.append((f"o{i}", amt, refund_of(i, _NOISE), "app", d))
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    return Text2SQLRuntime(
+        store=schema_store, metrics=metric_store, ds_type="sqlite",
+        db_config=DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)),
+        logger=QueryLogger(log_dir=tmp_path),
+    )
+
+
+def test_correlate_tool_registered() -> None:
+    assert any(t["name"] == "correlate_metrics" for t in TOOL_DEFINITIONS)
+
+
+def test_correlate_perfect_linear(tmp_path, stores) -> None:
+    rt = _corr_runtime(tmp_path, stores, lambda i, xs: 2.0 * xs[i] + 5.0)
+    out = json.loads(execute_text2sql_tool("correlate_metrics", {
+        "metric_a": "gmv", "metric_b": "refund_amount",
+        "days": 28, "end_date": "2026-03-28",
+    }, rt))
+    assert out.get("success"), out
+    assert out["pearson_r"] == pytest.approx(1.0, abs=1e-6)
+    assert out["n_pairs"] == 28
+    assert not out["zero_variance"]
+
+
+def test_correlate_detects_lead_lag(tmp_path, stores) -> None:
+    """refund[i] = amount[i-1] → metric_a 领先 1 天,lag=+1 处 r=1."""
+    rt = _corr_runtime(
+        tmp_path, stores, lambda i, xs: xs[i - 1] if i > 0 else 0.0,
+    )
+    out = json.loads(execute_text2sql_tool("correlate_metrics", {
+        "metric_a": "gmv", "metric_b": "refund_amount",
+        "days": 28, "end_date": "2026-03-28",
+    }, rt))
+    assert out.get("success"), out
+    assert out["best_lag"]["lag_days"] == 1
+    assert out["best_lag"]["r"] == pytest.approx(1.0, abs=1e-3)
+    assert abs(out["pearson_r"]) < 0.9  # lag-0 clearly weaker
+
+
+def test_correlate_errors(tmp_path, stores) -> None:
+    rt = _corr_runtime(tmp_path, stores, lambda i, xs: 0.0)
+    out = json.loads(execute_text2sql_tool("correlate_metrics", {
+        "metric_a": "gmv", "metric_b": "gmv"}, rt))
+    assert "不同的指标" in out["error"]
+    out = json.loads(execute_text2sql_tool("correlate_metrics", {
+        "metric_a": "gmv", "metric_b": "nope"}, rt))
+    assert "not defined" in out["error"]
+    # flat-zero refund: zero variance -> r is None, flagged
+    out = json.loads(execute_text2sql_tool("correlate_metrics", {
+        "metric_a": "gmv", "metric_b": "refund_amount",
+        "days": 28, "end_date": "2026-03-28",
+    }, rt))
+    assert out.get("success"), out
+    assert out["pearson_r"] is None and out["zero_variance"]
