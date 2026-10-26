@@ -95,6 +95,7 @@ const resources = {
       healthCheckFailed: 'check failed',
       subMetric: 'Metric',
       cacheHit: 'cache hit · 0 LLM',
+      weeklyReport: 'Weekly report',
     },
   },
   zh: {
@@ -191,6 +192,7 @@ const resources = {
       healthCheckFailed: '检查失败',
       subMetric: '指标',
       cacheHit: '缓存命中 · 零 LLM',
+      weeklyReport: '周报',
     },
   },
 }

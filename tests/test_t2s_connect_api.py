@@ -124,3 +124,12 @@ def test_session_metrics_health(client, tmp_path, monkeypatch):
     assert client.get(
         "/api/text2sql/session/nope/metrics/health"
     ).status_code == 404
+
+    # weekly report on the same live session
+    w = client.get(f"/api/text2sql/session/{sid}/report/weekly")
+    assert w.status_code == 200, w.text
+    md = w.json()["markdown"]
+    assert "经营周报" in md and "GMV" in md.upper() or "gmv" in md
+    assert client.get(
+        "/api/text2sql/session/nope/report/weekly"
+    ).status_code == 404

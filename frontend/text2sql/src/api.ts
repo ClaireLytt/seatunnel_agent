@@ -286,6 +286,11 @@ export const fetchMetricHealth = (
 ): Promise<{ rows: HealthRow[] }> =>
   fetchJson(`${BASE}/session/${sessionId}/metrics/health`)
 
+export const fetchWeeklyReport = (
+  sessionId: string,
+): Promise<{ week: { start: string; end: string }; markdown: string }> =>
+  fetchJson(`${BASE}/session/${sessionId}/report/weekly`)
+
 export const backtestSubscription = (
   id: string,
   days = 90,

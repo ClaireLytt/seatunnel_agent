@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
-import { fetchMetricHealth, type HealthRow, type SessionMeta } from '@/api'
+import {
+  fetchMetricHealth,
+  fetchWeeklyReport,
+  type HealthRow,
+  type SessionMeta,
+} from '@/api'
 
 const DOT: Record<string, string> = {
   red: 'var(--accent)',
@@ -45,6 +50,25 @@ export function HealthView({ session }: { session: SessionMeta | null }) {
           </span>
           <button onClick={refresh} className="rounded border border-line px-2 text-muted">
             {loading ? '…' : '⟳'}
+          </button>
+          <button
+            onClick={async () => {
+              if (!session) return
+              try {
+                const r = await fetchWeeklyReport(session.session_id)
+                const blob = new Blob([r.markdown], { type: 'text/markdown' })
+                const a = document.createElement('a')
+                a.href = URL.createObjectURL(blob)
+                a.download = `weekly_${r.week.end.split('-').join('')}.md`
+                a.click()
+                URL.revokeObjectURL(a.href)
+              } catch (e) {
+                setErr(e instanceof Error ? e.message : String(e))
+              }
+            }}
+            className="ml-auto rounded border border-ink px-3 text-ink hover:bg-ink hover:text-paper"
+          >
+            📄 {t('weeklyReport')}
           </button>
         </div>
         <table className="w-full font-mono text-[13px]">

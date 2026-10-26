@@ -339,6 +339,33 @@ def session_metrics_health(session_id: str) -> dict[str, Any]:
     return {"rows": rows}
 
 
+@router.get("/session/{session_id}/report/weekly")
+def session_weekly_report(session_id: str) -> dict[str, Any]:
+    """Deterministic weekly-report skeleton as Markdown — no LLM."""
+    from datetime import date
+
+    from .api_shared import entry_or_404
+    from .report import build_weekly_skeleton, render_skeleton_md
+
+    rt = entry_or_404(session_id).agent.runtime
+    if rt.metrics is None or len(rt.metrics) == 0:
+        raise HTTPException(status_code=400, detail="没有指标定义(metrics.yaml)")
+    try:
+        from .subscriptions import SubscriptionStore
+
+        subs = SubscriptionStore().list()
+    except Exception:
+        subs = []
+    sk = build_weekly_skeleton(
+        rt.metrics, rt.store, rt.executor, subs,
+        today=date.today(), ds_type=rt.ds_type,
+    )
+    return {
+        "week": sk["week"],
+        "markdown": render_skeleton_md(sk),
+    }
+
+
 @router.post("/metrics/forecast")
 def metrics_forecast(req: ForecastRequest) -> dict[str, Any]:
     """Deterministic metric forecast — no LLM involved."""

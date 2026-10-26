@@ -834,6 +834,11 @@ def test_t2s_health_view_renders_rollup(page_url, t2s_stores, metrics_db):
         expect(view).to_contain_text(
             (date.today() - timedelta(days=1)).isoformat())
 
+        # weekly-report button downloads the deterministic markdown
+        with page.expect_download() as dl:
+            view.get_by_role("button", name="Weekly report").click()
+        assert dl.value.suggested_filename.startswith("weekly_")
+
         browser.close()
 
 
