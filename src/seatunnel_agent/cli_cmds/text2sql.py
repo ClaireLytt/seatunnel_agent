@@ -352,6 +352,39 @@ def t2s_sub_backtest(sub_id: str, days: int, end_raw: str) -> None:
             )
 
 
+@click.command(name="chatbi-demo")
+@click.option("--dir", "target_dir", default="demo/chatbi", show_default=True,
+              help="演示资产输出目录")
+@click.option("--days", type=int, default=60, show_default=True,
+              help="演示数据天数")
+def chatbi_demo(target_dir: str, days: int) -> None:
+    """生成自包含的 Chat BI 演示环境:sqlite 数据(星期形态/退款尖峰/
+    节假日效应)+ 全特性 metrics.yaml + DDL + 10 个演示问题。"""
+    _ensure_utf8_stdio()
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.text2sql.demo import build_demo
+    from seatunnel_agent.agents.data.text2sql.metrics import MetricStore
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+
+    info = build_demo(target_dir, days=max(30, min(days, 365)))
+    # self-check: the generated assets must validate against each other
+    schema_store = SchemaStore.from_file(info["ddl"])
+    _store, errors = MetricStore.from_text(
+        Path(info["metrics"]).read_text(encoding="utf-8"), schema_store,
+    )
+    if errors:
+        raise click.ClickException("演示指标定义自检失败: " + "; ".join(errors))
+    console.print(f"[green]演示环境已生成[/green]（{info['rows']} 行 / "
+                  f"{info['days']} 天，退款尖峰日 {info['anomaly_day']}）")
+    console.print(f"  数据库: {info['db']}")
+    console.print(f"  问题清单: {info['questions']}")
+    console.print("启动（PowerShell 示例）：")
+    console.print(f"  $env:SCHEMA_DDL_PATH = '{info['ddl']}'")
+    console.print(f"  $env:T2S_METRICS_PATH = '{info['metrics']}'")
+    console.print("  seatunnel-agent ui   # 进入 /text2sql，按 QUESTIONS.md 逐条问")
+
+
 @click.command(name="t2s-doctor")
 @click.option("--ddl", type=click.Path(exists=True), required=True,
               help="schema DDL 文件（表白名单）")
@@ -1048,6 +1081,7 @@ def register(cli) -> None:
     cli.add_command(t2s_cron)
     cli.add_command(t2s_qlog_stats)
     cli.add_command(t2s_doctor)
+    cli.add_command(chatbi_demo)
     cli.add_command(t2s_eval)
     cli.add_command(dqc)
     cli.add_command(metrics)

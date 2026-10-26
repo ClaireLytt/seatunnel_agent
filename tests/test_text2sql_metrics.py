@@ -1937,6 +1937,39 @@ def test_scan_cost_hints() -> None:
     assert h and h[0]["kind"] == "wide_in_list" and h[0]["estimated_partitions"] == 100
 
 
+def test_build_demo_self_consistent(tmp_path) -> None:
+    import sqlite3
+
+    from seatunnel_agent.agents.data.text2sql.demo import build_demo
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+
+    info = build_demo(tmp_path / "demo", days=35)
+    schema_store = SchemaStore.from_file(info["ddl"])
+    store, errors = MetricStore.from_text(
+        (tmp_path / "demo" / "metrics.yaml").read_text(encoding="utf-8"),
+        schema_store,
+    )
+    assert errors == []
+    assert {m.name for m in store.metrics} == {
+        "gmv", "order_cnt", "aov", "refund_amount", "refund_rate",
+    }
+    assert store.get("gmv").tree == ("order_cnt", "aov")
+    assert store.get("gmv").targets["month"] > 0
+    conn = sqlite3.connect(info["db"])
+    n_days = conn.execute("SELECT COUNT(DISTINCT dt) FROM sales").fetchone()[0]
+    spike = conn.execute(
+        "SELECT SUM(refund_amount)/SUM(pay_amount) FROM sales WHERE dt = ?",
+        (info["anomaly_day"],),
+    ).fetchone()[0]
+    normal = conn.execute(
+        "SELECT SUM(refund_amount)/SUM(pay_amount) FROM sales WHERE dt != ?",
+        (info["anomaly_day"],),
+    ).fetchone()[0]
+    conn.close()
+    assert n_days == 35 and info["rows"] > 500
+    assert spike > normal * 2  # 人造退款尖峰可被异动/归因看见
+
+
 def test_cost_block_env(monkeypatch) -> None:
     from seatunnel_agent.agents.data.text2sql.tools_sql import _cost_block
 
