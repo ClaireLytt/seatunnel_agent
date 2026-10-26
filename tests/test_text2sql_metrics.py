@@ -966,6 +966,42 @@ def test_mcp_trace_and_attribution_tools(tmp_path, monkeypatch) -> None:
     )
     assert "metric_attribution" not in tools2
     assert "trace_metric" in tools2
+    # the agent-tool shells are execute-gated too
+    for t in ("forecast_metric", "metric_target_progress", "correlate_metrics"):
+        assert t in tools and t not in tools2
+
+
+def test_mcp_forecast_tool_end_to_end(tmp_path, monkeypatch) -> None:
+    import sqlite3
+    from datetime import date, timedelta
+
+    from seatunnel_agent.agents.data.text2sql.mcp_server import build_tool_functions
+
+    db = tmp_path / "s.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE sales(order_id TEXT, amount REAL, channel TEXT, dt TEXT)")
+    start = date(2026, 3, 1)
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?)", [
+        (f"o{i}", 100.0 + 5.0 * i, "app", (start + timedelta(days=i)).isoformat())
+        for i in range(28)
+    ])
+    conn.commit()
+    conn.close()
+    ddl = tmp_path / "schema.sql"
+    ddl.write_text(_SQLITE_DDL, encoding="utf-8")
+    metrics = tmp_path / "metrics.yaml"
+    metrics.write_text(_SQLITE_METRICS, encoding="utf-8")
+    tools = build_tool_functions(
+        ddl_path=str(ddl), metrics_path=str(metrics),
+        ds_type="sqlite", allow_execute=True, database=str(db),
+    )
+    out = json.loads(tools["forecast_metric"](
+        "gmv", horizon_days=3, end_date="2026-03-28",
+    ))
+    assert out.get("success"), out
+    assert out["forecasts"][0]["yhat"] == pytest.approx(240.0, abs=1e-6)
+    out = json.loads(tools["correlate_metrics"]("gmv", "gmv"))
+    assert "不同的指标" in out["error"]
 
 
 def test_unified_entry_review_sql(sqlite_runtime) -> None:
@@ -1072,6 +1108,77 @@ def test_api_metrics_attribution_sqlite(sqlite_runtime, monkeypatch) -> None:
     assert data["type"] == "additive"
     assert data["prev_total"] == 150.0 and data["curr_total"] == 160.0
     assert data["best_dimension"] == "channel"
+
+
+def test_api_metrics_forecast_target_correlate(tmp_path, monkeypatch) -> None:
+    """三个零 LLM 编排端点端到端(真 sqlite,28 天线性序列)."""
+    import sqlite3
+    from datetime import date, timedelta
+
+    pytest.importorskip("fastapi")
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore, parse_ddl
+
+    db = tmp_path / "s.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE sales(order_id TEXT, amount REAL, channel TEXT, dt TEXT)")
+    start = date(2026, 3, 1)
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?)", [
+        (f"o{i}", 100.0 + 5.0 * i, "app", (start + timedelta(days=i)).isoformat())
+        for i in range(28)
+    ])
+    conn.commit()
+    conn.close()
+    monkeypatch.setattr(
+        SchemaStore, "from_db",
+        classmethod(lambda cls, ex: cls(parse_ddl(_SQLITE_DDL))),
+    )
+    base = {
+        "ds_type": "sqlite",
+        "db_config": {"database": str(db)},
+        "metrics_yaml": _SQLITE_METRICS.replace(
+            "    time_column: dt\n    dimensions: [channel]\n  - name: order_cnt",
+            "    time_column: dt\n    dimensions: [channel]\n"
+            "    targets: {month: 10000}\n  - name: order_cnt",
+            1,
+        ),
+    }
+    client = _client()
+
+    resp = client.post("/api/text2sql/metrics/forecast", json={
+        "metric": "gmv", "horizon_days": 3, "end_date": "2026-03-28", **base,
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["forecasts"][0]["yhat"] == pytest.approx(240.0, abs=1e-6)
+
+    resp = client.post("/api/text2sql/metrics/target", json={
+        "metric": "gmv", "end_date": "2026-03-28", **base,
+    })
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["target"] == 10000
+    assert data["actual"] == pytest.approx(sum(100.0 + 5.0 * i for i in range(28)))
+
+    resp = client.post("/api/text2sql/metrics/correlate", json={
+        "metric_a": "gmv", "metric_b": "order_cnt",
+        "end_date": "2026-03-28", **base,
+    })
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["n_pairs"] == 28
+
+    # tool errors surface as 400
+    resp = client.post("/api/text2sql/metrics/target", json={
+        "metric": "order_cnt", "end_date": "2026-03-28", **base,
+    })
+    assert resp.status_code == 400 and "未声明" in resp.json()["detail"]
+
+
+def test_api_metrics_forecast_requires_db() -> None:
+    pytest.importorskip("fastapi")
+    resp = _client().post("/api/text2sql/metrics/forecast", json={
+        "metric": "gmv", "schema_ddl": _DDL, "metrics_yaml": _METRICS_YAML,
+    })
+    assert resp.status_code == 400
+    assert "db_config" in resp.json()["detail"]
 
 
 def test_api_metrics_attribution_requires_db() -> None:

@@ -293,6 +293,74 @@ def build_tool_functions(
 
         tools["execute_readonly_sql"] = execute_readonly_sql
 
+        def _tool_runtime():
+            """Runtime for the agent-tool shells; None without a DB config."""
+            from .runtime import Text2SQLRuntime
+
+            db_config = _db_config()
+            if db_config is None:
+                return None
+            rt = Text2SQLRuntime(
+                store=schema_store, metrics=metric_store,
+                ds_type=ds_type, db_config=db_config,
+            )
+            rt.source = "mcp"
+            return rt
+
+        _NO_DB = {"error": "未配置数据库连接（设置对应环境变量，如 HIVE_HOST）"}
+
+        def forecast_metric(
+            metric: str, horizon_days: int = 7, grain: str = "day",
+            history_days: int = 0, end_date: str = "",
+        ) -> str:
+            """确定性指标预测：语义层日序列 + OLS 趋势/星期季节性/节假日偏移,
+            输出逐期点预测与 95% 区间。"""
+            from .tools_metric import _tool_forecast_metric
+
+            rt = _tool_runtime()
+            if rt is None:
+                return _json(_NO_DB)
+            inp: dict = {
+                "metric": metric, "horizon_days": horizon_days,
+                "grain": grain, "end_date": end_date,
+            }
+            if history_days:
+                inp["history_days"] = history_days
+            return _json(_tool_forecast_metric(inp, rt))
+
+        def metric_target_progress(
+            metric: str, period: str = "month", end_date: str = "",
+        ) -> str:
+            """目标达成进度：期初至今实际值 ÷ 声明目标,外加期末投影
+            (forecast 优先,历史不足退化线性节奏)。"""
+            from .tools_metric import _tool_metric_target_progress
+
+            rt = _tool_runtime()
+            if rt is None:
+                return _json(_NO_DB)
+            return _json(_tool_metric_target_progress(
+                {"metric": metric, "period": period, "end_date": end_date}, rt,
+            ))
+
+        def correlate_metrics(
+            metric_a: str, metric_b: str, days: int = 28, end_date: str = "",
+        ) -> str:
+            """两指标日序列的确定性相关性：lag0 Pearson r + ±7 天领先/滞后扫描。
+            相关≠因果。"""
+            from .tools_metric import _tool_correlate_metrics
+
+            rt = _tool_runtime()
+            if rt is None:
+                return _json(_NO_DB)
+            return _json(_tool_correlate_metrics(
+                {"metric_a": metric_a, "metric_b": metric_b,
+                 "days": days, "end_date": end_date}, rt,
+            ))
+
+        tools["forecast_metric"] = forecast_metric
+        tools["metric_target_progress"] = metric_target_progress
+        tools["correlate_metrics"] = correlate_metrics
+
         def metric_attribution(
             metric: str,
             curr_start: str,

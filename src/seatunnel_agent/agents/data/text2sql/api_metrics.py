@@ -241,3 +241,102 @@ def metrics_attribution(req: AttributionRequest) -> dict[str, Any]:
             status_code=500,
             detail=f"Attribution failed: {_sanitize_db_error(str(exc))}",
         )
+
+
+# ----------------------------------------------------------------------
+# forecast / target / correlate — zero-LLM endpoints for orchestration
+# (thin shells over the agent tool functions, same runtime semantics)
+# ----------------------------------------------------------------------
+
+
+class _ConnectedRequest(BaseModel):
+    ds_type: str = Field("hive", description="Data source type")
+    db_config: dict[str, Any] | None = Field(None, description="Database connection config (required)")
+    schema_ddl: str | None = Field(None, description="Inline DDL for table definitions")
+    metrics_yaml: str | None = Field(
+        None, description="Inline metrics.yaml content (defaults to config/metrics.yaml)"
+    )
+
+
+class ForecastRequest(_ConnectedRequest):
+    metric: str = Field(..., min_length=1)
+    horizon_days: int = Field(7, description="Periods ahead (max 30)")
+    grain: str = Field("day", description="day | week | month")
+    history_days: int | None = Field(None, description="History window in days")
+    end_date: str | None = Field(None, description="Last history day (default: yesterday)")
+
+
+class TargetProgressRequest(_ConnectedRequest):
+    metric: str = Field(..., min_length=1)
+    period: str = Field("month", description="month | quarter | year")
+    end_date: str | None = Field(None, description="Progress as-of (default: yesterday)")
+
+
+class CorrelateRequest(_ConnectedRequest):
+    metric_a: str = Field(..., min_length=1)
+    metric_b: str = Field(..., min_length=1)
+    days: int = Field(28, description="Trailing window in days (14-180)")
+    end_date: str | None = Field(None, description="Last day (default: yesterday)")
+
+
+def _tool_runtime(req: _ConnectedRequest):
+    from .runtime import Text2SQLRuntime
+
+    store, db_config = load_schema_store(req.ds_type, req.db_config, req.schema_ddl)
+    if db_config is None:
+        raise HTTPException(status_code=400, detail="this endpoint requires db_config")
+    metric_store, metric_errors = load_metric_store(store, req.metrics_yaml)
+    if metric_errors:
+        raise HTTPException(
+            status_code=400, detail="Invalid metrics: " + "; ".join(metric_errors),
+        )
+    rt = Text2SQLRuntime(
+        store=store, metrics=metric_store, ds_type=req.ds_type,
+        db_config=db_config,
+    )
+    rt.source = "api"
+    return rt
+
+
+def _tool_response(out: dict[str, Any]) -> dict[str, Any]:
+    if out.get("error"):
+        raise HTTPException(status_code=400, detail=out["error"])
+    return out
+
+
+@router.post("/metrics/forecast")
+def metrics_forecast(req: ForecastRequest) -> dict[str, Any]:
+    """Deterministic metric forecast — no LLM involved."""
+    from .tools_metric import _tool_forecast_metric
+
+    inp = {
+        "metric": req.metric, "horizon_days": req.horizon_days,
+        "grain": req.grain, "end_date": req.end_date or "",
+    }
+    if req.history_days:
+        inp["history_days"] = req.history_days
+    return _tool_response(_tool_forecast_metric(inp, _tool_runtime(req)))
+
+
+@router.post("/metrics/target")
+def metrics_target(req: TargetProgressRequest) -> dict[str, Any]:
+    """Deterministic target-attainment progress — no LLM involved."""
+    from .tools_metric import _tool_metric_target_progress
+
+    inp = {
+        "metric": req.metric, "period": req.period,
+        "end_date": req.end_date or "",
+    }
+    return _tool_response(_tool_metric_target_progress(inp, _tool_runtime(req)))
+
+
+@router.post("/metrics/correlate")
+def metrics_correlate(req: CorrelateRequest) -> dict[str, Any]:
+    """Deterministic two-metric correlation — no LLM involved."""
+    from .tools_metric import _tool_correlate_metrics
+
+    inp = {
+        "metric_a": req.metric_a, "metric_b": req.metric_b,
+        "days": req.days, "end_date": req.end_date or "",
+    }
+    return _tool_response(_tool_correlate_metrics(inp, _tool_runtime(req)))
