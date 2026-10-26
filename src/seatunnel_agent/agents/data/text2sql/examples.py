@@ -26,7 +26,13 @@ from seatunnel_agent.common.json_file_store import JsonFileStore
 _MAX_EXAMPLES = 500
 _MAX_SQL_CHARS = 4000
 
-_DEFAULT_EXAMPLES_PATH = os.getenv("T2S_EXAMPLES_PATH", "config/t2s_examples.json")
+_DEFAULT_EXAMPLES_FILE = "config/t2s_examples.json"
+
+
+def _default_examples_path() -> str:
+    """Read the env at call time so tests and long-lived servers can
+    repoint the store without re-importing the module."""
+    return os.getenv("T2S_EXAMPLES_PATH", _DEFAULT_EXAMPLES_FILE)
 
 _TRAILING_PUNCT = "?？!！。.,，;；"
 
@@ -42,7 +48,7 @@ class ExampleStore(JsonFileStore):
 
     def __init__(self, path: str | Path | None = None) -> None:
         super().__init__(
-            path if path is not None else _DEFAULT_EXAMPLES_PATH,
+            path if path is not None else _default_examples_path(),
             max_items=_MAX_EXAMPLES,
         )
 

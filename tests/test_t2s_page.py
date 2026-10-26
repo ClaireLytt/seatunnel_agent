@@ -696,8 +696,9 @@ def test_t2s_subscriptions_lifecycle(chat_page_url, t2s_stores, monkeypatch):
 
     from seatunnel_agent.agents.data.text2sql import api_subscriptions
 
-    def fake_run(sub, store):
-        store.record_run(sub["id"], "ok")
+    def fake_run(sub):
+        # real contract: the endpoint records the returned outcome itself
+        return {"status": "ok", "error": ""}
 
     monkeypatch.setattr(api_subscriptions, "run_subscription", fake_run)
 
@@ -724,7 +725,9 @@ def test_t2s_subscriptions_lifecycle(chat_page_url, t2s_stores, monkeypatch):
         row.get_by_title("Enable").click()
         expect(row).not_to_contain_text("disabled")
 
-        # run-now records a run; the status column reflects it
+        # run-now records the stubbed runner's REAL outcome (the endpoint
+        # used to call run_subscription with a wrong second argument and
+        # report "ok" unconditionally — the old stub encoded that bug)
         row.get_by_title("Run now").click()
         expect(row).to_contain_text("ok", timeout=10000)
 
@@ -737,6 +740,134 @@ def test_t2s_subscriptions_lifecycle(chat_page_url, t2s_stores, monkeypatch):
         row.get_by_role("button", name="✕").click()
         expect(view).not_to_contain_text("daily sales")
         assert t2s_stores.subs.list() == []
+
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_t2s_subscription_form_new_types(page_url, t2s_stores):
+    """新订阅类型在表单可见可建:watch 条件字段、model 隐藏阈值、digest 清单."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url + "#subscriptions", wait_until="networkidle")
+        view = page.locator(".st-subscriptions-view")
+        page.get_by_role("button", name="New").click()
+
+        page.get_by_text("Anomaly watch", exact=True).click()
+        expect(view.get_by_text("threshold")).to_be_visible()
+        view.locator("select").select_option("model")
+        expect(view.get_by_text("threshold")).not_to_be_visible()
+
+        page.get_by_text("Freshness", exact=True).click()
+        expect(view.get_by_text("allowed lag")).to_be_visible()
+
+        page.get_by_text("Daily digest", exact=True).click()
+        digest_input = view.get_by_placeholder(
+            "Metric names, comma separated (empty = all)")
+        expect(digest_input).to_be_visible()
+
+        # create a digest sub end-to-end; the source column shows the list
+        view.get_by_placeholder("Name").first.fill("daily digest")
+        digest_input.fill("gmv, aov")
+        view.get_by_role("button", name="New").click()
+        expect(view).to_contain_text("gmv,aov", timeout=15000)
+        assert t2s_stores.subs.list()[0]["metrics"] == ["gmv", "aov"]
+
+        browser.close()
+
+
+@pytest.fixture()
+def metrics_db(tmp_path, monkeypatch) -> str:
+    """sqlite sales db + metrics.yaml wired via T2S_METRICS_PATH (the
+    in-process server reads the env at connect time)."""
+    import sqlite3 as _sq
+    from datetime import date, timedelta
+
+    db = tmp_path / "m.db"
+    con = _sq.connect(db)
+    con.execute("CREATE TABLE sales (city TEXT, amount REAL, dt TEXT)")
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    con.executemany("INSERT INTO sales VALUES (?,?,?)",
+                    [("bj", 100.0, yesterday), ("sh", 80.0, yesterday)])
+    con.commit()
+    con.close()
+    metrics = tmp_path / "metrics.yaml"
+    metrics.write_text(
+        "metrics:\n"
+        "  - name: gmv\n"
+        "    table: sales\n"
+        "    expression: SUM(amount)\n"
+        "    time_column: dt\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("T2S_METRICS_PATH", str(metrics))
+    return str(db)
+
+
+def _connect_real(page, expect, db_path):
+    page.locator("#ds").select_option("sqlite")
+    page.get_by_label("Database").fill(db_path)
+    page.get_by_role("button", name="Connect").click()
+    expect(page.locator(".st-connect-status")).to_contain_text(
+        "Connected", timeout=30000)
+
+
+@pytest.mark.uitest
+def test_t2s_health_view_renders_rollup(page_url, t2s_stores, metrics_db):
+    """健康页:真连接 + 指标库 → gmv 行、最新数据日、绿色点."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_real(page, expect, metrics_db)
+        page.goto(page_url + "#health", wait_until="networkidle")
+        view = page.locator(".st-health-view")
+        expect(view).to_contain_text("Metric health", timeout=15000)
+        expect(view).to_contain_text("gmv", timeout=30000)
+        from datetime import date, timedelta
+
+        expect(view).to_contain_text(
+            (date.today() - timedelta(days=1)).isoformat())
+
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_t2s_cache_badge_and_result_rows(
+    page_url, t2s_stores, metrics_db, tmp_path, monkeypatch,
+):
+    """语义缓存零 LLM 全链路:徽标可见 + 结果卡行体有内容(锁 preview_rows 修复)."""
+    import json as _json
+
+    from playwright.sync_api import expect, sync_playwright
+
+    ex_path = tmp_path / "examples.json"
+    ex_path.write_text(_json.dumps([{
+        "id": "e1", "question": "sales by city",
+        "sql": "SELECT city, SUM(amount) AS amt FROM sales GROUP BY city",
+        "tables": ["sales"], "source": "feedback", "verified": True,
+        "created_at": "2026-10-27T00:00:00+00:00",
+    }]), encoding="utf-8")
+    monkeypatch.setenv("T2S_EXAMPLES_PATH", str(ex_path))
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        _connect_real(page, expect, metrics_db)
+        box = page.get_by_placeholder("Ask about your data")
+        box.fill("sales by city")
+        box.press("Enter")
+        chat = page.locator(".st-chat")
+        expect(chat).to_contain_text("cache hit · 0 LLM", timeout=30000)
+        # the result card renders actual preview rows, not just the header
+        expect(chat).to_contain_text("bj")
+        expect(chat).to_contain_text("100")
 
         browser.close()
 
