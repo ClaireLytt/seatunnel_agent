@@ -1274,8 +1274,25 @@ class Scheduler:
         if self._last_minute is None or current > self._last_minute:
             self._last_minute = current
 
+        from .notify import aggregate_pushes, aggregation_enabled, flush_aggregated
+
         fired: list[str] = []
         subs = self.store.list()
+        if aggregation_enabled():
+            # one check cycle = one card per webhook, however many alerts
+            with aggregate_pushes() as buffer:
+                self._run_due(minutes, subs, fired)
+            flush_aggregated(buffer)
+        else:
+            self._run_due(minutes, subs, fired)
+        return fired
+
+    def _run_due(
+        self,
+        minutes: list[datetime],
+        subs: list[dict[str, Any]],
+        fired: list[str],
+    ) -> None:
         for minute in minutes:
             minute_key = minute.strftime("%Y-%m-%d %H:%M")
             for sub in subs:
@@ -1303,7 +1320,6 @@ class Scheduler:
                 except Exception as exc:  # run_fn contract says it never raises, but
                     logger.exception("Subscription %s failed", sub_id)
                     self.store.record_run(sub_id, "error", str(exc))
-        return fired
 
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():

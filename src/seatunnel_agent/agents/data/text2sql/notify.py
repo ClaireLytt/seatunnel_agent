@@ -7,8 +7,12 @@ Moved verbatim out of subscriptions.py, which re-exports the public names.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import threading
 from collections.abc import Callable
+
+logger = logging.getLogger(__name__)
 
 _CARD_MAX_ROWS = 10
 
@@ -320,6 +324,54 @@ def allowed_webhook(target: str) -> tuple[bool, str]:
     return False, f"webhook host '{host}' not in T2S_WEBHOOK_ALLOW_HOSTS"
 
 
+_AGG = threading.local()
+
+
+def aggregate_pushes():
+    """Context manager: within it, red cards (ok=False) buffer per webhook
+    instead of pushing — the scheduler flushes them merged, so an alert
+    storm becomes one card per channel instead of one per subscription."""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _ctx():
+        _AGG.buffer = {}
+        try:
+            yield _AGG.buffer
+        finally:
+            del _AGG.buffer
+
+    return _ctx()
+
+
+def _agg_buffer() -> dict | None:
+    return getattr(_AGG, "buffer", None)
+
+
+def aggregation_enabled() -> bool:
+    return os.getenv("T2S_ALERT_AGGREGATE", "").strip() != "0"
+
+
+def flush_aggregated(buffer: dict, timeout: int = 15) -> None:
+    """Push each webhook's buffered red cards: one card passes through,
+    several merge into a single storm card. Best-effort per webhook."""
+    for url, items in buffer.items():
+        try:
+            if len(items) == 1:
+                title, body = items[0]
+                push_card(url, title, body, ok=False, timeout=timeout)
+            else:
+                merged = "\n\n---\n\n".join(
+                    f"**{title}**\n{body}" for title, body in items
+                )
+                push_card(
+                    url, f"⚠️ {len(items)} 条告警", merged,
+                    ok=False, timeout=timeout,
+                )
+        except Exception:
+            logger.exception("aggregated push failed for %s…", url[:40])
+
+
 def push_card(
     webhook_url: str,
     title: str,
@@ -331,6 +383,10 @@ def push_card(
     """Channel-dispatching push: the subscription schema stays a single
     target URL, and the channel is inferred from its domain (feishu is the
     default, preserving pre-multi-channel behavior)."""
+    buffer = _agg_buffer()
+    if buffer is not None and not ok:
+        buffer.setdefault(webhook_url, []).append((title, body_markdown))
+        return True, "deferred"
     permitted, why = allowed_webhook(webhook_url)
     if not permitted:
         return False, why

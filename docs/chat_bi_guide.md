@@ -231,7 +231,9 @@ seatunnel-agent t2s-sub add --name GMV日报 --cron "0 9 * * *" \
 # 告警记忆:持续同向异常只推首日一张卡,恢复正常时推一张绿色"已恢复"卡
 # (三天的事故 = 两张卡,不是三张;方向反转视为新事件)。
 # 告警/恢复事件落 qlog(kind=alert/alert_recovered),metrics health 的
-# "7天告警次数"由此而来。订阅引擎的日序列有进程内 TTL 缓存
+# "7天告警次数"由此而来。
+# 告警聚合:同一调度轮内同 webhook 的多张红卡合并成"⚠ N 条告警"一张
+# (告警风暴不刷屏;T2S_ALERT_AGGREGATE=0 关闭;绿卡与 run-now 不受影响)。订阅引擎的日序列有进程内 TTL 缓存
 # (T2S_SERIES_CACHE_TTL,默认 600 秒,0 关闭):同指标的 digest/watch
 # 晨间并发只打一次数据库。
 # 比率指标(如退款率)同样支持;卡片中维度拆解标注为"各维度变化";
