@@ -113,3 +113,24 @@ def test_subscription_card_masks(monkeypatch) -> None:
 
     md = render_card_markdown(["mobile"], [("13812345678",)])
     assert "13812345678" not in md and "138****78" in md
+
+
+def test_alias_kinds_maps_sensitive_source() -> None:
+    from seatunnel_agent.agents.data.text2sql.masking import alias_kinds
+
+    kinds = alias_kinds("SELECT user_phone AS p, name AS n FROM users")
+    assert kinds == {"p": "phone"}
+
+
+def test_apply_masking_with_sql_masks_alias(monkeypatch) -> None:
+    monkeypatch.delenv("T2S_MASKING", raising=False)
+    sql = "SELECT user_phone AS p FROM users"
+    rows, masked = apply_masking(["p"], [("13812345678",)], sql=sql)
+    assert masked == ["p"]
+    assert rows[0][0] == "138****78"
+
+
+def test_apply_masking_without_sql_keeps_old_behavior(monkeypatch) -> None:
+    monkeypatch.delenv("T2S_MASKING", raising=False)
+    rows, masked = apply_masking(["p"], [("13812345678",)])
+    assert masked == [] and rows[0][0] == "13812345678"

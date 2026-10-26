@@ -78,7 +78,7 @@ def _build_success(
     from .masking import apply_masking
 
     preview, masked_cols = apply_masking(
-        result.columns, result.rows[:_PREVIEW_ROWS],
+        result.columns, result.rows[:_PREVIEW_ROWS], sql=sql,
     )
     out: dict[str, Any] = {
         "success": True,

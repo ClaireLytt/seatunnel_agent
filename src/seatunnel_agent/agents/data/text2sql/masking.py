@@ -73,18 +73,44 @@ def mask_value(value, kind: str) -> str:
     return s[0] + "*" * (len(s) - 2) + s[-1]
 
 
+_ALIAS_PAIR_RE = re.compile(
+    r"([\w.()`\"]+(?:\([^()]*\))?)\s+as\s+([`\"]?\w+[`\"]?)",
+    re.IGNORECASE,
+)
+
+
+def alias_kinds(sql: str) -> dict[str, str]:
+    """Map result aliases to the mask kind of their source expression.
+
+    ``SELECT user_phone AS p`` must not leak the raw phone just because the
+    alias ``p`` looks innocent: every ``<expr> AS <alias>`` pair whose
+    expression mentions a sensitive column name taints the alias.
+    """
+    out: dict[str, str] = {}
+    for m in _ALIAS_PAIR_RE.finditer(sql):
+        expr, alias = m.group(1), m.group(2).strip('`"').lower()
+        if alias in out:
+            continue
+        kind = sensitive_kind(expr)
+        if kind:
+            out[alias] = kind
+    return out
+
+
 def apply_masking(
-    columns: list[str], rows: list,
+    columns: list[str], rows: list, sql: str = "",
 ) -> tuple[list, list[str]]:
     """Mask sensitive columns; returns (rows, masked_column_names).
 
+    When *sql* is given, aliases of sensitive source columns are masked too.
     No-op (same rows object) when masking is disabled or nothing matches.
     """
     if not masking_enabled() or not columns:
         return rows, []
+    by_alias = alias_kinds(sql) if sql else {}
     kinds: dict[int, str] = {}
     for i, col in enumerate(columns):
-        kind = sensitive_kind(col)
+        kind = sensitive_kind(col) or by_alias.get((col or "").strip().lower())
         if kind:
             kinds[i] = kind
     if not kinds:

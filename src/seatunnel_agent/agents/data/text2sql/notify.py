@@ -20,11 +20,12 @@ _CARD_MAX_ROWS = 10
 
 def render_card_markdown(
     columns: list[str], rows: list[tuple], max_rows: int = _CARD_MAX_ROWS,
+    sql: str = "",
 ) -> str:
     """Feishu lark_md table (pipe-drawn; lark_md has no real tables)."""
     from .masking import apply_masking
 
-    rows, _masked = apply_masking(columns, list(rows))
+    rows, _masked = apply_masking(columns, list(rows), sql=sql)
     lines = [" | ".join(str(c) for c in columns)]
     for row in rows[:max_rows]:
         lines.append(" | ".join("" if v is None else str(v) for v in row))

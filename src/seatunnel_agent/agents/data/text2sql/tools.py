@@ -624,7 +624,9 @@ def _tool_export_csv(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]
     if rt.last_result is None:
         return {"error": "No query result to export. Run execute_sql first."}
     from .masking import apply_masking
-    rows, _masked = apply_masking(rt.last_result.columns, rt.last_result.rows)
+    rows, _masked = apply_masking(
+        rt.last_result.columns, rt.last_result.rows, sql=rt.last_sql,
+    )
     try:
         path = export_csv(
             rt.last_result.columns,
@@ -642,7 +644,9 @@ def _tool_export_excel(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, An
         return {"error": "No query result to export. Run execute_sql first."}
     from .exporter import export_excel
     from .masking import apply_masking
-    rows, _masked = apply_masking(rt.last_result.columns, rt.last_result.rows)
+    rows, _masked = apply_masking(
+        rt.last_result.columns, rt.last_result.rows, sql=rt.last_sql,
+    )
     try:
         path = export_excel(
             rt.last_result.columns,
@@ -660,7 +664,9 @@ def _tool_export_pdf(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]
         return {"error": "No query result to export. Run execute_sql first."}
     from .exporter import export_pdf
     from .masking import apply_masking
-    rows, _masked = apply_masking(rt.last_result.columns, rt.last_result.rows)
+    rows, _masked = apply_masking(
+        rt.last_result.columns, rt.last_result.rows, sql=rt.last_sql,
+    )
     try:
         path = export_pdf(
             rt.last_result.columns,

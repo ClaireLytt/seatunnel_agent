@@ -151,7 +151,7 @@ def render_board(
         from .masking import apply_masking
 
         preview, _masked = apply_masking(
-            result.columns, result.rows[:max_preview_rows],
+            result.columns, result.rows[:max_preview_rows], sql=sql,
         )
         entry.update({
             "columns": result.columns,

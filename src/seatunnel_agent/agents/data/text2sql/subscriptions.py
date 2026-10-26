@@ -482,7 +482,9 @@ def run_subscription(
 
     pushed, push_msg = True, ""
     if webhook:
-        body = render_card_markdown(result.columns, [tuple(r) for r in result.rows])
+        body = render_card_markdown(
+            result.columns, [tuple(r) for r in result.rows], sql=final_sql,
+        )
         # chart embedding: best-effort, needs FEISHU_APP_ID/SECRET for upload
         img_key = ""
         if detect_channel(webhook) == "feishu":

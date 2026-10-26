@@ -236,6 +236,10 @@ seatunnel-agent t2s-mcp --ds-type sqlite --database config/demo.db --allow-execu
 （零 LLM 确定性端点，适合 Dify/n8n 编排；OpenAPI 见 `/docs`）。
 设置 `SEATUNNEL_API_KEY` 后所有 `/api` 路由要求 `X-API-Key` 头。
 
+> ⚠️ 安全提示:未设置 `SEATUNNEL_API_KEY` 时 API 完全开放,且订阅接口
+> 接受任意 webhook URL(服务端会定时向其 POST)。凡是非单机/可信内网
+> 部署,务必设置 API key,并只向可信渠道域名配置 webhook。
+
 ## 端到端评测
 
 ```bash
