@@ -23,6 +23,7 @@ from .tools_metric import (  # noqa: F401 (re-exported for compatibility)
     _resolve_metric,
     _tool_build_metric_sql,
     _tool_correlate_metrics,
+    _tool_draft_metric,
     _tool_forecast_metric,
     _tool_match_metrics,
     _tool_metric_target_progress,
@@ -549,6 +550,42 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "draft_metric",
+        "description": (
+            "Draft a NEW metric definition from the user's description "
+            "(定义指标/新建口径: 帮我定义客单价=GMV/订单数). Validates against "
+            "the live catalog and schema; NOTHING persists — tell the user "
+            "the draft passed validation and that it awaits their explicit "
+            "confirmation before being written to metrics.yaml. Never claim "
+            "the metric was saved. Additive metrics need table/expression/"
+            "time_column; ratio metrics need numerator/denominator "
+            "referencing defined additive metrics."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string",
+                         "description": "snake_case unique id"},
+                "display_name": {"type": "string"},
+                "type": {"type": "string", "enum": ["additive", "ratio"]},
+                "description": {"type": "string",
+                                "description": "口径说明(中文)"},
+                "aliases": {"type": "array", "items": {"type": "string"}},
+                "unit": {"type": "string"},
+                "table": {"type": "string"},
+                "expression": {"type": "string",
+                               "description": "e.g. SUM(pay_amount)"},
+                "time_column": {"type": "string"},
+                "dimensions": {"type": "array", "items": {"type": "string"}},
+                "default_filters": {"type": "array",
+                                    "items": {"type": "string"}},
+                "numerator": {"type": "string"},
+                "denominator": {"type": "string"},
+            },
+            "required": ["name"],
+        },
+    },
+    {
         "name": "correlate_metrics",
         "description": (
             "Correlation between two defined metrics' daily series (相关性/"
@@ -807,6 +844,7 @@ _TOOL_HANDLERS = {
     "metric_target_progress": _tool_metric_target_progress,
     "correlate_metrics": _tool_correlate_metrics,
     "tree_attribution": _tool_tree_attribution,
+    "draft_metric": _tool_draft_metric,
     "trace_metric": _tool_trace_metric,
     "review_sql": _tool_review_sql,
     "skew_check": _tool_skew_check,

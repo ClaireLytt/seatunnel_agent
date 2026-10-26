@@ -50,6 +50,8 @@ class Text2SQLRuntime:
     last_result: QueryResult | None = None
     prev_result: QueryResult | None = None
     last_sql: str = ""
+    #: validated-but-unpersisted metric draft awaiting user confirmation
+    pending_metric_draft: dict[str, Any] | None = None
     prev_sql: str = ""
     sql_retries: int = 0
     max_sql_retries: int = 3

@@ -55,6 +55,12 @@ metrics:
 (指标, 维度, 时间, 过滤) 永远产出逐字节一致的 SQL，LLM 只负责"听懂问题、
 选对指标"，不负责"写聚合"。
 
+对话定义指标:"帮我定义客单价 = GMV/订单数" 走 `draft_metric` 工具——
+草稿对当前目录+DDL 全量校验(重名/坏表/坏引用直接打回),**通过也不落盘**,
+用户经 `POST /session/{id}/metrics/draft/confirm` 明确确认后才追加进
+metrics.yaml(原子替换、保留既有条目),会话的指标目录与系统提示词随即
+热更新。LLM 没有任何直接写口径文件的路径。
+
 CLI：`seatunnel-agent metrics list|show <name>|validate|sql <name>`
 （`validate` 出错退出码 1，可做 CI 门禁；`sql` 离线预览展开结果）。
 

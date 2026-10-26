@@ -554,6 +554,36 @@ def _tool_correlate_metrics(
     }
 
 
+_DRAFT_FIELDS = (
+    "name", "display_name", "type", "description", "aliases", "unit",
+    "table", "expression", "time_column", "dimensions", "default_filters",
+    "numerator", "denominator", "targets", "tree",
+)
+
+
+def _tool_draft_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]:
+    """Draft a metric definition and validate it against the live catalog —
+    NOTHING persists here. The user confirms (UI/REST) before the entry is
+    appended to metrics.yaml; the LLM never writes the caliber whitelist."""
+    from .metrics import draft_metric_entry
+
+    raw = {k: inp.get(k) for k in _DRAFT_FIELDS}
+    entry, errors, snippet = draft_metric_entry(raw, rt.store)
+    if errors or entry is None:
+        return {"error": "; ".join(errors), "yaml": snippet}
+    rt.pending_metric_draft = entry
+    return {
+        "success": True,
+        "name": entry.get("name", ""),
+        "yaml": snippet,
+        "persisted": False,
+        "next_step": (
+            "草稿已通过校验但未落盘——请用户确认后调用 "
+            "POST /session/{id}/metrics/draft/confirm 持久化"
+        ),
+    }
+
+
 def _tool_tree_attribution(
     inp: dict[str, Any], rt: Text2SQLRuntime,
 ) -> dict[str, Any]:

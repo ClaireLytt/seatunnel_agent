@@ -16,6 +16,7 @@ Two metric kinds:
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -679,6 +680,74 @@ def diff_metric_stores(
         "removed": sorted(old_names - new_names),
         "changed": changed,
     }
+
+
+def metrics_file_path() -> Path:
+    """The metrics.yaml the default loader reads (env override honored)."""
+    env_path = os.getenv("T2S_METRICS_PATH", "").strip()
+    return Path(env_path) if env_path else DEFAULT_METRICS_PATH
+
+
+def draft_metric_entry(
+    raw: dict[str, Any], schema_store: SchemaStore | None,
+) -> tuple[dict[str, Any] | None, list[str], str]:
+    """Validate ONE candidate metric entry against the current catalog.
+
+    Returns (clean_entry, errors, yaml_snippet). The candidate is checked
+    exactly the way `metrics validate` would see it after persisting: the
+    current file's entries plus this one, parsed and cross-validated — so a
+    confirmed draft can never break the catalog.
+    """
+    import yaml
+
+    entry = {k: v for k, v in raw.items() if v not in (None, "", [], {})}
+    current: list[dict[str, Any]] = []
+    target = metrics_file_path()
+    if target.is_file():
+        loaded = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+        current = list(loaded.get("metrics", []) or [])
+    name = str(entry.get("name", "")).strip()
+    if any(str(m.get("name", "")).strip() == name for m in current):
+        return None, [f"指标 '{name}' 已存在(改名或先删除)"], ""
+    candidate_text = yaml.safe_dump(
+        {"metrics": current + [entry]}, allow_unicode=True, sort_keys=False,
+    )
+    store, errors = MetricStore.from_text(candidate_text, schema_store)
+    if not errors and schema_store is not None:
+        errors = store.validate(schema_store)
+    snippet = yaml.safe_dump([entry], allow_unicode=True, sort_keys=False)
+    if errors:
+        return None, errors, snippet
+    return entry, [], snippet
+
+
+def append_metric_entry(entry: dict[str, Any]) -> Path:
+    """Append a validated entry to the metrics file (atomic replace)."""
+    import tempfile
+
+    import yaml
+
+    target = metrics_file_path()
+    current: list[dict[str, Any]] = []
+    if target.is_file():
+        loaded = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+        current = list(loaded.get("metrics", []) or [])
+    target.parent.mkdir(parents=True, exist_ok=True)
+    text = yaml.safe_dump(
+        {"metrics": current + [entry]}, allow_unicode=True, sort_keys=False,
+    )
+    fd, tmp = tempfile.mkstemp(dir=str(target.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, str(target))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    return target
 
 
 def load_metric_store(

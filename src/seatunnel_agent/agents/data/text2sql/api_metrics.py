@@ -339,6 +339,69 @@ def session_metrics_health(session_id: str) -> dict[str, Any]:
     return {"rows": rows}
 
 
+class MetricDraftRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+    display_name: str = ""
+    type: str = "additive"
+    description: str = ""
+    aliases: list[str] = Field(default_factory=list)
+    unit: str = ""
+    table: str = ""
+    expression: str = ""
+    time_column: str = ""
+    dimensions: list[str] = Field(default_factory=list)
+    default_filters: list[str] = Field(default_factory=list)
+    numerator: str = ""
+    denominator: str = ""
+
+
+@router.post("/session/{session_id}/metrics/draft")
+def session_metric_draft(session_id: str, req: MetricDraftRequest) -> dict[str, Any]:
+    """Validate a metric draft against the live catalog — nothing persists."""
+    from .api_shared import entry_or_404
+    from .metrics import draft_metric_entry
+
+    rt = entry_or_404(session_id).agent.runtime
+    entry, errors, snippet = draft_metric_entry(req.model_dump(), rt.store)
+    if errors or entry is None:
+        raise HTTPException(status_code=400, detail="; ".join(errors))
+    rt.pending_metric_draft = entry
+    return {"name": entry.get("name", ""), "yaml": snippet, "persisted": False}
+
+
+@router.post("/session/{session_id}/metrics/draft/confirm")
+def session_metric_draft_confirm(session_id: str) -> dict[str, Any]:
+    """Persist the pending draft (the user's explicit confirmation step)."""
+    from .api_shared import entry_or_404
+    from .metrics import append_metric_entry, load_metric_store
+    from .prompts import build_text2sql_prompt
+
+    agent = entry_or_404(session_id).agent
+    rt = agent.runtime
+    draft = rt.pending_metric_draft
+    if not draft:
+        raise HTTPException(status_code=400, detail="没有待确认的指标草稿")
+    path = append_metric_entry(draft)
+    rt.pending_metric_draft = None
+    # reload the live catalog + the system prompt so the session sees it
+    metric_store, errors = load_metric_store(rt.store)
+    if errors:
+        raise HTTPException(
+            status_code=500,
+            detail="落盘后校验失败(文件已写入,请人工检查): " + "; ".join(errors),
+        )
+    rt.metrics = metric_store
+    agent._system_prompt = build_text2sql_prompt(
+        rt.store, dialect=rt.ds_type, metric_store=metric_store,
+    )
+    return {
+        "persisted": True,
+        "file": str(path),
+        "name": str(draft.get("name", "")),
+        "metric_count": len(metric_store),
+    }
+
+
 @router.get("/session/{session_id}/report/weekly")
 def session_weekly_report(session_id: str) -> dict[str, Any]:
     """Deterministic weekly-report skeleton as Markdown — no LLM."""

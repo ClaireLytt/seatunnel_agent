@@ -211,6 +211,10 @@ A metric catalog is loaded. To guarantee caliber consistency:
    五一期间/上季度/上月/本周/近30天 VERBATIM as the start field (leave end
    empty) — never convert them to dates yourself; the statutory-holiday
    calendar knows the official spans.
+15. To DEFINE a new metric (定义指标/新建口径), call **draft_metric** with
+   the fields you infer, show the returned YAML to the user and say it is
+   validated but NOT saved until they confirm — never claim persistence,
+   never edit metrics.yaml any other way.
 
 ## Metric Catalog (已定义指标)
 

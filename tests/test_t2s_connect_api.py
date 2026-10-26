@@ -86,6 +86,65 @@ def test_session_unknown_id_404(client):
     assert client.get("/api/text2sql/session/doesnotexist").status_code == 404
 
 
+def test_metric_draft_and_confirm_flow(client, tmp_path, monkeypatch):
+    """NL 建指标:草稿校验不落盘 → 确认才写文件并热更新会话目录."""
+    import sqlite3 as _sq
+
+    monkeypatch.setenv("API_KEY", "test")
+    db = tmp_path / "d.db"
+    con = _sq.connect(db)
+    con.execute("CREATE TABLE sales (order_id TEXT, amount REAL, dt TEXT)")
+    con.commit()
+    con.close()
+    metrics = tmp_path / "metrics.yaml"
+    metrics.write_text(
+        "metrics:\n  - name: gmv\n    table: sales\n"
+        "    expression: SUM(amount)\n    time_column: dt\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("T2S_METRICS_PATH", str(metrics))
+    r = client.post("/api/text2sql/connect", json={
+        "ds_type": "sqlite", "db_config": {"database": str(db)},
+    })
+    assert r.status_code == 200, r.text
+    sid = r.json()["session_id"]
+
+    # 坏草稿:表不在白名单 → 400,文件不动
+    bad = client.post(f"/api/text2sql/session/{sid}/metrics/draft", json={
+        "name": "bad_metric", "table": "nope", "expression": "SUM(x)",
+        "time_column": "dt",
+    })
+    assert bad.status_code == 400
+    assert "bad_metric" not in metrics.read_text(encoding="utf-8")
+
+    # 好草稿:校验通过但未落盘
+    good = client.post(f"/api/text2sql/session/{sid}/metrics/draft", json={
+        "name": "order_cnt", "display_name": "订单量", "table": "sales",
+        "expression": "COUNT(order_id)", "time_column": "dt",
+    })
+    assert good.status_code == 200, good.text
+    assert good.json()["persisted"] is False
+    assert "order_cnt" not in metrics.read_text(encoding="utf-8")
+
+    # 确认:写入文件 + 会话指标目录热更新
+    ok = client.post(f"/api/text2sql/session/{sid}/metrics/draft/confirm")
+    assert ok.status_code == 200, ok.text
+    data = ok.json()
+    assert data["persisted"] is True and data["metric_count"] == 2
+    text = metrics.read_text(encoding="utf-8")
+    assert "order_cnt" in text and "gmv" in text  # 原有条目保留
+
+    # 重复确认:无草稿 → 400;重名草稿 → 400
+    assert client.post(
+        f"/api/text2sql/session/{sid}/metrics/draft/confirm"
+    ).status_code == 400
+    dup = client.post(f"/api/text2sql/session/{sid}/metrics/draft", json={
+        "name": "order_cnt", "table": "sales",
+        "expression": "COUNT(*)", "time_column": "dt",
+    })
+    assert dup.status_code == 400 and "已存在" in dup.json()["detail"]
+
+
 def test_session_metrics_health(client, tmp_path, monkeypatch):
     import sqlite3 as _sq
     from datetime import date, timedelta
