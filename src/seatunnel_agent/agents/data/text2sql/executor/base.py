@@ -242,4 +242,8 @@ def create_executor(config: DatabaseConfig) -> DatabaseExecutor:
     module_name, class_name = entry
     mod = importlib.import_module(module_name, package=__package__)
     cls = getattr(mod, class_name)
-    return cls(config)
+    # row-level policy (T2S_POLICY) enforces here — the one choke point
+    # below chat, REST, MCP, subscriptions and reports alike
+    from ..policies import wrap_executor
+
+    return wrap_executor(cls(config))

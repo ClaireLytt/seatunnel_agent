@@ -323,6 +323,24 @@ seatunnel-agent metrics health --ddl config/schema_ddl.sql --ds-type sqlite --da
 validator / 白名单 / LIMIT；单项失败不影响其他项。文件
 `config/t2s_boards.json`（上限 50 板 × 30 项）。
 
+## 行级权限
+
+列脱敏管"看什么字段",行级策略管"看哪些行"。`config/t2s_policies.yaml`
+(或 `T2S_POLICIES_PATH`)定义命名策略:
+
+```yaml
+policies:
+  - name: app_only
+    row_filters:
+      dwd.orders: "channel = 'app'"     # 条件写裸列名,注入时自动带上表别名
+```
+
+服务端设 `T2S_POLICY=app_only` 激活(**只认服务端环境,不接受客户端传入**);
+执行器工厂处统一注入——对话/REST/MCP/订阅/看板/周报全链路同一个闸口,
+JOIN/子查询/UNION 的每个读取点都被过滤。失败关闭:策略激活时解析不了的
+SQL 直接拒绝,绝不无过滤执行;`T2S_POLICY` 指向未定义策略是硬错误。
+按 API key 区分策略有赖多 key 鉴权,暂未提供。
+
 ## 列脱敏
 
 敏感结果列（手机号/身份证/邮箱/银行卡，按结果列名含别名识别）在
