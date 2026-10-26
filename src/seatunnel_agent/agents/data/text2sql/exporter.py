@@ -43,8 +43,12 @@ def download_noto_font(timeout: int = _FONT_DOWNLOAD_TIMEOUT_S) -> Path | None:
         import hashlib
         if hashlib.sha256(data).hexdigest() != expected:
             return None
-        with open(NOTO_FONT_PATH, "wb") as f:
+        # 写临时文件后原子落位:并发下载/同时读取(chart.py 后台线程 +
+        # export_pdf)不会看到写了一半的字体文件
+        tmp = NOTO_FONT_PATH.with_suffix(f".tmp-{os.getpid()}")
+        with open(tmp, "wb") as f:
             f.write(data)
+        os.replace(tmp, NOTO_FONT_PATH)
         return NOTO_FONT_PATH if NOTO_FONT_PATH.is_file() else None
     except Exception:
         return None

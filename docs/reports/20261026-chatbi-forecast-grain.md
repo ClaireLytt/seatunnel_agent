@@ -42,3 +42,21 @@ python scripts/check_workflow.py -> 输出贴于对话(本报告提交先于核�
 
 - uitest:未执行(无 UI 改动)。
 - check_workflow.py 在本报告落盘并提交后执行(其"工作区干净"检查要求先提交),输出在对话中交付。
+
+## check_workflow 补记(2026-10-27)
+
+该检查(报告含验证输出)在本报告写就之后由 main 并入;补跑并粘贴真实输出。
+
+```
+python scripts/check_workflow.py --range "origin/main...HEAD"
+[PASS] AI 署名: 无 AI 署名(范围 origin/main...HEAD)
+[FAIL] 工作区: 工作区不干净:
+M docs/reports/20261026-chatbi-audit-fixes.md
+ M docs/reports/20261026-chatbi-forecast-grain.md
+ M docs/reports/20261026-chatbi-forecast-holiday.md
+ M src/seatunnel_agent/agents/data/text2sql/exporter.py
+[PASS] 报告落盘: 代码改动已附带落盘报告
+[PASS] 报告含验证输出: 报告含 check_workflow 输出
+[PASS] floor: 无作弊变绿改动(范围 origin/main...HEAD)
+```
+(工作区 FAIL 为本次补记时文件尚未提交的即时快照;提交后该项 PASS)
