@@ -1623,6 +1623,31 @@ class TestExportExcelPdf:
         assert Path(path).is_file()
         assert Path(path).stat().st_size > 100
 
+    def test_export_pdf_cjk_font_registration(self, tmp_path, monkeypatch):
+        """复活路径回归:注册 unicode 字体的 add_font 调用(fpdf2 2.8.8 已
+        无 uni 参数,旧代码必 TypeError)。用任一本机 TTF/OTF 当字体文件;
+        找不到就跳过(路径本身由本测试在有字体的机器上锁死)."""
+        import os
+
+        from seatunnel_agent.agents.data.text2sql import exporter
+
+        candidates = [
+            exporter.NOTO_FONT_PATH,
+            Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "msyh.ttc",
+            Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "arial.ttf",
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        ]
+        font = next((p for p in candidates if p.is_file() and p.suffix != ".ttc"),
+                    None)
+        if font is None:
+            pytest.skip("no usable TTF/OTF font on this machine")
+        monkeypatch.setattr(exporter, "NOTO_FONT_PATH", font)
+        path = exporter.export_pdf(
+            ["手机号", "金额"], [("138****78", 12.5)],
+            path=str(tmp_path), name_hint="cjk",
+        )
+        assert Path(path).is_file() and Path(path).stat().st_size > 100
+
     def test_export_excel_tool(self, store, tmp_path):
         from seatunnel_agent.agents.data.text2sql.executor import QueryResult
         from seatunnel_agent.agents.data.text2sql.tools import (

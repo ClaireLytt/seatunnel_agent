@@ -780,6 +780,26 @@ def test_metric_health_rollup(tmp_path) -> None:
     assert rows[0]["metric"] == "order_cnt"  # 红的排最前
 
 
+def test_resolve_db_config_connection_preset(tmp_path, monkeypatch) -> None:
+    """复活路径回归:连接预设解析(曾 import 不存在的 PresetsStore,必炸)."""
+    monkeypatch.setenv("SEATUNNEL_DC_PRESETS_PATH", str(tmp_path / "presets.json"))
+    monkeypatch.setenv("SEATUNNEL_DC_PRESETS_KEY_PATH", str(tmp_path / "key"))
+    from seatunnel_agent.agents.data.data_comparison import presets as presets_mod
+    from seatunnel_agent.agents.data.text2sql.subscriptions import resolve_db_config
+
+    store = presets_mod.ConnectionPresetsStore(tmp_path / "presets.json")
+    store.save(name="我的库", ds_type="sqlite", host="", port=0,
+               database=str(tmp_path / "x.db"))
+    monkeypatch.setattr(
+        presets_mod, "ConnectionPresetsStore",
+        lambda *a, **k: store,
+    )
+    cfg = resolve_db_config({"ds_type": "sqlite", "connection": "我的库"})
+    assert cfg is not None and cfg.ds_type == "sqlite"
+    assert cfg.database == str(tmp_path / "x.db")
+    assert resolve_db_config({"ds_type": "sqlite", "connection": "不存在"}) is None
+
+
 def test_asset_doctor_findings() -> None:
     """漂移体检:坏表 error、坏列 warning、缺失指标/收藏 error、好资产静默."""
     from seatunnel_agent.agents.data.text2sql.health import asset_findings
