@@ -1937,6 +1937,60 @@ def test_scan_cost_hints() -> None:
     assert h and h[0]["kind"] == "wide_in_list" and h[0]["estimated_partitions"] == 100
 
 
+def test_weekly_report_skeleton_and_cli(tmp_path, monkeypatch) -> None:
+    """周报:骨架数字确定、渲染含表格/告警/归因;CLI --no-llm 真跑落盘."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.text2sql.demo import build_demo
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        DatabaseConfig,
+        create_executor,
+    )
+    from seatunnel_agent.agents.data.text2sql.report import (
+        build_weekly_skeleton,
+        render_skeleton_md,
+    )
+    from seatunnel_agent.cli import cli
+
+    info = build_demo(tmp_path / "demo", days=35)
+    schema_store = SchemaStore.from_file(info["ddl"])
+    store, errors = MetricStore.from_text(
+        (tmp_path / "demo" / "metrics.yaml").read_text(encoding="utf-8"),
+        schema_store,
+    )
+    assert errors == []
+    from datetime import date
+
+    executor = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=info["db"]))
+    sk = build_weekly_skeleton(
+        store, schema_store, executor,
+        subs=[{"name": "GMV异动", "metric": "gmv",
+               "alert_state": {"active": True, "since": "2026-10-20"}}],
+        today=date.today(), ds_type="sqlite",
+    )
+    by = {r["metric"]: r for r in sk["metrics"]}
+    assert by["gmv"]["curr"] > 0 and "wow_pct" in by["gmv"]
+    assert "month_completion_pct" in by["gmv"]
+    assert sk["alerting"][0]["metric"] == "gmv"
+    assert sk["attribution"] is not None
+    md = render_skeleton_md(sk)
+    assert "经营周报" in md and "| GMV |" in md
+    assert "告警中" in md and "GMV异动" in md
+    assert "最大变动指标归因" in md
+
+    monkeypatch.chdir(tmp_path)
+    r = CliRunner().invoke(cli, [
+        "t2s-report", "--ddl", info["ddl"], "-f", info["metrics"],
+        "--ds-type", "sqlite", "--database", info["db"],
+        "--out", str(tmp_path / "out"), "--no-llm",
+    ])
+    assert r.exit_code == 0, r.output
+    files = list((tmp_path / "out").glob("weekly_*.md"))
+    assert len(files) == 1
+    assert "经营周报" in files[0].read_text(encoding="utf-8")
+
+
 def test_build_demo_self_consistent(tmp_path) -> None:
     import sqlite3
 

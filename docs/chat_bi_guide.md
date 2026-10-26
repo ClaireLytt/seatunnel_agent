@@ -388,6 +388,17 @@ seatunnel-agent t2s-eval --dataset tests/fixtures/t2s_eval_demo.jsonl \
 问题 → agent（真实 LLM）→ 结果集,与 golden SQL 的结果**逐行对比**
 （乱序不敏感、浮点容差、列别名无关）,输出准确率与逐题差异。
 
+## 经营周报
+
+```bash
+seatunnel-agent t2s-report --ddl config/schema_ddl.sql --ds-type sqlite --database config/demo.db
+```
+
+确定性骨架(各指标 周值/周环比/月目标达成 + 告警中订阅 + 最大变动指标的
+维度归因 Top3)落盘 `reports/t2s/weekly_<日期>.md`;配置了 LLM 时追加一段
+中文摘要(提示词硬性禁止改写/估算/外推任何数字),`--no-llm` 或 LLM 不可用
+时输出纯表格版——骨架本身就可读。
+
 ## 审计
 
 每条查询落 `logs/text2sql_queries.jsonl`：`source`

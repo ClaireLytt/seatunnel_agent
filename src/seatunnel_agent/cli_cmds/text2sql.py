@@ -352,6 +352,74 @@ def t2s_sub_backtest(sub_id: str, days: int, end_raw: str) -> None:
             )
 
 
+@click.command(name="t2s-report")
+@click.option("--ddl", type=click.Path(exists=True), required=True,
+              help="schema DDL 文件（表白名单）")
+@click.option("--metrics-file", "-f", type=click.Path(exists=True),
+              default=None, help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--ds-type", default="hive", show_default=True)
+@click.option("--connection", default="", help="连接预设名")
+@click.option("--database", default="", help="sqlite 数据库路径（仅 sqlite）")
+@click.option("--out", "out_dir", default="reports/t2s", show_default=True,
+              help="报告输出目录")
+@click.option("--no-llm", is_flag=True, help="只输出确定性表格骨架,不叙述")
+def t2s_report(ddl: str, metrics_file: str | None, ds_type: str,
+               connection: str, database: str, out_dir: str,
+               no_llm: bool) -> None:
+    """经营周报：确定性骨架（周值/环比/目标/告警/最大变动归因）+ 可选
+    LLM 叙述（禁改数字），落盘 Markdown。"""
+    _ensure_utf8_stdio()
+    from datetime import date
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.text2sql.executor import create_executor
+    from seatunnel_agent.agents.data.text2sql.report import (
+        build_weekly_skeleton,
+        narrate,
+        render_skeleton_md,
+    )
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+    from seatunnel_agent.agents.data.text2sql.subscriptions import (
+        SubscriptionStore,
+        resolve_db_config,
+    )
+
+    store, errors = _load_metrics_for_cli(metrics_file, ddl)
+    if errors:
+        for err in errors:
+            console.print(f"[red]{err}[/red]")
+        raise SystemExit(1)
+    if len(store) == 0:
+        raise click.ClickException("没有指标定义")
+    db_config = resolve_db_config({
+        "ds_type": ds_type, "connection": connection, "database": database,
+    })
+    if db_config is None:
+        raise click.ClickException("无法解析数据库连接")
+    try:
+        subs = SubscriptionStore().list()
+    except Exception:
+        subs = []
+    sk = build_weekly_skeleton(
+        store, SchemaStore.from_file(ddl), create_executor(db_config),
+        subs, today=date.today(), ds_type=ds_type,
+    )
+    md = render_skeleton_md(sk)
+    if not no_llm:
+        from seatunnel_agent.common.config import load_settings
+
+        prose = narrate(md, load_settings())
+        if prose:
+            md = md + "\n## 摘要\n\n" + prose + "\n"
+        else:
+            console.print("[yellow]LLM 不可用,输出纯表格骨架[/yellow]")
+    target = Path(out_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    path = target / f"weekly_{sk['week']['end'].replace('-', '')}.md"
+    path.write_text(md, encoding="utf-8")
+    console.print(f"[green]周报已落盘: {path}[/green]")
+
+
 @click.command(name="chatbi-demo")
 @click.option("--dir", "target_dir", default="demo/chatbi", show_default=True,
               help="演示资产输出目录")
@@ -1082,6 +1150,7 @@ def register(cli) -> None:
     cli.add_command(t2s_qlog_stats)
     cli.add_command(t2s_doctor)
     cli.add_command(chatbi_demo)
+    cli.add_command(t2s_report)
     cli.add_command(t2s_eval)
     cli.add_command(dqc)
     cli.add_command(metrics)
