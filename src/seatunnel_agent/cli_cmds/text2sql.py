@@ -757,6 +757,78 @@ def _report_caliber_changes(metrics_file: str | None, new_store) -> None:
         )
 
 
+@metrics.command("health")
+@click.option("--ddl", type=click.Path(exists=True), required=True,
+              help="schema DDL 文件（表白名单）")
+@click.option("--file", "-f", "metrics_file", type=click.Path(exists=True),
+              default=None, help="指标定义文件（默认 config/metrics.yaml）")
+@click.option("--ds-type", default="hive", show_default=True)
+@click.option("--connection", default="", help="连接预设名")
+@click.option("--database", default="", help="sqlite 数据库路径（仅 sqlite）")
+@click.option("--log-dir", default="logs", show_default=True)
+def metrics_health(
+    ddl: str, metrics_file: str | None, ds_type: str,
+    connection: str, database: str, log_dir: str,
+) -> None:
+    """指标健康页：每指标一行 新鲜度/告警中/7天查询与失败/月目标达成,红黄绿排序。"""
+    _ensure_utf8_stdio()
+    from datetime import date
+
+    from seatunnel_agent.agents.data.text2sql.executor import create_executor
+    from seatunnel_agent.agents.data.text2sql.health import metric_health
+    from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
+    from seatunnel_agent.agents.data.text2sql.subscriptions import (
+        SubscriptionStore,
+        resolve_db_config,
+    )
+
+    store, errors = _load_metrics_for_cli(metrics_file, ddl)
+    if errors:
+        for err in errors:
+            console.print(f"[red]{err}[/red]")
+        raise SystemExit(1)
+    if len(store) == 0:
+        raise click.ClickException("没有指标定义")
+    db_config = resolve_db_config({
+        "ds_type": ds_type, "connection": connection, "database": database,
+    })
+    if db_config is None:
+        raise click.ClickException("无法解析数据库连接")
+    from seatunnel_agent.agents.data.text2sql.schema import SchemaStore
+
+    schema_store = SchemaStore.from_file(ddl)
+    try:
+        subs = SubscriptionStore().list()
+    except Exception:
+        subs = []
+    rows = metric_health(
+        store, schema_store, create_executor(db_config),
+        QueryLogger(log_dir=log_dir).recent(5000), subs,
+        today=date.today(), ds_type=ds_type,
+    )
+    dot = {"red": "[red]●[/red]", "yellow": "[yellow]●[/yellow]",
+           "green": "[green]●[/green]"}
+    for r in rows:
+        bits = []
+        if r.get("latest_day"):
+            bits.append(f"最新 {r['latest_day']}（滞后 {r['lag_days']} 天）")
+        if r.get("freshness_error"):
+            bits.append(f"新鲜度检查失败: {r['freshness_error']}")
+        if r.get("alerting"):
+            bits.append(f"告警中（自 {r.get('alerting_since', '?')}）")
+        bits.append(f"7天 {r['queries_7d']} 查询/{r['failures_7d']} 失败")
+        if "month_completion_pct" in r:
+            bits.append(f"月目标 {r['month_completion_pct']:g}%")
+        if r.get("target_error"):
+            bits.append(f"目标计算失败: {r['target_error']}")
+        if r["subscriptions"]:
+            bits.append(f"{r['subscriptions']} 个订阅")
+        console.print(
+            f"{dot[r['status']]} [bold]{r['metric']}[/bold]"
+            f"（{r['display_name']}） " + " · ".join(bits)
+        )
+
+
 @metrics.command("sql")
 @click.argument("name")
 @click.option("--file", "-f", "metrics_file", type=click.Path(exists=True),
@@ -854,6 +926,49 @@ def t2s_examples_add(question: str, sql: str, examples_file: str | None) -> None
     except ValueError as exc:
         raise click.ClickException(str(exc))
     console.print(f"[green]已添加示例 {entry['id']}（现共 {len(store)} 条）[/green]")
+
+
+@t2s_examples.command("promote")
+@click.option("--top", type=int, default=10, show_default=True, help="最多固化条数")
+@click.option("--min-count", type=int, default=2, show_default=True,
+              help="最低出现次数")
+@click.option("--last", type=int, default=2000, show_default=True,
+              help="只看最近 N 条 qlog")
+@click.option("--log-dir", default="logs", show_default=True)
+@click.option("--yes", is_flag=True, help="确认入库（缺省只列出候选,不写入）")
+@click.option("--file", "-f", "examples_file", type=click.Path(),
+              default=None, help="示例库文件（默认 config/t2s_examples.json）")
+def t2s_examples_promote(
+    top: int, min_count: int, last: int, log_dir: str,
+    yes: bool, examples_file: str | None,
+) -> None:
+    """把 qlog 里高频且成功、但尚无验证示例的问题批量固化进示例库
+    （= 下次同问走零成本语义缓存）。默认 dry-run。"""
+    _ensure_utf8_stdio()
+    from seatunnel_agent.agents.data.text2sql.examples import (
+        ExampleStore,
+        promote_candidates,
+    )
+    from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
+
+    store = ExampleStore(examples_file)
+    cands = promote_candidates(
+        QueryLogger(log_dir=log_dir).recent(last), store,
+        top=top, min_count=min_count,
+    )
+    if not cands:
+        console.print("没有可固化的候选（高频、成功、且尚无示例的问题）")
+        return
+    for c in cands:
+        console.print(f"×{c['count']} {c['question']}")
+        console.print(f"    {c['sql']}")
+    if not yes:
+        console.print(f"[yellow]dry-run：加 --yes 把以上 {len(cands)} 条入库[/yellow]")
+        return
+    for c in cands:
+        store.add(c["question"], c["sql"], tables=c.get("tables"),
+                  source="promoted")
+    console.print(f"[green]已固化 {len(cands)} 条示例[/green]")
 
 
 @t2s_examples.command("rm")

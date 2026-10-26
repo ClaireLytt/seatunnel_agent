@@ -737,6 +737,49 @@ def test_watch_alert_card_english(tmp_path, stores) -> None:
     assert "异动告警" not in body
 
 
+def test_metric_health_rollup(tmp_path) -> None:
+    """健康页:新鲜指标绿、告警中红、月目标达成与 7 天失败统计."""
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        DatabaseConfig,
+        create_executor,
+    )
+    from seatunnel_agent.agents.data.text2sql.health import metric_health
+
+    schema_store = SchemaStore(parse_ddl(_DDL))
+    metric_store, errors = MetricStore.from_text(_DIGEST_METRICS, schema_store)
+    assert errors == []
+    db = _series_db(tmp_path, [("2026-03-14", 100.0), ("2026-03-15", 110.0)])
+    executor = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=db))
+    today = date(2026, 3, 16)
+    qlog = [
+        {"metric": "gmv", "status": "success",
+         "timestamp": "2026-03-15T08:00:00+00:00"},
+        {"metric": "gmv", "status": "error",
+         "timestamp": "2026-03-15T09:00:00+00:00"},
+        {"metric": "gmv", "status": "success",
+         "timestamp": "2026-01-01T09:00:00+00:00"},  # 7 天外,不计
+    ]
+    subs = [
+        {"metric": "order_cnt",
+         "alert_state": {"active": True, "since": "2026-03-14"}},
+    ]
+    rows = metric_health(
+        metric_store, schema_store, executor, qlog, subs,
+        today=today, ds_type="sqlite",
+    )
+    by = {r["metric"]: r for r in rows}
+    gmv = by["gmv"]
+    assert gmv["lag_days"] == 0 and gmv["latest_day"] == "2026-03-15"
+    assert gmv["queries_7d"] == 2 and gmv["failures_7d"] == 1
+    assert gmv["month_completion_pct"] == pytest.approx(2.1)
+    assert gmv["status"] == "yellow"  # 有失败但不红
+    cnt = by["order_cnt"]
+    assert cnt["alerting"] and cnt["alerting_since"] == "2026-03-14"
+    assert cnt["status"] == "red"
+    assert rows[0]["metric"] == "order_cnt"  # 红的排最前
+
+
 def test_qlog_insights(tmp_path) -> None:
     from seatunnel_agent.agents.data.text2sql.examples import ExampleStore
     from seatunnel_agent.agents.data.text2sql.qlog import insights

@@ -147,6 +147,44 @@ class ExampleStore(JsonFileStore):
         return [it for _s, it in ranked[:k]]
 
 
+def promote_candidates(
+    entries: list[dict[str, Any]],
+    store: ExampleStore,
+    top: int = 10,
+    min_count: int = 2,
+) -> list[dict[str, Any]]:
+    """Curation candidates from qlog: repeated interactive questions that
+    succeeded but have no verified example yet. Each carries the LATEST
+    successful generated SQL, ready to promote into the store (and thus
+    the semantic cache)."""
+    by_q: dict[str, dict[str, Any]] = {}
+    for e in entries:  # qlog order: oldest -> newest, so last write wins
+        q_raw = str(e.get("user_query", "")).strip()
+        if not q_raw or q_raw.startswith("["):
+            continue
+        key = normalize_question(q_raw)
+        if not key:
+            continue
+        slot = by_q.setdefault(key, {"question": q_raw, "count": 0, "sql": ""})
+        slot["count"] += 1
+        if e.get("status") == "success" and str(e.get("generated_sql") or "").strip():
+            slot["sql"] = str(e["generated_sql"]).strip()
+            slot["question"] = q_raw
+        if e.get("tables") or e.get("matched_tables"):
+            slot["tables"] = list(e.get("matched_tables") or [])
+    ranked = sorted(by_q.values(), key=lambda s: s["count"], reverse=True)
+    out: list[dict[str, Any]] = []
+    for s in ranked:
+        if len(out) >= top:
+            break
+        if s["count"] < min_count or not s["sql"]:
+            continue
+        if store.exact_match(s["question"]) is not None:
+            continue
+        out.append(s)
+    return out
+
+
 def augment_question(question: str, store: ExampleStore | None, k: int = 3) -> str:
     """Append the top-K verified examples to the user question as reference
     context. Returns ``question`` unchanged when nothing matches — the

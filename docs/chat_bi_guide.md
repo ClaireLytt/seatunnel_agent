@@ -252,6 +252,22 @@ seatunnel-agent t2s-qlog-stats --top 10
 高频问题 × 是否已固化示例(= 语义缓存覆盖率)、失败聚类、慢查询 Top、
 来源分布。把 ❌ 的高频问题 👍 固化后,下次同问即走零成本缓存。
 
+批量固化一条命令(qlog 里本就存着每问最近一次成功的 SQL):
+
+```bash
+seatunnel-agent t2s-examples promote --top 10        # dry-run 列候选
+seatunnel-agent t2s-examples promote --top 10 --yes  # 入库
+```
+
+### 指标健康页
+
+```bash
+seatunnel-agent metrics health --ddl config/schema_ddl.sql --ds-type sqlite --database config/demo.db
+```
+
+每指标一行:新鲜度(最新分区/滞后天数)/ 告警中(自哪天)/ 7 天查询与
+失败数 / 月目标达成 / 订阅数,红黄绿排序(断更或告警中=红,有失败=黄)。
+
 ## 看板（钉选查询）
 
 不做拖拽报表设计器；看板 = 钉选查询的有序列表。UI 侧边栏「📌 看板」：

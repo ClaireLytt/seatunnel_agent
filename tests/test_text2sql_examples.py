@@ -255,6 +255,31 @@ def test_semantic_cache_falls_back_on_bad_sql(tmp_path, monkeypatch) -> None:
     assert llm_calls == [1]
 
 
+def test_promote_candidates(store: ExampleStore) -> None:
+    from seatunnel_agent.agents.data.text2sql.examples import promote_candidates
+
+    store.add("已固化的问题", "SELECT 0")
+    entries = [
+        {"user_query": "各渠道GMV", "status": "success",
+         "generated_sql": "SELECT old", "matched_tables": ["sales"]},
+        {"user_query": "各渠道GMV？", "status": "success",
+         "generated_sql": "SELECT new", "matched_tables": ["sales"]},
+        {"user_query": "只出现一次", "status": "success", "generated_sql": "SELECT 1"},
+        {"user_query": "总是失败", "status": "error", "generated_sql": ""},
+        {"user_query": "总是失败", "status": "error", "generated_sql": ""},
+        {"user_query": "已固化的问题", "status": "success", "generated_sql": "SELECT 0"},
+        {"user_query": "已固化的问题", "status": "success", "generated_sql": "SELECT 0"},
+        {"user_query": "[subscription] 日报", "status": "success",
+         "generated_sql": "SELECT 9"},
+    ]
+    cands = promote_candidates(entries, store, top=10, min_count=2)
+    assert len(cands) == 1
+    c = cands[0]
+    assert c["count"] == 2
+    assert c["sql"] == "SELECT new"  # 最新一次成功的 SQL
+    assert c["tables"] == ["sales"]
+
+
 def test_semantic_cache_env_off(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("T2S_SEMANTIC_CACHE", "0")
     llm_calls: list = []
