@@ -171,11 +171,17 @@ def t2s_sub_list() -> None:
               default="dod", show_default=True,
               help="参照期：dod=前一天, wow=上周同日, "
                    "model=预测基线95%区间（仅 --watch；model 忽略阈值）")
+@click.option("--freshness", is_flag=True,
+              help="数据新鲜度订阅：MAX(time_column) 滞后超 --max-lag-days 才告警")
+@click.option("--max-lag-days", type=int, default=1, show_default=True,
+              help="允许的数据滞后天数（仅 --freshness）")
 def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
                 dims: tuple[str, ...], lookback: int, params: tuple[str, ...],
                 ds_type: str, connection: str, database: str, webhook: str,
-                watch: bool, threshold: float, watch_mode: str) -> None:
-    """新建订阅（--metric 定时推数 / --metric --watch 异动告警 / --favorite 收藏推数）。"""
+                watch: bool, threshold: float, watch_mode: str,
+                freshness: bool, max_lag_days: int) -> None:
+    """新建订阅（--metric 定时推数 / --metric --watch 异动告警 /
+    --metric --freshness 断更告警 / --favorite 收藏推数）。"""
     _ensure_utf8_stdio()
     from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore
 
@@ -183,6 +189,10 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
         raise click.UsageError("--metric 与 --favorite 必须二选一")
     if watch and not metric:
         raise click.UsageError("--watch 只能与 --metric 搭配")
+    if freshness and not metric:
+        raise click.UsageError("--freshness 只能与 --metric 搭配")
+    if freshness and watch:
+        raise click.UsageError("--watch 与 --freshness 不能同时使用")
     param_map: dict[str, str] = {}
     for p in params:
         if "=" not in p:
@@ -191,6 +201,8 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
         param_map[k.strip()] = v
     if watch:
         source_type = "metric_watch"
+    elif freshness:
+        source_type = "freshness"
     else:
         source_type = "metric" if metric else "favorite"
     try:
@@ -200,6 +212,7 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
             metric=metric, dimensions=list(dims), lookback_days=lookback,
             favorite_id=favorite_id, params=param_map,
             threshold_pct=threshold, watch_mode=watch_mode,
+            max_lag_days=max_lag_days,
             ds_type=ds_type, connection=connection, database=database,
             webhook_url=webhook,
         )

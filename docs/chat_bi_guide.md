@@ -185,7 +185,8 @@ sqlite 会话首次使用自动构建；其他引擎 `T2S_VALUE_INDEX=1` 开启�
 seatunnel-agent t2s-sub add --name GMV日报 --cron "0 9 * * *" \
     --metric gmv -d channel --webhook https://open.feishu.cn/...
 
-# 异动监控:变动超 ±8% 才推告警(含 Top3 贡献成员),否则静默
+# 异动监控:变动超 ±8% 才推告警,否则静默;additive 指标的告警卡自动跑归因,
+# 附 Top3 贡献成员的贡献率(新增/消失成员单独标记)——告警即答案
 # 比率指标(如退款率)同样支持;卡片中维度拆解标注为"各维度变化";
 # 比率无定义时(分母为0/无数据)记 no_data 跳过,不发假告警
 seatunnel-agent t2s-sub add --name GMV异动 --cron "30 8 * * *" \
@@ -193,9 +194,15 @@ seatunnel-agent t2s-sub add --name GMV异动 --cron "30 8 * * *" \
 
 # 模型基线异动:--watch-mode model 用预测基线(趋势+星期+节假日)代替固定阈值,
 # 昨日实际落在 95% 区间外才告警——周末/节假日的天然波动不再误报;
-# 历史不足 7 天记 no_data 跳过(此模式忽略 --threshold)
+# 历史不足 7 天记 no_data 跳过(此模式忽略 --threshold);
+# 数据管道滞后(表里根本没有昨日数据)记 no_data 断更提示,不发 -100% 假告警
 seatunnel-agent t2s-sub add --name GMV异动 --cron "30 8 * * *" \
     --metric gmv --watch --watch-mode model --webhook ...
+
+# 数据新鲜度:MAX(time_column) 落后超过 --max-lag-days 才告警(每表 1 条极小 SQL;
+# 比率指标自动检查分子/分母两张表)
+seatunnel-agent t2s-sub add --name GMV断更 --cron "0 8 * * *" \
+    --metric gmv --freshness --max-lag-days 1 --webhook ...
 
 # 收藏推数:参数化收藏 + 日期宏(${yesterday}/${today_pt}/${month_start}...)
 seatunnel-agent t2s-sub add --name 周报 --cron "0 10 * * 0" --favorite <id> ...

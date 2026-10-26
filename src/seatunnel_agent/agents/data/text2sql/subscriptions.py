@@ -75,7 +75,7 @@ logger = logging.getLogger(__name__)
 _MAX_SUBSCRIPTIONS = 100
 _CARD_MAX_ROWS = 10
 
-SOURCE_TYPES = ("metric", "favorite", "metric_watch")
+SOURCE_TYPES = ("metric", "favorite", "metric_watch", "freshness")
 
 #: metric_watch comparison modes: dod = 昨天 vs 前天, wow = 昨天 vs 上周同日
 WATCH_MODES = ("dod", "wow", "model")
@@ -138,6 +138,7 @@ class SubscriptionStore:
         params: dict[str, str] | None = None,
         threshold_pct: float = 10.0,
         watch_mode: str = "dod",
+        max_lag_days: int = 1,
         ds_type: str = "hive",
         connection: str = "",
         database: str = "",
@@ -149,8 +150,10 @@ class SubscriptionStore:
         parse_cron(cron)  # validate early
         if source_type not in SOURCE_TYPES:
             raise ValueError(f"source_type 只支持 {', '.join(SOURCE_TYPES)}")
-        if source_type in ("metric", "metric_watch") and not metric.strip():
+        if source_type in ("metric", "metric_watch", "freshness") and not metric.strip():
             raise ValueError(f"{source_type} 订阅必须给出指标名")
+        if max_lag_days < 1:
+            raise ValueError("max_lag_days 必须 >= 1")
         if watch_mode not in WATCH_MODES:
             raise ValueError(f"watch_mode 只支持 {', '.join(WATCH_MODES)}")
         if threshold_pct <= 0:
@@ -171,6 +174,7 @@ class SubscriptionStore:
             "params": dict(params or {}),
             "threshold_pct": float(threshold_pct),
             "watch_mode": watch_mode,
+            "max_lag_days": int(max_lag_days),
             "ds_type": ds_type,
             "connection": connection.strip(),
             "database": database.strip(),
@@ -291,6 +295,85 @@ def _build_subscription_sql(
         raise MetricError(str(exc))
 
 
+def _max_time_value(
+    metric, metric_store: MetricStore, schema_store: SchemaStore,
+    executor, ds_type: str,
+):
+    """MAX(time_column) per underlying table of *metric* (both ratio sides).
+
+    Returns {table: date|None}; raises MetricError when a side has no
+    time_column.
+    """
+    sides = list(ratio_sides(metric, metric_store)) if metric.is_ratio else [metric]
+    out: dict[str, Any] = {}
+    for side in sides:
+        if not side.time_column:
+            raise MetricError(f"指标 '{side.name}' 没有 time_column,无法判断新鲜度")
+        sql = f"SELECT MAX({side.time_column}) AS max_dt FROM {side.table}"
+        validation = validate_sql(sql, schema_store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        result = executor.run(enforce_limit(sql, dialect=ds_type), max_rows=10)
+        raw = result.rows[0][0] if result.rows else None
+        out[side.table] = (
+            None if raw is None else parse_date(str(raw).strip()[:10])
+        )
+    return out
+
+
+def _run_freshness(
+    sub: dict[str, Any],
+    schema_store: SchemaStore,
+    metric_store: MetricStore,
+    executor,
+    today: date,
+    push_fn: Callable[..., tuple[bool, str]],
+) -> dict[str, Any]:
+    """Data-freshness watch: alert when MAX(time_column) lags more than
+    max_lag_days behind today (1 tiny SQL per underlying table)."""
+    name = sub.get("name", "?")
+    webhook = (sub.get("webhook_url") or "").strip()
+    metric = metric_store.get(sub.get("metric", ""))
+    if metric is None:
+        raise MetricError(f"指标 '{sub.get('metric')}' 未定义")
+    max_lag = int(sub.get("max_lag_days", 1))
+    expected = today - timedelta(days=max_lag)
+
+    max_by_table = _max_time_value(
+        metric, metric_store, schema_store, executor,
+        sub.get("ds_type", "hive"),
+    )
+    stale = {
+        t: d for t, d in max_by_table.items() if d is None or d < expected
+    }
+    outcome: dict[str, Any] = {
+        "status": "alerted" if stale else "fresh",
+        "error": "", "sql": "",
+        "max_by_table": {
+            t: (d.isoformat() if d else None) for t, d in max_by_table.items()
+        },
+        "max_lag_days": max_lag,
+        "expected_min_day": expected.isoformat(),
+    }
+    if not stale:
+        return outcome  # fresh — silence by design
+    lines = [
+        f"- {t}: 最新 {d.isoformat() if d else '无数据'}"
+        f"（要求 ≥ {expected.isoformat()}）"
+        for t, d in stale.items()
+    ]
+    body = (
+        f"**{metric.display_name}** 数据断更告警"
+        f"（允许滞后 {max_lag} 天）\n" + "\n".join(lines)
+    )
+    if webhook:
+        pushed, msg = push_fn(webhook, f"⏰ {name}", body, ok=False)
+        if not pushed:
+            outcome["status"] = "push_failed"
+            outcome["error"] = msg
+    return outcome
+
+
 def _run_metric_watch(
     sub: dict[str, Any],
     schema_store: SchemaStore,
@@ -309,7 +392,11 @@ def _run_metric_watch(
         raise MetricError(f"指标 '{sub.get('metric')}' 未定义")
 
     yesterday = today - timedelta(days=1)
-    ref = yesterday - timedelta(days=7 if sub.get("watch_mode") == "wow" else 1)
+    # drilldown reference: wow and model compare the same weekday last week
+    # (seasonally comparable); dod compares the previous day
+    ref = yesterday - timedelta(
+        days=7 if sub.get("watch_mode") in ("wow", "model") else 1,
+    )
     ds_type = sub.get("ds_type", "hive")
 
     def _run_day_sql(day: date, max_rows: int, dimensions=None):
@@ -374,6 +461,24 @@ def _run_metric_watch(
         if curr is None:
             if metric.is_ratio:
                 return _no_data("比率在该日无定义（分母为 0 或无数据），跳过告警")
+            # a missing day is only a true 0 when the table HAS data through
+            # yesterday; a lagging pipeline must not fire a fake -100% alert
+            try:
+                max_by_table = _max_time_value(
+                    metric, metric_store, schema_store, executor, ds_type,
+                )
+            except MetricError:
+                max_by_table = {}
+            lagging = {
+                t: d for t, d in max_by_table.items()
+                if d is None or d < yesterday
+            }
+            if lagging:
+                latest = ", ".join(
+                    f"{t} 最新 {d.isoformat() if d else '无数据'}"
+                    for t, d in lagging.items()
+                )
+                return _no_data(f"数据未更新至昨日（{latest}），跳过告警")
             curr = 0.0
         history = [(d, v) for d, v in by_day.items() if d < yesterday]
         try:
@@ -434,7 +539,54 @@ def _run_metric_watch(
             allowed_dims = [d for d in num.dimensions if d.lower() in den_set]
     top_lines = ""
     dim = (sub.get("dimensions") or allowed_dims[:1] or [None])[0]
-    if dim:
+    if dim and not metric.is_ratio:
+        # additive: full attribution on the alert dimension — contribution
+        # percentages sum to the total change rate (identity-checked), and
+        # new/gone members are marked. The alert card answers "why" itself.
+        try:
+            from .attribution import run_attribution
+
+            def _exec(sql: str) -> tuple[list[str], list[tuple]]:
+                validation = validate_sql(sql, schema_store)
+                if not validation.ok:
+                    raise MetricError(
+                        "SQL rejected: " + "; ".join(validation.errors))
+                result = executor.run(
+                    enforce_limit(sql, dialect=ds_type), max_rows=1000,
+                )
+                return result.columns, result.rows
+
+            attri = run_attribution(
+                metric, metric_store, schema_store, _exec,
+                curr_range=TimeRange(start=yesterday, end=yesterday),
+                prev_range=TimeRange(start=ref, end=ref),
+                dimensions=[dim],
+            )
+            rows = attri.dimensions[0].rows[:3] if attri.dimensions else []
+            parts = []
+            contributors = []
+            for row in rows:
+                mark = "（新增）" if row.is_new else "（消失）" if row.is_gone else ""
+                pct = (
+                    f"，贡献 {row.contribution * 100:+.1f}%"
+                    if row.contribution is not None else ""
+                )
+                parts.append(f"- {row.value}{mark}: {row.delta:+,.2f}{pct}")
+                contributors.append({
+                    "value": row.value, "delta": round(row.delta, 4),
+                    "contribution_pct": (
+                        round(row.contribution * 100, 2)
+                        if row.contribution is not None else None
+                    ),
+                })
+            if parts:
+                top_lines = "\n" + "\n".join(parts)
+                outcome["top_contributors"] = contributors
+        except Exception:
+            pass  # contributors are a bonus
+    elif dim:
+        # ratio: per-member deltas are informative but not additive
+        # contributions — keep the plain two-day comparison
         try:
             def _by_dim(day: date) -> dict[str, float]:
                 result = _run_day_sql(day, max_rows=1000, dimensions=[dim])
@@ -516,11 +668,15 @@ def run_subscription(
         if metric_store is None:
             metric_store, _errors = load_metric_store(schema_store)
 
-        if sub.get("source_type") == "metric_watch":
+        if sub.get("source_type") in ("metric_watch", "freshness"):
             db_config = resolve_db_config(sub)
             if db_config is None:
                 return _fail("无法解析数据库连接（检查连接预设名或环境变量配置）")
-            return _run_metric_watch(
+            runner = (
+                _run_freshness if sub.get("source_type") == "freshness"
+                else _run_metric_watch
+            )
+            return runner(
                 sub, schema_store, metric_store,
                 create_executor(db_config), today or date.today(), push_fn,
             )

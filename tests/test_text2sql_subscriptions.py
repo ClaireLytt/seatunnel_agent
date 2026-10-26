@@ -403,6 +403,101 @@ def test_metric_watch_model_insufficient_history(tmp_path, stores) -> None:
     assert "历史不足" in outcome["note"]
 
 
+def test_metric_watch_model_missing_day_with_lagging_table(tmp_path, stores) -> None:
+    """表最新数据停在 03-13,昨日(03-15)无行 → 断更提示,不发 -100% 假告警."""
+    schema_store, metric_store = stores
+    days = [(f"2026-03-{d:02d}", 100.0) for d in range(1, 14)]
+    db = _series_db(tmp_path, days)
+    pushes: list = []
+    outcome = run_subscription(
+        _watch_sub(db, watch_mode="model"), schema_store, metric_store,
+        today=date(2026, 3, 16),
+        push_fn=lambda *a, **k: (pushes.append(a), (True, "ok"))[1],
+    )
+    assert outcome["status"] == "no_data", outcome
+    assert "数据未更新至昨日" in outcome["note"]
+    assert pushes == []
+
+
+def test_metric_watch_alert_card_has_attribution(tmp_path, stores) -> None:
+    """告警卡片带贡献率(来自归因引擎,而非裸 delta)."""
+    schema_store, metric_store = stores
+    # 两个渠道:app 平稳,web 昨日暴涨 → web 应为主要贡献
+    db = tmp_path / "attr.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE sales(order_id TEXT, amount REAL, channel TEXT, dt TEXT)")
+    rows = []
+    for d in range(1, 15):
+        rows.append((f"a{d}", 100.0, "app", f"2026-03-{d:02d}"))
+        rows.append((f"w{d}", 50.0, "web", f"2026-03-{d:02d}"))
+    rows.append(("a15", 100.0, "app", "2026-03-15"))
+    rows.append(("w15", 500.0, "web", "2026-03-15"))
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    pushes: list[tuple] = []
+
+    def fake_push(url, title, body, ok=True, **kw):
+        pushes.append((title, body))
+        return True, "ok"
+
+    outcome = run_subscription(
+        _watch_sub(str(db), watch_mode="model"), schema_store, metric_store,
+        today=date(2026, 3, 16), push_fn=fake_push,
+    )
+    assert outcome["status"] == "alerted", outcome
+    top = outcome["top_contributors"]
+    assert top[0]["value"] == "web"
+    assert top[0]["contribution_pct"] is not None
+    _, body = pushes[0]
+    assert "贡献" in body and "web" in body
+
+
+def test_freshness_alerts_when_stale(tmp_path, stores) -> None:
+    schema_store, metric_store = stores
+    db = _series_db(tmp_path, [("2026-03-10", 100.0)])
+    pushes: list[tuple] = []
+
+    def fake_push(url, title, body, ok=True, **kw):
+        pushes.append((title, body, ok))
+        return True, "ok"
+
+    sub = _watch_sub(db, source_type="freshness", max_lag_days=1)
+    outcome = run_subscription(
+        sub, schema_store, metric_store,
+        today=date(2026, 3, 16), push_fn=fake_push,
+    )
+    assert outcome["status"] == "alerted", outcome
+    assert outcome["max_by_table"]["sales"] == "2026-03-10"
+    title, body, ok = pushes[0]
+    assert ok is False and "断更" in body and "2026-03-10" in body
+
+
+def test_freshness_silent_when_fresh(tmp_path, stores) -> None:
+    schema_store, metric_store = stores
+    db = _series_db(tmp_path, [("2026-03-15", 100.0)])
+    pushes: list = []
+    outcome = run_subscription(
+        _watch_sub(db, source_type="freshness", max_lag_days=1),
+        schema_store, metric_store, today=date(2026, 3, 16),
+        push_fn=lambda *a, **k: (pushes.append(a), (True, "ok"))[1],
+    )
+    assert outcome["status"] == "fresh", outcome
+    assert pushes == []
+
+
+def test_freshness_store_validation(tmp_path) -> None:
+    store = SubscriptionStore(tmp_path / "subs.json")
+    with pytest.raises(ValueError, match="指标名"):
+        store.add(name="f", cron="0 9 * * *", source_type="freshness")
+    with pytest.raises(ValueError, match="max_lag_days"):
+        store.add(name="f", cron="0 9 * * *", source_type="freshness",
+                  metric="gmv", max_lag_days=0)
+    entry = store.add(name="f", cron="0 9 * * *", source_type="freshness",
+                      metric="gmv", max_lag_days=2)
+    assert entry["max_lag_days"] == 2
+
+
 def test_metric_watch_store_validation(tmp_path) -> None:
     store = SubscriptionStore(tmp_path / "subs.json")
     with pytest.raises(ValueError, match="指标名"):
