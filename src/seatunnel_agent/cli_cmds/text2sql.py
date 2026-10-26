@@ -175,17 +175,24 @@ def t2s_sub_list() -> None:
               help="数据新鲜度订阅：MAX(time_column) 滞后超 --max-lag-days 才告警")
 @click.option("--max-lag-days", type=int, default=1, show_default=True,
               help="允许的数据滞后天数（仅 --freshness）")
+@click.option("--digest", "digest_metrics", default=None,
+              help="经营日报订阅：逗号分隔的指标名（空字符串=全部指标），"
+                   "每指标一行 值/环比/月目标达成")
 def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
                 dims: tuple[str, ...], lookback: int, params: tuple[str, ...],
                 ds_type: str, connection: str, database: str, webhook: str,
                 watch: bool, threshold: float, watch_mode: str,
-                freshness: bool, max_lag_days: int) -> None:
+                freshness: bool, max_lag_days: int,
+                digest_metrics: str | None) -> None:
     """新建订阅（--metric 定时推数 / --metric --watch 异动告警 /
-    --metric --freshness 断更告警 / --favorite 收藏推数）。"""
+    --metric --freshness 断更告警 / --digest 经营日报 / --favorite 收藏推数）。"""
     _ensure_utf8_stdio()
     from seatunnel_agent.agents.data.text2sql.subscriptions import SubscriptionStore
 
-    if bool(metric) == bool(favorite_id):
+    if digest_metrics is not None:
+        if metric or favorite_id or watch or freshness:
+            raise click.UsageError("--digest 不能与 --metric/--favorite/--watch/--freshness 同用")
+    elif bool(metric) == bool(favorite_id):
         raise click.UsageError("--metric 与 --favorite 必须二选一")
     if watch and not metric:
         raise click.UsageError("--watch 只能与 --metric 搭配")
@@ -199,7 +206,9 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
             raise click.UsageError(f"--param 格式应为 key=value: {p}")
         k, v = p.split("=", 1)
         param_map[k.strip()] = v
-    if watch:
+    if digest_metrics is not None:
+        source_type = "digest"
+    elif watch:
         source_type = "metric_watch"
     elif freshness:
         source_type = "freshness"
@@ -213,6 +222,7 @@ def t2s_sub_add(name: str, cron_expr: str, metric: str, favorite_id: str,
             favorite_id=favorite_id, params=param_map,
             threshold_pct=threshold, watch_mode=watch_mode,
             max_lag_days=max_lag_days,
+            metrics=[m.strip() for m in (digest_metrics or "").split(",") if m.strip()],
             ds_type=ds_type, connection=connection, database=database,
             webhook_url=webhook,
         )

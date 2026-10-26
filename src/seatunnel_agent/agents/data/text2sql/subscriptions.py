@@ -75,7 +75,9 @@ logger = logging.getLogger(__name__)
 _MAX_SUBSCRIPTIONS = 100
 _CARD_MAX_ROWS = 10
 
-SOURCE_TYPES = ("metric", "favorite", "metric_watch", "freshness")
+SOURCE_TYPES = ("metric", "favorite", "metric_watch", "freshness", "digest")
+#: digest cards cap: 2 SQL per metric must stay a bounded morning cost
+_DIGEST_MAX_METRICS = 10
 
 #: metric_watch comparison modes: dod = 昨天 vs 前天, wow = 昨天 vs 上周同日
 WATCH_MODES = ("dod", "wow", "model")
@@ -139,6 +141,7 @@ class SubscriptionStore:
         threshold_pct: float = 10.0,
         watch_mode: str = "dod",
         max_lag_days: int = 1,
+        metrics: list[str] | None = None,
         ds_type: str = "hive",
         connection: str = "",
         database: str = "",
@@ -154,6 +157,9 @@ class SubscriptionStore:
             raise ValueError(f"{source_type} 订阅必须给出指标名")
         if max_lag_days < 1:
             raise ValueError("max_lag_days 必须 >= 1")
+        metrics_list = [m.strip() for m in (metrics or []) if m.strip()]
+        if source_type == "digest" and len(metrics_list) > _DIGEST_MAX_METRICS:
+            raise ValueError(f"digest 订阅最多 {_DIGEST_MAX_METRICS} 个指标")
         if watch_mode not in WATCH_MODES:
             raise ValueError(f"watch_mode 只支持 {', '.join(WATCH_MODES)}")
         if threshold_pct <= 0:
@@ -175,6 +181,7 @@ class SubscriptionStore:
             "threshold_pct": float(threshold_pct),
             "watch_mode": watch_mode,
             "max_lag_days": int(max_lag_days),
+            "metrics": metrics_list,
             "ds_type": ds_type,
             "connection": connection.strip(),
             "database": database.strip(),
@@ -657,6 +664,114 @@ def _run_metric_watch(
     return outcome
 
 
+def _run_digest(
+    sub: dict[str, Any],
+    schema_store: SchemaStore,
+    metric_store: MetricStore,
+    executor,
+    today: date,
+    push_fn: Callable[..., tuple[bool, str]],
+) -> dict[str, Any]:
+    """Morning digest card: one line per metric — yesterday's value, DoD
+    change, and month-target completion when declared. ≤2 SQL per metric,
+    deterministic, LLM-free."""
+    from .metrics import build_metric_series_sql
+
+    name = sub.get("name", "?")
+    webhook = (sub.get("webhook_url") or "").strip()
+    names = list(sub.get("metrics") or []) or [
+        m.name for m in metric_store.metrics
+    ]
+    names = names[:_DIGEST_MAX_METRICS]
+    yesterday = today - timedelta(days=1)
+    ds_type = sub.get("ds_type", "hive")
+
+    def _run(sql: str, max_rows: int = 10):
+        validation = validate_sql(sql, schema_store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        return executor.run(enforce_limit(sql, dialect=ds_type), max_rows=max_rows)
+
+    lines: list[str] = []
+    rows_out: list[dict[str, Any]] = []
+    for mname in names:
+        metric = metric_store.get(mname)
+        if metric is None:
+            lines.append(f"- {mname}: 未定义")
+            rows_out.append({"metric": mname, "error": "未定义"})
+            continue
+        try:
+            series_sql = build_metric_series_sql(
+                metric, metric_store, schema_store,
+                TimeRange(start=yesterday - timedelta(days=1), end=yesterday),
+            )
+            result = _run(series_sql)
+            by_day: dict[date, float] = {}
+            for r in result.rows:
+                if r[0] is None or r[-1] is None:
+                    continue
+                by_day[parse_date(str(r[0]).strip()[:10])] = float(r[-1])
+            curr = by_day.get(yesterday)
+            prev = by_day.get(yesterday - timedelta(days=1))
+            if curr is None and not metric.is_ratio:
+                curr = 0.0
+            if prev is None and not metric.is_ratio:
+                prev = 0.0
+        except Exception as exc:  # per-line best effort: one bad metric must not kill the card
+            lines.append(f"- {metric.display_name}: 查询失败")
+            rows_out.append({"metric": mname, "error": str(exc)})
+            continue
+        unit = f" {metric.unit}" if metric.unit else ""
+        if curr is None:
+            line = f"- {metric.display_name}: 无数据"
+            rows_out.append({"metric": mname, "curr": None})
+            lines.append(line)
+            continue
+        dod_txt = ""
+        dod_pct = None
+        if prev is not None and prev != 0:
+            dod_pct = round((curr - prev) / abs(prev) * 100, 2)
+            dod_txt = f"（环比 {dod_pct:+.1f}%）"
+        line = f"- {metric.display_name}: {curr:,.2f}{unit}{dod_txt}"
+        target = metric.targets.get("month")
+        completion = None
+        if target:
+            try:
+                mtd_sql = build_metric_sql(
+                    metric, metric_store, schema_store,
+                    time_range=TimeRange(
+                        start=yesterday.replace(day=1), end=yesterday,
+                    ),
+                )
+                mtd_result = _run(mtd_sql)
+                mtd = (
+                    float(mtd_result.rows[0][-1])
+                    if mtd_result.rows and mtd_result.rows[0][-1] is not None
+                    else 0.0
+                )
+                completion = round(mtd / target * 100, 1)
+                line += f" · 月目标达成 {completion:g}%"
+            except Exception:
+                pass  # the digest line still carries value + DoD
+        lines.append(line)
+        rows_out.append({
+            "metric": mname, "curr": round(curr, 4),
+            "dod_pct": dod_pct, "month_completion_pct": completion,
+        })
+
+    body = f"**经营日报** {yesterday.isoformat()}\n" + "\n".join(lines)
+    outcome: dict[str, Any] = {
+        "status": "success", "error": "", "sql": "",
+        "day": yesterday.isoformat(), "rows": rows_out,
+    }
+    if webhook:
+        pushed, msg = push_fn(webhook, f"📊 {name}", body, ok=True)
+        if not pushed:
+            outcome["status"] = "push_failed"
+            outcome["error"] = msg
+    return outcome
+
+
 def backtest_watch(
     sub: dict[str, Any],
     schema_store: SchemaStore,
@@ -809,14 +924,14 @@ def run_subscription(
         if metric_store is None:
             metric_store, _errors = load_metric_store(schema_store)
 
-        if sub.get("source_type") in ("metric_watch", "freshness"):
+        if sub.get("source_type") in ("metric_watch", "freshness", "digest"):
             db_config = resolve_db_config(sub)
             if db_config is None:
                 return _fail("无法解析数据库连接（检查连接预设名或环境变量配置）")
-            runner = (
-                _run_freshness if sub.get("source_type") == "freshness"
-                else _run_metric_watch
-            )
+            runner = {
+                "freshness": _run_freshness,
+                "digest": _run_digest,
+            }.get(sub.get("source_type", ""), _run_metric_watch)
             return runner(
                 sub, schema_store, metric_store,
                 create_executor(db_config), today or date.today(), push_fn,

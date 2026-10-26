@@ -208,6 +208,11 @@ seatunnel-agent t2s-sub add --name GMV断更 --cron "0 8 * * *" \
 # 1 条序列 SQL + 纯 Python 重放)
 seatunnel-agent t2s-sub backtest <订阅ID> --days 90
 
+# 经营日报:每指标一行 昨日值/环比/月目标达成(≤2 SQL/指标,上限 10 指标;
+# --digest "" 表示全部已定义指标;单个指标查询失败只坏一行不坏整卡)
+seatunnel-agent t2s-sub add --name 经营日报 --cron "0 9 * * *" \
+    --digest "gmv,refund_rate,order_cnt" --webhook ...
+
 # 收藏推数:参数化收藏 + 日期宏(${yesterday}/${today_pt}/${month_start}...)
 seatunnel-agent t2s-sub add --name 周报 --cron "0 10 * * 0" --favorite <id> ...
 

@@ -570,6 +570,66 @@ def test_metric_watch_dod_missing_day_lagging_table(tmp_path, stores) -> None:
     assert pushes == []
 
 
+_DIGEST_METRICS = """
+metrics:
+  - name: gmv
+    display_name: GMV
+    table: sales
+    expression: SUM(amount)
+    time_column: dt
+    dimensions: [channel]
+    unit: 元
+    targets: {month: 10000}
+  - name: order_cnt
+    display_name: 单量
+    table: sales
+    expression: COUNT(order_id)
+    time_column: dt
+"""
+
+
+def test_digest_card(tmp_path) -> None:
+    """日报卡:每指标一行 值/环比/月目标达成;未定义指标单行标注不炸卡."""
+    schema_store = SchemaStore(parse_ddl(_DDL))
+    metric_store, errors = MetricStore.from_text(_DIGEST_METRICS, schema_store)
+    assert errors == []
+    days = [("2026-03-14", 100.0), ("2026-03-15", 110.0)]
+    db = _series_db(tmp_path, days)
+    pushes: list[tuple] = []
+
+    def fake_push(url, title, body, ok=True, **kw):
+        pushes.append((title, body, ok))
+        return True, "ok"
+
+    sub = _watch_sub(
+        db, source_type="digest", metrics=["gmv", "order_cnt", "nope"],
+    )
+    outcome = run_subscription(
+        sub, schema_store, metric_store,
+        today=date(2026, 3, 16), push_fn=fake_push,
+    )
+    assert outcome["status"] == "success", outcome
+    title, body, ok = pushes[0]
+    assert ok is True and "经营日报" in body
+    # GMV: 昨日 110,前日 100 → 环比 +10%;MTD=210 / 10000 → 2.1%
+    assert "GMV: 110.00 元（环比 +10.0%） · 月目标达成 2.1%" in body
+    assert "单量: 1.00" in body
+    assert "- nope: 未定义" in body
+    by_metric = {r["metric"]: r for r in outcome["rows"]}
+    assert by_metric["gmv"]["dod_pct"] == pytest.approx(10.0)
+    assert by_metric["gmv"]["month_completion_pct"] == pytest.approx(2.1)
+
+
+def test_digest_store_validation(tmp_path) -> None:
+    store = SubscriptionStore(tmp_path / "subs.json")
+    with pytest.raises(ValueError, match="最多"):
+        store.add(name="d", cron="0 9 * * *", source_type="digest",
+                  metrics=[f"m{i}" for i in range(11)])
+    entry = store.add(name="d", cron="0 9 * * *", source_type="digest",
+                      metrics=["gmv", " order_cnt "])
+    assert entry["metrics"] == ["gmv", "order_cnt"]
+
+
 def test_metric_watch_store_validation(tmp_path) -> None:
     store = SubscriptionStore(tmp_path / "subs.json")
     with pytest.raises(ValueError, match="指标名"):
