@@ -336,6 +336,18 @@ seatunnel-agent t2s-mcp --ds-type sqlite --database config/demo.db --allow-execu
 `correlate_metrics` 与 `tree_attribution`。凭据只从服务端环境读取，
 不接受 MCP 参数传入。
 
+## 查询成本预估
+
+分区引擎上,护栏链从三层补全为四层:表白名单 → 缺分区过滤硬拦 →
+**事前成本提示** → 事后慢查询/倾斜提示。能通过"有分区过滤"检查但仍会
+扫宽的形态在执行前提示(`cost_hints`,只提示不拦截):
+
+- 单边界(`pt >= '2024-01-01'` 无上界)——另一侧不受限
+- 宽区间 / 宽 IN 列表(默认 >90 个分区,`T2S_COST_WARN_PARTITIONS` 可调)
+
+需要硬约束时设 `T2S_COST_BLOCK_PARTITIONS=N`:预计扫描 ≥N 分区直接拒绝。
+非日期形态的分区值不猜、不提示。
+
 ## 跨模块联动
 
 - **execute_sql × SQL Review**：每条执行的 SQL 先过静态 linter，

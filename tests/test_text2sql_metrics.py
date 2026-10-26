@@ -1899,6 +1899,56 @@ metrics:
     assert store.get("gmv").targets == {"month": 3000000.0, "year": 40000000.0}
 
 
+def test_scan_cost_hints() -> None:
+    """成本预估:单边界/宽区间/宽 IN 提示,精确分区与小区间静默."""
+    from seatunnel_agent.agents.data.text2sql.partition import scan_cost_hints
+    from seatunnel_agent.agents.data.text2sql.schema import parse_ddl
+
+    store = SchemaStore(parse_ddl(
+        "CREATE TABLE dw.fact (amount double) PARTITIONED BY (pt string);"
+        "CREATE TABLE dw.dim (name string);"
+    ))
+    # 单边界:只提 >= 不提上界
+    h = scan_cost_hints("SELECT 1 FROM dw.fact WHERE pt >= '2024-01-01'", store)
+    assert len(h) == 1 and h[0]["kind"] == "one_sided_bound"
+    # 宽区间:401 天(2024 闰年,含两端)
+    h = scan_cost_hints(
+        "SELECT 1 FROM dw.fact WHERE pt >= '20240101' AND pt <= '20250204'",
+        store,
+    )
+    assert h[0]["kind"] == "wide_range"
+    assert h[0]["estimated_partitions"] == 401
+    # BETWEEN 等价
+    h = scan_cost_hints(
+        "SELECT 1 FROM dw.fact WHERE pt BETWEEN '2024-01-01' AND '2025-02-04'",
+        store,
+    )
+    assert h and h[0]["estimated_partitions"] == 401
+    # 静默:精确分区 / 小区间 / 非分区表
+    assert scan_cost_hints("SELECT 1 FROM dw.fact WHERE pt = '20240101'", store) == []
+    assert scan_cost_hints(
+        "SELECT 1 FROM dw.fact WHERE pt >= '20240101' AND pt <= '20240107'",
+        store,
+    ) == []
+    assert scan_cost_hints("SELECT 1 FROM dw.dim", store) == []
+    # 宽 IN
+    vals = ",".join(f"'{20240101 + i}'" for i in range(100))
+    h = scan_cost_hints(f"SELECT 1 FROM dw.fact WHERE pt IN ({vals})", store)
+    assert h and h[0]["kind"] == "wide_in_list" and h[0]["estimated_partitions"] == 100
+
+
+def test_cost_block_env(monkeypatch) -> None:
+    from seatunnel_agent.agents.data.text2sql.tools_sql import _cost_block
+
+    hints = [{"estimated_partitions": 400}]
+    monkeypatch.delenv("T2S_COST_BLOCK_PARTITIONS", raising=False)
+    assert _cost_block(hints) is None  # 未设置 = 只提示
+    monkeypatch.setenv("T2S_COST_BLOCK_PARTITIONS", "365")
+    assert "硬拦截" in _cost_block(hints)
+    monkeypatch.setenv("T2S_COST_BLOCK_PARTITIONS", "500")
+    assert _cost_block(hints) is None
+
+
 def test_resolve_named_range() -> None:
     """中文业务时间词的确定性解析:相对期 + 法定节假日(含别名/年份/后缀)."""
     from datetime import date
