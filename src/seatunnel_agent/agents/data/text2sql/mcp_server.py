@@ -452,7 +452,10 @@ def create_mcp_server(
 ):
     """FastMCP server (stdio) wrapping the Chat BI tools."""
     try:
-        from mcp.server.fastmcp import FastMCP  # type: ignore[attr-defined]
+        import importlib
+
+        # importlib keeps mypy out of the optional dependency's stubs
+        FastMCP = importlib.import_module("mcp.server.fastmcp").FastMCP
     except ImportError as exc:
         raise RuntimeError(
             "未安装 mcp 依赖，请先执行: pip install 'seatunnel-agent[mcp]'"

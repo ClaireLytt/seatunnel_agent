@@ -27,10 +27,11 @@ import uuid
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
-# typing.List because the `list` METHOD on SubscriptionStore shadows the
-# builtin inside the class body, so parameter annotations there need it
-from typing import Any, List  # noqa: UP035
+# the `list` METHOD on SubscriptionStore shadows the builtin inside the
+# class body, so parameter annotations there use this module-level alias
+_StrList = list[str]
 
 from seatunnel_agent.common.filelock import file_lock
 from seatunnel_agent.common.utils import (
@@ -203,14 +204,14 @@ class SubscriptionStore:
         source_type: str,
         *,
         metric: str = "",
-        dimensions: List[str] | None = None,  # noqa: UP006 — see typing import note
+        dimensions: _StrList | None = None,
         lookback_days: int = 1,
         favorite_id: str = "",
         params: dict[str, str] | None = None,
         threshold_pct: float = 10.0,
         watch_mode: str = "dod",
         max_lag_days: int = 1,
-        metrics: List[str] | None = None,  # noqa: UP006 — see typing import note
+        metrics: _StrList | None = None,
         ds_type: str = "hive",
         connection: str = "",
         database: str = "",
