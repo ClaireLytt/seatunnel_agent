@@ -737,6 +737,74 @@ def test_watch_alert_card_english(tmp_path, stores) -> None:
     assert "异动告警" not in body
 
 
+def test_watch_alert_events_land_in_qlog(sales_db, stores, tmp_path, monkeypatch) -> None:
+    """告警/恢复各落一条 qlog 事件(kind=alert/alert_recovered)."""
+    monkeypatch.chdir(tmp_path)  # qlog 写到临时目录的 logs/
+    schema_store, metric_store = stores
+    out1 = run_subscription(
+        _watch_sub(sales_db), schema_store, metric_store,
+        today=date(2026, 3, 3), push_fn=lambda *a, **k: (True, "ok"),
+    )
+    assert out1["status"] == "alerted"
+    out2 = run_subscription(
+        _watch_sub(sales_db, threshold_pct=50.0, alert_state=out1["alert_state"]),
+        schema_store, metric_store,
+        today=date(2026, 3, 3), push_fn=lambda *a, **k: (True, "ok"),
+    )
+    assert out2["status"] == "recovered"
+    from seatunnel_agent.agents.data.text2sql.qlog import QueryLogger
+
+    kinds = [e.get("kind") for e in QueryLogger().recent(10) if e.get("kind")]
+    assert "alert" in kinds and "alert_recovered" in kinds
+
+
+def test_fetch_daily_series_cache(tmp_path, monkeypatch) -> None:
+    """覆盖窗口的新鲜缓存被切片复用;TTL=0 关闭."""
+    from seatunnel_agent.agents.data.text2sql import subscriptions as subs_mod
+    from seatunnel_agent.agents.data.text2sql.executor import (
+        DatabaseConfig,
+        create_executor,
+    )
+    from seatunnel_agent.agents.data.text2sql.subscriptions import (
+        fetch_daily_series,
+    )
+
+    schema_store = SchemaStore(parse_ddl(_DDL))
+    metric_store, _ = MetricStore.from_text(_METRICS, schema_store)
+    metric = metric_store.get("gmv")
+    db = _series_db(tmp_path, [(f"2026-03-{d:02d}", 100.0) for d in range(1, 11)])
+    executor = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=db))
+    monkeypatch.setattr(subs_mod, "_SERIES_CACHE", {})
+    monkeypatch.delenv("T2S_SERIES_CACHE_TTL", raising=False)
+
+    calls = []
+    real_run = executor.run
+
+    def counting_run(sql, **kw):
+        calls.append(sql)
+        return real_run(sql, **kw)
+
+    monkeypatch.setattr(executor, "run", counting_run)
+    wide = fetch_daily_series(
+        metric, metric_store, schema_store, executor,
+        start=date(2026, 3, 1), end=date(2026, 3, 10), ds_type="sqlite",
+    )
+    assert len(wide) == 10 and len(calls) == 1
+    narrow = fetch_daily_series(  # 子窗口 → 切片,不发 SQL
+        metric, metric_store, schema_store, executor,
+        start=date(2026, 3, 9), end=date(2026, 3, 10), ds_type="sqlite",
+    )
+    assert narrow == {date(2026, 3, 9): 100.0, date(2026, 3, 10): 100.0}
+    assert len(calls) == 1
+    monkeypatch.setenv("T2S_SERIES_CACHE_TTL", "0")  # 关闭 → 必发 SQL
+    fetch_daily_series(
+        metric, metric_store, schema_store, executor,
+        start=date(2026, 3, 9), end=date(2026, 3, 10), ds_type="sqlite",
+    )
+    assert len(calls) == 2
+
+
 def test_metric_health_rollup(tmp_path) -> None:
     """健康页:新鲜指标绿、告警中红、月目标达成与 7 天失败统计."""
     from seatunnel_agent.agents.data.text2sql.executor import (

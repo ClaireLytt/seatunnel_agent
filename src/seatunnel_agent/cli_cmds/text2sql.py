@@ -970,7 +970,10 @@ def metrics_health(
             bits.append(f"新鲜度检查失败: {r['freshness_error']}")
         if r.get("alerting"):
             bits.append(f"告警中（自 {r.get('alerting_since', '?')}）")
-        bits.append(f"7天 {r['queries_7d']} 查询/{r['failures_7d']} 失败")
+        bits.append(
+            f"7天 {r['queries_7d']} 查询/{r['failures_7d']} 失败"
+            f"/{r['alerts_7d']} 次告警"
+        )
         if "month_completion_pct" in r:
             bits.append(f"月目标 {r['month_completion_pct']:g}%")
         if r.get("target_error"):

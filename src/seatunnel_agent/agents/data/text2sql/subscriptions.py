@@ -384,6 +384,74 @@ def _build_subscription_sql(
         raise MetricError(str(exc))
 
 
+#: process-local daily-series cache: the morning burst (digest + several
+#: watches on the same metric) re-fetches identical series otherwise.
+#: key -> (expiry_ts, start, end, {day: value})
+_SERIES_CACHE: dict[tuple, tuple[float, date, date, dict[date, float | None]]] = {}
+_SERIES_CACHE_LOCK = threading.Lock()
+
+
+def _series_cache_ttl() -> int:
+    try:
+        return int(os.getenv("T2S_SERIES_CACHE_TTL", "") or 600)
+    except ValueError:
+        return 600
+
+
+def fetch_daily_series(
+    metric,
+    metric_store: MetricStore,
+    schema_store: SchemaStore,
+    executor,
+    start: date,
+    end: date,
+    ds_type: str,
+) -> dict[date, float | None]:
+    """{day: value} for the metric's daily series, TTL-cached per (db, metric).
+
+    A fresh cached entry COVERING the requested window is sliced instead of
+    re-queried, so a digest right after a model watch reuses its fetch.
+    ``T2S_SERIES_CACHE_TTL=0`` disables caching.
+    """
+    import time as _time
+
+    from .metrics import build_metric_series_sql
+
+    cfg = getattr(executor, "config", None)
+    key = (
+        getattr(cfg, "ds_type", ds_type), getattr(cfg, "host", ""),
+        getattr(cfg, "port", 0), getattr(cfg, "database", ""),
+        metric.name,
+    )
+    ttl = _series_cache_ttl()
+    now = _time.time()
+    if ttl > 0:
+        with _SERIES_CACHE_LOCK:
+            hit = _SERIES_CACHE.get(key)
+            if hit and hit[0] > now and hit[1] <= start and hit[2] >= end:
+                return {
+                    d: v for d, v in hit[3].items() if start <= d <= end
+                }
+    sql = build_metric_series_sql(
+        metric, metric_store, schema_store, TimeRange(start=start, end=end),
+    )
+    validation = validate_sql(sql, schema_store)
+    if not validation.ok:
+        raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+    result = executor.run(enforce_limit(sql, dialect=ds_type), max_rows=1000)
+    by_day: dict[date, float | None] = {}
+    for r in result.rows:
+        if r[0] is None:
+            continue
+        by_day[parse_date(str(r[0]).strip()[:10])] = (
+            None if r[-1] is None else float(r[-1])
+        )
+    if ttl > 0:
+        with _SERIES_CACHE_LOCK:
+            _SERIES_CACHE[key] = (now + ttl, start, end, dict(by_day))
+    return by_day
+
+
 def _max_time_value(
     metric, metric_store: MetricStore, schema_store: SchemaStore,
     executor, ds_type: str,
@@ -533,25 +601,12 @@ def _run_metric_watch(
         # 95% interval (trend + weekday + CN-holiday aware; no fixed
         # threshold so weekend/holiday swings stop false-alerting)
         from .forecast import forecast_series
-        from .metrics import build_metric_series_sql
 
-        series_sql = build_metric_series_sql(
-            metric, metric_store, schema_store,
-            TimeRange(start=yesterday - timedelta(days=_MODEL_HISTORY_DAYS),
-                      end=yesterday),
+        by_day = fetch_daily_series(
+            metric, metric_store, schema_store, executor,
+            start=yesterday - timedelta(days=_MODEL_HISTORY_DAYS),
+            end=yesterday, ds_type=ds_type,
         )
-        validation = validate_sql(series_sql, schema_store)
-        if not validation.ok:
-            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
-        s_result = executor.run(
-            enforce_limit(series_sql, dialect=ds_type), max_rows=1000,
-        )
-        by_day: dict[date, float | None] = {}
-        for r in s_result.rows:
-            if r[0] is None:
-                continue
-            d = parse_date(str(r[0]).strip()[:10])
-            by_day[d] = None if r[-1] is None else float(r[-1])
         curr = by_day.get(yesterday)
         if curr is None:
             if metric.is_ratio:
@@ -642,10 +697,30 @@ def _run_metric_watch(
     state = dict(sub.get("alert_state") or {})
     direction = "up" if delta > 0 else "down"
     unit = f" {metric.unit}" if metric.unit else ""
+
+    def _log_alert_event(kind: str) -> None:
+        """Alert history lands in qlog — alert_state keeps only the latest
+        incident, so counts like '7-day alerts' need these events."""
+        try:
+            from .qlog import QueryLogger
+            QueryLogger().log(
+                user_query=f"[watch] {name}", generated_sql="",
+                status="success", matched_tables=[],
+                exec_time_ms=0, row_count=0,
+                extra={
+                    "source": "subscription", "metric": metric.name,
+                    "kind": kind, "day": yesterday.isoformat(),
+                    "direction": direction,
+                },
+            )
+        except Exception:
+            pass  # history is an advisory trail, never breaks the watch
+
     if not triggered:
         if state.get("active"):
             outcome["status"] = "recovered"
             outcome["alert_state"] = {}
+            _log_alert_event("alert_recovered")
             body = _card_text(
                 sub.get("lang", "zh"), "recovered",
                 metric=metric.display_name, day=yesterday.isoformat(),
@@ -667,6 +742,7 @@ def _run_metric_watch(
         "active": True, "direction": direction,
         "since": yesterday.isoformat(),
     }
+    _log_alert_event("alert")
 
     # top contributors on the first allowed dimension (best-effort).
     # Ratio metrics have no dimensions of their own: fall back to the
@@ -817,8 +893,6 @@ def _run_digest(
     """Morning digest card: one line per metric — yesterday's value, DoD
     change, and month-target completion when declared. ≤2 SQL per metric,
     deterministic, LLM-free."""
-    from .metrics import build_metric_series_sql
-
     name = sub.get("name", "?")
     webhook = (sub.get("webhook_url") or "").strip()
     names = list(sub.get("metrics") or []) or [
@@ -844,16 +918,11 @@ def _run_digest(
             rows_out.append({"metric": mname, "error": "未定义"})
             continue
         try:
-            series_sql = build_metric_series_sql(
-                metric, metric_store, schema_store,
-                TimeRange(start=yesterday - timedelta(days=1), end=yesterday),
+            by_day = fetch_daily_series(
+                metric, metric_store, schema_store, executor,
+                start=yesterday - timedelta(days=1), end=yesterday,
+                ds_type=ds_type,
             )
-            result = _run(series_sql)
-            by_day: dict[date, float] = {}
-            for r in result.rows:
-                if r[0] is None or r[-1] is None:
-                    continue
-                by_day[parse_date(str(r[0]).strip()[:10])] = float(r[-1])
             curr = by_day.get(yesterday)
             prev = by_day.get(yesterday - timedelta(days=1))
             if curr is None and not metric.is_ratio:

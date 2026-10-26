@@ -22,7 +22,7 @@ def _qlog_7d(entries: list[dict[str, Any]], name: str, today: date) -> dict[str,
     cutoff = datetime(
         today.year, today.month, today.day, tzinfo=timezone.utc,
     ) - timedelta(days=7)
-    count = fails = 0
+    count = fails = alerts = 0
     for e in entries:
         if e.get("metric") != name:
             continue
@@ -32,10 +32,13 @@ def _qlog_7d(entries: list[dict[str, Any]], name: str, today: date) -> dict[str,
             continue
         if ts < cutoff:
             continue
+        if e.get("kind") == "alert":
+            alerts += 1  # watch alert events, not queries
+            continue
         count += 1
         if e.get("status") != "success":
             fails += 1
-    return {"queries_7d": count, "failures_7d": fails}
+    return {"queries_7d": count, "failures_7d": fails, "alerts_7d": alerts}
 
 
 def asset_findings(
