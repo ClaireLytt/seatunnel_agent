@@ -31,6 +31,13 @@ class SubscriptionCreateRequest(BaseModel):
     database: str = ""
     webhook_url: str = ""
     lang: str = "zh"
+    # metric_watch
+    threshold_pct: float = 10.0
+    watch_mode: str = "dod"
+    # freshness
+    max_lag_days: int = 1
+    # digest
+    metrics: list[str] = Field(default_factory=list)
 
 
 @router.post("/subscriptions", status_code=201)
@@ -47,6 +54,10 @@ def subscriptions_create(req: SubscriptionCreateRequest) -> dict[str, Any]:
             database=req.database,
             webhook_url=req.webhook_url,
             lang=req.lang,
+            threshold_pct=req.threshold_pct,
+            watch_mode=req.watch_mode,
+            max_lag_days=req.max_lag_days,
+            metrics=req.metrics,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))

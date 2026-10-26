@@ -204,6 +204,7 @@ export interface Subscription {
   cron: string
   source_type: string
   metric: string
+  metrics?: string[]
   favorite_id: string
   webhook_url: string
   enabled: boolean
@@ -216,7 +217,13 @@ export const fetchSubscriptions = (): Promise<{ subscriptions: Subscription[] }>
   fetchJson(`${BASE}/subscriptions`)
 
 export const createSubscription = (
-  data: { name: string; cron: string; source_type: string; metric?: string; favorite_id?: string; ds_type?: string; connection?: string; database?: string; webhook_url?: string; lang?: string },
+  data: {
+    name: string; cron: string; source_type: string; metric?: string
+    favorite_id?: string; ds_type?: string; connection?: string
+    database?: string; webhook_url?: string; lang?: string
+    threshold_pct?: number; watch_mode?: string; max_lag_days?: number
+    metrics?: string[]
+  },
 ): Promise<{ subscription: Subscription }> =>
   fetchJson(`${BASE}/subscriptions`, {
     method: 'POST',
