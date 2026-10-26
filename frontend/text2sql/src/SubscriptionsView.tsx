@@ -124,7 +124,7 @@ export function SubscriptionsView() {
             <div className="flex flex-wrap gap-2">
               {(
                 [
-                  ['metric', t('metrics')],
+                  ['metric', t('subMetric')],
                   ['favorite', t('favorites')],
                   ['metric_watch', t('subWatch')],
                   ['freshness', t('subFreshness')],

@@ -116,6 +116,15 @@ export function ChatPanel({
                     : 'st-msg-bot max-w-[90%] rounded border border-line bg-paper px-3 py-2 text-sm text-fg'
               }
             >
+              {(it.kind === 'text' || it.kind === 'final') &&
+                it.text.includes('语义缓存') && (
+                  <span
+                    className="mb-1 mr-2 inline-block rounded border px-1.5 font-mono text-[11px]"
+                    style={{ color: 'var(--ok)', borderColor: 'var(--ok)' }}
+                  >
+                    ⚡ {t('cacheHit')}
+                  </span>
+                )}
               {it.text}
               {it.kind === 'final' && it.stopped ? ' ⏹' : ''}
             </div>

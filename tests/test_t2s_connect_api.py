@@ -46,7 +46,8 @@ def test_datasources_lists_dialects_with_env_defaults(client, monkeypatch):
     assert "password" not in items["mysql"]["defaults"]
 
 
-def test_connect_returns_session_with_tables(client, demo_db):
+def test_connect_returns_session_with_tables(client, demo_db, monkeypatch):
+    monkeypatch.setenv("API_KEY", "test")  # 单跑隔离:连接构造 agent 需要
     r = client.post("/api/text2sql/connect", json={
         "ds_type": "sqlite",
         "db_config": {"database": demo_db},

@@ -103,6 +103,17 @@ class Text2SQLAgent:
     def chat(self, message: str) -> str:
         """Continue a multi-turn conversation, preserving history."""
         self.last_user_question = message
+        if not self.messages:
+            # an empty history has single-question semantics, so the first
+            # turn may hit the semantic cache; the exchange is recorded so
+            # follow-ups still carry context
+            cached = self._semantic_cache_answer(message)
+            if cached is not None:
+                self.messages.append({"role": "user", "content": message})
+                self.messages.append({"role": "assistant", "content": cached})
+                self.console.print(
+                    Panel(message, title="Text2SQL (缓存)", border_style="green"))
+                return cached
         self.messages.append({"role": "user", "content": self._augment(message)})
         self.console.print(Panel(message, title="Text2SQL", border_style="cyan"))
         return self._agent_loop()
@@ -144,22 +155,28 @@ class Text2SQLAgent:
         from .tools import execute_text2sql_tool
 
         try:
-            out = json.loads(execute_text2sql_tool(
+            raw = execute_text2sql_tool(
                 "execute_sql",
                 {"sql": entry["sql"], "user_query": question},
                 self.runtime,
-            ))
+            )
+            out = json.loads(raw)
         except Exception:
             return None
         if not out.get("success"):
             return None  # schema drift etc. — let the LLM re-derive
         sql = out.get("sql", entry["sql"])
-        return (
+        answer = (
             "⚡ 命中已验证示例（语义缓存，未调用 LLM）\n\n"
             f"```sql\n{sql}\n```\n\n"
             f"返回 {out.get('row_count', 0)} 行。"
             "若结果不符，点 👎 移除该示例后重新提问即可走完整生成流程。"
         )
+        # the UI streams via events: ship the result card and final text the
+        # same way the agent loop would
+        self._emit("tool_result", {"name": "execute_sql", "result": raw})
+        self._emit("final_answer", {"text": answer})
+        return answer
 
     def _augment(self, question: str) -> str:
         """Attach verified few-shot examples (BM25 top-K) to the question."""

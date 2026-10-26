@@ -280,6 +280,41 @@ def test_promote_candidates(store: ExampleStore) -> None:
     assert c["tables"] == ["sales"]
 
 
+def test_semantic_cache_first_chat_turn(tmp_path, monkeypatch) -> None:
+    """UI 走 chat():首轮空历史命中缓存且零 LLM,问答补进历史;次轮走 LLM."""
+    monkeypatch.delenv("T2S_SEMANTIC_CACHE", raising=False)
+    llm_calls: list = []
+    agent = _cache_agent(
+        tmp_path, monkeypatch, llm_calls,
+        "SELECT city, SUM(amount) FROM sales GROUP BY city",
+    )
+    answer = agent.chat("各城市销售额")
+    assert "语义缓存" in answer and llm_calls == []
+    # 问答已入历史,追问有上下文且不再走缓存
+    assert len(agent.messages) == 2
+    assert agent.messages[1]["content"] == answer
+    agent.chat("再按省份拆")
+    assert llm_calls == [1]
+
+
+def test_result_snapshot_reads_preview_rows() -> None:
+    """回归:execute_sql 成功载荷的行叫 preview_rows,结果卡曾因此空行."""
+    from seatunnel_agent.agents.data.text2sql.chart import result_snapshot
+
+    snap = result_snapshot(json.dumps({
+        "success": True, "sql": "SELECT 1",
+        "columns": ["city", "amt"],
+        "preview_rows": [["bj", 100.0]],
+        "row_count": 1,
+    }))
+    assert snap["rows"] == [["bj", 100.0]]
+    # 其他调用方的 rows 键优先级不变
+    snap2 = result_snapshot(json.dumps({
+        "columns": ["a"], "rows": [[1]], "row_count": 1,
+    }))
+    assert snap2["rows"] == [[1]]
+
+
 def test_semantic_cache_env_off(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("T2S_SEMANTIC_CACHE", "0")
     llm_calls: list = []

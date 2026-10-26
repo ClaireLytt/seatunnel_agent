@@ -93,6 +93,8 @@ const resources = {
       healthTarget: 'Month target',
       healthSubs: 'Subs',
       healthCheckFailed: 'check failed',
+      subMetric: 'Metric',
+      cacheHit: 'cache hit · 0 LLM',
     },
   },
   zh: {
@@ -187,6 +189,8 @@ const resources = {
       healthTarget: '月目标',
       healthSubs: '订阅',
       healthCheckFailed: '检查失败',
+      subMetric: '指标',
+      cacheHit: '缓存命中 · 零 LLM',
     },
   },
 }
