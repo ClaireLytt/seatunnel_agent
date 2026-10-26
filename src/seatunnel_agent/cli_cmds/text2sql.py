@@ -646,6 +646,65 @@ def metrics_validate(metrics_file: str | None, ddl: str) -> None:
             console.print(f"[red]{err}[/red]")
         raise SystemExit(1)
     console.print(f"[green]校验通过：{len(store)} 个指标定义与 DDL 一致[/green]")
+    _report_caliber_changes(metrics_file, store)
+
+
+def _report_caliber_changes(metrics_file: str | None, new_store) -> None:
+    """Diff the working copy against the last committed metrics.yaml (git)
+    and name the changed calibers plus the subscriptions they feed —
+    a caliber edit must never be invisible. Best-effort: no git, no diff."""
+    import subprocess
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.text2sql.metrics import (
+        MetricStore,
+        diff_metric_stores,
+    )
+
+    path = Path(metrics_file) if metrics_file else Path("config/metrics.yaml")
+    try:
+        out = subprocess.run(
+            ["git", "show", f"HEAD:{path.as_posix()}"],
+            capture_output=True, text=True, encoding="utf-8", timeout=15,
+        )
+    except Exception:
+        return
+    if out.returncode != 0 or not out.stdout.strip():
+        return  # not tracked yet / no git — nothing to compare
+    old_store, _errs = MetricStore.from_text(out.stdout)
+    diff = diff_metric_stores(old_store, new_store)
+    if not (diff["added"] or diff["removed"] or diff["changed"]):
+        return
+    console.print("[yellow]口径相对上一提交发生变化:[/yellow]")
+    for n in diff["added"]:
+        console.print(f"  + 新增指标 {n}")
+    for n in diff["removed"]:
+        console.print(f"  - 删除指标 {n}")
+    for ch in diff["changed"]:
+        for f in ch["fields"]:
+            console.print(
+                f"  ~ {ch['name']}.{f['field']}: {f['old']!r} → {f['new']!r}"
+            )
+    touched = set(diff["removed"]) | {c["name"] for c in diff["changed"]}
+    if not touched:
+        return
+    try:
+        from seatunnel_agent.agents.data.text2sql.subscriptions import (
+            SubscriptionStore,
+        )
+
+        affected = [
+            s for s in SubscriptionStore().list()
+            if s.get("metric") in touched
+            or touched & set(s.get("metrics") or [])
+        ]
+    except Exception:
+        return
+    for s in affected:
+        console.print(
+            f"  [yellow]受影响订阅: {s['id']} {s['name']}"
+            f"（{s['source_type']}）[/yellow]"
+        )
 
 
 @metrics.command("sql")

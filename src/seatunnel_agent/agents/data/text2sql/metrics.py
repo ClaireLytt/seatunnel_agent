@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from .matcher import tokenize
 from .partition import TimeRange
@@ -542,6 +543,37 @@ class MetricStore:
 
         match.hits = list(dict.fromkeys(match.hits))[:8]
         return match
+
+
+#: fields whose change alters the metric's caliber (numbers move)
+CALIBER_FIELDS = (
+    "table", "expression", "time_column", "dimensions", "default_filters",
+    "joins", "numerator", "denominator", "metric_type", "targets",
+)
+
+
+def diff_metric_stores(
+    old: MetricStore, new: MetricStore,
+) -> dict[str, Any]:
+    """Caliber diff between two metric stores: added / removed names, and
+    per-metric field changes for :data:`CALIBER_FIELDS`."""
+    old_names = {m.name for m in old.metrics}
+    new_names = {m.name for m in new.metrics}
+    changed: list[dict[str, Any]] = []
+    for name in sorted(old_names & new_names):
+        m_old, m_new = old.get(name), new.get(name)
+        fields: list[dict[str, Any]] = []
+        for f in CALIBER_FIELDS:
+            v_old, v_new = getattr(m_old, f), getattr(m_new, f)
+            if v_old != v_new:
+                fields.append({"field": f, "old": v_old, "new": v_new})
+        if fields:
+            changed.append({"name": name, "fields": fields})
+    return {
+        "added": sorted(new_names - old_names),
+        "removed": sorted(old_names - new_names),
+        "changed": changed,
+    }
 
 
 def load_metric_store(

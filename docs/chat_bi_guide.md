@@ -54,6 +54,10 @@ metrics:
 CLI：`seatunnel-agent metrics list|show <name>|validate|sql <name>`
 （`validate` 出错退出码 1，可做 CI 门禁；`sql` 离线预览展开结果）。
 
+口径变更追溯:`validate` 通过后自动对比 git 上一提交的 metrics.yaml,
+列出口径字段级变化(expression/filters/joins/targets 等,改 display_name
+不算)并点名受影响的订阅——口径改动不允许悄悄发生。
+
 ### 星型 JOIN（维表维度）
 
 真实数仓的维度值常在维表里（`channel_id` → `dim_channel.channel_name`）。

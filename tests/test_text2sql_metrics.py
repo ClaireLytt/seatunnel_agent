@@ -1772,3 +1772,52 @@ metrics:
     assert any("必须 > 0" in e for e in errors)
     assert any("必须是数值" in e for e in errors)
     assert any("ratio 指标暂不支持 targets" in e for e in errors)
+
+
+# ----------------------------------------------------------------------
+# caliber diff (metrics validate 的口径变更追溯)
+# ----------------------------------------------------------------------
+
+
+def test_diff_metric_stores() -> None:
+    from seatunnel_agent.agents.data.text2sql.metrics import diff_metric_stores
+
+    old, _ = MetricStore.from_text("""
+metrics:
+  - name: gmv
+    table: t
+    expression: SUM(x)
+    default_filters: ["status = 'PAID'"]
+  - name: dying
+    table: t
+    expression: SUM(y)
+""")
+    new, _ = MetricStore.from_text("""
+metrics:
+  - name: gmv
+    table: t
+    expression: SUM(pay_amount)
+    default_filters: ["status = 'PAID'"]
+  - name: fresh
+    table: t
+    expression: COUNT(*)
+""")
+    d = diff_metric_stores(old, new)
+    assert d["added"] == ["fresh"] and d["removed"] == ["dying"]
+    assert len(d["changed"]) == 1
+    ch = d["changed"][0]
+    assert ch["name"] == "gmv"
+    assert ch["fields"] == [
+        {"field": "expression", "old": "SUM(x)", "new": "SUM(pay_amount)"},
+    ]
+
+
+def test_diff_metric_stores_display_only_change_silent() -> None:
+    from seatunnel_agent.agents.data.text2sql.metrics import diff_metric_stores
+
+    old, _ = MetricStore.from_text(
+        "metrics:\n  - {name: gmv, table: t, expression: SUM(x), display_name: A}\n")
+    new, _ = MetricStore.from_text(
+        "metrics:\n  - {name: gmv, table: t, expression: SUM(x), display_name: B}\n")
+    d = diff_metric_stores(old, new)
+    assert d == {"added": [], "removed": [], "changed": []}
