@@ -28,15 +28,30 @@ SEASONALITY_MIN_POINTS = 14
 #: of that class in the history (below that the mean is just noise)
 HOLIDAY_MIN_DAYS = 2
 
+#: supported series grains; week periods start on Monday, month on the 1st
+GRAINS = ("day", "week", "month")
+
+
+def _next_period(d: date, grain: str) -> date:
+    """The start of the period after the one starting at ``d``."""
+    if grain == "week":
+        return d + timedelta(days=7)
+    if grain == "month":
+        return date(d.year + (d.month == 12), d.month % 12 + 1, 1)
+    return d + timedelta(days=1)
+
 
 def _fill_gaps(
-    points: list[tuple[date, float | None]], fill: str
+    points: list[tuple[date, float | None]], fill: str, grain: str
 ) -> list[tuple[date, float]]:
-    """Return a contiguous daily series between the first and last date.
+    """Return a contiguous period series between the first and last date.
 
-    ``fill='zero'`` treats missing days as 0 (additive metrics: no rows
-    means nothing happened); ``fill='ffill'`` carries the last value
-    forward (ratio metrics: 0 would be a fake caliber).
+    Keys must be period-start dates for the grain (any day for 'day',
+    Mondays for 'week', 1sts for 'month'); a misaligned key would be
+    silently dropped, so it raises instead. ``fill='zero'`` treats missing
+    periods as 0 (additive metrics: no rows means nothing happened);
+    ``fill='ffill'`` carries the last value forward (ratio metrics: 0
+    would be a fake caliber).
     """
     by_day = dict(points)
     days = sorted(by_day)
@@ -47,13 +62,21 @@ def _fill_gaps(
     if fill == "ffill":
         prev = next((by_day[d] for d in days if by_day[d] is not None), 0.0)
     cur = days[0]
+    visited: set[date] = set()
     while cur <= days[-1]:
+        visited.add(cur)
         val = by_day.get(cur)
         if val is None:
             val = prev if fill == "ffill" else 0.0
         out.append((cur, float(val)))
         prev = float(val)
-        cur += timedelta(days=1)
+        cur = _next_period(cur, grain)
+    stray = set(days) - visited
+    if stray:
+        raise ValueError(
+            f"points must be {grain}-period start dates; "
+            f"misaligned: {sorted(stray)[0].isoformat()}"
+        )
     return out
 
 
@@ -61,24 +84,29 @@ def forecast_series(
     points: list[tuple[date, float | None]],
     horizon: int = 7,
     fill: str = "zero",
+    grain: str = "day",
 ) -> dict[str, Any]:
-    """Forecast ``horizon`` days past the last observed date.
+    """Forecast ``horizon`` periods past the last observed period.
 
-    ``points`` are (day, value) observations (unordered, gaps allowed,
-    None values treated as missing). Returns a JSON-ready dict with the
-    per-day forecasts, the fitted trend slope and the residual σ.
-    Raises ``ValueError`` when the history is too short.
+    ``points`` are (period_start, value) observations (unordered, gaps
+    allowed, None values treated as missing; period starts: any day for
+    'day' grain, Mondays for 'week', 1sts for 'month'). Weekday and CN
+    holiday seasonality only apply at day grain. Returns a JSON-ready dict
+    with the per-period forecasts, the fitted trend slope and the residual
+    σ. Raises ``ValueError`` when the history is too short.
     """
+    if grain not in GRAINS:
+        raise ValueError(f"grain must be one of {GRAINS}")
     if horizon < 1:
         raise ValueError("horizon must be >= 1")
     cleaned = [(d, v) for d, v in points if d is not None]
     observed = {d for d, v in cleaned if v is not None}
     if len(observed) < MIN_POINTS:
         raise ValueError(
-            f"need at least {MIN_POINTS} observed history days, "
+            f"need at least {MIN_POINTS} observed history {grain}s, "
             f"got {len(observed)}"
         )
-    series = _fill_gaps(cleaned, fill)
+    series = _fill_gaps(cleaned, fill, grain)
     n = len(series)
     ys = [v for _, v in series]
 
@@ -93,8 +121,8 @@ def forecast_series(
     def _trend(i: int) -> float:
         return intercept + slope * i
 
-    # additive weekday offsets from the detrended residuals
-    seasonal = n >= SEASONALITY_MIN_POINTS
+    # additive weekday offsets from the detrended residuals (day grain only)
+    seasonal = grain == "day" and n >= SEASONALITY_MIN_POINTS
     offsets = dict.fromkeys(range(7), 0.0)
     if seasonal:
         buckets: dict[int, list[float]] = {wd: [] for wd in range(7)}
@@ -118,8 +146,11 @@ def forecast_series(
             return 0.0
         return sum(vals) / len(vals)
 
-    holiday_offset = _class_offset(calendar_cn.is_holiday)
-    makeup_offset = _class_offset(calendar_cn.is_makeup_workday)
+    if grain == "day":
+        holiday_offset = _class_offset(calendar_cn.is_holiday)
+        makeup_offset = _class_offset(calendar_cn.is_makeup_workday)
+    else:  # a week/month period is not a single calendar day
+        holiday_offset = makeup_offset = 0.0
     holiday_adjusted = holiday_offset != 0.0 or makeup_offset != 0.0
 
     def _calendar_offset(d: date) -> float:
@@ -141,8 +172,9 @@ def forecast_series(
 
     last_day = series[-1][0]
     forecasts = []
+    day = last_day
     for k in range(1, horizon + 1):
-        day = last_day + timedelta(days=k)
+        day = _next_period(day, grain)
         yhat = _trend(n - 1 + k) + offsets[day.weekday()] + _calendar_offset(day)
         band = 1.96 * sigma
         row = {
@@ -160,11 +192,14 @@ def forecast_series(
         method += "+cn_holiday"
     return {
         "method": method,
-        "history_days": n,
+        "grain": grain,
+        # period count; the key keeps its historical name at day grain
+        ("history_days" if grain == "day" else "history_periods"): n,
         "history_start": series[0][0].isoformat(),
         "history_end": last_day.isoformat(),
         "horizon": horizon,
-        "slope_per_day": round(slope, 6),
+        ("slope_per_day" if grain == "day" else "slope_per_period"):
+            round(slope, 6),
         "sigma": round(sigma, 6),
         "holiday_offset": round(holiday_offset, 6),
         "makeup_workday_offset": round(makeup_offset, 6),

@@ -220,6 +220,103 @@ def test_forecast_single_holiday_day_not_enough() -> None:
 
 
 # ----------------------------------------------------------------------
+# week / month grain
+# ----------------------------------------------------------------------
+
+
+def test_forecast_week_grain_linear_trend() -> None:
+    start = date(2026, 3, 2)  # a Monday
+    pts = [(start + timedelta(weeks=i), 1000.0 + 70.0 * i) for i in range(10)]
+    out = forecast_series(pts, horizon=2, grain="week")
+    assert out["grain"] == "week"
+    assert out["method"] == "ols_trend"  # no weekday seasonality at week grain
+    assert out["slope_per_period"] == pytest.approx(70.0, abs=1e-6)
+    assert "slope_per_day" not in out
+    assert out["history_periods"] == 10
+    # next periods step by 7 days from the last Monday (2026-05-04)
+    assert [f["day"] for f in out["forecasts"]] == ["2026-05-11", "2026-05-18"]
+    assert [f["yhat"] for f in out["forecasts"]] == pytest.approx(
+        [1700.0, 1770.0])
+
+
+def test_forecast_month_grain_steps_by_month() -> None:
+    pts = [(date(2025, m, 1), 100.0 * m) for m in range(1, 11)]
+    out = forecast_series(pts, horizon=3, grain="month")
+    assert [f["day"] for f in out["forecasts"]] == [
+        "2025-11-01", "2025-12-01", "2026-01-01"]
+    assert out["forecasts"][0]["yhat"] == pytest.approx(1100.0, abs=1e-6)
+
+
+def test_forecast_misaligned_period_rejected() -> None:
+    pts = [(date(2026, 3, 2) + timedelta(weeks=i), 100.0) for i in range(8)]
+    pts.append((date(2026, 3, 4), 100.0))  # a Wednesday among Mondays
+    with pytest.raises(ValueError, match="misaligned"):
+        forecast_series(pts, horizon=1, grain="week")
+    with pytest.raises(ValueError, match="grain"):
+        forecast_series(pts[:8], horizon=1, grain="quarter")
+
+
+def test_forecast_tool_week_grain(runtime) -> None:
+    # fixture loads 2026-03-01..03-28; full ISO weeks are 3/2-8, 3/9-15,
+    # 3/16-22 — the partial edge weeks (3/1 alone, 3/23-28) must be dropped,
+    # which leaves too few points -> clear error, no silent bad fit
+    out = json.loads(execute_text2sql_tool("forecast_metric", {
+        "metric": "gmv", "horizon_days": 2, "grain": "week",
+        "history_days": 56, "end_date": "2026-03-28",
+    }, runtime))
+    assert not out.get("success")
+    assert "历史数据不足" in out["error"]
+
+
+def test_forecast_tool_week_grain_end_to_end(tmp_path, stores) -> None:
+    schema_store, metric_store = stores
+    db = tmp_path / "sales.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE sales("
+        "order_id TEXT, amount REAL, refund REAL, channel TEXT, dt TEXT)")
+    start = date(2026, 1, 5)  # a Monday; 12 full weeks -> ends 2026-03-29
+    rows = []
+    for i in range(12 * 7):
+        d = (start + timedelta(days=i)).isoformat()
+        rows.append((f"o{i}", 100.0, 10.0, "app", d))
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    rt = Text2SQLRuntime(
+        store=schema_store, metrics=metric_store, ds_type="sqlite",
+        db_config=DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)),
+        logger=QueryLogger(log_dir=tmp_path),
+    )
+    out = json.loads(execute_text2sql_tool("forecast_metric", {
+        "metric": "gmv", "horizon_days": 2, "grain": "week",
+        "history_days": 84, "end_date": "2026-03-29",
+    }, rt))
+    assert out.get("success"), out
+    assert out["grain"] == "week"
+    assert out["history_periods"] == 12
+    # flat 700/week -> flat forecast, Mondays after the last full week
+    assert out["forecasts"][0]["day"] == "2026-03-30"
+    assert out["forecasts"][0]["yhat"] == pytest.approx(700.0, abs=1e-6)
+
+
+def test_forecast_tool_ratio_refuses_week_grain(runtime) -> None:
+    out = json.loads(execute_text2sql_tool("forecast_metric", {
+        "metric": "refund_rate", "grain": "week", "end_date": "2026-03-28",
+    }, runtime))
+    assert not out.get("success")
+    assert "比率指标" in out["error"]
+
+
+def test_forecast_tool_bad_grain(runtime) -> None:
+    out = json.loads(execute_text2sql_tool("forecast_metric", {
+        "metric": "gmv", "grain": "quarter",
+    }, runtime))
+    assert out["error"].startswith("grain must be")
+
+
+# ----------------------------------------------------------------------
 # build_metric_series_sql
 # ----------------------------------------------------------------------
 

@@ -127,9 +127,21 @@ def _tool_forecast_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
         return err
     name = metric.name
 
+    grain = str(inp.get("grain") or "day").strip().lower()
+    # (min, max, default) history window in DAYS per grain; the month cap
+    # stays under default_limit=1000 daily rows so the truncation guard
+    # below never fires on a legitimate request
+    _history_bounds = {
+        "day": (14, 180, 28),
+        "week": (56, 364, 112),
+        "month": (210, 900, 365),
+    }
+    if grain not in _history_bounds:
+        return {"error": "grain must be one of: day, week, month"}
+    lo, hi, default = _history_bounds[grain]
     try:
         horizon = max(1, min(int(inp.get("horizon_days") or 7), 30))
-        history = max(14, min(int(inp.get("history_days") or 28), 180))
+        history = max(lo, min(int(inp.get("history_days") or default), hi))
     except (TypeError, ValueError):
         return {"error": "horizon_days / history_days must be integers"}
 
@@ -196,10 +208,43 @@ def _tool_forecast_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str,
     except (MetricError, TypeError, ValueError) as exc:
         return {"error": f"cannot parse the daily series: {exc}", "sql": sql}
 
+    if grain != "day":
+        if metric.is_ratio:
+            # weekly/monthly ratios cannot be recombined from daily ratios
+            # (same reason sub-day ratio rows are refused above)
+            return {
+                "error": (
+                    "比率指标无法从日序列重新聚合为周/月粒度,"
+                    "请用 grain=day,或分别预测分子/分母"
+                ),
+                "sql": sql,
+            }
+        from datetime import timedelta as _td
+
+        def _period_start(d: date) -> date:
+            if grain == "week":
+                return d - _td(days=d.weekday())  # ISO week, Monday
+            return d.replace(day=1)
+
+        from .forecast import _next_period
+
+        buckets: dict[date, float] = {}
+        for d, v in points:
+            buckets[_period_start(d)] = (
+                buckets.get(_period_start(d), 0.0) + (v or 0.0)
+            )
+        # drop partial edge periods: a half-covered week/month would read
+        # as a fake dip and bend the trend
+        points = sorted(
+            (p, total) for p, total in buckets.items()
+            if p >= start and _next_period(p, grain) - _td(days=1) <= end
+        )
+
     try:
         fc = forecast_series(
             points, horizon=horizon,
             fill="ffill" if metric.is_ratio else "zero",
+            grain=grain,
         )
     except ValueError as exc:
         return {

@@ -415,8 +415,11 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "LLM-free model (OLS linear trend + weekday seasonality once the "
             "history covers two full weeks, plus CN statutory-holiday/makeup-"
             "workday offsets when the history contains such days) and returns "
-            "per-day point "
-            "forecasts with a 95% interval. Works for ratio metrics too. "
+            "per-period point "
+            "forecasts with a 95% interval. grain=week/month aggregates the "
+            "daily series into ISO weeks / calendar months (additive metrics "
+            "only; partial edge periods are dropped). Works for ratio metrics "
+            "at day grain. "
             "Costs 1 SQL query. Present the numbers as a model estimate, "
             "never as a guarantee; mention the interval width when σ is "
             "large relative to the forecast."
@@ -430,13 +433,25 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 },
                 "horizon_days": {
                     "type": "integer",
-                    "description": "Days to forecast ahead (default 7, max 30)",
+                    "description": (
+                        "Periods to forecast ahead (default 7, max 30; "
+                        "a period is one day/week/month per grain)"
+                    ),
                 },
                 "history_days": {
                     "type": "integer",
                     "description": (
-                        "History window length used to fit the model "
-                        "(default 28, min 14, max 180)"
+                        "History window length in DAYS used to fit the model "
+                        "(day grain: default 28, 14-180; week: default 112, "
+                        "56-364; month: default 365, 210-900)"
+                    ),
+                },
+                "grain": {
+                    "type": "string",
+                    "enum": ["day", "week", "month"],
+                    "description": (
+                        "Series grain (default day). 预测下周/未来几周 -> week, "
+                        "未来几个月 -> month"
                     ),
                 },
                 "end_date": {
