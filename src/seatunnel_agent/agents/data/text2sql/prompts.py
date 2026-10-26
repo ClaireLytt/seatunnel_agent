@@ -200,6 +200,9 @@ A metric catalog is loaded. To guarantee caliber consistency:
    **metric_target_progress** — it reads the declared target and projects
    the period total deterministically. If it reports no declared target,
    say so instead of inventing one.
+12. For co-movement questions between two metrics (相关/联动/一起涨跌/是不是
+   因为), use **correlate_metrics** and present r as association only —
+   correlation is not causation; offer run_attribution for the "why".
 
 ## Metric Catalog (已定义指标)
 

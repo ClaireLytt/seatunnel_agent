@@ -22,6 +22,7 @@ from .tools_metric import (  # noqa: F401 (re-exported for compatibility)
     _metric_payload,
     _resolve_metric,
     _tool_build_metric_sql,
+    _tool_correlate_metrics,
     _tool_forecast_metric,
     _tool_match_metrics,
     _tool_metric_target_progress,
@@ -510,6 +511,45 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "correlate_metrics",
+        "description": (
+            "Correlation between two defined metrics' daily series (相关性/"
+            "联动: 退款率涨是不是跟GMV有关 / A和B一起变吗). Deterministic "
+            "Pearson r at lag 0 plus the strongest lead/lag within ±7 days "
+            "(positive lag = metric_a leads). Costs 2 SQL queries. Present "
+            "r as association only — correlation is NOT causation; suggest "
+            "run_attribution to localize an actual change."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "metric_a": {
+                    "type": "string",
+                    "description": "First metric name (as from match_metrics)",
+                },
+                "metric_b": {
+                    "type": "string",
+                    "description": "Second metric name",
+                },
+                "days": {
+                    "type": "integer",
+                    "description": "Trailing window in days (default 28, 14-180)",
+                },
+                "end_date": {
+                    "type": "string",
+                    "description": (
+                        "Last day, YYYY-MM-DD or yyyyMMdd (default: yesterday)"
+                    ),
+                },
+                "user_query": {
+                    "type": "string",
+                    "description": "The user's original question (for the audit log)",
+                },
+            },
+            "required": ["metric_a", "metric_b"],
+        },
+    },
+    {
         "name": "get_result_page",
         "description": (
             "Return a specific page of the most recent query result. "
@@ -727,6 +767,7 @@ _TOOL_HANDLERS = {
     "run_attribution": _tool_run_attribution,
     "forecast_metric": _tool_forecast_metric,
     "metric_target_progress": _tool_metric_target_progress,
+    "correlate_metrics": _tool_correlate_metrics,
     "trace_metric": _tool_trace_metric,
     "review_sql": _tool_review_sql,
     "skew_check": _tool_skew_check,

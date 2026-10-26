@@ -525,3 +525,85 @@ def test_target_progress_no_target_declared(runtime) -> None:
         "metric": "gmv", "period": "quarter",
     }, runtime))
     assert "未声明 quarter 目标" in out["error"]
+
+
+# ----------------------------------------------------------------------
+# correlate_metrics tool (sqlite end-to-end)
+# ----------------------------------------------------------------------
+
+# a fixed, non-monotonic daily pattern so lag detection has signal
+_NOISE = [5.0, 9.0, 2.0, 8.0, 1.0, 7.0, 3.0, 10.0, 4.0, 6.0,
+          12.0, 2.0, 9.0, 5.0, 11.0, 3.0, 8.0, 1.0, 10.0, 6.0,
+          4.0, 13.0, 2.0, 7.0, 9.0, 3.0, 12.0, 5.0]
+
+
+def _corr_runtime(tmp_path, stores, refund_of) -> Text2SQLRuntime:
+    """sqlite runtime whose refund series is refund_of(i, amounts)."""
+    schema_store, metric_store = stores
+    db = tmp_path / "corr.db"
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE sales("
+        "order_id TEXT, amount REAL, refund REAL, channel TEXT, dt TEXT)")
+    start = date(2026, 3, 1)
+    rows = []
+    for i, amt in enumerate(_NOISE):
+        d = (start + timedelta(days=i)).isoformat()
+        rows.append((f"o{i}", amt, refund_of(i, _NOISE), "app", d))
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    return Text2SQLRuntime(
+        store=schema_store, metrics=metric_store, ds_type="sqlite",
+        db_config=DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)),
+        logger=QueryLogger(log_dir=tmp_path),
+    )
+
+
+def test_correlate_tool_registered() -> None:
+    assert any(t["name"] == "correlate_metrics" for t in TOOL_DEFINITIONS)
+
+
+def test_correlate_perfect_linear(tmp_path, stores) -> None:
+    rt = _corr_runtime(tmp_path, stores, lambda i, xs: 2.0 * xs[i] + 5.0)
+    out = json.loads(execute_text2sql_tool("correlate_metrics", {
+        "metric_a": "gmv", "metric_b": "refund_amount",
+        "days": 28, "end_date": "2026-03-28",
+    }, rt))
+    assert out.get("success"), out
+    assert out["pearson_r"] == pytest.approx(1.0, abs=1e-6)
+    assert out["n_pairs"] == 28
+    assert not out["zero_variance"]
+
+
+def test_correlate_detects_lead_lag(tmp_path, stores) -> None:
+    """refund[i] = amount[i-1] → metric_a 领先 1 天,lag=+1 处 r=1."""
+    rt = _corr_runtime(
+        tmp_path, stores, lambda i, xs: xs[i - 1] if i > 0 else 0.0,
+    )
+    out = json.loads(execute_text2sql_tool("correlate_metrics", {
+        "metric_a": "gmv", "metric_b": "refund_amount",
+        "days": 28, "end_date": "2026-03-28",
+    }, rt))
+    assert out.get("success"), out
+    assert out["best_lag"]["lag_days"] == 1
+    assert out["best_lag"]["r"] == pytest.approx(1.0, abs=1e-3)
+    assert abs(out["pearson_r"]) < 0.9  # lag-0 clearly weaker
+
+
+def test_correlate_errors(tmp_path, stores) -> None:
+    rt = _corr_runtime(tmp_path, stores, lambda i, xs: 0.0)
+    out = json.loads(execute_text2sql_tool("correlate_metrics", {
+        "metric_a": "gmv", "metric_b": "gmv"}, rt))
+    assert "不同的指标" in out["error"]
+    out = json.loads(execute_text2sql_tool("correlate_metrics", {
+        "metric_a": "gmv", "metric_b": "nope"}, rt))
+    assert "not defined" in out["error"]
+    # flat-zero refund: zero variance -> r is None, flagged
+    out = json.loads(execute_text2sql_tool("correlate_metrics", {
+        "metric_a": "gmv", "metric_b": "refund_amount",
+        "days": 28, "end_date": "2026-03-28",
+    }, rt))
+    assert out.get("success"), out
+    assert out["pearson_r"] is None and out["zero_variance"]

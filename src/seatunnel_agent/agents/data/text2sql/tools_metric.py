@@ -404,6 +404,156 @@ def _tool_metric_target_progress(
     }
 
 
+def _pearson(xs: list[float], ys: list[float]) -> float | None:
+    """Pearson r; None when either side has zero variance."""
+    n = len(xs)
+    mx, my = sum(xs) / n, sum(ys) / n
+    sxx = sum((x - mx) ** 2 for x in xs)
+    syy = sum((y - my) ** 2 for y in ys)
+    if sxx == 0 or syy == 0:
+        return None
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    return sxy / (sxx * syy) ** 0.5
+
+
+_CORR_MIN_PAIRS = 7
+_CORR_MAX_LAG = 7
+
+
+def _tool_correlate_metrics(
+    inp: dict[str, Any], rt: Text2SQLRuntime,
+) -> dict[str, Any]:
+    """Deterministic correlation between two metrics' daily series: Pearson
+    r at lag 0 plus the strongest lead/lag within ±7 days. 2 SQL queries;
+    the LLM narrates, never computes."""
+    from datetime import date, timedelta
+
+    from .partition import TimeRange
+
+    if rt.metrics is None or len(rt.metrics) == 0:
+        return {"error": "No metric definitions loaded (metrics.yaml)"}
+    name_a = str(inp.get("metric_a", "")).strip()
+    name_b = str(inp.get("metric_b", "")).strip()
+    if name_a == name_b:
+        return {"error": "metric_a 和 metric_b 必须是两个不同的指标"}
+    pair = []
+    for key, nm in (("metric_a", name_a), ("metric_b", name_b)):
+        m = rt.metrics.get(nm)
+        if m is None:
+            known = ", ".join(mm.name for mm in rt.metrics.metrics)
+            return {"error": f"{key} '{nm}' is not defined. Known metrics: {known}"}
+        pair.append(m)
+    metric_a, metric_b = pair
+
+    try:
+        days = max(14, min(int(inp.get("days") or 28), 180))
+    except (TypeError, ValueError):
+        return {"error": "days must be an integer"}
+    try:
+        end_raw = str(inp.get("end_date", "") or "").strip()
+        end = parse_date(end_raw) if end_raw else date.today() - timedelta(days=1)
+    except MetricError as exc:
+        return {"error": str(exc)}
+    start = end - timedelta(days=days - 1)
+
+    def _daily(metric: Any) -> tuple[dict[Any, float], str]:
+        sql = build_metric_series_sql(
+            metric, rt.metrics, rt.store, TimeRange(start=start, end=end),
+        )
+        validation = validate_sql(sql, rt.store)
+        if not validation.ok:
+            raise MetricError("SQL rejected: " + "; ".join(validation.errors))
+        result = rt.executor.run(
+            enforce_limit(sql, default_limit=rt.default_limit, dialect=rt.ds_type),
+            max_rows=rt.default_limit,
+        )
+        out: dict[Any, float] = {}
+        for r in result.rows:
+            if r[0] is None or r[-1] is None:
+                continue
+            out[parse_date(str(r[0]).strip()[:10])] = float(r[-1])
+        return out, sql
+
+    try:
+        series_a, sql_a = _daily(metric_a)
+        series_b, sql_b = _daily(metric_b)
+    except MetricError as exc:
+        return {"error": str(exc)}
+    except Exception as exc:
+        return {"error": _sanitize_db_error(str(exc))}
+
+    def _value(metric: Any, series: dict, d: Any) -> float | None:
+        # additive: a missing day is a true 0; ratio: undefined, drop the pair
+        if d in series:
+            return series[d]
+        return None if metric.is_ratio else 0.0
+
+    all_days = [start + timedelta(days=i) for i in range(days)]
+
+    def _aligned(lag: int) -> tuple[list[float], list[float]]:
+        """Pairs (a[d], b[d+lag]): positive lag means a LEADS b by lag days."""
+        xs: list[float] = []
+        ys: list[float] = []
+        for d in all_days:
+            d2 = d + timedelta(days=lag)
+            if not start <= d2 <= end:
+                continue
+            va = _value(metric_a, series_a, d)
+            vb = _value(metric_b, series_b, d2)
+            if va is None or vb is None:
+                continue
+            xs.append(va)
+            ys.append(vb)
+        return xs, ys
+
+    xs, ys = _aligned(0)
+    if len(xs) < _CORR_MIN_PAIRS:
+        return {
+            "error": (
+                f"有效对齐天数不足(需要 ≥{_CORR_MIN_PAIRS},得到 {len(xs)}),"
+                "请增大 days 或确认该区间有数据"
+            ),
+        }
+    r0 = _pearson(xs, ys)
+
+    best: dict[str, Any] | None = None
+    for lag in range(-_CORR_MAX_LAG, _CORR_MAX_LAG + 1):
+        if lag == 0:
+            continue
+        lxs, lys = _aligned(lag)
+        if len(lxs) < _CORR_MIN_PAIRS:
+            continue
+        r = _pearson(lxs, lys)
+        if r is None:
+            continue
+        if best is None or abs(r) > abs(best["r"]):
+            best = {"lag_days": lag, "r": round(r, 4), "n": len(lxs)}
+
+    rt.logger.log(
+        user_query=str(inp.get("user_query", "")),
+        generated_sql=sql_a, status="success",
+        matched_tables=[t for t in (metric_a.table, metric_b.table) if t],
+        exec_time_ms=0, row_count=len(xs),
+        extra={
+            "source": rt.source, "kind": "correlation",
+            "metric": f"{metric_a.name}~{metric_b.name}",
+        },
+    )
+    return {
+        "success": True,
+        "metric_a": metric_a.name,
+        "metric_b": metric_b.name,
+        "window": {"start": start.isoformat(), "end": end.isoformat()},
+        "n_pairs": len(xs),
+        "pearson_r": None if r0 is None else round(r0, 4),
+        "zero_variance": r0 is None,
+        "best_lag": best,
+        "lag_semantics": "best_lag.lag_days > 0 表示 metric_a 领先 metric_b",
+        "sql_a": sql_a,
+        "sql_b": sql_b,
+    }
+
+
 def _attribution_execute(rt: Text2SQLRuntime, user_query: str, metric_name: str = ""):
     """Build the validated/cached/logged execute_fn for run_attribution."""
 

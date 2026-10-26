@@ -124,6 +124,14 @@ week 默认 112、56–364；month 默认 365、210–900）、`end_date`（默�
 口径）。审计落 qlog（`kind=target`）。ratio 指标暂不支持 targets
 （`metrics validate` 会拒绝）。
 
+## 多指标相关性
+
+"退款率涨是不是跟 GMV 放量有关" 走 `correlate_metrics`:两个指标的日序列
+(2 条确定性 SQL)算 Pearson r,外加 ±7 天滞后扫描找最强领先/滞后关系
+(`lag_days > 0` 表示 metric_a 领先)。有效对齐天数 <7 拒绝;任一侧零方差
+显式标记。提示词强制模型只把 r 当关联陈述——相关≠因果,"为什么"仍引导
+归因分析。审计落 qlog(`kind=correlation`)。
+
 ## 混合表/指标检索
 
 三通道融合：原关键词打分 × BM25（snake_case 拆分 + 中文 bigram，零依赖）×
