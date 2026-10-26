@@ -13,9 +13,16 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+# pinned to a release tag (not the mutable main branch); set
+# T2S_FONT_SHA256 to additionally verify the downloaded bytes. The old
+# .../NotoSansSC-Regular.otf URL never existed (silent 404 fallback).
 NOTO_SANS_SC_URL = (
-    "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/"
-    "SimplifiedChinese/NotoSansSC-Regular.otf"
+    "https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/"
+    "Sans/OTF/SimplifiedChinese/NotoSansCJKsc-Regular.otf"
+)
+# sha256 of the tag-pinned file above (verified by a real download)
+NOTO_SANS_SC_SHA256 = (
+    "2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b"
 )
 FONT_CACHE_DIR = Path.home() / ".seatunnel-agent" / "fonts"
 NOTO_FONT_PATH = FONT_CACHE_DIR / "NotoSansSC-Regular.otf"
@@ -28,8 +35,16 @@ def download_noto_font(timeout: int = _FONT_DOWNLOAD_TIMEOUT_S) -> Path | None:
         FONT_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         import urllib.request
         resp = urllib.request.urlopen(NOTO_SANS_SC_URL, timeout=timeout)
+        data = resp.read()
+        expected = (
+            os.getenv("T2S_FONT_SHA256", "").strip().lower()
+            or NOTO_SANS_SC_SHA256
+        )
+        import hashlib
+        if hashlib.sha256(data).hexdigest() != expected:
+            return None
         with open(NOTO_FONT_PATH, "wb") as f:
-            f.write(resp.read())
+            f.write(data)
         return NOTO_FONT_PATH if NOTO_FONT_PATH.is_file() else None
     except Exception:
         return None

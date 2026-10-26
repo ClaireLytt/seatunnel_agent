@@ -238,7 +238,8 @@ seatunnel-agent t2s-mcp --ds-type sqlite --database config/demo.db --allow-execu
 
 > ⚠️ 安全提示:未设置 `SEATUNNEL_API_KEY` 时 API 完全开放,且订阅接口
 > 接受任意 webhook URL(服务端会定时向其 POST)。凡是非单机/可信内网
-> 部署,务必设置 API key,并只向可信渠道域名配置 webhook。
+> 部署,务必设置 API key,并配置 `T2S_WEBHOOK_ALLOW_HOSTS=open.feishu.cn,...`
+> (域名后缀白名单,未设置则不限制;邮件渠道走服务端 SMTP 配置,不受此限)。
 
 ## 端到端评测
 

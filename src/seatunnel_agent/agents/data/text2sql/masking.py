@@ -79,13 +79,39 @@ _ALIAS_PAIR_RE = re.compile(
 )
 
 
+def _alias_kinds_ast(sql: str) -> dict[str, str] | None:
+    """Alias → kind via the sqlglot projection list (catches bare
+    ``SELECT t.user_phone p`` without AS); None when the SQL doesn't parse."""
+    try:
+        import sqlglot
+        from sqlglot import exp
+
+        statements = sqlglot.parse(sql)
+    except Exception:
+        return None
+    out: dict[str, str] = {}
+    for stmt in statements:
+        if stmt is None:
+            return None
+        for node in stmt.walk():
+            if isinstance(node, exp.Alias) and node.alias:
+                kind = sensitive_kind(node.this.sql())
+                if kind:
+                    out.setdefault(node.alias.lower(), kind)
+    return out
+
+
 def alias_kinds(sql: str) -> dict[str, str]:
     """Map result aliases to the mask kind of their source expression.
 
     ``SELECT user_phone AS p`` must not leak the raw phone just because the
-    alias ``p`` looks innocent: every ``<expr> AS <alias>`` pair whose
-    expression mentions a sensitive column name taints the alias.
+    alias ``p`` looks innocent: any aliased expression that mentions a
+    sensitive column name taints the alias. sqlglot AST first (covers
+    AS-less aliases), ``<expr> AS <alias>`` regex when the SQL won't parse.
     """
+    ast_out = _alias_kinds_ast(sql)
+    if ast_out is not None:
+        return ast_out
     out: dict[str, str] = {}
     for m in _ALIAS_PAIR_RE.finditer(sql):
         expr, alias = m.group(1), m.group(2).strip('`"').lower()

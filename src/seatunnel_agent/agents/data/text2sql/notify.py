@@ -300,6 +300,26 @@ _CHANNEL_PUSHERS: dict[str, Callable[..., tuple[bool, str]]] = {
 }
 
 
+def allowed_webhook(target: str) -> tuple[bool, str]:
+    """Host-whitelist gate for push targets (SSRF guard).
+
+    ``T2S_WEBHOOK_ALLOW_HOSTS=a.com,b.com`` restricts URL targets to those
+    hosts (suffix match per label); unset keeps today's open behavior.
+    Email targets are exempt (SMTP host comes from server env, not the URL).
+    """
+    raw = os.getenv("T2S_WEBHOOK_ALLOW_HOSTS", "").strip()
+    if not raw or detect_channel(target) == "email":
+        return True, ""
+    from urllib.parse import urlparse
+
+    host = (urlparse(target).hostname or "").lower()
+    allow = {h.strip().lower() for h in raw.split(",") if h.strip()}
+    for h in allow:
+        if host == h or host.endswith("." + h):
+            return True, ""
+    return False, f"webhook host '{host}' not in T2S_WEBHOOK_ALLOW_HOSTS"
+
+
 def push_card(
     webhook_url: str,
     title: str,
@@ -311,6 +331,9 @@ def push_card(
     """Channel-dispatching push: the subscription schema stays a single
     target URL, and the channel is inferred from its domain (feishu is the
     default, preserving pre-multi-channel behavior)."""
+    permitted, why = allowed_webhook(webhook_url)
+    if not permitted:
+        return False, why
     pusher = _CHANNEL_PUSHERS[detect_channel(webhook_url)]
     return pusher(webhook_url, title, body_markdown, ok=ok, timeout=timeout,
                   img_key=img_key)
