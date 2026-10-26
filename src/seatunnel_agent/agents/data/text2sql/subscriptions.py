@@ -27,7 +27,10 @@ import uuid
 from collections.abc import Callable
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+
+# typing.List because the `list` METHOD on SubscriptionStore shadows the
+# builtin inside the class body, so parameter annotations there need it
+from typing import Any, List  # noqa: UP035
 
 from seatunnel_agent.common.filelock import file_lock
 from seatunnel_agent.common.utils import (
@@ -200,14 +203,14 @@ class SubscriptionStore:
         source_type: str,
         *,
         metric: str = "",
-        dimensions: list[str] | None = None,
+        dimensions: List[str] | None = None,  # noqa: UP006 — see typing import note
         lookback_days: int = 1,
         favorite_id: str = "",
         params: dict[str, str] | None = None,
         threshold_pct: float = 10.0,
         watch_mode: str = "dod",
         max_lag_days: int = 1,
-        metrics: list[str] | None = None,
+        metrics: List[str] | None = None,  # noqa: UP006 — see typing import note
         ds_type: str = "hive",
         connection: str = "",
         database: str = "",
@@ -321,9 +324,11 @@ def resolve_db_config(sub: dict[str, Any]) -> DatabaseConfig | None:
     ds_type = sub.get("ds_type", "hive")
     preset_name = (sub.get("connection") or "").strip()
     if preset_name:
-        from seatunnel_agent.agents.data.data_comparison.presets import PresetsStore
+        from seatunnel_agent.agents.data.data_comparison.presets import (
+            ConnectionPresetsStore,
+        )
 
-        preset = PresetsStore().get_by_name(preset_name)
+        preset = ConnectionPresetsStore().get_by_name(preset_name)
         if preset is None:
             return None
         return DatabaseConfig(
@@ -520,6 +525,8 @@ def _run_metric_watch(
         }
 
     band: dict[str, float] | None = None
+    curr: float | None
+    prev: float | None
     if mode == "model":
         # forecast baseline: alert when yesterday falls outside the fitted
         # 95% interval (trend + weekday + CN-holiday aware; no fixed

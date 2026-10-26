@@ -177,7 +177,8 @@ def export_pdf(
 
     _font_family = "Helvetica"
     if NOTO_FONT_PATH.is_file():
-        pdf.add_font("NotoSansSC", "", str(NOTO_FONT_PATH), uni=True)
+        # fpdf2 >= 2.5.2 dropped the `uni` kwarg (unicode is implied)
+        pdf.add_font("NotoSansSC", "", str(NOTO_FONT_PATH))
         _font_family = "NotoSansSC"
     else:
         import unicodedata
@@ -186,7 +187,7 @@ def export_pdf(
             for col in columns for ch in str(col)
         )
         if has_cjk and download_noto_font() is not None:
-            pdf.add_font("NotoSansSC", "", str(NOTO_FONT_PATH), uni=True)
+            pdf.add_font("NotoSansSC", "", str(NOTO_FONT_PATH))
             _font_family = "NotoSansSC"
 
     pdf.add_page()

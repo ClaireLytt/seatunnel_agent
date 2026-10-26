@@ -81,8 +81,15 @@ def subscriptions_run(sub_id: str) -> dict[str, Any]:
 
     def _run() -> None:
         try:
-            run_subscription(sub, _sub_store)
-            result["status"] = "ok"
+            outcome = run_subscription(sub)
+            _sub_store.record_run(
+                sub_id, outcome.get("status", "error"), outcome.get("error", ""),
+            )
+            if "alert_state" in outcome:
+                _sub_store.record_alert_state(sub_id, outcome["alert_state"])
+            result["status"] = outcome.get("status", "error")
+            if outcome.get("error"):
+                result["error"] = str(outcome["error"])[:500]
         except Exception as exc:
             result["status"] = "error"
             result["error"] = str(exc)[:500]

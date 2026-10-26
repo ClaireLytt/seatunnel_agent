@@ -60,7 +60,11 @@ def _fill_gaps(
     # day is not filled with the fake 0 ffill exists to avoid
     prev = 0.0
     if fill == "ffill":
-        prev = next((by_day[d] for d in days if by_day[d] is not None), 0.0)
+        for d in days:
+            v = by_day[d]
+            if v is not None:
+                prev = v
+                break
     cur = days[0]
     visited: set[date] = set()
     while cur <= days[-1]:

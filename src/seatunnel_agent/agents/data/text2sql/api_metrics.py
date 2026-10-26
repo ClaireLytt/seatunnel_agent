@@ -180,7 +180,7 @@ def metrics_attribution(req: AttributionRequest) -> dict[str, Any]:
         )
 
     from .attribution import attribution_to_dict, run_attribution
-    from .metrics import parse_time_range
+    from .metrics import require_time_range
     from .tools import _sanitize_db_error
     from .validator import enforce_limit, validate_sql
 
@@ -202,8 +202,8 @@ def metrics_attribution(req: AttributionRequest) -> dict[str, Any]:
     def _attribute_raw(target):
         return run_attribution(
             target, metric_store, store, _execute,
-            curr_range=parse_time_range(req.curr_start, req.curr_end or ""),
-            prev_range=parse_time_range(req.prev_start, req.prev_end or ""),
+            curr_range=require_time_range(req.curr_start, req.curr_end or ""),
+            prev_range=require_time_range(req.prev_start, req.prev_end or ""),
             dimensions=[req.dimension] if req.dimension else None,
             extra_filters=req.extra_filters,
         )

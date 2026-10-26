@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import re
+from typing import Any
 
 _KIND_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("phone", re.compile(r"mobile|phone|telephone|(?:^|_)tel(?:_|$)|手机|电话",
@@ -50,7 +51,7 @@ def sensitive_kind(column_name: str) -> str | None:
     return None
 
 
-def mask_value(value, kind: str) -> str:
+def mask_value(value: Any, kind: str) -> Any:
     """Mask a single value; deterministic and shape-preserving-ish."""
     if value is None:
         return value

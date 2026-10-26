@@ -71,6 +71,14 @@ def parse_date(raw: str):
     raise MetricError(f"无法解析日期 '{raw}'（支持 YYYY-MM-DD / yyyyMMdd）")
 
 
+def require_time_range(start_raw: str, end_raw: str) -> TimeRange:
+    """Like :func:`parse_time_range` but a missing range is an error."""
+    tr = parse_time_range(start_raw, end_raw)
+    if tr is None:
+        raise MetricError("必须提供时间范围（start/end 至少其一）")
+    return tr
+
+
 def parse_time_range(start_raw: str, end_raw: str) -> TimeRange | None:
     """Build a TimeRange from optional start/end strings (None if both empty)."""
     start_raw, end_raw = (start_raw or "").strip(), (end_raw or "").strip()

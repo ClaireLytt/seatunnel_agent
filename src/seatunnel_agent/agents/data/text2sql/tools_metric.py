@@ -638,6 +638,7 @@ def _run_one_attribution(
     if prev_range is None:
         raise MetricError("归因分析必须提供 prev_start 或 compare_mode")
     dim = str(inp.get("dimension", "") or "").strip()
+    assert rt.metrics is not None  # guaranteed by _resolve_metric above
     return run_attribution(
         metric, rt.metrics, rt.store,
         _attribution_execute(rt, inp.get("user_query", ""), metric.name),
@@ -770,9 +771,10 @@ def _tool_trace_metric(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, An
     depth = max(1, min(int(inp.get("depth", 3) or 3), 10))
 
     # caliber level (always available)
+    assert rt.metrics is not None  # guaranteed by _resolve_metric above
     if metric.is_ratio:
-        parts = [rt.metrics.get(metric.numerator), rt.metrics.get(metric.denominator)]
-        parts = [p for p in parts if p is not None and not p.is_ratio]
+        maybe = [rt.metrics.get(metric.numerator), rt.metrics.get(metric.denominator)]
+        parts = [p for p in maybe if p is not None and not p.is_ratio]
     else:
         parts = [metric]
     out: dict[str, Any] = {

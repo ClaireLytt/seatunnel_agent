@@ -77,10 +77,12 @@ def build_partition_clause(
             return (f"{partition_col} >= '{pt_value(tr.start)}' "
                     f"AND {partition_col} <= '{pt_value(tr.end)}'")
         d = tr.start or tr.end
+        assert d is not None  # guarded by `not tr.is_empty`
         return f"{partition_col} = '{pt_value(d)}'"
 
     if kind == "full" and not tr.is_empty:
         d = tr.end or tr.start
+        assert d is not None  # guarded by `not tr.is_empty`
         return f"{partition_col} = '{pt_value(d)}'"
 
     if max_partition:

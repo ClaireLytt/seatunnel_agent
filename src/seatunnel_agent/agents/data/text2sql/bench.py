@@ -82,6 +82,7 @@ def run_bench(
         if mode == "keyword":
             ranked = match_tables(case.question, store, top_n=3)
         else:
+            assert retriever is not None  # built above for hybrid mode
             ranked = retriever.rank(case.question, top_n=3)
         names = [m.table.full_name.lower() for m in ranked]
         expected = set(case.tables)

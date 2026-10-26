@@ -196,8 +196,8 @@ def build_tool_functions(
             return _json({"error": f"指标 '{metric}' 未定义。已知指标: {known}"})
         depth = max(1, min(int(depth), 10))
         if m.is_ratio:
-            parts = [metric_store.get(m.numerator), metric_store.get(m.denominator)]
-            parts = [p for p in parts if p is not None and not p.is_ratio]
+            maybe = [metric_store.get(m.numerator), metric_store.get(m.denominator)]
+            parts = [p for p in maybe if p is not None and not p.is_ratio]
         else:
             parts = [m]
         out: dict[str, Any] = {
@@ -373,7 +373,7 @@ def build_tool_functions(
             总变动率）。日期支持 YYYY-MM-DD / yyyyMMdd；dimension 省略时自动
             遍历允许维度。查询预算 2+2K 条 SQL。"""
             from .attribution import attribution_to_dict, run_attribution
-            from .metrics import MetricError, parse_time_range
+            from .metrics import MetricError
             from .tools import _sanitize_db_error
 
             m = metric_store.get(metric)
@@ -397,10 +397,12 @@ def build_tool_functions(
                 return result.columns, list(result.rows)
 
             def _attribute_raw(target):
+                from .metrics import require_time_range
+
                 return run_attribution(
                     target, metric_store, schema_store, _execute,
-                    curr_range=parse_time_range(curr_start, curr_end),
-                    prev_range=parse_time_range(prev_start, prev_end),
+                    curr_range=require_time_range(curr_start, curr_end),
+                    prev_range=require_time_range(prev_start, prev_end),
                     dimensions=[dimension] if dimension.strip() else None,
                 )
 
@@ -450,7 +452,7 @@ def create_mcp_server(
 ):
     """FastMCP server (stdio) wrapping the Chat BI tools."""
     try:
-        from mcp.server.fastmcp import FastMCP
+        from mcp.server.fastmcp import FastMCP  # type: ignore[attr-defined]
     except ImportError as exc:
         raise RuntimeError(
             "未安装 mcp 依赖，请先执行: pip install 'seatunnel-agent[mcp]'"

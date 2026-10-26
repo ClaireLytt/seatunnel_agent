@@ -161,7 +161,7 @@ def detect_chart_type(
 
     ncols = len(columns)
     padded = [tuple(r) + (None,) * (ncols - len(r)) if len(r) < ncols else tuple(r) for r in rows]
-    col_values = list(zip(*padded)) if padded else [[] for _ in columns]
+    col_values = list(zip(*padded)) if padded else [() for _ in columns]
     cat_cols, num_cols, date_cols = _classify_columns(col_values)
 
     # Attribution breakdown signature (see attribution.breakdown_table):
