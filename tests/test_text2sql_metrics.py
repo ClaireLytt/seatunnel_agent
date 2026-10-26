@@ -1899,6 +1899,41 @@ metrics:
     assert store.get("gmv").targets == {"month": 3000000.0, "year": 40000000.0}
 
 
+def test_resolve_named_range() -> None:
+    """中文业务时间词的确定性解析:相对期 + 法定节假日(含别名/年份/后缀)."""
+    from datetime import date
+
+    from seatunnel_agent.agents.data.text2sql.metrics import resolve_named_range
+
+    today = date(2026, 10, 27)  # 周二
+    assert resolve_named_range("昨天", today) == (date(2026, 10, 26),) * 2
+    assert resolve_named_range("上周", today) == (date(2026, 10, 19), date(2026, 10, 25))
+    assert resolve_named_range("上月", today) == (date(2026, 9, 1), date(2026, 9, 30))
+    assert resolve_named_range("上季度", today) == (date(2026, 7, 1), date(2026, 9, 30))
+    assert resolve_named_range("去年", today) == (date(2025, 1, 1), date(2025, 12, 31))
+    assert resolve_named_range("近30天", today) == (date(2026, 9, 27), date(2026, 10, 26))
+    # 节假日:无年份取今天之前最近一次;别名与"期间"后缀;显式年份;未覆盖年份 None
+    assert resolve_named_range("国庆", today) == (date(2026, 10, 1), date(2026, 10, 7))
+    assert resolve_named_range("春节期间", today) == (date(2026, 2, 15), date(2026, 2, 23))
+    assert resolve_named_range("2025国庆", today) == (date(2025, 10, 1), date(2025, 10, 8))
+    assert resolve_named_range("五一", today) == (date(2026, 5, 1), date(2026, 5, 5))
+    assert resolve_named_range("2030春节", today) is None
+    assert resolve_named_range("随便什么", today) is None
+
+
+def test_parse_time_range_accepts_named_period(monkeypatch) -> None:
+    from datetime import date
+
+    from seatunnel_agent.agents.data.text2sql import metrics as metrics_mod
+
+    tr = metrics_mod.parse_time_range("2026春节", "")
+    assert tr is not None
+    assert tr.start == date(2026, 2, 15) and tr.end == date(2026, 2, 23)
+    # 普通日期路径不受影响
+    tr2 = metrics_mod.parse_time_range("2026-03-01", "2026-03-02")
+    assert tr2.start == date(2026, 3, 1) and tr2.end == date(2026, 3, 2)
+
+
 def test_tree_factor_split_identity() -> None:
     """对数分解恒等式:份额 + 残差 = 100%;精确树残差≈0."""
     from seatunnel_agent.agents.data.text2sql.attribution import tree_factor_split

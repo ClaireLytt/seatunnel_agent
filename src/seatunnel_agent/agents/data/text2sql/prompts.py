@@ -207,6 +207,10 @@ A metric catalog is loaded. To guarantee caliber consistency:
    move" (为什么涨/跌), call **tree_attribution** FIRST — it answers at the
    factor level (流量跌了还是转化跌了) and already drills the top factor;
    fall back to run_attribution when no tree is declared.
+14. Named Chinese periods resolve deterministically: pass 春节/2025国庆/
+   五一期间/上季度/上月/本周/近30天 VERBATIM as the start field (leave end
+   empty) — never convert them to dates yourself; the statutory-holiday
+   calendar knows the official spans.
 
 ## Metric Catalog (已定义指标)
 

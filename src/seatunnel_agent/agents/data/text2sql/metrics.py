@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -79,11 +80,72 @@ def require_time_range(start_raw: str, end_raw: str) -> TimeRange:
     return tr
 
 
+def resolve_named_range(
+    text: str, today: date | None = None,
+) -> tuple[date, date] | None:
+    """(start, end) for a Chinese business-time phrase, or None.
+
+    Covers relative periods (昨天/本周/上月/上季度/近N天…) and statutory
+    holidays via :mod:`calendar_cn` (春节/2025国庆/五一期间…). Deterministic
+    so the LLM passes the phrase through instead of guessing dates.
+    """
+    from . import calendar_cn
+
+    t = (text or "").strip()
+    if not t:
+        return None
+    today = today or date.today()
+    yesterday = today - timedelta(days=1)
+    if t in ("今天", "今日"):
+        return today, today
+    if t in ("昨天", "昨日"):
+        return yesterday, yesterday
+    if t == "本周":
+        start = today - timedelta(days=today.weekday())
+        return start, today
+    if t == "上周":
+        this_mon = today - timedelta(days=today.weekday())
+        return this_mon - timedelta(days=7), this_mon - timedelta(days=1)
+    if t in ("本月", "这个月"):
+        return today.replace(day=1), today
+    if t in ("上月", "上个月"):
+        first = today.replace(day=1)
+        prev_last = first - timedelta(days=1)
+        return prev_last.replace(day=1), prev_last
+    if t in ("本季度", "这个季度"):
+        qs = today.replace(month=((today.month - 1) // 3) * 3 + 1, day=1)
+        return qs, today
+    if t in ("上季度", "上个季度"):
+        qs = today.replace(month=((today.month - 1) // 3) * 3 + 1, day=1)
+        prev_last = qs - timedelta(days=1)
+        prev_qs = prev_last.replace(
+            month=((prev_last.month - 1) // 3) * 3 + 1, day=1,
+        )
+        return prev_qs, prev_last
+    if t in ("今年", "本年"):
+        return today.replace(month=1, day=1), today
+    if t == "去年":
+        return (date(today.year - 1, 1, 1), date(today.year - 1, 12, 31))
+    m = re.fullmatch(r"[近最]近?\s*(\d{1,3})\s*[天日]", t)
+    if m:
+        n = max(1, int(m.group(1)))
+        return yesterday - timedelta(days=n - 1), yesterday
+    return calendar_cn.named_holiday_range(t, today)
+
+
 def parse_time_range(start_raw: str, end_raw: str) -> TimeRange | None:
-    """Build a TimeRange from optional start/end strings (None if both empty)."""
+    """Build a TimeRange from optional start/end strings (None if both empty).
+
+    A lone start string may also be a named Chinese period (春节 / 上季度 /
+    近30天), resolved deterministically to its calendar span.
+    """
     start_raw, end_raw = (start_raw or "").strip(), (end_raw or "").strip()
     if not start_raw and not end_raw:
         return None
+    if start_raw and not end_raw:
+        named = resolve_named_range(start_raw)
+        if named:
+            return TimeRange(start=named[0], end=named[1])
     start = parse_date(start_raw) if start_raw else None
     end = parse_date(end_raw) if end_raw else None
     return TimeRange(start=start or end, end=end or start)
