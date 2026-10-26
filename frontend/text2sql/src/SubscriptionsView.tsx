@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import {
+  backtestSubscription,
   createSubscription,
   deleteSubscription,
   fetchSubscriptions,
   patchSubscription,
   runSubscription,
+  type BacktestResult,
   type Subscription,
 } from '@/api'
 
@@ -59,6 +61,24 @@ export function SubscriptionsView() {
   const doToggle = async (id: string, enabled: boolean) => {
     await patchSubscription(id, !enabled)
     refresh()
+  }
+
+  const [backtest, setBacktest] = useState<
+    { name: string; result: BacktestResult } | null
+  >(null)
+  const [backtesting, setBacktesting] = useState('')
+
+  const doBacktest = async (s: Subscription) => {
+    setErr('')
+    setBacktesting(s.id)
+    try {
+      const result = await backtestSubscription(s.id)
+      setBacktest({ name: s.name, result })
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBacktesting('')
+    }
   }
 
   const doRun = async (id: string) => {
@@ -236,6 +256,16 @@ export function SubscriptionsView() {
                     >
                       ⚡
                     </button>
+                    {s.source_type === 'metric_watch' && (
+                      <button
+                        onClick={() => doBacktest(s)}
+                        className="rounded border border-line px-1.5 text-muted hover:text-ink"
+                        title={t('backtest')}
+                        disabled={backtesting === s.id}
+                      >
+                        {backtesting === s.id ? '…' : '📈'}
+                      </button>
+                    )}
                     <button
                       onClick={() => deleteSubscription(s.id).then(refresh)}
                       className="rounded border border-line px-1.5 text-muted hover:text-accent"
@@ -252,6 +282,43 @@ export function SubscriptionsView() {
           <div className="py-4 text-center font-mono text-[13px] text-muted">—</div>
         )}
         {err && <div className="mt-2 font-mono text-[12px] text-accent">{err}</div>}
+        {backtest && (
+          <div className="mt-3 rounded border border-line bg-paper p-3 font-mono text-[12px]">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="text-ink">
+                📈 {backtest.name} · {t('backtestSummary', {
+                  count: backtest.result.alert_count,
+                  days: backtest.result.days_evaluated,
+                })}
+                {backtest.result.alert_rate_pct !== null &&
+                  ` (${backtest.result.alert_rate_pct}%)`}
+              </span>
+              <button
+                onClick={() => setBacktest(null)}
+                className="ml-auto rounded border border-line px-1.5 text-muted"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="text-muted">
+              {backtest.result.window.start} ~ {backtest.result.window.end} ·{' '}
+              {backtest.result.watch_mode}
+            </div>
+            {backtest.result.alerts.slice(0, 10).map((a) => (
+              <div key={a.day} className="text-muted">
+                {a.day} · {a.actual.toLocaleString()}
+                {a.expected !== undefined
+                  ? ` (${t('backtestExpected')} ${a.expected.toLocaleString()} [${a.lo?.toLocaleString()}, ${a.hi?.toLocaleString()}])`
+                  : a.change_rate_pct != null
+                    ? ` (${a.change_rate_pct > 0 ? '+' : ''}${a.change_rate_pct}%)`
+                    : ''}
+              </div>
+            ))}
+            {backtest.result.alerts.length > 10 && (
+              <div className="text-muted">… +{backtest.result.alerts.length - 10}</div>
+            )}
+          </div>
+        )}
       </Card>
     </div>
   )

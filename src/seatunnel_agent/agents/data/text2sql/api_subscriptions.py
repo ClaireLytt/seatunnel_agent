@@ -82,6 +82,48 @@ def subscriptions_patch(sub_id: str, req: SubscriptionPatchRequest) -> dict[str,
     return {"enabled": req.enabled}
 
 
+@router.post("/subscriptions/{sub_id}/backtest")
+def subscriptions_backtest(sub_id: str, days: int = 90) -> dict[str, Any]:
+    """Replay the watch rule over history — zero LLM, one series SQL."""
+    from datetime import date, timedelta
+    from pathlib import Path
+
+    sub = _sub_store.get(sub_id)
+    if sub is None:
+        raise HTTPException(status_code=404, detail="unknown subscription")
+    if sub.get("source_type") != "metric_watch":
+        raise HTTPException(
+            status_code=400, detail="backtest 只支持 metric_watch 订阅",
+        )
+    from .executor import create_executor, schema_ddl_path_from_env
+    from .metrics import MetricError, load_metric_store
+    from .schema import SchemaStore
+    from .subscriptions import backtest_watch, resolve_db_config
+
+    ddl = Path(schema_ddl_path_from_env())
+    if not ddl.is_file():
+        raise HTTPException(status_code=400, detail=f"schema DDL 不存在: {ddl}")
+    schema_store = SchemaStore.from_file(ddl)
+    metric_store, _errors = load_metric_store(schema_store)
+    db_config = resolve_db_config(sub)
+    if db_config is None:
+        raise HTTPException(status_code=400, detail="无法解析数据库连接")
+    try:
+        return backtest_watch(
+            sub, schema_store, metric_store, create_executor(db_config),
+            end=date.today() - timedelta(days=1),
+            days=max(7, min(days, 365)),
+        )
+    except MetricError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        from .runtime import _sanitize_db_error
+
+        raise HTTPException(
+            status_code=500, detail=_sanitize_db_error(str(exc)),
+        )
+
+
 @router.post("/subscriptions/{sub_id}/run")
 def subscriptions_run(sub_id: str) -> dict[str, Any]:
     sub = _sub_store.get(sub_id)

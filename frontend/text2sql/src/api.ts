@@ -244,6 +244,34 @@ export const patchSubscription = (id: string, enabled: boolean): Promise<{ enabl
 export const runSubscription = (id: string): Promise<{ status: string; error?: string }> =>
   fetchJson(`${BASE}/subscriptions/${id}/run`, { method: 'POST' })
 
+export interface BacktestResult {
+  metric: string
+  watch_mode: string
+  threshold_pct: number
+  window: { start: string; end: string }
+  days_evaluated: number
+  no_data_days: number
+  alert_count: number
+  alert_rate_pct: number | null
+  alerts: Array<{
+    day: string
+    actual: number
+    prev?: number
+    change_rate_pct?: number | null
+    expected?: number
+    lo?: number
+    hi?: number
+  }>
+}
+
+export const backtestSubscription = (
+  id: string,
+  days = 90,
+): Promise<BacktestResult> =>
+  fetchJson(`${BASE}/subscriptions/${id}/backtest?days=${days}`, {
+    method: 'POST',
+  })
+
 export interface QlogRecord {
   timestamp: string
   user_query: string

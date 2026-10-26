@@ -82,6 +82,9 @@ const resources = {
       watchThreshold: 'threshold',
       freshLag: 'allowed lag',
       freshDays: 'day(s)',
+      backtest: 'Backtest (90d)',
+      backtestSummary: '{{count}} alert(s) over {{days}} evaluated days',
+      backtestExpected: 'expected',
     },
   },
   zh: {
@@ -165,6 +168,9 @@ const resources = {
       watchThreshold: '阈值',
       freshLag: '允许滞后',
       freshDays: '天',
+      backtest: '回测(90天)',
+      backtestSummary: '评估 {{days}} 天,会触发 {{count}} 次告警',
+      backtestExpected: '预期',
     },
   },
 }

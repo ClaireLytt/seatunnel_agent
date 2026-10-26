@@ -81,6 +81,63 @@ def test_patch_404(client):
     assert r.status_code == 404
 
 
+def test_backtest_endpoint_end_to_end(client, tmp_path, monkeypatch):
+    """REST 回测:14 天平稳 + 昨日尖峰 → model 模式恰 1 次告警."""
+    import sqlite3
+    from datetime import date, timedelta
+
+    db = tmp_path / "bt.db"
+    conn = sqlite3.connect(db)
+    conn.execute("CREATE TABLE sales(order_id TEXT, amount REAL, channel TEXT, dt TEXT)")
+    end = date.today() - timedelta(days=1)
+    rows = []
+    for i in range(15):
+        d = end - timedelta(days=14 - i)
+        amt = 500.0 if d == end else 100.0
+        rows.append((f"o{i}", amt, "app", d.isoformat()))
+    conn.executemany("INSERT INTO sales VALUES (?,?,?,?)", rows)
+    conn.commit()
+    conn.close()
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config" / "schema_ddl.sql").write_text(
+        "CREATE TABLE sales(order_id string, amount double, "
+        "channel string, dt string);",
+        encoding="utf-8",
+    )
+    (tmp_path / "config" / "metrics.yaml").write_text(
+        "metrics:\n  - name: gmv\n    table: sales\n"
+        "    expression: SUM(amount)\n    time_column: dt\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SCHEMA_DDL_PATH", "config/schema_ddl.sql")
+    monkeypatch.setenv("T2S_SERIES_CACHE_TTL", "0")
+
+    r = client.post("/api/text2sql/subscriptions", json={
+        "name": "bt", "cron": "0 9 * * *", "source_type": "metric_watch",
+        "metric": "gmv", "watch_mode": "model",
+        "ds_type": "sqlite", "database": str(db),
+    })
+    assert r.status_code == 201, r.text
+    sub_id = r.json()["subscription"]["id"]
+
+    r = client.post(f"/api/text2sql/subscriptions/{sub_id}/backtest?days=7")
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["watch_mode"] == "model"
+    assert data["alert_count"] == 1
+    assert data["alerts"][0]["day"] == end.isoformat()
+
+    # 非 watch 订阅拒绝
+    r2 = client.post("/api/text2sql/subscriptions", json={
+        "name": "plain", "cron": "0 9 * * *", "source_type": "metric",
+        "metric": "gmv", "ds_type": "sqlite", "database": str(db),
+    })
+    rid = r2.json()["subscription"]["id"]
+    r3 = client.post(f"/api/text2sql/subscriptions/{rid}/backtest")
+    assert r3.status_code == 400
+
+
 def test_run_now_executes_end_to_end(client, tmp_path, monkeypatch):
     """复活路径回归:REST run-now 真执行订阅并落盘状态(曾把
     SubscriptionStore 当 schema_store 传,从未成功过)."""
