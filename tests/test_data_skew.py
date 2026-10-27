@@ -1876,6 +1876,32 @@ def _make_orders_db(tmp_path):
     return db
 
 
+def test_mcp_skew_drift(monkeypatch, tmp_path):
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.mcp_server import (
+        build_tool_functions,
+    )
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    fns = build_tool_functions()
+    # empty history → pointer to skew_split_key patrols
+    assert "skew-splitkey" in fns["skew_drift"]()
+
+    h = default_history()
+    for top1 in (10.0, 14.0, 28.0):
+        h.log_splitkey("orders", "id", "good", top1_pct=top1)
+    out = fns["skew_drift"]("orders", lang="en")
+    assert "drifted" in out and "top1_pct" in out
+    # sweep + zh; the patrol lands in history with source=mcp
+    out_zh = fns["skew_drift"]()
+    assert "漂移" in out_zh
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "drift" and rec["source"] == "mcp"
+    # no-db profile still exposes the (history-only) drift tool
+    assert "skew_drift" in build_tool_functions(include_db=False)
+
+
 def test_mcp_split_key_validation(monkeypatch, tmp_path):
     from seatunnel_agent.agents.data.data_skew.mcp_server import build_tool_functions
 
@@ -1884,7 +1910,7 @@ def test_mcp_split_key_validation(monkeypatch, tmp_path):
     fns = build_tool_functions()
     assert set(fns) == {"skew_check", "skew_check_file",
                         "skew_runtime_eventlog", "skew_runtime_history",
-                        "skew_split_key", "skew_split_key_file",
+                        "skew_drift", "skew_split_key", "skew_split_key_file",
                         "skew_split_key_apply"}
     spk = fns["skew_split_key"]
     assert "不能为空" in spk("")

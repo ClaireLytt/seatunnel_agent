@@ -26,6 +26,7 @@ _INSTRUCTIONS = (
     "skew_split_key_apply 额外返回写入推荐分片键后的完整配置文本（不落盘）。"
     "skew_runtime 系列从 Spark event log / History Server 的任务指标定位"
     "拖尾 stage（运行时倾斜实锤），并映射回对应 SQL。"
+    "skew_drift 只读巡检历史，对比每张表最新分片键实测与历史基线，报告倾斜漂移。"
 )
 
 # Engines whose executor supports the split-key probe queries
@@ -122,10 +123,32 @@ def build_tool_functions(
                             source="mcp")
         return render_runtime_section(stages, lg, source_label=label)
 
+    def skew_drift(table: str = "", column: str = "", lang: str = "") -> str:
+        """分片键倾斜漂移检测：最新一次 skew_split_key 实测 vs 历史基线
+        （中位数），只读巡检历史、不连库。table 省略时巡检所有有历史的表；
+        column 省略时取该表最新测量的分片键。"""
+        from .drift import compute_drift, render_drift
+
+        lg = (lang or default_lang).strip().lower()
+        tables = [table.strip()] if (table or "").strip() \
+            else history.splitkey_tables()
+        if not tables:
+            from .i18n import dsk
+            return dsk(lg, "drf_none")
+        parts: list[str] = []
+        for t in tables:
+            result = compute_drift(t, history.splitkey_trend(t, n=50),
+                                   column=(column or "").strip())
+            parts.append(render_drift(result, lg))
+            history.log_drift(t, result.verdict,
+                              [d.metric for d in result.drifts], source="mcp")
+        return "\n\n".join(parts)
+
     if not include_db:
         return {"skew_check": skew_check, "skew_check_file": skew_check_file,
                 "skew_runtime_eventlog": skew_runtime_eventlog,
-                "skew_runtime_history": skew_runtime_history}
+                "skew_runtime_history": skew_runtime_history,
+                "skew_drift": skew_drift}
 
     def skew_split_key(conf: str, ds_type: str = "mysql",
                        sample_pct: int = 0, lang: str = "") -> str:
@@ -255,6 +278,7 @@ def build_tool_functions(
         "skew_check_file": skew_check_file,
         "skew_runtime_eventlog": skew_runtime_eventlog,
         "skew_runtime_history": skew_runtime_history,
+        "skew_drift": skew_drift,
         "skew_split_key": skew_split_key,
         "skew_split_key_file": skew_split_key_file,
         "skew_split_key_apply": skew_split_key_apply,
