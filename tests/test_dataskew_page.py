@@ -715,8 +715,8 @@ def test_dataskew_drift_card(page_url):
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
+        # opening the accordion auto-loads — no refresh click needed
         page.locator("summary", has_text="Skew drift").click()
-        page.get_by_role("button", name="Refresh drift", exact=True).click()
 
         expect(page.get_by_text("orders", exact=True)).to_be_visible(
             timeout=10000)

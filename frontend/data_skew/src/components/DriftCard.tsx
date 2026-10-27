@@ -15,8 +15,10 @@ export function DriftCard() {
   const { t, i18n } = useTranslation()
   const [items, setItems] = useState<DriftItem[]>([])
   const [empty, setEmpty] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   const refresh = async () => {
+    setLoaded(true)
     try {
       const got = await skewDrift(i18n.language)
       setItems(got)
@@ -29,7 +31,11 @@ export function DriftCard() {
 
   return (
     <Card>
-      <details>
+      <details
+        onToggle={(e) => {
+          if ((e.target as HTMLDetailsElement).open && !loaded) void refresh()
+        }}
+      >
         <summary className="cursor-pointer select-none font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
           {t('drf_accordion')}
         </summary>
