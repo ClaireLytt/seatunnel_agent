@@ -26,7 +26,9 @@
   pip cache,但步骤本身无超时、pip 无重试——卡住就吊满 job 预算。
 - **规避**(已机械化,见 uitest.yml / tests.yml):Install 步骤
   `timeout-minutes: 6` 快速失败 + `PIP_DEFAULT_TIMEOUT=60`/`PIP_RETRIES=3`
-  自愈瞬时抖动;人工口径:同步骤卡过 ~5 分钟直接
+  自愈瞬时抖动;第 4 次复发(PR #148)后 ui-smoke 再加**同 run 原地重试**
+  (首次 `continue-on-error` + 失败条件触发的第二次安装,缓存已热通常
+  <1 分钟)——无需任何人重跑。人工兜底口径:同步骤卡过 ~5 分钟直接
   `gh run cancel <id>` → 等 status=completed → `gh run rerun <id>`
   (cancel 落地有延迟,未 completed 前 rerun 会被拒)。
 
