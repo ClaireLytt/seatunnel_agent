@@ -10,10 +10,10 @@ consumes.
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Fewer than 3 measured records → verdict `insufficient`, never `stable`
-- [ ] Stable history → `stable` with no metric drifts
-- [ ] Top-1 rise, NULL rise and NDV collapse each produce a drift with correct baseline/current/delta
-- [ ] Records without measured metrics are ignored, not counted toward history depth
-- [ ] `pytest tests/test_data_skew.py -q` tail shows `passed`; `ruff` + `mypy` clean
+- [x] Fewer than 3 measured records → verdict `insufficient`, never `stable`
+- [x] Stable history → `stable` with no metric drifts
+- [x] Top-1 rise, NULL rise and NDV collapse each produce a drift with correct baseline/current/delta
+- [x] Records without measured metrics are ignored, not counted toward history depth
+- [x] `pytest tests/test_data_skew.py -q` tail shows `passed`; `ruff` + `mypy` clean

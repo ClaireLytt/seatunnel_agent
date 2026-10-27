@@ -11,10 +11,10 @@ history so `skew-stats` reflects it.
 
 **Blocked by:** 01 (Drift core).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `skew-drift <table>` on a seeded temp history prints metric, baseline, current, delta; no-arg form sweeps all tables (CliRunner tests, output tail in batch report)
-- [ ] `skew-splitkey` report ends with the drift line (mock-executor test)
-- [ ] Webhook test asserts the posted payload contains the drift verdict (monkeypatched post_webhook)
-- [ ] zh and en both render; backend i18n key-guard test passes
-- [ ] Drift patrol visible via `skew-stats`; `pytest` / `ruff` / `mypy` clean; batch report + check_workflow `[PASS]` lines
+- [x] `skew-drift <table>` on a seeded temp history prints metric, baseline, current, delta; no-arg form sweeps all tables (CliRunner tests, output tail in batch report)
+- [x] `skew-splitkey` report ends with the drift line (mock-executor test)
+- [x] Webhook test asserts the posted payload contains the drift verdict (monkeypatched post_webhook)
+- [x] zh and en both render; backend i18n key-guard test passes
+- [x] Drift patrol visible via `skew-stats`; `pytest` / `ruff` / `mypy` clean; batch report + check_workflow `[PASS]` lines

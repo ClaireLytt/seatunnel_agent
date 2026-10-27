@@ -8,10 +8,10 @@ and CLI agree on every verdict.
 
 **Blocked by:** 01 (Drift core).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Read-only drift endpoint on the existing Data Skew router; API test follows the router's existing test style (incl. `insufficient` and `drift` cases)
-- [ ] Trend area renders verdict + deltas; no new page/workspace; no blue-purple colors
-- [ ] `npm run lint` + `npm run build` for the data_skew workspace pass
-- [ ] `python -m seatunnel_agent.agents.devops.ui_testing run --suite smoke --no-llm` passes; screenshot path attached in batch report
-- [ ] `pytest` / `ruff` / `mypy` clean; batch report + check_workflow `[PASS]` lines
+- [x] Read-only drift endpoint on the existing Data Skew router; API test follows the router's existing test style (incl. `insufficient` and `drift` cases)
+- [x] Trend area renders verdict + deltas; no new page/workspace; no blue-purple colors
+- [x] `npm run lint` + `npm run build` for the data_skew workspace pass
+- [x] `python -m seatunnel_agent.agents.devops.ui_testing run --suite smoke --no-llm` passes; screenshot path attached in batch report
+- [x] `pytest` / `ruff` / `mypy` clean; batch report + check_workflow `[PASS]` lines
