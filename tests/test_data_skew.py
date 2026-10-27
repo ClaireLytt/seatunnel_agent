@@ -3143,6 +3143,22 @@ def test_cli_skew_drift_sweep_and_insufficient(tmp_path, monkeypatch):
     assert "暂无基线" in res.output       # t2: insufficient
 
 
+def test_cli_skew_drift_output_file(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0},
+    ])
+    out = tmp_path / "drift.md"
+    res = CliRunner().invoke(cli, ["skew-drift", "orders", "-o", str(out)])
+    assert res.exit_code == 0, res.output
+    text = out.read_text(encoding="utf-8")
+    assert "倾斜漂移" in text and "orders" in text
+    assert "top1_pct" in text and "28.0" in text   # unwrapped, unlike console
+
+
 def test_cli_skew_drift_empty_history(tmp_path, monkeypatch):
     from click.testing import CliRunner
 

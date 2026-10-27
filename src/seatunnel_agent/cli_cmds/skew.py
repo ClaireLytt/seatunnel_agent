@@ -217,10 +217,13 @@ def skew_stats(recent: int) -> None:
               help="漂移时 POST JSON 到该 webhook（钉钉/企微/Slack 兼容）")
 @click.option("--webhook-all", "webhook_all", is_flag=True,
               help="跳过告警去重：只要存在漂移就每次都推送")
+@click.option("--output", "-o", type=click.Path(), default=None,
+              help="Save report to file")
 @click.option("--fail", "fail_flag", is_flag=True,
               help="存在漂移判定时以退出码 1 结束（CI 门禁）")
 def skew_drift(table: str | None, lang: str, webhook_url: str | None,
-               webhook_all: bool = False, fail_flag: bool = False) -> None:
+               webhook_all: bool = False, output: str | None = None,
+               fail_flag: bool = False) -> None:
     """分片键倾斜漂移检测 — 最新测量 vs 历史基线(离线,只读历史)。
 
     带 TABLE 看单表;不带则巡检所有有历史的表。告警默认去重:同一漂移
@@ -243,10 +246,12 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
     alert_tables: list[str] = []
     recovered: list[str] = []
     alert_lines: list[str] = []
+    report_lines: list[str] = []
     for t in tables:
         result = compute_drift(t, history.splitkey_trend(t, n=50))
         line = render_drift(result, lang)
         console.print(line)
+        report_lines.append(line)
         notify, kind = notify_decision(history.last_drift(t), result)
         history.log_drift(t, result.verdict,
                           [d.metric for d in result.drifts], source="cli",
@@ -260,8 +265,14 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
             rec_line = _dsk(lang, "drf_recovered").format(
                 table=t, col=result.column or "(none)")
             console.print(rec_line)
+            report_lines.append(rec_line)
             recovered.append(t)
             alert_lines.append(rec_line)
+    if output:
+        from pathlib import Path as _Path
+        _Path(output).write_text("\n\n".join(report_lines) + "\n",
+                                 encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
     if webhook_url and alert_lines:
         from seatunnel_agent.agents.data.data_skew.notify import post_webhook
         payload: dict = {"source": "seatunnel-agent", "kind": "skew_drift",
