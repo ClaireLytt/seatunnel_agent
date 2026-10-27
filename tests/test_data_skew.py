@@ -2913,7 +2913,7 @@ def _drift_recs(table, metrics_seq):
     for m in metrics_seq:
         h.log_splitkey(table, m.get("col", "id"), m.get("verdict", "good"),
                        top1_pct=m.get("top1_pct"), ndv=m.get("ndv"),
-                       null_pct=m.get("null_pct"))
+                       null_pct=m.get("null_pct"), top1_value=m.get("val"))
     return h.splitkey_trend(table, n=50)
 
 
@@ -3130,6 +3130,50 @@ def test_cli_skew_drift_fail_gate_stable(tmp_path, monkeypatch):
     assert res.exit_code == 0, res.output
 
 
+def test_drift_hot_value_identity():
+    from seatunnel_agent.agents.data.data_skew.drift import (
+        compute_drift,
+        render_drift,
+    )
+
+    # same hot value growing: drift, but no hot-value line
+    same = compute_drift("orders", _drift_recs("orders", [
+        {"top1_pct": 10.0, "val": "CN"},
+        {"top1_pct": 14.0, "val": "CN"},
+        {"top1_pct": 28.0, "val": "CN"},
+    ]))
+    assert same.verdict == "drift" and not same.hot_value_changed
+    assert "热点值" not in render_drift(same, "zh")
+
+    # the skew moved to a different key: the line names old and new
+    moved = compute_drift("orders", _drift_recs("orders", [
+        {"top1_pct": 10.0, "val": "CN"},
+        {"top1_pct": 14.0, "val": "CN"},
+        {"top1_pct": 28.0, "val": "US"},
+    ]))
+    assert moved.hot_value_changed
+    assert moved.top1_value_prev == "CN" and moved.top1_value_cur == "US"
+    zh = render_drift(moved, "zh")
+    assert "热点值变了：CN → US" in zh
+    assert "hot value changed: CN → US" in render_drift(moved, "en")
+
+    # legacy records without top1_value: backward compatible, no line
+    legacy = compute_drift("orders", _drift_recs("orders", [
+        {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0, "val": "US"},
+    ]))
+    assert legacy.verdict == "drift" and not legacy.hot_value_changed
+    assert "热点值" not in render_drift(legacy, "zh")
+
+    # stable with a changed value: identity tracked, line withheld
+    quiet = compute_drift("orders", _drift_recs("orders", [
+        {"top1_pct": 10.0, "val": "CN"},
+        {"top1_pct": 11.0, "val": "CN"},
+        {"top1_pct": 12.0, "val": "US"},
+    ]))
+    assert quiet.verdict == "stable" and quiet.hot_value_changed
+    assert "热点值" not in render_drift(quiet, "zh")
+
+
 def test_drift_notify_decision():
     from seatunnel_agent.agents.data.data_skew.drift import (
         DriftResult,
@@ -3214,8 +3258,8 @@ def test_render_drift_i18n_parity():
                     drifts=[MetricDrift("top1_pct", 12.0, 28.0, 16.0)])
     zh, en = render_drift(r, "zh"), render_drift(r, "en")
     assert "漂移" in zh and "drifted" in en
-    for key in ("drf_drift", "drf_metric", "drf_stable",
-                "drf_insufficient", "drf_none"):
+    for key in ("drf_drift", "drf_metric", "drf_stable", "drf_insufficient",
+                "drf_none", "drf_hot_changed", "drf_recovered"):
         assert key in DSK_I18N["en"] and key in DSK_I18N["zh"]
 
 
