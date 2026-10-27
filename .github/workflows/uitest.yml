@@ -33,10 +33,24 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      # Step-level timeout: a wedged pip/network stall (seen twice on this
-      # runner pool) fails in 6 minutes instead of eating the 20-minute job
-      # budget; retries/timeout make pip survive transient hiccups itself.
+      # Step-level timeout + in-place retry: this runner pool wedges pip
+      # a few times a day (4 incidents on PRs #138/#141/#144/#148). The
+      # first attempt fails fast at 6 minutes; the retry runs in the same
+      # job (cache warm, normally <1 min) so nobody has to rerun the run.
       - name: Install dependencies
+        id: deps
+        timeout-minutes: 6
+        continue-on-error: true
+        env:
+          PIP_DEFAULT_TIMEOUT: "60"
+          PIP_RETRIES: "3"
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,uitest,sqlreview]"
+          python -m playwright install --with-deps chromium
+
+      - name: Install dependencies (retry after a wedged first attempt)
+        if: steps.deps.outcome == 'failure'
         timeout-minutes: 6
         env:
           PIP_DEFAULT_TIMEOUT: "60"
