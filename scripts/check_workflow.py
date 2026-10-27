@@ -154,8 +154,11 @@ def _default_range() -> str | None:
 
 
 def check_no_ai_attribution(rng: str | None) -> tuple[bool, str]:
+    # Fallback without a remote branch: last 10 commits, but never commits
+    # already on origin/main — a merge from main would otherwise drag
+    # third-party trailers (e.g. dependabot's Co-authored-by) into the scan.
     rng = rng or "HEAD~10..HEAD"
-    body = _git("log", "--format=%B", rng).lower()
+    body = _git("log", "--format=%B", rng, "--not", "origin/main").lower()
     hits = [t for t in FORBIDDEN_TRAILERS if t in body]
     if hits:
         return False, f"commit 信息含禁止的署名字样: {hits}(范围 {rng})"

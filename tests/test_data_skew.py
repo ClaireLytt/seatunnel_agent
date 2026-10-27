@@ -2639,3 +2639,98 @@ def test_cli_skew_stats_splitkey_trend(monkeypatch, tmp_path):
     assert "分片键巡检" in res.output
     assert "shop.orders" in res.output
     assert "80%" in res.output and "2%" in res.output
+
+
+# ---------------------------------------------------------------------------
+# Drift detection (drift.py)
+# ---------------------------------------------------------------------------
+
+def _drift_recs(table, metrics_seq):
+    """Build splitkey trend records (oldest first) via a real SkewHistory."""
+    import tempfile
+
+    from seatunnel_agent.agents.data.data_skew.history import SkewHistory
+    h = SkewHistory(log_dir=tempfile.mkdtemp())
+    for m in metrics_seq:
+        h.log_splitkey(table, m.get("col", "id"), m.get("verdict", "good"),
+                       top1_pct=m.get("top1_pct"), ndv=m.get("ndv"),
+                       null_pct=m.get("null_pct"))
+    return h.splitkey_trend(table, n=50)
+
+
+def test_drift_insufficient_history():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [{"top1_pct": 10.0}, {"top1_pct": 30.0}])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "insufficient"
+    assert r.samples == 2
+    assert r.drifts == []
+
+
+def test_drift_unmeasured_records_dont_count():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    # 3 records but only 2 carry metrics -> still insufficient
+    recs = _drift_recs("orders", [
+        {"top1_pct": 10.0}, {}, {"top1_pct": 30.0},
+    ])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "insufficient"
+    assert r.samples == 2
+
+
+def test_drift_stable():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [
+        {"top1_pct": 11.0, "ndv": 1000, "null_pct": 1.0},
+        {"top1_pct": 12.0, "ndv": 980, "null_pct": 1.2},
+        {"top1_pct": 13.0, "ndv": 1010, "null_pct": 1.1},
+    ])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "stable"
+    assert r.drifts == []
+    assert r.column == "id"
+    assert r.samples == 3
+
+
+def test_drift_top1_rise():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [
+        {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0},
+    ])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "drift"
+    [d] = r.drifts
+    assert d.metric == "top1_pct"
+    assert d.baseline == 12.0          # median of 10, 14
+    assert d.current == 28.0
+    assert d.delta == 16.0
+
+
+def test_drift_null_rise_and_ndv_drop():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [
+        {"null_pct": 1.0, "ndv": 1000},
+        {"null_pct": 2.0, "ndv": 1000},
+        {"null_pct": 9.0, "ndv": 600},
+    ])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "drift"
+    metrics = {d.metric: d for d in r.drifts}
+    assert metrics["null_pct"].delta == 7.5     # 9.0 - median(1,2)=1.5
+    assert metrics["ndv"].baseline == 1000
+    assert metrics["ndv"].delta == -40.0        # 1000 -> 600 = -40 %
+
+
+def test_drift_ndv_drop_below_threshold_is_stable():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [
+        {"ndv": 1000}, {"ndv": 1000}, {"ndv": 800},   # -20 % < 30 %
+    ])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "stable"
