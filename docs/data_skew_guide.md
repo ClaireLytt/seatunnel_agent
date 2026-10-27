@@ -113,6 +113,10 @@ seatunnel-agent skew-runtime --flink http://host:8081 --app <flink-job-id>
 # 运行时诊断：History Server REST；--fail 存在确认倾斜 stage 时退出码 1
 seatunnel-agent skew-runtime --history http://host:18080 --app application_123 --fail
 
+# 静态检测器基准:标注语料上的 precision/recall/F1(离线;--gate 作 CI 门禁)
+seatunnel-agent skew-bench --gate
+seatunnel-agent skew-bench -F json       # 语料:examples/skew_bench/cases.yaml
+
 # 历史统计
 seatunnel-agent skew-stats -n 50
 

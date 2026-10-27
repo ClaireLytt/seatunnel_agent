@@ -1915,6 +1915,37 @@ def test_bench_scoring_counts_misses_and_spurious():
     assert "fn-case" in md and "fp-case" in md and "tp-case" not in md
 
 
+def test_cli_skew_bench(tmp_path):
+    """skew-bench: green corpus passes the gate; a corpus whose expectation
+    is wrong fails it; -F json is parseable."""
+    import json as _json
+
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-bench", "--gate"])
+    assert res.exit_code == 0, res.output
+    assert "F1 1.000" in res.output
+
+    js = runner.invoke(cli, ["skew-bench", "-F", "json"])
+    data = _json.loads(js.output)
+    assert data["passed"] is True and data["f1"] == 1.0
+    assert data["cases"] >= 20 and data["failures"] == []
+
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "baseline: {min_f1: 1.0}\n"
+        "cases:\n"
+        "  - id: wrong\n"
+        "    sql: select 1\n"
+        "    expect: [DS001]\n", encoding="utf-8")
+    gated = runner.invoke(cli, ["skew-bench", "--corpus", str(bad), "--gate"])
+    assert gated.exit_code == 1
+    assert "wrong" in gated.output and "基准未通过" in gated.output
+
+
 def test_history_last_runtime(tmp_path):
     from seatunnel_agent.agents.data.data_skew.history import SkewHistory
 

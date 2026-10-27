@@ -706,6 +706,7 @@ seatunnel-agent skew-splitkey /etl/configs --ds mysql --webhook URL  # directory
 seatunnel-agent skew-drift --fail                                    # drift vs baseline, CI gate
 seatunnel-agent skew-runtime eventlog.gz                             # Spark event log (offline)
 seatunnel-agent skew-runtime --flink http://host:8081 --app <jobId>  # Flink per-subtask metrics
+seatunnel-agent skew-bench --gate                                    # detector benchmark (labeled corpus) as a CI gate
 seatunnel-agent skew-stats                                           # history, trends & drift rollup
 seatunnel-agent skew-mcp                                             # MCP server (stdio)
 ```
@@ -1594,6 +1595,7 @@ seatunnel-agent skew-splitkey /etl/configs --ds mysql --webhook URL  # 目录巡
 seatunnel-agent skew-drift --fail                                    # 漂移 vs 基线,CI 门禁
 seatunnel-agent skew-runtime eventlog.gz                             # Spark event log(离线)
 seatunnel-agent skew-runtime --flink http://host:8081 --app <jobId>  # Flink per-subtask 指标
+seatunnel-agent skew-bench --gate                                    # 检测器基准(标注语料)作 CI 门禁
 seatunnel-agent skew-stats                                           # 历史、趋势与漂移汇总
 seatunnel-agent skew-mcp                                             # MCP server (stdio)
 ```
