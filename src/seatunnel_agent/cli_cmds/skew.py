@@ -204,16 +204,20 @@ def skew_stats(recent: int) -> None:
               help="报告语言")
 @click.option("--webhook", "webhook_url", type=str, default=None,
               help="漂移时 POST JSON 到该 webhook（钉钉/企微/Slack 兼容）")
+@click.option("--webhook-all", "webhook_all", is_flag=True,
+              help="跳过告警去重：只要存在漂移就每次都推送")
 @click.option("--fail", "fail_flag", is_flag=True,
               help="存在漂移判定时以退出码 1 结束（CI 门禁）")
 def skew_drift(table: str | None, lang: str, webhook_url: str | None,
-               fail_flag: bool = False) -> None:
+               webhook_all: bool = False, fail_flag: bool = False) -> None:
     """分片键倾斜漂移检测 — 最新测量 vs 历史基线(离线,只读历史)。
 
-    带 TABLE 看单表;不带则巡检所有有历史的表。
+    带 TABLE 看单表;不带则巡检所有有历史的表。告警默认去重:同一漂移
+    未进一步恶化不重发,恶化升级重发,恢复发一条恢复通知。
     """
     from seatunnel_agent.agents.data.data_skew.drift import (
         compute_drift,
+        notify_decision,
         render_drift,
     )
     from seatunnel_agent.agents.data.data_skew.history import default_history
@@ -225,19 +229,36 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
         console.print(_dsk(lang, "drf_none"))
         return
     drifted = []
+    alert_tables: list[str] = []
+    recovered: list[str] = []
+    alert_lines: list[str] = []
     for t in tables:
         result = compute_drift(t, history.splitkey_trend(t, n=50))
-        console.print(render_drift(result, lang))
+        line = render_drift(result, lang)
+        console.print(line)
+        notify, kind = notify_decision(history.last_drift(t), result)
         history.log_drift(t, result.verdict,
-                          [d.metric for d in result.drifts], source="cli")
+                          [d.metric for d in result.drifts], source="cli",
+                          deltas={d.metric: d.delta for d in result.drifts})
         if result.verdict == "drift":
             drifted.append((t, result))
-    if webhook_url and drifted:
+            if notify or webhook_all:
+                alert_tables.append(t)
+                alert_lines.append(line)
+        elif notify and kind == "recovered":
+            rec_line = _dsk(lang, "drf_recovered").format(
+                table=t, col=result.column or "(none)")
+            console.print(rec_line)
+            recovered.append(t)
+            alert_lines.append(rec_line)
+    if webhook_url and alert_lines:
         from seatunnel_agent.agents.data.data_skew.notify import post_webhook
-        ok, msg = post_webhook(webhook_url, {
-            "source": "seatunnel-agent", "kind": "skew_drift",
-            "tables": [t for t, _ in drifted],
-            "text": "\n\n".join(render_drift(r, lang) for _, r in drifted)})
+        payload: dict = {"source": "seatunnel-agent", "kind": "skew_drift",
+                         "tables": alert_tables,
+                         "text": "\n\n".join(alert_lines)}
+        if recovered:
+            payload["recovered"] = recovered
+        ok, msg = post_webhook(webhook_url, payload)
         console.print(f"[dim]webhook: {'ok' if ok else 'failed'} ({msg})[/dim]")
     if fail_flag and drifted:
         console.print(f"\n[red]{len(drifted)} 张表的分片键相对基线漂移，"
@@ -373,9 +394,11 @@ def skew_splitkey(
         if output:
             Path(output).write_text(md, encoding="utf-8")
             console.print(f"[dim]报告已保存: {output}[/dim]")
-        # drift tail (directory mode): only the drifted tables, one line each
+        # drift tail (directory mode): only the drifted tables, one line each;
+        # the webhook repeats a drift only when it worsened (suppression)
         from seatunnel_agent.agents.data.data_skew.drift import (
             compute_drift,
+            notify_decision,
             render_drift,
         )
         seen: list[tuple[str, str]] = []
@@ -388,8 +411,14 @@ def skew_splitkey(
         for t, col in seen:
             d = compute_drift(t, history.splitkey_trend(t, n=50), column=col)
             if d.verdict == "drift":
-                drift_lines[t] = render_drift(d, lang)
-                console.print(drift_lines[t])
+                line = render_drift(d, lang)
+                console.print(line)
+                notify, _ = notify_decision(history.last_drift(t), d)
+                history.log_drift(
+                    t, "drift", [x.metric for x in d.drifts], source="cli",
+                    deltas={x.metric: x.delta for x in d.drifts})
+                if notify:
+                    drift_lines[t] = line
 
         c = batch_counts(items)
         _notify(md, c, drift_lines)
@@ -431,9 +460,11 @@ def skew_splitkey(
     if output:
         Path(output).write_text(md, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
-    # drift tail: the measurement just logged vs the table's baseline
+    # drift tail: the measurement just logged vs the table's baseline;
+    # the webhook repeats a drift only when it worsened (suppression)
     from seatunnel_agent.agents.data.data_skew.drift import (
         compute_drift,
+        notify_decision,
         render_drift,
     )
     drift_lines: dict[str, str] = {}
@@ -443,7 +474,12 @@ def skew_splitkey(
         line = render_drift(d, lang)
         console.print(line)
         if d.verdict == "drift":
-            drift_lines[spec.table] = line
+            notify, _ = notify_decision(history.last_drift(spec.table), d)
+            history.log_drift(
+                spec.table, "drift", [x.metric for x in d.drifts],
+                source="cli", deltas={x.metric: x.delta for x in d.drifts})
+            if notify:
+                drift_lines[spec.table] = line
 
     _notify(md, {"bad": sum(1 for v in verdicts
                             if v in ("bad", "low_ndv", "null")), "errors": 0},

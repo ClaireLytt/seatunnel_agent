@@ -211,6 +211,10 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "📊 Skew drift — {table}: only {n} measured runs in history "
             "(need 3) — no baseline yet."
         ),
+        "drf_recovered": (
+            "✅ Skew drift recovered — {table} (key={col}): the latest "
+            "measurement is back near its baseline."
+        ),
         "drf_none": "No splitkey history yet — run skew-splitkey first.",
         "spk_batch_section": "## SeaTunnel Split-Key Patrol (directory batch)",
         "spk_batch_counts": (
@@ -542,6 +546,9 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "drf_insufficient": (
             "📊 倾斜漂移 — {table}：历史仅 {n} 次有效测量（需 3 次）——"
             "暂无基线。"
+        ),
+        "drf_recovered": (
+            "✅ 倾斜漂移恢复 — {table}（key={col}）：最新实测已回到基线附近。"
         ),
         "drf_none": "还没有分片键巡检历史——请先运行 skew-splitkey。",
         "spk_batch_section": "## SeaTunnel 分片键巡检（目录批量）",

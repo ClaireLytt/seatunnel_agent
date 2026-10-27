@@ -118,7 +118,12 @@ seatunnel-agent skew-drift orders            # 单表
 seatunnel-agent skew-drift                   # 巡检所有有历史的表
 seatunnel-agent skew-drift --fail            # CI 门禁：存在漂移时退出码 1
 seatunnel-agent skew-drift --webhook https://...   # 漂移时推送（kind=skew_drift）
+seatunnel-agent skew-drift --webhook https://... --webhook-all  # 跳过告警去重
 ```
+
+告警默认去重：同一漂移未进一步恶化不重发；恶化（已有指标 delta 变大
+或新增漂移指标）升级重发；恢复稳定发一条恢复通知（载荷含 `recovered`）。
+splitkey 巡检 webhook 的漂移行遵循同一去重规则。
 
 说明：
 

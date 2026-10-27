@@ -109,6 +109,32 @@ def compute_drift(table: str, records: list[dict],
     return result
 
 
+def notify_decision(prev: dict | None, result: DriftResult) -> tuple[bool, str]:
+    """Should this patrol's outcome be alerted, given the previous drift
+    record (``SkewHistory.last_drift``, read BEFORE logging this run)?
+
+    Returns ``(notify, kind)`` with kind one of ``"drift"`` (first report),
+    ``"worse"`` (escalation: a new drifted metric, or a shared metric whose
+    delta grew), ``"recovered"`` (back to stable after a reported drift),
+    or ``""`` (stay silent: unchanged drift, steady stable, insufficient).
+    """
+    prev_d = (prev.get("drift") or {}) if prev else {}
+    prev_verdict = str(prev_d.get("drift_verdict") or "")
+    prev_deltas = {k: float(v) for k, v in (prev_d.get("deltas") or {}).items()}
+    if result.verdict == "drift":
+        if prev_verdict != "drift":
+            return True, "drift"
+        worse = any(
+            d.metric not in prev_deltas
+            or abs(d.delta) > abs(prev_deltas[d.metric])
+            for d in result.drifts
+        )
+        return (worse, "worse" if worse else "")
+    if result.verdict == "stable" and prev_verdict == "drift":
+        return True, "recovered"
+    return False, ""
+
+
 def render_drift(result: DriftResult, lang: str = "zh") -> str:
     """One shared textual rendering for CLI / splitkey tail / webhook."""
     from .i18n import dsk

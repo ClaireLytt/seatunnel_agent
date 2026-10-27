@@ -2983,6 +2983,78 @@ def test_cli_skew_drift_fail_gate_stable(tmp_path, monkeypatch):
     assert res.exit_code == 0, res.output
 
 
+def test_drift_notify_decision():
+    from seatunnel_agent.agents.data.data_skew.drift import (
+        DriftResult,
+        MetricDrift,
+        notify_decision,
+    )
+
+    drift = DriftResult(table="orders", column="id", verdict="drift",
+                        samples=3,
+                        drifts=[MetricDrift("top1_pct", 12.0, 28.0, 16.0)])
+    prev_same = {"drift": {"table": "orders", "drift_verdict": "drift",
+                           "deltas": {"top1_pct": 16.0}}}
+    prev_small = {"drift": {"table": "orders", "drift_verdict": "drift",
+                            "deltas": {"top1_pct": 11.0}}}
+    stable = DriftResult(table="orders", column="id", verdict="stable",
+                         samples=4)
+
+    assert notify_decision(None, drift) == (True, "drift")         # first
+    assert notify_decision(prev_same, drift) == (False, "")        # duplicate
+    assert notify_decision(prev_small, drift) == (True, "worse")   # escalation
+    # a new drifted metric escalates even when the old one is unchanged
+    drift2 = DriftResult(table="orders", column="id", verdict="drift",
+                         samples=4,
+                         drifts=[MetricDrift("top1_pct", 12.0, 28.0, 16.0),
+                                 MetricDrift("null_pct", 1.0, 7.0, 6.0)])
+    assert notify_decision(prev_same, drift2) == (True, "worse")
+    assert notify_decision(prev_same, stable) == (True, "recovered")
+    assert notify_decision(None, stable) == (False, "")
+    insuff = DriftResult(table="orders", verdict="insufficient", samples=1)
+    assert notify_decision(prev_same, insuff) == (False, "")
+
+
+def test_cli_skew_drift_webhook_suppression(tmp_path, monkeypatch):
+    """Unchanged drift alerts once; escalation re-alerts; --webhook-all
+    bypasses; recovery posts a recovery card."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.data_skew import notify
+    from seatunnel_agent.cli import cli
+
+    h = _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0},
+    ])
+    posted: list[dict] = []
+    monkeypatch.setattr(notify, "post_webhook",
+                        lambda url, payload: (posted.append(payload)
+                                              or (True, "200")))
+    runner = CliRunner()
+    args = ["skew-drift", "orders", "--webhook", "http://hook/x"]
+    runner.invoke(cli, args)
+    assert len(posted) == 1                     # first report
+    runner.invoke(cli, args)
+    assert len(posted) == 1                     # unchanged → suppressed
+    runner.invoke(cli, args + ["--webhook-all"])
+    assert len(posted) == 2                     # escape hatch
+    h.log_splitkey("orders", "id", "good", top1_pct=55.0)   # drift worsens
+    runner.invoke(cli, args)
+    assert len(posted) == 3                     # escalation re-alerts
+    # recovery: pre-logged drift + stable series → one recovery card
+    h2 = _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 11.0}, {"top1_pct": 12.0},
+    ], table="t_rec")
+    h2.log_drift("t_rec", "drift", ["top1_pct"],
+                 deltas={"top1_pct": 15.0})
+    res = runner.invoke(cli, ["skew-drift", "t_rec",
+                              "--webhook", "http://hook/x"])
+    assert res.exit_code == 0, res.output
+    assert len(posted) == 4
+    assert posted[-1]["recovered"] == ["t_rec"]
+    assert "恢复" in posted[-1]["text"]
+
+
 def test_render_drift_i18n_parity():
     from seatunnel_agent.agents.data.data_skew.drift import (
         DriftResult,
