@@ -536,6 +536,33 @@ async def runtime_eventlog(file: UploadFile, report: str = "",
     return _runtime_response(stages, label, report, lang, status_line)
 
 
+@router.get("/drift")
+def drift(table: str = "", lang: str = "zh") -> dict[str, Any]:
+    """Skew drift per table: latest splitkey measurement vs its baseline.
+
+    Read-only over the patrol history — same verdicts as the skew-drift
+    CLI; ``text`` is the shared bilingual rendering for the trend card."""
+    from .drift import compute_drift, render_drift
+
+    lng = normalize_lang(lang)
+    history = default_history()
+    tables = [table] if table else history.splitkey_tables()
+    items: list[dict[str, Any]] = []
+    for t in tables:
+        result = compute_drift(t, history.splitkey_trend(t, n=50))
+        items.append({
+            "table": result.table,
+            "column": result.column,
+            "verdict": result.verdict,
+            "samples": result.samples,
+            "drifts": [{"metric": d.metric, "baseline": d.baseline,
+                        "current": d.current, "delta": d.delta}
+                       for d in result.drifts],
+            "text": render_drift(result, lng),
+        })
+    return {"items": items}
+
+
 @router.get("/history")
 def history_recent(n: int = 20) -> dict[str, Any]:
     """Recent analysis history records (newest first), raw — the React

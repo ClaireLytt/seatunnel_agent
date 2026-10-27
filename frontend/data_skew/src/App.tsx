@@ -5,6 +5,7 @@ import { PageHeader } from '@shared/components/PageHeader'
 import { DATASKEW_SQL_KEY } from '@shared/bridge'
 import { analyze, getSessionId } from '@/api'
 import { ConnectPanel } from '@/components/ConnectPanel'
+import { DriftCard } from '@/components/DriftCard'
 import { HistoryPanel } from '@/components/HistoryPanel'
 import { ReportView } from '@shared/components/ReportView'
 import { RuntimePanel } from '@/components/RuntimePanel'
@@ -176,6 +177,8 @@ export default function App() {
             onReport={setReport}
             onStatus={setError}
           />
+
+          <DriftCard />
 
           <RuntimePanel
             sessionId={sessionId}

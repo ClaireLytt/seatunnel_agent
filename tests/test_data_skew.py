@@ -2867,3 +2867,38 @@ def test_render_drift_i18n_parity():
     for key in ("drf_drift", "drf_metric", "drf_stable",
                 "drf_insufficient", "drf_none"):
         assert key in DSK_I18N["en"] and key in DSK_I18N["zh"]
+
+
+def test_api_skew_drift(tmp_path, monkeypatch):
+    client = _api_client(tmp_path, monkeypatch)
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+
+    h = default_history()
+    for top1 in (10.0, 14.0, 28.0):
+        h.log_splitkey("orders", "id", "good", top1_pct=top1)
+    h.log_splitkey("t2", "id", "good", top1_pct=5.0)
+
+    # one table, drifted
+    resp = client.get("/api/skew/drift", params={"table": "orders", "lang": "en"})
+    assert resp.status_code == 200
+    [item] = resp.json()["items"]
+    assert item["verdict"] == "drift"
+    assert item["column"] == "id"
+    assert item["samples"] == 3
+    [d] = item["drifts"]
+    assert d == {"metric": "top1_pct", "baseline": 12.0,
+                 "current": 28.0, "delta": 16.0}
+    assert "drifted" in item["text"]
+
+    # sweep: both tables, t2 insufficient
+    resp = client.get("/api/skew/drift", params={"lang": "zh"})
+    items = {i["table"]: i for i in resp.json()["items"]}
+    assert items["orders"]["verdict"] == "drift"
+    assert items["t2"]["verdict"] == "insufficient"
+    assert "暂无基线" in items["t2"]["text"]
+
+    # empty history
+    resp = client.get("/api/skew/drift", params={"table": "nope"})
+    [item] = resp.json()["items"]
+    assert item["verdict"] == "insufficient"
+    assert item["samples"] == 0

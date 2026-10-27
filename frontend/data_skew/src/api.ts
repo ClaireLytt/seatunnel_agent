@@ -148,6 +148,29 @@ export async function runtimeEventlog(
   return request('/runtime/eventlog', { method: 'POST', body: form })
 }
 
+export interface DriftMetric {
+  metric: string
+  baseline: number
+  current: number
+  delta: number
+}
+
+export interface DriftItem {
+  table: string
+  column: string
+  verdict: 'drift' | 'stable' | 'insufficient'
+  samples: number
+  drifts: DriftMetric[]
+  text: string
+}
+
+export async function skewDrift(lang: string): Promise<DriftItem[]> {
+  const data = await request<{ items: DriftItem[] }>(
+    `/drift?lang=${encodeURIComponent(lang)}`,
+  )
+  return data.items
+}
+
 export async function historyRecent(): Promise<HistoryRecord[]> {
   const data = await request<{ records: HistoryRecord[] }>('/history')
   return data.records
