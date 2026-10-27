@@ -22,6 +22,11 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "impact_diff": ("影响", "impact", "变更", "blast", "上线", "diff"),
     "migrate_to_seatunnel": ("datax", "sqoop", "迁移", "migrate"),
     "skew_check": ("倾斜", "skew", "数据倾斜"),
+    "skew_drift": ("倾斜漂移", "漂移", "分片键", "splitkey", "split key",
+                   "基线", "热点值", "hot value"),
+    "skew_runtime_history": ("拖尾", "straggler", "history server",
+                             "运行时倾斜", "spark 任务"),
+    "skew_runtime_flink": ("flink",),
     "sql_fmt": ("格式化", "format", "排版", "美化"),
     "config_lint": ("配置", "hocon", "conf", "lint", "连接器", "connector"),
     "schema_drift": ("漂移", "drift", "ddl", "表结构变更", "schema"),
@@ -49,6 +54,12 @@ _DESCRIPTIONS_EN: dict[str, str] = {
                              "SeaTunnel config with migration notes."),
     "skew_check": ("Static data-skew scan over SQL — join/aggregation skew "
                    "patterns with rewrite suggestions."),
+    "skew_drift": ("Skew drift check — the latest split-key measurement vs "
+                   "its historical baseline, with hot-value identity."),
+    "skew_runtime_history": ("Runtime skew diagnosis from Spark History "
+                             "Server task metrics — straggler stages."),
+    "skew_runtime_flink": ("Runtime skew diagnosis from Flink REST "
+                           "per-subtask metrics (SeaTunnel on Flink)."),
     "sql_fmt": ("Deterministic SQL pretty-print — statements that do not "
                 "parse are kept verbatim."),
     "config_lint": ("Param-level lint of SeaTunnel configs against the "

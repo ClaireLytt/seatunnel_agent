@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # file-path toolbox tools stay out of the chat entry
-_SKIP_TOOLS = {"skew_check_file"}
+_SKIP_TOOLS = {"skew_check_file", "skew_runtime_eventlog"}
 
 # where each capability lives in the Web UI (for no-key suggestions)
 _PAGES = {
@@ -31,6 +31,9 @@ _PAGES = {
     "impact_diff": "/impact",
     "migrate_to_seatunnel": "/migrate",
     "skew_check": "/dataskew",
+    "skew_drift": "/dataskew",
+    "skew_runtime_history": "/dataskew",
+    "skew_runtime_flink": "/dataskew",
     "sql_fmt": "/sqlfmt",
     "config_lint": "/conflint",
     "schema_drift": "/schemadrift",

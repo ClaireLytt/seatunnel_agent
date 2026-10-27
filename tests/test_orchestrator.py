@@ -63,9 +63,15 @@ class TestCatalog:
                      "migrate_to_seatunnel", "skew_check", "sql_fmt",
                      "config_lint", "schema_drift", "pii_scan",
                      "sql_testgen", "secret_scan", "dep_check",
-                     "release_notes", "ci_triage"):
+                     "release_notes", "ci_triage", "skew_drift",
+                     "skew_runtime_history", "skew_runtime_flink"):
             assert name in catalog, name
         assert "skew_check_file" not in catalog  # file tools stay out
+        assert "skew_runtime_eventlog" not in catalog  # reads server paths
+        # the skew line's chat-routable tools point at the page
+        for name in ("skew_drift", "skew_runtime_history",
+                     "skew_runtime_flink"):
+            assert catalog[name].page == "/dataskew", name
 
     def test_specs_have_schema_desc_and_run(self):
         for name, spec in build_catalog().items():
@@ -205,6 +211,16 @@ class TestRouter:
         assert hits and hits[0].tool == "sql_review"
         hits = suggest("translate to doris and check skew", catalog)
         assert {h.tool for h in hits} >= {"sql_transpile", "skew_check"}
+
+    def test_suggest_skew_drift_beats_schema_drift(self):
+        """「倾斜漂移」must route to the skew-drift check, not the DDL diff."""
+        catalog = build_catalog()
+        hits = suggest("分片键的倾斜漂移情况", catalog)
+        assert hits and hits[0].tool == "skew_drift"
+        assert hits[0].page == "/dataskew"
+        flink = suggest("flink 作业有拖尾任务吗", catalog)
+        assert {h.tool for h in flink} >= {"skew_runtime_flink",
+                                           "skew_runtime_history"}
 
     def test_suggest_no_match(self):
         assert suggest("hello world", build_catalog()) == []
