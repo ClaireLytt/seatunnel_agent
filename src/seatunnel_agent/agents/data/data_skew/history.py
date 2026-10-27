@@ -153,6 +153,29 @@ class SkewHistory:
         }
         self._log.append(record)
 
+    def log_drift(
+        self,
+        table: str,
+        verdict: str,          # drift | stable | insufficient
+        drifted_metrics: list[str] | None = None,
+        source: str = "cli",
+    ) -> None:
+        """A drift patrol record (mode='drift'): the latest splitkey
+        measurement compared against its historical baseline."""
+        counts = {"high": 1 if verdict == "drift" else 0, "medium": 0, "low": 0}
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "source": source,
+            "mode": "drift",
+            "dialect": "",
+            "counts": counts,
+            "verdict": "high" if verdict == "drift" else "clean",
+            "drift": {"table": table, "drift_verdict": verdict,
+                      "metrics": drifted_metrics or []},
+            "sql": f"-- drift: {table} {verdict}",
+        }
+        self._log.append(record)
+
     def last_splitkey(self, table: str) -> dict | None:
         """The most recent splitkey record for *table*, or None.
 

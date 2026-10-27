@@ -96,3 +96,19 @@ def compute_drift(table: str, records: list[dict]) -> DriftResult:
 
     result.verdict = "drift" if result.drifts else "stable"
     return result
+
+
+def render_drift(result: DriftResult, lang: str = "zh") -> str:
+    """One shared textual rendering for CLI / splitkey tail / webhook."""
+    from .i18n import dsk
+
+    if result.verdict == "insufficient":
+        return dsk(lang, "drf_insufficient").format(
+            table=result.table, n=result.samples)
+    key = "drf_drift" if result.verdict == "drift" else "drf_stable"
+    lines = [dsk(lang, key).format(
+        table=result.table, col=result.column or "(none)", n=result.samples)]
+    for d in result.drifts:
+        lines.append(dsk(lang, "drf_metric").format(
+            metric=d.metric, base=d.baseline, cur=d.current, delta=d.delta))
+    return "\n".join(lines)

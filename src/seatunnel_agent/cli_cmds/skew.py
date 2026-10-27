@@ -198,6 +198,46 @@ def skew_stats(recent: int) -> None:
                 f"  ×{len(trend)} 次{trail}")
 
 
+@click.command(name="skew-drift")
+@click.argument("table", required=False)
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              help="报告语言")
+@click.option("--webhook", "webhook_url", type=str, default=None,
+              help="漂移时 POST JSON 到该 webhook（钉钉/企微/Slack 兼容）")
+def skew_drift(table: str | None, lang: str, webhook_url: str | None) -> None:
+    """分片键倾斜漂移检测 — 最新测量 vs 历史基线(离线,只读历史)。
+
+    带 TABLE 看单表;不带则巡检所有有历史的表。
+    """
+    from seatunnel_agent.agents.data.data_skew.drift import (
+        compute_drift,
+        render_drift,
+    )
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.i18n import dsk as _dsk
+
+    history = default_history()
+    tables = [table] if table else history.splitkey_tables()
+    if not tables:
+        console.print(_dsk(lang, "drf_none"))
+        return
+    drifted = []
+    for t in tables:
+        result = compute_drift(t, history.splitkey_trend(t, n=50))
+        console.print(render_drift(result, lang))
+        history.log_drift(t, result.verdict,
+                          [d.metric for d in result.drifts], source="cli")
+        if result.verdict == "drift":
+            drifted.append((t, result))
+    if webhook_url and drifted:
+        from seatunnel_agent.agents.data.data_skew.notify import post_webhook
+        ok, msg = post_webhook(webhook_url, {
+            "source": "seatunnel-agent", "kind": "skew_drift",
+            "tables": [t for t, _ in drifted],
+            "text": "\n\n".join(render_drift(r, lang) for _, r in drifted)})
+        console.print(f"[dim]webhook: {'ok' if ok else 'failed'} ({msg})[/dim]")
+
+
 @click.command(name="skew-splitkey")
 @click.argument("conf_path", type=click.Path(exists=True))
 @click.option("--ds", "ds_type",
@@ -358,6 +398,15 @@ def skew_splitkey(
     if output:
         Path(output).write_text(md, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+    # drift tail: the measurement just logged vs the table's baseline
+    from seatunnel_agent.agents.data.data_skew.drift import (
+        compute_drift,
+        render_drift,
+    )
+    for spec, _, _ in results:
+        d = compute_drift(spec.table, history.splitkey_trend(spec.table, n=50))
+        console.print(render_drift(d, lang))
+
     _notify(md, {"bad": sum(1 for v in verdicts
                             if v in ("bad", "low_ndv", "null")), "errors": 0})
 
@@ -473,6 +522,7 @@ def skew_mcp(dialect: str, lang: str) -> None:
 def register(cli) -> None:
     cli.add_command(skew)
     cli.add_command(skew_stats)
+    cli.add_command(skew_drift)
     cli.add_command(skew_splitkey)
     cli.add_command(skew_runtime)
     cli.add_command(skew_mcp)
