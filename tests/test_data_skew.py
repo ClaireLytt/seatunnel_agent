@@ -2533,6 +2533,7 @@ def test_cli_skew_splitkey_dir_patrol(monkeypatch, tmp_path):
     assert payload["kind"] == "splitkey_patrol"
     assert payload["counts"]["bad"] == 1 and payload["counts"]["errors"] == 1
     assert "巡检" in payload["text"]
+    assert "drift_tables" not in payload   # no drift yet → payload unchanged
     # history got one record per measured source, with metrics
     recs = [r for r in default_history().recent(10)
             if r.get("mode") == "splitkey"]
@@ -2546,10 +2547,16 @@ def test_cli_skew_splitkey_dir_patrol(monkeypatch, tmp_path):
     h = default_history()
     for top1 in (20.0, 25.0):
         h.log_splitkey("orders", "region", "good", top1_pct=top1)
-    res_drift = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite"])
+    posted.clear()
+    res_drift = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
+                                    "--webhook", "http://hook.local/x"])
     assert res_drift.exit_code == 0, res_drift.output
     assert "倾斜漂移" in res_drift.output and "orders" in res_drift.output
     assert "相对基线稳定" not in res_drift.output   # stable tables stay silent
+    # the drifted table rides the patrol webhook
+    payload = posted[0][1]
+    assert payload["drift_tables"] == ["orders"]
+    assert "倾斜漂移" in payload["text"]
 
     # CI gate + --apply refusal in dir mode
     gated = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
@@ -2906,6 +2913,34 @@ def test_cli_skew_drift_webhook(tmp_path, monkeypatch):
     assert posted["payload"]["kind"] == "skew_drift"
     assert posted["payload"]["tables"] == ["orders"]
     assert "null_pct" in posted["payload"]["text"]
+
+
+def test_cli_skew_drift_fail_gate(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0},
+    ])
+    runner = CliRunner()
+    gated = runner.invoke(cli, ["skew-drift", "orders", "--fail"])
+    assert gated.exit_code == 1
+    assert "巡检未通过" in gated.output
+    # without --fail the same drift stays advisory
+    assert runner.invoke(cli, ["skew-drift", "orders"]).exit_code == 0
+
+
+def test_cli_skew_drift_fail_gate_stable(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 11.0}, {"top1_pct": 12.0},
+    ])
+    res = CliRunner().invoke(cli, ["skew-drift", "orders", "--fail"])
+    assert res.exit_code == 0, res.output
 
 
 def test_render_drift_i18n_parity():

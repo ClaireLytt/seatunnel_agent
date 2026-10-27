@@ -204,7 +204,10 @@ def skew_stats(recent: int) -> None:
               help="报告语言")
 @click.option("--webhook", "webhook_url", type=str, default=None,
               help="漂移时 POST JSON 到该 webhook（钉钉/企微/Slack 兼容）")
-def skew_drift(table: str | None, lang: str, webhook_url: str | None) -> None:
+@click.option("--fail", "fail_flag", is_flag=True,
+              help="存在漂移判定时以退出码 1 结束（CI 门禁）")
+def skew_drift(table: str | None, lang: str, webhook_url: str | None,
+               fail_flag: bool = False) -> None:
     """分片键倾斜漂移检测 — 最新测量 vs 历史基线(离线,只读历史)。
 
     带 TABLE 看单表;不带则巡检所有有历史的表。
@@ -236,6 +239,10 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None) -> None:
             "tables": [t for t, _ in drifted],
             "text": "\n\n".join(render_drift(r, lang) for _, r in drifted)})
         console.print(f"[dim]webhook: {'ok' if ok else 'failed'} ({msg})[/dim]")
+    if fail_flag and drifted:
+        console.print(f"\n[red]{len(drifted)} 张表的分片键相对基线漂移，"
+                      f"巡检未通过。[/red]")
+        sys.exit(1)
 
 
 @click.command(name="skew-splitkey")
@@ -323,15 +330,23 @@ def skew_splitkey(
         raise click.ClickException(f"连接失败: {exc}")
     history = default_history()
 
-    def _notify(md_text: str, counts: dict) -> None:
+    def _notify(md_text: str, counts: dict,
+                drift_lines: dict[str, str] | None = None) -> None:
         """POST the patrol summary when the webhook is set and something
-        is wrong (a healthy patrol stays silent)."""
-        if not webhook_url or not (counts.get("bad") or counts.get("errors")):
+        is wrong — a bad/unparsable key, or a key drifting from its
+        baseline (a healthy patrol stays silent)."""
+        if not webhook_url or not (counts.get("bad") or counts.get("errors")
+                                   or drift_lines):
             return
         from seatunnel_agent.agents.data.data_skew.notify import post_webhook
-        ok, msg = post_webhook(webhook_url, {
+        payload: dict = {
             "source": "seatunnel-agent", "kind": "splitkey_patrol",
-            "counts": counts, "text": md_text})
+            "counts": counts, "text": md_text}
+        if drift_lines:
+            payload["drift_tables"] = sorted(drift_lines)
+            payload["text"] = md_text + "\n\n" + "\n\n".join(
+                drift_lines[t] for t in sorted(drift_lines))
+        ok, msg = post_webhook(webhook_url, payload)
         console.print(f"[dim]webhook: {'ok' if ok else 'failed'} ({msg})[/dim]")
 
     conf_dir = Path(conf_path)
@@ -369,13 +384,15 @@ def skew_splitkey(
                 tk = (spec.table, spec.partition_column)
                 if tk not in seen:
                     seen.append(tk)
+        drift_lines: dict[str, str] = {}
         for t, col in seen:
             d = compute_drift(t, history.splitkey_trend(t, n=50), column=col)
             if d.verdict == "drift":
-                console.print(render_drift(d, lang))
+                drift_lines[t] = render_drift(d, lang)
+                console.print(drift_lines[t])
 
         c = batch_counts(items)
-        _notify(md, c)
+        _notify(md, c, drift_lines)
         if fail_flag and (c["bad"] or c["errors"]):
             console.print(f"\n[red]{c['bad']} 个倾斜键 / {c['errors']} 个"
                           f"解析失败，巡检未通过。[/red]")
@@ -419,13 +436,18 @@ def skew_splitkey(
         compute_drift,
         render_drift,
     )
+    drift_lines: dict[str, str] = {}
     for spec, _, _ in results:
         d = compute_drift(spec.table, history.splitkey_trend(spec.table, n=50),
                           column=spec.partition_column)
-        console.print(render_drift(d, lang))
+        line = render_drift(d, lang)
+        console.print(line)
+        if d.verdict == "drift":
+            drift_lines[spec.table] = line
 
     _notify(md, {"bad": sum(1 for v in verdicts
-                            if v in ("bad", "low_ndv", "null")), "errors": 0})
+                            if v in ("bad", "low_ndv", "null")), "errors": 0},
+            drift_lines)
 
     if apply_flag:
         if total > 1:
