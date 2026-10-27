@@ -2404,6 +2404,59 @@ def test_runtime_verdict_thresholds():
                      dur_max=60_000).verdict() == "ok"
 
 
+def test_runtime_implicated_tables():
+    from seatunnel_agent.agents.data.data_skew.runtime import (
+        StageSkew,
+        implicated_tables,
+    )
+
+    skewed = {"tasks": 4, "dur_p50": 2_000, "dur_max": 65_000}
+    stages = [
+        StageSkew(stage_id=0, name="Source: ods.orders", **skewed),
+        StageSkew(stage_id=1, name="Sink: dw_orders", **skewed),
+        StageSkew(stage_id=2, name="Exchange hashpartitioning",
+                  sql_desc="insert overwrite table dws.orders "
+                           "select * from ods.orders", **skewed),
+        StageSkew(stage_id=3, name="Source: quiet_table", tasks=4,
+                  dur_p50=2_000, dur_max=2_100),          # ok → ignored
+        StageSkew(stage_id=4, name="Some opaque vertex", **skewed),  # no match
+    ]
+    assert implicated_tables(stages) == [
+        "ods.orders", "dw_orders", "dws.orders"]   # deduped, ok/opaque skipped
+    assert implicated_tables([]) == []
+
+
+def test_runtime_tail_links_to_splitkey(tmp_path, monkeypatch):
+    """The diagnosis tail inlines the drift verdict for an implicated table
+    with patrol history, and points at skew-splitkey without one."""
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.runtime import (
+        StageSkew,
+        diagnose_and_log,
+    )
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    h = default_history()
+    for top1 in (10.0, 14.0, 28.0):
+        h.log_splitkey("ods.orders", "id", "good", top1_pct=top1)
+    stages = [
+        StageSkew(stage_id=0, name="Source: ods.orders", tasks=4,
+                  dur_p50=2_000, dur_max=65_000),
+        StageSkew(stage_id=1, name="Source: dw_new", tasks=4,
+                  dur_p50=2_000, dur_max=65_000),
+    ]
+    md, confirmed, _ = diagnose_and_log(h, stages, "job-x", "zh", "cli")
+    assert confirmed == 2
+    assert "倾斜漂移" in md and "ods.orders" in md       # inline drift verdict
+    assert "下一步" in md and "dw_new" in md             # pointer for the other
+    # an all-ok diagnosis adds no tail
+    ok_md, c2, _ = diagnose_and_log(
+        h, [StageSkew(stage_id=0, name="Source: ods.orders", tasks=4,
+                      dur_p50=2_000, dur_max=2_100)], "job-y", "zh", "cli")
+    assert c2 == 0 and "下一步" not in ok_md and "倾斜漂移" not in ok_md
+
+
 def test_runtime_flink_fake_fetch():
     from seatunnel_agent.agents.data.data_skew.runtime import analyze_flink
 
