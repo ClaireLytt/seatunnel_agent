@@ -133,7 +133,7 @@ def build_tool_functions(
         """分片键倾斜漂移检测：最新一次 skew_split_key 实测 vs 历史基线
         （中位数），只读巡检历史、不连库。table 省略时巡检所有有历史的表；
         column 省略时取该表最新测量的分片键。"""
-        from .drift import compute_drift, render_drift
+        from .drift import drift_for, render_drift
 
         lg = (lang or default_lang).strip().lower()
         tables = [table.strip()] if (table or "").strip() \
@@ -143,8 +143,7 @@ def build_tool_functions(
             return dsk(lg, "drf_none")
         parts: list[str] = []
         for t in tables:
-            result = compute_drift(t, history.splitkey_trend(t, n=50),
-                                   column=(column or "").strip())
+            result = drift_for(history, t, column=(column or "").strip())
             parts.append(render_drift(result, lg))
             history.log_drift(t, result.verdict,
                               [d.metric for d in result.drifts], source="mcp")
