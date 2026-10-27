@@ -179,9 +179,14 @@ def skew_stats(recent: int) -> None:
     h = default_history()
     tables = h.splitkey_tables()
     if tables:
+        from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
         console.print("\n[bold]分片键巡检（每表最近趋势）[/bold]")
         v_marks = {"good": "✅", "suspect": "⚠️", "bad": "⛔",
                    "low_ndv": "⛔", "null": "⛔", "none": "⚠️"}
+        d_marks = {"drift": "📈漂移", "stable": "📊稳定",
+                   "insufficient": "—暂无基线"}
+        drifting = 0
         for t in tables[:20]:
             trend = h.splitkey_trend(t, n=8)
             latest = (trend[-1].get("splitkey") or {}) if trend else {}
@@ -192,10 +197,16 @@ def skew_stats(recent: int) -> None:
                 if (sk := rec.get("splitkey") or {}).get("top1_pct") is not None
             ]
             trail = (" · top1 " + " → ".join(top1s)) if top1s else ""
+            d = compute_drift(t, h.splitkey_trend(t, n=50))
+            if d.verdict == "drift":
+                drifting += 1
             console.print(
                 f"  {v_marks.get(v, '')} {t}  key="
                 f"{latest.get('partition_column') or '(none)'}  {v}"
-                f"  ×{len(trend)} 次{trail}")
+                f"  ×{len(trend)} 次{trail}  {d_marks.get(d.verdict, '')}")
+        if drifting:
+            console.print(f"[bold]漂移中[/bold] {drifting} 表"
+                          "（详情见 skew-drift）")
 
 
 @click.command(name="skew-drift")
