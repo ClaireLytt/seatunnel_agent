@@ -24,7 +24,7 @@
   步骤(正常 <1 分钟,卡时 6-9 分钟无输出),人工取消重跑即愈。
 - **根因**:runner 网络抖动导致 pip 下载挂起;job 虽有 20 分钟超时与
   pip cache,但步骤本身无超时、pip 无重试——卡住就吊满 job 预算。
-- **规避**(已机械化,见 uitest.yml / tests.yml):Install 步骤
+- **规避**(已机械化,见 uitest.yml / tests.yml / uitest-nightly.yml):Install 步骤
   `timeout-minutes: 6` 快速失败 + `PIP_DEFAULT_TIMEOUT=60`/`PIP_RETRIES=3`
   自愈瞬时抖动;第 4 次复发(PR #148)后 ui-smoke 再加**同 run 原地重试**
   (首次 `continue-on-error` + 失败条件触发的第二次安装,缓存已热通常
