@@ -39,6 +39,9 @@
    - 存储/建模层建议（确认热点列不宜作分区/分桶/分片键）。
 3. LLM 模式下生成优化 SQL 后，可点「一致性实测」运行两版 SQL 比对行数/聚合值。
 4. 历史面板可回载过去的分析（`logs/data_skew.jsonl`，自动轮转）。
+5. 「倾斜漂移」卡片展示各表最新分片键实测相对历史基线的判定
+   （漂移 / 稳定 / 暂无基线）与各指标 `基线 → 当前（变化量）`，与
+   `skew-drift` CLI 结论一致。
 
 ### SeaTunnel 分片键体检（UI）
 
@@ -109,6 +112,12 @@ seatunnel-agent skew-runtime --history http://host:18080 --app application_123 -
 
 # 历史统计
 seatunnel-agent skew-stats -n 50
+
+# 倾斜漂移：最新实测 vs 历史基线（只读巡检历史，不连库）
+seatunnel-agent skew-drift orders            # 单表
+seatunnel-agent skew-drift                   # 巡检所有有历史的表
+seatunnel-agent skew-drift --fail            # CI 门禁：存在漂移时退出码 1
+seatunnel-agent skew-drift --webhook https://...   # 漂移时推送（kind=skew_drift）
 ```
 
 说明：
@@ -125,8 +134,11 @@ seatunnel-agent skew-stats -n 50
 （`logs/data_skew.jsonl`），所以巡检自带两层信号：
 
 1. **判定翻转**：复测对比行报告「已解决 / 仍未解决 / 出现退化」；
-2. **漂移预警**：判定还没变坏、但 top-1 占比较上次上涨 ≥ 10 个百分点时，
-   报告出现「漂移」提醒——在倾斜恶化前介入。
+2. **漂移预警**：判定还没变坏、但最新实测相对**历史基线**
+   （同表同键此前测量的中位数，≥ 3 次有效测量才有基线）恶化超阈值——
+   top-1 +10 pp / NULL +5 pp / NDV −30%——体检报告尾部出现「漂移」行，
+   webhook 载荷追加 `drift_tables` 与漂移文本（仅漂移、尚无 bad 时也告警）。
+   离线复盘用 `skew-drift`；页面上对应「倾斜漂移」卡片。
 
 ```cron
 # 每天 06:30 巡检同步作业目录，异常推钉钉群
@@ -149,6 +161,7 @@ seatunnel-agent skew-stats -n 50
 | `skew_check_file(path, ...)` | 同上，输入为文件路径 |
 | `skew_runtime_eventlog(path, lang?)` | 解析 Spark event log 定位拖尾 stage（离线，零依赖） |
 | `skew_runtime_history(base_url, app_id, lang?)` | 走 History Server REST 的同款诊断（只读 GET） |
+| `skew_drift(table?, column?, lang?)` | 倾斜漂移：最新分片键实测 vs 历史基线（只读巡检历史，不连库；no-db 档亦可用） |
 | `skew_split_key(conf, ds_type?, sample_pct?, lang?)` | 分片键体检（按 `.env` 连库，只读探查） |
 | `skew_split_key_file(path, ...)` | 同上，输入为配置文件路径 |
 | `skew_split_key_apply(conf, ds_type?, sample_pct?, lang?)` | 在体检基础上返回**写入推荐分片键后的完整配置文本**（不落盘，由调用方保存；仅单 source） |
@@ -177,3 +190,6 @@ seatunnel-agent skew-stats -n 50
 - 运行时：任务时长 max/median ≥ 5 且 max ≥ 30s 确认（≥ 3 且 ≥ 10s 疑似），
   shuffle 读 max/median ≥ 5 且 max ≥ 128MB 确认（≥ 3 且 ≥ 32MB 疑似）；
   少于 3 个任务的 stage 不判定，报告展示最差的前 8 个 stage。
+- 漂移：同表同键 ≥ 3 次有效测量后，最新一次相对此前测量的**中位数**
+  top-1 占比 +10 pp、NULL 占比 +5 pp 或 NDV 下降 ≥ 30% 判「漂移」；
+  序列按（表,分片键）隔离，换键后基线重新累计。
