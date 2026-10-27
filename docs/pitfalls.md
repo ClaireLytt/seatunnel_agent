@@ -19,6 +19,17 @@
 | 2026-10-24 | 本地 check_workflow 连续多批 PASS,CI workflow-check 却 FAIL(floor 命中 5 处 noqa):本地假绿 | 本地每次都在 push **之后**跑,默认 range `origin/uiskill..HEAD` 推完即空集,floor 从未真正扫过提交;CI 用 `origin/main...HEAD` 扫全分支 | PR #133 首轮 CI run 40096091461 FAIL;本地改用 `--range origin/main...HEAD` 立即复现同样 5 处命中 | 批次收尾/推送前一律 `python scripts/check_workflow.py --range origin/main...HEAD`(与 CI 同口径);新代码零压制注释,re-export 用显式 `__all__` 而不是 noqa:F401 |
 | 2026-10-24 | 环境依赖测试单跑红、全量绿:test_saved_sessions_list_and_resume 在无 API_KEY 的机器上单独跑必红,全量跑吃了别的测试留下的 env 而绿 | 测试经 connect→build_agent→load_settings 读真实环境 API_KEY,未自给自足,靠执行顺序掩盖 | 本会话 `pytest tests/test_t2s_history_api.py::test_saved_sessions_list_and_resume` 单跑 RuntimeError: API_KEY is not set,全量 3360 passed | 读环境配置的测试一律 `monkeypatch.setenv` 自给自足;单测失败先单跑复现,再跑全量对照,判别顺序依赖 |
 
+## CI ui-smoke 卡死在 Install dependencies(≥2 次)
+- **问题**:PR #138 与 #141 的 ui-smoke job 都卡死在 `Install dependencies`
+  步骤(正常 <1 分钟,卡时 6-9 分钟无输出),人工取消重跑即愈。
+- **根因**:runner 网络抖动导致 pip 下载挂起;job 虽有 20 分钟超时与
+  pip cache,但步骤本身无超时、pip 无重试——卡住就吊满 job 预算。
+- **规避**(已机械化,见 uitest.yml / tests.yml):Install 步骤
+  `timeout-minutes: 6` 快速失败 + `PIP_DEFAULT_TIMEOUT=60`/`PIP_RETRIES=3`
+  自愈瞬时抖动;人工口径:同步骤卡过 ~5 分钟直接
+  `gh run cancel <id>` → 等 status=completed → `gh run rerun <id>`
+  (cancel 落地有延迟,未 completed 前 rerun 会被拒)。
+
 ## 后台 hub 任务"无故"退出(exit 1/127)
 - **问题**:后台起的 `python -m seatunnel_agent.hub.ui` 任务在数十分钟后报 failed,日志为空,看似崩溃。会话内已出现 ≥3 次误判。
 - **根因**:带 `SEATUNNEL_UI_KILL_PORT=1` 起新实例时会杀掉占用 7860 的旧实例 —— 被杀的就是上一个后台任务,其退出被任务系统报告为 failed。
