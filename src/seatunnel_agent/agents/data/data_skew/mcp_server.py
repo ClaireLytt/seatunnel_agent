@@ -209,7 +209,7 @@ def build_tool_functions(
         md = render_splitkey_multi(results, lg, sample_pct=pct, total=total,
                                    previous_by_table=previous_by_table)
         snk = sink_key_section(executor, conf, ds_type=ds, sample_pct=pct,
-                               lang=lg)
+                               lang=lg, log_source="mcp")
         return md + ("\n" + snk if snk else "")
 
     def skew_split_key_file(path: str, ds_type: str = "mysql",

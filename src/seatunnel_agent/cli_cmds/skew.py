@@ -483,7 +483,7 @@ def skew_splitkey(
     md = render_splitkey_multi(results, lang, sample_pct=pct, total=total,
                                previous_by_table=previous_by_table)
     snk = sink_key_section(executor, conf_text, ds_type=ds_type,
-                           sample_pct=pct, lang=lang)
+                           sample_pct=pct, lang=lang, log_source="cli")
     if snk:
         md = md + "\n" + snk
     console.print(md)
