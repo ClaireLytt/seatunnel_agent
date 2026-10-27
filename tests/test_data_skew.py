@@ -3335,7 +3335,16 @@ def test_api_skew_drift(tmp_path, monkeypatch):
     [d] = item["drifts"]
     assert d == {"metric": "top1_pct", "baseline": 12.0,
                  "current": 28.0, "delta": 16.0}
+    assert item["hot_value"] == {"prev": "", "cur": "", "changed": False}
     assert "drifted" in item["text"]
+
+    # hot-value identity rides the structured response
+    h.log_splitkey("t_hot", "id", "good", top1_pct=10.0, top1_value="CN")
+    h.log_splitkey("t_hot", "id", "good", top1_pct=12.0, top1_value="CN")
+    h.log_splitkey("t_hot", "id", "good", top1_pct=30.0, top1_value="US")
+    resp = client.get("/api/skew/drift", params={"table": "t_hot"})
+    [hot] = resp.json()["items"]
+    assert hot["hot_value"] == {"prev": "CN", "cur": "US", "changed": True}
 
     # sweep: both tables, t2 insufficient
     resp = client.get("/api/skew/drift", params={"lang": "zh"})

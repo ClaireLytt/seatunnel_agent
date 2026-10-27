@@ -52,6 +52,11 @@ export function DriftCard() {
                 {it.column && <span className="text-muted">key={it.column}</span>}
                 <span className="text-muted">{t('drf_samples', { n: it.samples })}</span>
               </div>
+              {it.verdict === 'drift' && it.hot_value?.changed && (
+                <div className="pl-2 font-mono text-xs text-amber-700 dark:text-amber-400">
+                  {t('drf_hot')}: {it.hot_value.prev} → {it.hot_value.cur}
+                </div>
+              )}
               {it.drifts.map((d) => (
                 <div key={d.metric} className="pl-2 font-mono text-xs text-muted">
                   {d.metric}: {d.baseline} → {d.current} (

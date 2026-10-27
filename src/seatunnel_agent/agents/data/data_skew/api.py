@@ -577,6 +577,9 @@ def drift(table: str = "", lang: str = "zh") -> dict[str, Any]:
             "drifts": [{"metric": d.metric, "baseline": d.baseline,
                         "current": d.current, "delta": d.delta}
                        for d in result.drifts],
+            "hot_value": {"prev": result.top1_value_prev,
+                          "cur": result.top1_value_cur,
+                          "changed": result.hot_value_changed},
             "text": render_drift(result, lng),
         })
     return {"items": items}
