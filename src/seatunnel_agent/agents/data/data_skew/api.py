@@ -432,7 +432,7 @@ def splitkey(req: SplitKeyRequest) -> dict[str, Any]:
             previous_by_table=previous_by_table)
         snk = sink_key_section(session.executor, conf_text,
                                ds_type=session.ds_type, sample_pct=pct,
-                               lang=lang)
+                               lang=lang, log_source="api")
         if snk:
             section = section + "\n" + snk
     except SplitKeyError as exc:

@@ -2959,6 +2959,46 @@ def test_run_sink_keys_and_render(tmp_path):
     assert render_sinkkey_section([], "orders", "zh") == ""
 
 
+def test_sink_key_section_logs_history(tmp_path, monkeypatch):
+    """With log_source set, measured sink keys land in history and join the
+    drift machinery (three identical runs -> stable baseline)."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.splitkey import sink_key_section
+    from seatunnel_agent.agents.data.text2sql.executor.base import (
+        DatabaseConfig,
+        create_executor,
+    )
+    from seatunnel_agent.cli import cli
+
+    db = _make_orders_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    ex = create_executor(
+        DatabaseConfig(ds_type="sqlite", host="", port=0, database=str(db)))
+    for _ in range(3):
+        md = sink_key_section(ex, _CONF_SINK, ds_type="sqlite",
+                              log_source="cli")
+        assert "Sink" in md
+    recs = [r for r in default_history().recent(10)
+            if r.get("mode") == "splitkey"]
+    assert len(recs) == 3
+    sk = recs[0]["splitkey"]
+    assert sk["table"] == "dw.orders" and sk["partition_column"] == "region"
+    assert sk["key_verdict"] == "bad" and sk["top1_pct"] == 80.0
+    assert sk["top1_value"] == "CN"
+    # the sink table now has a drift verdict like any source table
+    res = CliRunner().invoke(cli, ["skew-drift", "dw.orders"])
+    assert res.exit_code == 0, res.output
+    assert "相对基线稳定" in res.output
+    # without log_source nothing is logged (default unchanged)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist2.jsonl"))
+    sink_key_section(ex, _CONF_SINK, ds_type="sqlite")
+    assert default_history().recent(5) == []
+
+
 def test_cli_skew_stats_splitkey_trend(monkeypatch, tmp_path):
     from click.testing import CliRunner
 

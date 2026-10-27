@@ -289,12 +289,27 @@ def sink_key_section(
     ds_type: str = "",
     sample_pct: int = 0,
     lang: str = "zh",
+    log_source: str = "",
 ) -> str:
     """Best-effort sink-side key sub-section ('' when there is nothing to
-    measure or anything fails — it never breaks the split-key check)."""
+    measure or anything fails — it never breaks the split-key check).
+
+    With *log_source* set, each measured sink key with a resolvable sink
+    table is logged like a split-key measurement, so sink keys join the
+    trend / drift / stats machinery the source keys already have."""
     try:
         results, src_table = run_sink_keys(
             executor, conf_text, ds_type=ds_type, sample_pct=sample_pct)
+        if log_source:
+            from .history import default_history
+
+            h = default_history()
+            for spec, stats in results:
+                if not spec.table:
+                    continue   # no stable identity for a trend
+                for st in stats:
+                    h.log_splitkey(spec.table, st.column, sink_verdict(st),
+                                   source=log_source, **splitkey_metrics(st))
         return render_sinkkey_section(results, src_table, lang,
                                       sample_pct=sample_pct)
     except Exception:
