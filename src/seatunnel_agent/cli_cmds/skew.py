@@ -358,6 +358,22 @@ def skew_splitkey(
         if output:
             Path(output).write_text(md, encoding="utf-8")
             console.print(f"[dim]报告已保存: {output}[/dim]")
+        # drift tail (directory mode): only the drifted tables, one line each
+        from seatunnel_agent.agents.data.data_skew.drift import (
+            compute_drift,
+            render_drift,
+        )
+        seen: list[tuple[str, str]] = []
+        for it in items:
+            for spec, _, _ in it.results:
+                tk = (spec.table, spec.partition_column)
+                if tk not in seen:
+                    seen.append(tk)
+        for t, col in seen:
+            d = compute_drift(t, history.splitkey_trend(t, n=50), column=col)
+            if d.verdict == "drift":
+                console.print(render_drift(d, lang))
+
         c = batch_counts(items)
         _notify(md, c)
         if fail_flag and (c["bad"] or c["errors"]):
@@ -404,7 +420,8 @@ def skew_splitkey(
         render_drift,
     )
     for spec, _, _ in results:
-        d = compute_drift(spec.table, history.splitkey_trend(spec.table, n=50))
+        d = compute_drift(spec.table, history.splitkey_trend(spec.table, n=50),
+                          column=spec.partition_column)
         console.print(render_drift(d, lang))
 
     _notify(md, {"bad": sum(1 for v in verdicts

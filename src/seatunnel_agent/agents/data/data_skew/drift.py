@@ -54,16 +54,27 @@ def _metric_series(records: list[dict], key: str) -> list[float]:
     return vals
 
 
-def compute_drift(table: str, records: list[dict]) -> DriftResult:
+def compute_drift(table: str, records: list[dict],
+                  column: str = "") -> DriftResult:
     """Drift verdict from splitkey history *records* (oldest first).
 
     Records are the dicts ``SkewHistory.splitkey_trend`` returns.  Only
     records carrying measured metrics count; with fewer than
     ``MIN_HISTORY`` of them the verdict is ``insufficient``.
+
+    A table's history may hold measurements of different keys (e.g. the
+    key was changed, or two configs read the same table), so the series
+    is one *column*: the given one, or the latest measured record's.
     """
     measured = [r for r in records
                 if any(k in (r.get("splitkey") or {})
                        for k in ("top1_pct", "null_pct", "ndv"))]
+    if not column and measured:
+        column = str(
+            (measured[-1].get("splitkey") or {}).get("partition_column") or "")
+    measured = [r for r in measured
+                if str((r.get("splitkey") or {}).get("partition_column") or "")
+                == column]
     result = DriftResult(table=table, samples=len(measured))
     if measured:
         result.column = str(

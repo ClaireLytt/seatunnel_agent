@@ -2515,6 +2515,16 @@ def test_cli_skew_splitkey_dir_patrol(monkeypatch, tmp_path):
               if (r["splitkey"].get("partition_column") == "region")]
     assert skewed and skewed[0]["splitkey"]["top1_pct"] == 80.0
 
+    # drift tail in dir mode: seed two calmer earlier runs → the 80 % run
+    # the patrol just logged counts as a top1 drift; only drifted tables print
+    h = default_history()
+    for top1 in (20.0, 25.0):
+        h.log_splitkey("orders", "region", "good", top1_pct=top1)
+    res_drift = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite"])
+    assert res_drift.exit_code == 0, res_drift.output
+    assert "倾斜漂移" in res_drift.output and "orders" in res_drift.output
+    assert "相对基线稳定" not in res_drift.output   # stable tables stay silent
+
     # CI gate + --apply refusal in dir mode
     gated = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
                                 "--fail"])
@@ -2763,6 +2773,26 @@ def test_drift_ndv_drop_below_threshold_is_stable():
     ])
     r = compute_drift("orders", recs)
     assert r.verdict == "stable"
+
+
+def test_drift_series_is_per_column():
+    """A table measured under two keys: each column gets its own series —
+    the other key's records never pollute the baseline."""
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [
+        {"col": "region", "top1_pct": 20.0},
+        {"col": "region", "top1_pct": 25.0},
+        {"col": "id", "top1_pct": 1.0},
+        {"col": "region", "top1_pct": 80.0},
+        {"col": "id", "top1_pct": 1.2},
+    ])
+    r = compute_drift("orders", recs, column="region")
+    assert r.verdict == "drift" and r.column == "region"
+    assert r.drifts[0].baseline == 22.5 and r.drifts[0].current == 80.0
+    # default column = latest measured record's key (id) → only 2 samples
+    r2 = compute_drift("orders", recs)
+    assert r2.column == "id" and r2.verdict == "insufficient"
 
 
 def _seed_drift_history(tmp_path, monkeypatch, metrics_seq, table="orders"):
