@@ -1864,6 +1864,57 @@ def test_history_log_splitkey(tmp_path):
     assert "orders" in bad["sql"]  # readable in the history panel
 
 
+# ---------------------------------------------------------------------------
+# Static-detector benchmark (bench.py)
+# ---------------------------------------------------------------------------
+
+def test_bench_corpus_is_green():
+    """The shipped corpus must match the detector exactly — any rule tweak
+    that shifts whole-corpus behavior fails here with a per-case diff."""
+    from seatunnel_agent.agents.data.data_skew.bench import (
+        load_corpus,
+        render_bench,
+        run_bench,
+    )
+
+    cases, gate = load_corpus()
+    assert len(cases) >= 20 and gate == 1.0
+    # every rule id appears in at least one expectation; negatives present
+    expected_ids = set().union(*(c.expect for c in cases))
+    assert {f"DS{i:03d}" for i in range(1, 14)} <= expected_ids
+    assert any(not c.expect for c in cases)
+    result = run_bench(cases, gate)
+    md = render_bench(result, "zh")
+    assert result.passed, md
+    assert result.f1 == 1.0 and not result.failures
+    assert "全部用例与期望一致" in md
+    assert "All cases match" in render_bench(result, "en")
+
+
+def test_bench_scoring_counts_misses_and_spurious():
+    from seatunnel_agent.agents.data.data_skew.bench import (
+        BenchCase,
+        render_bench,
+        run_bench,
+    )
+
+    cases = [
+        # expects a rule that will not fire → one FN
+        BenchCase("fn-case", "select 1", expect=frozenset({"DS001"})),
+        # expects clean but DS001 fires → one FP
+        BenchCase("fp-case", "select count(distinct a) from t",
+                  expect=frozenset()),
+        # exact match → one TP
+        BenchCase("tp-case", "select a from t union select a from s",
+                  expect=frozenset({"DS004"})),
+    ]
+    r = run_bench(cases, min_f1=1.0)
+    assert (r.tp, r.fp, r.fn) == (1, 1, 1)
+    assert r.precision == 0.5 and r.recall == 0.5 and not r.passed
+    md = render_bench(r, "zh")
+    assert "fn-case" in md and "fp-case" in md and "tp-case" not in md
+
+
 def test_history_last_runtime(tmp_path):
     from seatunnel_agent.agents.data.data_skew.history import SkewHistory
 

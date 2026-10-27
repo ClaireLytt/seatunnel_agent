@@ -1,0 +1,91 @@
+# Labeled corpus for the static skew-detector benchmark (skew-bench).
+#
+# Each case: id, sql (one statement or script), optional dialect
+# (default spark), and `expect` — the EXACT set of rule ids the detector
+# must report for it (empty list = must stay clean). Curated from the
+# rule unit tests, so every expectation is a reviewed behavior, not a
+# recorded snapshot.
+#
+# baseline.min_f1 is the gate threshold for `skew-bench --gate`.
+
+baseline:
+  min_f1: 1.0
+
+cases:
+  - id: count-distinct
+    sql: select count(distinct user_id) from t group by dt
+    expect: [DS001]
+  - id: multi-count-distinct
+    sql: select count(distinct a), count(distinct b) from t
+    expect: [DS001, DS002]
+  - id: global-distinct
+    sql: select distinct a, b from big_table
+    expect: [DS003]
+  - id: union-dedup
+    sql: select a from t union select a from s
+    expect: [DS004]
+  - id: union-all-clean
+    sql: select a from t union all select a from s
+    expect: []
+  - id: global-orderby
+    sql: select * from t order by a
+    expect: [DS005]
+  - id: orderby-with-limit-clean
+    sql: select * from t order by a limit 100
+    expect: []
+  - id: orderby-inside-over-clean
+    sql: select row_number() over (partition by c order by a) rn from t
+    expect: []
+  - id: cartesian-join
+    sql: select * from a join b where a.x > 1
+    expect: [DS006, DS013]
+  - id: cross-join
+    sql: select * from a cross join b
+    expect: [DS006, DS013]
+  - id: equi-join-clean-but-broadcast
+    sql: select * from a join b on a.id = b.id
+    expect: [DS013]
+  - id: null-key-outer-join
+    sql: select * from a left join b on a.uid = b.uid
+    expect: [DS007, DS013]
+  - id: coalesce-guard-clean
+    sql: select * from a left join b on coalesce(a.uid, '-') = b.uid
+    expect: [DS013]
+  - id: function-on-join-key
+    sql: select * from a join b on cast(a.id as string) = b.id
+    expect: [DS008, DS013]
+  - id: rand-in-join
+    # DS012 (rand in join) covers this; DS008 intentionally does not
+    # double-flag the same expression (see the rule unit tests).
+    sql: select * from a join b on a.id = concat(b.id, rand())
+    expect: [DS012, DS013]
+  - id: window-no-partition
+    sql: select row_number() over (order by id) rn from t
+    expect: [DS009]
+  - id: window-partitioned-clean
+    sql: select row_number() over (partition by dt order by id) rn from t
+    expect: []
+  - id: dynamic-partition-insert
+    sql: insert overwrite table ads.t partition (dt) select id, dt from s
+    expect: [DS010]
+  - id: dynamic-partition-distributed-clean
+    sql: >-
+      insert overwrite table ads.t partition (dt) select id, dt from s
+      distribute by dt
+    expect: []
+  - id: too-many-joins
+    sql: >-
+      select * from t0 join t1 on t0.id = t1.id join t2 on t0.id = t2.id
+      join t3 on t0.id = t3.id join t4 on t0.id = t4.id
+      join t5 on t0.id = t5.id join t6 on t0.id = t6.id
+      join t7 on t0.id = t7.id
+    expect: [DS011, DS013]
+  - id: broadcast-hint-clean
+    sql: select /*+ BROADCAST(d) */ * from t join d on t.id = d.id
+    expect: []
+  - id: literals-clean
+    sql: "select 'union' as x -- order by\nfrom t /* join */"
+    expect: []
+  - id: ddl-clean
+    sql: drop table if exists t
+    expect: []
