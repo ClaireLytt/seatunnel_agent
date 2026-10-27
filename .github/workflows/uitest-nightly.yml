@@ -27,7 +27,27 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      # Same wedged-pip hardening as uitest.yml (#144/#149): fail the
+      # attempt fast and retry once in the same job — a nightly stall
+      # must not hang the 90-minute budget with nobody watching.
       - name: Install dependencies
+        id: deps
+        timeout-minutes: 6
+        continue-on-error: true
+        env:
+          PIP_DEFAULT_TIMEOUT: "60"
+          PIP_RETRIES: "3"
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,uitest,sqlreview]"
+          python -m playwright install --with-deps chromium
+
+      - name: Install dependencies (retry after a wedged first attempt)
+        if: steps.deps.outcome == 'failure'
+        timeout-minutes: 6
+        env:
+          PIP_DEFAULT_TIMEOUT: "60"
+          PIP_RETRIES: "3"
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[all,uitest,sqlreview]"
@@ -93,6 +113,23 @@ jobs:
           cache: pip
 
       - name: Install dependencies
+        id: deps_hive
+        timeout-minutes: 6
+        continue-on-error: true
+        env:
+          PIP_DEFAULT_TIMEOUT: "60"
+          PIP_RETRIES: "3"
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[all,uitest,sqlreview,hive]"
+          python -m playwright install --with-deps chromium
+
+      - name: Install dependencies (retry after a wedged first attempt)
+        if: steps.deps_hive.outcome == 'failure'
+        timeout-minutes: 6
+        env:
+          PIP_DEFAULT_TIMEOUT: "60"
+          PIP_RETRIES: "3"
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[all,uitest,sqlreview,hive]"
