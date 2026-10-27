@@ -160,3 +160,32 @@ def test_no_new_report_is_silent(monkeypatch) -> None:
 def test_no_remote_range_skips() -> None:
     ok, _ = _REPORT_CHECK(None)
     assert ok
+
+
+def test_floor_assert_number_update_not_flagged():
+    """Changing only the numeric expectation of an assert (count grows with
+    the code) is an update, not a deleted assertion; dropping the assert
+    outright still flags."""
+    from scripts.check_workflow import floor_findings
+
+    updated = floor_findings(
+        added=[("tests/test_x.py", "    assert len(tools) == 9")],
+        removed=[("tests/test_x.py", "    assert len(tools) == 8")],
+        deleted_files=[],
+    )
+    assert updated == []
+
+    dropped = floor_findings(
+        added=[],
+        removed=[("tests/test_x.py", "    assert len(tools) == 8")],
+        deleted_files=[],
+    )
+    assert any("test_x.py" in f for f in dropped)
+
+    # a different assert added nearby does not excuse the deletion
+    swapped = floor_findings(
+        added=[("tests/test_x.py", "    assert tools")],
+        removed=[("tests/test_x.py", "    assert len(tools) == 8")],
+        deleted_files=[],
+    )
+    assert any("test_x.py" in f for f in swapped)

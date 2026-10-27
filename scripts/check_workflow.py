@@ -69,6 +69,25 @@ def parse_diff(diff: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]
     return added, removed
 
 
+def _assert_shape(text: str) -> str:
+    """Digits-normalized form of an assert line (counts drift as code grows)."""
+    import re as _re
+
+    return _re.sub(r"\d+", "#", text.strip())
+
+
+def _assert_updated(
+    file: str, removed_text: str, added: list[tuple[str, str]]
+) -> bool:
+    """True when the same file gains an assert that differs only in numbers —
+    an updated expectation, not a deleted one."""
+    shape = _assert_shape(removed_text)
+    return any(
+        f == file and a.lstrip().startswith("assert ") and _assert_shape(a) == shape
+        for f, a in added
+    )
+
+
 def floor_findings(
     added: list[tuple[str, str]],
     removed: list[tuple[str, str]],
@@ -99,6 +118,7 @@ def floor_findings(
             file.startswith("tests/")
             and file not in deleted_tests
             and text.lstrip().startswith("assert ")
+            and not _assert_updated(file, text, added)
         ):
             findings.append(f"[删断言] {file}: {text.strip()[:80]}")
         if file == "pyproject.toml" and RE_MYPY_FILE.match(text):
