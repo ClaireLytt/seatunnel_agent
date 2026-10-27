@@ -1470,6 +1470,32 @@ def test_cli_skew_stats(tmp_path, monkeypatch):
     assert "cli×2" in res.output.replace(" ", "")
 
 
+def test_cli_skew_stats_drift_rollup(tmp_path, monkeypatch):
+    """The per-table trend line carries the current drift verdict, and the
+    summary counts drifting tables."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.cli import cli
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    h = default_history()
+    for top1 in (10.0, 14.0, 28.0):                       # drifting
+        h.log_splitkey("orders", "id", "good", top1_pct=top1)
+    for top1 in (10.0, 11.0, 12.0):                       # stable
+        h.log_splitkey("t_ok", "id", "good", top1_pct=top1)
+    h.log_splitkey("t_new", "id", "good", top1_pct=5.0)   # insufficient
+
+    res = CliRunner().invoke(cli, ["skew-stats"])
+    assert res.exit_code == 0, res.output
+    out = res.output.replace(" ", "")
+    assert "📈漂移" in res.output and "orders" in res.output
+    assert "📊稳定" in res.output
+    assert "暂无基线" in res.output
+    assert "漂移中1表" in out
+
+
 # ---------------------------------------------------------------------------
 # probe: storage/modeling-layer advice
 # ---------------------------------------------------------------------------
