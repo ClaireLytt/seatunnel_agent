@@ -669,17 +669,44 @@ into the rewrite prompt and engine-parameter hints) and to **measure
 consistency** between the original and optimized SQL (row diff for small
 results, per-column aggregate fingerprints for large ones). Confirmed skew
 also yields deterministic rewrite templates with the measured values filled
-in. Web UI at `/dataskew` (analysis history, SQL file upload, saved
-connections shared with Settings, one-click bridge from the SQL Review
-page), REST under `/api/skew/`; static scan is deterministic — no API key,
-nothing executed:
+in.
+
+Beyond the SQL scan, the agent covers the whole skew lifecycle (full guide:
+[docs/data_skew_guide.md](docs/data_skew_guide.md)):
+
+- **SeaTunnel split-key checkup** (`skew-splitkey`): measures the JDBC
+  source's `partition_column` distribution live (NDV / NULL / top-1),
+  ranks candidate columns, writes the fix back with `--apply` (backup
+  kept), patrols whole config directories, and checks sink-side keys
+  (bucket / sharding / partition_by) on the same rows — every
+  table-identified measurement lands in the history.
+- **Skew drift** (`skew-drift`): the latest measurement vs the table+key's
+  historical baseline (median; top-1 +10 pp / NULL +5 pp / NDV −30 %),
+  with hot-value identity ("the hot key changed CN → US" vs "the same key
+  grew"), deduplicated webhook alerts (first report / escalation /
+  recovery card) and a `--fail` CI gate. Surfaced as a drift card on the
+  page, a `skew_drift` MCP tool and `GET /api/skew/drift`.
+- **Runtime diagnosis** (`skew-runtime`): straggler detection from real
+  task metrics — Spark event logs (offline), the Spark History Server
+  REST API, or the Flink REST API's per-subtask metrics (SeaTunnel on
+  Flink) — with a re-check line against the same application's previous
+  diagnosis and a bridge back to the split-key line for implicated tables.
+
+Web UI at `/dataskew` (analysis history, drift card, SQL file upload,
+saved connections shared with Settings, one-click bridge from the SQL
+Review page), REST under `/api/skew/`; static scan is deterministic — no
+API key, nothing executed:
 
 ```bash
 seatunnel-agent skew -s "SELECT count(distinct uid) FROM t"          # inline, static
-seatunnel-agent skew -f etl.sql --dialect maxcompute --lang en       # single file
 seatunnel-agent skew -D sql/ --fail-on high                          # CI gate over a directory
 seatunnel-agent skew -f etl.sql --llm -o report.md                   # + LLM rewrite
-seatunnel-agent skew-stats                                           # history & aggregates
+seatunnel-agent skew-splitkey job.conf --ds mysql --apply            # measure + write the fix back
+seatunnel-agent skew-splitkey /etl/configs --ds mysql --webhook URL  # directory patrol + alerts
+seatunnel-agent skew-drift --fail                                    # drift vs baseline, CI gate
+seatunnel-agent skew-runtime eventlog.gz                             # Spark event log (offline)
+seatunnel-agent skew-runtime --flink http://host:8081 --app <jobId>  # Flink per-subtask metrics
+seatunnel-agent skew-stats                                           # history, trends & drift rollup
 seatunnel-agent skew-mcp                                             # MCP server (stdio)
 ```
 
@@ -1534,16 +1561,40 @@ JOIN 键套函数、全局 ORDER BY / DISTINCT / UNION 去重、动态分区写�
 用真实键值分布探查**验证**倾斜（并行探查、支持 TABLESAMPLE 采样，实测
 热点值回灌改写 prompt 与引擎参数建议），并对原 SQL 与优化 SQL 做**一致性
 实测**（小结果集逐行比对，大结果集逐列聚合指纹）。实测确认的倾斜还会生成
-填入实测值的确定性改写模板。Web 页面 `/dataskew`（分析历史、SQL 文件上传、
-与设置页共享已保存连接、SQL 审查页一键跳转带入 SQL），REST 接口
-`/api/skew/`；静态扫描是确定性的——无需 API key、不执行 SQL：
+填入实测值的确定性改写模板。
+
+SQL 扫描之外,本 Agent 覆盖倾斜全生命周期(完整指南:
+[docs/data_skew_guide.md](docs/data_skew_guide.md)):
+
+- **SeaTunnel 分片键体检**(`skew-splitkey`):连库实测 JDBC source 的
+  `partition_column` 分布(NDV / NULL / top-1)并实测候选列给推荐,
+  `--apply` 一键把推荐键写回配置(自动备份);支持整目录巡检与 webhook
+  告警;sink 端分布键(bucket / sharding / partition_by)同轮实测——
+  所有有表标识的测量都落入巡检历史。
+- **倾斜漂移**(`skew-drift`):最新实测 vs 同表同键历史基线(中位数;
+  top-1 +10 pp / NULL +5 pp / NDV −30%),带热点值身份("热点换人
+  CN → US" vs "同一热点变大")、去重告警(首报/恶化升级/恢复卡)与
+  `--fail` CI 门禁;页面有漂移卡,MCP 有 `skew_drift`,REST 有
+  `GET /api/skew/drift`。
+- **运行时诊断**(`skew-runtime`):从真实任务指标定位拖尾——Spark
+  event log(离线)、Spark History Server REST、或 Flink REST 的
+  per-subtask 指标(SeaTunnel on Flink);同一应用复测自动对比上次
+  诊断,拖尾指向的表直接桥接回分片键线。
+
+Web 页面 `/dataskew`(分析历史、漂移卡、SQL 文件上传、与设置页共享
+已保存连接、SQL 审查页一键跳转带入 SQL),REST 接口 `/api/skew/`;
+静态扫描是确定性的——无需 API key、不执行 SQL:
 
 ```bash
 seatunnel-agent skew -s "SELECT count(distinct uid) FROM t"          # 内联,静态扫描
-seatunnel-agent skew -f etl.sql --dialect maxcompute --lang en       # 单文件
 seatunnel-agent skew -D sql/ --fail-on high                          # 目录级 CI 门禁
 seatunnel-agent skew -f etl.sql --llm -o report.md                   # + LLM 改写
-seatunnel-agent skew-stats                                           # history & aggregates
+seatunnel-agent skew-splitkey job.conf --ds mysql --apply            # 体检并把推荐键写回
+seatunnel-agent skew-splitkey /etl/configs --ds mysql --webhook URL  # 目录巡检 + 告警
+seatunnel-agent skew-drift --fail                                    # 漂移 vs 基线,CI 门禁
+seatunnel-agent skew-runtime eventlog.gz                             # Spark event log(离线)
+seatunnel-agent skew-runtime --flink http://host:8081 --app <jobId>  # Flink per-subtask 指标
+seatunnel-agent skew-stats                                           # 历史、趋势与漂移汇总
 seatunnel-agent skew-mcp                                             # MCP server (stdio)
 ```
 
