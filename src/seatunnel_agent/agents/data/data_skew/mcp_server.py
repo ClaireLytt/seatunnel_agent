@@ -24,8 +24,9 @@ _INSTRUCTIONS = (
     "纯静态规则，不执行 SQL、不调用 LLM；skew_split_key 系列会按 .env 中的数据源"
     "配置连库执行只读的分布探查（COUNT/GROUP BY），用于 SeaTunnel 分片键体检；"
     "skew_split_key_apply 额外返回写入推荐分片键后的完整配置文本（不落盘）。"
-    "skew_runtime 系列从 Spark event log / History Server 的任务指标定位"
-    "拖尾 stage（运行时倾斜实锤），并映射回对应 SQL。"
+    "skew_runtime 系列从任务级指标定位拖尾（运行时倾斜实锤）：Spark event log / "
+    "History Server（并映射回对应 SQL），以及 Flink REST 的 per-subtask 指标"
+    "（SeaTunnel on Flink；Zeta 暂无 per-task 指标）。"
     "skew_drift 只读巡检历史，对比每张表最新分片键实测与历史基线，报告倾斜漂移。"
 )
 
@@ -113,6 +114,21 @@ def build_tool_functions(
         md, _, _ = diagnose_and_log(history, stages, label, lg, source="mcp")
         return md
 
+    def skew_runtime_flink(base_url: str, job_id: str, lang: str = "") -> str:
+        """运行时倾斜诊断：调用 Flink REST API（base_url 如 http://host:8081，
+        SeaTunnel on Flink），按各 vertex 的 subtask 时长与读字节的
+        max/median 定位拖尾。只读 GET；Zeta 引擎无 per-task 指标暂不支持。"""
+        from .i18n import dsk
+        from .runtime import RuntimeSkewError, analyze_flink, diagnose_and_log
+
+        lg = (lang or default_lang).strip().lower()
+        try:
+            stages, label = analyze_flink(base_url, job_id)
+        except RuntimeSkewError as exc:
+            return dsk(lg, exc.key).format(err=exc.arg)
+        md, _, _ = diagnose_and_log(history, stages, label, lg, source="mcp")
+        return md
+
     def skew_drift(table: str = "", column: str = "", lang: str = "") -> str:
         """分片键倾斜漂移检测：最新一次 skew_split_key 实测 vs 历史基线
         （中位数），只读巡检历史、不连库。table 省略时巡检所有有历史的表；
@@ -138,6 +154,7 @@ def build_tool_functions(
         return {"skew_check": skew_check, "skew_check_file": skew_check_file,
                 "skew_runtime_eventlog": skew_runtime_eventlog,
                 "skew_runtime_history": skew_runtime_history,
+                "skew_runtime_flink": skew_runtime_flink,
                 "skew_drift": skew_drift}
 
     def skew_split_key(conf: str, ds_type: str = "mysql",
@@ -268,6 +285,7 @@ def build_tool_functions(
         "skew_check_file": skew_check_file,
         "skew_runtime_eventlog": skew_runtime_eventlog,
         "skew_runtime_history": skew_runtime_history,
+        "skew_runtime_flink": skew_runtime_flink,
         "skew_drift": skew_drift,
         "skew_split_key": skew_split_key,
         "skew_split_key_file": skew_split_key_file,

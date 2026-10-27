@@ -1931,7 +1931,7 @@ def test_mcp_split_key_validation(monkeypatch, tmp_path):
     fns = build_tool_functions()
     assert set(fns) == {"skew_check", "skew_check_file",
                         "skew_runtime_eventlog", "skew_runtime_history",
-                        "skew_drift", "skew_split_key", "skew_split_key_file",
+                        "skew_runtime_flink", "skew_drift", "skew_split_key", "skew_split_key_file",
                         "skew_split_key_apply"}
     spk = fns["skew_split_key"]
     assert "不能为空" in spk("")
@@ -2402,6 +2402,112 @@ def test_runtime_verdict_thresholds():
     # too few tasks to judge
     assert StageSkew(1, tasks=MIN_TASKS - 1, dur_p50=1000,
                      dur_max=60_000).verdict() == "ok"
+
+
+def test_runtime_flink_fake_fetch():
+    from seatunnel_agent.agents.data.data_skew.runtime import analyze_flink
+
+    def _sub(i, dur, rb):
+        return {"subtask": i, "duration": dur, "metrics": {"read-bytes": rb}}
+
+    def fake_fetch(url: str):
+        if url.endswith("/jobs/j-1"):
+            return {"name": "sync-orders", "vertices": [
+                {"id": "v-a", "name": "Source: orders",
+                 "metrics": {"read-bytes": 9_000_000_000}},
+                {"id": "v-b", "name": "Sink: dw",
+                 "metrics": {"read-bytes": 1_000}},
+            ]}
+        if url.endswith("/vertices/v-a"):
+            return {"subtasks": [
+                _sub(0, 2_000, 1_000_000), _sub(1, 2_200, 1_100_000),
+                _sub(2, 2_100, 1_050_000),
+                _sub(3, 65_000, 9_000_000_000),   # straggler
+            ]}
+        if url.endswith("/vertices/v-b"):
+            return {"subtasks": [
+                _sub(0, 3_000, 0), _sub(1, 3_100, 0), _sub(2, 2_900, 0),
+            ]}
+        raise AssertionError(f"unexpected URL {url}")
+
+    stages, label = analyze_flink("http://fl:8081/", "j-1", fetch=fake_fetch)
+    assert label == "sync-orders (j-1)"
+    assert [s.name for s in stages] == ["Source: orders", "Sink: dw"]
+    assert stages[0].verdict() == "confirmed"      # 65s vs 2.1s median
+    assert stages[0].tasks == 4
+    assert stages[1].verdict() == "ok"
+
+    # error paths mirror the history-server analyzer
+    try:
+        analyze_flink("http://fl:8081", "j-1",
+                      fetch=lambda url: (_ for _ in ()).throw(OSError("x")))
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_http_fail"
+    try:
+        analyze_flink("http://fl:8081", "j-1",
+                      fetch=lambda url: {"vertices": []})
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_no_stages"
+    try:
+        analyze_flink("", "")
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_need_url"
+
+
+def test_cli_skew_runtime_flink(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.data_skew import runtime as rt
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.cli import cli
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        rt, "analyze_flink",
+        lambda url, job: ([rt.StageSkew(stage_id=0, name="Source: orders",
+                                        tasks=4, dur_p50=2_000,
+                                        dur_max=65_000)],
+                          "sync-orders (j-1)"))
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-runtime", "--flink", "http://fl:8081",
+                              "--app", "j-1"])
+    assert res.exit_code == 0, res.output
+    assert "运行时倾斜诊断" in res.output and "sync-orders" in res.output
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "runtime"
+    assert rec["runtime"]["app"] == "sync-orders (j-1)"
+    # --fail gate on the confirmed vertex
+    gated = runner.invoke(cli, ["skew-runtime", "--flink", "http://fl:8081",
+                                "--app", "j-1", "--fail"])
+    assert gated.exit_code == 1
+    # --flink without --app, and mixing sources, are usage errors
+    assert runner.invoke(cli, ["skew-runtime", "--flink", "http://x"]
+                         ).exit_code != 0
+    assert runner.invoke(cli, ["skew-runtime", "--flink", "http://x",
+                               "--history", "http://y", "--app", "a"]
+                         ).exit_code != 0
+
+
+def test_api_runtime_flink(tmp_path, monkeypatch):
+    client = _api_client(tmp_path, monkeypatch)
+    from seatunnel_agent.agents.data.data_skew import runtime as rt
+
+    monkeypatch.setattr(
+        rt, "analyze_flink",
+        lambda url, job: ([rt.StageSkew(stage_id=0, name="Source: orders",
+                                        tasks=4, dur_p50=2_000,
+                                        dur_max=65_000)],
+                          "sync-orders (j-1)"))
+    resp = client.post("/api/skew/runtime/flink", json={
+        "url": "http://fl:8081", "app_id": "j-1", "lang": "zh"})
+    assert resp.status_code == 200
+    assert "运行时倾斜诊断" in resp.json()["report"]
+    missing = client.post("/api/skew/runtime/flink", json={"lang": "zh"})
+    assert missing.status_code == 400
 
 
 def test_runtime_history_server_fake_fetch():

@@ -296,6 +296,73 @@ def analyze_history_server(
     return sort_stages(out), app
 
 
+def analyze_flink(
+    base_url: str,
+    job_id: str,
+    fetch=_fetch_json,
+    max_vertices: int = MAX_REST_STAGES,
+) -> tuple[list[StageSkew], str]:
+    """(vertices worst-first, job label) via the Flink REST API.
+
+    SeaTunnel on the Flink engine: one job-details call, then one vertex
+    detail per heaviest vertex — each subtask carries its own duration
+    and read-records/read-bytes (IOMetricsInfo), so the same max/median
+    straggler test applies. The Zeta engine's REST exposes only job-level
+    aggregates (no per-task metrics), so Zeta is not supported yet.
+    Bytes read per subtask fill the shuffle-read slots of ``StageSkew``.
+    """
+    base = (base_url or "").strip().rstrip("/")
+    job = (job_id or "").strip()
+    if not base or not job:
+        raise RuntimeSkewError("rt_need_url")
+    try:
+        info = fetch(f"{base}/jobs/{job}")
+    except Exception as exc:
+        raise RuntimeSkewError("rt_http_fail", str(exc))
+    vertices = info.get("vertices") or []
+    if not vertices:
+        raise RuntimeSkewError("rt_no_stages")
+
+    def _read_bytes(v: dict) -> float:
+        try:
+            return float((v.get("metrics") or {}).get("read-bytes") or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    heaviest = sorted(vertices, key=_read_bytes, reverse=True)[:max_vertices]
+    out: list[StageSkew] = []
+    for idx, v in enumerate(heaviest):
+        vid = v.get("id")
+        if not vid:
+            continue
+        try:
+            detail = fetch(f"{base}/jobs/{job}/vertices/{vid}")
+        except Exception:
+            continue
+        subs = detail.get("subtasks") or []
+        durs = [float(s.get("duration") or 0) for s in subs]
+        reads = [float((s.get("metrics") or {}).get("read-bytes") or 0)
+                 for s in subs]
+        durs = [d for d in durs if d >= 0]
+        if not durs:
+            continue
+        out.append(StageSkew(
+            stage_id=idx,
+            name=str(v.get("name") or ""),
+            tasks=len(subs),
+            dur_p50=float(statistics.median(durs)),
+            dur_max=float(max(durs)),
+            shuf_p50=float(statistics.median(reads)) if reads else 0.0,
+            shuf_max=float(max(reads)) if reads else 0.0,
+        ))
+    if not out:
+        raise RuntimeSkewError("rt_no_stages")
+    label = str(info.get("name") or job)
+    if label != job:
+        label = f"{label} ({job})"
+    return sort_stages(out), label
+
+
 # ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------

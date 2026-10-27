@@ -107,6 +107,9 @@ seatunnel-agent skew-splitkey configs/ --ds mysql --webhook https://oapi.dingtal
 # 运行时诊断：离线 event log（文件 / .gz / 滚动目录）
 seatunnel-agent skew-runtime /path/to/eventlog --lang zh -o rt.md
 
+# 运行时诊断：Flink REST（SeaTunnel on Flink，per-subtask 指标）
+seatunnel-agent skew-runtime --flink http://host:8081 --app <flink-job-id>
+
 # 运行时诊断：History Server REST；--fail 存在确认倾斜 stage 时退出码 1
 seatunnel-agent skew-runtime --history http://host:18080 --app application_123 --fail
 
@@ -166,6 +169,7 @@ splitkey 巡检 webhook 的漂移行遵循同一去重规则。
 | `skew_check_file(path, ...)` | 同上，输入为文件路径 |
 | `skew_runtime_eventlog(path, lang?)` | 解析 Spark event log 定位拖尾 stage（离线，零依赖） |
 | `skew_runtime_history(base_url, app_id, lang?)` | 走 History Server REST 的同款诊断（只读 GET） |
+| `skew_runtime_flink(base_url, job_id, lang?)` | Flink REST per-subtask 指标诊断（SeaTunnel on Flink；Zeta 引擎 REST 仅作业级聚合、无 per-task 指标，暂不支持） |
 | `skew_drift(table?, column?, lang?)` | 倾斜漂移：最新分片键实测 vs 历史基线（只读巡检历史，不连库；no-db 档亦可用） |
 | `skew_split_key(conf, ds_type?, sample_pct?, lang?)` | 分片键体检（按 `.env` 连库，只读探查） |
 | `skew_split_key_file(path, ...)` | 同上，输入为配置文件路径 |
