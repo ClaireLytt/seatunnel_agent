@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
-import { ApiError, runtimeEventlog, runtimeHistoryServer } from '@/api'
+import { ApiError, runtimeEventlog, runtimeFlink, runtimeHistoryServer } from '@/api'
 import { fieldCls, labelCls, smallBtnCls } from '@/ui'
 
 export function RuntimePanel({
@@ -49,6 +49,17 @@ export function RuntimePanel({
       }),
     )
 
+  const fetchFlink = () =>
+    wrap(() =>
+      runtimeFlink({
+        url,
+        app_id: appId,
+        report,
+        lang: i18n.language,
+        session_id: sessionId,
+      }),
+    )
+
   const onUpload = (f: File | undefined) => {
     if (!f) return
     void wrap(() => runtimeEventlog(f, report, i18n.language, sessionId))
@@ -84,6 +95,9 @@ export function RuntimePanel({
           <div className="flex gap-2">
             <button onClick={fetchServer} disabled={busy} className={smallBtnCls}>
               {t('rt_btn')}
+            </button>
+            <button onClick={fetchFlink} disabled={busy} className={smallBtnCls}>
+              {t('rt_flink_btn')}
             </button>
             <button onClick={() => fileRef.current?.click()} disabled={busy} className={smallBtnCls}>
               {t('rt_upload_btn')}
