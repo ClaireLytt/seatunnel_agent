@@ -201,6 +201,10 @@ def parse_eventlog(path: str | Path) -> tuple[list[StageSkew], str]:
                     str(ev.get("description") or "")
             elif kind == "SparkListenerApplicationStart":
                 app_name = str(ev.get("App Name") or "")
+                # the id disambiguates same-named apps in the re-check line
+                app_id = str(ev.get("App ID") or "")
+                if app_name and app_id:
+                    app_name = f"{app_name} ({app_id})"
     except OSError as exc:
         raise RuntimeSkewError("rt_read_fail", str(exc))
 

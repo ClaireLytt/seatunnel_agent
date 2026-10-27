@@ -2292,6 +2292,19 @@ def test_runtime_parse_eventlog(tmp_path):
     assert s2.tasks == 4  # the failed task did not count
 
 
+def test_runtime_parse_eventlog_label_includes_app_id(tmp_path):
+    """With an App ID present, the label disambiguates same-named apps
+    so the re-check line compares against the right baseline."""
+    events = [dict(e) for e in _eventlog_events()]
+    for e in events:
+        if e.get("Event") == "SparkListenerApplicationStart":
+            e["App ID"] = "application_123"
+    log = tmp_path / "app-456"
+    _write_eventlog(log, events)
+    _, label = parse_eventlog(log)
+    assert label == "etl-daily (application_123)"
+
+
 def test_runtime_parse_gz_and_rolling_dir(tmp_path):
     import gzip
     import json as _json
