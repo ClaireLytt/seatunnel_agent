@@ -516,12 +516,11 @@ def diagnose_and_log(history, stages: list[StageSkew], label: str,
     # table gets its drift verdict inlined (when patrol history exists) or a
     # pointer to the splitkey checkup (when it doesn't)
     if confirmed or suspect:
-        from .drift import compute_drift, render_drift
+        from .drift import drift_for, render_drift
 
         for t in implicated_tables(stages)[:3]:
-            trend = history.splitkey_trend(t, n=50)
-            if trend:
-                md += "\n\n" + render_drift(compute_drift(t, trend), lang)
+            if history.splitkey_trend(t, n=1):
+                md += "\n\n" + render_drift(drift_for(history, t), lang)
             else:
                 md += "\n\n" + dsk(lang, "rt_table_next").format(table=t)
     return md, confirmed, suspect

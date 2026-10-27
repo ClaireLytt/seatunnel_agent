@@ -8,6 +8,14 @@ import click
 from ..common.cli_common import console
 
 
+def _save_report(path: str, text: str) -> None:
+    """-o report file + the shared saved-notice (every skew command)."""
+    from pathlib import Path
+
+    Path(path).write_text(text, encoding="utf-8")
+    console.print(f"[dim]报告已保存: {path}[/dim]")
+
+
 @click.command()
 @click.argument("paths", nargs=-1, type=click.Path(exists=True))
 @click.option("--sql", "-s", type=str, default=None, help="SQL text to analyze")
@@ -119,8 +127,7 @@ def skew(
         text_out = "\n\n---\n\n".join(parts)
         console.print(text_out, markup=False)
     if output:
-        Path(output).write_text(text_out, encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
+        _save_report(output, text_out)
 
     # ── CI gate ──
     if fail_on:
@@ -180,7 +187,7 @@ def skew_stats(recent: int) -> None:
     h = default_history()
     tables = h.splitkey_tables()
     if tables:
-        from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+        from seatunnel_agent.agents.data.data_skew.drift import drift_for
 
         console.print("\n[bold]分片键巡检（每表最近趋势）[/bold]")
         v_marks = {"good": "✅", "suspect": "⚠️", "bad": "⛔",
@@ -198,7 +205,7 @@ def skew_stats(recent: int) -> None:
                 if (sk := rec.get("splitkey") or {}).get("top1_pct") is not None
             ]
             trail = (" · top1 " + " → ".join(top1s)) if top1s else ""
-            d = compute_drift(t, h.splitkey_trend(t, n=50))
+            d = drift_for(h, t)
             if d.verdict == "drift":
                 drifting += 1
             console.print(
@@ -234,7 +241,7 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
     未进一步恶化不重发,恶化升级重发,恢复发一条恢复通知。
     """
     from seatunnel_agent.agents.data.data_skew.drift import (
-        compute_drift,
+        drift_for,
         drift_item_dict,
         notify_decision,
         render_drift,
@@ -258,7 +265,7 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
     alert_lines: list[str] = []
     report_lines: list[str] = []
     for t in tables:
-        result = compute_drift(t, history.splitkey_trend(t, n=50))
+        result = drift_for(history, t)
         line = render_drift(result, lang)
         items.append(drift_item_dict(result, lang))
         if not as_json:
@@ -285,10 +292,7 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
     if as_json:
         click.echo(json.dumps({"items": items}, ensure_ascii=False))
     if output:
-        from pathlib import Path as _Path
-        _Path(output).write_text("\n\n".join(report_lines) + "\n",
-                                 encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
+        _save_report(output, "\n\n".join(report_lines) + "\n")
     if webhook_url and alert_lines:
         from seatunnel_agent.agents.data.data_skew.notify import post_webhook
         payload: dict = {"source": "seatunnel-agent", "kind": "skew_drift",
@@ -476,12 +480,11 @@ def skew_splitkey(
         md = render_splitkey_batch(items, lang, sample_pct=pct)
         console.print(md)
         if output:
-            Path(output).write_text(md, encoding="utf-8")
-            console.print(f"[dim]报告已保存: {output}[/dim]")
+            _save_report(output, md)
         # drift tail (directory mode): only the drifted tables, one line each;
         # the webhook repeats a drift only when it worsened (suppression)
         from seatunnel_agent.agents.data.data_skew.drift import (
-            compute_drift,
+            drift_for,
             notify_decision,
             render_drift,
         )
@@ -493,7 +496,7 @@ def skew_splitkey(
                     seen.append(tk)
         drift_lines: dict[str, str] = {}
         for t, col in seen:
-            d = compute_drift(t, history.splitkey_trend(t, n=50), column=col)
+            d = drift_for(history, t, column=col)
             if d.verdict not in ("drift", "stable"):
                 continue
             notify, kind = notify_decision(history.last_drift(t), d)
@@ -550,19 +553,17 @@ def skew_splitkey(
         md = md + "\n" + snk
     console.print(md)
     if output:
-        Path(output).write_text(md, encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
+        _save_report(output, md)
     # drift tail: the measurement just logged vs the table's baseline;
     # the webhook repeats a drift only when it worsened (suppression)
     from seatunnel_agent.agents.data.data_skew.drift import (
-        compute_drift,
+        drift_for,
         notify_decision,
         render_drift,
     )
     drift_lines: dict[str, str] = {}
     for spec, _, _ in results:
-        d = compute_drift(spec.table, history.splitkey_trend(spec.table, n=50),
-                          column=spec.partition_column)
+        d = drift_for(history, spec.table, column=spec.partition_column)
         line = render_drift(d, lang)
         console.print(line)
         notify, kind = notify_decision(history.last_drift(spec.table), d)
@@ -642,7 +643,6 @@ def skew_runtime(
     EVENTLOG: Spark event log 文件 / .gz / 滚动目录（离线），
     或 --history + --app 走 Spark History Server REST（在线），
     或 --flink + --app 走 Flink REST（SeaTunnel on Flink）。"""
-    from pathlib import Path
 
     from seatunnel_agent.agents.data.data_skew.history import default_history
     from seatunnel_agent.agents.data.data_skew.i18n import dsk as _dsk
@@ -676,8 +676,7 @@ def skew_runtime(
         default_history(), stages, label, lang, source="cli")
     console.print(md)
     if output:
-        Path(output).write_text(md, encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
+        _save_report(output, md)
     if fail_flag and confirmed:
         console.print(f"\n[red]{confirmed} 个 stage 确认倾斜，检查未通过。[/red]")
         sys.exit(1)

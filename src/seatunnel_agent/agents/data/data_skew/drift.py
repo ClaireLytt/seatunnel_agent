@@ -22,6 +22,10 @@ NDV_DROP_PCT = 30.0      # distinct count fell by >= 30 %
 
 MIN_HISTORY = 3          # need baseline(>=2) + latest to call a drift
 
+# history depth every drift evaluation reads (deep enough for the median
+# baseline; the shallow n=8 in skew-stats is display-only, not this)
+TREND_DEPTH = 50
+
 
 @dataclass
 class MetricDrift:
@@ -126,6 +130,13 @@ def compute_drift(table: str, records: list[dict],
 
     result.verdict = "drift" if result.drifts else "stable"
     return result
+
+
+def drift_for(history, table: str, column: str = "") -> DriftResult:
+    """Drift verdict for *table* straight off the patrol history — the one
+    call every facade repeats (trend read at TREND_DEPTH + compute)."""
+    return compute_drift(table, history.splitkey_trend(table, n=TREND_DEPTH),
+                         column=column)
 
 
 def notify_decision(prev: dict | None, result: DriftResult) -> tuple[bool, str]:
