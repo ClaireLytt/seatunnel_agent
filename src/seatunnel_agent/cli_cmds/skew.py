@@ -510,8 +510,8 @@ def skew_runtime(
     from seatunnel_agent.agents.data.data_skew.runtime import (
         RuntimeSkewError,
         analyze_history_server,
+        diagnose_and_log,
         parse_eventlog,
-        render_runtime_section,
     )
 
     if bool(eventlog) == bool(history_url or app_id):
@@ -527,12 +527,8 @@ def skew_runtime(
     except RuntimeSkewError as exc:
         raise click.ClickException(_dsk(lang, exc.key).format(err=exc.arg))
 
-    confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
-    suspect = sum(1 for s in stages if s.verdict() == "suspect")
-    default_history().log_runtime(label, len(stages), confirmed, suspect,
-                                  source="cli")
-
-    md = render_runtime_section(stages, lang, source_label=label)
+    md, confirmed, _ = diagnose_and_log(
+        default_history(), stages, label, lang, source="cli")
     console.print(md)
     if output:
         Path(output).write_text(md, encoding="utf-8")

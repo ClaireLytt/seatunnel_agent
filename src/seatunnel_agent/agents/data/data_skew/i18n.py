@@ -186,6 +186,18 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "but its top-1 share drifted {prev}% → {cur}% ({delta} pp) — "
             "watch this table before it tips over."
         ),
+        "rt_recheck_better": (
+            "🔁 Re-check vs last diagnosis ({ts}): confirmed skewed stages "
+            "{prev} → {cur} — improved."
+        ),
+        "rt_recheck_worse": (
+            "🔁 Re-check vs last diagnosis ({ts}): confirmed skewed stages "
+            "{prev} → {cur} — got worse."
+        ),
+        "rt_recheck_same": (
+            "🔁 Re-check vs last diagnosis ({ts}): confirmed skewed stages "
+            "unchanged ({prev} → {cur})."
+        ),
         "drf_drift": (
             "📈 Skew drift — {table} (key={col}, {n} samples): "
             "latest run drifted from its baseline:"
@@ -509,6 +521,15 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "spk_recheck_drift": (
             "🔁 复测对比：上次体检（{ts}）判定仍正常，但 top-1 占比从 "
             "{prev}% 漂移到 {cur}%（{delta} pp）——建议关注该表，防止恶化。"
+        ),
+        "rt_recheck_better": (
+            "🔁 复测对比：上次诊断（{ts}）确认倾斜 stage {prev} → {cur}——有好转。"
+        ),
+        "rt_recheck_worse": (
+            "🔁 复测对比：上次诊断（{ts}）确认倾斜 stage {prev} → {cur}——出现恶化。"
+        ),
+        "rt_recheck_same": (
+            "🔁 复测对比：上次诊断（{ts}）确认倾斜 stage 无变化（{prev} → {cur}）。"
         ),
         "drf_drift": (
             "📈 倾斜漂移 — {table}（key={col}，{n} 次测量）："

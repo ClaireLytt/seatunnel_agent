@@ -387,3 +387,28 @@ def render_runtime_section(stages: list[StageSkew], lang: str,
     return "\n".join(parts)
 
 
+def diagnose_and_log(history, stages: list[StageSkew], label: str,
+                     lang: str, source: str) -> tuple[str, int, int]:
+    """Count verdicts, log the diagnosis, render the section plus the
+    re-check line against the previous run of the same application.
+
+    One shared tail for the CLI / REST / MCP runtime entry points (they
+    all repeated this count-log-render block). Returns
+    ``(markdown, confirmed, suspect)``.
+    """
+    lang = normalize_lang(lang)
+    confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
+    suspect = sum(1 for s in stages if s.verdict() == "suspect")
+    prev = history.last_runtime(label)   # before logging this run
+    history.log_runtime(label, len(stages), confirmed, suspect, source=source)
+    md = render_runtime_section(stages, lang, source_label=label)
+    if prev is not None:
+        p = int((prev.get("runtime") or {}).get("confirmed") or 0)
+        key = ("rt_recheck_better" if confirmed < p
+               else "rt_recheck_worse" if confirmed > p
+               else "rt_recheck_same")
+        md += "\n\n" + dsk(lang, key).format(
+            ts=str(prev.get("timestamp") or ""), prev=p, cur=confirmed)
+    return md, confirmed, suspect
+
+

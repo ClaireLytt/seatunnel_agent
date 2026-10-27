@@ -464,14 +464,11 @@ def splitkey(req: SplitKeyRequest) -> dict[str, Any]:
 
 def _runtime_response(stages: list, label: str, report_cur: str,
                       lang: str, session_status: str) -> dict[str, Any]:
-    from .runtime import render_runtime_section
+    from .runtime import diagnose_and_log
     from .sections import RT_HEAD_RE, append_section
 
-    confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
-    suspect = sum(1 for s in stages if s.verdict() == "suspect")
-    default_history().log_runtime(label, len(stages), confirmed, suspect,
-                                  source="api")
-    section = render_runtime_section(stages, lang, source_label=label)
+    section, _, _ = diagnose_and_log(
+        default_history(), stages, label, lang, source="api")
     return {"report": append_section(report_cur, section, RT_HEAD_RE),
             "status": session_status}
 

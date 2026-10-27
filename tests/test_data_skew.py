@@ -1838,6 +1838,27 @@ def test_history_log_splitkey(tmp_path):
     assert "orders" in bad["sql"]  # readable in the history panel
 
 
+def test_history_last_runtime(tmp_path):
+    from seatunnel_agent.agents.data.data_skew.history import SkewHistory
+
+    h = SkewHistory(log_dir=tmp_path)
+    assert h.last_runtime("app-1") is None
+    h.log_runtime("app-1", stages=5, confirmed=2, suspect=1)
+    h.log_runtime("app-2", stages=3, confirmed=0, suspect=0)
+    h.log_runtime("app-1", stages=5, confirmed=0, suspect=1)
+    rec = h.last_runtime("app-1")
+    assert rec["runtime"]["confirmed"] == 0    # latest wins
+    assert h.last_runtime("") is None
+    assert h.last_runtime("nope") is None
+
+
+def test_runtime_recheck_line_i18n():
+    from seatunnel_agent.agents.data.data_skew.i18n import DSK_I18N
+
+    for key in ("rt_recheck_better", "rt_recheck_worse", "rt_recheck_same"):
+        assert key in DSK_I18N["en"] and key in DSK_I18N["zh"]
+
+
 def test_history_last_splitkey(tmp_path):
     from seatunnel_agent.agents.data.data_skew.history import SkewHistory
 
@@ -2400,9 +2421,15 @@ def test_cli_skew_runtime(monkeypatch, tmp_path):
     assert rec["mode"] == "runtime" and rec["source"] == "cli"
     assert rec["runtime"]["confirmed"] == 1
 
-    # CI gate: a confirmed stage exists → exit 1
+    # first diagnosis has no previous run → no re-check line
+    assert "复测对比" not in res.output
+
+    # CI gate: a confirmed stage exists → exit 1; same app re-diagnosed →
+    # the re-check line reports "unchanged" against the first run
     gated = runner.invoke(cli, ["skew-runtime", str(log), "--fail"])
     assert gated.exit_code == 1
+    assert "复测对比" in gated.output and "无变化" in gated.output
+    assert "（1 →" in gated.output   # console wraps inside the parens
 
     # report file + argument validation
     out = tmp_path / "rt.md"

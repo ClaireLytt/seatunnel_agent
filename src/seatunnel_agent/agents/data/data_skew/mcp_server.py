@@ -82,11 +82,7 @@ def build_tool_functions(
         任务时长与 shuffle 读的 max/median 定位拖尾 stage，并把倾斜 stage
         映射回产生它的 SQL。离线分析，不连接任何集群。"""
         from .i18n import dsk
-        from .runtime import (
-            RuntimeSkewError,
-            parse_eventlog,
-            render_runtime_section,
-        )
+        from .runtime import RuntimeSkewError, diagnose_and_log, parse_eventlog
 
         lg = (lang or default_lang).strip().lower()
         try:
@@ -95,11 +91,8 @@ def build_tool_functions(
             return dsk(lg, exc.key).format(err=exc.arg)
         except OSError as exc:
             return f"读取文件失败 / cannot read file: {exc}"
-        confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
-        suspect = sum(1 for s in stages if s.verdict() == "suspect")
-        history.log_runtime(label, len(stages), confirmed, suspect,
-                            source="mcp")
-        return render_runtime_section(stages, lg, source_label=label)
+        md, _, _ = diagnose_and_log(history, stages, label, lg, source="mcp")
+        return md
 
     def skew_runtime_history(base_url: str, app_id: str, lang: str = "") -> str:
         """运行时倾斜诊断：调用 Spark History Server REST API
@@ -109,7 +102,7 @@ def build_tool_functions(
         from .runtime import (
             RuntimeSkewError,
             analyze_history_server,
-            render_runtime_section,
+            diagnose_and_log,
         )
 
         lg = (lang or default_lang).strip().lower()
@@ -117,11 +110,8 @@ def build_tool_functions(
             stages, label = analyze_history_server(base_url, app_id)
         except RuntimeSkewError as exc:
             return dsk(lg, exc.key).format(err=exc.arg)
-        confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
-        suspect = sum(1 for s in stages if s.verdict() == "suspect")
-        history.log_runtime(label, len(stages), confirmed, suspect,
-                            source="mcp")
-        return render_runtime_section(stages, lg, source_label=label)
+        md, _, _ = diagnose_and_log(history, stages, label, lg, source="mcp")
+        return md
 
     def skew_drift(table: str = "", column: str = "", lang: str = "") -> str:
         """分片键倾斜漂移检测：最新一次 skew_split_key 实测 vs 历史基线

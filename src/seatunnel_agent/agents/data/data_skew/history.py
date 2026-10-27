@@ -176,6 +176,17 @@ class SkewHistory:
         }
         self._log.append(record)
 
+    def last_runtime(self, app: str) -> dict | None:
+        """The most recent runtime record for *app*, or None — feeds the
+        runtime re-check line (did the fix land between two diagnoses?)."""
+        if not app:
+            return None
+        for rec in self.recent(200):
+            if (rec.get("mode") == "runtime"
+                    and (rec.get("runtime") or {}).get("app") == app):
+                return rec
+        return None
+
     def last_splitkey(self, table: str) -> dict | None:
         """The most recent splitkey record for *table*, or None.
 
