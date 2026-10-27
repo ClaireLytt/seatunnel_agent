@@ -89,3 +89,22 @@ cases:
   - id: ddl-clean
     sql: drop table if exists t
     expect: []
+
+  # --- dialect variants: rule-id sets must stay stable across dialects,
+  # --- and dialect-native hints must suppress like spark's BROADCAST ---
+  - id: mc-mapjoin-hint-clean
+    dialect: maxcompute
+    sql: select /*+ MAPJOIN(d) */ * from t join d on t.id = d.id
+    expect: []
+  - id: mc-count-distinct
+    dialect: maxcompute
+    sql: select count(distinct user_id) from t group by dt
+    expect: [DS001]
+  - id: hive-dynamic-partition
+    dialect: hive
+    sql: insert overwrite table ads.t partition (dt) select id, dt from s
+    expect: [DS010]
+  - id: hive-null-key-outer-join
+    dialect: hive
+    sql: select * from a left join b on a.uid = b.uid
+    expect: [DS007, DS013]

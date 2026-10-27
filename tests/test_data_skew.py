@@ -1883,6 +1883,10 @@ def test_bench_corpus_is_green():
     expected_ids = set().union(*(c.expect for c in cases))
     assert {f"DS{i:03d}" for i in range(1, 14)} <= expected_ids
     assert any(not c.expect for c in cases)
+    # all three dialects exercised, incl. a dialect-native hint suppression
+    assert {c.dialect for c in cases} == {"spark", "maxcompute", "hive"}
+    mc_hint = next(c for c in cases if c.case_id == "mc-mapjoin-hint-clean")
+    assert mc_hint.dialect == "maxcompute" and not mc_hint.expect
     result = run_bench(cases, gate)
     md = render_bench(result, "zh")
     assert result.passed, md
