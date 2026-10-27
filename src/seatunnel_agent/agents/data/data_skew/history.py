@@ -153,6 +153,56 @@ class SkewHistory:
         }
         self._log.append(record)
 
+    def log_drift(
+        self,
+        table: str,
+        verdict: str,          # drift | stable | insufficient
+        drifted_metrics: list[str] | None = None,
+        source: str = "cli",
+        deltas: dict[str, float] | None = None,
+    ) -> None:
+        """A drift patrol record (mode='drift'): the latest splitkey
+        measurement compared against its historical baseline. ``deltas``
+        (metric -> delta) feed the alert-suppression comparison."""
+        counts = {"high": 1 if verdict == "drift" else 0, "medium": 0, "low": 0}
+        drift: dict = {"table": table, "drift_verdict": verdict,
+                       "metrics": drifted_metrics or []}
+        if deltas:
+            drift["deltas"] = {k: round(float(v), 2) for k, v in deltas.items()}
+        record = {
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "source": source,
+            "mode": "drift",
+            "dialect": "",
+            "counts": counts,
+            "verdict": "high" if verdict == "drift" else "clean",
+            "drift": drift,
+            "sql": f"-- drift: {table} {verdict}",
+        }
+        self._log.append(record)
+
+    def last_drift(self, table: str) -> dict | None:
+        """The most recent drift patrol record for *table*, or None —
+        the alert-suppression baseline (was this drift already reported?)."""
+        if not table:
+            return None
+        for rec in self.recent(200):
+            if (rec.get("mode") == "drift"
+                    and (rec.get("drift") or {}).get("table") == table):
+                return rec
+        return None
+
+    def last_runtime(self, app: str) -> dict | None:
+        """The most recent runtime record for *app*, or None — feeds the
+        runtime re-check line (did the fix land between two diagnoses?)."""
+        if not app:
+            return None
+        for rec in self.recent(200):
+            if (rec.get("mode") == "runtime"
+                    and (rec.get("runtime") or {}).get("app") == app):
+                return rec
+        return None
+
     def last_splitkey(self, table: str) -> dict | None:
         """The most recent splitkey record for *table*, or None.
 

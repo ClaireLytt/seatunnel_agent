@@ -186,6 +186,36 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "but its top-1 share drifted {prev}% → {cur}% ({delta} pp) — "
             "watch this table before it tips over."
         ),
+        "rt_recheck_better": (
+            "🔁 Re-check vs last diagnosis ({ts}): confirmed skewed stages "
+            "{prev} → {cur} — improved."
+        ),
+        "rt_recheck_worse": (
+            "🔁 Re-check vs last diagnosis ({ts}): confirmed skewed stages "
+            "{prev} → {cur} — got worse."
+        ),
+        "rt_recheck_same": (
+            "🔁 Re-check vs last diagnosis ({ts}): confirmed skewed stages "
+            "unchanged ({prev} → {cur})."
+        ),
+        "drf_drift": (
+            "📈 Skew drift — {table} (key={col}, {n} samples): "
+            "latest run drifted from its baseline:"
+        ),
+        "drf_metric": "  - {metric}: baseline {base} → current {cur} ({delta:+g})",
+        "drf_stable": (
+            "📊 Skew drift — {table} (key={col}, {n} samples): "
+            "stable vs baseline."
+        ),
+        "drf_insufficient": (
+            "📊 Skew drift — {table}: only {n} measured runs in history "
+            "(need 3) — no baseline yet."
+        ),
+        "drf_recovered": (
+            "✅ Skew drift recovered — {table} (key={col}): the latest "
+            "measurement is back near its baseline."
+        ),
+        "drf_none": "No splitkey history yet — run skew-splitkey first.",
         "spk_batch_section": "## SeaTunnel Split-Key Patrol (directory batch)",
         "spk_batch_counts": (
             "{files} config files scanned — {sources} sources measured, "
@@ -496,6 +526,31 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "🔁 复测对比：上次体检（{ts}）判定仍正常，但 top-1 占比从 "
             "{prev}% 漂移到 {cur}%（{delta} pp）——建议关注该表，防止恶化。"
         ),
+        "rt_recheck_better": (
+            "🔁 复测对比：上次诊断（{ts}）确认倾斜 stage {prev} → {cur}——有好转。"
+        ),
+        "rt_recheck_worse": (
+            "🔁 复测对比：上次诊断（{ts}）确认倾斜 stage {prev} → {cur}——出现恶化。"
+        ),
+        "rt_recheck_same": (
+            "🔁 复测对比：上次诊断（{ts}）确认倾斜 stage 无变化（{prev} → {cur}）。"
+        ),
+        "drf_drift": (
+            "📈 倾斜漂移 — {table}（key={col}，{n} 次测量）："
+            "最新一次相对基线发生漂移："
+        ),
+        "drf_metric": "  - {metric}：基线 {base} → 当前 {cur}（{delta:+g}）",
+        "drf_stable": (
+            "📊 倾斜漂移 — {table}（key={col}，{n} 次测量）：相对基线稳定。"
+        ),
+        "drf_insufficient": (
+            "📊 倾斜漂移 — {table}：历史仅 {n} 次有效测量（需 3 次）——"
+            "暂无基线。"
+        ),
+        "drf_recovered": (
+            "✅ 倾斜漂移恢复 — {table}（key={col}）：最新实测已回到基线附近。"
+        ),
+        "drf_none": "还没有分片键巡检历史——请先运行 skew-splitkey。",
         "spk_batch_section": "## SeaTunnel 分片键巡检（目录批量）",
         "spk_batch_counts": (
             "扫描 {files} 个配置——实测 {sources} 个 source，"

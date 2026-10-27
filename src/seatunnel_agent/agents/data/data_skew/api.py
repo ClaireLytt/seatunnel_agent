@@ -464,14 +464,11 @@ def splitkey(req: SplitKeyRequest) -> dict[str, Any]:
 
 def _runtime_response(stages: list, label: str, report_cur: str,
                       lang: str, session_status: str) -> dict[str, Any]:
-    from .runtime import render_runtime_section
+    from .runtime import diagnose_and_log
     from .sections import RT_HEAD_RE, append_section
 
-    confirmed = sum(1 for s in stages if s.verdict() == "confirmed")
-    suspect = sum(1 for s in stages if s.verdict() == "suspect")
-    default_history().log_runtime(label, len(stages), confirmed, suspect,
-                                  source="api")
-    section = render_runtime_section(stages, lang, source_label=label)
+    section, _, _ = diagnose_and_log(
+        default_history(), stages, label, lang, source="api")
     return {"report": append_section(report_cur, section, RT_HEAD_RE),
             "status": session_status}
 
@@ -534,6 +531,33 @@ async def runtime_eventlog(file: UploadFile, report: str = "",
     if session_id:
         status_line = _get_session(session_id).status
     return _runtime_response(stages, label, report, lang, status_line)
+
+
+@router.get("/drift")
+def drift(table: str = "", lang: str = "zh") -> dict[str, Any]:
+    """Skew drift per table: latest splitkey measurement vs its baseline.
+
+    Read-only over the patrol history — same verdicts as the skew-drift
+    CLI; ``text`` is the shared bilingual rendering for the trend card."""
+    from .drift import compute_drift, render_drift
+
+    lng = normalize_lang(lang)
+    history = default_history()
+    tables = [table] if table else history.splitkey_tables()
+    items: list[dict[str, Any]] = []
+    for t in tables:
+        result = compute_drift(t, history.splitkey_trend(t, n=50))
+        items.append({
+            "table": result.table,
+            "column": result.column,
+            "verdict": result.verdict,
+            "samples": result.samples,
+            "drifts": [{"metric": d.metric, "baseline": d.baseline,
+                        "current": d.current, "delta": d.delta}
+                       for d in result.drifts],
+            "text": render_drift(result, lng),
+        })
+    return {"items": items}
 
 
 @router.get("/history")

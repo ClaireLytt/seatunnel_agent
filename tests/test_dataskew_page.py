@@ -84,7 +84,7 @@ def test_dataskew_page_smoke(page_url):
         expect(page.get_by_role("button", name="Analyze Skew",
                                 exact=True)).to_be_disabled()  # empty SQL
         for acc in ("Connect data source", "SeaTunnel split-key check",
-                    "Runtime diagnosis", "Analysis history"):
+                    "Skew drift", "Runtime diagnosis", "Analysis history"):
             expect(page.locator("summary", has_text=acc)).to_be_visible()
 
         assert not console_errors, f"console errors: {console_errors}"
@@ -659,4 +659,38 @@ def test_dataskew_dialect_switch_hive(page_url):
             page, dialect="hive", run=run,
             report=page.locator(".dsk-report-card"),
             contains="COUNT(DISTINCT)", timeout=10000)
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_dataskew_drift_card(page_url):
+    """Drift card: seeded splitkey history renders verdict badge + deltas."""
+    import os
+
+    from playwright.sync_api import expect, sync_playwright
+
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+
+    # seed the same history file the in-process server reads
+    assert os.environ.get("SEATUNNEL_SKEW_HISTORY_PATH")
+    h = default_history()
+    for top1 in (10.0, 14.0, 28.0):
+        h.log_splitkey("orders", "id", "good", top1_pct=top1)
+    h.log_splitkey("t2", "id", "good", top1_pct=5.0)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("summary", has_text="Skew drift").click()
+        page.get_by_role("button", name="Refresh drift", exact=True).click()
+
+        expect(page.get_by_text("orders", exact=True)).to_be_visible(
+            timeout=10000)
+        expect(page.get_by_text("drift", exact=True)).to_be_visible()
+        expect(page.get_by_text("no baseline", exact=True)).to_be_visible()
+        row = page.locator("div", has_text="top1_pct").last
+        expect(row).to_contain_text("12 → 28")
+        expect(row).to_contain_text("+16")
         browser.close()

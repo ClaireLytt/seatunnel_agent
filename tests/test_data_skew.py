@@ -1838,6 +1838,27 @@ def test_history_log_splitkey(tmp_path):
     assert "orders" in bad["sql"]  # readable in the history panel
 
 
+def test_history_last_runtime(tmp_path):
+    from seatunnel_agent.agents.data.data_skew.history import SkewHistory
+
+    h = SkewHistory(log_dir=tmp_path)
+    assert h.last_runtime("app-1") is None
+    h.log_runtime("app-1", stages=5, confirmed=2, suspect=1)
+    h.log_runtime("app-2", stages=3, confirmed=0, suspect=0)
+    h.log_runtime("app-1", stages=5, confirmed=0, suspect=1)
+    rec = h.last_runtime("app-1")
+    assert rec["runtime"]["confirmed"] == 0    # latest wins
+    assert h.last_runtime("") is None
+    assert h.last_runtime("nope") is None
+
+
+def test_runtime_recheck_line_i18n():
+    from seatunnel_agent.agents.data.data_skew.i18n import DSK_I18N
+
+    for key in ("rt_recheck_better", "rt_recheck_worse", "rt_recheck_same"):
+        assert key in DSK_I18N["en"] and key in DSK_I18N["zh"]
+
+
 def test_history_last_splitkey(tmp_path):
     from seatunnel_agent.agents.data.data_skew.history import SkewHistory
 
@@ -1876,6 +1897,32 @@ def _make_orders_db(tmp_path):
     return db
 
 
+def test_mcp_skew_drift(monkeypatch, tmp_path):
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew.mcp_server import (
+        build_tool_functions,
+    )
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    fns = build_tool_functions()
+    # empty history → pointer to skew_split_key patrols
+    assert "skew-splitkey" in fns["skew_drift"]()
+
+    h = default_history()
+    for top1 in (10.0, 14.0, 28.0):
+        h.log_splitkey("orders", "id", "good", top1_pct=top1)
+    out = fns["skew_drift"]("orders", lang="en")
+    assert "drifted" in out and "top1_pct" in out
+    # sweep + zh; the patrol lands in history with source=mcp
+    out_zh = fns["skew_drift"]()
+    assert "漂移" in out_zh
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "drift" and rec["source"] == "mcp"
+    # no-db profile still exposes the (history-only) drift tool
+    assert "skew_drift" in build_tool_functions(include_db=False)
+
+
 def test_mcp_split_key_validation(monkeypatch, tmp_path):
     from seatunnel_agent.agents.data.data_skew.mcp_server import build_tool_functions
 
@@ -1884,7 +1931,7 @@ def test_mcp_split_key_validation(monkeypatch, tmp_path):
     fns = build_tool_functions()
     assert set(fns) == {"skew_check", "skew_check_file",
                         "skew_runtime_eventlog", "skew_runtime_history",
-                        "skew_split_key", "skew_split_key_file",
+                        "skew_drift", "skew_split_key", "skew_split_key_file",
                         "skew_split_key_apply"}
     spk = fns["skew_split_key"]
     assert "不能为空" in spk("")
@@ -1953,6 +2000,35 @@ def test_cli_skew_splitkey(monkeypatch, tmp_path):
     runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite",
                         "-o", str(out)])
     assert "分片键体检" in out.read_text(encoding="utf-8")
+
+
+def test_cli_skew_splitkey_drift_tail(monkeypatch, tmp_path):
+    """skew-splitkey ends with the drift-vs-baseline line once history
+    is deep enough (same data every run → stable)."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.text2sql.executor import base as exec_base
+    from seatunnel_agent.cli import cli
+
+    db = _make_orders_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    conf_file = tmp_path / "job.conf"
+    conf_file.write_text(_SPLITKEY_CONF, encoding="utf-8")
+
+    runner = CliRunner()
+    first = runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite"])
+    assert first.exit_code == 0, first.output
+    assert "暂无基线" in first.output          # 1 measured run: insufficient
+    runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite"])
+    third = runner.invoke(cli, ["skew-splitkey", str(conf_file), "--ds", "sqlite"])
+    assert third.exit_code == 0, third.output
+    assert "倾斜漂移" in third.output
+    assert "相对基线稳定" in third.output       # identical data → stable
 
 
 def test_cli_skew_splitkey_apply_closes_loop(monkeypatch, tmp_path):
@@ -2216,6 +2292,19 @@ def test_runtime_parse_eventlog(tmp_path):
     assert s2.tasks == 4  # the failed task did not count
 
 
+def test_runtime_parse_eventlog_label_includes_app_id(tmp_path):
+    """With an App ID present, the label disambiguates same-named apps
+    so the re-check line compares against the right baseline."""
+    events = [dict(e) for e in _eventlog_events()]
+    for e in events:
+        if e.get("Event") == "SparkListenerApplicationStart":
+            e["App ID"] = "application_123"
+    log = tmp_path / "app-456"
+    _write_eventlog(log, events)
+    _, label = parse_eventlog(log)
+    assert label == "etl-daily (application_123)"
+
+
 def test_runtime_parse_gz_and_rolling_dir(tmp_path):
     import gzip
     import json as _json
@@ -2345,9 +2434,15 @@ def test_cli_skew_runtime(monkeypatch, tmp_path):
     assert rec["mode"] == "runtime" and rec["source"] == "cli"
     assert rec["runtime"]["confirmed"] == 1
 
-    # CI gate: a confirmed stage exists → exit 1
+    # first diagnosis has no previous run → no re-check line
+    assert "复测对比" not in res.output
+
+    # CI gate: a confirmed stage exists → exit 1; same app re-diagnosed →
+    # the re-check line reports "unchanged" against the first run
     gated = runner.invoke(cli, ["skew-runtime", str(log), "--fail"])
     assert gated.exit_code == 1
+    assert "复测对比" in gated.output and "无变化" in gated.output
+    assert "（1 →" in gated.output   # console wraps inside the parens
 
     # report file + argument validation
     out = tmp_path / "rt.md"
@@ -2478,6 +2573,7 @@ def test_cli_skew_splitkey_dir_patrol(monkeypatch, tmp_path):
     assert payload["kind"] == "splitkey_patrol"
     assert payload["counts"]["bad"] == 1 and payload["counts"]["errors"] == 1
     assert "巡检" in payload["text"]
+    assert "drift_tables" not in payload   # no drift yet → payload unchanged
     # history got one record per measured source, with metrics
     recs = [r for r in default_history().recent(10)
             if r.get("mode") == "splitkey"]
@@ -2485,6 +2581,22 @@ def test_cli_skew_splitkey_dir_patrol(monkeypatch, tmp_path):
     skewed = [r for r in recs
               if (r["splitkey"].get("partition_column") == "region")]
     assert skewed and skewed[0]["splitkey"]["top1_pct"] == 80.0
+
+    # drift tail in dir mode: seed two calmer earlier runs → the 80 % run
+    # the patrol just logged counts as a top1 drift; only drifted tables print
+    h = default_history()
+    for top1 in (20.0, 25.0):
+        h.log_splitkey("orders", "region", "good", top1_pct=top1)
+    posted.clear()
+    res_drift = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
+                                    "--webhook", "http://hook.local/x"])
+    assert res_drift.exit_code == 0, res_drift.output
+    assert "倾斜漂移" in res_drift.output and "orders" in res_drift.output
+    assert "相对基线稳定" not in res_drift.output   # stable tables stay silent
+    # the drifted table rides the patrol webhook
+    payload = posted[0][1]
+    assert payload["drift_tables"] == ["orders"]
+    assert "倾斜漂移" in payload["text"]
 
     # CI gate + --apply refusal in dir mode
     gated = runner.invoke(cli, ["skew-splitkey", str(d), "--ds", "sqlite",
@@ -2639,3 +2751,357 @@ def test_cli_skew_stats_splitkey_trend(monkeypatch, tmp_path):
     assert "分片键巡检" in res.output
     assert "shop.orders" in res.output
     assert "80%" in res.output and "2%" in res.output
+
+
+# ---------------------------------------------------------------------------
+# Drift detection (drift.py)
+# ---------------------------------------------------------------------------
+
+def _drift_recs(table, metrics_seq):
+    """Build splitkey trend records (oldest first) via a real SkewHistory."""
+    import tempfile
+
+    from seatunnel_agent.agents.data.data_skew.history import SkewHistory
+    h = SkewHistory(log_dir=tempfile.mkdtemp())
+    for m in metrics_seq:
+        h.log_splitkey(table, m.get("col", "id"), m.get("verdict", "good"),
+                       top1_pct=m.get("top1_pct"), ndv=m.get("ndv"),
+                       null_pct=m.get("null_pct"))
+    return h.splitkey_trend(table, n=50)
+
+
+def test_drift_insufficient_history():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [{"top1_pct": 10.0}, {"top1_pct": 30.0}])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "insufficient"
+    assert r.samples == 2
+    assert r.drifts == []
+
+
+def test_drift_unmeasured_records_dont_count():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    # 3 records but only 2 carry metrics -> still insufficient
+    recs = _drift_recs("orders", [
+        {"top1_pct": 10.0}, {}, {"top1_pct": 30.0},
+    ])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "insufficient"
+    assert r.samples == 2
+
+
+def test_drift_stable():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [
+        {"top1_pct": 11.0, "ndv": 1000, "null_pct": 1.0},
+        {"top1_pct": 12.0, "ndv": 980, "null_pct": 1.2},
+        {"top1_pct": 13.0, "ndv": 1010, "null_pct": 1.1},
+    ])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "stable"
+    assert r.drifts == []
+    assert r.column == "id"
+    assert r.samples == 3
+
+
+def test_drift_top1_rise():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [
+        {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0},
+    ])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "drift"
+    [d] = r.drifts
+    assert d.metric == "top1_pct"
+    assert d.baseline == 12.0          # median of 10, 14
+    assert d.current == 28.0
+    assert d.delta == 16.0
+
+
+def test_drift_null_rise_and_ndv_drop():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [
+        {"null_pct": 1.0, "ndv": 1000},
+        {"null_pct": 2.0, "ndv": 1000},
+        {"null_pct": 9.0, "ndv": 600},
+    ])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "drift"
+    metrics = {d.metric: d for d in r.drifts}
+    assert metrics["null_pct"].delta == 7.5     # 9.0 - median(1,2)=1.5
+    assert metrics["ndv"].baseline == 1000
+    assert metrics["ndv"].delta == -40.0        # 1000 -> 600 = -40 %
+
+
+def test_drift_ndv_drop_below_threshold_is_stable():
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [
+        {"ndv": 1000}, {"ndv": 1000}, {"ndv": 800},   # -20 % < 30 %
+    ])
+    r = compute_drift("orders", recs)
+    assert r.verdict == "stable"
+
+
+def test_drift_series_is_per_column():
+    """A table measured under two keys: each column gets its own series —
+    the other key's records never pollute the baseline."""
+    from seatunnel_agent.agents.data.data_skew.drift import compute_drift
+
+    recs = _drift_recs("orders", [
+        {"col": "region", "top1_pct": 20.0},
+        {"col": "region", "top1_pct": 25.0},
+        {"col": "id", "top1_pct": 1.0},
+        {"col": "region", "top1_pct": 80.0},
+        {"col": "id", "top1_pct": 1.2},
+    ])
+    r = compute_drift("orders", recs, column="region")
+    assert r.verdict == "drift" and r.column == "region"
+    assert r.drifts[0].baseline == 22.5 and r.drifts[0].current == 80.0
+    # default column = latest measured record's key (id) → only 2 samples
+    r2 = compute_drift("orders", recs)
+    assert r2.column == "id" and r2.verdict == "insufficient"
+
+
+def _seed_drift_history(tmp_path, monkeypatch, metrics_seq, table="orders"):
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    h = default_history()
+    for m in metrics_seq:
+        h.log_splitkey(table, m.get("col", "id"), m.get("verdict", "good"),
+                       top1_pct=m.get("top1_pct"), ndv=m.get("ndv"),
+                       null_pct=m.get("null_pct"))
+    return h
+
+
+def test_cli_skew_drift_single_table(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0},
+    ])
+    res = CliRunner().invoke(cli, ["skew-drift", "orders", "--lang", "en"])
+    assert res.exit_code == 0, res.output
+    assert "Skew drift" in res.output and "orders" in res.output
+    assert "top1_pct" in res.output
+    assert "12.0" in res.output and "28.0" in res.output and "+16" in res.output
+    # the drift patrol itself landed in history (mode='drift')
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "drift"
+    assert rec["drift"]["drift_verdict"] == "drift"
+    assert rec["drift"]["metrics"] == ["top1_pct"]
+
+
+def test_cli_skew_drift_sweep_and_insufficient(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    h = _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 11.0}, {"top1_pct": 12.0},
+    ])
+    h.log_splitkey("t2", "id", "good", top1_pct=5.0)
+    res = CliRunner().invoke(cli, ["skew-drift", "--lang", "zh"])
+    assert res.exit_code == 0, res.output
+    assert "orders" in res.output and "t2" in res.output
+    assert "稳定" in res.output          # orders: stable
+    assert "暂无基线" in res.output       # t2: insufficient
+
+
+def test_cli_skew_drift_empty_history(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    res = CliRunner().invoke(cli, ["skew-drift"])
+    assert res.exit_code == 0, res.output
+    assert "skew-splitkey" in res.output
+
+
+def test_cli_skew_drift_webhook(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.data_skew import notify
+    from seatunnel_agent.cli import cli
+
+    _seed_drift_history(tmp_path, monkeypatch, [
+        {"null_pct": 1.0}, {"null_pct": 2.0}, {"null_pct": 9.0},
+    ])
+    posted = {}
+
+    def fake_post(url, payload):
+        posted["url"] = url
+        posted["payload"] = payload
+        return True, "200"
+
+    monkeypatch.setattr(notify, "post_webhook", fake_post)
+    res = CliRunner().invoke(
+        cli, ["skew-drift", "--webhook", "http://hook.example/x"])
+    assert res.exit_code == 0, res.output
+    assert posted["url"] == "http://hook.example/x"
+    assert posted["payload"]["kind"] == "skew_drift"
+    assert posted["payload"]["tables"] == ["orders"]
+    assert "null_pct" in posted["payload"]["text"]
+
+
+def test_cli_skew_drift_fail_gate(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0},
+    ])
+    runner = CliRunner()
+    gated = runner.invoke(cli, ["skew-drift", "orders", "--fail"])
+    assert gated.exit_code == 1
+    assert "巡检未通过" in gated.output
+    # without --fail the same drift stays advisory
+    assert runner.invoke(cli, ["skew-drift", "orders"]).exit_code == 0
+
+
+def test_cli_skew_drift_fail_gate_stable(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 11.0}, {"top1_pct": 12.0},
+    ])
+    res = CliRunner().invoke(cli, ["skew-drift", "orders", "--fail"])
+    assert res.exit_code == 0, res.output
+
+
+def test_drift_notify_decision():
+    from seatunnel_agent.agents.data.data_skew.drift import (
+        DriftResult,
+        MetricDrift,
+        notify_decision,
+    )
+
+    drift = DriftResult(table="orders", column="id", verdict="drift",
+                        samples=3,
+                        drifts=[MetricDrift("top1_pct", 12.0, 28.0, 16.0)])
+    prev_same = {"drift": {"table": "orders", "drift_verdict": "drift",
+                           "deltas": {"top1_pct": 16.0}}}
+    prev_small = {"drift": {"table": "orders", "drift_verdict": "drift",
+                            "deltas": {"top1_pct": 11.0}}}
+    stable = DriftResult(table="orders", column="id", verdict="stable",
+                         samples=4)
+
+    assert notify_decision(None, drift) == (True, "drift")         # first
+    assert notify_decision(prev_same, drift) == (False, "")        # duplicate
+    assert notify_decision(prev_small, drift) == (True, "worse")   # escalation
+    # a new drifted metric escalates even when the old one is unchanged
+    drift2 = DriftResult(table="orders", column="id", verdict="drift",
+                         samples=4,
+                         drifts=[MetricDrift("top1_pct", 12.0, 28.0, 16.0),
+                                 MetricDrift("null_pct", 1.0, 7.0, 6.0)])
+    assert notify_decision(prev_same, drift2) == (True, "worse")
+    assert notify_decision(prev_same, stable) == (True, "recovered")
+    assert notify_decision(None, stable) == (False, "")
+    insuff = DriftResult(table="orders", verdict="insufficient", samples=1)
+    assert notify_decision(prev_same, insuff) == (False, "")
+
+
+def test_cli_skew_drift_webhook_suppression(tmp_path, monkeypatch):
+    """Unchanged drift alerts once; escalation re-alerts; --webhook-all
+    bypasses; recovery posts a recovery card."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.data_skew import notify
+    from seatunnel_agent.cli import cli
+
+    h = _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0},
+    ])
+    posted: list[dict] = []
+    monkeypatch.setattr(notify, "post_webhook",
+                        lambda url, payload: (posted.append(payload)
+                                              or (True, "200")))
+    runner = CliRunner()
+    args = ["skew-drift", "orders", "--webhook", "http://hook/x"]
+    runner.invoke(cli, args)
+    assert len(posted) == 1                     # first report
+    runner.invoke(cli, args)
+    assert len(posted) == 1                     # unchanged → suppressed
+    runner.invoke(cli, args + ["--webhook-all"])
+    assert len(posted) == 2                     # escape hatch
+    h.log_splitkey("orders", "id", "good", top1_pct=55.0)   # drift worsens
+    runner.invoke(cli, args)
+    assert len(posted) == 3                     # escalation re-alerts
+    # recovery: pre-logged drift + stable series → one recovery card
+    h2 = _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0}, {"top1_pct": 11.0}, {"top1_pct": 12.0},
+    ], table="t_rec")
+    h2.log_drift("t_rec", "drift", ["top1_pct"],
+                 deltas={"top1_pct": 15.0})
+    res = runner.invoke(cli, ["skew-drift", "t_rec",
+                              "--webhook", "http://hook/x"])
+    assert res.exit_code == 0, res.output
+    assert len(posted) == 4
+    assert posted[-1]["recovered"] == ["t_rec"]
+    assert "恢复" in posted[-1]["text"]
+
+
+def test_render_drift_i18n_parity():
+    from seatunnel_agent.agents.data.data_skew.drift import (
+        DriftResult,
+        MetricDrift,
+        render_drift,
+    )
+    from seatunnel_agent.agents.data.data_skew.i18n import DSK_I18N
+
+    r = DriftResult(table="orders", column="id", verdict="drift", samples=4,
+                    drifts=[MetricDrift("top1_pct", 12.0, 28.0, 16.0)])
+    zh, en = render_drift(r, "zh"), render_drift(r, "en")
+    assert "漂移" in zh and "drifted" in en
+    for key in ("drf_drift", "drf_metric", "drf_stable",
+                "drf_insufficient", "drf_none"):
+        assert key in DSK_I18N["en"] and key in DSK_I18N["zh"]
+
+
+def test_api_skew_drift(tmp_path, monkeypatch):
+    client = _api_client(tmp_path, monkeypatch)
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+
+    h = default_history()
+    for top1 in (10.0, 14.0, 28.0):
+        h.log_splitkey("orders", "id", "good", top1_pct=top1)
+    h.log_splitkey("t2", "id", "good", top1_pct=5.0)
+
+    # one table, drifted
+    resp = client.get("/api/skew/drift", params={"table": "orders", "lang": "en"})
+    assert resp.status_code == 200
+    [item] = resp.json()["items"]
+    assert item["verdict"] == "drift"
+    assert item["column"] == "id"
+    assert item["samples"] == 3
+    [d] = item["drifts"]
+    assert d == {"metric": "top1_pct", "baseline": 12.0,
+                 "current": 28.0, "delta": 16.0}
+    assert "drifted" in item["text"]
+
+    # sweep: both tables, t2 insufficient
+    resp = client.get("/api/skew/drift", params={"lang": "zh"})
+    items = {i["table"]: i for i in resp.json()["items"]}
+    assert items["orders"]["verdict"] == "drift"
+    assert items["t2"]["verdict"] == "insufficient"
+    assert "暂无基线" in items["t2"]["text"]
+
+    # empty history
+    resp = client.get("/api/skew/drift", params={"table": "nope"})
+    [item] = resp.json()["items"]
+    assert item["verdict"] == "insufficient"
+    assert item["samples"] == 0
