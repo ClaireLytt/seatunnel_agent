@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 
 import click
@@ -219,11 +220,14 @@ def skew_stats(recent: int) -> None:
               help="跳过告警去重：只要存在漂移就每次都推送")
 @click.option("--output", "-o", type=click.Path(), default=None,
               help="Save report to file")
+@click.option("--format", "-F", "out_format",
+              type=click.Choice(["text", "json"]), default="text",
+              show_default=True, help="输出格式（json 供流水线消费）")
 @click.option("--fail", "fail_flag", is_flag=True,
               help="存在漂移判定时以退出码 1 结束（CI 门禁）")
 def skew_drift(table: str | None, lang: str, webhook_url: str | None,
                webhook_all: bool = False, output: str | None = None,
-               fail_flag: bool = False) -> None:
+               out_format: str = "text", fail_flag: bool = False) -> None:
     """分片键倾斜漂移检测 — 最新测量 vs 历史基线(离线,只读历史)。
 
     带 TABLE 看单表;不带则巡检所有有历史的表。告警默认去重:同一漂移
@@ -231,18 +235,24 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
     """
     from seatunnel_agent.agents.data.data_skew.drift import (
         compute_drift,
+        drift_item_dict,
         notify_decision,
         render_drift,
     )
     from seatunnel_agent.agents.data.data_skew.history import default_history
     from seatunnel_agent.agents.data.data_skew.i18n import dsk as _dsk
 
+    as_json = out_format == "json"
     history = default_history()
     tables = [table] if table else history.splitkey_tables()
     if not tables:
-        console.print(_dsk(lang, "drf_none"))
+        if as_json:
+            click.echo(json.dumps({"items": []}, ensure_ascii=False))
+        else:
+            console.print(_dsk(lang, "drf_none"))
         return
     drifted = []
+    items: list[dict] = []
     alert_tables: list[str] = []
     recovered: list[str] = []
     alert_lines: list[str] = []
@@ -250,7 +260,9 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
     for t in tables:
         result = compute_drift(t, history.splitkey_trend(t, n=50))
         line = render_drift(result, lang)
-        console.print(line)
+        items.append(drift_item_dict(result, lang))
+        if not as_json:
+            console.print(line)
         report_lines.append(line)
         notify, kind = notify_decision(history.last_drift(t), result)
         history.log_drift(t, result.verdict,
@@ -264,10 +276,14 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
         elif notify and kind == "recovered":
             rec_line = _dsk(lang, "drf_recovered").format(
                 table=t, col=result.column or "(none)")
-            console.print(rec_line)
+            if not as_json:
+                console.print(rec_line)
             report_lines.append(rec_line)
             recovered.append(t)
             alert_lines.append(rec_line)
+            items[-1]["recovered"] = True
+    if as_json:
+        click.echo(json.dumps({"items": items}, ensure_ascii=False))
     if output:
         from pathlib import Path as _Path
         _Path(output).write_text("\n\n".join(report_lines) + "\n",
@@ -283,8 +299,9 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
         ok, msg = post_webhook(webhook_url, payload)
         console.print(f"[dim]webhook: {'ok' if ok else 'failed'} ({msg})[/dim]")
     if fail_flag and drifted:
-        console.print(f"\n[red]{len(drifted)} 张表的分片键相对基线漂移，"
-                      f"巡检未通过。[/red]")
+        if not as_json:
+            console.print(f"\n[red]{len(drifted)} 张表的分片键相对基线漂移，"
+                          f"巡检未通过。[/red]")
         sys.exit(1)
 
 
