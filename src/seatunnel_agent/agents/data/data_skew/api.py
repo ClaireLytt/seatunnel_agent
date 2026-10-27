@@ -481,6 +481,28 @@ class HistoryServerRequest(BaseModel):
     session_id: str = ""
 
 
+@router.post("/runtime/flink")
+def runtime_flink(req: HistoryServerRequest) -> dict[str, Any]:
+    """Runtime diagnosis via the Flink REST API (SeaTunnel on Flink):
+    url = Flink REST base (e.g. http://host:8081), app_id = Flink job id."""
+    from .i18n import dsk
+    from .runtime import RuntimeSkewError, analyze_flink
+
+    lang = normalize_lang(req.lang)
+    if not (req.url or "").strip() or not (req.app_id or "").strip():
+        raise _guard(lang, "rt_need_url")
+    try:
+        stages, label = analyze_flink(req.url, req.app_id)
+    except RuntimeSkewError as exc:
+        raise HTTPException(status_code=400, detail={
+            "code": exc.key,
+            "message": dsk(lang, exc.key).format(err=exc.arg)})
+    status_line = ""
+    if req.session_id:
+        status_line = _get_session(req.session_id).status
+    return _runtime_response(stages, label, req.report, lang, status_line)
+
+
 @router.post("/runtime/history-server")
 def runtime_history_server(req: HistoryServerRequest) -> dict[str, Any]:
     from .i18n import dsk

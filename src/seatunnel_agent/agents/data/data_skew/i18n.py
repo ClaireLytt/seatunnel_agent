@@ -211,6 +211,10 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "📊 Skew drift — {table}: only {n} measured runs in history "
             "(need 3) — no baseline yet."
         ),
+        "drf_hot_changed": (
+            "  - hot value changed: {prev} → {cur} — the skew moved to a "
+            "different key (check upstream data before tuning compute)"
+        ),
         "drf_recovered": (
             "✅ Skew drift recovered — {table} (key={col}): the latest "
             "measurement is back near its baseline."
@@ -546,6 +550,10 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "drf_insufficient": (
             "📊 倾斜漂移 — {table}：历史仅 {n} 次有效测量（需 3 次）——"
             "暂无基线。"
+        ),
+        "drf_hot_changed": (
+            "  - 热点值变了：{prev} → {cur}——倾斜落到了不同的键上"
+            "（先查上游数据，再调计算层）"
         ),
         "drf_recovered": (
             "✅ 倾斜漂移恢复 — {table}（key={col}）：最新实测已回到基线附近。"

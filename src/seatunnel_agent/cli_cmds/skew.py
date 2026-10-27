@@ -410,15 +410,23 @@ def skew_splitkey(
         drift_lines: dict[str, str] = {}
         for t, col in seen:
             d = compute_drift(t, history.splitkey_trend(t, n=50), column=col)
+            if d.verdict not in ("drift", "stable"):
+                continue
+            notify, kind = notify_decision(history.last_drift(t), d)
             if d.verdict == "drift":
                 line = render_drift(d, lang)
                 console.print(line)
-                notify, _ = notify_decision(history.last_drift(t), d)
                 history.log_drift(
                     t, "drift", [x.metric for x in d.drifts], source="cli",
                     deltas={x.metric: x.delta for x in d.drifts})
                 if notify:
                     drift_lines[t] = line
+            elif kind == "recovered":   # stable after a reported drift
+                line = _dsk(lang, "drf_recovered").format(
+                    table=t, col=d.column or "(none)")
+                console.print(line)
+                history.log_drift(t, "stable", source="cli")
+                drift_lines[t] = line
 
         c = batch_counts(items)
         _notify(md, c, drift_lines)
@@ -473,13 +481,19 @@ def skew_splitkey(
                           column=spec.partition_column)
         line = render_drift(d, lang)
         console.print(line)
+        notify, kind = notify_decision(history.last_drift(spec.table), d)
         if d.verdict == "drift":
-            notify, _ = notify_decision(history.last_drift(spec.table), d)
             history.log_drift(
                 spec.table, "drift", [x.metric for x in d.drifts],
                 source="cli", deltas={x.metric: x.delta for x in d.drifts})
             if notify:
                 drift_lines[spec.table] = line
+        elif kind == "recovered":       # stable after a reported drift
+            rec_line = _dsk(lang, "drf_recovered").format(
+                table=spec.table, col=d.column or "(none)")
+            console.print(rec_line)
+            history.log_drift(spec.table, "stable", source="cli")
+            drift_lines[spec.table] = rec_line
 
     _notify(md, {"bad": sum(1 for v in verdicts
                             if v in ("bad", "low_ndv", "null")), "errors": 0},
@@ -520,7 +534,10 @@ def skew_splitkey(
 @click.option("--history", "history_url", type=str, default=None,
               help="Spark History Server 地址（如 http://host:18080），与 --app 搭配")
 @click.option("--app", "app_id", type=str, default=None,
-              help="History Server 上的 application ID")
+              help="History Server application ID / Flink job ID")
+@click.option("--flink", "flink_url", type=str, default=None,
+              help="Flink REST 地址（如 http://host:8081），与 --app 搭配"
+                   "（SeaTunnel on Flink；Zeta 无 per-task 指标暂不支持）")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--output", "-o", type=click.Path(), default=None,
@@ -531,31 +548,39 @@ def skew_runtime(
     eventlog: str | None,
     history_url: str | None,
     app_id: str | None,
+    flink_url: str | None,
     lang: str,
     output: str | None,
     fail_flag: bool,
 ) -> None:
-    """运行时倾斜诊断 — 从 Spark 任务指标定位拖尾 stage。
+    """运行时倾斜诊断 — 从任务级指标定位拖尾 stage/vertex。
 
     EVENTLOG: Spark event log 文件 / .gz / 滚动目录（离线），
-    或改用 --history + --app 走 History Server REST API（在线）。"""
+    或 --history + --app 走 Spark History Server REST（在线），
+    或 --flink + --app 走 Flink REST（SeaTunnel on Flink）。"""
     from pathlib import Path
 
     from seatunnel_agent.agents.data.data_skew.history import default_history
     from seatunnel_agent.agents.data.data_skew.i18n import dsk as _dsk
     from seatunnel_agent.agents.data.data_skew.runtime import (
         RuntimeSkewError,
+        analyze_flink,
         analyze_history_server,
         diagnose_and_log,
         parse_eventlog,
     )
 
-    if bool(eventlog) == bool(history_url or app_id):
+    sources = [bool(eventlog), bool(history_url), bool(flink_url)]
+    if sum(sources) != 1:
         raise click.UsageError(
-            "指定 EVENTLOG 文件，或 --history 加 --app，二选一")
+            "指定 EVENTLOG 文件、--history 加 --app、或 --flink 加 --app，三选一")
     try:
         if eventlog:
             stages, label = parse_eventlog(eventlog)
+        elif flink_url:
+            if not app_id:
+                raise click.UsageError("--flink 与 --app 需同时提供")
+            stages, label = analyze_flink(flink_url, app_id)
         else:
             if not (history_url and app_id):
                 raise click.UsageError("--history 与 --app 需同时提供")

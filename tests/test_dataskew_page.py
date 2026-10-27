@@ -663,6 +663,38 @@ def test_dataskew_dialect_switch_hive(page_url):
 
 
 @pytest.mark.uitest
+def test_dataskew_runtime_flink_button(page_url, monkeypatch):
+    """The Flink diagnose button posts url+job id and renders the runtime
+    section (analyzer mocked; the REST shape is covered by API tests)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    from seatunnel_agent.agents.data.data_skew import runtime as rt
+
+    monkeypatch.setattr(
+        rt, "analyze_flink",
+        lambda url, job: ([rt.StageSkew(stage_id=0, name="Source: orders",
+                                        tasks=4, dur_p50=2_000,
+                                        dur_max=65_000)],
+                          "sync-orders (j-1)"))
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("summary", has_text="Runtime diagnosis").click()
+        page.get_by_text("History Server URL").locator(
+            "xpath=following-sibling::input").fill("http://fl:8081")
+        page.get_by_text("Application ID").locator(
+            "xpath=following-sibling::input").fill("j-1")
+        page.get_by_role("button", name="Flink diagnose", exact=True).click()
+
+        report = page.locator(".dsk-report-card")
+        expect(report).to_contain_text("sync-orders", timeout=10000)
+        expect(report).to_contain_text("Source: orders")
+        browser.close()
+
+
+@pytest.mark.uitest
 def test_dataskew_drift_card(page_url):
     """Drift card: seeded splitkey history renders verdict badge + deltas."""
     import os

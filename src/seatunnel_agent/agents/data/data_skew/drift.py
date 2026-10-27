@@ -42,6 +42,14 @@ class DriftResult:
     verdict: str = "insufficient"   # drift | stable | insufficient
     samples: int = 0
     drifts: list[MetricDrift] = field(default_factory=list)
+    # hot-value identity: did the top-1 value itself change vs the baseline?
+    top1_value_prev: str = ""
+    top1_value_cur: str = ""
+
+    @property
+    def hot_value_changed(self) -> bool:
+        return bool(self.top1_value_prev and self.top1_value_cur
+                    and self.top1_value_prev != self.top1_value_cur)
 
 
 def _metric_series(records: list[dict], key: str) -> list[float]:
@@ -105,6 +113,17 @@ def compute_drift(table: str, records: list[dict],
     check("null_pct", NULL_DRIFT_PP)
     check("ndv", NDV_DROP_PCT, drop=True)
 
+    # hot-value identity: latest vs the most recent earlier measurement
+    # that recorded one (older records may predate top1_value logging)
+    def _top1_value(rec: dict) -> str:
+        return str((rec.get("splitkey") or {}).get("top1_value") or "")
+
+    result.top1_value_cur = _top1_value(latest[0])
+    for rec in reversed(baseline_recs):
+        if _top1_value(rec):
+            result.top1_value_prev = _top1_value(rec)
+            break
+
     result.verdict = "drift" if result.drifts else "stable"
     return result
 
@@ -148,4 +167,7 @@ def render_drift(result: DriftResult, lang: str = "zh") -> str:
     for d in result.drifts:
         lines.append(dsk(lang, "drf_metric").format(
             metric=d.metric, base=d.baseline, cur=d.current, delta=d.delta))
+    if result.verdict == "drift" and result.hot_value_changed:
+        lines.append(dsk(lang, "drf_hot_changed").format(
+            prev=result.top1_value_prev, cur=result.top1_value_cur))
     return "\n".join(lines)

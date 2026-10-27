@@ -118,7 +118,8 @@ def splitkey_metrics(configured: SplitStat | None) -> dict:
         return {}
     return {"top1_pct": configured.top1_ratio * 100,
             "ndv": configured.ndv,
-            "null_pct": configured.null_ratio * 100}
+            "null_pct": configured.null_ratio * 100,
+            "top1_value": configured.top1_value}
 
 
 def render_splitkey_section(

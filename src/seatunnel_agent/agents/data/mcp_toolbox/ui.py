@@ -94,6 +94,8 @@ _TOOL_DESC: dict[str, dict[str, str]] = {
                               "en": "Parse a Spark event log to locate skewed stages/tasks"},
     "skew_runtime_history": {"zh": "从 Spark History Server 拉取运行指标做倾斜诊断",
                              "en": "Skew diagnosis from Spark History Server run metrics"},
+    "skew_runtime_flink": {"zh": "从 Flink REST 拉取各 vertex 的 subtask 指标做倾斜诊断（SeaTunnel on Flink）",
+                           "en": "Skew diagnosis from Flink REST per-subtask metrics (SeaTunnel on Flink)"},
     "skew_drift": {"zh": "倾斜漂移检测：最新分片键实测 vs 历史基线（只读巡检历史，不连库）",
                    "en": "Skew drift: latest split-key measurement vs its historical baseline (reads patrol history only)"},
     "skew_split_key": {"zh": "SeaTunnel 分片键体检：连库实测 partition_column 分布并推荐候选列",

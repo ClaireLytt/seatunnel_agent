@@ -96,6 +96,7 @@ class SkewHistory:
         top1_pct: float | None = None,
         ndv: int | None = None,
         null_pct: float | None = None,
+        top1_value: str | None = None,
     ) -> None:
         """A SeaTunnel split-key check record (mode='splitkey'). The counts
         encode the configured key's verdict so the history table's marks
@@ -115,6 +116,8 @@ class SkewHistory:
             sk["ndv"] = int(ndv)
         if null_pct is not None:
             sk["null_pct"] = round(float(null_pct), 2)
+        if top1_value is not None and str(top1_value):
+            sk["top1_value"] = str(top1_value)[:120]   # keep the JSONL lean
         record = {
             "timestamp": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "source": source,

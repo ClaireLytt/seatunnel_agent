@@ -1931,7 +1931,7 @@ def test_mcp_split_key_validation(monkeypatch, tmp_path):
     fns = build_tool_functions()
     assert set(fns) == {"skew_check", "skew_check_file",
                         "skew_runtime_eventlog", "skew_runtime_history",
-                        "skew_drift", "skew_split_key", "skew_split_key_file",
+                        "skew_runtime_flink", "skew_drift", "skew_split_key", "skew_split_key_file",
                         "skew_split_key_apply"}
     spk = fns["skew_split_key"]
     assert "不能为空" in spk("")
@@ -2029,6 +2029,47 @@ def test_cli_skew_splitkey_drift_tail(monkeypatch, tmp_path):
     assert third.exit_code == 0, third.output
     assert "倾斜漂移" in third.output
     assert "相对基线稳定" in third.output       # identical data → stable
+
+
+def test_cli_skew_splitkey_recovery_card(monkeypatch, tmp_path):
+    """A stable measurement after a reported drift emits the recovery card
+    from the splitkey patrol itself (webhook included)."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.data_skew import notify
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.text2sql.executor import base as exec_base
+    from seatunnel_agent.cli import cli
+
+    db = _make_orders_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    h = default_history()
+    # steady history at the same level the live probe will measure (~80%),
+    # plus a previously reported drift → this patrol is a recovery
+    for _ in range(3):
+        h.log_splitkey("orders", "region", "bad", top1_pct=80.0)
+    h.log_drift("orders", "drift", ["top1_pct"], deltas={"top1_pct": 20.0})
+    posted: list[dict] = []
+    monkeypatch.setattr(notify, "post_webhook",
+                        lambda url, payload: (posted.append(payload)
+                                              or (True, "200")))
+    conf_file = tmp_path / "job.conf"
+    conf_file.write_text(_SPLITKEY_CONF, encoding="utf-8")
+
+    res = CliRunner().invoke(cli, ["skew-splitkey", str(conf_file),
+                                   "--ds", "sqlite",
+                                   "--webhook", "http://hook/x"])
+    assert res.exit_code == 0, res.output
+    assert "倾斜漂移恢复" in res.output
+    assert posted and "恢复" in posted[0]["text"]
+    assert posted[0]["drift_tables"] == ["orders"]
+    rec = [r for r in default_history().recent(5) if r.get("mode") == "drift"][0]
+    assert rec["drift"]["drift_verdict"] == "stable"
 
 
 def test_cli_skew_splitkey_apply_closes_loop(monkeypatch, tmp_path):
@@ -2361,6 +2402,112 @@ def test_runtime_verdict_thresholds():
     # too few tasks to judge
     assert StageSkew(1, tasks=MIN_TASKS - 1, dur_p50=1000,
                      dur_max=60_000).verdict() == "ok"
+
+
+def test_runtime_flink_fake_fetch():
+    from seatunnel_agent.agents.data.data_skew.runtime import analyze_flink
+
+    def _sub(i, dur, rb):
+        return {"subtask": i, "duration": dur, "metrics": {"read-bytes": rb}}
+
+    def fake_fetch(url: str):
+        if url.endswith("/jobs/j-1"):
+            return {"name": "sync-orders", "vertices": [
+                {"id": "v-a", "name": "Source: orders",
+                 "metrics": {"read-bytes": 9_000_000_000}},
+                {"id": "v-b", "name": "Sink: dw",
+                 "metrics": {"read-bytes": 1_000}},
+            ]}
+        if url.endswith("/vertices/v-a"):
+            return {"subtasks": [
+                _sub(0, 2_000, 1_000_000), _sub(1, 2_200, 1_100_000),
+                _sub(2, 2_100, 1_050_000),
+                _sub(3, 65_000, 9_000_000_000),   # straggler
+            ]}
+        if url.endswith("/vertices/v-b"):
+            return {"subtasks": [
+                _sub(0, 3_000, 0), _sub(1, 3_100, 0), _sub(2, 2_900, 0),
+            ]}
+        raise AssertionError(f"unexpected URL {url}")
+
+    stages, label = analyze_flink("http://fl:8081/", "j-1", fetch=fake_fetch)
+    assert label == "sync-orders (j-1)"
+    assert [s.name for s in stages] == ["Source: orders", "Sink: dw"]
+    assert stages[0].verdict() == "confirmed"      # 65s vs 2.1s median
+    assert stages[0].tasks == 4
+    assert stages[1].verdict() == "ok"
+
+    # error paths mirror the history-server analyzer
+    try:
+        analyze_flink("http://fl:8081", "j-1",
+                      fetch=lambda url: (_ for _ in ()).throw(OSError("x")))
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_http_fail"
+    try:
+        analyze_flink("http://fl:8081", "j-1",
+                      fetch=lambda url: {"vertices": []})
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_no_stages"
+    try:
+        analyze_flink("", "")
+        raise AssertionError("expected RuntimeSkewError")
+    except RuntimeSkewError as exc:
+        assert exc.key == "rt_need_url"
+
+
+def test_cli_skew_runtime_flink(monkeypatch, tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.data_skew import runtime as rt
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.cli import cli
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        rt, "analyze_flink",
+        lambda url, job: ([rt.StageSkew(stage_id=0, name="Source: orders",
+                                        tasks=4, dur_p50=2_000,
+                                        dur_max=65_000)],
+                          "sync-orders (j-1)"))
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-runtime", "--flink", "http://fl:8081",
+                              "--app", "j-1"])
+    assert res.exit_code == 0, res.output
+    assert "运行时倾斜诊断" in res.output and "sync-orders" in res.output
+    rec = default_history().recent(1)[0]
+    assert rec["mode"] == "runtime"
+    assert rec["runtime"]["app"] == "sync-orders (j-1)"
+    # --fail gate on the confirmed vertex
+    gated = runner.invoke(cli, ["skew-runtime", "--flink", "http://fl:8081",
+                                "--app", "j-1", "--fail"])
+    assert gated.exit_code == 1
+    # --flink without --app, and mixing sources, are usage errors
+    assert runner.invoke(cli, ["skew-runtime", "--flink", "http://x"]
+                         ).exit_code != 0
+    assert runner.invoke(cli, ["skew-runtime", "--flink", "http://x",
+                               "--history", "http://y", "--app", "a"]
+                         ).exit_code != 0
+
+
+def test_api_runtime_flink(tmp_path, monkeypatch):
+    client = _api_client(tmp_path, monkeypatch)
+    from seatunnel_agent.agents.data.data_skew import runtime as rt
+
+    monkeypatch.setattr(
+        rt, "analyze_flink",
+        lambda url, job: ([rt.StageSkew(stage_id=0, name="Source: orders",
+                                        tasks=4, dur_p50=2_000,
+                                        dur_max=65_000)],
+                          "sync-orders (j-1)"))
+    resp = client.post("/api/skew/runtime/flink", json={
+        "url": "http://fl:8081", "app_id": "j-1", "lang": "zh"})
+    assert resp.status_code == 200
+    assert "运行时倾斜诊断" in resp.json()["report"]
+    missing = client.post("/api/skew/runtime/flink", json={"lang": "zh"})
+    assert missing.status_code == 400
 
 
 def test_runtime_history_server_fake_fetch():
@@ -2766,7 +2913,7 @@ def _drift_recs(table, metrics_seq):
     for m in metrics_seq:
         h.log_splitkey(table, m.get("col", "id"), m.get("verdict", "good"),
                        top1_pct=m.get("top1_pct"), ndv=m.get("ndv"),
-                       null_pct=m.get("null_pct"))
+                       null_pct=m.get("null_pct"), top1_value=m.get("val"))
     return h.splitkey_trend(table, n=50)
 
 
@@ -2983,6 +3130,50 @@ def test_cli_skew_drift_fail_gate_stable(tmp_path, monkeypatch):
     assert res.exit_code == 0, res.output
 
 
+def test_drift_hot_value_identity():
+    from seatunnel_agent.agents.data.data_skew.drift import (
+        compute_drift,
+        render_drift,
+    )
+
+    # same hot value growing: drift, but no hot-value line
+    same = compute_drift("orders", _drift_recs("orders", [
+        {"top1_pct": 10.0, "val": "CN"},
+        {"top1_pct": 14.0, "val": "CN"},
+        {"top1_pct": 28.0, "val": "CN"},
+    ]))
+    assert same.verdict == "drift" and not same.hot_value_changed
+    assert "热点值" not in render_drift(same, "zh")
+
+    # the skew moved to a different key: the line names old and new
+    moved = compute_drift("orders", _drift_recs("orders", [
+        {"top1_pct": 10.0, "val": "CN"},
+        {"top1_pct": 14.0, "val": "CN"},
+        {"top1_pct": 28.0, "val": "US"},
+    ]))
+    assert moved.hot_value_changed
+    assert moved.top1_value_prev == "CN" and moved.top1_value_cur == "US"
+    zh = render_drift(moved, "zh")
+    assert "热点值变了：CN → US" in zh
+    assert "hot value changed: CN → US" in render_drift(moved, "en")
+
+    # legacy records without top1_value: backward compatible, no line
+    legacy = compute_drift("orders", _drift_recs("orders", [
+        {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0, "val": "US"},
+    ]))
+    assert legacy.verdict == "drift" and not legacy.hot_value_changed
+    assert "热点值" not in render_drift(legacy, "zh")
+
+    # stable with a changed value: identity tracked, line withheld
+    quiet = compute_drift("orders", _drift_recs("orders", [
+        {"top1_pct": 10.0, "val": "CN"},
+        {"top1_pct": 11.0, "val": "CN"},
+        {"top1_pct": 12.0, "val": "US"},
+    ]))
+    assert quiet.verdict == "stable" and quiet.hot_value_changed
+    assert "热点值" not in render_drift(quiet, "zh")
+
+
 def test_drift_notify_decision():
     from seatunnel_agent.agents.data.data_skew.drift import (
         DriftResult,
@@ -3067,8 +3258,8 @@ def test_render_drift_i18n_parity():
                     drifts=[MetricDrift("top1_pct", 12.0, 28.0, 16.0)])
     zh, en = render_drift(r, "zh"), render_drift(r, "en")
     assert "漂移" in zh and "drifted" in en
-    for key in ("drf_drift", "drf_metric", "drf_stable",
-                "drf_insufficient", "drf_none"):
+    for key in ("drf_drift", "drf_metric", "drf_stable", "drf_insufficient",
+                "drf_none", "drf_hot_changed", "drf_recovered"):
         assert key in DSK_I18N["en"] and key in DSK_I18N["zh"]
 
 

@@ -134,6 +134,12 @@ export function runtimeHistoryServer(
   return post('/runtime/history-server', body)
 }
 
+export function runtimeFlink(
+  body: Record<string, unknown>,
+): Promise<SectionResponse> {
+  return post('/runtime/flink', body)
+}
+
 export async function runtimeEventlog(
   file: File,
   report: string,
