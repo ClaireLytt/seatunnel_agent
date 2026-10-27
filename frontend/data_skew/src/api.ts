@@ -167,6 +167,7 @@ export interface DriftItem {
   verdict: 'drift' | 'stable' | 'insufficient'
   samples: number
   drifts: DriftMetric[]
+  hot_value?: { prev: string; cur: string; changed: boolean }
   text: string
 }
 

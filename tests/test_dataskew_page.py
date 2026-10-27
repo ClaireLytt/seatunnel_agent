@@ -706,8 +706,8 @@ def test_dataskew_drift_card(page_url):
     # seed the same history file the in-process server reads
     assert os.environ.get("SEATUNNEL_SKEW_HISTORY_PATH")
     h = default_history()
-    for top1 in (10.0, 14.0, 28.0):
-        h.log_splitkey("orders", "id", "good", top1_pct=top1)
+    for top1, val in ((10.0, "CN"), (14.0, "CN"), (28.0, "US")):
+        h.log_splitkey("orders", "id", "good", top1_pct=top1, top1_value=val)
     h.log_splitkey("t2", "id", "good", top1_pct=5.0)
 
     with sync_playwright() as p:
@@ -725,4 +725,6 @@ def test_dataskew_drift_card(page_url):
         row = page.locator("div", has_text="top1_pct").last
         expect(row).to_contain_text("12 → 28")
         expect(row).to_contain_text("+16")
+        hot = page.locator("div", has_text="hot value changed").last
+        expect(hot).to_contain_text("CN → US")
         browser.close()
