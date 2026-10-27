@@ -19,6 +19,7 @@ back to the SQL statement that produced them.
 from __future__ import annotations
 
 import json
+import re
 import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -458,6 +459,36 @@ def render_runtime_section(stages: list[StageSkew], lang: str,
     return "\n".join(parts)
 
 
+_TABLE_FROM_VERTEX = re.compile(
+    r"^(?:Source|Sink)\s*:\s*([\w.\-]+)", re.IGNORECASE)
+_TABLE_FROM_SQL = re.compile(
+    r"(?:insert\s+(?:overwrite|into)\s+table\s+|insert\s+into\s+|from\s+)"
+    r"([\w.]+)", re.IGNORECASE)
+
+
+def implicated_tables(stages: list[StageSkew]) -> list[str]:
+    """Table names a skewed stage/vertex points at — deterministic only.
+
+    Flink vertex names carry ``Source: <table>`` / ``Sink: <table>``;
+    Spark stages may carry the mapped SQL (``insert ... table X``,
+    ``from X``). Unparseable names yield nothing rather than a guess.
+    """
+    out: list[str] = []
+    for s in stages:
+        if s.verdict() == "ok":
+            continue
+        m = _TABLE_FROM_VERTEX.match((s.name or "").strip())
+        if m:
+            t = m.group(1)
+            if t not in out:
+                out.append(t)
+            continue
+        for t in _TABLE_FROM_SQL.findall(s.sql_desc or ""):
+            if t not in out:
+                out.append(t)
+    return out
+
+
 def diagnose_and_log(history, stages: list[StageSkew], label: str,
                      lang: str, source: str) -> tuple[str, int, int]:
     """Count verdicts, log the diagnosis, render the section plus the
@@ -480,6 +511,19 @@ def diagnose_and_log(history, stages: list[StageSkew], label: str,
                else "rt_recheck_same")
         md += "\n\n" + dsk(lang, key).format(
             ts=str(prev.get("timestamp") or ""), prev=p, cur=confirmed)
+
+    # close the loop toward the split-key line: a skewed stage that names a
+    # table gets its drift verdict inlined (when patrol history exists) or a
+    # pointer to the splitkey checkup (when it doesn't)
+    if confirmed or suspect:
+        from .drift import compute_drift, render_drift
+
+        for t in implicated_tables(stages)[:3]:
+            trend = history.splitkey_trend(t, n=50)
+            if trend:
+                md += "\n\n" + render_drift(compute_drift(t, trend), lang)
+            else:
+                md += "\n\n" + dsk(lang, "rt_table_next").format(table=t)
     return md, confirmed, suspect
 
 

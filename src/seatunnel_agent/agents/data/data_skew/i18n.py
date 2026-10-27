@@ -198,6 +198,12 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "🔁 Re-check vs last diagnosis ({ts}): confirmed skewed stages "
             "unchanged ({prev} → {cur})."
         ),
+        "rt_table_next": (
+            "👉 Next step: the skewed stage points at `{table}` — no split-key "
+            "patrol history for it yet; run "
+            "`seatunnel-agent skew-splitkey <config> --ds <type>` to measure "
+            "its key."
+        ),
         "drf_drift": (
             "📈 Skew drift — {table} (key={col}, {n} samples): "
             "latest run drifted from its baseline:"
@@ -538,6 +544,10 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         "rt_recheck_same": (
             "🔁 复测对比：上次诊断（{ts}）确认倾斜 stage 无变化（{prev} → {cur}）。"
+        ),
+        "rt_table_next": (
+            "👉 下一步：拖尾 stage 指向表 `{table}`——它还没有分片键巡检历史，"
+            "运行 `seatunnel-agent skew-splitkey <配置> --ds <类型>` 实测其分片键。"
         ),
         "drf_drift": (
             "📈 倾斜漂移 — {table}（key={col}，{n} 次测量）："
