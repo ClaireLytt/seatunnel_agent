@@ -305,6 +305,51 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
         sys.exit(1)
 
 
+@click.command(name="skew-bench")
+@click.option("--corpus", type=click.Path(exists=True), default=None,
+              help="标注语料 YAML（默认 examples/skew_bench/cases.yaml）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--format", "-F", "out_format",
+              type=click.Choice(["text", "json"]), default="text",
+              show_default=True, help="输出格式（json 供流水线消费）")
+@click.option("--gate", "gate_flag", is_flag=True,
+              help="F1 低于语料 baseline.min_f1 时退出码 1（CI 门禁）")
+def skew_bench(corpus: str | None, lang: str, out_format: str,
+               gate_flag: bool) -> None:
+    """静态倾斜检测器基准 — 标注语料上的 precision/recall/F1(离线)。"""
+    from seatunnel_agent.agents.data.data_skew.bench import (
+        DEFAULT_CORPUS,
+        load_corpus,
+        render_bench,
+        run_bench,
+    )
+
+    cases, min_f1 = load_corpus(corpus or DEFAULT_CORPUS)
+    if not cases:
+        raise click.ClickException("语料为空 / empty corpus")
+    result = run_bench(cases, min_f1)
+    if out_format == "json":
+        click.echo(json.dumps({
+            "cases": result.cases,
+            "precision": round(result.precision, 4),
+            "recall": round(result.recall, 4),
+            "f1": round(result.f1, 4),
+            "min_f1": result.min_f1,
+            "passed": result.passed,
+            "failures": [{"case": f.case_id, "missed": f.missed,
+                          "spurious": f.spurious}
+                         for f in result.failures],
+        }, ensure_ascii=False))
+    else:
+        console.print(render_bench(result, lang))
+    if gate_flag and not result.passed:
+        if out_format != "json":
+            console.print(f"\n[red]F1 {result.f1:.3f} < 门槛 "
+                          f"{result.min_f1:.3f}，基准未通过。[/red]")
+        sys.exit(1)
+
+
 @click.command(name="skew-splitkey")
 @click.argument("conf_path", type=click.Path(exists=True))
 @click.option("--ds", "ds_type",
@@ -657,6 +702,7 @@ def skew_mcp(dialect: str, lang: str) -> None:
 def register(cli) -> None:
     cli.add_command(skew)
     cli.add_command(skew_stats)
+    cli.add_command(skew_bench)
     cli.add_command(skew_drift)
     cli.add_command(skew_splitkey)
     cli.add_command(skew_runtime)
