@@ -2031,6 +2031,47 @@ def test_cli_skew_splitkey_drift_tail(monkeypatch, tmp_path):
     assert "相对基线稳定" in third.output       # identical data → stable
 
 
+def test_cli_skew_splitkey_recovery_card(monkeypatch, tmp_path):
+    """A stable measurement after a reported drift emits the recovery card
+    from the splitkey patrol itself (webhook included)."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.agents.data.data_skew import notify
+    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.text2sql.executor import base as exec_base
+    from seatunnel_agent.cli import cli
+
+    db = _make_orders_db(tmp_path)
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "hist.jsonl"))
+    monkeypatch.setattr(
+        exec_base, "config_from_env",
+        lambda ds: exec_base.DatabaseConfig(
+            ds_type="sqlite", host="", port=0, database=str(db)))
+    h = default_history()
+    # steady history at the same level the live probe will measure (~80%),
+    # plus a previously reported drift → this patrol is a recovery
+    for _ in range(3):
+        h.log_splitkey("orders", "region", "bad", top1_pct=80.0)
+    h.log_drift("orders", "drift", ["top1_pct"], deltas={"top1_pct": 20.0})
+    posted: list[dict] = []
+    monkeypatch.setattr(notify, "post_webhook",
+                        lambda url, payload: (posted.append(payload)
+                                              or (True, "200")))
+    conf_file = tmp_path / "job.conf"
+    conf_file.write_text(_SPLITKEY_CONF, encoding="utf-8")
+
+    res = CliRunner().invoke(cli, ["skew-splitkey", str(conf_file),
+                                   "--ds", "sqlite",
+                                   "--webhook", "http://hook/x"])
+    assert res.exit_code == 0, res.output
+    assert "倾斜漂移恢复" in res.output
+    assert posted and "恢复" in posted[0]["text"]
+    assert posted[0]["drift_tables"] == ["orders"]
+    rec = [r for r in default_history().recent(5) if r.get("mode") == "drift"][0]
+    assert rec["drift"]["drift_verdict"] == "stable"
+
+
 def test_cli_skew_splitkey_apply_closes_loop(monkeypatch, tmp_path):
     """check → --apply writes the fix back → re-check reports it resolved."""
     from click.testing import CliRunner

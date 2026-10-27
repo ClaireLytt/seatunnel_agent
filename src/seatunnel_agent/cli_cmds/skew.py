@@ -410,15 +410,23 @@ def skew_splitkey(
         drift_lines: dict[str, str] = {}
         for t, col in seen:
             d = compute_drift(t, history.splitkey_trend(t, n=50), column=col)
+            if d.verdict not in ("drift", "stable"):
+                continue
+            notify, kind = notify_decision(history.last_drift(t), d)
             if d.verdict == "drift":
                 line = render_drift(d, lang)
                 console.print(line)
-                notify, _ = notify_decision(history.last_drift(t), d)
                 history.log_drift(
                     t, "drift", [x.metric for x in d.drifts], source="cli",
                     deltas={x.metric: x.delta for x in d.drifts})
                 if notify:
                     drift_lines[t] = line
+            elif kind == "recovered":   # stable after a reported drift
+                line = _dsk(lang, "drf_recovered").format(
+                    table=t, col=d.column or "(none)")
+                console.print(line)
+                history.log_drift(t, "stable", source="cli")
+                drift_lines[t] = line
 
         c = batch_counts(items)
         _notify(md, c, drift_lines)
@@ -473,13 +481,19 @@ def skew_splitkey(
                           column=spec.partition_column)
         line = render_drift(d, lang)
         console.print(line)
+        notify, kind = notify_decision(history.last_drift(spec.table), d)
         if d.verdict == "drift":
-            notify, _ = notify_decision(history.last_drift(spec.table), d)
             history.log_drift(
                 spec.table, "drift", [x.metric for x in d.drifts],
                 source="cli", deltas={x.metric: x.delta for x in d.drifts})
             if notify:
                 drift_lines[spec.table] = line
+        elif kind == "recovered":       # stable after a reported drift
+            rec_line = _dsk(lang, "drf_recovered").format(
+                table=spec.table, col=d.column or "(none)")
+            console.print(rec_line)
+            history.log_drift(spec.table, "stable", source="cli")
+            drift_lines[spec.table] = rec_line
 
     _notify(md, {"bad": sum(1 for v in verdicts
                             if v in ("bad", "low_ndv", "null")), "errors": 0},
