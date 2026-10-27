@@ -19,7 +19,15 @@ ruff check src tests scripts              -> All checks passed!
 mypy                                      -> Success: no issues found in 175 source files
 pytest tests/test_data_skew.py -q         -> 185 passed in 6.31s
 pytest -q(全量)                          -> 3488 passed, 1 skipped, 247 deselected, 2 warnings in 177.62s
-python scripts/check_workflow.py          -> (输出见下方追加)
+python scripts/check_workflow.py          -> 全部通过(提交 c700277 后实跑,逐行如下)
+```
+
+```
+[PASS] AI 署名: 无 AI 署名(范围 HEAD~10..HEAD)
+[PASS] 工作区: 工作区干净
+[PASS] 报告落盘: 无远端分支,跳过报告落盘检查
+[PASS] 报告含验证输出: 无远端分支,跳过报告输出检查
+[PASS] floor: 无远端分支,跳过 floor 检查
 ```
 
 无 UI 改动,未跑 uitest。
