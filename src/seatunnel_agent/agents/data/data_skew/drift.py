@@ -154,6 +154,24 @@ def notify_decision(prev: dict | None, result: DriftResult) -> tuple[bool, str]:
     return False, ""
 
 
+def drift_item_dict(result: DriftResult, lang: str = "zh") -> dict:
+    """One serialized drift item — the single shape the REST endpoint and
+    the CLI's JSON format share."""
+    return {
+        "table": result.table,
+        "column": result.column,
+        "verdict": result.verdict,
+        "samples": result.samples,
+        "drifts": [{"metric": d.metric, "baseline": d.baseline,
+                    "current": d.current, "delta": d.delta}
+                   for d in result.drifts],
+        "hot_value": {"prev": result.top1_value_prev,
+                      "cur": result.top1_value_cur,
+                      "changed": result.hot_value_changed},
+        "text": render_drift(result, lang),
+    }
+
+
 def render_drift(result: DriftResult, lang: str = "zh") -> str:
     """One shared textual rendering for CLI / splitkey tail / webhook."""
     from .i18n import dsk

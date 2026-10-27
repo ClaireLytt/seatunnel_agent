@@ -3142,7 +3142,7 @@ def _seed_drift_history(tmp_path, monkeypatch, metrics_seq, table="orders"):
     for m in metrics_seq:
         h.log_splitkey(table, m.get("col", "id"), m.get("verdict", "good"),
                        top1_pct=m.get("top1_pct"), ndv=m.get("ndv"),
-                       null_pct=m.get("null_pct"))
+                       null_pct=m.get("null_pct"), top1_value=m.get("val"))
     return h
 
 
@@ -3197,6 +3197,41 @@ def test_cli_skew_drift_output_file(tmp_path, monkeypatch):
     text = out.read_text(encoding="utf-8")
     assert "倾斜漂移" in text and "orders" in text
     assert "top1_pct" in text and "28.0" in text   # unwrapped, unlike console
+
+
+def test_cli_skew_drift_json_format(tmp_path, monkeypatch):
+    """-F json emits the same item shape as GET /api/skew/drift; --fail
+    still gates; empty history yields an empty items list."""
+    import json as _json
+
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    _seed_drift_history(tmp_path, monkeypatch, [
+        {"top1_pct": 10.0, "val": "CN"},
+        {"top1_pct": 14.0, "val": "CN"},
+        {"top1_pct": 28.0, "val": "US"},
+    ])
+    runner = CliRunner()
+    res = runner.invoke(cli, ["skew-drift", "orders", "-F", "json"])
+    assert res.exit_code == 0, res.output
+    data = _json.loads(res.output)
+    [item] = data["items"]
+    assert item["table"] == "orders" and item["verdict"] == "drift"
+    assert item["drifts"][0]["metric"] == "top1_pct"
+    assert item["hot_value"] == {"prev": "CN", "cur": "US", "changed": True}
+    assert "text" in item
+
+    gated = runner.invoke(cli, ["skew-drift", "orders", "-F", "json",
+                                "--fail"])
+    assert gated.exit_code == 1
+    assert _json.loads(gated.output)["items"][0]["verdict"] == "drift"
+
+    monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
+                       str(tmp_path / "empty.jsonl"))
+    empty = runner.invoke(cli, ["skew-drift", "-F", "json"])
+    assert _json.loads(empty.output) == {"items": []}
 
 
 def test_cli_skew_drift_empty_history(tmp_path, monkeypatch):

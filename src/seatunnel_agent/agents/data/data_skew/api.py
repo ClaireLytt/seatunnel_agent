@@ -561,27 +561,14 @@ def drift(table: str = "", lang: str = "zh") -> dict[str, Any]:
 
     Read-only over the patrol history — same verdicts as the skew-drift
     CLI; ``text`` is the shared bilingual rendering for the trend card."""
-    from .drift import compute_drift, render_drift
+    from .drift import compute_drift, drift_item_dict
 
     lng = normalize_lang(lang)
     history = default_history()
     tables = [table] if table else history.splitkey_tables()
-    items: list[dict[str, Any]] = []
-    for t in tables:
-        result = compute_drift(t, history.splitkey_trend(t, n=50))
-        items.append({
-            "table": result.table,
-            "column": result.column,
-            "verdict": result.verdict,
-            "samples": result.samples,
-            "drifts": [{"metric": d.metric, "baseline": d.baseline,
-                        "current": d.current, "delta": d.delta}
-                       for d in result.drifts],
-            "hot_value": {"prev": result.top1_value_prev,
-                          "cur": result.top1_value_cur,
-                          "changed": result.hot_value_changed},
-            "text": render_drift(result, lng),
-        })
+    items = [drift_item_dict(compute_drift(t, history.splitkey_trend(t, n=50)),
+                             lng)
+             for t in tables]
     return {"items": items}
 
 
