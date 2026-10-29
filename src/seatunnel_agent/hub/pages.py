@@ -140,32 +140,88 @@ def _garden_corner_html() -> str:
     return '''
   <div class="st-hub-section-title st-hub-landing-sec" data-en="Garden Corner" data-zh="花园一角">Garden Corner</div>
   <div class="st-garden" id="st-garden">
-    <p class="st-garden-line"><span id="st-garden-daily"></span>
-      <span class="st-garden-who" id="st-garden-who"></span></p>
+    <span class="st-garden-no">NO. 07</span>
+    <blockquote class="st-garden-quote">
+      <span class="st-garden-mark">&ldquo;</span>
+      <p class="st-garden-daily" id="st-garden-daily"></p>
+      <cite class="st-garden-who" id="st-garden-who"></cite>
+    </blockquote>
+    <div class="st-garden-rule"><span>&#10086;</span></div>
     <div class="st-garden-row">
       <input id="st-garden-input" maxlength="120"
              data-en-ph="One small good thing today..." data-zh-ph="写下今天一件很小的好事……"
              placeholder="写下今天一件很小的好事……" />
-      <button id="st-garden-save" data-en="Keep" data-zh="存下">存下</button>
+      <button id="st-garden-save" data-en="KEEP" data-zh="存 下">存 下</button>
       <a class="st-garden-games" href="/games/" data-en="Mind games →" data-zh="心理小游戏 →">心理小游戏 →</a>
     </div>
     <ul id="st-garden-list"></ul>
   </div>
   <style>
-    .st-garden{border:1.5px solid rgba(0,0,0,.55);border-radius:10px;
-      padding:16px 18px;margin-top:6px;background:rgba(255,255,255,.6)}
-    .st-garden-line{margin:0 0 12px;font-size:14px;line-height:1.7}
-    .st-garden-who{opacity:.55;font-size:12px;margin-left:8px}
-    .st-garden-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .st-garden-row input{flex:1;min-width:220px;padding:8px 12px;
-      border:1.5px solid rgba(0,0,0,.45);border-radius:6px;font-size:13px}
-    .st-garden-row button{padding:8px 16px;border:1.5px solid #000;
-      border-radius:6px;background:#000;color:#fff;font-size:13px;cursor:pointer}
-    .st-garden-games{font-size:13px;text-decoration:none;opacity:.75}
-    .st-garden-games:hover{opacity:1}
-    #st-garden-list{list-style:none;margin:10px 0 0;padding:0;font-size:13px}
-    #st-garden-list li{padding:4px 0;opacity:.8}
-    #st-garden-list li::before{content:"\\2766  ";opacity:.6}
+    /* a letterpress feature box: double rules, laid paper, pull-quote plate */
+    .st-garden{position:relative;margin-top:6px;padding:26px 30px 22px;
+      border:1px solid #1a1613;outline:1px solid #1a1613;outline-offset:3px;
+      background:
+        repeating-linear-gradient(0deg, rgba(26,22,19,.025) 0 1px, transparent 1px 7px),
+        radial-gradient(ellipse at 50% -20%, rgba(26,22,19,.06), transparent 60%),
+        #f6f2e7}
+    .st-garden-no{position:absolute;top:10px;right:14px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:10px;letter-spacing:.22em;color:rgba(26,22,19,.45)}
+    #st-garden .st-garden-quote{position:relative;margin:0 0 4px;padding:2px 8px 0 74px;
+      border-left:none;background:transparent}
+    #st-garden .st-garden-mark{position:absolute;left:0;top:-16px;
+      font-family:'Playfair Display',Didot,'Bodoni MT',Georgia,serif;
+      font-style:italic;font-weight:800;font-size:64px;line-height:1;
+      color:#9e2b25;user-select:none}
+    #st-garden .st-garden-daily{margin:0;
+      font-family:'Playfair Display',Didot,'Bodoni MT',Georgia,'SimSun','宋体',serif;
+      font-style:italic;font-size:19px;line-height:1.75;color:#1a1613;
+      text-wrap:balance}
+    #st-garden .st-garden-who{display:block;margin-top:8px;text-align:right;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-style:normal;font-size:10.5px;letter-spacing:.2em;
+      color:rgba(26,22,19,.6)}
+    .st-garden-rule{display:flex;align-items:center;gap:14px;margin:16px 0 18px;
+      color:rgba(158,43,37,.75);font-size:13px}
+    .st-garden-rule::before,.st-garden-rule::after{content:"";flex:1;
+      border-top:1px solid rgba(26,22,19,.35)}
+    .st-garden-row{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+    .st-garden-row input{flex:1;min-width:220px;padding:7px 2px;
+      border:none;border-bottom:1px solid rgba(26,22,19,.5);border-radius:0;
+      background:transparent;font-size:14px;color:#1a1613;
+      font-family:inherit;outline:none;caret-color:#9e2b25;
+      transition:border-color .32s cubic-bezier(.16,1,.3,1),
+                 box-shadow .32s cubic-bezier(.16,1,.3,1)}
+    .st-garden-row input::placeholder{color:rgba(26,22,19,.42)}
+    .st-garden-row input:focus{border-bottom-color:#9e2b25;
+      box-shadow:0 1px 0 0 #9e2b25}
+    .st-garden-row button{padding:8px 20px;border:1px solid #1a1613;
+      border-radius:0;background:#1a1613;color:#f6f2e7;cursor:pointer;
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:11px;letter-spacing:.24em;
+      transition:background .22s cubic-bezier(.16,1,.3,1),
+                 color .22s cubic-bezier(.16,1,.3,1)}
+    .st-garden-row button:hover{background:#9e2b25;border-color:#9e2b25}
+    .st-garden-row button:active{transform:translateY(1px)}
+    .st-garden-games{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:11px;letter-spacing:.14em;text-decoration:none;
+      color:rgba(26,22,19,.6);border-bottom:1px solid transparent;
+      transition:color .22s cubic-bezier(.16,1,.3,1),
+                 border-color .22s cubic-bezier(.16,1,.3,1)}
+    .st-garden-games:hover{color:#9e2b25;border-bottom-color:#9e2b25}
+    #st-garden-list{list-style:none;margin:14px 0 0;padding:0;font-size:13.5px}
+    #st-garden-list li{display:flex;gap:10px;align-items:baseline;
+      padding:5px 0;color:#1a1613;border-top:1px dotted rgba(26,22,19,.22)}
+    #st-garden-list li:first-child{animation:st-garden-ink .5s cubic-bezier(.16,1,.3,1)}
+    #st-garden-list .st-g-day{
+      font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+      font-size:10.5px;letter-spacing:.12em;color:#9e2b25;white-space:nowrap}
+    @keyframes st-garden-ink{
+      from{opacity:0;transform:translateY(5px);filter:blur(2px)}
+      to{opacity:1;transform:none;filter:none}}
+    @media (prefers-reduced-motion: reduce){
+      #st-garden-list li:first-child{animation:none}}
+    .st-garden ::selection{background:rgba(158,43,37,.18)}
   </style>
 '''
 
@@ -358,7 +414,13 @@ _GARDEN_CORNER_JS = """
         ul.innerHTML = '';
         load().slice(-3).reverse().forEach(n => {
             const li = document.createElement('li');
-            li.textContent = n.day + ' \u00b7 ' + n.text;
+            const d = document.createElement('span');
+            d.className = 'st-g-day';
+            d.textContent = n.day;
+            const t = document.createElement('span');
+            t.textContent = n.text;
+            li.appendChild(d);
+            li.appendChild(t);
             ul.appendChild(li);
         });
     };
