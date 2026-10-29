@@ -13,14 +13,15 @@
 | 高 | 三个 manifest 声明 tools=(ToolManifest...),文案逐字取自原 ui.py/router.py 字面量 | 三个 manifest.py | 本批次 |
 | 高 | mcp_toolbox/core:删除四个内联闭包,改为 discover_tools()+resolve;_with_default_lang 经 signature.bind 保留 server 默认语言语义;static_names 由 static 标记派生 | agents/data/mcp_toolbox/core.py | 本批次 |
 | 中 | 工具页描述表与编排 _PAGES/_KEYWORDS/_DESCRIPTIONS_EN 的治理条目改为发现派生;catalog 删除四个重复 _wrap_*(与工具箱实现二份漂移源消除) | mcp_toolbox/ui.py, orchestrator/catalog.py, orchestrator/router.py | 本批次 |
-| 中 | test_mcp_toolbox 魔法集合与 ==14 改为结构断言(声明的工具都被服务 + 非声明部分精确集合;工具数 == build_tool_functions 数) | tests/test_mcp_toolbox.py | 本批次 |
+| 中 | test_mcp_toolbox 魔法集合与 ==14 改为结构断言(基础集合 ∪ manifest 声明;工具数 == build_tool_functions 数) | tests/test_mcp_toolbox.py | 本批次 |
+| 中 | floor 规则扩展:`== 魔法数字` 改写为同一 LHS 的表达式视为"更新期望"而非"删断言",附 3 条规则单测(同 LHS 放行、异 LHS 仍拦、非数字字面量仍拦) | scripts/check_workflow.py, tests/test_check_workflow_floor.py | 本批次 |
 
 ## 验证结果
 
 ```
 python -m pytest tests/test_mcp_toolbox.py tests/test_orchestrator.py tests/test_hub*.py tests/test_pii_scan.py tests/test_lineage_hygiene.py tests/test_metadata_quality.py -q
   -> 172 passed in 17.37s
-python -m pytest -q  -> 3572 passed, 1 skipped, 259 deselected in 154.11s
+python -m pytest -q  -> 3575 passed, 1 skipped, 259 deselected in 154.66s(新增 3 条 floor 规则单测)
 ruff check src tests -> All checks passed!
 mypy                 -> Success: no issues found in 177 source files
 ```

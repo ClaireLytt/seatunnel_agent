@@ -386,12 +386,12 @@ def test_no_db_profile(tmp_path, monkeypatch):
     fns = build_tool_functions(include_db=False)
     from seatunnel_agent.hub.registry import discover_tools
     manifest_names = {tm.name for tm in discover_tools()}
-    assert manifest_names <= set(fns)  # every declared tool is served
-    assert set(fns) - manifest_names == {
-        "sql_review", "sql_transpile", "skew_check",
-        "skew_check_file", "skew_runtime_eventlog",
-        "skew_runtime_history", "skew_runtime_flink", "skew_drift",
-        "impact_diff", "migrate_to_seatunnel"}
+    assert manifest_names  # the governance agents declare tools
+    assert set(fns) == {"sql_review", "sql_transpile", "skew_check",
+                        "skew_check_file", "skew_runtime_eventlog",
+                        "skew_runtime_history", "skew_runtime_flink",
+                        "skew_drift", "impact_diff",
+                        "migrate_to_seatunnel"} | manifest_names
 
 
 def test_dead_connection_cache_self_heals(tools, tmp_path):

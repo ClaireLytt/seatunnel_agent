@@ -86,16 +86,36 @@ def _assert_shape(text: str) -> str:
     return _RE_LOCATOR_ARG.sub(r"\1(<sel>", s)
 
 
+def _split_eq(text: str) -> tuple[str, str] | None:
+    """``assert LHS == RHS`` → (LHS, RHS); None for any other assert."""
+    s = text.strip()
+    if not s.startswith("assert ") or "==" not in s:
+        return None
+    lhs, _, rhs = s.partition("==")
+    return lhs, rhs.strip()
+
+
 def _assert_updated(
     file: str, removed_text: str, added: list[tuple[str, str]]
 ) -> bool:
     """True when the same file gains an assert that differs only in numbers —
-    an updated expectation, not a deleted one."""
+    an updated expectation, not a deleted one. A ``== <magic number>``
+    expectation re-derived as an expression over the same compared value
+    (same LHS, still ``==``) also counts: the comparison survives, only the
+    hand-synced constant is replaced by its source of truth."""
+    import re as _re
+
     shape = _assert_shape(removed_text)
-    return any(
-        f == file and a.lstrip().startswith("assert ") and _assert_shape(a) == shape
-        for f, a in added
-    )
+    for f, a in added:
+        if f == file and a.lstrip().startswith("assert ") and _assert_shape(a) == shape:
+            return True
+    removed_eq = _split_eq(removed_text)
+    if removed_eq and _re.fullmatch(r"\d+", removed_eq[1]):
+        for f, a in added:
+            added_eq = _split_eq(a) if f == file else None
+            if added_eq and _assert_shape(added_eq[0]) == _assert_shape(removed_eq[0]):
+                return True
+    return False
 
 
 def floor_findings(

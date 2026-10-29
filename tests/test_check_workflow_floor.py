@@ -80,6 +80,39 @@ def test_assert_locator_tightening_is_an_update() -> None:
     assert _findings(diff) == []
 
 
+def test_assert_magic_number_rederived_is_an_update() -> None:
+    # "== 14" replaced by "== <expression>" on the same compared value:
+    # the hand-synced constant now comes from its source of truth
+    diff = _diff(
+        "tests/test_a.py",
+        removed=["    assert len(run(s2.list_tools)) == 14"],
+        added=["    assert len(run(s2.list_tools)) == expected"],
+    )
+    assert _findings(diff) == []
+
+
+def test_assert_rederive_needs_same_lhs() -> None:
+    # a different compared value is a new assertion, not an update
+    diff = _diff(
+        "tests/test_a.py",
+        removed=["    assert len(run(s2.list_tools)) == 14"],
+        added=["    assert len(other) == expected"],
+    )
+    hits = _findings(diff)
+    assert hits and "删断言" in hits[0]
+
+
+def test_assert_rederive_only_for_numeric_literals() -> None:
+    # a non-numeric expectation swapped for an expression stays flagged
+    diff = _diff(
+        "tests/test_a.py",
+        removed=['    assert out == "demo"'],
+        added=["    assert out == anything()"],
+    )
+    hits = _findings(diff)
+    assert hits and "删断言" in hits[0]
+
+
 def test_assert_expected_value_change_still_flagged() -> None:
     # the selector rule must not excuse a weakened expectation
     diff = _diff(
