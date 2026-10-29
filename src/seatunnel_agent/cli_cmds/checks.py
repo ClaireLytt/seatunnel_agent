@@ -59,8 +59,15 @@ def pii(
         scan_sql_text,
     )
 
-    if not directory and not sql and not sql_file:
-        raise click.UsageError("Provide --dir / --sql / --file")
+    from .check_runner import (
+        SEVERITY_RANK,
+        CheckSpec,
+        analyze_input,
+        emit_report,
+        fail_check,
+        save_output,
+        severity_gate,
+    )
 
     rules = list(DEFAULT_RULES)
     if rules_path:
@@ -69,17 +76,16 @@ def pii(
         except ValueError as exc:
             raise click.ClickException(str(exc))
 
-    try:
-        if directory:
-            report = scan_dir(directory, dialect=dialect, rules=rules)
-        elif sql_file:
-            report = scan_files([Path(sql_file)], dialect=dialect,
-                                rules=rules, root=sql_file)
-        else:
-            report = scan_sql_text(sql, dialect=dialect, rules=rules)
-    except (OSError, UnicodeDecodeError) as exc:
-        console.print(f"[red]扫描失败:[/red] {exc}")
-        sys.exit(1)
+    spec = CheckSpec(
+        analyze_dir=scan_dir,
+        analyze_file=scan_files,
+        analyze_sql=scan_sql_text,
+        render=render_markdown,
+        to_dict=report_to_dict,
+        error_label="扫描失败",
+    )
+    report = analyze_input(spec, directory, sql, sql_file, dialect,
+                           rules=rules)
 
     if emit_mask:
         from seatunnel_agent.agents.data.pii_scan import (
@@ -105,37 +111,23 @@ def pii(
         else:
             text_out = render_mask_sql(plan)
             console.print(text_out, markup=False)
-    elif fmt == "json":
-        text_out = _json.dumps(report_to_dict(report, lang),
-                               ensure_ascii=False, indent=2)
-        print(text_out)
-    else:
-        text_out = render_markdown(report, lang)
-        console.print(text_out, markup=False)
-    if output:
-        Path(output).write_text(text_out, encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
-
-    if fail_on:
-        rank = {"low": 1, "medium": 2, "high": 3}
-        threshold = rank[fail_on]
-        if emit_mask:
+        save_output(text_out, output)
+        if fail_on:
             # treatment-aware gate: findings the generated views already
             # cover are remediated — only UNCOVERED ones can fail the CI
             worst_sev = plan.coverage.worst_uncovered()
-            worst = rank[worst_sev] if worst_sev else 0
-            msg = (f"存在 {fail_on} 及以上级别且脱敏方案未覆盖的敏感列，"
-                   "检查未通过。")
-        else:
-            worst = max((rank[f.severity] for f in report.findings),
-                        default=0)
-            msg = f"存在 {fail_on} 及以上级别的敏感列风险，检查未通过。"
-        if worst >= threshold:
-            if fmt == "json":
-                print(msg, file=sys.stderr)
-            else:
-                console.print(f"\n[red]{msg}[/red]")
-            sys.exit(1)
+            worst = SEVERITY_RANK[worst_sev] if worst_sev else 0
+            if worst >= SEVERITY_RANK[fail_on]:
+                fail_check(f"存在 {fail_on} 及以上级别且脱敏方案未覆盖的敏感列，"
+                           "检查未通过。", fmt)
+    else:
+        emit_report(spec, report, lang, fmt, output)
+        if fail_on:
+            msg = severity_gate(
+                report.findings, fail_on,
+                f"存在 {fail_on} 及以上级别的敏感列风险，检查未通过。")
+            if msg:
+                fail_check(msg, fmt)
 
 
 @click.command()
@@ -925,7 +917,6 @@ def hygiene(
     output: str | None,
 ) -> None:
     """数仓卫生检查 — 血缘驱动的死重报告：只写不读的表、无人取的列、悬空 DDL。"""
-    import json as _json
     from pathlib import Path
 
     from seatunnel_agent.agents.data.lineage_hygiene import (
@@ -934,9 +925,9 @@ def hygiene(
         render_markdown,
     )
     from seatunnel_agent.agents.data.lineage_hygiene.analyzer import analyze_files
+    from seatunnel_agent.agents.data.lineage_hygiene.history import HygieneLogger
 
-    if not directory and not sql and not sql_file:
-        raise click.UsageError("Provide --dir / --sql / --file")
+    from .check_runner import CheckSpec, run_check
 
     exempt: list[str] = []
     if exempt_path:
@@ -953,36 +944,7 @@ def hygiene(
                 f"{exempt_path}: 期望顶层为 tables: [...] 列表")
         exempt = [str(x) for x in items]
 
-    try:
-        if directory:
-            report = analyze_dir(directory, dialect=dialect, exempt=exempt)
-        elif sql_file:
-            report = analyze_files([Path(sql_file)], dialect=dialect,
-                                   root=sql_file, exempt=exempt)
-        else:
-            report = analyze_sql_text(sql or "", dialect=dialect,
-                                      exempt=exempt)
-    except (OSError, UnicodeDecodeError) as exc:
-        console.print(f"[red]分析失败:[/red] {exc}")
-        sys.exit(1)
-
-    if fmt == "json":
-        text_out = _json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
-        print(text_out)
-    else:
-        text_out = render_markdown(report, lang)
-        console.print(text_out, markup=False)
-    if output:
-        Path(output).write_text(text_out, encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
-
-    from seatunnel_agent.agents.data.lineage_hygiene.history import (
-        HygieneLogger,
-    )
-
-    HygieneLogger().log_run(report, source="cli")
-
-    if fail_on:
+    def _gate(report, fail_on: str) -> str | None:
         c = report.counts()
         hit = {
             "orphans": c["orphan_outputs"],
@@ -991,12 +953,22 @@ def hygiene(
             "any": c["total"],
         }[fail_on]
         if hit:
-            msg = f"存在 {fail_on} 类数仓死重（{hit} 项），检查未通过。"
-            if fmt == "json":
-                print(msg, file=sys.stderr)
-            else:
-                console.print(f"\n[red]{msg}[/red]")
-            sys.exit(1)
+            return f"存在 {fail_on} 类数仓死重（{hit} 项），检查未通过。"
+        return None
+
+    spec = CheckSpec(
+        analyze_dir=analyze_dir,
+        analyze_file=analyze_files,
+        analyze_sql=analyze_sql_text,
+        render=render_markdown,
+        to_dict=lambda report, lang: report.to_dict(),
+        error_label="分析失败",
+        gate=_gate,
+        log_run=lambda report: HygieneLogger().log_run(report, source="cli"),
+    )
+    run_check(spec, directory=directory, sql=sql, sql_file=sql_file,
+              dialect=dialect, lang=lang, fmt=fmt, output=output,
+              fail_on=fail_on, exempt=exempt)
 
 
 @click.command()
@@ -1025,58 +997,34 @@ def metaquality(
     output: str | None,
 ) -> None:
     """元数据质量体检 — 注释覆盖率、分层命名错配、金额浮点/日期裸 STRING 反模式。"""
-    import json as _json
-    from pathlib import Path
-
     from seatunnel_agent.agents.data.metadata_quality import (
         check_dir,
         check_sql_text,
         render_markdown,
     )
     from seatunnel_agent.agents.data.metadata_quality.checker import check_files
-
-    if not directory and not sql and not sql_file:
-        raise click.UsageError("Provide --dir / --sql / --file")
-
-    try:
-        if directory:
-            report = check_dir(directory, dialect=dialect)
-        elif sql_file:
-            report = check_files([Path(sql_file)], dialect=dialect,
-                                 root=sql_file)
-        else:
-            report = check_sql_text(sql or "", dialect=dialect)
-    except (OSError, UnicodeDecodeError) as exc:
-        console.print(f"[red]检查失败:[/red] {exc}")
-        sys.exit(1)
-
-    if fmt == "json":
-        text_out = _json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
-        print(text_out)
-    else:
-        text_out = render_markdown(report, lang)
-        console.print(text_out, markup=False)
-    if output:
-        Path(output).write_text(text_out, encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
-
     from seatunnel_agent.agents.data.metadata_quality.history import (
         MetaQualityLogger,
     )
 
-    MetaQualityLogger().log_run(report, source="cli")
+    from .check_runner import CheckSpec, run_check, severity_gate
 
-    if fail_on:
-        rank = {"low": 1, "medium": 2, "high": 3}
-        threshold = rank[fail_on]
-        worst = max((rank[f.severity] for f in report.findings), default=0)
-        if worst >= threshold:
-            msg = f"存在 {fail_on} 及以上级别的元数据问题，检查未通过。"
-            if fmt == "json":
-                print(msg, file=sys.stderr)
-            else:
-                console.print(f"\n[red]{msg}[/red]")
-            sys.exit(1)
+    spec = CheckSpec(
+        analyze_dir=check_dir,
+        analyze_file=check_files,
+        analyze_sql=check_sql_text,
+        render=render_markdown,
+        to_dict=lambda report, lang: report.to_dict(),
+        error_label="检查失败",
+        gate=lambda report, fail_on: severity_gate(
+            report.findings, fail_on,
+            f"存在 {fail_on} 及以上级别的元数据问题，检查未通过。"),
+        log_run=lambda report: MetaQualityLogger().log_run(report,
+                                                           source="cli"),
+    )
+    run_check(spec, directory=directory, sql=sql, sql_file=sql_file,
+              dialect=dialect, lang=lang, fmt=fmt, output=output,
+              fail_on=fail_on)
 
 
 @click.command(name="hygiene-stats")
