@@ -64,23 +64,28 @@ function Bar({ label, value, max = 100 }: { label: string; value: number; max?: 
 function Optimism() {
   const { t } = useTranslation()
   const [picks, setPicks] = useState<boolean[]>(() => load(OPT_KEY, []))
-  const [prev, setPrev] = useState<number | null>(null)
+  const [prev, setPrev] = useState<number | null>(() => {
+    const hist = load<number[]>(HIST_KEY + '.opt', [])
+    return hist.length > 1 ? hist[hist.length - 2] : null
+  })
   const done = picks.length >= STYLE_ITEMS.length
   const item = STYLE_ITEMS[picks.length]
   const result = scoreStyle(picks)
 
   useEffect(() => save(OPT_KEY, picks), [picks])
-  useEffect(() => {
-    if (!done) return
-    const hist = load<number[]>(HIST_KEY + '.opt', [])
-    if (hist[hist.length - 1] !== result.overall) {
-      setPrev(hist.length ? hist[hist.length - 1] : null)
-      save(HIST_KEY + '.opt', [...hist, result.overall])
-    } else {
-      setPrev(hist.length > 1 ? hist[hist.length - 2] : null)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [done])
+
+  // event-driven history: the click that completes the round records it
+  const pick = (optimistic: boolean) => {
+    setPicks((p) => {
+      const next = [...p, optimistic]
+      if (next.length === STYLE_ITEMS.length) {
+        const hist = load<number[]>(HIST_KEY + '.opt', [])
+        setPrev(hist.length ? hist[hist.length - 1] : null)
+        save(HIST_KEY + '.opt', [...hist, scoreStyle(next).overall])
+      }
+      return next
+    })
+  }
 
   if (!done && item) {
     return (
@@ -92,7 +97,7 @@ function Optimism() {
         <p className="text-sm text-muted">{t('optimism_hint')}</p>
         <div className="flex flex-col gap-2">
           {item.options.map((o, i) => (
-            <button key={i} className={optionCls} onClick={() => setPicks((p) => [...p, o.optimistic])}>
+            <button key={i} className={optionCls} onClick={() => pick(o.optimistic)}>
               {o.text}
             </button>
           ))}
