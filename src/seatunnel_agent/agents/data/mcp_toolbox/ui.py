@@ -114,6 +114,8 @@ _TOOL_DESC: dict[str, dict[str, str]] = {
                  "en": "Sensitive-column scan (naming rules × lineage, flags unmasked spread)"},
     "pii_mask": {"zh": "命中列的脱敏视图 DDL（按类别表达式，可执行）",
                  "en": "Masked-view DDL for flagged columns (category-appropriate, executable)"},
+    "metadata_quality": {"zh": "DDL 规约体检（注释覆盖/分层命名/类型反模式）",
+                         "en": "DDL conventions check (comment coverage / layer naming / type anti-patterns)"},
     "warehouse_hygiene": {"zh": "数仓死重报告（孤儿表/死列/悬空 DDL）",
                         "en": "Warehouse dead-weight report (orphan tables / dead columns / dangling DDL)"},
     "list_saved_connections": {"zh": "列出已保存连接（不含凭据）",

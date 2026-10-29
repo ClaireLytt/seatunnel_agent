@@ -299,11 +299,29 @@ def build_tool_functions(
             return f"分析失败 / analysis failed: {exc}"
         return render_markdown(report, lang=_lang(lang))
 
+    def metadata_quality(sql: str, dialect: str = "hive", lang: str = "") -> str:
+        """元数据质量体检（确定性）：对 DDL 做规约检查——列注释
+        覆盖率、分层命名错配（如 dwd 库里的 ods_ 表）、金额列用浮点/
+        日期列用裸 STRING 等类型反模式，按严重度分级。"""
+        from seatunnel_agent.agents.data.metadata_quality import (
+            check_sql_text,
+            render_markdown,
+        )
+
+        if not (sql or "").strip():
+            return "SQL 不能为空 / SQL must not be empty"
+        try:
+            report = check_sql_text(sql, dialect=dialect)
+        except Exception as exc:
+            return f"检查失败 / check failed: {exc}"
+        return render_markdown(report, lang=_lang(lang))
+
     tools.update(sql_review=sql_review, sql_transpile=sql_transpile,
                  impact_diff=impact_diff,
                  migrate_to_seatunnel=migrate_to_seatunnel,
                  pii_scan=pii_scan, pii_mask=pii_mask,
-                 warehouse_hygiene=warehouse_hygiene)
+                 warehouse_hygiene=warehouse_hygiene,
+                 metadata_quality=metadata_quality)
 
     # data-skew tools (already factored for MCP) — history source stays 'mcp'
     from seatunnel_agent.agents.data.data_skew.mcp_server import (
@@ -806,7 +824,8 @@ def create_mcp_server(
     # (db-backed answers can change between calls as data changes)
     static_names = {"sql_review", "sql_transpile", "skew_check",
                     "skew_check_file", "impact_diff", "migrate_to_seatunnel",
-                    "pii_scan", "pii_mask", "warehouse_hygiene"}
+                    "pii_scan", "pii_mask", "warehouse_hygiene",
+                    "metadata_quality"}
     annotations_cls = None
     try:
         from mcp.types import ToolAnnotations as annotations_cls

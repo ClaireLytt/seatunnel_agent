@@ -974,9 +974,84 @@ def hygiene(
             sys.exit(1)
 
 
+@click.command()
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--sql", type=str, default=None, help="直接检查一段 DDL")
+@click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="检查单个 SQL 文件")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def metaquality(
+    directory: str | None,
+    sql: str | None,
+    sql_file: str | None,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """元数据质量体检 — 注释覆盖率、分层命名错配、金额浮点/日期裸 STRING 反模式。"""
+    import json as _json
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.metadata_quality import (
+        check_dir,
+        check_sql_text,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.metadata_quality.checker import check_files
+
+    if not directory and not sql and not sql_file:
+        raise click.UsageError("Provide --dir / --sql / --file")
+
+    try:
+        if directory:
+            report = check_dir(directory, dialect=dialect)
+        elif sql_file:
+            report = check_files([Path(sql_file)], dialect=dialect,
+                                 root=sql_file)
+        else:
+            report = check_sql_text(sql or "", dialect=dialect)
+    except (OSError, UnicodeDecodeError) as exc:
+        console.print(f"[red]检查失败:[/red] {exc}")
+        sys.exit(1)
+
+    if fmt == "json":
+        text_out = _json.dumps(report.to_dict(), ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(report, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        rank = {"low": 1, "medium": 2, "high": 3}
+        threshold = rank[fail_on]
+        worst = max((rank[f.severity] for f in report.findings), default=0)
+        if worst >= threshold:
+            msg = f"存在 {fail_on} 及以上级别的元数据问题，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
 def register(cli) -> None:
     cli.add_command(pii)
     cli.add_command(hygiene)
+    cli.add_command(metaquality)
     cli.add_command(loginspect)
     cli.add_command(schemadiff)
     cli.add_command(testgen)

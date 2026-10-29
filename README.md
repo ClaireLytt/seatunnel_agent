@@ -760,6 +760,23 @@ seatunnel-agent hygiene --dir warehouse_sql/ --fail-on orphans   # CI gate
 seatunnel-agent hygiene --sql "..." -F json
 ```
 
+### Metadata Quality Agent
+
+DDL-level conventions check — how tables are *declared*, complementing
+sql_review (how queries are written) and schema_drift (how structures
+change): per-table comment coverage with the missing columns listed,
+cross-layer naming mismatches (an `ods_` table living in a `dwd` database),
+and type anti-patterns (money-named columns on FLOAT/DOUBLE — use DECIMAL;
+date-named non-partition columns on bare STRING). CLI
+`seatunnel-agent metaquality` with `--fail-on high|medium|low`, REST
+`/api/metaquality/` (whitelisted via `METAQUALITY_API_ALLOWED_DIRS`), MCP
+tool `metadata_quality`; deterministic — no DB, no LLM:
+
+```bash
+seatunnel-agent metaquality --dir warehouse_sql/                # conventions report
+seatunnel-agent metaquality --dir warehouse_sql/ --fail-on high # CI gate
+```
+
 ### Batch Log Inspection Agent
 
 Exception clustering over a log directory: ERROR/WARN lines and full Java
