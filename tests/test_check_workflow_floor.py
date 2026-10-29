@@ -69,6 +69,28 @@ def test_removed_assert_in_surviving_test_flagged() -> None:
     assert hits and "删断言" in hits[0]
 
 
+def test_assert_locator_tightening_is_an_update() -> None:
+    # addressing detail changed, compared value identical -> not a deletion
+    diff = _diff(
+        "tests/test_a.py",
+        removed=['    assert page.locator("input").input_value() == "demo"'],
+        added=['    assert page.locator("input:not([type=checkbox])")'
+               '.input_value() == "demo"'],
+    )
+    assert _findings(diff) == []
+
+
+def test_assert_expected_value_change_still_flagged() -> None:
+    # the selector rule must not excuse a weakened expectation
+    diff = _diff(
+        "tests/test_a.py",
+        removed=['    assert page.locator("input").input_value() == "demo"'],
+        added=['    assert page.locator("input").input_value() != "demo"'],
+    )
+    hits = _findings(diff)
+    assert hits and "删断言" in hits[0]
+
+
 def test_removed_assert_in_deleted_file_not_double_counted() -> None:
     diff = _diff("tests/test_gone.py", removed=["    assert result == 3"])
     hits = _findings(diff, deleted=["tests/test_gone.py"])

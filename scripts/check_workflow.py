@@ -69,11 +69,21 @@ def parse_diff(diff: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]
     return added, removed
 
 
+_RE_LOCATOR_ARG = re.compile(
+    r"""(locator|get_by_placeholder|get_by_text|get_by_label)\(\s*"""
+    r"""(?P<q>["'])(?:(?!(?P=q)).)*(?P=q)"""
+)
+
+
 def _assert_shape(text: str) -> str:
-    """Digits-normalized form of an assert line (counts drift as code grows)."""
+    """Normalized form of an assert line: digits (counts drift as code grows)
+    and element-addressing selector strings (tightening a locator is an
+    addressing detail, not an expectation change — the compared value keeps
+    full protection because only the selector argument is blanked)."""
     import re as _re
 
-    return _re.sub(r"\d+", "#", text.strip())
+    s = _re.sub(r"\d+", "#", text.strip())
+    return _RE_LOCATOR_ARG.sub(r"\1(<sel>", s)
 
 
 def _assert_updated(
