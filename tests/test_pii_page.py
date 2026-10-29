@@ -52,7 +52,7 @@ def test_pii_page_smoke(page_url):
 
         expect(page.get_by_role("heading",
                                 name="PII / Sensitive Column Scan")).to_be_visible()
-        assert page.locator("input").input_value() == "examples/pii_demo"
+        assert page.locator("input:not([type=checkbox])").input_value() == "examples/pii_demo"
         expect(page.locator("select")).to_have_value("hive")
         expect(page.get_by_role("button", name="Scan directory",
                                 exact=True)).to_be_visible()
@@ -138,7 +138,7 @@ def test_pii_bad_dir_warning(page_url):
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
-        page.locator("input").fill(str(DEMO / "no_such_dir"))
+        page.locator("input:not([type=checkbox])").fill(str(DEMO / "no_such_dir"))
         page.get_by_role("button", name="Scan directory", exact=True).click()
         expect(page.get_by_text("Not a directory", exact=False)).to_be_visible(
             timeout=10000)
@@ -156,7 +156,7 @@ def test_pii_empty_inputs(page_url):
         page = browser.new_page()
         page.goto(page_url, wait_until="networkidle")
 
-        page.locator("input").fill("")
+        page.locator("input:not([type=checkbox])").fill("")
         page.get_by_role("button", name="Scan directory", exact=True).click()
         expect(page.get_by_text("Provide a SQL directory first.",
                                 exact=False)).to_be_visible()
@@ -197,4 +197,29 @@ def test_pii_dialect_switch_spark(page_url):
             run=lambda: page.get_by_role("button", name="Scan directory",
                                          exact=True).click(),
             report=page.locator(".pii-report"), contains="bank_card_no")
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_pii_mask_generation(page_url):
+    """Masking plan: pasted SQL -> Generate masking SQL -> view DDL + copy."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.locator("summary").click()
+        page.get_by_placeholder(
+            "Paste CREATE TABLE / INSERT ... SELECT statements…").fill(PHONE_SQL)
+        page.get_by_role("button", name="Generate masking SQL",
+                         exact=True).click()
+
+        pre = page.locator("pre")
+        expect(pre).to_be_visible(timeout=15000)
+        expect(pre).to_contain_text("CREATE OR REPLACE VIEW t_masked")
+        expect(pre).to_contain_text("AS phone")
+        expect(page.get_by_role("button", name="Copy SQL",
+                                exact=True)).to_be_visible()
         browser.close()

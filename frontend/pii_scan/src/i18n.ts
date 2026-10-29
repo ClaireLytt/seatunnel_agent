@@ -29,6 +29,11 @@ const resources = {
       empty_sql: '⚠️ Paste some SQL first.',
       running: 'Scanning…',
       home: 'Home',
+      mask_btn: 'Generate masking SQL',
+      mask_conf_label: 'Mask weak hits (e.g. bare `name`) too',
+      mask_result_label: 'Masking plan — review before running',
+      mask_copy: 'Copy SQL',
+      mask_copied: 'Copied',
     },
   },
   zh: {
@@ -50,6 +55,11 @@ const resources = {
       empty_sql: '⚠️ 请先粘贴 SQL。',
       running: '扫描中…',
       home: '首页',
+      mask_btn: '生成脱敏 SQL',
+      mask_conf_label: '弱命中（如裸 name 列）也脱敏',
+      mask_result_label: '脱敏方案 — 执行前请人工复核',
+      mask_copy: '复制 SQL',
+      mask_copied: '已复制',
     },
   },
 }

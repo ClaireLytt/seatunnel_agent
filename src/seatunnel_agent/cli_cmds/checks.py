@@ -27,6 +27,11 @@ from ..common.cli_common import _handle_error, console
 @click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
               default="markdown", help="Report format (json for machines/CI)")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+@click.option("--mask", "emit_mask", is_flag=True, default=False,
+              help="输出处置方案：为命中列生成脱敏视图 SQL（代替扫描报告）")
+@click.option("--min-confidence", type=click.Choice(["low", "high"]),
+              default="low", show_default=True,
+              help="--mask 时纳入的最低置信度（high 跳过弱命中如裸 name 列）")
 def pii(
     directory: str | None,
     sql: str | None,
@@ -37,6 +42,8 @@ def pii(
     fail_on: str | None,
     fmt: str,
     output: str | None,
+    emit_mask: bool,
+    min_confidence: str,
 ) -> None:
     """敏感数据扫描 — 命名规则 × 字段血缘，静态识别 PII 列及未脱敏扩散。"""
     import json as _json
@@ -74,7 +81,31 @@ def pii(
         console.print(f"[red]扫描失败:[/red] {exc}")
         sys.exit(1)
 
-    if fmt == "json":
+    if emit_mask:
+        from seatunnel_agent.agents.data.pii_scan import (
+            build_mask_plan,
+            collect_columns_from_ddl,
+            render_mask_sql,
+        )
+
+        if directory:
+            sources = sorted(Path(directory).rglob("*.sql"))
+            text = "\n;\n".join(p.read_text(encoding="utf-8")
+                                for p in sources)
+        elif sql_file:
+            text = Path(sql_file).read_text(encoding="utf-8")
+        else:
+            text = sql or ""
+        inventory, _ = collect_columns_from_ddl(text, dialect)
+        plan = build_mask_plan(report, inventory, min_confidence)
+        if fmt == "json":
+            text_out = _json.dumps(plan.to_dict(),
+                                   ensure_ascii=False, indent=2)
+            print(text_out)
+        else:
+            text_out = render_mask_sql(plan)
+            console.print(text_out, markup=False)
+    elif fmt == "json":
         text_out = _json.dumps(report_to_dict(report, lang),
                                ensure_ascii=False, indent=2)
         print(text_out)

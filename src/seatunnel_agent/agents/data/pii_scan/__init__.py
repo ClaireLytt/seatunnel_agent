@@ -7,6 +7,15 @@ report where each hit spreads and whether the propagation is masked.
 Fully deterministic — no database connection, no LLM, nothing executed.
 """
 
+from .masker import (
+    MaskPlan,
+    build_mask_plan,
+    mask_expression,
+    plan_dir,
+    plan_files,
+    plan_sql_text,
+    render_mask_sql,
+)
 from .report import render_markdown, report_to_dict
 from .rules import DEFAULT_RULES, MASKING_FUNCS, PiiRule, load_extra_rules
 from .scanner import (
@@ -35,4 +44,11 @@ __all__ = [
     "scan_sql_text",
     "render_markdown",
     "report_to_dict",
+    "MaskPlan",
+    "build_mask_plan",
+    "mask_expression",
+    "plan_dir",
+    "plan_files",
+    "plan_sql_text",
+    "render_mask_sql",
 ]

@@ -4,6 +4,7 @@ Mount on the Gradio app's FastAPI instance (``seatunnel-agent ui --api``).
 Endpoints (all deterministic — no LLM, no database, nothing executed):
 
   POST /api/pii/scan   — scan inline SQL or a whitelisted directory
+  POST /api/pii/mask   — masking plan: view DDL for every flagged table
   GET  /api/pii/rules  — built-in rule catalog
   GET  /api/pii/health — health check
 """
@@ -69,6 +70,50 @@ def scan(req: PiiScanRequest) -> PiiScanResponse:
         report=render_markdown(result, lang) if req.report else None,
         elapsed_ms=ms_since(start),
     )
+
+
+class PiiMaskRequest(BaseModel):
+    sql: str | None = Field(None, description="Inline SQL script")
+    dir: str | None = Field(None, description="Directory scanned recursively for *.sql")
+    dialect: str = Field("hive", description="SQL dialect for parsing")
+    min_confidence: str = Field(
+        "low", description="Lowest confidence to mask: 'low' or 'high'")
+
+
+class PiiMaskResponse(BaseModel):
+    result: dict[str, Any]
+    sql: str
+    elapsed_ms: int
+
+
+@router.post("/mask", response_model=PiiMaskResponse)
+def mask(req: PiiMaskRequest) -> PiiMaskResponse:
+    """Disposal half of the scanner: CREATE VIEW DDL with masked columns."""
+    from .masker import plan_dir, plan_sql_text, render_mask_sql
+
+    start = time.time()
+    if not (req.sql or "").strip() and not (req.dir or "").strip():
+        raise HTTPException(status_code=400, detail="Provide 'sql' or 'dir'")
+    if req.min_confidence not in ("low", "high"):
+        raise HTTPException(status_code=400,
+                            detail="min_confidence must be 'low' or 'high'")
+    try:
+        if (req.dir or "").strip():
+            target = require_dir(req.dir or "", "PII_API_ALLOWED_DIRS")
+            plan = plan_dir(target, dialect=req.dialect,
+                            min_confidence=req.min_confidence)
+        else:
+            plan = plan_sql_text(req.sql or "", dialect=req.dialect,
+                                 min_confidence=req.min_confidence)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail={
+            "code": "mask_failed",
+            "error": f"{type(exc).__name__}: {exc}"})
+    return PiiMaskResponse(result=plan.to_dict(),
+                           sql=render_mask_sql(plan),
+                           elapsed_ms=ms_since(start))
 
 
 @router.get("/rules")

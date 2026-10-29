@@ -731,7 +731,18 @@ seatunnel-agent pii --dir warehouse_sql/                             # scan a di
 seatunnel-agent pii --sql "CREATE TABLE t (phone STRING COMMENT '手机号');"
 seatunnel-agent pii --dir sql/ --rules my_rules.yaml --lang en       # custom rules
 seatunnel-agent pii --dir sql/ -F json --fail-on high                # CI gate
+seatunnel-agent pii --dir sql/ --mask -o masked_views.sql            # disposal: masked-view DDL
 ```
+
+The `--mask` flag (REST `POST /api/pii/mask`, UI button on `/pii`) is the
+disposal half of the scanner: for every table whose DDL was parsed it emits
+`CREATE OR REPLACE VIEW <table>_masked AS SELECT ...` with each flagged
+column replaced by a category-appropriate expression (phone keeps 3+4
+digits, national ID keeps 6+4, e-mail keeps the first letter and domain,
+salary is suppressed to NULL, unknown categories fall back to `md5()`);
+columns known only from lineage degrade to expression snippets with a
+warning. `--min-confidence high` skips weak hits such as a bare `name`
+column.
 
 ### Batch Log Inspection Agent
 
