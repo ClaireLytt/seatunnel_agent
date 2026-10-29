@@ -92,6 +92,49 @@ class TableMaskPlan:
 
 
 @dataclass
+class Uncovered:
+    table: str
+    column: str
+    category: str
+    severity: str
+    reason: str          # "no_ddl" | "below_min_confidence"
+    unmasked_spread: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"table": self.table, "column": self.column,
+                "category": self.category, "severity": self.severity,
+                "reason": self.reason,
+                "unmasked_spread": self.unmasked_spread}
+
+
+@dataclass
+class Coverage:
+    """Verification half: assuming consumers switch to the generated views,
+    which scan findings are remediated and which unmasked spread remains."""
+
+    findings_total: int = 0
+    covered: int = 0
+    uncovered: list[Uncovered] = field(default_factory=list)
+    unmasked_edges_before: int = 0
+    unmasked_edges_after: int = 0
+
+    def worst_uncovered(self) -> str | None:
+        rank = {"low": 1, "medium": 2, "high": 3}
+        if not self.uncovered:
+            return None
+        return max(self.uncovered, key=lambda u: rank[u.severity]).severity
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "findings_total": self.findings_total,
+            "covered": self.covered,
+            "uncovered": [u.to_dict() for u in self.uncovered],
+            "unmasked_edges_before": self.unmasked_edges_before,
+            "unmasked_edges_after": self.unmasked_edges_after,
+        }
+
+
+@dataclass
 class MaskPlan:
     root: str
     dialect: str
@@ -99,6 +142,7 @@ class MaskPlan:
     expressions_only: list[MaskColumn] = field(default_factory=list)
     skipped: list[dict[str, str]] = field(default_factory=list)  # below min_confidence
     warnings: list[str] = field(default_factory=list)
+    coverage: Coverage = field(default_factory=Coverage)
 
     def counts(self) -> dict[str, int]:
         return {
@@ -118,6 +162,7 @@ class MaskPlan:
             "expressions_only": [m.to_dict() for m in self.expressions_only],
             "skipped": list(self.skipped),
             "warnings": list(self.warnings),
+            "coverage": self.coverage.to_dict(),
         }
 
 
@@ -137,12 +182,21 @@ def build_mask_plan(report: PiiReport, inventory: list[ColumnRef],
             ddl_tables.setdefault(ref.table, []).append(ref)
     types = {(r.table, r.column): r.col_type for r in inventory}
 
+    cov = plan.coverage
+    cov.findings_total = len(report.findings)
+    cov.unmasked_edges_before = sum(
+        len(f.unmasked_edges) for f in report.findings)
+
     findings: dict[str, list[PiiFinding]] = {}
     for f in report.findings:
         if _CONF_RANK.get(f.confidence, 1) < threshold:
             plan.skipped.append({"table": f.table, "column": f.column,
                                  "category": f.category,
                                  "confidence": f.confidence})
+            cov.uncovered.append(Uncovered(
+                table=f.table, column=f.column, category=f.category,
+                severity=f.severity, reason="below_min_confidence",
+                unmasked_spread=len(f.unmasked_edges)))
             continue
         findings.setdefault(f.table, []).append(f)
 
@@ -161,7 +215,13 @@ def build_mask_plan(report: PiiReport, inventory: list[ColumnRef],
             plan.expressions_only.extend(masked)
             plan.warnings.append(
                 f"{table}: 仅来自血缘、无 DDL，无法生成完整视图，只给出列表达式")
+            for f in findings[table]:
+                cov.uncovered.append(Uncovered(
+                    table=f.table, column=f.column, category=f.category,
+                    severity=f.severity, reason="no_ddl",
+                    unmasked_spread=len(f.unmasked_edges)))
             continue
+        cov.covered += len(findings[table])
         by_col = {m.column: m for m in masked}
         lines: list[str] = []
         for ref in refs:  # DDL order is preserved by parse_schema_script
@@ -182,6 +242,8 @@ def build_mask_plan(report: PiiReport, inventory: list[ColumnRef],
             table=table, view_name=view_name,
             columns=[r.column for r in refs],
             masked=masked, view_sql=view_sql))
+
+    cov.unmasked_edges_after = sum(u.unmasked_spread for u in cov.uncovered)
     return plan
 
 
@@ -203,6 +265,15 @@ def render_mask_sql(plan: MaskPlan) -> str:
         for m in plan.expressions_only:
             parts.append(f"--   {m.table}.{m.column} ({m.category}) -> "
                          f"{m.expression}")
+        parts.append("")
+    cov = plan.coverage
+    parts.append("-- 覆盖回验 coverage: "
+                 f"{cov.covered}/{cov.findings_total} findings covered; "
+                 f"unmasked spread edges {cov.unmasked_edges_before} -> "
+                 f"{cov.unmasked_edges_after}")
+    for u in cov.uncovered:
+        parts.append(f"--   UNCOVERED {u.table}.{u.column} "
+                     f"({u.category} · {u.severity}) reason={u.reason}")
     return "\n".join(parts).rstrip() + "\n"
 
 

@@ -102,6 +102,40 @@ def test_plan_to_dict_counts():
     assert d["counts"]["expressions_only"] >= 2
 
 
+# ─────────────────────── coverage (verification) ───────────────────────
+
+def test_coverage_full_when_every_table_has_ddl():
+    cov = plan_sql_text(DDL).coverage
+    assert cov.findings_total == cov.covered > 0
+    assert cov.uncovered == []
+    assert cov.unmasked_edges_after == 0
+    assert cov.worst_uncovered() is None
+
+
+def test_coverage_counts_no_ddl_findings_as_uncovered():
+    cov = plan_sql_text(LINEAGE_ONLY).coverage
+    assert cov.covered < cov.findings_total
+    reasons = {u.reason for u in cov.uncovered}
+    assert reasons == {"no_ddl"}
+    assert cov.worst_uncovered() == "high"
+
+
+def test_coverage_counts_skipped_weak_hits_as_uncovered():
+    ddl = "CREATE TABLE t (name STRING COMMENT 'nickname');"
+    cov = plan_sql_text(ddl, min_confidence="high").coverage
+    assert cov.covered == 0
+    assert cov.uncovered[0].reason == "below_min_confidence"
+
+
+def test_coverage_in_rendered_sql_and_dict():
+    sql = render_mask_sql(plan_sql_text(LINEAGE_ONLY))
+    assert "覆盖回验 coverage:" in sql
+    assert "UNCOVERED dw.user_wide.phone" in sql
+    d = plan_sql_text(LINEAGE_ONLY).to_dict()
+    assert d["coverage"]["findings_total"] == d["coverage"]["covered"] \
+        + len(d["coverage"]["uncovered"])
+
+
 # ─────────────────────── CLI surface ───────────────────────
 
 def test_cli_pii_mask_flag_outputs_sql():
@@ -118,8 +152,16 @@ def test_cli_pii_mask_json():
     assert data["tables"][0]["view_name"] == "ods.user_info_masked"
 
 
-def test_cli_pii_mask_respects_fail_on():
+def test_cli_pii_mask_gate_passes_when_covered():
+    # all findings get a view -> treatment-aware gate is satisfied
     res = runner.invoke(cli, ["pii", "--sql", DDL, "--mask",
+                              "--fail-on", "high"])
+    assert res.exit_code == 0, res.output
+
+
+def test_cli_pii_mask_gate_fails_on_uncovered():
+    # dw.user_wide is lineage-only (no DDL) -> its high finding is uncovered
+    res = runner.invoke(cli, ["pii", "--sql", LINEAGE_ONLY, "--mask",
                               "--fail-on", "high"])
     assert res.exit_code == 1
 

@@ -119,9 +119,18 @@ def pii(
     if fail_on:
         rank = {"low": 1, "medium": 2, "high": 3}
         threshold = rank[fail_on]
-        worst = max((rank[f.severity] for f in report.findings), default=0)
-        if worst >= threshold:
+        if emit_mask:
+            # treatment-aware gate: findings the generated views already
+            # cover are remediated — only UNCOVERED ones can fail the CI
+            worst_sev = plan.coverage.worst_uncovered()
+            worst = rank[worst_sev] if worst_sev else 0
+            msg = (f"存在 {fail_on} 及以上级别且脱敏方案未覆盖的敏感列，"
+                   "检查未通过。")
+        else:
+            worst = max((rank[f.severity] for f in report.findings),
+                        default=0)
             msg = f"存在 {fail_on} 及以上级别的敏感列风险，检查未通过。"
+        if worst >= threshold:
             if fmt == "json":
                 print(msg, file=sys.stderr)
             else:
