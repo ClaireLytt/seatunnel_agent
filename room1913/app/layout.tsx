@@ -1,0 +1,27 @@
+import type { Metadata } from "next";
+import "./globals.css";
+import GlobalAtmosphere from "./components/GlobalAtmosphere";
+import GardenWarmth from "./components/GardenWarmth";
+import Seasons from "./components/Seasons";
+import VinylPlayer from "./components/VinylPlayer";
+import { Analytics } from "@vercel/analytics/next";
+
+export const metadata: Metadata = {
+  title: "Room 1913",
+  description: "A midnight study, a quiet conversation across time."
+};
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body className="grain">
+        <GlobalAtmosphere />
+        <GardenWarmth />
+        <Seasons />
+        <div className="app-shell">{children}</div>
+        <VinylPlayer />
+        <Analytics />
+      </body>
+    </html>
+  );
+}
