@@ -53,6 +53,9 @@ def scan(req: MetaQualityRequest) -> MetaQualityResponse:
         raise HTTPException(status_code=400, detail={
             "code": "metaquality_failed",
             "error": f"{type(exc).__name__}: {exc}"})
+    from .history import MetaQualityLogger
+
+    MetaQualityLogger().log_run(result, source="api")
     return MetaQualityResponse(
         result=result.to_dict(),
         report=render_markdown(result, lang) if req.report else None,

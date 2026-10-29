@@ -101,6 +101,19 @@ def test_cli_metaquality_markdown_json_and_gate():
     assert res.exit_code == 0, res.output
 
 
+# ─────────────────────── history ───────────────────────
+
+def test_history_logged_and_stats_cli(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    res = runner.invoke(cli, ["metaquality", "--sql", SQL])
+    assert res.exit_code == 0, res.output
+    assert (tmp_path / "logs" / "metaquality.jsonl").exists()
+
+    res = runner.invoke(cli, ["metaquality-stats"])
+    assert res.exit_code == 0, res.output
+    assert "注释覆盖" in res.output and "趋势" in res.output
+
+
 # ─────────────────────── REST API ───────────────────────
 
 def _api_client():

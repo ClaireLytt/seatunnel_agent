@@ -25,6 +25,10 @@ class HygieneRequest(BaseModel):
     sql: str | None = Field(None, description="Inline SQL script")
     dir: str | None = Field(None, description="Directory scanned recursively for *.sql")
     dialect: str = Field("hive", description="SQL dialect for parsing")
+    exempt: list[str] = Field(
+        default_factory=list,
+        description="fnmatch patterns of externally-read tables to exempt "
+                    "from the orphan verdict")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
     report: bool = Field(False, description="Include the rendered markdown report")
 
@@ -44,15 +48,20 @@ def scan(req: HygieneRequest) -> HygieneResponse:
     try:
         if (req.dir or "").strip():
             target = require_dir(req.dir or "", "HYGIENE_API_ALLOWED_DIRS")
-            result = analyze_dir(target, dialect=req.dialect)
+            result = analyze_dir(target, dialect=req.dialect,
+                                 exempt=req.exempt)
         else:
-            result = analyze_sql_text(req.sql or "", dialect=req.dialect)
+            result = analyze_sql_text(req.sql or "", dialect=req.dialect,
+                                      exempt=req.exempt)
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=400, detail={
             "code": "hygiene_failed",
             "error": f"{type(exc).__name__}: {exc}"})
+    from .history import HygieneLogger
+
+    HygieneLogger().log_run(result, source="api")
     return HygieneResponse(
         result=result.to_dict(),
         report=render_markdown(result, lang) if req.report else None,

@@ -41,7 +41,9 @@ def render_markdown(report: HygieneReport, lang: str = "zh") -> str:
              f"- {t['scope']}: `{report.root}` · {report.dialect}",
              f"- {t['tables']}: {report.tables_seen} · "
              f"orphan {c['orphan_outputs']} · dead-col {c['dead_columns']} · "
-             f"dangling {c['dangling_defs']}", ""]
+             f"dangling {c['dangling_defs']}"
+             + (f" · exempted {len(report.exempted)}"
+                if report.exempted else ""), ""]
     if c["total"] == 0:
         lines += [t["clean"], ""]
     if report.orphan_outputs:

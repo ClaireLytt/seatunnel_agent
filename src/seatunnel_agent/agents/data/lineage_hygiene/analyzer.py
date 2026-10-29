@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from dataclasses import dataclass, field
+from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ class HygieneReport:
     orphan_outputs: list[HygieneItem] = field(default_factory=list)
     dead_columns: list[HygieneItem] = field(default_factory=list)
     dangling_defs: list[HygieneItem] = field(default_factory=list)
+    exempted: list[str] = field(default_factory=list)  # orphan hits silenced by pattern
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
@@ -53,7 +55,8 @@ class HygieneReport:
         }
 
 
-def _analyze(paths: list[Path], dialect: str, root: str) -> HygieneReport:
+def _analyze(paths: list[Path], dialect: str, root: str,
+             exempt: list[str] | None = None) -> HygieneReport:
     graph, load_warnings = from_sql_files(paths, dialect=dialect)
     text = "\n;\n".join(p.read_text(encoding="utf-8") for p in paths)
     ddl_cols, ddl_warnings = collect_columns_from_ddl(text, dialect)
@@ -68,9 +71,15 @@ def _analyze(paths: list[Path], dialect: str, root: str) -> HygieneReport:
 
     # orphan outputs: produced, never consumed. Final marts (ads_*) are the
     # warehouse's intended endpoints — exempt them from the orphan verdict.
+    patterns = exempt or []
     for table in sorted(written - read):
         bare = table.rpartition(".")[2]
         if bare.startswith("ads_") or table.split(".")[0] == "ads":
+            continue
+        # externally-read tables (BI dashboards etc.) are invisible to SQL
+        # lineage - a user-supplied pattern list silences those verdicts
+        if any(fnmatch(table, pat) for pat in patterns):
+            report.exempted.append(table)
             continue
         report.orphan_outputs.append(HygieneItem(
             kind="orphan_output", table=table,
@@ -97,19 +106,22 @@ def _analyze(paths: list[Path], dialect: str, root: str) -> HygieneReport:
 
 
 def analyze_files(paths: list[Path] | list[str], dialect: str = "hive",
-                  root: str = "") -> HygieneReport:
+                  root: str = "",
+                  exempt: list[str] | None = None) -> HygieneReport:
     resolved = [Path(p) for p in paths]
-    return _analyze(resolved, dialect, root or str(resolved[0]))
+    return _analyze(resolved, dialect, root or str(resolved[0]), exempt)
 
 
-def analyze_dir(directory: str | Path, dialect: str = "hive") -> HygieneReport:
+def analyze_dir(directory: str | Path, dialect: str = "hive",
+                exempt: list[str] | None = None) -> HygieneReport:
     base = Path(directory)
     files = sorted(base.rglob("*.sql"))
-    return _analyze(files, dialect, str(base))
+    return _analyze(files, dialect, str(base), exempt)
 
 
-def analyze_sql_text(sql_text: str, dialect: str = "hive") -> HygieneReport:
+def analyze_sql_text(sql_text: str, dialect: str = "hive",
+                     exempt: list[str] | None = None) -> HygieneReport:
     with tempfile.TemporaryDirectory() as td:
         path = Path(td) / "inline.sql"
         path.write_text(sql_text, encoding="utf-8")
-        return _analyze([path], dialect, "<inline>")
+        return _analyze([path], dialect, "<inline>", exempt)

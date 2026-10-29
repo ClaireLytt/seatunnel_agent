@@ -906,6 +906,8 @@ def ciinspect(
               help="SQL 方言 (hive/spark/mysql/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
+@click.option("--exempt", "exempt_path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="孤儿豁免清单 YAML(tables: [通配模式],外部 BI 直读的表)")
 @click.option("--fail-on", type=click.Choice(["orphans", "dead", "dangling", "any"]),
               default=None, help="CI gate: exit 1 when the chosen kind exists")
 @click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
@@ -916,6 +918,7 @@ def hygiene(
     sql: str | None,
     sql_file: str | None,
     dialect: str,
+    exempt_path: str | None,
     lang: str,
     fail_on: str | None,
     fmt: str,
@@ -935,14 +938,30 @@ def hygiene(
     if not directory and not sql and not sql_file:
         raise click.UsageError("Provide --dir / --sql / --file")
 
+    exempt: list[str] = []
+    if exempt_path:
+        import yaml
+
+        try:
+            raw = yaml.safe_load(Path(exempt_path).read_text(
+                encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            raise click.ClickException(f"无法读取豁免清单 {exempt_path}: {exc}")
+        items = raw.get("tables") if isinstance(raw, dict) else raw
+        if not isinstance(items, list):
+            raise click.ClickException(
+                f"{exempt_path}: 期望顶层为 tables: [...] 列表")
+        exempt = [str(x) for x in items]
+
     try:
         if directory:
-            report = analyze_dir(directory, dialect=dialect)
+            report = analyze_dir(directory, dialect=dialect, exempt=exempt)
         elif sql_file:
             report = analyze_files([Path(sql_file)], dialect=dialect,
-                                   root=sql_file)
+                                   root=sql_file, exempt=exempt)
         else:
-            report = analyze_sql_text(sql or "", dialect=dialect)
+            report = analyze_sql_text(sql or "", dialect=dialect,
+                                      exempt=exempt)
     except (OSError, UnicodeDecodeError) as exc:
         console.print(f"[red]分析失败:[/red] {exc}")
         sys.exit(1)
@@ -956,6 +975,12 @@ def hygiene(
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    from seatunnel_agent.agents.data.lineage_hygiene.history import (
+        HygieneLogger,
+    )
+
+    HygieneLogger().log_run(report, source="cli")
 
     if fail_on:
         c = report.counts()
@@ -1035,6 +1060,12 @@ def metaquality(
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
 
+    from seatunnel_agent.agents.data.metadata_quality.history import (
+        MetaQualityLogger,
+    )
+
+    MetaQualityLogger().log_run(report, source="cli")
+
     if fail_on:
         rank = {"low": 1, "medium": 2, "high": 3}
         threshold = rank[fail_on]
@@ -1048,10 +1079,65 @@ def metaquality(
             sys.exit(1)
 
 
+@click.command(name="hygiene-stats")
+@click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
+def hygiene_stats(recent: int) -> None:
+    """数仓卫生历史与趋势 (logs/hygiene.jsonl)。"""
+    from seatunnel_agent.agents.data.lineage_hygiene.history import (
+        HygieneLogger,
+    )
+
+    records = HygieneLogger().recent(recent)
+    if not records:
+        console.print("[yellow]还没有数仓卫生检查记录。[/yellow]")
+        return
+    console.print("[bold]数仓卫生检查历史[/bold]")
+    for r in records:
+        c = r.get("counts") or {}
+        console.print(
+            f"  {r.get('timestamp', '')}  [{r.get('source', '')}] "
+            f"表={r.get('tables_seen', 0)}  孤儿={c.get('orphan_outputs', 0)} "
+            f"死列={c.get('dead_columns', 0)} 悬空={c.get('dangling_defs', 0)} "
+            f"豁免={r.get('exempted', 0)}")
+    first, last = records[0], records[-1]
+    fo = (first.get("counts") or {}).get("orphan_outputs", 0)
+    lo = (last.get("counts") or {}).get("orphan_outputs", 0)
+    console.print(f"\n[bold]趋势[/bold] 孤儿表 {fo} → {lo}"
+                  f"(最近 {len(records)} 次)")
+
+
+@click.command(name="metaquality-stats")
+@click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
+def metaquality_stats(recent: int) -> None:
+    """元数据质量历史与趋势 (logs/metaquality.jsonl)。"""
+    from seatunnel_agent.agents.data.metadata_quality.history import (
+        MetaQualityLogger,
+    )
+
+    records = MetaQualityLogger().recent(recent)
+    if not records:
+        console.print("[yellow]还没有元数据质量检查记录。[/yellow]")
+        return
+    console.print("[bold]元数据质量检查历史[/bold]")
+    for r in records:
+        c = r.get("counts") or {}
+        console.print(
+            f"  {r.get('timestamp', '')}  [{r.get('source', '')}] "
+            f"表={r.get('tables_checked', 0)}  high={c.get('high', 0)} "
+            f"medium={c.get('medium', 0)} low={c.get('low', 0)}  "
+            f"注释覆盖={r.get('comment_pct', 100)}%")
+    first, last = records[0], records[-1]
+    console.print(f"\n[bold]趋势[/bold] 注释覆盖 "
+                  f"{first.get('comment_pct', 100)}% → "
+                  f"{last.get('comment_pct', 100)}%(最近 {len(records)} 次)")
+
+
 def register(cli) -> None:
     cli.add_command(pii)
     cli.add_command(hygiene)
     cli.add_command(metaquality)
+    cli.add_command(hygiene_stats)
+    cli.add_command(metaquality_stats)
     cli.add_command(loginspect)
     cli.add_command(schemadiff)
     cli.add_command(testgen)

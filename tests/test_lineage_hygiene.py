@@ -104,6 +104,42 @@ def test_cli_hygiene_gate_passes_clean():
     assert res.exit_code == 0, res.output
 
 
+# ─────────────────────── exemption + history ───────────────────────
+
+def test_exempt_patterns_silence_orphans():
+    r = analyze_sql_text(SQL, exempt=["dw.orph*"])
+    assert not any(i.table == "dw.orphan" for i in r.orphan_outputs)
+    assert r.exempted == ["dw.orphan"]
+    assert "exempted 1" in render_markdown(r, "en")
+
+
+def test_cli_exempt_file_and_gate(tmp_path):
+    f = tmp_path / "exempt.yaml"
+    f.write_text("tables:\n  - dw.orph*\n", encoding="utf-8")
+    res = runner.invoke(cli, ["hygiene", "--sql", SQL,
+                              "--exempt", str(f), "--fail-on", "orphans"])
+    assert res.exit_code == 0, res.output
+
+
+def test_cli_exempt_file_invalid(tmp_path):
+    f = tmp_path / "bad.yaml"
+    f.write_text("tables: 42\n", encoding="utf-8")
+    res = runner.invoke(cli, ["hygiene", "--sql", SQL, "--exempt", str(f)])
+    assert res.exit_code != 0
+    assert "tables" in res.output
+
+
+def test_history_logged_and_stats_cli(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # logs/ lands in the tmp cwd
+    res = runner.invoke(cli, ["hygiene", "--sql", SQL])
+    assert res.exit_code == 0, res.output
+    assert (tmp_path / "logs" / "hygiene.jsonl").exists()
+
+    res = runner.invoke(cli, ["hygiene-stats"])
+    assert res.exit_code == 0, res.output
+    assert "孤儿" in res.output and "趋势" in res.output
+
+
 # ─────────────────────── REST API ───────────────────────
 
 def _api_client():
