@@ -65,14 +65,14 @@ def make_scan_router(spec: ScanSpec) -> APIRouter:
     """Build the standard ``POST /scan`` + ``GET /health`` router."""
     router = APIRouter(prefix=spec.prefix, tags=[spec.name])
 
+    # create_model's overloads can't express dynamic field kwargs
+    _create_model: Any = create_model
     request_model: type[ScanRequest] = (
-        create_model(  # type: ignore[call-overload]
-            f"{spec.name}_ScanRequest", __base__=ScanRequest,
-            **spec.extra_fields)
+        _create_model(f"{spec.name}_ScanRequest", __base__=ScanRequest,
+                      **spec.extra_fields)
         if spec.extra_fields else ScanRequest)
 
-    @router.post("/scan", response_model=ScanResponse)
-    def scan(req: request_model) -> ScanResponse:  # type: ignore[valid-type]
+    def scan(req: ScanRequest) -> ScanResponse:
         start = time.time()
         if not (req.sql or "").strip() and not (req.dir or "").strip():
             raise HTTPException(status_code=400,
@@ -100,6 +100,11 @@ def make_scan_router(spec: ScanSpec) -> APIRouter:
             report=spec.render(result, lang) if req.report else None,
             elapsed_ms=ms_since(start),
         )
+
+    # FastAPI reads the handler's annotations at registration time; swap in
+    # the spec-extended request model before registering the route.
+    scan.__annotations__["req"] = request_model
+    router.post("/scan", response_model=ScanResponse)(scan)
 
     add_health(router, spec.name)
     return router
