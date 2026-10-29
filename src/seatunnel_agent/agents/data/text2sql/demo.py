@@ -119,10 +119,14 @@ def build_demo(target_dir: str | Path, days: int = 60) -> dict:
             for _ in range(n_orders):
                 oid += 1
                 amount = round(rng.uniform(80, 320) * holiday_lift, 2)
-                refund_share = 0.05 if d != anomaly_day else 0.18
+                # 异常日退款必然发生：该日锚定 date.today() 漂移，可能落在
+                # 周末（单量 0.7 系数、仅 ~30% 订单有退款），样本过小时尖峰比
+                # 会随机跌破测试要求的 2 倍——改为全量退款让尖峰稳定可见。
+                is_anomaly = d == anomaly_day
+                refund_share = 0.18 if is_anomaly else 0.05
                 refund = (
                     round(amount * rng.uniform(0.5, 1.5) * refund_share, 2)
-                    if rng.random() < 0.3 else 0.0
+                    if is_anomaly or rng.random() < 0.3 else 0.0
                 )
                 rows.append((
                     f"o{oid:06d}", amount, refund, channel,
