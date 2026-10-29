@@ -38,6 +38,7 @@ _PAGES = {
     "config_lint": "/conflint",
     "schema_drift": "/schemadrift",
     "pii_scan": "/pii",
+    "pii_mask": "/pii",
     "sql_testgen": "/testgen",
     "secret_scan": "/secretscan",
     "dep_check": "/depcheck",
@@ -125,6 +126,24 @@ def _wrap_pii_scan(sql: str, dialect: str = "hive", lang: str = "zh") -> str:
     return render_markdown(scan_sql_text(sql, dialect=dialect), lang)
 
 
+def _wrap_pii_mask(sql: str, dialect: str = "hive",
+                   min_confidence: str = "low") -> str:
+    """敏感列脱敏方案:对扫描命中的列生成按类别脱敏的 CREATE OR REPLACE
+    VIEW DDL(手机留 3+4、身份证留 6+4、邮箱留首字母与域名),尾部附覆盖
+    回验。min_confidence=high 跳过弱命中(如裸 name 列)。入参为含 DDL 的
+    SQL 脚本文本。"""
+    from seatunnel_agent.agents.data.pii_scan.masker import (
+        plan_sql_text,
+        render_mask_sql,
+    )
+    if not (sql or "").strip():
+        return "SQL 不能为空 / SQL must not be empty"
+    if min_confidence not in ("low", "high"):
+        return f"min_confidence 必须是 low/high，收到: {min_confidence}"
+    return render_mask_sql(plan_sql_text(sql, dialect=dialect,
+                                         min_confidence=min_confidence))
+
+
 def _wrap_sql_testgen(sql: str, ddl: str = "", rows: int = 20,
                       dialect: str = "hive", lang: str = "zh") -> str:
     """SQL 测试数据生成:关联感知造数(等值 join 列共享取值池、WHERE 条件
@@ -197,6 +216,7 @@ _WRAPPERS: dict[str, Callable[..., str]] = {
     "config_lint": _wrap_config_lint,
     "schema_drift": _wrap_schema_drift,
     "pii_scan": _wrap_pii_scan,
+    "pii_mask": _wrap_pii_mask,
     "sql_testgen": _wrap_sql_testgen,
     "secret_scan": _wrap_secret_scan,
     "dep_check": _wrap_dep_check,

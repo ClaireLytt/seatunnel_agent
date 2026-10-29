@@ -6,6 +6,7 @@ Deterministic only — no LLM, no database, no network.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from click.testing import CliRunner
 
@@ -14,9 +15,14 @@ from seatunnel_agent.agents.data.pii_scan import (
     plan_sql_text,
     render_mask_sql,
 )
+from seatunnel_agent.agents.data.pii_scan.masker import plan_dir
 from seatunnel_agent.cli import cli
 
 runner = CliRunner()
+
+ROOT = Path(__file__).resolve().parents[1]
+DEMO_DIR = ROOT / "examples" / "pii_demo"
+GOLDEN = ROOT / "examples" / "pii_demo_masked.golden.sql"
 
 DDL = """
 CREATE TABLE ods.user_info (
@@ -164,6 +170,25 @@ def test_cli_pii_mask_gate_fails_on_uncovered():
     res = runner.invoke(cli, ["pii", "--sql", LINEAGE_ONLY, "--mask",
                               "--fail-on", "high"])
     assert res.exit_code == 1
+
+
+# ─────────────────────── golden demo output ───────────────────────
+
+def test_demo_dir_mask_matches_golden():
+    """Drift guard: the demo directory's masking plan is pinned verbatim.
+
+    Regenerate after an intentional change:
+        seatunnel-agent pii --dir examples/pii_demo --mask \
+            -o examples/pii_demo_masked.golden.sql
+    (the golden lives OUTSIDE pii_demo so the scan never eats its own output)
+    """
+    def _norm(text: str) -> str:
+        # the root line embeds the invocation path — machine-dependent
+        return "\n".join(l for l in text.splitlines()
+                         if not l.startswith("-- root:"))
+
+    got = render_mask_sql(plan_dir(DEMO_DIR))
+    assert _norm(got) == _norm(GOLDEN.read_text(encoding="utf-8"))
 
 
 # ─────────────────────── REST API ───────────────────────

@@ -17,6 +17,7 @@ Routing rules:
    - translate SQL then review it: sql_transpile → sql_review
    - migrate a DataX job then lint the result: migrate_to_seatunnel → config_lint
    - format SQL then generate test data: sql_fmt → sql_testgen
+   - scan for sensitive columns then emit masked views: pii_scan → pii_mask
 3. A general question (concepts, how-to, platform usage) needs no tool —
    answer directly and mention the relevant Web UI page when one exists.
 4. If required input is missing (e.g. no SQL pasted), ask for it instead of

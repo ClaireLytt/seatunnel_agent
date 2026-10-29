@@ -30,7 +30,8 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "sql_fmt": ("格式化", "format", "排版", "美化"),
     "config_lint": ("配置", "hocon", "conf", "lint", "连接器", "connector"),
     "schema_drift": ("漂移", "drift", "ddl", "表结构变更", "schema"),
-    "pii_scan": ("敏感", "pii", "脱敏", "手机号", "身份证"),
+    "pii_scan": ("敏感", "pii", "手机号", "身份证"),
+    "pii_mask": ("脱敏", "mask", "打码", "脱敏视图", "masked view"),
     "sql_testgen": ("造数", "测试数据", "test data", "testgen", "mock"),
     "secret_scan": ("凭证", "密钥", "泄漏", "secret", "secrets", "leak",
                     "leaked", "credential", "credentials", "token",
@@ -68,6 +69,8 @@ _DESCRIPTIONS_EN: dict[str, str] = {
                      "for every structural change."),
     "pii_scan": ("Find sensitive columns via naming rules × column lineage and "
                  "flag unmasked downstream spread."),
+    "pii_mask": ("Generate executable masked-view DDL for flagged sensitive "
+                 "columns, with a coverage footer."),
     "sql_testgen": ("Generate join-aware test datasets that exercise a query, "
                     "validated on in-memory SQLite."),
     "secret_scan": ("Scan text for leaked credentials — provider tokens, "
