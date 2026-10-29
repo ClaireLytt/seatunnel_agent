@@ -282,10 +282,28 @@ def build_tool_functions(
             return f"生成失败 / mask failed: {exc}"
         return render_mask_sql(plan)
 
+    def warehouse_hygiene(sql: str, dialect: str = "hive", lang: str = "") -> str:
+        """数仓卫生检查（确定性）：对 SQL/DDL 脚本做血缘驱动的死重报告——
+        只写不读的孤儿表、表有人读但列无人取的死列、有 DDL 却不在任何血缘
+        里的悬空定义。回答「哪些可以退役」。"""
+        from seatunnel_agent.agents.data.lineage_hygiene import (
+            analyze_sql_text,
+            render_markdown,
+        )
+
+        if not (sql or "").strip():
+            return "SQL 不能为空 / SQL must not be empty"
+        try:
+            report = analyze_sql_text(sql, dialect=dialect)
+        except Exception as exc:
+            return f"分析失败 / analysis failed: {exc}"
+        return render_markdown(report, lang=_lang(lang))
+
     tools.update(sql_review=sql_review, sql_transpile=sql_transpile,
                  impact_diff=impact_diff,
                  migrate_to_seatunnel=migrate_to_seatunnel,
-                 pii_scan=pii_scan, pii_mask=pii_mask)
+                 pii_scan=pii_scan, pii_mask=pii_mask,
+                 warehouse_hygiene=warehouse_hygiene)
 
     # data-skew tools (already factored for MCP) — history source stays 'mcp'
     from seatunnel_agent.agents.data.data_skew.mcp_server import (
@@ -788,7 +806,7 @@ def create_mcp_server(
     # (db-backed answers can change between calls as data changes)
     static_names = {"sql_review", "sql_transpile", "skew_check",
                     "skew_check_file", "impact_diff", "migrate_to_seatunnel",
-                    "pii_scan", "pii_mask"}
+                    "pii_scan", "pii_mask", "warehouse_hygiene"}
     annotations_cls = None
     try:
         from mcp.types import ToolAnnotations as annotations_cls

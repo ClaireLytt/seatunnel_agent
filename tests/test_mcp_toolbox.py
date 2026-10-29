@@ -387,7 +387,8 @@ def test_no_db_profile(tmp_path, monkeypatch):
     assert set(fns) == {"sql_review", "sql_transpile", "skew_check",
                         "skew_check_file", "skew_runtime_eventlog",
                         "skew_runtime_history", "skew_runtime_flink", "skew_drift", "impact_diff",
-                        "migrate_to_seatunnel", "pii_scan", "pii_mask"}
+                        "migrate_to_seatunnel", "pii_scan", "pii_mask",
+                        "warehouse_hygiene"}
 
 
 def test_dead_connection_cache_self_heals(tools, tmp_path):
@@ -467,7 +468,7 @@ def test_mcp_server_resources():
     s2 = create_mcp_server(include_db=False)
     uris2 = {str(r.uri) for r in anyio.run(s2.list_resources)}
     assert "seatunnel://connections" not in uris2
-    assert len(anyio.run(s2.list_tools)) == 12
+    assert len(anyio.run(s2.list_tools)) == 13
 
 
 def test_server_json_manifest_valid():

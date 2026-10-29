@@ -744,6 +744,22 @@ columns known only from lineage degrade to expression snippets with a
 warning. `--min-confidence high` skips weak hits such as a bare `name`
 column.
 
+### Warehouse Hygiene Agent
+
+Lineage-driven dead-weight report — the question nobody else in the suite
+answers: *what could be retired?* Write-only tables (orphan outputs, final
+`ads_*` marts exempt), columns of read tables that no downstream ever
+selects (dead columns), and DDL-defined tables absent from every lineage
+edge (dangling definitions). CLI `seatunnel-agent hygiene`, REST
+`/api/hygiene/` (whitelisted via `HYGIENE_API_ALLOWED_DIRS`), MCP tool
+`warehouse_hygiene`; deterministic — no DB, no LLM:
+
+```bash
+seatunnel-agent hygiene --dir warehouse_sql/                 # dead-weight report
+seatunnel-agent hygiene --dir warehouse_sql/ --fail-on orphans   # CI gate
+seatunnel-agent hygiene --sql "..." -F json
+```
+
 ### Batch Log Inspection Agent
 
 Exception clustering over a log directory: ERROR/WARN lines and full Java
