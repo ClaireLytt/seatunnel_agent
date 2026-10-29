@@ -127,8 +127,47 @@ def _build_landing_html() -> str:
         '\n  <div class="st-hub-section-title st-hub-landing-sec" '
         'data-en="Engineering Tools" data-zh="工程工具">Engineering Tools</div>'
         f'\n  <div class="st-hub-grid">{eng_cards}</div>')
+    body += _garden_corner_html()
     return _hub_shell(header, _swap_logos(body)).replace(
         "<!--STATUS-->", _hub_health_html())
+
+
+def _garden_corner_html() -> str:
+    """A small garden fragment on the landing page: one line a day from the
+    salon corpus and a local good-news note (localStorage only — nothing
+    leaves the browser). Ported as a native widget; room1913 stays read-only.
+    """
+    return '''
+  <div class="st-hub-section-title st-hub-landing-sec" data-en="Garden Corner" data-zh="花园一角">Garden Corner</div>
+  <div class="st-garden" id="st-garden">
+    <p class="st-garden-line"><span id="st-garden-daily"></span>
+      <span class="st-garden-who" id="st-garden-who"></span></p>
+    <div class="st-garden-row">
+      <input id="st-garden-input" maxlength="120"
+             data-en-ph="One small good thing today..." data-zh-ph="写下今天一件很小的好事……"
+             placeholder="写下今天一件很小的好事……" />
+      <button id="st-garden-save" data-en="Keep" data-zh="存下">存下</button>
+      <a class="st-garden-games" href="/games/" data-en="Mind games →" data-zh="心理小游戏 →">心理小游戏 →</a>
+    </div>
+    <ul id="st-garden-list"></ul>
+  </div>
+  <style>
+    .st-garden{border:1.5px solid rgba(0,0,0,.55);border-radius:10px;
+      padding:16px 18px;margin-top:6px;background:rgba(255,255,255,.6)}
+    .st-garden-line{margin:0 0 12px;font-size:14px;line-height:1.7}
+    .st-garden-who{opacity:.55;font-size:12px;margin-left:8px}
+    .st-garden-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .st-garden-row input{flex:1;min-width:220px;padding:8px 12px;
+      border:1.5px solid rgba(0,0,0,.45);border-radius:6px;font-size:13px}
+    .st-garden-row button{padding:8px 16px;border:1.5px solid #000;
+      border-radius:6px;background:#000;color:#fff;font-size:13px;cursor:pointer}
+    .st-garden-games{font-size:13px;text-decoration:none;opacity:.75}
+    .st-garden-games:hover{opacity:1}
+    #st-garden-list{list-style:none;margin:10px 0 0;padding:0;font-size:13px}
+    #st-garden-list li{padding:4px 0;opacity:.8}
+    #st-garden-list li::before{content:"\\2766  ";opacity:.6}
+  </style>
+'''
 
 
 def _build_ai_hub_html() -> str:
@@ -293,9 +332,56 @@ _HUB_LANG_RESTORE_JS = """
 """
 
 
+_GARDEN_CORNER_JS = """
+() => {
+    const root = document.getElementById('st-garden');
+    if (!root || root.dataset.wired) return;
+    root.dataset.wired = '1';
+    const LINES = [
+      ['\u76f4\u63a5\u8ffd\u6c42\u5feb\u4e50\u7684\u4eba\uff0c\u5f80\u5f80\u4e24\u624b\u7a7a\u7a7a\u3002\u5feb\u4e50\u662f\u56de\u5934\u65f6\u624d\u770b\u89c1\u7684\u4e1c\u897f\u3002','\u585e\u5229\u683c\u66fc'],
+      ['\u4f60\u628a\u6ce8\u610f\u529b\u653e\u5728\u54ea\u91cc\uff0c\u4f60\u7684\u751f\u6d3b\u5c31\u662f\u4ec0\u4e48\u6837\u5b50\u3002','\u5951\u514b\u68ee\u7c73\u54c8\u8d56'],
+      ['\u65e0\u804a\u548c\u7126\u8651\u4e4b\u95f4\u6709\u4e00\u6761\u7a84\u7f1d\uff1a\u6311\u6218\u7565\u9ad8\u4e8e\u80fd\u529b\uff0c\u624b\u8981\u4f38\u4e00\u4e0b\u624d\u591f\u5f97\u7740\u3002','\u5951\u514b\u68ee\u7c73\u54c8\u8d56'],
+      ['\u65e0\u52a9\u662f\u4e60\u5f97\u7684\u2014\u2014\u8fd9\u610f\u5473\u7740\uff0c\u5b83\u4e5f\u80fd\u88ab\u91cd\u65b0\u5b66\u6389\u3002','\u585e\u5229\u683c\u66fc'],
+      ['\u4e00\u4e2a\u4eba\u53ea\u8981\u8fd8\u6709\u4e00\u4ef6\u81ea\u6210\u76ee\u7684\u7684\u4e8b\uff0c\u751f\u6d3b\u5c31\u584c\u4e0d\u4e0b\u6765\u3002','\u5951\u514b\u68ee\u7c73\u54c8\u8d56'],
+      ['\u6700\u597d\u7684\u65f6\u523b\u5f88\u5c11\u5728\u5047\u671f\u91cc\uff0c\u5b83\u4eec\u85cf\u5728\u4e13\u6ce8\u7684\u5de5\u4f5c\u548c\u6295\u5165\u7684\u4ea4\u8c08\u91cc\u3002','\u5951\u514b\u68ee\u7c73\u54c8\u8d56'],
+      ['\u6ce8\u610f\u529b\u5929\u751f\u504f\u7231\u574f\u6d88\u606f\uff1b\u611f\u6069\u7ec3\u4e60\u662f\u628a\u5b83\u63b0\u56de\u597d\u4e8b\u4e0a\u3002','\u585e\u5229\u683c\u66fc'],
+      ['\u628a\u591f\u4e0d\u7740\u7684\u62c6\u6210\u4f38\u624b\u53ef\u53ca\u7684\u7b2c\u4e00\u6b65\u3002','\u585e\u5229\u683c\u66fc']
+    ];
+    const day = Math.floor(Date.now() / 86400000);
+    const pick = LINES[day % LINES.length];
+    document.getElementById('st-garden-daily').textContent = '\u201c' + pick[0] + '\u201d';
+    document.getElementById('st-garden-who').textContent = '\u2014\u2014 ' + pick[1] + ' \u00b7 \u4eca\u65e5\u4e00\u53e5';
+    const KEY = 'st_garden.notes.v1';
+    const load = () => { try { const v = JSON.parse(localStorage.getItem(KEY) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; } };
+    const render = () => {
+        const ul = document.getElementById('st-garden-list');
+        ul.innerHTML = '';
+        load().slice(-3).reverse().forEach(n => {
+            const li = document.createElement('li');
+            li.textContent = n.day + ' \u00b7 ' + n.text;
+            ul.appendChild(li);
+        });
+    };
+    document.getElementById('st-garden-save').addEventListener('click', () => {
+        const inp = document.getElementById('st-garden-input');
+        const text = (inp.value || '').trim();
+        if (!text) return;
+        const d = new Date();
+        const day = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+        const notes = load(); notes.push({ day, text });
+        try { localStorage.setItem(KEY, JSON.stringify(notes)); } catch {}
+        inp.value = ''; render();
+    });
+    render();
+}
+"""
+
+
 def _mount_hub(app: gr.Blocks, builder) -> None:
     """Render a hub page inside the current route: static HTML recomputed on
     every visit (the health strip / card set change without a restart), then
     the saved language preference is re-applied."""
     hub_html = gr.HTML(builder())
-    app.load(fn=builder, outputs=[hub_html]).then(fn=None, js=_HUB_LANG_RESTORE_JS)
+    app.load(fn=builder, outputs=[hub_html]).then(
+        fn=None, js=_HUB_LANG_RESTORE_JS).then(
+        fn=None, js=_GARDEN_CORNER_JS)
