@@ -32,6 +32,10 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "schema_drift": ("漂移", "drift", "ddl", "表结构变更", "schema"),
     "pii_scan": ("敏感", "pii", "手机号", "身份证"),
     "pii_mask": ("脱敏", "mask", "打码", "脱敏视图", "masked view"),
+    "warehouse_hygiene": ("孤儿表", "死表", "死列", "退役", "下线", "orphan",
+                          "dead column", "无人用"),
+    "metadata_quality": ("注释覆盖", "建表规范", "元数据质量", "命名规范",
+                         "comment coverage", "naming convention"),
     "sql_testgen": ("造数", "测试数据", "test data", "testgen", "mock"),
     "secret_scan": ("凭证", "密钥", "泄漏", "secret", "secrets", "leak",
                     "leaked", "credential", "credentials", "token",
@@ -71,6 +75,10 @@ _DESCRIPTIONS_EN: dict[str, str] = {
                  "flag unmasked downstream spread."),
     "pii_mask": ("Generate executable masked-view DDL for flagged sensitive "
                  "columns, with a coverage footer."),
+    "warehouse_hygiene": ("Lineage-driven dead weight: write-only tables, "
+                          "dead columns, dangling DDL definitions."),
+    "metadata_quality": ("DDL conventions: comment coverage, cross-layer "
+                         "naming mismatches, type anti-patterns."),
     "sql_testgen": ("Generate join-aware test datasets that exercise a query, "
                     "validated on in-memory SQLite."),
     "secret_scan": ("Scan text for leaked credentials — provider tokens, "

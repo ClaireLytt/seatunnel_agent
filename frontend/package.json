@@ -23,6 +23,7 @@
     "orchestrator",
     "pii_scan",
     "lineage_hygiene",
+    "metadata_quality",
     "secret_scan",
     "prompt_lab",
     "release_notes",

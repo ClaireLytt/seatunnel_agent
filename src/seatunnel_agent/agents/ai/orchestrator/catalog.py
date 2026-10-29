@@ -39,6 +39,8 @@ _PAGES = {
     "schema_drift": "/schemadrift",
     "pii_scan": "/pii",
     "pii_mask": "/pii",
+    "warehouse_hygiene": "/hygiene",
+    "metadata_quality": "/metaquality",
     "sql_testgen": "/testgen",
     "secret_scan": "/secretscan",
     "dep_check": "/depcheck",
@@ -144,6 +146,32 @@ def _wrap_pii_mask(sql: str, dialect: str = "hive",
                                          min_confidence=min_confidence))
 
 
+def _wrap_warehouse_hygiene(sql: str, dialect: str = "hive",
+                            lang: str = "zh") -> str:
+    """数仓卫生检查:血缘驱动的死重报告——只写不读的孤儿表、表有人读但
+    列无人取的死列、有 DDL 却不在任何血缘里的悬空定义。入参为 SQL 脚本。"""
+    from seatunnel_agent.agents.data.lineage_hygiene import (
+        analyze_sql_text,
+        render_markdown,
+    )
+    if not (sql or "").strip():
+        return "SQL 不能为空 / SQL must not be empty"
+    return render_markdown(analyze_sql_text(sql, dialect=dialect), lang)
+
+
+def _wrap_metadata_quality(sql: str, dialect: str = "hive",
+                           lang: str = "zh") -> str:
+    """元数据质量体检:DDL 规约——注释覆盖率、跨层命名错配(dwd 库里的
+    ods_ 表)、类型反模式(金额浮点/日期裸 STRING),按严重度分级。"""
+    from seatunnel_agent.agents.data.metadata_quality import (
+        check_sql_text,
+        render_markdown,
+    )
+    if not (sql or "").strip():
+        return "SQL 不能为空 / SQL must not be empty"
+    return render_markdown(check_sql_text(sql, dialect=dialect), lang)
+
+
 def _wrap_sql_testgen(sql: str, ddl: str = "", rows: int = 20,
                       dialect: str = "hive", lang: str = "zh") -> str:
     """SQL 测试数据生成:关联感知造数(等值 join 列共享取值池、WHERE 条件
@@ -217,6 +245,8 @@ _WRAPPERS: dict[str, Callable[..., str]] = {
     "schema_drift": _wrap_schema_drift,
     "pii_scan": _wrap_pii_scan,
     "pii_mask": _wrap_pii_mask,
+    "warehouse_hygiene": _wrap_warehouse_hygiene,
+    "metadata_quality": _wrap_metadata_quality,
     "sql_testgen": _wrap_sql_testgen,
     "secret_scan": _wrap_secret_scan,
     "dep_check": _wrap_dep_check,
