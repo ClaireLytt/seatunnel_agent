@@ -4,6 +4,7 @@
   "workspaces": [
     "shared",
     "config_lint",
+    "contract_check",
     "dag_check",
     "dep_check",
     "doctor",

@@ -45,6 +45,30 @@ seatunnel-agent metaquality --dir warehouse_sql/ --fail-on high
 - 类型反模式：金额列用 FLOAT/DOUBLE（high，丢分——用 DECIMAL）、
   非分区日期列用裸 STRING（medium）
 
+## 承诺：数据契约
+
+```bash
+seatunnel-agent contract --dir warehouse_sql/ -c contract.yaml --fail-on high
+```
+
+metaquality 查通用规约,contract 查**项目自己的约定**——YAML 里声明
+对表的承诺,逐条对照实际 DDL:
+
+```yaml
+# contract.yaml
+tables:
+  - name: dwd.orders
+    columns:
+      - { name: order_id, type: bigint }        # 类型违约 = high
+      - { name: amount, type: decimal, comment: true }
+    partitioned_by: [dt]                         # 分区违约 = medium
+    require_comments: true                       # 缺注释 = low
+    allow_extra_columns: false                   # 契约外列 = low
+```
+
+表/列缺失与类型违约 high,分区违约 medium,注释与契约外列 low。
+Web 页在 `/contract`,聊天/MCP 工具名 `contract_check`。
+
 ## 保护：敏感数据
 
 详见 [pii_guide.md](pii_guide.md)。要点：扫描（命名规则×血缘）→

@@ -1027,6 +1027,70 @@ def metaquality(
               fail_on=fail_on)
 
 
+@click.command()
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--sql", type=str, default=None, help="直接校验一段 DDL")
+@click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="校验单个 SQL 文件")
+@click.option("--contract", "-c", "contract_path", required=True,
+              type=click.Path(exists=True, dir_okay=False),
+              help="契约 YAML（tables: 声明列/类型/注释要求/分区键）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
+              default=None, help="CI gate: exit 1 when violations at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def contract(
+    directory: str | None,
+    sql: str | None,
+    sql_file: str | None,
+    contract_path: str,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """数据契约校验 — YAML 声明的表承诺 vs 实际 DDL，违约分级报出。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.contract_check import (
+        check_dir,
+        check_files,
+        check_sql_text,
+        parse_contract,
+        render_markdown,
+    )
+
+    from .check_runner import CheckSpec, run_check, severity_gate
+
+    contract_text = Path(contract_path).read_text(encoding="utf-8")
+    try:
+        parse_contract(contract_text)
+    except ValueError as exc:
+        raise click.ClickException(f"契约格式错误: {exc}")
+
+    spec = CheckSpec(
+        analyze_dir=check_dir,
+        analyze_file=check_files,
+        analyze_sql=check_sql_text,
+        render=render_markdown,
+        to_dict=lambda report, lang: report.to_dict(),
+        error_label="校验失败",
+        gate=lambda report, fail_on: severity_gate(
+            report.findings, fail_on,
+            f"存在 {fail_on} 及以上级别的契约违约，检查未通过。"),
+    )
+    run_check(spec, directory=directory, sql=sql, sql_file=sql_file,
+              dialect=dialect, lang=lang, fmt=fmt, output=output,
+              fail_on=fail_on, contract=contract_text)
+
+
 @click.command(name="hygiene-stats")
 @click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
 def hygiene_stats(recent: int) -> None:
@@ -1084,6 +1148,7 @@ def register(cli) -> None:
     cli.add_command(pii)
     cli.add_command(hygiene)
     cli.add_command(metaquality)
+    cli.add_command(contract)
     cli.add_command(hygiene_stats)
     cli.add_command(metaquality_stats)
     cli.add_command(loginspect)
