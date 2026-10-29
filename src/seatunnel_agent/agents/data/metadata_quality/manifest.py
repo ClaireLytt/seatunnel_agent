@@ -1,6 +1,6 @@
 """Platform plugin manifest — see seatunnel_agent.hub.registry."""
 
-from seatunnel_agent.hub.registry import AgentManifest
+from seatunnel_agent.hub.registry import AgentManifest, ToolManifest
 
 MANIFEST = AgentManifest(
     name="metadata_quality",
@@ -17,4 +17,16 @@ MANIFEST = AgentManifest(
     group="governance",
     order=52,
     external=True,
+    tools=(
+        ToolManifest(
+            name="metadata_quality",
+            ref="seatunnel_agent.agents.data.metadata_quality.tools:metadata_quality",
+            desc_zh="DDL 规约体检（注释覆盖/分层命名/类型反模式）",
+            desc_en="DDL conventions check (comment coverage / layer naming / type anti-patterns)",
+            router_en="DDL conventions: comment coverage, cross-layer "
+                      "naming mismatches, type anti-patterns.",
+            keywords=("注释覆盖", "建表规范", "元数据质量", "命名规范",
+                      "comment coverage", "naming convention"),
+        ),
+    ),
 )

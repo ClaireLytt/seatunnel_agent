@@ -110,14 +110,6 @@ _TOOL_DESC: dict[str, dict[str, str]] = {
                     "en": "Change-impact blast radius between two SQL snippets"},
     "migrate_to_seatunnel": {"zh": "DataX JSON / sqoop 命令 → SeaTunnel 配置",
                              "en": "DataX JSON / sqoop command → SeaTunnel config"},
-    "pii_scan": {"zh": "敏感列扫描（命名规则 × 血缘，标未脱敏传播）",
-                 "en": "Sensitive-column scan (naming rules × lineage, flags unmasked spread)"},
-    "pii_mask": {"zh": "命中列的脱敏视图 DDL（按类别表达式，可执行）",
-                 "en": "Masked-view DDL for flagged columns (category-appropriate, executable)"},
-    "metadata_quality": {"zh": "DDL 规约体检（注释覆盖/分层命名/类型反模式）",
-                         "en": "DDL conventions check (comment coverage / layer naming / type anti-patterns)"},
-    "warehouse_hygiene": {"zh": "数仓死重报告（孤儿表/死列/悬空 DDL）",
-                        "en": "Warehouse dead-weight report (orphan tables / dead columns / dangling DDL)"},
     "list_saved_connections": {"zh": "列出已保存连接（不含凭据）",
                                "en": "List saved connections (no credentials)"},
     "list_tables": {"zh": "列出连接中的表（子串过滤）",
@@ -135,6 +127,16 @@ _TOOL_DESC: dict[str, dict[str, str]] = {
     "compare_query_results": {"zh": "一致性实测：两版 SQL 结果等价性验证",
                               "en": "Consistency measurement: verify two SQLs return equal results"},
 }
+
+# manifest-declared tools (governance agents) contribute their own rows
+def _manifest_tool_descs() -> dict[str, dict[str, str]]:
+    from seatunnel_agent.hub.registry import discover_tools
+
+    return {tm.name: {"zh": tm.desc_zh, "en": tm.desc_en}
+            for tm in discover_tools()}
+
+
+_TOOL_DESC.update(_manifest_tool_descs())
 
 _SETUP_BASH = """pip install 'seatunnel-agent[mcp]'
 seatunnel-agent mcp                          # 15 tools

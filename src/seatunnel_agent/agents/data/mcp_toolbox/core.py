@@ -30,6 +30,7 @@ package); :func:`create_mcp_server` only wires them into FastMCP.
 from __future__ import annotations
 
 import functools
+import inspect
 import json
 import os
 import re
@@ -243,85 +244,30 @@ def build_tool_functions(
             return f"source_kind 必须是 auto/datax/sqoop，收到: {source_kind}"
         return render_migrate_markdown(res, lang=_lang(lang))
 
-    def pii_scan(sql: str, dialect: str = "hive", lang: str = "") -> str:
-        """敏感数据扫描（确定性，不连库不执行）：对 CREATE TABLE / INSERT
-        语句做命名规则 × 字段血缘扫描，识别 PII 列（手机号/身份证/银行卡/
-        邮箱/住址等），并沿血缘标出未脱敏的下游传播。返回 Markdown 报告。"""
-        from seatunnel_agent.agents.data.pii_scan import (
-            render_markdown,
-            scan_sql_text,
-        )
-
-        if not (sql or "").strip():
-            return "SQL 不能为空 / SQL must not be empty"
-        try:
-            report = scan_sql_text(sql, dialect=dialect)
-        except Exception as exc:
-            return f"扫描失败 / scan failed: {exc}"
-        return render_markdown(report, lang=_lang(lang))
-
-    def pii_mask(sql: str, dialect: str = "hive",
-                 min_confidence: str = "low") -> str:
-        """敏感列脱敏方案（确定性）：对扫描命中的列生成按类别脱敏的
-        CREATE OR REPLACE VIEW DDL（手机留 3+4、身份证留 6+4、邮箱留首字母
-        与域名、未知类别回退 md5），直接可执行。min_confidence=high 跳过
-        弱命中（如裸 name 列）。"""
-        from seatunnel_agent.agents.data.pii_scan import (
-            plan_sql_text,
-            render_mask_sql,
-        )
-
-        if not (sql or "").strip():
-            return "SQL 不能为空 / SQL must not be empty"
-        if min_confidence not in ("low", "high"):
-            return f"min_confidence 必须是 low/high，收到: {min_confidence}"
-        try:
-            plan = plan_sql_text(sql, dialect=dialect,
-                                 min_confidence=min_confidence)
-        except Exception as exc:
-            return f"生成失败 / mask failed: {exc}"
-        return render_mask_sql(plan)
-
-    def warehouse_hygiene(sql: str, dialect: str = "hive", lang: str = "") -> str:
-        """数仓卫生检查（确定性）：对 SQL/DDL 脚本做血缘驱动的死重报告——
-        只写不读的孤儿表、表有人读但列无人取的死列、有 DDL 却不在任何血缘
-        里的悬空定义。回答「哪些可以退役」。"""
-        from seatunnel_agent.agents.data.lineage_hygiene import (
-            analyze_sql_text,
-            render_markdown,
-        )
-
-        if not (sql or "").strip():
-            return "SQL 不能为空 / SQL must not be empty"
-        try:
-            report = analyze_sql_text(sql, dialect=dialect)
-        except Exception as exc:
-            return f"分析失败 / analysis failed: {exc}"
-        return render_markdown(report, lang=_lang(lang))
-
-    def metadata_quality(sql: str, dialect: str = "hive", lang: str = "") -> str:
-        """元数据质量体检（确定性）：对 DDL 做规约检查——列注释
-        覆盖率、分层命名错配（如 dwd 库里的 ods_ 表）、金额列用浮点/
-        日期列用裸 STRING 等类型反模式，按严重度分级。"""
-        from seatunnel_agent.agents.data.metadata_quality import (
-            check_sql_text,
-            render_markdown,
-        )
-
-        if not (sql or "").strip():
-            return "SQL 不能为空 / SQL must not be empty"
-        try:
-            report = check_sql_text(sql, dialect=dialect)
-        except Exception as exc:
-            return f"检查失败 / check failed: {exc}"
-        return render_markdown(report, lang=_lang(lang))
-
     tools.update(sql_review=sql_review, sql_transpile=sql_transpile,
                  impact_diff=impact_diff,
-                 migrate_to_seatunnel=migrate_to_seatunnel,
-                 pii_scan=pii_scan, pii_mask=pii_mask,
-                 warehouse_hygiene=warehouse_hygiene,
-                 metadata_quality=metadata_quality)
+                 migrate_to_seatunnel=migrate_to_seatunnel)
+
+    # manifest-declared tools (governance agents): each agent ships its
+    # callable in <pkg>/tools.py and declares it in its manifest; an empty
+    # ``lang`` argument is filled with the server's default language here
+    from seatunnel_agent.hub.registry import discover_tools, resolve
+
+    def _with_default_lang(fn: Callable[..., str]) -> Callable[..., str]:
+        sig = inspect.signature(fn)
+        if "lang" not in sig.parameters:
+            return fn
+
+        @functools.wraps(fn)
+        def wrapped(*args: Any, **kwargs: Any) -> str:
+            bound = sig.bind(*args, **kwargs)
+            bound.arguments["lang"] = _lang(bound.arguments.get("lang", ""))
+            return fn(*bound.args, **bound.kwargs)
+
+        return wrapped
+
+    for tm in discover_tools():
+        tools[tm.name] = _with_default_lang(resolve(tm.ref))
 
     # data-skew tools (already factored for MCP) — history source stays 'mcp'
     from seatunnel_agent.agents.data.data_skew.mcp_server import (
@@ -822,10 +768,11 @@ def create_mcp_server(
 
     # every tool is read-only; the pure-static ones are idempotent too
     # (db-backed answers can change between calls as data changes)
+    from seatunnel_agent.hub.registry import discover_tools
+
     static_names = {"sql_review", "sql_transpile", "skew_check",
-                    "skew_check_file", "impact_diff", "migrate_to_seatunnel",
-                    "pii_scan", "pii_mask", "warehouse_hygiene",
-                    "metadata_quality"}
+                    "skew_check_file", "impact_diff", "migrate_to_seatunnel"}
+    static_names |= {tm.name for tm in discover_tools() if tm.static}
     annotations_cls = None
     try:
         from mcp.types import ToolAnnotations as annotations_cls

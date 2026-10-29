@@ -19,12 +19,32 @@ from __future__ import annotations
 import html as _html
 import importlib
 import pkgutil
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import cache
 from pathlib import Path
 from typing import Any
 
 WORKSPACES = ("data", "ai", "devops")
+
+
+@dataclass(frozen=True)
+class ToolManifest:
+    """A deterministic chat/MCP tool an agent contributes.
+
+    ``ref`` points to a module-level string-in/markdown-out callable whose
+    (zh-first) docstring is the tool description. The MCP toolbox, the
+    toolbox UI table and the orchestrator router all derive their entries
+    from discovery, so one declaration replaces four registration sites.
+    """
+
+    name: str            # tool name, e.g. "warehouse_hygiene"
+    ref: str             # "pkg.module:fn"
+    desc_zh: str         # one-line zh label (toolbox UI table)
+    desc_en: str         # one-line en label (toolbox UI table)
+    router_en: str       # routing description (orchestrator LLM router)
+    keywords: tuple[str, ...] = ()  # orchestrator keyword routing
+    static: bool = True  # deterministic → idempotent MCP annotation
+    page: str = ""       # web UI route; defaults to the manifest route
 
 
 @dataclass(frozen=True)
@@ -48,6 +68,16 @@ class AgentManifest:
                             # Gradio (e.g. a React static mount); render unused
     legacy: str | None = None  # external only: legacy route linked from the
                                # unbuilt-bundle hint page
+    tools: tuple[ToolManifest, ...] = ()  # chat/MCP tools this agent ships
+
+
+def discover_tools() -> list[ToolManifest]:
+    """Every tool declared by a discovered manifest, page defaulted."""
+    out: list[ToolManifest] = []
+    for mf in discover():
+        for tm in mf.tools:
+            out.append(tm if tm.page else replace(tm, page=mf.route))
+    return out
 
 
 def frontend_dist(mf: AgentManifest) -> Path:

@@ -7,7 +7,8 @@ Two sources:
   ``include_db=False`` — the chat entry gets zero DB/file attack surface;
   file-path tools are filtered out for the same reason), and
 * thin wrappers over the inline cores not in the toolbox (sql_fmt,
-  config_lint, schema_drift, pii_scan, sql_testgen).
+  config_lint, schema_drift, sql_testgen); the governance tools arrive
+  through the toolbox, declared in their agents' manifests.
 
 Everything is string-in / markdown-out, deterministic, and safe to run from
 a chat request.  Tool schemas are derived from the function signatures;
@@ -37,16 +38,21 @@ _PAGES = {
     "sql_fmt": "/sqlfmt",
     "config_lint": "/conflint",
     "schema_drift": "/schemadrift",
-    "pii_scan": "/pii",
-    "pii_mask": "/pii",
-    "warehouse_hygiene": "/hygiene",
-    "metadata_quality": "/metaquality",
     "sql_testgen": "/testgen",
     "secret_scan": "/secretscan",
     "dep_check": "/depcheck",
     "release_notes": "/release",
     "ci_triage": "/ciinspect",
 }
+
+# manifest-declared tools (governance agents) carry their own page route
+def _manifest_tool_pages() -> dict[str, str]:
+    from seatunnel_agent.hub.registry import discover_tools
+
+    return {tm.name: tm.page for tm in discover_tools()}
+
+
+_PAGES.update(_manifest_tool_pages())
 
 _TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}
 
@@ -116,60 +122,6 @@ def _wrap_schema_drift(old_ddl: str, new_ddl: str, dialect: str = "hive",
         return "需要同时提供旧/新 DDL / both old and new DDL are required"
     return render_markdown(diff_scripts(old_ddl, new_ddl, dialect=dialect),
                            lang)
-
-
-def _wrap_pii_scan(sql: str, dialect: str = "hive", lang: str = "zh") -> str:
-    """敏感数据扫描(PII):命名规则 × 字段血缘,识别手机号/身份证/银行卡等
-    敏感列并标出未脱敏的下游扩散。入参为 SQL/DDL 脚本文本。"""
-    from seatunnel_agent.agents.data.pii_scan.report import render_markdown
-    from seatunnel_agent.agents.data.pii_scan.scanner import scan_sql_text
-    if not (sql or "").strip():
-        return "SQL 不能为空 / SQL must not be empty"
-    return render_markdown(scan_sql_text(sql, dialect=dialect), lang)
-
-
-def _wrap_pii_mask(sql: str, dialect: str = "hive",
-                   min_confidence: str = "low") -> str:
-    """敏感列脱敏方案:对扫描命中的列生成按类别脱敏的 CREATE OR REPLACE
-    VIEW DDL(手机留 3+4、身份证留 6+4、邮箱留首字母与域名),尾部附覆盖
-    回验。min_confidence=high 跳过弱命中(如裸 name 列)。入参为含 DDL 的
-    SQL 脚本文本。"""
-    from seatunnel_agent.agents.data.pii_scan.masker import (
-        plan_sql_text,
-        render_mask_sql,
-    )
-    if not (sql or "").strip():
-        return "SQL 不能为空 / SQL must not be empty"
-    if min_confidence not in ("low", "high"):
-        return f"min_confidence 必须是 low/high，收到: {min_confidence}"
-    return render_mask_sql(plan_sql_text(sql, dialect=dialect,
-                                         min_confidence=min_confidence))
-
-
-def _wrap_warehouse_hygiene(sql: str, dialect: str = "hive",
-                            lang: str = "zh") -> str:
-    """数仓卫生检查:血缘驱动的死重报告——只写不读的孤儿表、表有人读但
-    列无人取的死列、有 DDL 却不在任何血缘里的悬空定义。入参为 SQL 脚本。"""
-    from seatunnel_agent.agents.data.lineage_hygiene import (
-        analyze_sql_text,
-        render_markdown,
-    )
-    if not (sql or "").strip():
-        return "SQL 不能为空 / SQL must not be empty"
-    return render_markdown(analyze_sql_text(sql, dialect=dialect), lang)
-
-
-def _wrap_metadata_quality(sql: str, dialect: str = "hive",
-                           lang: str = "zh") -> str:
-    """元数据质量体检:DDL 规约——注释覆盖率、跨层命名错配(dwd 库里的
-    ods_ 表)、类型反模式(金额浮点/日期裸 STRING),按严重度分级。"""
-    from seatunnel_agent.agents.data.metadata_quality import (
-        check_sql_text,
-        render_markdown,
-    )
-    if not (sql or "").strip():
-        return "SQL 不能为空 / SQL must not be empty"
-    return render_markdown(check_sql_text(sql, dialect=dialect), lang)
 
 
 def _wrap_sql_testgen(sql: str, ddl: str = "", rows: int = 20,
@@ -243,10 +195,6 @@ _WRAPPERS: dict[str, Callable[..., str]] = {
     "sql_fmt": _wrap_sql_fmt,
     "config_lint": _wrap_config_lint,
     "schema_drift": _wrap_schema_drift,
-    "pii_scan": _wrap_pii_scan,
-    "pii_mask": _wrap_pii_mask,
-    "warehouse_hygiene": _wrap_warehouse_hygiene,
-    "metadata_quality": _wrap_metadata_quality,
     "sql_testgen": _wrap_sql_testgen,
     "secret_scan": _wrap_secret_scan,
     "dep_check": _wrap_dep_check,
