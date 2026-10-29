@@ -23,6 +23,11 @@ cd room1913 && npm run build                     -> ○/ƒ 全路由编译通过
 cd room1913 && npm run smoke                     -> all green (29 checks)
 60 个合成"今天"扫描 demo 尖峰比                   -> worst ratio 10.621 (>2)
 PR #152 CI: smoke -> pass (1m0s), frontend -> pass, mypy/ruff/pip-audit/secretscan -> pass
+
+python scripts/check_workflow.py --range origin/main...HEAD ->
+[PASS] 报告落盘: 代码改动已附带落盘报告
+[PASS] 报告含验证输出: 报告已粘贴验证输出
+[PASS] floor: 无作弊变绿改动(范围 origin/main...HEAD)
 ```
 
 UI 为迁入的独立 Next.js 应用,浏览器回归(桌面+390px 手机宽)在迁出仓库开发期逐功能完成,迁入后以 29 项 API 冒烟 + 生产构建复验。
