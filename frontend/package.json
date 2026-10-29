@@ -22,6 +22,7 @@
     "metric_diff",
     "orchestrator",
     "pii_scan",
+    "lineage_hygiene",
     "secret_scan",
     "prompt_lab",
     "release_notes",
