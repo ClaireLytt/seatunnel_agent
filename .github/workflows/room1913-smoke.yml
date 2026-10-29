@@ -1,0 +1,51 @@
+# Room 1913 API smoke (zero LLM tokens, ~2 min).
+# Boots the Next.js dev server and runs scripts/smoke.mjs: page landmarks
+# plus every garden API branch (29 checks). Deterministic by design - the
+# whole suite needs no API key and no database.
+name: room1913-smoke
+
+on:
+  pull_request:
+    paths:
+      - "room1913/**"
+      - ".github/workflows/room1913-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: room1913
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: room1913/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Production build
+        run: npm run build
+
+      - name: Boot server and run smoke
+        run: |
+          npm run start -- --port 3000 &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/home > /dev/null && break
+            sleep 2
+          done
+          if npm run smoke; then STATUS=0; else STATUS=$?; fi
+          kill $SERVER_PID || true
+          exit $STATUS
