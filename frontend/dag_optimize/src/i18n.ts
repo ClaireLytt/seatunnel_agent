@@ -23,6 +23,9 @@ const resources = {
         '{"tasks":[{"name":"clean","deps":["extract"],"duration":5}, ...]}\n' +
         'or one edge per line:  extract -> clean',
       run_text_btn: 'Analyze text',
+      base_acc: 'Change review against a baseline',
+      base_ph:
+        'Baseline DAG (same formats) — the report gains the change review: edges added/removed, critical-path delta, redundancy introduced.',
       clear_btn: 'Clear',
       empty_input: 'Provide the DAG file or paste the graph first.',
       bad_dir: 'Not allowed: ',
@@ -51,6 +54,8 @@ const resources = {
         '{"tasks":[{"name":"clean","deps":["extract"],"duration":5}, ...]}\n' +
         '或每行一条边：  extract -> clean',
       run_text_btn: '用文本分析',
+      base_acc: '对比基线做变更评审',
+      base_ph: '基线 DAG（格式同上）— 报告将附变更评审：增删的边、关键路径变化、新引入的冗余。',
       clear_btn: '清空',
       empty_input: '请先填写 DAG 文件路径或粘贴依赖图。',
       bad_dir: '目录不在白名单: ',

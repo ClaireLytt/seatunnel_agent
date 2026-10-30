@@ -16,8 +16,8 @@ from pydantic import BaseModel, Field
 from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
 from seatunnel_agent.common.utils import normalize_lang
 
-from .optimizer import optimize, parse_dag
-from .report import render_markdown
+from .optimizer import diff_dags, optimize, parse_dag
+from .report import render_diff_markdown, render_markdown
 
 router = APIRouter(prefix="/api/dagopt", tags=["dag_optimize"])
 
@@ -28,6 +28,9 @@ class AnalyzeRequest(BaseModel):
     file: str | None = Field(
         None, description="Task DAG file (.json or text lines)")
     text: str | None = Field(None, description="Inline DAG definition")
+    base_file: str | None = Field(
+        None, description="Baseline DAG file — adds the change review")
+    base_text: str | None = Field(None, description="Inline baseline DAG")
     deadline: float = Field(
         0.0, ge=0, description="Optional SLA duration to check against")
     llm: bool = Field(
@@ -58,8 +61,13 @@ def run_analyze(req: AnalyzeRequest) -> AnalyzeResponse:
         raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
     text = (_read_whitelisted(req.file or "") if (req.file or "").strip()
             else req.text or "")
+    base_raw = (_read_whitelisted(req.base_file or "")
+                if (req.base_file or "").strip() else req.base_text or "")
     try:
-        result = optimize(parse_dag(text), deadline=req.deadline)
+        graph = parse_dag(text)
+        result = optimize(graph, deadline=req.deadline)
+        diff = (diff_dags(parse_dag(base_raw), graph)
+                if base_raw.strip() else None)
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # malformed JSON
@@ -67,6 +75,10 @@ def run_analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     lang = normalize_lang(req.lang)
     report = render_markdown(result, lang=lang) if req.report else None
     payload = result.to_dict()
+    if diff is not None:
+        payload["diff"] = diff.to_dict()
+        if report is not None:
+            report = render_diff_markdown(diff, lang=lang) + "\n" + report
     if req.llm:
         from . import advisor_llm
         from .i18n import tp

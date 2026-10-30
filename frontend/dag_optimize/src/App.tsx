@@ -11,6 +11,7 @@ export default function App() {
   const [text, setText] = useState('')
   const [deadline, setDeadline] = useState('')
   const [llm, setLlm] = useState(false)
+  const [baseText, setBaseText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
@@ -44,6 +45,7 @@ export default function App() {
         i18n.language,
         Number(deadline) > 0 ? Number(deadline) : 0,
         llm,
+        baseText,
       )
       setReport(res.report ?? '')
     } catch (e) {
@@ -63,6 +65,7 @@ export default function App() {
     setText('')
     setDeadline('')
     setLlm(false)
+    setBaseText('')
     setError('')
     setReport('')
   }
@@ -139,6 +142,24 @@ export default function App() {
                 >
                   {t('run_text_btn')}
                 </button>
+              </div>
+            </details>
+          </Card>
+
+          <Card>
+            <details>
+              <summary className="cursor-pointer select-none font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                {t('base_acc')}
+              </summary>
+              <div className="mt-3 flex flex-col gap-3">
+                <textarea
+                  value={baseText}
+                  onChange={(e) => setBaseText(e.target.value)}
+                  placeholder={t('base_ph')}
+                  rows={6}
+                  spellCheck={false}
+                  className="w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink"
+                />
               </div>
             </details>
           </Card>

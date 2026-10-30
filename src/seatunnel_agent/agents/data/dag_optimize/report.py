@@ -7,13 +7,44 @@ import json
 from seatunnel_agent.common.utils import normalize_lang
 
 from .i18n import tp
-from .optimizer import DagOptimizeResult
+from .optimizer import DagDiff, DagOptimizeResult
 
-__all__ = ["render_markdown"]
+__all__ = ["render_diff_markdown", "render_markdown"]
 
 
 def _num(value: float) -> str:
     return f"{value:g}"
+
+
+def render_diff_markdown(diff: DagDiff, lang: str = "zh") -> str:
+    lang = normalize_lang(lang)
+    arrow = "↑" if diff.critical_delta > 0 else (
+        "↓" if diff.critical_delta < 0 else "=")
+    lines = [f"## {tp(lang, 'diff_title')}",
+             "",
+             "**" + tp(lang, "diff_stats").format(
+                 before=_num(diff.critical_before),
+                 after=_num(diff.critical_after),
+                 delta=f"{arrow}{_num(abs(diff.critical_delta))}",
+                 m2b=_num(diff.makespan2_before),
+                 m2a=_num(diff.makespan2_after)) + "**",
+             ""]
+    for key, items in (
+            ("diff_added_tasks", diff.added_tasks),
+            ("diff_removed_tasks", diff.removed_tasks),
+            ("diff_added_edges",
+             [f"{u} → {d}" for u, d in diff.added_edges]),
+            ("diff_removed_edges",
+             [f"{u} → {d}" for u, d in diff.removed_edges])):
+        if items:
+            lines.append(f"- **{tp(lang, key)}**: "
+                         + ", ".join(f"`{i}`" for i in items))
+    if diff.new_redundant:
+        lines.append(f"- **{tp(lang, 'diff_new_redundant')}**: "
+                     + ", ".join(f"`{r.up}` → `{r.down}`"
+                                 for r in diff.new_redundant))
+    lines.append("")
+    return "\n".join(lines)
 
 
 def render_markdown(result: DagOptimizeResult, lang: str = "zh") -> str:

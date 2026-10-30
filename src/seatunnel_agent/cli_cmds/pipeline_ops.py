@@ -62,23 +62,33 @@ def _common(fn):
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="任务依赖图（JSON tasks/edges、DOT 或文本行）")
 @click.option("--text", type=str, default=None, help="内联依赖图")
+@click.option("--base", "base_path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="基线 DAG 文件 — 额外输出变更评审")
 @click.option("--deadline", type=float, default=0.0,
               help="SLA 时长 — 判定是否满足并给出最小提速集合")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 写优化行动清单（需配置 API key）")
 @_common
-def dagopt(path, text, deadline, use_llm, lang, fmt, output) -> None:
+def dagopt(path, text, base_path, deadline, use_llm, lang, fmt,
+           output) -> None:
     """DAG 依赖优化 — 冗余串行边、并行批次、关键路径与加速比。"""
     from seatunnel_agent.agents.data.dag_optimize import (
+        diff_dags,
         optimize,
         parse_dag,
+        render_diff_markdown,
         render_markdown,
     )
 
-    result = optimize(parse_dag(_read(path, text, "依赖图")),
-                      deadline=deadline)
+    graph = parse_dag(_read(path, text, "依赖图"))
+    result = optimize(graph, deadline=deadline)
     markdown = render_markdown(result, lang=lang)
     payload = result.to_dict()
+    if base_path:
+        diff = diff_dags(parse_dag(Path(base_path).read_text(
+            encoding="utf-8", errors="replace")), graph)
+        payload["diff"] = diff.to_dict()
+        markdown = render_diff_markdown(diff, lang=lang) + "\n" + markdown
     if use_llm:
         from seatunnel_agent.agents.data.dag_optimize.advisor_llm import (
             action_plan,

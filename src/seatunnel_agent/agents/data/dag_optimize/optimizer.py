@@ -371,6 +371,59 @@ def _deadline_plan(graph: TaskGraph, order: list[str],
         graph.nodes.update(saved)
 
 
+@dataclass
+class DagDiff:
+    """Change review between a baseline DAG and the new one."""
+
+    added_tasks: list[str] = field(default_factory=list)
+    removed_tasks: list[str] = field(default_factory=list)
+    added_edges: list[tuple[str, str]] = field(default_factory=list)
+    removed_edges: list[tuple[str, str]] = field(default_factory=list)
+    critical_before: float = 0.0
+    critical_after: float = 0.0
+    makespan2_before: float = 0.0   # 2-worker list-scheduling makespan
+    makespan2_after: float = 0.0
+    new_redundant: list[RedundantEdge] = field(default_factory=list)
+
+    @property
+    def critical_delta(self) -> float:
+        return round(self.critical_after - self.critical_before, 2)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "added_tasks": list(self.added_tasks),
+            "removed_tasks": list(self.removed_tasks),
+            "added_edges": [list(e) for e in self.added_edges],
+            "removed_edges": [list(e) for e in self.removed_edges],
+            "critical_before": self.critical_before,
+            "critical_after": self.critical_after,
+            "critical_delta": self.critical_delta,
+            "makespan2_before": self.makespan2_before,
+            "makespan2_after": self.makespan2_after,
+            "new_redundant": [r.to_dict() for r in self.new_redundant],
+        }
+
+
+def diff_dags(base: TaskGraph, new: TaskGraph) -> DagDiff:
+    """Structural and latency deltas introduced by the change."""
+    base_edges, new_edges = set(base.edges), set(new.edges)
+    before = optimize(base)
+    after = optimize(new)
+    base_redundant = {(r.up, r.down) for r in before.redundant}
+    return DagDiff(
+        added_tasks=sorted(set(new.nodes) - set(base.nodes)),
+        removed_tasks=sorted(set(base.nodes) - set(new.nodes)),
+        added_edges=sorted(new_edges - base_edges),
+        removed_edges=sorted(base_edges - new_edges),
+        critical_before=round(before.critical_duration, 2),
+        critical_after=round(after.critical_duration, 2),
+        makespan2_before=before.makespans.get("2", 0.0),
+        makespan2_after=after.makespans.get("2", 0.0),
+        new_redundant=[r for r in after.redundant
+                       if (r.up, r.down) not in base_redundant],
+    )
+
+
 def optimize(graph: TaskGraph, deadline: float = 0.0) -> DagOptimizeResult:
     result = DagOptimizeResult(tasks=len(graph.nodes),
                                edges=len(graph.edges))

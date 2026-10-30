@@ -177,6 +177,6 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## Phase 14 roadmap (DAG change review)
 
-1. [ ] dag_optimize diff mode: baseline DAG vs new DAG - tasks/edges
+1. [x] dag_optimize diff mode: baseline DAG vs new DAG - tasks/edges
    added/removed, critical-path and 2-worker-makespan deltas, redundancy
    introduced by the change; wired through tool/API/CLI/page.

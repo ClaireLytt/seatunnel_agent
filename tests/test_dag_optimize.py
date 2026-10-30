@@ -172,6 +172,42 @@ def test_bad_inputs():
         parse_dag('{"tasks": [{"name": "a", "duration": 0}]}')
 
 
+def test_dag_change_review():
+    from seatunnel_agent.agents.data.dag_optimize import (
+        diff_dags,
+        render_diff_markdown,
+    )
+
+    base = parse_dag('{"tasks":[{"name":"a","duration":5},'
+                     '{"name":"b","deps":["a"],"duration":5},'
+                     '{"name":"c","deps":["b"],"duration":5}]}')
+    # the change adds d plus a redundant a→c shortcut-turned-constraint
+    new = parse_dag('{"tasks":[{"name":"a","duration":5},'
+                    '{"name":"b","deps":["a"],"duration":5},'
+                    '{"name":"c","deps":["b","a"],"duration":5},'
+                    '{"name":"d","deps":["c"],"duration":4}]}')
+    diff = diff_dags(base, new)
+    assert diff.added_tasks == ["d"] and diff.removed_tasks == []
+    assert ("a", "c") in diff.added_edges and ("c", "d") in diff.added_edges
+    assert diff.critical_before == 15.0 and diff.critical_after == 19.0
+    assert diff.critical_delta == 4.0
+    assert [(r.up, r.down) for r in diff.new_redundant] == [("a", "c")]
+    md = render_diff_markdown(diff, lang="zh")
+    assert "DAG 变更评审" in md and "↑4" in md
+    assert "本次变更引入的冗余" in md
+    # the tool prepends the review when a base is given
+    base_json = ('{"tasks":[{"name":"a","duration":5},'
+                 '{"name":"b","deps":["a"],"duration":5},'
+                 '{"name":"c","deps":["b"],"duration":5}]}')
+    new_json = ('{"tasks":[{"name":"a","duration":5},'
+                '{"name":"b","deps":["a"],"duration":5},'
+                '{"name":"c","deps":["b","a"],"duration":5},'
+                '{"name":"d","deps":["c"],"duration":4}]}')
+    md = dag_optimize(new_json, base=base_json, lang="en")
+    assert md.startswith("## DAG Change Review")
+    assert "DAG Dependency Optimization" in md
+
+
 def test_llm_action_plan_wiring(monkeypatch):
     """API llm=true appends the action plan; the LLM call is stubbed."""
     from fastapi import FastAPI

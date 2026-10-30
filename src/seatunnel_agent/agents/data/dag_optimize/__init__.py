@@ -9,19 +9,24 @@ fusing.  No scheduler or database connection.
 """
 
 from .optimizer import (
+    DagDiff,
     DagOptimizeResult,
     RedundantEdge,
     TaskGraph,
+    diff_dags,
     optimize,
     parse_dag,
 )
-from .report import render_markdown
+from .report import render_diff_markdown, render_markdown
 
 __all__ = [
+    "DagDiff",
     "DagOptimizeResult",
     "RedundantEdge",
     "TaskGraph",
+    "diff_dags",
     "optimize",
     "parse_dag",
+    "render_diff_markdown",
     "render_markdown",
 ]
