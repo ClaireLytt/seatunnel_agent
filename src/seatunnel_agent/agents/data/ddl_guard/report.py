@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from seatunnel_agent.common.severity import SEVERITY_MARK
+
 from .guard import GuardReport
 
 _T = {
@@ -41,10 +43,6 @@ _T = {
     },
 }
 
-# same severity marks as the other governance reports
-_SEV_ICON = {"high": "⛔", "medium": "⚠️", "low": "🔵"}
-
-
 def render_markdown(report: GuardReport, lang: str = "zh") -> str:
     t = _T.get(lang, _T["zh"])
     c = report.counts()
@@ -62,7 +60,7 @@ def render_markdown(report: GuardReport, lang: str = "zh") -> str:
                             x.severity), x.table, x.column)):
             col = f"`.{f.column}`" if f.column else ""
             mark = "" if f.reversible else t["irrev_mark"]
-            lines.append(f"- {_SEV_ICON[f.severity]} "
+            lines.append(f"- {SEVERITY_MARK[f.severity]} "
                          f"[{t['kind'][f.kind]}] `{f.table}`{col}{mark} — "
                          f"{f.detail}")
         lines.append("")

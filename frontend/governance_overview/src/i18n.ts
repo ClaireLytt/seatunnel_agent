@@ -18,7 +18,6 @@ const resources = {
       trend: 'total findings, oldest to newest',
       empty: 'No runs recorded yet — run the agent once from its page or CLI.',
       open: 'Open',
-      home: 'Home',
     },
   },
   zh: {
@@ -37,7 +36,6 @@ const resources = {
       trend: '发现总数,由旧到新',
       empty: '还没有运行记录 — 在对应页面或 CLI 跑一次即可。',
       open: '打开',
-      home: '首页',
     },
   },
 }

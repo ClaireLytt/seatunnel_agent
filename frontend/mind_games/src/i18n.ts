@@ -36,7 +36,6 @@ const resources = {
       recent_evenings: 'Past evenings',
       from_corner: 'From the hall notebook',
       corner_note: 'Entries also land in the notebook on the landing page.',
-      home: 'Home',
     },
   },
   zh: {
@@ -73,7 +72,6 @@ const resources = {
       recent_evenings: '过去的夜晚',
       from_corner: '来自门厅笔记本',
       corner_note: '写下的好事也会落到首页角落的笔记本里。',
-      home: '首页',
     },
   },
 }

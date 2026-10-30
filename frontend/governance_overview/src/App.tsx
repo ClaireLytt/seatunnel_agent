@@ -12,14 +12,6 @@ const PAGES: Record<string, string> = {
   ddlguard: '/ddlguard',
 }
 
-const GLYPHS: Record<string, string> = {
-  hygiene: '🧹',
-  metaquality: '📐',
-  contract: '📜',
-  grants: '🗝️',
-  ddlguard: '🛡️',
-}
-
 function totals(records: StatsRecord[]): number[] {
   return records.map((r) => r.counts?.total ?? 0)
 }
@@ -63,10 +55,7 @@ function AgentCard({ stats }: { stats: AgentStats }) {
   return (
     <Card>
       <div className="flex items-baseline justify-between gap-2">
-        <h2 className="font-semibold">
-          <span aria-hidden="true">{GLYPHS[stats.key]} </span>
-          {t(stats.key)}
-        </h2>
+        <h2 className="font-semibold">{t(stats.key)}</h2>
         <a
           href={PAGES[stats.key]}
           className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft underline-offset-4 hover:underline"
@@ -119,7 +108,7 @@ export default function App() {
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-8">
-      <PageHeader badge="data / governance" titlePrefix="🧭" maxW="max-w-[660px]" />
+      <PageHeader badge="data / governance" maxW="max-w-[660px]" />
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {stats.map((s) => (
           <AgentCard key={s.key} stats={s} />

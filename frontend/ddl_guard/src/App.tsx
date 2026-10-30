@@ -6,7 +6,6 @@ export default function App() {
     <ScanPage
       cfg={{
         badge: 'data / ddlguard',
-        titlePrefix: '🛡️',
         errorCode: 'ddlguard_failed',
         reportClass: 'ddlguard-report',
         scan,

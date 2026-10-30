@@ -6,7 +6,6 @@ export default function App() {
     <ScanPage
       cfg={{
         badge: 'data / metaquality',
-        titlePrefix: '📐',
         errorCode: 'metaquality_failed',
         reportClass: 'metaquality-report',
         scan,

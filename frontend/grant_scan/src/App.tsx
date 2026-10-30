@@ -6,7 +6,6 @@ export default function App() {
     <ScanPage
       cfg={{
         badge: 'data / grants',
-        titlePrefix: '🗝️',
         errorCode: 'grants_failed',
         reportClass: 'grants-report',
         scan,

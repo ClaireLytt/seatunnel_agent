@@ -25,7 +25,7 @@ export type ScanBody = {
 
 export interface ScanPageConfig {
   badge: string // e.g. "data / metaquality"
-  titlePrefix: string // header glyph
+
   errorCode: string // structured failure code, e.g. "metaquality_failed"
   reportClass: string // report wrapper class, e.g. "metaquality-report"
   scan: (body: ScanBody) => Promise<{ report: string | null }>
@@ -61,7 +61,7 @@ export function ScanPage({ cfg }: { cfg: ScanPageConfig }) {
       if (e instanceof ApiError && e.code === 'bad_dir') {
         setError(t('bad_dir') + e.path)
       } else if (e instanceof ApiError && e.code === cfg.errorCode) {
-        setError(`⚠️ ${e.error}`)
+        setError(e.error)
       } else {
         setError(String(e instanceof Error ? e.message : e))
       }
@@ -104,7 +104,7 @@ export function ScanPage({ cfg }: { cfg: ScanPageConfig }) {
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-8">
-      <PageHeader badge={cfg.badge} titlePrefix={cfg.titlePrefix} maxW="max-w-[660px]" />
+      <PageHeader badge={cfg.badge} maxW="max-w-[660px]" />
 
       <div className="mt-6 flex flex-col gap-6 lg:flex-row">
         <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-[420px]">

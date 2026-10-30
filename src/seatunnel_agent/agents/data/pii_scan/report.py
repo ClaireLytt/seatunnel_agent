@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from seatunnel_agent.common.severity import SEVERITY_MARK as _LEVEL_MARK
 from seatunnel_agent.common.utils import normalize_lang
 
 from .i18n import category_label, tp
 from .scanner import PiiFinding, PiiReport
 
-_LEVEL_MARK = {"high": "⛔", "medium": "⚠️", "low": "🔵"}
 _MATCH_KEY = {"name": "rpt_matched_name", "comment": "rpt_matched_comment",
               "name+comment": "rpt_matched_both"}
 

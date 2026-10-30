@@ -1,0 +1,83 @@
+# GOV 组 · 治理六件套:data 工作区卡片 + 六个 React 页面的确定性冒烟。
+# 全部离线确定性:页面为静态 bundle,断言只看标题与关键控件文案。
+
+- id: GOV1
+  title: data 工作区治理卡片齐全
+  tags: [smoke, sqlite]
+  page: /data
+  steps:
+    - wait: 1000
+      note: 纯断言用例,等 cookie 语言切换完成
+  expect:
+    - text_contains: {in: 页面, text: 数仓卫生检查}
+    - text_contains: {in: 页面, text: 元数据质量体检}
+    - text_contains: {in: 页面, text: 数据契约校验}
+    - text_contains: {in: 页面, text: 权限面扫描}
+    - text_contains: {in: 页面, text: 迁移守卫}
+    - text_contains: {in: 页面, text: 治理总览}
+
+- id: GOV2
+  title: 数据契约页渲染(契约输入 + 目录按钮)
+  tags: [full, sqlite]
+  page: /contract/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+  expect:
+    - text_contains: {in: 页面, text: 数据契约校验}
+    - text_contains: {in: 页面, text: 契约（YAML）}
+
+- id: GOV3
+  title: 权限面页渲染
+  tags: [full, sqlite]
+  page: /grants/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+  expect:
+    - text_contains: {in: 页面, text: 权限面扫描}
+    - text_contains: {in: 页面, text: 扫描目录}
+
+- id: GOV4
+  title: 迁移守卫页渲染
+  tags: [full, sqlite]
+  page: /ddlguard/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+  expect:
+    - text_contains: {in: 页面, text: 迁移守卫}
+    - text_contains: {in: 页面, text: 迁移 SQL}
+
+- id: GOV5
+  title: 元数据质量页渲染
+  tags: [full, sqlite]
+  page: /metaquality/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+  expect:
+    - text_contains: {in: 页面, text: 元数据质量体检}
+    - text_contains: {in: 页面, text: 检查目录}
+
+- id: GOV6
+  title: 数仓卫生页渲染
+  tags: [full, sqlite]
+  page: /hygiene/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+  expect:
+    - text_contains: {in: 页面, text: 数仓卫生检查}
+
+- id: GOV7
+  title: 治理总览页渲染(五张卡)
+  tags: [full, sqlite]
+  page: /governance/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载,五个 /stats 请求返回
+  expect:
+    - text_contains: {in: 页面, text: 治理总览}
+    - text_contains: {in: 页面, text: 数据契约}
+    - text_contains: {in: 页面, text: 迁移守卫}

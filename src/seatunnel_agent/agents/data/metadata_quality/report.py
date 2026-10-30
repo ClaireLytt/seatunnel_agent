@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from seatunnel_agent.common.severity import SEVERITY_MARK
+
 from .checker import MetaQualityReport
 
 _T = {
@@ -37,10 +39,6 @@ _T = {
     },
 }
 
-# same severity marks as pii_scan/report.py
-_SEV_ICON = {"high": "⛔", "medium": "⚠️", "low": "🔵"}
-
-
 def render_markdown(report: MetaQualityReport, lang: str = "zh") -> str:
     t = _T.get(lang, _T["zh"])
     c = report.counts()
@@ -62,7 +60,7 @@ def render_markdown(report: MetaQualityReport, lang: str = "zh") -> str:
                         key=lambda x: ("high medium low".split().index(
                             x.severity), x.table, x.column)):
             col = f"`.{f.column}`" if f.column else ""
-            lines.append(f"- {_SEV_ICON[f.severity]} "
+            lines.append(f"- {SEVERITY_MARK[f.severity]} "
                          f"[{t['kind'][f.kind]}] `{f.table}`{col} — {f.detail}")
         lines.append("")
     if report.warnings:

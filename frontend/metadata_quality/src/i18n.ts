@@ -9,20 +9,15 @@ const resources = {
         'naming mismatches, and type anti-patterns (money on FLOAT, ' +
         'dates as bare STRING). No database connection, nothing executed.',
       dir_label: 'SQL directory',
-      dir_ph:
-        'Directory containing *.sql files (scanned recursively), ' +
-        'e.g. examples/pii_demo',
+      dir_ph: 'Directory containing *.sql files (scanned recursively), ' + 'e.g. examples/pii_demo',
       dialect_label: 'SQL dialect',
       scan_btn: 'Check directory',
       inline_acc: 'Check pasted DDL',
       sql_label: 'DDL input',
       sql_ph: 'Paste CREATE TABLE statements…',
       scan_sql_btn: 'Check DDL',
-      empty_dir: '⚠️ Provide a SQL directory first.',
-      bad_dir: '⚠️ Not a directory: ',
-      empty_sql: '⚠️ Paste some DDL first.',
+      empty_sql: 'Paste some DDL first.',
       running: 'Checking…',
-      home: 'Home',
     },
   },
   zh: {
@@ -38,12 +33,9 @@ const resources = {
       inline_acc: '检查粘贴的 DDL',
       sql_label: 'DDL 输入',
       sql_ph: '粘贴 CREATE TABLE 语句…',
-      empty_dir: '⚠️ 请先填写 SQL 目录。',
-      bad_dir: '⚠️ 不是有效目录: ',
-      empty_sql: '⚠️ 请先粘贴 DDL。',
+      empty_sql: '请先粘贴 DDL。',
       scan_sql_btn: '检查 DDL',
       running: '检查中…',
-      home: '首页',
     },
   },
 }

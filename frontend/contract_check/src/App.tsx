@@ -6,7 +6,6 @@ export default function App() {
     <ScanPage
       cfg={{
         badge: 'data / contract',
-        titlePrefix: '📜',
         errorCode: 'contract_failed',
         reportClass: 'contract-report',
         scan: (body) => scan({ ...body, contract: String(body.contract ?? '') }),

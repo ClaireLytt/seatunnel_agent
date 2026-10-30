@@ -1,3 +1,18 @@
+# governance_demo — one directory feeds every governance agent
+
+A sample warehouse with every kind of planted trouble, so each governance agent
+has something to say: PII columns and their downstream spread, money on DOUBLE,
+dates as bare STRING, missing comments and owners, an `ods_` table living in
+`dwd`, an unpartitioned `dws` aggregate, an orphan table, a dangling definition
+(warehouse.sql); a PUBLIC database grant, ALL PRIVILEGES, a sensitive-table
+grant and a GRANT/REVOKE netting pair (grants.sql); drops, a truncate, a
+VARCHAR narrowing and a table rename for the migration guard (migration.sql);
+and a contract the DDL violates on purpose (contract.yaml). The commands below
+run them all; `tests/test_governance_demo.py` pins the planted issues so they
+cannot rot.
+
+---
+
 # governance_demo — 一个目录喂饱六个治理 agent
 
 带全套病灶的仓库样例,每个治理 agent 在这里都有话可说:

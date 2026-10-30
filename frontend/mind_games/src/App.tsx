@@ -79,8 +79,9 @@ function Optimism() {
         setPrev(hist.length ? hist[hist.length - 1] : null)
         const score = scoreStyle(next).overall
         save(HIST_KEY + '.opt', [...hist, score])
+        // one ledger line per day: a retake overwrites tonight's entry
         const ledger = load<{ day: string; score: number }[]>(LEDGER_KEY, [])
-        save(LEDGER_KEY, [...ledger, { day: today(), score }])
+        save(LEDGER_KEY, [...ledger.filter((e) => e.day !== today()), { day: today(), score }])
       }
       return next
     })
@@ -460,9 +461,7 @@ export default function App() {
           </a>
         </header>
 
-        <div className="mg-rule mt-8" aria-hidden="true">
-          <span className="text-sm">❦</span>
-        </div>
+        <div className="mg-rule mt-8" aria-hidden="true"></div>
 
         <nav className="mt-6 flex gap-8">
           {tabs.map((x) => (
