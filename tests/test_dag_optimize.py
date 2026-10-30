@@ -42,6 +42,17 @@ def test_demo_critical_path_durations_and_speedup():
     assert result.speedup == pytest.approx(47 / 35, abs=0.01)
 
 
+def test_makespans_by_worker_count():
+    result = optimize(parse_dag(DEMO))
+    # serial = total duration; unlimited = critical path duration
+    assert result.makespans["1"] == 47.0
+    assert result.makespans["inf"] == 35.0
+    # two extracts/cleans overlap with 2 workers; monotone non-increasing
+    spans = [result.makespans[k] for k in ("1", "2", "4", "8")]
+    assert spans == sorted(spans, reverse=True)
+    assert result.makespans["2"] == 35.0
+
+
 def test_text_arrow_lines_and_chain_detection():
     result = optimize(parse_dag("a -> b\nb -> c\nc -> d\na -> e\n"))
     # b, c, d form the tail of a single-in/single-out chain from b

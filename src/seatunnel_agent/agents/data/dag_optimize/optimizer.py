@@ -16,11 +16,14 @@ No scheduler or database connection.
 
 from __future__ import annotations
 
+import heapq
 import json
 import re
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
+
+WORKER_COUNTS = (1, 2, 4, 8)
 
 _ARROW_RE = re.compile(r"\s*->\s*|\s*=>\s*")
 
@@ -176,6 +179,7 @@ class DagOptimizeResult:
     chains: list[list[str]] = field(default_factory=list)
     cycles: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    makespans: dict[str, float] = field(default_factory=dict)  # workers → time
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -191,6 +195,7 @@ class DagOptimizeResult:
             "chains": [list(c) for c in self.chains],
             "cycles": list(self.cycles),
             "warnings": list(self.warnings),
+            "makespans": dict(self.makespans),
         }
 
 
@@ -291,6 +296,20 @@ def _serial_chains(graph: TaskGraph, skip: set[str]) -> list[list[str]]:
     return chains
 
 
+def _makespan(graph: TaskGraph, order: list[str], workers: int) -> float:
+    """List scheduling: topo order, earliest-free worker, dep-gated starts."""
+    finish: dict[str, float] = {}
+    free = [0.0] * workers
+    heapq.heapify(free)
+    for name in order:
+        earliest = max((finish[u] for u in graph.up[name]
+                        if u in finish), default=0.0)
+        start = max(heapq.heappop(free), earliest)
+        finish[name] = start + graph.nodes[name]
+        heapq.heappush(free, finish[name])
+    return max(finish.values(), default=0.0)
+
+
 def optimize(graph: TaskGraph) -> DagOptimizeResult:
     result = DagOptimizeResult(tasks=len(graph.nodes),
                                edges=len(graph.edges))
@@ -317,4 +336,7 @@ def optimize(graph: TaskGraph) -> DagOptimizeResult:
         result.speedup = round(
             result.total_duration / result.critical_duration, 2)
     result.chains = _serial_chains(graph, skip)
+    for k in WORKER_COUNTS:
+        result.makespans[str(k)] = round(_makespan(graph, order, k), 2)
+    result.makespans["inf"] = round(result.critical_duration, 2)
     return result

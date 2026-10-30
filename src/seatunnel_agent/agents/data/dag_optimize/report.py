@@ -53,6 +53,18 @@ def render_markdown(result: DagOptimizeResult, lang: str = "zh") -> str:
             dur=_num(result.critical_duration),
             total=_num(result.total_duration)))
         lines.append("")
+    if result.makespans:
+        lines.append(f"### {tp(lang, 'rpt_makespan')}")
+        lines.append(f"| {tp(lang, 'rpt_col_workers')} "
+                     f"| {tp(lang, 'rpt_col_makespan')} "
+                     f"| {tp(lang, 'rpt_col_speedup')} |")
+        lines.append("|---|---|---|")
+        serial = result.makespans.get("1", 0.0)
+        for k, span in result.makespans.items():
+            label = "∞" if k == "inf" else k
+            gain = f"{serial / span:.2f}x" if span else "-"
+            lines.append(f"| {label} | {_num(span)} | {gain} |")
+        lines.append("")
     if result.chains:
         lines.append(f"### {tp(lang, 'rpt_chains')}")
         for chain in result.chains:
