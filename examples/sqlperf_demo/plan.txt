@@ -1,0 +1,13 @@
+== Physical Plan ==
+AdaptiveSparkPlan isFinalPlan=false
++- HashAggregate(keys=[region#12], functions=[sum(amount#5)])
+   +- Exchange hashpartitioning(region#12, 200), ENSURE_REQUIREMENTS
+      +- HashAggregate(keys=[region#12], functions=[partial_sum(amount#5)])
+         +- Project [amount#5, region#12]
+            +- *(3) SortMergeJoin [user_id#2], [user_id#10], Inner
+               :- Exchange hashpartitioning(user_id#2, 200), ENSURE_REQUIREMENTS
+               :  +- *(1) Filter (isnotnull(user_id#2) AND (amount#5 > 0.0))
+               :     +- FileScan parquet ods.orders[order_id#1,user_id#2,amount#5,dt#6] Batched: true, DataFilters: [isnotnull(user_id#2), (amount#5 > 0.0)], Format: Parquet, PartitionFilters: [], PushedFilters: [IsNotNull(user_id)], ReadSchema: struct<order_id:bigint,user_id:bigint,amount:double>
+               +- Exchange hashpartitioning(user_id#10, 200), ENSURE_REQUIREMENTS
+                  +- *(2) Filter (cast(age#13 as int) > 18)
+                     +- FileScan parquet ods.users[user_id#10,region#12,age#13] Batched: true, DataFilters: [(cast(age#13 as int) > 18)], Format: Parquet, PartitionFilters: [isnotnull(dt#14), (dt#14 = 2024-05-01)], PushedFilters: [], ReadSchema: struct<user_id:bigint,region:string,age:int>
