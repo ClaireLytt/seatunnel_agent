@@ -30,6 +30,11 @@ _ENV = "SQLPERF_API_ALLOWED_DIRS"
 class AnalyzeRequest(BaseModel):
     file: str | None = Field(None, description="EXPLAIN output file")
     text: str | None = Field(None, description="Inline EXPLAIN output")
+    sql: str = Field("", description="The original SQL — with llm=true "
+                                     "an optimized rewrite is drafted")
+    llm: bool = Field(False, description="Draft the rewrite via the "
+                                         "configured LLM (needs an API "
+                                         "key and 'sql')")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
     report: bool = Field(False, description="Include the rendered markdown report")
 
@@ -53,7 +58,22 @@ def run_analyze(req: AnalyzeRequest) -> AnalyzeResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     lang = normalize_lang(req.lang)
     report = render_markdown(result, lang=lang) if req.report else None
-    return AnalyzeResponse(result=result.to_dict(), report=report,
+    payload = result.to_dict()
+    if req.llm:
+        if not req.sql.strip():
+            raise HTTPException(status_code=400,
+                                detail="llm=true needs 'sql'")
+        from . import advisor_llm
+        from .i18n import tp
+
+        try:
+            rewrite = advisor_llm.rewrite_sql(result, req.sql, lang=lang)
+        except Exception as exc:  # missing key, provider errors
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        payload["rewrite"] = rewrite
+        if report is not None:
+            report += f"\n\n### {tp(lang, 'rpt_rewrite')}\n{rewrite}\n"
+    return AnalyzeResponse(result=payload, report=report,
                            elapsed_ms=ms_since(start))
 
 

@@ -37,6 +37,7 @@ SQLPERF_I18N: dict[str, dict[str, str]] = {
         "not_stated": "(not stated)",
         "empty_mark": "EMPTY",
         "rpt_all_ok": "No findings — the plan looks tight.",
+        "rpt_rewrite": "Optimized SQL draft (LLM — review before running)",
         "rpt_disclaimer": ("> Deterministic read of the EXPLAIN text — "
                            "the findings reflect what the engine planned, "
                            "not runtime metrics. No engine connection."),
@@ -65,6 +66,7 @@ SQLPERF_I18N: dict[str, dict[str, str]] = {
         "not_stated": "（计划未标注）",
         "empty_mark": "空",
         "rpt_all_ok": "没有发现问题 — 这个计划看起来很紧凑。",
+        "rpt_rewrite": "优化 SQL 草案（LLM 生成 — 运行前请审阅）",
         "rpt_disclaimer": ("> 对 EXPLAIN 文本的确定性解读 — 发现反映引擎的"
                            "计划决策，不是运行期指标。不连引擎。"),
     },

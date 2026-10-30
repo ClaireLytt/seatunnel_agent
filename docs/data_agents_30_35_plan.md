@@ -79,10 +79,10 @@ slots/memory）± 各 DAG 启动时刻。
 
 ## Phase 2 roadmap (perf suite)
 
-1. [ ] sql_perf: opt-in LLM rewrite - findings + the original SQL
+1. [x] sql_perf: opt-in LLM rewrite - findings + the original SQL
    (optional input) -> an optimized-SQL draft; API llm flag + CLI --llm
    --sql-file, same bounded/stubbed discipline as the ops suite.
-2. [ ] sql_cost: --fail-over-scan-gb / --fail-over-shuffle-gb CI gate -
+2. [x] sql_cost: --fail-over-scan-gb / --fail-over-shuffle-gb CI gate -
    block PR queries whose estimated cost crosses the budget.
-3. [ ] slow_query: --history incident ledger (top cause, share,
+3. [x] slow_query: --history incident ledger (top cause, share,
    regression) via the shared track_history.

@@ -4,6 +4,7 @@ from . import (
     checks,
     core,
     lineage,
+    perf_ops,
     pipeline_ops,
     platform,
     skew,
@@ -21,3 +22,4 @@ def register(cli) -> None:
     checks.register(cli)
     platform.register(cli)
     pipeline_ops.register(cli)
+    perf_ops.register(cli)
