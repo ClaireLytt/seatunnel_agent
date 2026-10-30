@@ -796,6 +796,28 @@ seatunnel-agent loginspect -f seatunnel.log --lang en                # single fi
 seatunnel-agent loginspect --dir logs/ -F json --fail-on error       # CI gate
 ```
 
+### Pipeline Failure Diagnosis Agent
+
+Diagnose one failed Spark/Hive/SeaTunnel run from its logs: the engine is
+detected from package markers, exception clusters (reusing the log-
+inspection extractor) are matched against a **failure-signature knowledge
+base** — Spark OOM / GC overhead / YARN container kills / shuffle fetch
+failures, Hive metastore / semantic / dynamic-partition errors, SeaTunnel
+config-parse / missing-connector / type-mismatch failures, plus generic
+Kerberos / quota / permission / JDBC signatures — and every hit carries
+the likely cause and the concrete fix. The highest-severity, earliest
+finding is named the primary suspect; unknown ERROR clusters are listed
+as unmatched. Web UI at `/pipedoctor` (with optional `llm-generated`
+advice), REST under `/api/pipedoctor/` (whitelisted via
+`PIPEDOCTOR_API_ALLOWED_DIRS`), MCP tool `pipeline_diagnose`, demo data
+`examples/pipedoctor_demo/`:
+
+```bash
+seatunnel-agent pipedoctor --dir run_logs/                           # diagnose a run
+seatunnel-agent pipedoctor -f spark_oom.log --lang en                # single file
+seatunnel-agent pipedoctor --dir run_logs/ -F json --fail-on critical  # CI gate
+```
+
 ### Schema Drift Check Agent
 
 Diff two schema snapshots (CREATE TABLE scripts — files, directories or
@@ -1677,6 +1699,24 @@ seatunnel-agent loginspect --dir logs/                               # 聚类整
 seatunnel-agent loginspect --dir logs/ --no-warn --top 5             # 只看 error,前 5 簇
 seatunnel-agent loginspect -f seatunnel.log --lang en                # 单文件
 seatunnel-agent loginspect --dir logs/ -F json --fail-on error       # CI 门禁
+```
+
+### Pipeline 故障诊断 Agent
+
+分析一次失败的 Spark/Hive/SeaTunnel 运行日志：按包名标记识别引擎，复用
+日志巡检的异常抽取，把异常簇与**故障签名知识库**匹配——Spark 的
+OOM / GC 超限 / YARN 杀容器 / shuffle 拉取失败，Hive 的 metastore 失联 /
+语义错误 / 动态分区超限，SeaTunnel 的配置解析 / 连接器缺失 / 类型不匹配，
+外加 Kerberos / 配额 / 权限 / JDBC 等通用签名——每个命中都带可能原因与
+具体修复方案。严重度最高、出现最早的命中项列为首要嫌疑；知识库未覆盖的
+ERROR 簇单独列出。Web 页面 `/pipedoctor`（可选 `llm-generated` 建议），
+REST `/api/pipedoctor/`（目录白名单 `PIPEDOCTOR_API_ALLOWED_DIRS`），
+MCP 工具 `pipeline_diagnose`，演示数据 `examples/pipedoctor_demo/`：
+
+```bash
+seatunnel-agent pipedoctor --dir run_logs/                           # 诊断一次运行
+seatunnel-agent pipedoctor -f spark_oom.log --lang en                # 单文件
+seatunnel-agent pipedoctor --dir run_logs/ -F json --fail-on critical  # CI 门禁
 ```
 
 ### Schema 漂移检查 Agent

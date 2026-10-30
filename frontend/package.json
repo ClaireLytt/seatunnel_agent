@@ -26,6 +26,7 @@
     "metric_diff",
     "orchestrator",
     "pii_scan",
+    "pipeline_doctor",
     "lineage_hygiene",
     "metadata_quality",
     "mind_games",

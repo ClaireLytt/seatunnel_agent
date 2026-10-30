@@ -205,6 +205,79 @@ def loginspect(
             sys.exit(1)
 
 
+@click.command()
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="日志目录（递归扫描）")
+@click.option("--file", "-f", "log_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="诊断单个日志文件")
+@click.option("--pattern", "-p", "patterns", multiple=True,
+              help="文件通配符，可多次指定（默认 *.log / *.log.* / *.out / *.err）")
+@click.option("--top", "-n", type=int, default=10, show_default=True,
+              help="报告中展示的命中项数")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["critical", "error", "warn"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def pipedoctor(
+    directory: str | None,
+    log_file: str | None,
+    patterns: tuple[str, ...],
+    top: int,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """Pipeline 故障诊断 — 分析 Spark/Hive/SeaTunnel 运行日志，定位失败根因并给出修复方案。"""
+    import json as _json
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.log_inspect.clusterer import DEFAULT_PATTERNS
+    from seatunnel_agent.agents.data.pipeline_doctor import (
+        diagnose_dir,
+        diagnose_files,
+        diagnosis_to_dict,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.pipeline_doctor.kb import SEVERITY_RANK
+
+    if not directory and not log_file:
+        raise click.UsageError("Provide --dir or --file")
+
+    if directory:
+        diag = diagnose_dir(directory,
+                            patterns=tuple(patterns) or DEFAULT_PATTERNS)
+    else:
+        diag = diagnose_files([Path(log_file)], root=log_file)
+
+    if fmt == "json":
+        text_out = _json.dumps(diagnosis_to_dict(diag, top=top),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(diag, lang, top=top)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        gate = SEVERITY_RANK[fail_on]
+        # unmatched clusters are extracted ERROR events — they gate at "error"
+        hit = any(SEVERITY_RANK[f.severity] >= gate for f in diag.findings) \
+            or (gate <= SEVERITY_RANK["error"] and diag.unmatched)
+        if hit:
+            msg = f"存在 {fail_on} 及以上级别的故障命中，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
 @click.command(name="schemadiff")
 @click.option("--old", "old_path", type=click.Path(exists=True), required=True,
               help="旧版 DDL：文件或目录（递归 *.sql）")
@@ -1348,6 +1421,7 @@ def register(cli) -> None:
     cli.add_command(hygiene_stats)
     cli.add_command(metaquality_stats)
     cli.add_command(loginspect)
+    cli.add_command(pipedoctor)
     cli.add_command(schemadiff)
     cli.add_command(testgen)
     cli.add_command(conflint)
