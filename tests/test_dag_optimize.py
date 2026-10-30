@@ -42,6 +42,23 @@ def test_demo_critical_path_durations_and_speedup():
     assert result.speedup == pytest.approx(47 / 35, abs=0.01)
 
 
+def test_optimized_dag_export():
+    result = optimize(parse_dag(DEMO))
+    tasks = {t["name"]: t for t in result.optimized["tasks"]}
+    # the redundant extract_orders → join_wide edge is gone, others kept
+    assert tasks["join_wide"]["deps"] == ["clean_orders", "clean_users"]
+    assert tasks["clean_orders"]["deps"] == ["extract_orders"]
+    assert tasks["join_wide"]["duration"] == 12.0
+    # the export round-trips: re-analysing it finds nothing redundant
+    import json as _json
+    again = optimize(parse_dag(_json.dumps(result.optimized)))
+    assert again.redundant == []
+    assert again.critical_duration == result.critical_duration
+    assert again.optimized == {}  # nothing left to remove
+    md = render_markdown(result, lang="en")
+    assert "Optimized DAG" in md
+
+
 def test_makespans_by_worker_count():
     result = optimize(parse_dag(DEMO))
     # serial = total duration; unlimited = critical path duration

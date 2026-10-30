@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from seatunnel_agent.common.utils import normalize_lang
 
 from .i18n import tp
@@ -85,6 +87,13 @@ def render_markdown(result: DagOptimizeResult, lang: str = "zh") -> str:
     if result.cycles:
         lines.append(f"### {tp(lang, 'rpt_cycles')}")
         lines.append(", ".join(f"`{n}`" for n in result.cycles))
+        lines.append("")
+    if result.optimized:
+        lines.append(f"### {tp(lang, 'rpt_optimized')}")
+        lines.append("```json")
+        lines.append(json.dumps(result.optimized, ensure_ascii=False,
+                                indent=2))
+        lines.append("```")
         lines.append("")
     if result.warnings:
         lines.append(f"### {tp(lang, 'rpt_warnings')}")

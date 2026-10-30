@@ -183,6 +183,8 @@ class DagOptimizeResult:
     # critical tasks, most impactful first: task, duration, and the
     # critical-path duration if that one task were cut in half
     bottlenecks: list[dict[str, Any]] = field(default_factory=list)
+    # the task JSON with redundant edges removed — pasteable back
+    optimized: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -200,6 +202,7 @@ class DagOptimizeResult:
             "warnings": list(self.warnings),
             "makespans": dict(self.makespans),
             "bottlenecks": [dict(b) for b in self.bottlenecks],
+            "optimized": dict(self.optimized),
         }
 
 
@@ -345,6 +348,14 @@ def optimize(graph: TaskGraph) -> DagOptimizeResult:
     result.makespans["inf"] = round(result.critical_duration, 2)
     result.bottlenecks = _bottlenecks(graph, order, result.critical_path,
                                       result.critical_duration)
+    if result.redundant:
+        drop = {(r.up, r.down) for r in result.redundant}
+        result.optimized = {"tasks": [
+            {"name": name,
+             "deps": sorted(u for u in graph.up[name]
+                            if (u, name) not in drop),
+             "duration": graph.nodes[name]}
+            for name in sorted(graph.nodes)]}
     return result
 
 

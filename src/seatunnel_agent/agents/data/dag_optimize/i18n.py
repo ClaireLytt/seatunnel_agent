@@ -33,6 +33,8 @@ DAGOPT_I18N: dict[str, dict[str, str]] = {
         "rpt_col_speedup": "vs serial",
         "rpt_chains": "Serial chains (single-in/single-out — consider fusing)",
         "rpt_cycles": "On a cycle (unschedulable, excluded from analysis)",
+        "rpt_optimized": "Optimized DAG (redundant edges removed — "
+                         "paste back into your DAG tool)",
         "rpt_warnings": "Warnings",
         "rpt_disclaimer": ("> Deterministic analysis — redundant edges come "
                            "from transitive reduction, waves from Kahn "
@@ -64,6 +66,7 @@ DAGOPT_I18N: dict[str, dict[str, str]] = {
         "rpt_col_speedup": "相对串行",
         "rpt_chains": "串行链（单进单出 — 可考虑合并为一个任务）",
         "rpt_cycles": "处于环上（不可调度，已排除出分析）",
+        "rpt_optimized": "优化后的 DAG（已删冗余边 — 可直接粘回 DAG 工具）",
         "rpt_warnings": "警告",
         "rpt_disclaimer": ("> 确定性分析 — 冗余边来自传递归约，批次来自 Kahn "
                            "分层，关键路径按任务时长（缺省 1）计算。不连调度器。"),
