@@ -10,11 +10,13 @@
 | --- | --- | --- | --- |
 | 中 | /backfillsql 计划转规格端点 + 页面卡片 | backfill_sql/api.py, frontend/backfill_sql | f35098d |
 | 中 | 五个新页的 Playwright 回归测试(含计划转规格流) | tests/test_{dagopt,rerun,backfillsql,syncstrategy,pipemigrate}_page.py | (本批) |
+| 中 | 补齐本分支另两页 /freshness /backfill 的页面回归 | tests/test_freshness_page.py, tests/test_backfill_page.py | (本批) |
 
 ## 验证结果
 
 ```
 pytest -m uitest tests/test_{dagopt,rerun,backfillsql,syncstrategy,pipemigrate}_page.py -> 6 passed
+pytest -m uitest tests/test_freshness_page.py tests/test_backfill_page.py -> 2 passed
 pytest tests/test_backfill_sql.py -q -> 13 passed
 ruff check src/seatunnel_agent tests scripts -> All checks passed!
 python -m mypy src/.../backfill_sql -> Success: no issues found in 8 source files
