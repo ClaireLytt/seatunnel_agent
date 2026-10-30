@@ -133,3 +133,13 @@ tests/test_<name>.py        # 确定性核心测试
 2. [x] /pipemigrate -> /dagopt: "estimate with k engineers" button hands
    the migration DAG over the same way.
 3. [x] guide: document the handoffs and phase-6 capacity features.
+
+## Phase 8 roadmap (artifacts on disk)
+
+1. [ ] backfill_sql: runner script - optional "runner" (spark-sql /
+   beeline / hive / mysql) renders a stop-on-fail bash script wrapping
+   every statement block, heredoc-quoted.
+2. [ ] sync-strategy CLI: --emit-configs DIR writes one SeaTunnel .conf
+   per table.
+3. [ ] pipe-migrate CLI: --emit-stubs DIR writes one .conf per
+   SeaTunnel-target job.
