@@ -30,6 +30,9 @@ class AnalyzeRequest(BaseModel):
     text: str | None = Field(None, description="Inline DAG definition")
     deadline: float = Field(
         0.0, ge=0, description="Optional SLA duration to check against")
+    llm: bool = Field(
+        False, description="Also write a prioritized action plan via the "
+                           "configured LLM (needs an API key)")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
     report: bool = Field(False, description="Include the rendered markdown report")
 
@@ -63,7 +66,19 @@ def run_analyze(req: AnalyzeRequest) -> AnalyzeResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     lang = normalize_lang(req.lang)
     report = render_markdown(result, lang=lang) if req.report else None
-    return AnalyzeResponse(result=result.to_dict(), report=report,
+    payload = result.to_dict()
+    if req.llm:
+        from . import advisor_llm
+        from .i18n import tp
+
+        try:
+            plan = advisor_llm.action_plan(result, lang=lang)
+        except Exception as exc:  # missing key, provider errors
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        payload["action_plan"] = plan
+        if report is not None:
+            report += f"\n\n### {tp(lang, 'rpt_action_plan')}\n{plan}\n"
+    return AnalyzeResponse(result=payload, report=report,
                            elapsed_ms=ms_since(start))
 
 

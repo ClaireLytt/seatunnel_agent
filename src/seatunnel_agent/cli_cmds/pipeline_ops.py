@@ -64,8 +64,10 @@ def _common(fn):
 @click.option("--text", type=str, default=None, help="内联依赖图")
 @click.option("--deadline", type=float, default=0.0,
               help="SLA 时长 — 判定是否满足并给出最小提速集合")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 写优化行动清单（需配置 API key）")
 @_common
-def dagopt(path, text, deadline, lang, fmt, output) -> None:
+def dagopt(path, text, deadline, use_llm, lang, fmt, output) -> None:
     """DAG 依赖优化 — 冗余串行边、并行批次、关键路径与加速比。"""
     from seatunnel_agent.agents.data.dag_optimize import (
         optimize,
@@ -75,7 +77,18 @@ def dagopt(path, text, deadline, lang, fmt, output) -> None:
 
     result = optimize(parse_dag(_read(path, text, "依赖图")),
                       deadline=deadline)
-    _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.dag_optimize.advisor_llm import (
+            action_plan,
+        )
+        from seatunnel_agent.agents.data.dag_optimize.i18n import tp
+
+        plan = action_plan(result, lang=lang)
+        payload["action_plan"] = plan
+        markdown += f"\n\n### {tp(lang, 'rpt_action_plan')}\n{plan}\n"
+    _emit(payload, markdown, fmt, output)
 
 
 @click.command("rerun")
@@ -128,8 +141,13 @@ def rerun(path, text, failed, succeeded, statuses, use_llm, lang, fmt,
 @click.option("--text", type=str, default=None, help="内联规格 JSON")
 @click.option("--plan", type=str, default=None,
               help="补数计划器的计划 JSON — 输出逐表规格骨架（代替生成 SQL）")
+@click.option("--ddl", "ddl_path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="上游 CREATE TABLE DDL 文件（配合 --llm 填充列）")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="与 --plan 连用：LLM 按 DDL 填充各规格的 source SELECT")
 @_common
-def backfill_sql(path, text, plan, lang, fmt, output) -> None:
+def backfill_sql(path, text, plan, ddl_path, use_llm, lang, fmt,
+                 output) -> None:
     """回溯补数 SQL — 逐分区幂等语句与前后置校验；--plan 出规格骨架。"""
     from seatunnel_agent.agents.data.backfill_sql import (
         generate,
@@ -144,7 +162,24 @@ def backfill_sql(path, text, plan, lang, fmt, output) -> None:
         )
 
         specs = specs_from_plan(plan)
-        _emit({"specs": specs}, backfill_specs(plan, lang=lang), fmt, output)
+        markdown = backfill_specs(plan, lang=lang)
+        if use_llm:
+            import json as _json
+
+            from seatunnel_agent.agents.data.backfill_sql import advisor_llm
+
+            ddl = (Path(ddl_path).read_text(encoding="utf-8",
+                                            errors="replace")
+                   if ddl_path else "")
+            warnings = advisor_llm.fill_specs(specs, ddl, lang=lang)
+            markdown = "\n".join(
+                [markdown.split("\n")[0], ""]
+                + [line for spec in specs for line in (
+                    f"**`{spec['table']}`**", "```json",
+                    _json.dumps(spec, ensure_ascii=False, indent=2),
+                    "```")]
+                + [f"- {w}" for w in warnings])
+        _emit({"specs": specs}, markdown, fmt, output)
         return
     result = generate(parse_spec(_read(path, text, "补数规格")))
     _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)

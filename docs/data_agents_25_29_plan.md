@@ -162,8 +162,8 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## Phase 12 roadmap (LLM layer complete)
 
-1. [ ] backfill_sql: LLM source fill - given the spec skeleton plus the
+1. [x] backfill_sql: LLM source fill - given the spec skeleton plus the
    upstream DDL, fill the column list in the bounded SELECT ({date}
    placeholder enforced, fallback to the skeleton on violation).
-2. [ ] dag_optimize: LLM action plan - the analysis JSON becomes a
+2. [x] dag_optimize: LLM action plan - the analysis JSON becomes a
    prioritized to-do list for the scheduler owner.

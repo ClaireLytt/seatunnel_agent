@@ -69,6 +69,12 @@ class SpecsRequest(BaseModel):
     plan: str = Field(..., description="Backfill planner plan JSON")
     partition_col: str = Field("dt", description="Partition column name")
     dialect: str = Field("hive", description="Target dialect")
+    ddl: str = Field("", description="Upstream CREATE TABLE DDL — with "
+                                     "llm=true the source SELECT columns "
+                                     "are filled in")
+    llm: bool = Field(False, description="Fill each spec's source SELECT "
+                                         "via the configured LLM "
+                                         "(needs an API key)")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
 
 
@@ -93,8 +99,30 @@ def run_specs(req: SpecsRequest) -> SpecsResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # malformed JSON
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    report = backfill_specs(req.plan, partition_col=req.partition_col,
-                            dialect=req.dialect, lang=req.lang)
+    warnings: list[str] = []
+    if req.llm:
+        from . import advisor_llm
+
+        try:
+            warnings = advisor_llm.fill_specs(specs, req.ddl,
+                                              lang=req.lang)
+        except Exception as exc:  # missing key, provider errors
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        import json as _json
+
+        lines = [backfill_specs(req.plan, partition_col=req.partition_col,
+                                dialect=req.dialect,
+                                lang=req.lang).split("\n")[0], ""]
+        for spec in specs:
+            lines.append(f"**`{spec['table']}`**")
+            lines.append("```json")
+            lines.append(_json.dumps(spec, ensure_ascii=False, indent=2))
+            lines.append("```")
+        lines.extend(f"- {w}" for w in warnings)
+        report = "\n".join(lines)
+    else:
+        report = backfill_specs(req.plan, partition_col=req.partition_col,
+                                dialect=req.dialect, lang=req.lang)
     return SpecsResponse(result=specs, report=report,
                          elapsed_ms=ms_since(start))
 

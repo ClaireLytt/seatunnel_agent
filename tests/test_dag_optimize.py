@@ -172,6 +172,30 @@ def test_bad_inputs():
         parse_dag('{"tasks": [{"name": "a", "duration": 0}]}')
 
 
+def test_llm_action_plan_wiring(monkeypatch):
+    """API llm=true appends the action plan; the LLM call is stubbed."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.dag_optimize import advisor_llm
+    from seatunnel_agent.agents.data.dag_optimize import api as do_api
+
+    monkeypatch.setattr(advisor_llm, "action_plan",
+                        lambda result, lang="zh": "PLAN-" + str(result.tasks))
+    app = FastAPI()
+    app.include_router(do_api.router)
+    client = TestClient(app)
+    res = client.post("/api/dagopt/analyze",
+                      json={"text": DEMO, "llm": True, "report": True,
+                            "lang": "zh"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["result"]["action_plan"] == "PLAN-7"
+    assert "优化行动清单" in body["report"]
+    res = client.post("/api/dagopt/analyze", json={"text": DEMO})
+    assert "action_plan" not in res.json()["result"]
+
+
 def test_report_zh_en_and_tool():
     result = optimize(parse_dag(DEMO))
     zh = render_markdown(result, lang="zh")

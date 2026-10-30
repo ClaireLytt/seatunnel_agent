@@ -221,6 +221,41 @@ def test_specs_api_endpoint():
                        json={"plan": "{broken"}).status_code == 400
 
 
+def test_llm_source_fill_wiring(monkeypatch):
+    """fill_specs replaces sources but rejects replies without {date};
+    the API wires it behind llm=true. The LLM call is stubbed."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.backfill_sql import advisor_llm
+    from seatunnel_agent.agents.data.backfill_sql.api import router
+
+    replies = iter([
+        "SELECT order_id, amount FROM ods.orders WHERE dt = '{date}'",
+        "SELECT * FROM ods.users",  # placeholder lost → must be rejected
+    ])
+    monkeypatch.setattr(advisor_llm, "fill_source",
+                        lambda spec, ddl, lang="zh": next(replies))
+    specs = [{"table": "dws.sales", "source": "skeleton {date}"},
+             {"table": "dim.users", "source": "skeleton {date}"}]
+    warnings = advisor_llm.fill_specs(specs, ddl="CREATE TABLE ...")
+    assert "order_id, amount" in specs[0]["source"]
+    assert specs[1]["source"] == "skeleton {date}"  # kept
+    assert warnings and "dim.users" in warnings[0]
+
+    monkeypatch.setattr(advisor_llm, "fill_specs",
+                        lambda specs, ddl, lang="zh": [])
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    plan = ('{"tables": [{"table": "dws.sales", '
+            '"missing": ["2024-05-05"], "cascade": []}]}')
+    res = client.post("/api/backfillsql/specs",
+                      json={"plan": plan, "llm": True, "ddl": "CREATE ..."})
+    assert res.status_code == 200
+    assert res.json()["result"][0]["table"] == "dws.sales"
+
+
 def test_report_zh_en_and_tool():
     result = generate(parse_spec(DEMO))
     zh = render_markdown(result, lang="zh")
