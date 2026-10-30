@@ -42,6 +42,7 @@
     "schema_drift",
     "seatunnel",
     "sql_fmt",
+    "sync_strategy",
     "sql_review",
     "sql_testgen",
     "sql_transpile",

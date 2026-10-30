@@ -1,0 +1,91 @@
+"""Deterministic core tests for the sync-strategy agent."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from seatunnel_agent.agents.data.sync_strategy import (
+    parse_tables,
+    recommend,
+    render_markdown,
+)
+from seatunnel_agent.agents.data.sync_strategy.tools import sync_strategy
+
+DEMO = (Path(__file__).resolve().parents[1] / "examples"
+        / "syncstrategy_demo" / "tables.json").read_text(encoding="utf-8")
+
+
+def _rec():
+    report = recommend(parse_tables(DEMO))
+    return {r.table: r for r in report.recommendations}
+
+
+def test_demo_recommendations():
+    by = _rec()
+    # minute latency + binlog → CDC
+    assert by["ods.orders"].strategy == "cdc"
+    assert by["ods.orders"].reasons == ["latency_needs_cdc"]
+    # update ts + pk, big, low churn → timestamp incremental with upsert
+    assert by["ods.users"].strategy == "incr_timestamp"
+    assert "pk_upsert" in by["ods.users"].reasons
+    assert "late_update_window" in by["ods.users"].risks
+    # small dict table with deletes → full
+    assert by["ods.dict_region"].strategy == "full"
+    assert by["ods.dict_region"].reasons == ["deletes_without_cdc"]
+    # append-only event log, pk only → pk incremental
+    assert by["ods.events"].strategy == "incr_pk"
+    assert "pk_incr_misses_updates" in by["ods.events"].risks
+    # deletes, no cdc, big → full with load warning
+    assert by["ods.inventory"].strategy == "full"
+    assert "full_on_big_table" in by["ods.inventory"].risks
+
+
+def test_high_churn_prefers_full():
+    tables = parse_tables(
+        '[{"table":"t","rows":10000000,"daily_change_rows":5000000,'
+        '"has_update_ts":true,"has_pk":true}]')
+    rec = recommend(tables).recommendations[0]
+    assert rec.strategy == "full"
+    assert rec.reasons == ["high_churn"]
+
+
+def test_urgent_latency_without_cdc_flags_risk():
+    tables = parse_tables(
+        '[{"table":"t","rows":10000000,"daily_change_rows":1000,'
+        '"has_update_ts":true,"has_pk":true,"latency":"realtime"}]')
+    rec = recommend(tables).recommendations[0]
+    assert rec.strategy == "incr_timestamp"
+    assert "latency_without_cdc" in rec.risks
+
+
+def test_csv_input_and_bool_coercion():
+    csv_text = ("table,rows,daily_change_rows,has_update_ts,has_pk,"
+                "has_deletes,cdc_available,latency\n"
+                "ods.a,2000000,1000,yes,true,no,0,daily\n")
+    rec = recommend(parse_tables(csv_text)).recommendations[0]
+    assert rec.strategy == "incr_timestamp"
+
+
+def test_bad_inputs():
+    with pytest.raises(ValueError):
+        parse_tables("")
+    with pytest.raises(ValueError, match="missing 'table'"):
+        parse_tables('[{"rows": 1}]')
+    with pytest.raises(ValueError, match="latency"):
+        parse_tables('[{"table":"t","latency":"asap"}]')
+    with pytest.raises(ValueError, match="tables"):
+        parse_tables('{"nope": []}')
+
+
+def test_report_zh_en_and_tool():
+    report = recommend(parse_tables(DEMO))
+    zh = render_markdown(report, lang="zh")
+    en = render_markdown(report, lang="en")
+    assert "增量同步策略推荐" in zh and "时间戳增量" in zh
+    assert "Sync Strategy Recommendation" in en and "CDC" in en
+    md = sync_strategy(DEMO, lang="en")
+    assert "full reload" in md
+    assert "must not be empty" in sync_strategy(" ")
+    assert "bad input" in sync_strategy("{broken")

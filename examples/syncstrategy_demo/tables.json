@@ -1,0 +1,19 @@
+{
+  "tables": [
+    {"table": "ods.orders", "rows": 50000000, "daily_change_rows": 800000,
+     "has_update_ts": true, "has_pk": true, "has_deletes": false,
+     "cdc_available": true, "latency": "minutes"},
+    {"table": "ods.users", "rows": 3000000, "daily_change_rows": 40000,
+     "has_update_ts": true, "has_pk": true, "has_deletes": false,
+     "cdc_available": false, "latency": "hours"},
+    {"table": "ods.dict_region", "rows": 5000, "daily_change_rows": 10,
+     "has_update_ts": false, "has_pk": true, "has_deletes": true,
+     "cdc_available": false, "latency": "daily"},
+    {"table": "ods.events", "rows": 900000000, "daily_change_rows": 30000000,
+     "has_update_ts": false, "has_pk": true, "has_deletes": false,
+     "cdc_available": false, "latency": "daily"},
+    {"table": "ods.inventory", "rows": 20000000, "daily_change_rows": 9000000,
+     "has_update_ts": false, "has_pk": false, "has_deletes": true,
+     "cdc_available": false, "latency": "daily"}
+  ]
+}
