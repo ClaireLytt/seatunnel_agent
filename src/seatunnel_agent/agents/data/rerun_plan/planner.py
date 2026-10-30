@@ -68,6 +68,27 @@ class RerunPlan:
     def commands(self, template: str) -> list[str]:
         return [template.format(task=t.task) for t in self.tasks]
 
+    def runner_script(self, template: str) -> str:
+        """Bash runner: tasks within a batch in parallel, a barrier
+        between batches, any failure aborts the whole run."""
+        lines = ["#!/usr/bin/env bash",
+                 "# rerun plan — generated, review before running",
+                 "set -uo pipefail", ""]
+        by_batch: dict[int, list[str]] = {}
+        for t in self.tasks:
+            by_batch.setdefault(t.batch, []).append(t.task)
+        for batch in sorted(by_batch):
+            lines.append(f"echo '>>> batch {batch}'")
+            lines.append("pids=()")
+            for task in by_batch[batch]:
+                lines.append(f"{template.format(task=task)} & pids+=($!)")
+            lines.append('for p in "${pids[@]}"; do '
+                         'wait "$p" || exit 1; done')
+            lines.append("")
+        lines.append(f"echo 'done: {len(self.tasks)} task(s) in "
+                     f"{len(by_batch)} batch(es)'")
+        return "\n".join(lines)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "tasks": [t.to_dict() for t in self.tasks],

@@ -65,6 +65,21 @@ def test_failed_root_through_failed_root():
     assert by["c"].from_failed == ["a", "b"]
 
 
+def test_runner_script_parallel_batches():
+    result = plan_rerun(parse_dag(DEMO), "clean_orders, clean_users")
+    script = result.runner_script("rerun {task}")
+    assert script.startswith("#!/usr/bin/env bash")
+    # batch 1 runs both failed tasks in parallel before the barrier
+    batch1 = script.split(">>> batch 2")[0]
+    assert "rerun clean_orders & pids+=($!)" in batch1
+    assert "rerun clean_users & pids+=($!)" in batch1
+    assert batch1.count('wait "$p" || exit 1') == 1
+    # one barrier per batch
+    assert script.count("pids=()") == result.batches
+    md = render_markdown(result, lang="zh", cmd_template="rerun {task}")
+    assert "执行脚本（批内并行" in md
+
+
 def test_capacity_aware_makespan():
     dag = ('{"tasks":[{"name":"a","duration":10},'
            '{"name":"b","deps":["a"],"duration":3},'

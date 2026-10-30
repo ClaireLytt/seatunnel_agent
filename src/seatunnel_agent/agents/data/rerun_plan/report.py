@@ -53,6 +53,11 @@ def render_markdown(result: RerunPlan, lang: str = "zh",
             lines.extend(result.commands(cmd_template.strip()))
             lines.append("```")
             lines.append("")
+            lines.append(f"### {tp(lang, 'rpt_runner')}")
+            lines.append("```bash")
+            lines.append(result.runner_script(cmd_template.strip()))
+            lines.append("```")
+            lines.append("")
     if len(result.groups) > 1:
         lines.append(f"### {tp(lang, 'rpt_groups')}")
         for i, group in enumerate(result.groups, 1):
