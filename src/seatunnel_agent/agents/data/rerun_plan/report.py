@@ -26,6 +26,12 @@ def render_markdown(result: RerunPlan, lang: str = "zh",
         lines.append(tp(lang, "rpt_eta").format(
             total=f"{result.total_eta:g}", batches=etas))
         lines.append("")
+    if result.makespans:
+        spans = " · ".join(
+            tp(lang, "rpt_makespan_item").format(k=k, span=f"{v:g}")
+            for k, v in result.makespans.items())
+        lines.append(tp(lang, "rpt_makespans").format(spans=spans))
+        lines.append("")
     if result.tasks:
         lines.append(f"### {tp(lang, 'rpt_steps')}")
         lines.append(f"| {tp(lang, 'rpt_col_batch')} "

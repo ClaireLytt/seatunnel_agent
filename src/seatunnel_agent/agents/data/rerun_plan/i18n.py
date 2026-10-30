@@ -21,6 +21,8 @@ RERUN_I18N: dict[str, dict[str, str]] = {
         "reason_downstream": "stale inputs",
         "stale_note": " (had succeeded)",
         "rpt_commands": "Commands",
+        "rpt_makespans": "Under limited executor slots: {spans}",
+        "rpt_makespan_item": "{k} slot(s) → {span}",
         "rpt_groups": "Independent recovery groups (no shared tasks — "
                       "recover in parallel)",
         "rpt_untouched": "Untouched branches",
@@ -48,6 +50,8 @@ RERUN_I18N: dict[str, dict[str, str]] = {
         "reason_downstream": "上游数据失效",
         "stale_note": "（曾成功）",
         "rpt_commands": "命令",
+        "rpt_makespans": "执行槽位受限时：{spans}",
+        "rpt_makespan_item": "{k} 个槽位 → {span}",
         "rpt_groups": "可独立恢复的分组（互不依赖 — 可并行恢复）",
         "rpt_untouched": "不受影响的分支",
         "rpt_unschedulable": "处于环上（无法排序）",

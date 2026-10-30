@@ -65,6 +65,23 @@ def test_failed_root_through_failed_root():
     assert by["c"].from_failed == ["a", "b"]
 
 
+def test_capacity_aware_makespan():
+    dag = ('{"tasks":[{"name":"a","duration":10},'
+           '{"name":"b","deps":["a"],"duration":3},'
+           '{"name":"c","deps":["a"],"duration":7},'
+           '{"name":"d","deps":["b","c"],"duration":2}]}')
+    result = plan_rerun(parse_dag(dag), "a")
+    # 1 slot = serial sum; 2 slots overlap b/c; monotone non-increasing
+    assert result.makespans["1"] == 22.0
+    assert result.makespans["2"] == 19.0
+    assert result.makespans["4"] == 19.0
+    md = render_markdown(result, lang="en")
+    assert "1 slot(s) → 22" in md
+    # upstream outside the rerun set does not gate the simulated start
+    partial = plan_rerun(parse_dag(dag), "b")
+    assert partial.makespans["1"] == 5.0  # b(3) + d(2)
+
+
 def test_independent_recovery_groups():
     # clean_orders cascades to the sales chain; audit path fails separately
     result = plan_rerun(parse_dag(DEMO), "clean_orders, audit_users")

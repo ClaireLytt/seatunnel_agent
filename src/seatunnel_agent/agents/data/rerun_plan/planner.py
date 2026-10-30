@@ -17,8 +17,11 @@ from typing import Any
 
 from seatunnel_agent.agents.data.dag_optimize.optimizer import (
     TaskGraph,
+    _makespan,
     parse_dag,
 )
+
+_WORKER_COUNTS = (1, 2, 4)
 
 __all__ = ["RerunPlan", "RerunTask", "parse_dag", "parse_statuses",
            "plan_rerun"]
@@ -55,6 +58,8 @@ class RerunPlan:
     total_eta: float = 0.0  # sum of batch ETAs (batches run sequentially)
     # connected components of the rerun set — independent recovery tracks
     groups: list[list[str]] = field(default_factory=list)
+    # rerun-subgraph makespan under limited executor slots
+    makespans: dict[str, float] = field(default_factory=dict)
 
     @property
     def blast_radius(self) -> float:
@@ -75,6 +80,7 @@ class RerunPlan:
             "batch_etas": list(self.batch_etas),
             "total_eta": self.total_eta,
             "groups": [list(g) for g in self.groups],
+            "makespans": dict(self.makespans),
         }
 
 
@@ -199,6 +205,9 @@ def plan_rerun(graph: TaskGraph, failed: str | list[str],
                        for batch in batches]
     plan.total_eta = round(sum(plan.batch_etas), 2)
     plan.groups = _recovery_groups(graph, members)
+    order = [n for batch in batches for n in batch]
+    for k in _WORKER_COUNTS:
+        plan.makespans[str(k)] = round(_makespan(graph, order, k), 2)
     return plan
 
 
