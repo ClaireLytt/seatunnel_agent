@@ -19,7 +19,7 @@ pytestmark = pytest.mark.uitest
 from seatunnel_agent.agents.data.metadata_quality.manifest import MANIFEST
 
 ROOT = Path(__file__).resolve().parents[1]
-DEMO = ROOT / "examples" / "pii_demo"
+DEMO = ROOT / "examples" / "governance_demo"
 
 BAD_DDL = (
     "CREATE TABLE ods.user_log (uid BIGINT COMMENT 'id', "

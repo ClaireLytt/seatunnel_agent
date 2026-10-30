@@ -137,7 +137,8 @@ def parse_contract(contract_text: str) -> list[TableContract]:
 
 
 def _norm_type(t: str) -> str:
-    return (t or "").strip().lower()
+    # whitespace-insensitive: DECIMAL(16, 2) == decimal(16,2)
+    return "".join((t or "").lower().split())
 
 
 def _type_matches(expected: str, actual: str) -> bool:

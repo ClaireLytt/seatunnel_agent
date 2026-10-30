@@ -11,6 +11,7 @@ export default function App() {
         reportClass: 'contract-report',
         scan: (body) => scan({ ...body, contract: String(body.contract ?? '') }),
         extra: { bodyKey: 'contract', required: true, mono: true },
+        defaultDir: 'examples/governance_demo',
       }}
     />
   )

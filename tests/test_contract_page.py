@@ -19,7 +19,7 @@ pytestmark = pytest.mark.uitest
 from seatunnel_agent.agents.data.contract_check.manifest import MANIFEST
 
 ROOT = Path(__file__).resolve().parents[1]
-DEMO = ROOT / "examples" / "pii_demo"
+DEMO = ROOT / "examples" / "governance_demo"
 
 CONTRACT = (
     "tables:\n"

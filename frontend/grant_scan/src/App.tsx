@@ -10,6 +10,7 @@ export default function App() {
         errorCode: 'grants_failed',
         reportClass: 'grants-report',
         scan,
+        defaultDir: 'examples/governance_demo',
       }}
     />
   )

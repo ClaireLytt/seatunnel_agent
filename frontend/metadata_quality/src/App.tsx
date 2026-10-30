@@ -10,6 +10,7 @@ export default function App() {
         errorCode: 'metaquality_failed',
         reportClass: 'metaquality-report',
         scan,
+        defaultDir: 'examples/governance_demo',
       }}
     />
   )

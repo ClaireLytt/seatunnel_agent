@@ -74,6 +74,15 @@ tables:
 表/列缺失与类型违约 high,分区违约 medium,注释与契约外列 low。
 Web 页在 `/contract`,聊天/MCP 工具名 `contract_check`。
 
+契约不用手写——从现状反向生成底稿再删减:
+
+```bash
+seatunnel-agent contract --init -d warehouse_sql/ -o contract.yaml
+```
+
+想一次看全六个 agent 的输出,`examples/governance_demo/` 植入了
+全套病灶(见其 README)。
+
 ## 保护：敏感数据
 
 详见 [pii_guide.md](pii_guide.md)。要点：扫描（命名规则×血缘）→

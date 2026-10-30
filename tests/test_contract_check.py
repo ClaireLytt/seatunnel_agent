@@ -167,6 +167,47 @@ def test_cli_contract_rejects_bad_contract(tmp_path):
     assert "契约格式错误" in res.output
 
 
+# ─────────────────────── bootstrap (--init) ───────────────────────
+
+def test_init_round_trips_clean():
+    from seatunnel_agent.agents.data.contract_check.bootstrap import (
+        generate_contract,
+    )
+    draft = generate_contract(CLEAN_DDL)
+    # the generated draft parses and the same DDL honors it in full
+    r = check_sql_text(CLEAN_DDL, contract=draft)
+    assert r.counts()["total"] == 0
+    # commented columns become comment requirements, partitions declared
+    assert "comment: true" in draft
+    assert "partitioned_by: [dt]" in draft
+
+
+def test_init_rejects_ddl_free_input():
+    from seatunnel_agent.agents.data.contract_check.bootstrap import (
+        generate_contract,
+    )
+    with pytest.raises(ValueError):
+        generate_contract("SELECT 1;")
+
+
+def test_cli_contract_init(tmp_path):
+    out = tmp_path / "contract.yaml"
+    res = runner.invoke(cli, ["contract", "--init", "--sql", CLEAN_DDL,
+                              "-o", str(out)])
+    assert res.exit_code == 0, res.output
+    assert "tables:" in res.output
+    # the saved draft gates the same DDL clean end to end
+    res2 = runner.invoke(cli, ["contract", "--sql", CLEAN_DDL,
+                               "-c", str(out), "--fail-on", "low"])
+    assert res2.exit_code == 0, res2.output
+
+
+def test_cli_contract_requires_c_or_init():
+    res = runner.invoke(cli, ["contract", "--sql", CLEAN_DDL])
+    assert res.exit_code != 0
+    assert "--init" in res.output
+
+
 # ─────────────────────── REST API ───────────────────────
 
 def _api_client():

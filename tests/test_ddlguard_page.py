@@ -19,7 +19,7 @@ pytestmark = pytest.mark.uitest
 from seatunnel_agent.agents.data.ddl_guard.manifest import MANIFEST
 
 ROOT = Path(__file__).resolve().parents[1]
-DEMO = ROOT / "examples" / "pii_demo"
+DEMO = ROOT / "examples" / "governance_demo"
 
 MIGRATION = (
     "CREATE TABLE dw.orders (legacy_flag INT COMMENT 'l');\n"

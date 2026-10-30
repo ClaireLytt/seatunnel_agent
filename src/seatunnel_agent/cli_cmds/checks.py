@@ -1033,9 +1033,11 @@ def metaquality(
 @click.option("--sql", type=str, default=None, help="直接校验一段 DDL")
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="校验单个 SQL 文件")
-@click.option("--contract", "-c", "contract_path", required=True,
+@click.option("--contract", "-c", "contract_path",
               type=click.Path(exists=True, dir_okay=False),
               help="契约 YAML（tables: 声明列/类型/注释要求/分区键）")
+@click.option("--init", "init_mode", is_flag=True, default=False,
+              help="从现有 DDL 反向生成契约 YAML 底稿（配 -o 落盘）")
 @click.option("--dialect", default="hive", show_default=True,
               help="SQL 方言 (hive/spark/mysql/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
@@ -1049,7 +1051,8 @@ def contract(
     directory: str | None,
     sql: str | None,
     sql_file: str | None,
-    contract_path: str,
+    contract_path: str | None,
+    init_mode: bool,
     dialect: str,
     lang: str,
     fail_on: str | None,
@@ -1069,6 +1072,34 @@ def contract(
 
     from .check_runner import CheckSpec, run_check, severity_gate
 
+    if init_mode:
+        from seatunnel_agent.agents.data.contract_check.bootstrap import (
+            generate_contract,
+            generate_from_dir,
+        )
+
+        if not directory and not sql and not sql_file:
+            raise click.UsageError("Provide --dir / --sql / --file")
+        try:
+            if directory:
+                draft = generate_from_dir(directory, dialect=dialect)
+            elif sql_file:
+                draft = generate_contract(
+                    Path(sql_file).read_text(encoding="utf-8"),
+                    dialect=dialect)
+            else:
+                draft = generate_contract(sql or "", dialect=dialect)
+        except ValueError as exc:
+            raise click.ClickException(str(exc))
+        print(draft, end="")
+        if output:
+            Path(output).write_text(draft, encoding="utf-8")
+            console.print(f"[dim]契约底稿已保存: {output}[/dim]")
+        return
+
+    if not contract_path:
+        raise click.UsageError("Provide --contract (or use --init to "
+                               "generate a draft)")
     contract_text = Path(contract_path).read_text(encoding="utf-8")
     try:
         parse_contract(contract_text)

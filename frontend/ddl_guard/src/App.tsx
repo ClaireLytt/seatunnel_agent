@@ -10,6 +10,7 @@ export default function App() {
         errorCode: 'ddlguard_failed',
         reportClass: 'ddlguard-report',
         scan,
+        defaultDir: 'examples/governance_demo',
         detailsOpen: true,
         sqlRows: 10,
       }}
