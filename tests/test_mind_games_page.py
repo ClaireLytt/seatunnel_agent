@@ -84,3 +84,34 @@ def test_games_five_questions_reveal(page_url):
         expect(page.get_by_text("P · Positive Emotion")).to_be_visible()
         expect(page.get_by_text("A · Accomplishment")).to_be_visible()
         browser.close()
+
+
+@pytest.mark.uitest
+def test_games_three_good_things_lights_the_lamp(page_url):
+    """Writing tonight's three things lights the lamp and feeds the
+    landing page's garden-corner notebook (shared localStorage key)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+
+        page.get_by_role("button", name="Three Good Things",
+                         exact=True).click()
+        expect(page.get_by_text(
+            "The first evening lights the lamp.")).to_be_visible()
+        inputs = page.locator("input")
+        for i, text in enumerate(["a good walk", "warm tea",
+                                  "finished the ledger"]):
+            inputs.nth(i * 2).fill(text)
+        page.get_by_role("button", name="Set down tonight",
+                         exact=True).click()
+
+        expect(page.get_by_text("1 consecutive evenings")).to_be_visible()
+        expect(page.get_by_text("Tonight is written",
+                                exact=False)).to_be_visible()
+        notes = page.evaluate(
+            "() => JSON.parse(localStorage.getItem('st_garden.notes.v1'))")
+        assert notes and "a good walk" in notes[-1]["text"]
+        browser.close()
