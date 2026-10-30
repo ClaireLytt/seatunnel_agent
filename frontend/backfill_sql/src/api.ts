@@ -26,6 +26,16 @@ export interface SpecsResponse {
   elapsed_ms: number
 }
 
-export function runSpecs(plan: string, lang: string): Promise<SpecsResponse> {
-  return postStructured(`${BASE}/specs`, { plan, lang }, 'specs')
+export function runSpecs(
+  plan: string,
+  lang: string,
+  llm = false,
+  ddl = '',
+): Promise<SpecsResponse> {
+  const body: Record<string, unknown> = { plan, lang }
+  if (llm) {
+    body.llm = true
+    if (ddl.trim()) body.ddl = ddl
+  }
+  return postStructured(`${BASE}/specs`, body, 'specs')
 }

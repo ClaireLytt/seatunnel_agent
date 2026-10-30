@@ -13,6 +13,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
   const [dagJson, setDagJson] = useState('')
+  const [llm, setLlm] = useState(false)
 
   const toDagopt = () => {
     sessionStorage.setItem('seatunnel.handoff.dagopt', dagJson)
@@ -29,7 +30,12 @@ export default function App() {
     setBusy(true)
     setError('')
     try {
-      const res = await runAssess(useText ? null : dir.trim(), useText ? text : null, i18n.language)
+      const res = await runAssess(
+        useText ? null : dir.trim(),
+        useText ? text : null,
+        i18n.language,
+        llm,
+      )
       setReport(res.report ?? '')
       const dag = res.result['migration_dag'] as Record<string, unknown> | undefined
       setDagJson(dag && Object.keys(dag).length ? JSON.stringify(dag) : '')
@@ -52,6 +58,7 @@ export default function App() {
     setError('')
     setReport('')
     setDagJson('')
+    setLlm(false)
   }
 
   return (
@@ -71,6 +78,10 @@ export default function App() {
               spellCheck={false}
               className="w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink"
             />
+            <label className="mt-3 flex cursor-pointer items-center gap-2 font-mono text-[12px] text-ink-soft">
+              <input type="checkbox" checked={llm} onChange={(e) => setLlm(e.target.checked)} />
+              {t('llm_label')}
+            </label>
             <button
               onClick={() => run(false)}
               disabled={busy}

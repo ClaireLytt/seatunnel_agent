@@ -27,6 +27,8 @@ const resources = {
         'Paste the plan JSON from the Backfill Planner (/backfill) — one ' +
         'ready-to-edit spec per impacted table comes back.',
       plan_btn: 'Specs from plan',
+      llm_label: 'LLM fills the source columns from DDL (needs an API key)',
+      ddl_ph: 'Upstream CREATE TABLE DDL — the {date} bound always survives.',
       empty_plan: 'Paste the backfill plan JSON first.',
       clear_btn: 'Clear',
       empty_input: 'Provide the spec file or paste the spec first.',
@@ -58,6 +60,8 @@ const resources = {
       plan_label: '补数计划器的计划 JSON',
       plan_ph: '粘贴分区补数计划页（/backfill）输出的计划 JSON — 返回逐表可编辑的规格骨架。',
       plan_btn: '计划转规格',
+      llm_label: 'LLM 按 DDL 填充 source 列（需 API key）',
+      ddl_ph: '上游 CREATE TABLE DDL — {date} 边界始终保留。',
       empty_plan: '请先粘贴补数计划 JSON。',
       clear_btn: '清空',
       empty_input: '请先填写规格文件路径或粘贴规格。',

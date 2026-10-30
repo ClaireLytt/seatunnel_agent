@@ -170,7 +170,7 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## Phase 13 roadmap (LLM on the web, too)
 
-1. [ ] All five pages gain the opt-in LLM control (checkbox; backfillsql
+1. [x] All five pages gain the opt-in LLM control (checkbox; backfillsql
    adds the DDL textarea beside it); missing key surfaces as the inline
    503 detail, verified by a neutralized-key page test.
-2. [ ] Guide: LLM layer section.
+2. [x] Guide: LLM layer section.

@@ -26,6 +26,29 @@ page_url = make_page_url(
     "/dagopt", chdir="root",
     env={"DAGOPT_API_ALLOWED_DIRS": str(DEMO)})
 
+nokey_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.dag_optimize.api:router",
+    "/dagopt", chdir="root", neutralize_llm=True,
+    env={"DAGOPT_API_ALLOWED_DIRS": str(DEMO)},
+    name="nokey_url")
+
+
+@pytest.mark.uitest
+def test_dagopt_llm_without_key_surfaces_503(nokey_url):
+    """LLM checkbox without a key → inline 503 detail, no crash."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(nokey_url, wait_until="networkidle")
+        page.get_by_text("LLM action plan", exact=False).click()
+        page.get_by_role("button", name="Analyze file", exact=True).click()
+        expect(page.get_by_text("API_KEY is not set",
+                                exact=False)).to_be_visible(timeout=15000)
+        expect(page.locator("body")).not_to_contain_text("Traceback")
+        browser.close()
+
 
 @pytest.mark.uitest
 def test_dagopt_page_run_flow(page_url):

@@ -10,6 +10,8 @@ export default function App() {
   const [file, setFile] = useState('examples/backfillsql_demo/spec.json')
   const [text, setText] = useState('')
   const [plan, setPlan] = useState('')
+  const [ddl, setDdl] = useState('')
+  const [llm, setLlm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
@@ -36,7 +38,7 @@ export default function App() {
     setBusy(true)
     setError('')
     try {
-      const res = await runSpecs(plan, i18n.language)
+      const res = await runSpecs(plan, i18n.language, llm, ddl)
       setReport(res.report)
     } catch (e) {
       setReport('')
@@ -78,6 +80,8 @@ export default function App() {
     setFile('examples/backfillsql_demo/spec.json')
     setText('')
     setPlan('')
+    setDdl('')
+    setLlm(false)
     setError('')
     setReport('')
   }
@@ -160,6 +164,20 @@ export default function App() {
                   spellCheck={false}
                   className="w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink"
                 />
+                <label className="flex cursor-pointer items-center gap-2 font-mono text-[12px] text-ink-soft">
+                  <input type="checkbox" checked={llm} onChange={(e) => setLlm(e.target.checked)} />
+                  {t('llm_label')}
+                </label>
+                {llm && (
+                  <textarea
+                    value={ddl}
+                    onChange={(e) => setDdl(e.target.value)}
+                    placeholder={t('ddl_ph')}
+                    rows={5}
+                    spellCheck={false}
+                    className="w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink"
+                  />
+                )}
                 <button
                   onClick={specs}
                   disabled={busy}

@@ -9,6 +9,7 @@ export default function App() {
   const { t, i18n } = useTranslation()
   const [file, setFile] = useState('examples/syncstrategy_demo/tables.json')
   const [text, setText] = useState('')
+  const [llm, setLlm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
@@ -27,6 +28,7 @@ export default function App() {
         useText ? null : file.trim(),
         useText ? text : null,
         i18n.language,
+        llm,
       )
       setReport(res.report ?? '')
     } catch (e) {
@@ -44,6 +46,7 @@ export default function App() {
   const clear = () => {
     setFile('examples/syncstrategy_demo/tables.json')
     setText('')
+    setLlm(false)
     setError('')
     setReport('')
   }
@@ -65,6 +68,10 @@ export default function App() {
               spellCheck={false}
               className="w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink"
             />
+            <label className="mt-3 flex cursor-pointer items-center gap-2 font-mono text-[12px] text-ink-soft">
+              <input type="checkbox" checked={llm} onChange={(e) => setLlm(e.target.checked)} />
+              {t('llm_label')}
+            </label>
             <button
               onClick={() => run(false)}
               disabled={busy}

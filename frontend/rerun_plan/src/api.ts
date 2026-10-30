@@ -16,8 +16,10 @@ export function runPlan(
   succeeded: string,
   cmd: string,
   lang: string,
+  llm = false,
 ): Promise<PlanResponse> {
   const body: Record<string, unknown> = { failed, lang, report: true }
+  if (llm) body.llm = true
   if (file) body.file = file
   if (text) body.text = text
   if (succeeded.trim()) body.succeeded = succeeded.trim()

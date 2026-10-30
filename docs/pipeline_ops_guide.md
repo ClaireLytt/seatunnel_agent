@@ -89,6 +89,22 @@ SeaTunnel 配置骨架逐个写成 .conf 文件；补数规格加 `"runner":
 - sqoop/DataX 任务直接给出 SeaTunnel Jdbc→HdfsFile 配置骨架
   （url/表/路径从脚本解析，填凭据即可用）。
 
+## LLM 层（可选，需配置 API key）
+
+五个 agent 各有一个 opt-in 的 LLM 能力，页面勾选框 / API `llm: true` /
+CLI `--llm` 三处等价；均为单次有界调用，无 key 返回标准 503：
+
+| Agent | LLM 产出 |
+|---|---|
+| dagopt | 按收益排序的优化行动清单（引用分析数字） |
+| rerun | 可直接贴运维群的事故通告草稿 |
+| backfillsql | 按上游 DDL 填充规格的 source 列（`{date}` 边界由确定性代码守住，LLM 丢占位符即弃用） |
+| syncstrategy | 落地推进方案：选型解读、切换步骤、监控点、回退 |
+| pipemigrate | 风险最大任务（≤3 个）的目标引擎改写建议与代码草案 |
+
+原则：事实、数字与安全规则永远来自确定性层；LLM 只生成需要人审阅的
+文本，报告中对应段落均标注"LLM 生成 — 审阅后使用"。
+
 ## 典型工作流
 
 1. **断更恢复**：`/freshness` 发现断更 → `/backfill` 算出补哪些表哪些日期 →

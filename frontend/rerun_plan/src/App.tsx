@@ -11,6 +11,7 @@ export default function App() {
   const [failed, setFailed] = useState('clean_orders')
   const [succeeded, setSucceeded] = useState('')
   const [cmd, setCmd] = useState('')
+  const [llm, setLlm] = useState(false)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -38,6 +39,7 @@ export default function App() {
         succeeded,
         cmd,
         i18n.language,
+        llm,
       )
       setReport(res.report ?? '')
     } catch (e) {
@@ -57,6 +59,7 @@ export default function App() {
     setFailed('clean_orders')
     setSucceeded('')
     setCmd('')
+    setLlm(false)
     setText('')
     setError('')
     setReport('')
@@ -105,6 +108,10 @@ export default function App() {
               spellCheck={false}
               className={inputCls}
             />
+            <label className="mt-3 flex cursor-pointer items-center gap-2 font-mono text-[12px] text-ink-soft">
+              <input type="checkbox" checked={llm} onChange={(e) => setLlm(e.target.checked)} />
+              {t('llm_label')}
+            </label>
             <button
               onClick={() => run(false)}
               disabled={busy}
