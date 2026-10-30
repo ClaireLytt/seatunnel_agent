@@ -1,0 +1,33 @@
+# Copy to .github/workflows/sync-inventory.yml in the repo that keeps
+# your table-characteristics inventory (tables.json / CSV / DDL) under
+# version control. On every PR touching the inventory: re-run the
+# strategy recommendation and fail the check when any table declares a
+# latency its binlog situation cannot meet (or other risk codes you
+# choose to block).
+name: Sync Inventory Gate
+
+on:
+  pull_request:
+    paths:
+      - "inventory/**"
+
+jobs:
+  sync-inventory:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install analyzer
+        run: pip install git+https://github.com/ClaireLytt/seatunnel_agent.git
+
+      # Adjust the path; add more codes to block, comma-separated
+      # (cdc_no_pk, full_on_big_table, ... — a typo lists the valid set).
+      - name: Strategy review + risk gate
+        run: |
+          seatunnel-agent sync-strategy -f inventory/tables.json \
+            --fail-on-risk latency_without_cdc \
+            --lang zh

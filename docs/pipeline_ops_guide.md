@@ -13,7 +13,7 @@
 
 CLI 通用参数：`-f/--text` 输入、`--lang zh|en`、`-F markdown|json`（json 供
 CI/脚本消费）、`-o` 落盘。`backfill-sql --plan '<计划JSON>'` 直接出规格骨架；
-`dagopt --base old.json --fail-on-regression [--tolerance X]` 可作 CI gate——关键路径回归或引入新冗余即 exit 1；`sync-strategy --fail-on-risk latency_without_cdc` 让清单仓库在 CI 挡住满足不了的时延声明；`sync-strategy --emit-configs DIR` 与 `pipe-migrate --emit-stubs DIR` 把
+`dagopt --base old.json --fail-on-regression [--tolerance X]` 可作 CI gate——关键路径回归或引入新冗余即 exit 1；`sync-strategy --fail-on-risk latency_without_cdc` 让清单仓库在 CI 挡住满足不了的时延声明（两者的可抄流水线见 examples/ci/github-actions-{dag-regression,sync-inventory}.yml）；`sync-strategy --emit-configs DIR` 与 `pipe-migrate --emit-stubs DIR` 把
 SeaTunnel 配置骨架逐个写成 .conf 文件；补数规格加 `"runner":
 "spark-sql|beeline|hive|mysql"` 会多出一段失败即停的 bash 执行脚本。
 
