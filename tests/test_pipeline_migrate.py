@@ -82,6 +82,50 @@ def test_table_deps_and_migration_order():
     assert shared["ods.users"]["consumers"] == ["build_sales.hql"]
 
 
+def test_llm_rewrite_advice_wiring(monkeypatch):
+    """advice_for_jobs picks the riskiest jobs; the API appends the
+    section — the LLM call itself is stubbed out."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.pipeline_migrate import (
+        advisor_llm,
+    )
+    from seatunnel_agent.agents.data.pipeline_migrate import (
+        api as pm_api,
+    )
+
+    calls: list[str] = []
+
+    def fake_advice(job, script, lang="zh"):
+        calls.append(job.job)
+        assert script  # the real script text reached the adviser
+        return f"advice-for-{job.job}"
+
+    monkeypatch.setattr(advisor_llm, "rewrite_advice", fake_advice)
+
+    app = FastAPI()
+    app.include_router(pm_api.router)
+    client = TestClient(app)
+    monkeypatch.setenv("PIPEMIGRATE_API_ALLOWED_DIRS", str(DEMO_DIR))
+    res = client.post("/api/pipemigrate/assess",
+                      json={"dir": str(DEMO_DIR), "llm": True,
+                            "report": True, "lang": "zh"})
+    assert res.status_code == 200
+    body = res.json()
+    advice = body["result"]["llm_advice"]
+    assert 0 < len(advice) <= 3
+    # riskiest-first: every advised job really has risks
+    by = {j["job"]: j for j in body["result"]["jobs"]}
+    assert all(by[a["job"]]["risks"] for a in advice)
+    assert "LLM 改写建议" in body["report"]
+    assert f"advice-for-{advice[0]['job']}" in body["report"]
+    # default llm=False path untouched
+    res = client.post("/api/pipemigrate/assess",
+                      json={"dir": str(DEMO_DIR)})
+    assert "llm_advice" not in res.json()["result"]
+
+
 def test_migration_dag_feeds_the_dag_optimizer():
     import json as _json
 

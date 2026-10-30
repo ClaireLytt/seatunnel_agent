@@ -182,8 +182,11 @@ def sync_strategy(path, text, emit_dir, lang, fmt, output) -> None:
               default=None, help="单个脚本文件")
 @click.option("--emit-stubs", "emit_dir", type=click.Path(file_okay=False),
               default=None, help="把 SeaTunnel 目标任务的配置骨架写到该目录")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="对风险最大的任务额外请求 LLM 改写建议（需配置 API key）")
 @_common
-def pipe_migrate(directory, path, emit_dir, lang, fmt, output) -> None:
+def pipe_migrate(directory, path, emit_dir, use_llm, lang, fmt,
+                 output) -> None:
     """Pipeline 迁移评估 — 目标引擎、S/M/L 工作量、风险与迁移波次。"""
     from seatunnel_agent.agents.data.pipeline_migrate import (
         assess_dir,
@@ -199,7 +202,30 @@ def pipe_migrate(directory, path, emit_dir, lang, fmt, output) -> None:
             Path(path).read_text(encoding="utf-8", errors="replace"))
     else:
         raise click.UsageError("提供 --dir 或 --file")
-    _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.pipeline_migrate.advisor_llm import (
+            advice_for_jobs,
+        )
+        from seatunnel_agent.agents.data.pipeline_migrate.i18n import tp
+
+        if directory:
+            root = Path(directory)
+            scripts = {j.job: (root / j.job).read_text(encoding="utf-8",
+                                                       errors="replace")
+                       for j in result.jobs
+                       if j.risks and (root / j.job).is_file()}
+        else:
+            scripts = {result.jobs[0].job: Path(path).read_text(
+                encoding="utf-8", errors="replace")}
+        advice = advice_for_jobs(result.jobs, scripts, lang=lang)
+        payload["llm_advice"] = [{"job": j, "advice": a} for j, a in advice]
+        if advice:
+            markdown += f"\n\n### {tp(lang, 'rpt_llm_advice')}\n"
+            for job, text in advice:
+                markdown += f"**`{job}`**\n{text}\n\n"
+    _emit(payload, markdown, fmt, output)
     if emit_dir:
         _emit_confs(emit_dir, [(j.job, j.stub)
                                for j in result.jobs if j.stub])
