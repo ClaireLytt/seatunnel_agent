@@ -55,11 +55,11 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## 实施顺序与里程碑
 
-1. 25 dag_optimize（图解析/分层沉淀为可复用模块）
-2. 26 rerun_plan（复用 25 的图工具）
-3. 27 backfill_sql
-4. 28 sync_strategy
-5. 29 pipeline_migrate
+1. [x] 25 dag_optimize（图解析/分层沉淀为可复用模块）
+2. [x] 26 rerun_plan（复用 25 的图工具）
+3. [x] 27 backfill_sql
+4. [x] 28 sync_strategy
+5. [x] 29 pipeline_migrate
 
 每个 agent 独立提交：后端 + 测试 + 示例 + 前端页 + workspace 注册
 （frontend/package.json workspaces、npm install、prettier、`seatunnel-agent ui --build` 验证）。
