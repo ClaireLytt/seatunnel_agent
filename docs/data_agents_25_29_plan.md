@@ -119,9 +119,9 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## Phase 6 roadmap (capacity-aware)
 
-1. [ ] rerun_plan: capacity-aware ETA - makespan of the rerun subgraph
+1. [x] rerun_plan: capacity-aware ETA - makespan of the rerun subgraph
    under 1/2/4 workers, not just the unlimited-parallel batch ETA.
-2. [ ] pipeline_migrate: export the job-dependency graph with effort as
+2. [x] pipeline_migrate: export the job-dependency graph with effort as
    duration - feed it to dagopt to answer "how long with k engineers".
-3. [ ] sync_strategy: fleet summary - daily rows moved by the
+3. [x] sync_strategy: fleet summary - daily rows moved by the
    recommended mix vs all-full, one quantified line.
