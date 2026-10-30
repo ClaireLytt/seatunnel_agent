@@ -15,7 +15,7 @@ __all__ = ["config_stub"]
 
 _ENV_BATCH = 'env {\n  parallelism = 2\n  job.mode = "BATCH"\n}'
 _ENV_STREAM = 'env {\n  parallelism = 2\n  job.mode = "STREAMING"\n}'
-_SINK = ('sink {\n  # TODO: point at the warehouse sink '
+_SINK = ('sink {\n  # fill in: the warehouse sink '
          '(Hive / Doris / Jdbc ...)\n}')
 
 
