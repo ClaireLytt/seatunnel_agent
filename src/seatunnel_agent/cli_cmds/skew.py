@@ -629,6 +629,9 @@ def skew_splitkey(
               help="Save report to file")
 @click.option("--fail", "fail_flag", is_flag=True,
               help="存在确认倾斜的 stage 时退出码 1（CI 门禁）")
+@click.option("--shuffle-dist", "shuffle_dist_flag", is_flag=True,
+              help="追加 shuffle 读分布分析（p99 长尾与热点任务，"
+                   "仅 EVENTLOG 模式）")
 def skew_runtime(
     eventlog: str | None,
     history_url: str | None,
@@ -637,6 +640,7 @@ def skew_runtime(
     lang: str,
     output: str | None,
     fail_flag: bool,
+    shuffle_dist_flag: bool,
 ) -> None:
     """运行时倾斜诊断 — 从任务级指标定位拖尾 stage/vertex。
 
@@ -674,6 +678,16 @@ def skew_runtime(
 
     md, confirmed, _ = diagnose_and_log(
         default_history(), stages, label, lang, source="cli")
+    if shuffle_dist_flag:
+        if not eventlog:
+            raise click.UsageError("--shuffle-dist 仅支持 EVENTLOG 模式")
+        from seatunnel_agent.agents.data.data_skew.shuffle_dist import (
+            render_shuffle_dist,
+            shuffle_distribution,
+        )
+
+        md += "\n\n" + render_shuffle_dist(
+            shuffle_distribution(eventlog), lang)
     console.print(md)
     if output:
         _save_report(output, md)

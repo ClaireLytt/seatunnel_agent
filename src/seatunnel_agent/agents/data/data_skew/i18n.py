@@ -269,6 +269,18 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         # --- runtime diagnosis (Spark task metrics) ---
         "rt_accordion": "Runtime diagnosis (Spark event log / History Server)",
+        "sd_title": "Shuffle-read distribution (p99 tail, event-log only)",
+        "sd_all_ok": "No fat-tailed shuffle distribution — per-task reads "
+                     "are even.",
+        "sd_col_stage": "stage",
+        "sd_col_tasks": "tasks",
+        "sd_col_verdict": "verdict",
+        "sd_col_hot": "hottest tasks",
+        "sd_confirmed": "CONFIRMED",
+        "sd_suspect": "suspect",
+        "sd_hint": "> A fat p99 with a modest max/median means several hot "
+                   "partitions, not one straggler — repartition on a "
+                   "higher-cardinality key or salt the heavy hitters.",
         "rt_upload_btn": "Analyze event log file",
         "rt_url": "History Server URL",
         "rt_app": "Application ID",
@@ -604,6 +616,16 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         # --- runtime diagnosis (Spark task metrics) ---
         "rt_accordion": "运行时诊断（Spark event log / History Server）",
+        "sd_title": "Shuffle 读分布（p99 长尾，仅 event log 模式）",
+        "sd_all_ok": "shuffle 分布无长尾 — 各任务读取均匀。",
+        "sd_col_stage": "stage",
+        "sd_col_tasks": "任务数",
+        "sd_col_verdict": "判定",
+        "sd_col_hot": "最热任务",
+        "sd_confirmed": "确认",
+        "sd_suspect": "疑似",
+        "sd_hint": "> p99 肥而 max/median 不夸张 = 多个热点分区而非单一拖尾 — "
+                   "换更高基数的分区键或对热点加盐。",
         "rt_upload_btn": "分析 event log 文件",
         "rt_url": "History Server 地址",
         "rt_app": "Application ID",

@@ -72,7 +72,7 @@ slots/memory）± 各 DAG 启动时刻。
 3. [x] 32 sql_cost（复用 30 的计划/SQL 结构 + 33 的清单解析）
 4. [x] 31 slow_query（处方指向 30/34 的能力）
 5. [x] 35 dag_conflict（复用 dag_optimize/pipeline_migrate）
-6. [ ] 34 data_skew shuffle 分布增强
+6. [x] 34 data_skew shuffle 分布增强
 
 每个 agent 独立提交：后端 + 测试 + 示例 + 前端页 + 页面回归 + 报告落盘；
 后期允许在每个 agent 上继续叠加功能（沿 25–29 的 phase 模式）。
