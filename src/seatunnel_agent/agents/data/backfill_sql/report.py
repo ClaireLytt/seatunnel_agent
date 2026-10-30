@@ -7,7 +7,28 @@ from seatunnel_agent.common.utils import normalize_lang
 from .generator import BackfillSql
 from .i18n import tp
 
-__all__ = ["render_markdown"]
+__all__ = ["render_markdown", "render_specs_markdown"]
+
+
+def render_specs_markdown(specs: list[dict], lang: str = "zh",
+                          warnings: list[str] | None = None) -> str:
+    """One ready-to-edit spec block per table (the plan-bridge output)."""
+    import json
+
+    lang = normalize_lang(lang)
+    zh = lang == "zh"
+    lines = [("## 补数规格骨架（逐表，填好 source 后交给 backfill_sql）"
+              if zh else
+              "## Backfill spec skeletons (per table — fill in the "
+              "source, then feed each to backfill_sql)"), ""]
+    for spec in specs:
+        lines.append(f"**`{spec['table']}`** — {len(spec['dates'])} "
+                     + ("个分区" if zh else "slot(s)"))
+        lines.append("```json")
+        lines.append(json.dumps(spec, ensure_ascii=False, indent=2))
+        lines.append("```")
+    lines.extend(f"- {w}" for w in (warnings or []))
+    return "\n".join(lines)
 
 
 def render_markdown(result: BackfillSql, lang: str = "zh") -> str:

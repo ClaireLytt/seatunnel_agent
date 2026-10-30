@@ -17,7 +17,7 @@ from typing import Any
 
 from seatunnel_agent.agents.data.dag_optimize.optimizer import (
     TaskGraph,
-    _makespan,
+    makespan,
     parse_dag,
 )
 
@@ -152,16 +152,27 @@ def _parse_names(raw: str) -> list[str]:
 
 def _downstream_closure(graph: TaskGraph,
                         roots: list[str]) -> dict[str, set[str]]:
-    """task → the failed roots it descends from (roots map to themselves)."""
-    origin: dict[str, set[str]] = {r: {r} for r in roots}
+    """task → the failed roots it descends from (roots map to themselves).
+
+    One BFS for the reachable set, then one origin-union per edge in
+    topological order — no re-push fixpoint."""
+    members: set[str] = set(roots)
     stack = list(roots)
     while stack:
-        node = stack.pop()
-        for down in sorted(graph.down[node]):
-            before = len(origin.get(down, ()))
-            origin.setdefault(down, set()).update(origin[node] - {down})
-            if len(origin[down]) > before:
+        for down in graph.down[stack.pop()]:
+            if down not in members:
+                members.add(down)
                 stack.append(down)
+    origin: dict[str, set[str]] = {r: {r} for r in roots}
+    batches, leftover = _subgraph_batches(graph, members)
+    for batch in batches:
+        for name in batch:
+            for down in graph.down[name]:
+                if down in members:
+                    origin.setdefault(down, set()).update(
+                        origin.get(name, set()) - {down})
+    for name in leftover:  # on-cycle members still carry their roots
+        origin.setdefault(name, set())
     return origin
 
 
@@ -228,7 +239,7 @@ def plan_rerun(graph: TaskGraph, failed: str | list[str],
     plan.groups = _recovery_groups(graph, members)
     order = [n for batch in batches for n in batch]
     for k in _WORKER_COUNTS:
-        plan.makespans[str(k)] = round(_makespan(graph, order, k), 2)
+        plan.makespans[str(k)] = round(makespan(graph, order, k), 2)
     return plan
 
 

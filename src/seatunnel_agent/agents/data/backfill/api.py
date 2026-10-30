@@ -7,13 +7,17 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
+from seatunnel_agent.common.api_guard import (
+    add_health,
+    ms_since,
+    read_whitelisted_file,
+    require_dir,
+)
 from seatunnel_agent.common.utils import normalize_lang
 
 from .planner import plan, plan_to_dict
@@ -49,13 +53,6 @@ class PlanResponse(BaseModel):
     elapsed_ms: int
 
 
-def _read_whitelisted(raw: str) -> str:
-    path = Path(raw.strip())
-    require_dir(str(path.parent), _ENV)
-    if not path.is_file():
-        raise HTTPException(status_code=400, detail=f"Not a file: {path}")
-    return path.read_text(encoding="utf-8", errors="replace")
-
 
 @router.post("/plan", response_model=PlanResponse)
 def run_plan(req: PlanRequest) -> PlanResponse:
@@ -68,9 +65,9 @@ def run_plan(req: PlanRequest) -> PlanResponse:
     start = time.time()
     if not (req.file or "").strip() and not (req.text or "").strip():
         raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
-    text = (_read_whitelisted(req.file) if (req.file or "").strip()
+    text = (read_whitelisted_file(req.file or "", _ENV) if (req.file or "").strip()
             else req.text or "")
-    rules_text = (_read_whitelisted(req.rules_file)
+    rules_text = (read_whitelisted_file(req.rules_file or "", _ENV)
                   if (req.rules_file or "").strip() else req.rules_text or "")
     graph = None
     warnings: list[str] = []

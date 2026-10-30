@@ -75,6 +75,52 @@ def emit_report(spec: CheckSpec, report: Any, lang: str, fmt: str,
     save_output(text_out, output)
 
 
+def emit_payload(payload: dict[str, Any], markdown: str, fmt: str,
+                 output: str | None) -> None:
+    """Spec-less twin of :func:`emit_report` for commands that already
+    hold the payload dict and rendered markdown."""
+    if fmt == "json":
+        text_out = json.dumps(payload, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = markdown
+        console.print(text_out, markup=False)
+    save_output(text_out, output)
+
+
+def track_history(history_path: str, entry: dict[str, Any],
+                  worse_key: str) -> None:
+    """Append *entry* (plus a ts) to the jsonl; print the drift vs the
+    previous record — yellow when *worse_key* grew, dim otherwise."""
+    from datetime import datetime, timezone
+
+    path = Path(history_path)
+    previous = None
+    if path.is_file():
+        lines = [ln for ln in
+                 path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        if lines:
+            previous = json.loads(lines[-1])
+    entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             **entry}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    if previous is None:
+        console.print(f"[dim]history: 首次记录 → {path}[/dim]")
+        return
+    deltas = [f"{k} {previous.get(k, 0):g} → {v:g}"
+              for k, v in entry.items()
+              if k != "ts" and v != previous.get(k, 0)]
+    if deltas:
+        worse = entry[worse_key] > previous.get(worse_key, 0)
+        tone = "yellow" if worse else "dim"
+        console.print(f"[{tone}]history({previous.get('ts', '?')} → 本次): "
+                      + " · ".join(deltas) + f"[/{tone}]")
+    else:
+        console.print("[dim]history: 与上次记录持平[/dim]")
+
+
 def fail_check(msg: str, fmt: str) -> None:
     """Report a failed gate and exit 1 (stderr keeps json stdout clean)."""
     if fmt == "json":

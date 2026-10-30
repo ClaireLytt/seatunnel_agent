@@ -7,13 +7,16 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
+from seatunnel_agent.common.api_guard import (
+    add_health,
+    ms_since,
+    read_whitelisted_file,
+)
 from seatunnel_agent.common.utils import normalize_lang
 
 from .planner import parse_dag, parse_statuses, plan_rerun
@@ -48,13 +51,6 @@ class PlanResponse(BaseModel):
     elapsed_ms: int
 
 
-def _read_whitelisted(raw: str) -> str:
-    path = Path(raw.strip())
-    require_dir(str(path.parent), _ENV)
-    if not path.is_file():
-        raise HTTPException(status_code=400, detail=f"Not a file: {path}")
-    return path.read_text(encoding="utf-8", errors="replace")
-
 
 @router.post("/plan", response_model=PlanResponse)
 def run_plan(req: PlanRequest) -> PlanResponse:
@@ -64,7 +60,7 @@ def run_plan(req: PlanRequest) -> PlanResponse:
     if not req.failed.strip() and not req.statuses.strip():
         raise HTTPException(status_code=400,
                             detail="Provide 'failed' or 'statuses'")
-    text = (_read_whitelisted(req.file or "") if (req.file or "").strip()
+    text = (read_whitelisted_file(req.file or "", _ENV) if (req.file or "").strip()
             else req.text or "")
     try:
         failed: str | list[str] = req.failed
@@ -72,9 +68,7 @@ def run_plan(req: PlanRequest) -> PlanResponse:
         if req.statuses.strip():
             failed, succeeded = parse_statuses(req.statuses)
         result = plan_rerun(parse_dag(text), failed, succeeded)
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # malformed JSON
+    except Exception as exc:  # bad input, malformed JSON
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     lang = normalize_lang(req.lang)
     report = (render_markdown(result, lang=lang, cmd_template=req.cmd)

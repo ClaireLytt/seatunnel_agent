@@ -54,3 +54,30 @@ def advice_for_jobs(jobs: list[JobAssessment],
     risky.sort(key=lambda j: (-len(j.risks), -j.score, j.job))
     return [(j.job, rewrite_advice(j, scripts[j.job], lang=lang))
             for j in risky[:_MAX_JOBS]]
+
+
+def collect_scripts(jobs: list[JobAssessment], root=None,
+                    fallback: tuple[str, str] | None = None
+                    ) -> dict[str, str]:
+    """Script texts for the risky jobs — from *root*/job paths, or the
+    single pasted script given as ``fallback`` (name, text)."""
+    from pathlib import Path
+
+    if root is not None:
+        root = Path(root)
+        return {j.job: (root / j.job).read_text(encoding="utf-8",
+                                                errors="replace")
+                for j in jobs if j.risks and (root / j.job).is_file()}
+    return {fallback[0]: fallback[1]} if fallback else {}
+
+
+def render_advice(advice: list[tuple[str, str]], lang: str = "zh") -> str:
+    """The shared 'LLM rewrite advice' markdown section."""
+    from .i18n import tp
+
+    lines = [f"### {tp(lang, 'rpt_llm_advice')}"]
+    for job, text in advice:
+        lines.append(f"**`{job}`**")
+        lines.append(text)
+        lines.append("")
+    return "\n".join(lines)

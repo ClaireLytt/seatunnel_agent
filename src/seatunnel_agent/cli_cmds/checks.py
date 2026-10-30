@@ -428,7 +428,6 @@ def freshness(
     output: str | None,
 ) -> None:
     """数据新鲜度监控 — 更新事件清单 → 按表判定迟到、断更、过期数据。"""
-    import json as _json
     from pathlib import Path
 
     from seatunnel_agent.agents.data.data_freshness import (
@@ -449,23 +448,15 @@ def freshness(
     except ValueError as exc:
         raise click.UsageError(str(exc))
 
-    if fmt == "json":
-        text_out = _json.dumps(scan_to_dict(result), ensure_ascii=False,
-                               indent=2)
-        print(text_out)
-    else:
-        text_out = render_markdown(result, lang)
-        console.print(text_out, markup=False)
-    if output:
-        Path(output).write_text(text_out, encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
+    from .check_runner import emit_payload, fail_check, track_history
+
+    emit_payload(scan_to_dict(result), render_markdown(result, lang),
+                 fmt, output)
 
     if history_path:
-        from .pipeline_ops import _track_history
-
         counts = scan_to_dict(result)["counts"]
         bad = sum(v for k, v in counts.items() if k not in ("ok", "unknown"))
-        _track_history(history_path, {
+        track_history(history_path, {
             "tables": len(result.tables), "bad": bad,
             **{k: counts.get(k, 0)
                for k in ("late", "stalled", "stale", "ok")},
@@ -477,12 +468,8 @@ def freshness(
                 if t.verdict != "unknown"
                 and SEVERITY.index(t.verdict) <= gate]
         if hits:
-            msg = f"存在 {fail_on} 及以上级别的新鲜度问题，检查未通过。"
-            if fmt == "json":
-                print(msg, file=sys.stderr)
-            else:
-                console.print(f"\n[red]{msg}[/red]")
-            sys.exit(1)
+            fail_check(f"存在 {fail_on} 及以上级别的新鲜度问题，检查未通过。",
+                       fmt)
 
 
 @click.command()
@@ -520,7 +507,6 @@ def backfill(
     output: str | None,
 ) -> None:
     """分区补数计划 — 缺失分区 × 血缘级联 → 拓扑有序的补数/重跑清单。"""
-    import json as _json
     from pathlib import Path
 
     from seatunnel_agent.agents.data.backfill import (
@@ -552,21 +538,14 @@ def backfill(
         raise click.UsageError(str(exc))
     result.warnings.extend(lineage_warnings)
 
-    if fmt == "json":
-        text_out = _json.dumps(plan_to_dict(result), ensure_ascii=False,
-                               indent=2)
-        print(text_out)
-    else:
-        text_out = render_markdown(result, lang, cmd_template=cmd)
-        console.print(text_out, markup=False)
-    if output:
-        Path(output).write_text(text_out, encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
+    from .check_runner import emit_payload, fail_check, track_history
+
+    emit_payload(plan_to_dict(result),
+                 render_markdown(result, lang, cmd_template=cmd),
+                 fmt, output)
 
     if history_path:
-        from .pipeline_ops import _track_history
-
-        _track_history(history_path, {
+        track_history(history_path, {
             "tables": len(result.tables),
             "slots": result.total_slots,
             "batches": result.batches,
@@ -574,12 +553,7 @@ def backfill(
         }, worse_key="slots")
 
     if fail_on_missing and result.total_slots:
-        msg = "存在缺失分区，检查未通过。"
-        if fmt == "json":
-            print(msg, file=sys.stderr)
-        else:
-            console.print(f"\n[red]{msg}[/red]")
-        sys.exit(1)
+        fail_check("存在缺失分区，检查未通过。", fmt)
 
 
 @click.command(name="schemadiff")

@@ -300,7 +300,9 @@ def _critical_path(graph: TaskGraph,
                 prev[down] = name
     if not best:
         return [], 0.0
-    end = max(sorted(best), key=lambda n: best[n])
+    # deterministic argmax without sorting every node: longest duration,
+    # ties broken by name
+    end = min(best, key=lambda n: (-best[n], n))
     path = [end]
     node = prev.get(end)
     while node:
@@ -335,7 +337,7 @@ def _serial_chains(graph: TaskGraph, skip: set[str]) -> list[list[str]]:
     return chains
 
 
-def _makespan(graph: TaskGraph, order: list[str], workers: int) -> float:
+def makespan(graph: TaskGraph, order: list[str], workers: int) -> float:
     """List scheduling: topo order, earliest-free worker, dep-gated starts."""
     finish: dict[str, float] = {}
     free = [0.0] * workers
@@ -404,11 +406,16 @@ class DagDiff:
         }
 
 
-def diff_dags(base: TaskGraph, new: TaskGraph) -> DagDiff:
-    """Structural and latency deltas introduced by the change."""
+def diff_dags(base: TaskGraph, new: TaskGraph,
+              after: DagOptimizeResult | None = None) -> DagDiff:
+    """Structural and latency deltas introduced by the change.
+
+    Callers that already ran ``optimize(new)`` pass the result as
+    ``after`` so the full analysis is not recomputed."""
     base_edges, new_edges = set(base.edges), set(new.edges)
     before = optimize(base)
-    after = optimize(new)
+    if after is None:
+        after = optimize(new)
     base_redundant = {(r.up, r.down) for r in before.redundant}
     return DagDiff(
         added_tasks=sorted(set(new.nodes) - set(base.nodes)),
@@ -425,8 +432,8 @@ def diff_dags(base: TaskGraph, new: TaskGraph) -> DagDiff:
 
 
 def optimize(graph: TaskGraph, deadline: float = 0.0) -> DagOptimizeResult:
-    result = DagOptimizeResult(tasks=len(graph.nodes),
-                               edges=len(graph.edges))
+    edges = graph.edges  # the property builds+sorts; bind once
+    result = DagOptimizeResult(tasks=len(graph.nodes), edges=len(edges))
     batches, on_cycle = _kahn_batches(graph, skip=set())
     result.cycles = on_cycle
     skip = set(on_cycle)
@@ -436,13 +443,27 @@ def optimize(graph: TaskGraph, deadline: float = 0.0) -> DagOptimizeResult:
             f"cycle: {len(skip)} task(s) excluded from analysis")
     result.batches = batches
     result.max_width = max((len(b) for b in batches), default=0)
-    for up, down in graph.edges:
+    order = [n for b in batches for n in b]
+    # redundancy via per-node descendant sets (one pass in reverse topo
+    # order) — the per-edge BFS only runs for edges already known
+    # redundant, to produce the witness path
+    descendants: dict[str, set[str]] = {}
+    for name in reversed(order):
+        desc: set[str] = set()
+        for child in graph.down[name]:
+            if child in skip:
+                continue
+            desc.add(child)
+            desc |= descendants.get(child, set())
+        descendants[name] = desc
+    for up, down in edges:
         if up in skip or down in skip:
             continue
-        via = _witness_path(graph, up, down, skip)
-        if via:
-            result.redundant.append(RedundantEdge(up, down, via))
-    order = [n for b in batches for n in b]
+        if any(down in descendants.get(child, ())
+               for child in graph.down[up] if child != down):
+            via = _witness_path(graph, up, down, skip)
+            if via:
+                result.redundant.append(RedundantEdge(up, down, via))
     result.critical_path, result.critical_duration = _critical_path(
         graph, order)
     result.total_duration = sum(graph.nodes[n] for n in order)
@@ -451,7 +472,7 @@ def optimize(graph: TaskGraph, deadline: float = 0.0) -> DagOptimizeResult:
             result.total_duration / result.critical_duration, 2)
     result.chains = _serial_chains(graph, skip)
     for k in WORKER_COUNTS:
-        result.makespans[str(k)] = round(_makespan(graph, order, k), 2)
+        result.makespans[str(k)] = round(makespan(graph, order, k), 2)
     result.makespans["inf"] = round(result.critical_duration, 2)
     result.bottlenecks = _bottlenecks(graph, order, result.critical_path,
                                       result.critical_duration)

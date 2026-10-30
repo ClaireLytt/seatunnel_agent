@@ -8,13 +8,16 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
+from seatunnel_agent.common.api_guard import (
+    add_health,
+    ms_since,
+    read_whitelisted_file,
+)
 from seatunnel_agent.common.utils import normalize_lang
 
 from .generator import generate, parse_spec
@@ -38,26 +41,17 @@ class GenerateResponse(BaseModel):
     elapsed_ms: int
 
 
-def _read_whitelisted(raw: str) -> str:
-    path = Path(raw.strip())
-    require_dir(str(path.parent), _ENV)
-    if not path.is_file():
-        raise HTTPException(status_code=400, detail=f"Not a file: {path}")
-    return path.read_text(encoding="utf-8", errors="replace")
-
 
 @router.post("/generate", response_model=GenerateResponse)
 def run_generate(req: GenerateRequest) -> GenerateResponse:
     start = time.time()
     if not (req.file or "").strip() and not (req.text or "").strip():
         raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
-    text = (_read_whitelisted(req.file or "") if (req.file or "").strip()
+    text = (read_whitelisted_file(req.file or "", _ENV) if (req.file or "").strip()
             else req.text or "")
     try:
         result = generate(parse_spec(text))
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # malformed JSON
+    except Exception as exc:  # bad input, malformed JSON
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     lang = normalize_lang(req.lang)
     report = render_markdown(result, lang=lang) if req.report else None
@@ -87,7 +81,7 @@ class SpecsResponse(BaseModel):
 @router.post("/specs", response_model=SpecsResponse)
 def run_specs(req: SpecsRequest) -> SpecsResponse:
     from .bridge import specs_from_plan
-    from .tools import backfill_specs
+    from .report import render_specs_markdown
 
     start = time.time()
     if not req.plan.strip():
@@ -95,9 +89,7 @@ def run_specs(req: SpecsRequest) -> SpecsResponse:
     try:
         specs = specs_from_plan(req.plan, partition_col=req.partition_col,
                                 dialect=req.dialect)
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # malformed JSON
+    except Exception as exc:  # bad input, malformed JSON
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     warnings: list[str] = []
     if req.llm:
@@ -108,21 +100,7 @@ def run_specs(req: SpecsRequest) -> SpecsResponse:
                                               lang=req.lang)
         except Exception as exc:  # missing key, provider errors
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        import json as _json
-
-        lines = [backfill_specs(req.plan, partition_col=req.partition_col,
-                                dialect=req.dialect,
-                                lang=req.lang).split("\n")[0], ""]
-        for spec in specs:
-            lines.append(f"**`{spec['table']}`**")
-            lines.append("```json")
-            lines.append(_json.dumps(spec, ensure_ascii=False, indent=2))
-            lines.append("```")
-        lines.extend(f"- {w}" for w in warnings)
-        report = "\n".join(lines)
-    else:
-        report = backfill_specs(req.plan, partition_col=req.partition_col,
-                                dialect=req.dialect, lang=req.lang)
+    report = render_specs_markdown(specs, lang=req.lang, warnings=warnings)
     return SpecsResponse(result=specs, report=report,
                          elapsed_ms=ms_since(start))
 

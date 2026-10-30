@@ -35,7 +35,7 @@ def dag_optimize(dag: str, base: str = "", deadline: str = "",
         result = optimize(graph, deadline=sla)
         diff_md = ""
         if (base or "").strip():
-            diff = diff_dags(parse_dag(base), graph)
+            diff = diff_dags(parse_dag(base), graph, after=result)
             diff_md = render_diff_markdown(
                 diff, lang=normalize_lang(lang)) + "\n"
     except ValueError as exc:

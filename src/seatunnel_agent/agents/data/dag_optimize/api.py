@@ -7,13 +7,16 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
+from seatunnel_agent.common.api_guard import (
+    add_health,
+    ms_since,
+    read_whitelisted_file,
+)
 from seatunnel_agent.common.utils import normalize_lang
 
 from .optimizer import diff_dags, optimize, parse_dag
@@ -46,31 +49,22 @@ class AnalyzeResponse(BaseModel):
     elapsed_ms: int
 
 
-def _read_whitelisted(raw: str) -> str:
-    path = Path(raw.strip())
-    require_dir(str(path.parent), _ENV)
-    if not path.is_file():
-        raise HTTPException(status_code=400, detail=f"Not a file: {path}")
-    return path.read_text(encoding="utf-8", errors="replace")
-
 
 @router.post("/analyze", response_model=AnalyzeResponse)
 def run_analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     start = time.time()
     if not (req.file or "").strip() and not (req.text or "").strip():
         raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
-    text = (_read_whitelisted(req.file or "") if (req.file or "").strip()
+    text = (read_whitelisted_file(req.file or "", _ENV) if (req.file or "").strip()
             else req.text or "")
-    base_raw = (_read_whitelisted(req.base_file or "")
+    base_raw = (read_whitelisted_file(req.base_file or "", _ENV)
                 if (req.base_file or "").strip() else req.base_text or "")
     try:
         graph = parse_dag(text)
         result = optimize(graph, deadline=req.deadline)
-        diff = (diff_dags(parse_dag(base_raw), graph)
+        diff = (diff_dags(parse_dag(base_raw), graph, after=result)
                 if base_raw.strip() else None)
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # malformed JSON
+    except Exception as exc:  # bad input, malformed JSON
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     lang = normalize_lang(req.lang)
     report = render_markdown(result, lang=lang) if req.report else None

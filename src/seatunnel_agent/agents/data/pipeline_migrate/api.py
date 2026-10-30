@@ -57,42 +57,22 @@ def run_assess(req: AssessRequest) -> AssessResponse:
     report = render_markdown(result, lang=lang) if req.report else None
     payload = result.to_dict()
     if req.llm:
+        from . import advisor_llm
+
         try:
-            advice = _collect_advice(result, req, lang)
+            scripts = advisor_llm.collect_scripts(
+                result.jobs,
+                root=(req.dir or "").strip() or None,
+                fallback=(req.name, req.text or ""))
+            advice = advisor_llm.advice_for_jobs(result.jobs, scripts,
+                                                 lang=lang)
         except Exception as exc:  # missing key, provider errors
             raise HTTPException(status_code=503, detail=str(exc)) from exc
         payload["llm_advice"] = [{"job": j, "advice": a} for j, a in advice]
         if report is not None and advice:
-            report += "\n\n" + _advice_markdown(advice, lang)
+            report += "\n\n" + advisor_llm.render_advice(advice, lang)
     return AssessResponse(result=payload, report=report,
                           elapsed_ms=ms_since(start))
-
-
-def _collect_advice(result: Any, req: AssessRequest,
-                    lang: str) -> list[tuple[str, str]]:
-    from pathlib import Path
-
-    from .advisor_llm import advice_for_jobs
-
-    if (req.dir or "").strip():
-        root = Path(req.dir.strip() if req.dir else "")
-        scripts = {j.job: (root / j.job).read_text(encoding="utf-8",
-                                                   errors="replace")
-                   for j in result.jobs if j.risks and (root / j.job).is_file()}
-    else:
-        scripts = {req.name: req.text or ""}
-    return advice_for_jobs(result.jobs, scripts, lang=lang)
-
-
-def _advice_markdown(advice: list[tuple[str, str]], lang: str) -> str:
-    from .i18n import tp
-
-    lines = [f"### {tp(lang, 'rpt_llm_advice')}"]
-    for job, text in advice:
-        lines.append(f"**`{job}`**")
-        lines.append(text)
-        lines.append("")
-    return "\n".join(lines)
 
 
 add_health(router, "pipeline_migrate")

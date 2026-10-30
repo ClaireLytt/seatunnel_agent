@@ -12,12 +12,14 @@ pages and MCP tools: a file or inline text in, markdown or JSON out.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import click
 
 from ..common.cli_common import console
+from .check_runner import emit_payload as _emit
+from .check_runner import fail_check
+from .check_runner import track_history as _track_history
 
 
 def _read(path: str | None, text: str | None, what: str) -> str:
@@ -26,19 +28,6 @@ def _read(path: str | None, text: str | None, what: str) -> str:
     if text:
         return text
     raise click.UsageError(f"提供 --file 或 --text（{what}）")
-
-
-def _emit(result_dict: dict, markdown: str, fmt: str,
-          output: str | None) -> None:
-    text_out = (json.dumps(result_dict, ensure_ascii=False, indent=2)
-                if fmt == "json" else markdown)
-    if fmt == "json":
-        print(text_out)
-    else:
-        console.print(text_out, markup=False)
-    if output:
-        Path(output).write_text(text_out, encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
 
 
 _COMMON = [
@@ -97,7 +86,7 @@ def dagopt(path, text, base_path, fail_on_regression, tolerance,
     diff = None
     if base_path:
         diff = diff_dags(parse_dag(Path(base_path).read_text(
-            encoding="utf-8", errors="replace")), graph)
+            encoding="utf-8", errors="replace")), graph, after=result)
         payload["diff"] = diff.to_dict()
         markdown = render_diff_markdown(diff, lang=lang) + "\n" + markdown
     if use_llm:
@@ -126,43 +115,7 @@ def dagopt(path, text, base_path, fail_on_regression, tolerance,
             edges = ", ".join(f"{r.up}->{r.down}" for r in diff.new_redundant)
             problems.append(f"引入新冗余边: {edges}")
         if problems:
-            for p in problems:
-                console.print(f"[red]REGRESSION[/red] {p}")
-            raise SystemExit(1)
-
-
-def _track_history(history_path: str, entry: dict,
-                   worse_key: str) -> None:
-    """Append *entry* (plus a ts) to the jsonl; print the drift vs the
-    previous record — yellow when *worse_key* grew, dim otherwise."""
-    import json as _json
-    from datetime import datetime, timezone
-
-    path = Path(history_path)
-    previous = None
-    if path.is_file():
-        lines = [ln for ln in
-                 path.read_text(encoding="utf-8").splitlines() if ln.strip()]
-        if lines:
-            previous = _json.loads(lines[-1])
-    entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-             **entry}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(_json.dumps(entry, ensure_ascii=False) + "\n")
-    if previous is None:
-        console.print(f"[dim]history: 首次记录 → {path}[/dim]")
-        return
-    deltas = [f"{k} {previous.get(k, 0):g} → {v:g}"
-              for k, v in entry.items()
-              if k != "ts" and v != previous.get(k, 0)]
-    if deltas:
-        worse = entry[worse_key] > previous.get(worse_key, 0)
-        tone = "yellow" if worse else "dim"
-        console.print(f"[{tone}]history({previous.get('ts', '?')} → 本次): "
-                      + " · ".join(deltas) + f"[/{tone}]")
-    else:
-        console.print("[dim]history: 与上次记录持平[/dim]")
+            fail_check("\n".join(f"REGRESSION {p}" for p in problems), fmt)
 
 
 @click.command("rerun")
@@ -244,29 +197,22 @@ def backfill_sql(path, text, plan, ddl_path, use_llm, lang, fmt,
     )
 
     if plan:
-        from seatunnel_agent.agents.data.backfill_sql.tools import (
-            backfill_specs,
+        from seatunnel_agent.agents.data.backfill_sql.report import (
+            render_specs_markdown,
         )
 
         specs = specs_from_plan(plan)
-        markdown = backfill_specs(plan, lang=lang)
+        warnings: list[str] = []
         if use_llm:
-            import json as _json
-
             from seatunnel_agent.agents.data.backfill_sql import advisor_llm
 
             ddl = (Path(ddl_path).read_text(encoding="utf-8",
                                             errors="replace")
                    if ddl_path else "")
             warnings = advisor_llm.fill_specs(specs, ddl, lang=lang)
-            markdown = "\n".join(
-                [markdown.split("\n")[0], ""]
-                + [line for spec in specs for line in (
-                    f"**`{spec['table']}`**", "```json",
-                    _json.dumps(spec, ensure_ascii=False, indent=2),
-                    "```")]
-                + [f"- {w}" for w in warnings])
-        _emit({"specs": specs}, markdown, fmt, output)
+        _emit({"specs": specs},
+              render_specs_markdown(specs, lang=lang, warnings=warnings),
+              fmt, output)
         return
     result = generate(parse_spec(_read(path, text, "补数规格")))
     _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)
@@ -337,9 +283,8 @@ def sync_strategy(path, text, emit_dir, use_llm, fail_risks, lang, fmt,
         hits = [(r.table, c) for r in result.recommendations
                 for c in r.risks if c in wanted]
         if hits:
-            for table, code in hits:
-                console.print(f"[red]RISK[/red] {table}: {code}")
-            raise SystemExit(1)
+            fail_check("\n".join(f"RISK {table}: {code}"
+                                 for table, code in hits), fmt)
 
 
 @click.command("pipe-migrate")
@@ -376,26 +321,18 @@ def pipe_migrate(directory, path, emit_dir, use_llm, history_path, lang,
     markdown = render_markdown(result, lang=lang)
     payload = result.to_dict()
     if use_llm:
-        from seatunnel_agent.agents.data.pipeline_migrate.advisor_llm import (
-            advice_for_jobs,
-        )
-        from seatunnel_agent.agents.data.pipeline_migrate.i18n import tp
+        from seatunnel_agent.agents.data.pipeline_migrate import advisor_llm
 
-        if directory:
-            root = Path(directory)
-            scripts = {j.job: (root / j.job).read_text(encoding="utf-8",
-                                                       errors="replace")
-                       for j in result.jobs
-                       if j.risks and (root / j.job).is_file()}
-        else:
-            scripts = {result.jobs[0].job: Path(path).read_text(
-                encoding="utf-8", errors="replace")}
-        advice = advice_for_jobs(result.jobs, scripts, lang=lang)
+        scripts = advisor_llm.collect_scripts(
+            result.jobs, root=directory,
+            fallback=(result.jobs[0].job,
+                      Path(path).read_text(encoding="utf-8",
+                                           errors="replace"))
+            if path else None)
+        advice = advisor_llm.advice_for_jobs(result.jobs, scripts, lang=lang)
         payload["llm_advice"] = [{"job": j, "advice": a} for j, a in advice]
         if advice:
-            markdown += f"\n\n### {tp(lang, 'rpt_llm_advice')}\n"
-            for job, text in advice:
-                markdown += f"**`{job}`**\n{text}\n\n"
+            markdown += "\n\n" + advisor_llm.render_advice(advice, lang)
     if history_path:
         efforts = result.effort_counts()
         counts = result.counts()

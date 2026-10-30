@@ -55,6 +55,16 @@ def require_dir(raw_path: str, env_var: str) -> str:
     return path
 
 
+def read_whitelisted_file(raw_path: str, env_var: str) -> str:
+    """Whitelist-check the file's parent dir, then read it (replace
+    errors) — the shared head of every file-taking API endpoint."""
+    path = Path((raw_path or "").strip())
+    require_dir(str(path.parent), env_var)
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail=f"Not a file: {path}")
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
 def ms_since(start: float) -> int:
     """Elapsed milliseconds since a ``time.time()`` start stamp."""
     return int((time.time() - start) * 1000)
