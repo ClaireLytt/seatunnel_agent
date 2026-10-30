@@ -80,6 +80,25 @@ def test_assert_locator_tightening_is_an_update() -> None:
     assert _findings(diff) == []
 
 
+def test_new_workspace_without_lockfile_flagged() -> None:
+    added = [("frontend/package.json", '    "contract_check",')]
+    hits = check_workflow.frontend_lock_findings(
+        added, ["frontend/package.json"])
+    assert hits and "锁文件未更新" in hits[0]
+
+
+def test_new_workspace_with_lockfile_passes() -> None:
+    added = [("frontend/package.json", '    "contract_check",')]
+    assert check_workflow.frontend_lock_findings(
+        added, ["frontend/package.json", "frontend/package-lock.json"]) == []
+
+
+def test_dependency_line_not_mistaken_for_workspace() -> None:
+    added = [("frontend/package.json", '    "vite": "^6.0.7",')]
+    assert check_workflow.frontend_lock_findings(
+        added, ["frontend/package.json"]) == []
+
+
 def test_assert_magic_number_rederived_is_an_update() -> None:
     # "== 14" replaced by "== <expression>" on the same compared value:
     # the hand-synced constant now comes from its source of truth

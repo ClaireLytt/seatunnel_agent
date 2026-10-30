@@ -170,6 +170,43 @@ def check_floor(rng: str | None) -> tuple[bool, str]:
     return True, f"无作弊变绿改动(范围 {rng})"
 
 
+_RE_WORKSPACE_ENTRY = re.compile(r'^\s*"[\w-]+",?\s*$')
+
+
+def frontend_lock_findings(
+    added: list[tuple[str, str]], changed_files: list[str]
+) -> list[str]:
+    """New frontend workspace entries must ship the regenerated lock file.
+
+    教训(2026-10-29):contract_check workspace 进了 package.json 但
+    package-lock.json 没跟上,CI 的 `npm ci` 直接红。workspace 条目是
+    纯名字行(不含冒号),devDependencies 之类的 "k": "v" 行不误伤。"""
+    ws_added = [
+        text.strip()
+        for file, text in added
+        if file == "frontend/package.json" and _RE_WORKSPACE_ENTRY.match(text)
+    ]
+    if ws_added and "frontend/package-lock.json" not in changed_files:
+        return [
+            f"[锁文件未更新] frontend/package.json 新增 workspace {t} "
+            "但 package-lock.json 未变(先跑 cd frontend && npm install)"
+            for t in ws_added
+        ]
+    return []
+
+
+def check_frontend_lock(rng: str | None) -> tuple[bool, str]:
+    if rng is None:
+        return True, "无远端分支,跳过锁文件检查"
+    diff = _git("diff", "--unified=0", rng, "--", "frontend/package.json")
+    changed_files = _git("diff", "--name-only", rng).splitlines()
+    added, _ = parse_diff(diff)
+    findings = frontend_lock_findings(added, changed_files)
+    if findings:
+        return False, "\n".join("  " + f for f in findings)
+    return True, f"workspace 与锁文件同步(范围 {rng})"
+
+
 def _git(*args: str) -> str:
     out = subprocess.run(
         ["git", *args], capture_output=True, text=True, encoding="utf-8", check=True
@@ -272,6 +309,7 @@ def main() -> int:
         ("报告落盘", check_report_committed(rng)),
         ("报告含验证输出", check_report_has_workflow_output(rng)),
         ("floor", check_floor(rng)),
+        ("前端锁文件", check_frontend_lock(rng)),
     ]
     # Windows 默认 cp1252 无法打印中文检查名,统一切 UTF-8
     if hasattr(sys.stdout, "reconfigure"):
