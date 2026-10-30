@@ -11,13 +11,12 @@ sqlglot round-trip (or a regex fallback when the fragment does not parse),
 
 from __future__ import annotations
 
-from seatunnel_agent.common.severity import severity_counts
-
 import re
 from dataclasses import dataclass, field
 from typing import Any
 
 from seatunnel_agent.agents.data.data_lineage.graph import LineageGraph
+from seatunnel_agent.common.severity import severity_counts
 
 SEVERITIES = ("high", "medium")
 _SEV_RANK = {"medium": 1, "high": 2}

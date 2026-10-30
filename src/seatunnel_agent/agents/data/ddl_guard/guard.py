@@ -23,12 +23,12 @@ irreversible steps stay in as comments so nothing is silently skipped.
 
 from __future__ import annotations
 
-from seatunnel_agent.common.severity import severity_counts
-
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from seatunnel_agent.common.severity import severity_counts
 
 KIND_SEVERITY = {
     "drop_table": "high",

@@ -23,11 +23,11 @@ promise" rather than "did anything change".
 
 from __future__ import annotations
 
-from seatunnel_agent.common.severity import severity_counts
-
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from seatunnel_agent.common.severity import severity_counts
 
 # finding kind -> severity: breaking a declared promise is high; shape
 # drift around the promise (partitions, comments, extras) grades down

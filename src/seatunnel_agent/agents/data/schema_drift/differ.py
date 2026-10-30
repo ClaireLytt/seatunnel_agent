@@ -9,14 +9,13 @@ is collapsed into one "possible rename" risk finding.
 
 from __future__ import annotations
 
-from seatunnel_agent.common.severity import severity_counts
-
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from seatunnel_agent.agents.data.data_lineage.graph import norm_table
+from seatunnel_agent.common.severity import severity_counts
 
 SEVERITIES = ("breaking", "risk", "info")
 _SEV_RANK = {"info": 1, "risk": 2, "breaking": 3}

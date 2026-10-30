@@ -14,14 +14,13 @@ listed as unschedulable.
 
 from __future__ import annotations
 
-from seatunnel_agent.common.severity import severity_counts
-
 import re
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
 from seatunnel_agent.agents.data.data_lineage.graph import LineageGraph
+from seatunnel_agent.common.severity import severity_counts
 
 SEVERITIES = ("error", "warn", "info")
 _SEV_RANK = {"info": 1, "warn": 2, "error": 3}

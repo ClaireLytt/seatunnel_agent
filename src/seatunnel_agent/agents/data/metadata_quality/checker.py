@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from seatunnel_agent.common.severity import severity_counts
-
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+from seatunnel_agent.common.severity import severity_counts
 
 LAYERS = ("ods", "dwd", "dws", "ads", "dim")
 
