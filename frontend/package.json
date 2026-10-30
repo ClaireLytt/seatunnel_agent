@@ -4,6 +4,7 @@
   "workspaces": [
     "shared",
     "backfill",
+    "backfill_sql",
     "config_lint",
     "contract_check",
     "dag_check",
