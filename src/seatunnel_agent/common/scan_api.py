@@ -57,6 +57,8 @@ class ScanSpec:
     render: Callable[[Any, str], str]   # (result, lang) -> markdown
     to_dict: Callable[[Any, str], dict[str, Any]]  # (result, lang) -> payload
     log_run: Callable[[Any], None] | None = None   # api-source history hook
+    # recent history records (for GET /stats); None = no stats endpoint
+    log_recent: Callable[[int], list[dict[str, Any]]] | None = None
     # extra request fields: name -> (type, pydantic Field default)
     extra_fields: dict[str, tuple[type, Any]] = field(default_factory=dict)
 
@@ -105,6 +107,13 @@ def make_scan_router(spec: ScanSpec) -> APIRouter:
     # the spec-extended request model before registering the route.
     scan.__annotations__["req"] = request_model
     router.post("/scan", response_model=ScanResponse)(scan)
+
+    if spec.log_recent is not None:
+        recent = spec.log_recent
+
+        @router.get("/stats")
+        def stats(n: int = 20) -> dict[str, Any]:
+            return {"records": recent(max(1, min(int(n), 200)))}
 
     add_health(router, spec.name)
     return router

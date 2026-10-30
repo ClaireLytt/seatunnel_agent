@@ -28,6 +28,7 @@ SPEC = ScanSpec(
     render=render_markdown,
     to_dict=lambda result, lang: result.to_dict(),
     log_run=lambda result: HygieneLogger().log_run(result, source="api"),
+    log_recent=lambda n: HygieneLogger().recent(n),
     extra_fields={
         "exempt": (list[str], Field(
             default_factory=list,

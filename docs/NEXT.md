@@ -15,12 +15,6 @@
   交换轮转与限频。
 - **room1913 年册** — 需要跨月真实数据才有意义，刻意推迟。
 
-## 待做（无闸门,下一轮候选）
-
-- **治理总览页 /governance** — 聚合 logs/*.jsonl 趋势(孤儿表、注释
-  覆盖、违约数、权限面)。前置:给 contract/grants/ddlguard 补
-  RunLogger(seam 现成)+ stats REST 端点;体量一个完整页面。
-
 ## 等「有效 ANTHROPIC_API_KEY」
 
 - **room1913 对话验收** — 唯一未端到端验证的功能（客户端链路与错误

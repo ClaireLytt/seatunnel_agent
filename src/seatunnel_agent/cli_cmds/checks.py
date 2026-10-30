@@ -1069,6 +1069,9 @@ def contract(
         parse_contract,
         render_markdown,
     )
+    from seatunnel_agent.agents.data.contract_check.history import (
+        ContractLogger,
+    )
 
     from .check_runner import CheckSpec, run_check, severity_gate
 
@@ -1116,6 +1119,7 @@ def contract(
         gate=lambda report, fail_on: severity_gate(
             report.findings, fail_on,
             f"存在 {fail_on} 及以上级别的契约违约，检查未通过。"),
+        log_run=lambda report: ContractLogger().log_run(report, source="cli"),
     )
     run_check(spec, directory=directory, sql=sql, sql_file=sql_file,
               dialect=dialect, lang=lang, fmt=fmt, output=output,
@@ -1154,6 +1158,7 @@ def grants(
         scan_files,
         scan_sql_text,
     )
+    from seatunnel_agent.agents.data.grant_scan.history import GrantsLogger
 
     from .check_runner import CheckSpec, run_check, severity_gate
 
@@ -1167,6 +1172,7 @@ def grants(
         gate=lambda report, fail_on: severity_gate(
             report.findings, fail_on,
             f"存在 {fail_on} 及以上级别的权限面风险，检查未通过。"),
+        log_run=lambda report: GrantsLogger().log_run(report, source="cli"),
     )
     run_check(spec, directory=directory, sql=sql, sql_file=sql_file,
               dialect=dialect, lang=lang, fmt=fmt, output=output,
@@ -1210,6 +1216,7 @@ def ddlguard(
         scan_files,
         scan_sql_text,
     )
+    from seatunnel_agent.agents.data.ddl_guard.history import DdlGuardLogger
 
     from .check_runner import CheckSpec, run_check, severity_gate
 
@@ -1218,6 +1225,7 @@ def ddlguard(
         if undo_path and report.undo_sql:
             Path(undo_path).write_text(report.undo_sql, encoding="utf-8")
             console.print(f"[dim]回滚脚本已保存: {undo_path}[/dim]")
+        DdlGuardLogger().log_run(report, source="cli")
 
     spec = CheckSpec(
         analyze_dir=scan_dir,

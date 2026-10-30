@@ -11,6 +11,7 @@ from __future__ import annotations
 from seatunnel_agent.common.scan_api import ScanSpec, make_scan_router
 
 from .guard import scan_dir, scan_sql_text
+from .history import DdlGuardLogger
 from .report import render_markdown
 
 SPEC = ScanSpec(
@@ -22,6 +23,8 @@ SPEC = ScanSpec(
     analyze_sql=scan_sql_text,
     render=render_markdown,
     to_dict=lambda result, lang: result.to_dict(),
+    log_run=lambda result: DdlGuardLogger().log_run(result, source="api"),
+    log_recent=lambda n: DdlGuardLogger().recent(n),
 )
 
 router = make_scan_router(SPEC)

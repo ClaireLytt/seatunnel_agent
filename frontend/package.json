@@ -16,6 +16,7 @@
     "data_lineage",
     "data_skew",
     "ddl_guard",
+    "governance_overview",
     "grant_scan",
     "doc_qa",
     "issue_triage",

@@ -12,6 +12,7 @@ from pydantic import Field
 from seatunnel_agent.common.scan_api import ScanSpec, make_scan_router
 
 from .checker import check_dir, check_sql_text
+from .history import ContractLogger
 from .report import render_markdown
 
 SPEC = ScanSpec(
@@ -23,6 +24,8 @@ SPEC = ScanSpec(
     analyze_sql=check_sql_text,
     render=render_markdown,
     to_dict=lambda result, lang: result.to_dict(),
+    log_run=lambda result: ContractLogger().log_run(result, source="api"),
+    log_recent=lambda n: ContractLogger().recent(n),
     extra_fields={
         "contract": (str, Field(
             ...,

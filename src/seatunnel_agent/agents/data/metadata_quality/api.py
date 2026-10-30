@@ -25,6 +25,7 @@ SPEC = ScanSpec(
     render=render_markdown,
     to_dict=lambda result, lang: result.to_dict(),
     log_run=lambda result: MetaQualityLogger().log_run(result, source="api"),
+    log_recent=lambda n: MetaQualityLogger().recent(n),
 )
 
 router = make_scan_router(SPEC)

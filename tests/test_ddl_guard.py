@@ -162,6 +162,23 @@ def test_api_requires_input():
                               json={}).status_code == 400
 
 
+# ─────────────────────── history / stats ───────────────────────
+
+def test_history_logged_and_stats_endpoint(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    res = runner.invoke(cli, ["ddlguard", "--sql", MIGRATION])
+    assert res.exit_code == 0, res.output
+    assert (tmp_path / "logs" / "ddlguard.jsonl").exists()
+
+    client = _api_client()
+    client.post("/api/ddlguard/scan", json={"sql": MIGRATION})
+    r = client.get("/api/ddlguard/stats")
+    assert r.status_code == 200
+    records = r.json()["records"]
+    assert {rec["source"] for rec in records} == {"cli", "api"}
+    assert records[-1]["counts"]["irreversible"] >= 1
+
+
 # ─────────────────────── MCP / orchestrator wiring ───────────────────────
 
 def test_tool_discovered_everywhere():

@@ -114,12 +114,15 @@ Web 页在 `/ddlguard`,聊天/MCP 工具名 `ddl_guard`。
 
 ## 度量：趋势
 
-每次 CLI/REST 运行自动落档 `logs/*.jsonl`：
+每次 CLI/REST 运行自动落档 `logs/*.jsonl`(六个治理 agent 全覆盖):
 
 ```bash
 seatunnel-agent hygiene-stats       # 孤儿表 12 → 8（最近 N 次）
 seatunnel-agent metaquality-stats   # 注释覆盖 71% → 83%
 ```
+
+每个 agent 还暴露 `GET /api/<name>/stats`;`/governance` 总览页
+把五份历史聚合成一页:最新状态、趋势折线、运行次数。
 
 ## 门禁：一条流水线串三关
 
