@@ -8,6 +8,7 @@ checks.  Unbounded reads are rejected, the date range is capped, and
 the SQL is generated — never executed.
 """
 
+from .bridge import specs_from_plan
 from .generator import (
     BackfillSpec,
     BackfillSql,
@@ -24,4 +25,5 @@ __all__ = [
     "generate",
     "parse_spec",
     "render_markdown",
+    "specs_from_plan",
 ]

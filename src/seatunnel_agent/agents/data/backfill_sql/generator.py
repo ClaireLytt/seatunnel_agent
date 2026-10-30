@@ -56,6 +56,8 @@ class BackfillSpec:
     grain: str = "day"                # "day" | "hour" (one slot per hour)
     keys: list[str] = field(default_factory=list)  # merge only
     source_table: str = ""            # for pre-flight counts (optional)
+    dates: list[date] = field(default_factory=list)  # explicit slots
+    # (overrides the start..end grid; day grain only)
 
 
 def parse_spec(text: str) -> BackfillSpec:
@@ -65,6 +67,22 @@ def parse_spec(text: str) -> BackfillSpec:
     data = json.loads(stripped)
     if not isinstance(data, dict):
         raise ValueError("spec must be a JSON object")
+    explicit_dates = data.get("dates") or []
+    if explicit_dates:
+        if not isinstance(explicit_dates, list):
+            raise ValueError("'dates' must be a list of ISO dates")
+        try:
+            parsed_dates = sorted({date.fromisoformat(str(d).strip())
+                                   for d in explicit_dates})
+        except ValueError as exc:
+            raise ValueError(f"'dates' must be ISO dates: {exc}") from exc
+        if len(parsed_dates) > MAX_DAYS:
+            raise ValueError(f"'dates' exceeds {MAX_DAYS} slots — "
+                             f"split the backfill")
+        data = {**data, "start": parsed_dates[0].isoformat(),
+                "end": parsed_dates[-1].isoformat()}
+    else:
+        parsed_dates = []
     missing = [k for k in ("table", "partition_col", "start", "end", "source")
                if not str(data.get(k) or "").strip()]
     if missing:
@@ -94,6 +112,8 @@ def parse_spec(text: str) -> BackfillSpec:
                          f"split the backfill")
     if grain == "hour" and "HH" not in date_format:
         raise ValueError("hourly grain needs 'HH' in date_format")
+    if parsed_dates and grain == "hour":
+        raise ValueError("'dates' list works with day grain only")
     mode = str(data.get("mode") or "overwrite").strip().lower()
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
@@ -115,7 +135,7 @@ def parse_spec(text: str) -> BackfillSpec:
         table=table, partition_col=partition_col, start=start, end=end,
         source=source, mode=mode, dialect=dialect,
         date_format=date_format, grain=grain,
-        keys=keys, source_table=source_table)
+        keys=keys, source_table=source_table, dates=parsed_dates)
 
 
 @dataclass
@@ -183,14 +203,22 @@ def generate(spec: BackfillSpec) -> BackfillSql:
         result.warnings.append(
             f"{spec.dialect}: MERGE needs engine support "
             "(Hive ACID / MySQL has none) — verify before running")
-    slot = datetime.combine(spec.start, datetime.min.time())
-    stop = datetime.combine(spec.end, datetime.min.time())
-    if spec.grain == "hour":
-        stop += timedelta(hours=23)
-        step = timedelta(hours=1)
+    if spec.dates:
+        slots = [datetime.combine(d, datetime.min.time())
+                 for d in spec.dates]
     else:
-        step = timedelta(days=1)
-    while slot <= stop:
+        slots = []
+        slot = datetime.combine(spec.start, datetime.min.time())
+        stop = datetime.combine(spec.end, datetime.min.time())
+        if spec.grain == "hour":
+            stop += timedelta(hours=23)
+            step = timedelta(hours=1)
+        else:
+            step = timedelta(days=1)
+        while slot <= stop:
+            slots.append(slot)
+            slot += step
+    for slot in slots:
         pv = slot.strftime(strf)
         source = spec.source.replace("{date}", pv)
         label = slot.date().isoformat() if spec.grain == "day" \
@@ -198,7 +226,6 @@ def generate(spec: BackfillSpec) -> BackfillSql:
         result.dates.append(DateStatements(
             date=label, partition_value=pv,
             statements=_statements(spec, pv, source)))
-        slot += step
     first = result.dates[0].partition_value
     last = result.dates[-1].partition_value
     bound = (f"{spec.partition_col} BETWEEN '{first}' AND '{last}'")

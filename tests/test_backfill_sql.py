@@ -112,6 +112,43 @@ def test_safety_rules():
         parse_spec('{"table": "t"}')
 
 
+def test_explicit_dates_list():
+    result = generate(_spec(dates=["2024-05-03", "2024-05-01",
+                                   "2024-05-01"], start="", end=""))
+    # deduped, sorted, non-contiguous — only the named slots
+    assert [d.date for d in result.dates] == ["2024-05-01", "2024-05-03"]
+    assert "dt BETWEEN '2024-05-01' AND '2024-05-03'" in result.prechecks[0]
+    with pytest.raises(ValueError, match="day grain only"):
+        _spec(dates=["2024-05-01"], date_format="yyyy-MM-dd HH")
+    with pytest.raises(ValueError, match="ISO dates"):
+        _spec(dates=["yesterday"])
+
+
+def test_specs_from_plan_bridge():
+    from seatunnel_agent.agents.data.backfill_sql import specs_from_plan
+    from seatunnel_agent.agents.data.backfill_sql.tools import backfill_specs
+
+    plan = ('{"tables": ['
+            '{"table": "dws.sales", "missing": ["2024-05-05"],'
+            ' "cascade": ["2024-05-04"]},'
+            '{"table": "ads.report", "missing": [], "cascade": []}]}')
+    specs = specs_from_plan(plan)
+    assert len(specs) == 1  # the empty-dates table is skipped
+    spec = specs[0]
+    assert spec["table"] == "dws.sales"
+    assert spec["dates"] == ["2024-05-04", "2024-05-05"]
+    assert "{date}" in spec["source"]
+    # the emitted skeleton round-trips through the generator once filled
+    import json as _json
+    spec["source"] = ("SELECT * FROM ods.orders "
+                      "WHERE dt = '{date}'")
+    result = generate(parse_spec(_json.dumps(spec)))
+    assert [d.date for d in result.dates] == ["2024-05-04", "2024-05-05"]
+    md = backfill_specs(plan, lang="en")
+    assert "```json" in md and "dws.sales" in md
+    assert "bad input" in backfill_specs('{"tables": []}')
+
+
 def test_report_zh_en_and_tool():
     result = generate(parse_spec(DEMO))
     zh = render_markdown(result, lang="zh")

@@ -33,5 +33,16 @@ MANIFEST = AgentManifest(
                       "insert overwrite", "分区", "partition", "补历史",
                       "回刷"),
         ),
+        ToolManifest(
+            name="backfill_specs",
+            ref="seatunnel_agent.agents.data.backfill_sql.tools:backfill_specs",
+            desc_zh="补数规格桥接（补数计划 JSON → 逐表可编辑的 SQL 规格骨架）",
+            desc_en="Backfill spec bridge (planner JSON → per-table specs)",
+            router_en="Bridge the backfill planner's plan JSON into one "
+                      "ready-to-edit backfill-SQL spec per impacted table, "
+                      "carrying the exact missing/cascade dates over.",
+            keywords=("补数规格", "spec", "计划转SQL", "plan to sql",
+                      "backfill spec"),
+        ),
     ),
 )
