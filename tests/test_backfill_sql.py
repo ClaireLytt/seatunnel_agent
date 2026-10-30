@@ -149,6 +149,39 @@ def test_specs_from_plan_bridge():
     assert "bad input" in backfill_specs('{"tables": []}')
 
 
+def test_overwrite_dynamic_single_statement():
+    result = generate(_spec(
+        mode="overwrite_dynamic", dialect="spark",
+        source="SELECT order_id, dt FROM ods.orders "
+               "WHERE dt BETWEEN '{start}' AND '{end}'"))
+    assert len(result.dates) == 1
+    block = result.dates[0]
+    assert block.date == "2024-05-01..2024-05-03"
+    stmt = block.statements[0]
+    assert "partitionOverwriteMode = dynamic" in stmt
+    assert "INSERT OVERWRITE TABLE dws.sales PARTITION (dt)" in stmt
+    assert "BETWEEN '2024-05-01' AND '2024-05-03'" in stmt
+    # pre/post checks still bound to the range (source_table in demo spec)
+    assert "dt BETWEEN '2024-05-01' AND '2024-05-03'" in result.prechecks[0]
+    assert result.postchecks and "FULL OUTER JOIN" in result.postchecks[0]
+
+
+def test_overwrite_dynamic_safety():
+    with pytest.raises(ValueError, match="start.*end"):
+        _spec(mode="overwrite_dynamic", dialect="spark")
+    with pytest.raises(ValueError, match="spark/hive only"):
+        _spec(mode="overwrite_dynamic", dialect="mysql",
+              source="SELECT 1 WHERE dt BETWEEN '{start}' AND '{end}'")
+    with pytest.raises(ValueError, match="contiguous day range"):
+        _spec(mode="overwrite_dynamic", dialect="spark",
+              dates=["2024-05-01"],
+              source="SELECT 1 WHERE dt BETWEEN '{start}' AND '{end}'")
+    hive = generate(_spec(
+        mode="overwrite_dynamic", dialect="hive",
+        source="SELECT 1 FROM s WHERE dt BETWEEN '{start}' AND '{end}'"))
+    assert any("nonstrict" in w for w in hive.warnings)
+
+
 def test_specs_api_endpoint():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

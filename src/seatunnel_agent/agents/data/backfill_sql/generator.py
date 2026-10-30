@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Any
 
-MODES = ("overwrite", "delete_insert", "merge")
+MODES = ("overwrite", "delete_insert", "merge", "overwrite_dynamic")
 DIALECTS = ("hive", "spark", "mysql", "doris")
 GRAINS = ("day", "hour")
 MAX_DAYS = 366
@@ -121,7 +121,20 @@ def parse_spec(text: str) -> BackfillSpec:
     if dialect not in DIALECTS:
         raise ValueError(f"dialect must be one of {DIALECTS}")
     source = str(data["source"]).strip().rstrip(";")
-    if "{date}" not in source:
+    if mode == "overwrite_dynamic":
+        if "{start}" not in source or "{end}" not in source:
+            raise ValueError(
+                "mode 'overwrite_dynamic' needs {start} and {end} "
+                "placeholders in the source SELECT — unbounded reads "
+                "are not allowed")
+        if dialect not in ("spark", "hive"):
+            raise ValueError(
+                "mode 'overwrite_dynamic' is for spark/hive only")
+        if grain == "hour" or explicit_dates:
+            raise ValueError(
+                "mode 'overwrite_dynamic' works on a contiguous day "
+                "range (no 'dates' list, no hourly grain)")
+    elif "{date}" not in source:
         raise ValueError(
             "source SELECT must contain the {date} placeholder — "
             "unbounded backfill reads are not allowed")
@@ -168,6 +181,61 @@ class BackfillSql:
                 "warnings": list(self.warnings)}
 
 
+def _generate_dynamic(spec: BackfillSpec, result: BackfillSql,
+                      strf: str) -> BackfillSql:
+    """One dynamic-partition statement covering the whole day range."""
+    first = spec.start.strftime(strf)
+    last = spec.end.strftime(strf)
+    source = spec.source.replace("{start}", first).replace("{end}", last)
+    setting = ("SET hive.exec.dynamic.partition.mode = nonstrict;"
+               if spec.dialect == "hive" else
+               "SET spark.sql.sources.partitionOverwriteMode = dynamic;")
+    if spec.dialect == "hive":
+        result.warnings.append(
+            "hive: dynamic-partition overwrite replaces only the "
+            "partitions present in the SELECT — verify "
+            "hive.exec.dynamic.partition.mode=nonstrict is allowed")
+    stmt = (f"{setting}\n"
+            f"INSERT OVERWRITE TABLE {spec.table} "
+            f"PARTITION ({spec.partition_col})\n{source};")
+    result.dates.append(DateStatements(
+        date=f"{spec.start.isoformat()}..{spec.end.isoformat()}",
+        partition_value=f"{first}..{last}", statements=[stmt]))
+    _add_checks(spec, result, first, last)
+    return result
+
+
+def _add_checks(spec: BackfillSpec, result: BackfillSql,
+                first: str, last: str) -> None:
+    """Target/source row counts up front, reconciliation for afterwards."""
+    col = spec.partition_col
+    bound = f"{col} BETWEEN '{first}' AND '{last}'"
+    result.prechecks.append(
+        f"SELECT {col}, COUNT(*) AS target_rows\n"
+        f"FROM {spec.table}\nWHERE {bound}\n"
+        f"GROUP BY {col} ORDER BY 1;")
+    if not spec.source_table:
+        return
+    result.prechecks.append(
+        f"SELECT {col}, COUNT(*) AS source_rows\n"
+        f"FROM {spec.source_table}\nWHERE {bound}\n"
+        f"GROUP BY {col} ORDER BY 1;")
+    result.postchecks.append(
+        f"SELECT COALESCE(s.{col}, t.{col}) AS {col},\n"
+        f"       s.source_rows, t.target_rows\n"
+        f"FROM (SELECT {col}, COUNT(*) AS source_rows\n"
+        f"      FROM {spec.source_table} WHERE {bound}\n"
+        f"      GROUP BY {col}) s\n"
+        f"FULL OUTER JOIN\n"
+        f"     (SELECT {col}, COUNT(*) AS target_rows\n"
+        f"      FROM {spec.table} WHERE {bound}\n"
+        f"      GROUP BY {col}) t\n"
+        f"ON s.{col} = t.{col}\n"
+        f"WHERE COALESCE(s.source_rows, -1) <> "
+        f"COALESCE(t.target_rows, -1)\n"
+        f"ORDER BY 1;")
+
+
 def _statements(spec: BackfillSpec, pv: str, source: str) -> list[str]:
     t, col = spec.table, spec.partition_col
     if spec.mode == "overwrite":
@@ -203,6 +271,8 @@ def generate(spec: BackfillSpec) -> BackfillSql:
         result.warnings.append(
             f"{spec.dialect}: MERGE needs engine support "
             "(Hive ACID / MySQL has none) — verify before running")
+    if spec.mode == "overwrite_dynamic":
+        return _generate_dynamic(spec, result, strf)
     if spec.dates:
         slots = [datetime.combine(d, datetime.min.time())
                  for d in spec.dates]
@@ -226,32 +296,6 @@ def generate(spec: BackfillSpec) -> BackfillSql:
         result.dates.append(DateStatements(
             date=label, partition_value=pv,
             statements=_statements(spec, pv, source)))
-    first = result.dates[0].partition_value
-    last = result.dates[-1].partition_value
-    bound = (f"{spec.partition_col} BETWEEN '{first}' AND '{last}'")
-    result.prechecks.append(
-        f"SELECT {spec.partition_col}, COUNT(*) AS target_rows\n"
-        f"FROM {spec.table}\nWHERE {bound}\n"
-        f"GROUP BY {spec.partition_col} ORDER BY 1;")
-    if spec.source_table:
-        result.prechecks.append(
-            f"SELECT {spec.partition_col}, COUNT(*) AS source_rows\n"
-            f"FROM {spec.source_table}\nWHERE {bound}\n"
-            f"GROUP BY {spec.partition_col} ORDER BY 1;")
-        # reconciliation after the backfill: list only mismatched partitions
-        col = spec.partition_col
-        result.postchecks.append(
-            f"SELECT COALESCE(s.{col}, t.{col}) AS {col},\n"
-            f"       s.source_rows, t.target_rows\n"
-            f"FROM (SELECT {col}, COUNT(*) AS source_rows\n"
-            f"      FROM {spec.source_table} WHERE {bound}\n"
-            f"      GROUP BY {col}) s\n"
-            f"FULL OUTER JOIN\n"
-            f"     (SELECT {col}, COUNT(*) AS target_rows\n"
-            f"      FROM {spec.table} WHERE {bound}\n"
-            f"      GROUP BY {col}) t\n"
-            f"ON s.{col} = t.{col}\n"
-            f"WHERE COALESCE(s.source_rows, -1) <> "
-            f"COALESCE(t.target_rows, -1)\n"
-            f"ORDER BY 1;")
+    _add_checks(spec, result, result.dates[0].partition_value,
+                result.dates[-1].partition_value)
     return result
