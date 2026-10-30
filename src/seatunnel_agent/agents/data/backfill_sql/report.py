@@ -44,5 +44,11 @@ def render_markdown(result: BackfillSql, lang: str = "zh") -> str:
         lines.append("\n\n".join(result.postchecks))
         lines.append("```")
         lines.append("")
+    if result.runner_script:
+        lines.append(f"### {tp(lang, 'rpt_runner')}")
+        lines.append("```bash")
+        lines.append(result.runner_script)
+        lines.append("```")
+        lines.append("")
     lines.append(tp(lang, "rpt_disclaimer"))
     return "\n".join(lines)

@@ -182,6 +182,23 @@ def test_overwrite_dynamic_safety():
     assert any("nonstrict" in w for w in hive.warnings)
 
 
+def test_runner_script():
+    result = generate(_spec(runner="spark-sql"))
+    script = result.runner_script
+    assert script.startswith("#!/usr/bin/env bash")
+    assert "set -euo pipefail" in script
+    # one heredoc block per date, executed via the runner command
+    assert script.count("ST_BACKFILL_SQL") == 6  # open+close x 3 dates
+    assert script.count('spark-sql -e "$SQL"') == 3
+    assert "INSERT OVERWRITE TABLE dws.sales" in script
+    md = render_markdown(result, lang="zh")
+    assert "执行脚本" in md and "```bash" in md
+    # no runner requested → no script, no section
+    assert generate(parse_spec(DEMO)).runner_script == ""
+    with pytest.raises(ValueError, match="runner must be"):
+        _spec(runner="psql")
+
+
 def test_specs_api_endpoint():
     from fastapi import FastAPI
     from fastapi.testclient import TestClient

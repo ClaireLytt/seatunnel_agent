@@ -13,6 +13,7 @@ BACKFILL_SQL_I18N: dict[str, dict[str, str]] = {
         "rpt_sql": "Backfill statements (one partition per block, "
                    "idempotent to re-run)",
         "rpt_date": "business date",
+        "rpt_runner": "Runner script (stop-on-fail, one block at a time)",
         "rpt_postchecks": "Reconciliation (run after — lists only "
                           "mismatched partitions)",
         "rpt_warnings": "Warnings",
@@ -28,6 +29,7 @@ BACKFILL_SQL_I18N: dict[str, dict[str, str]] = {
         "rpt_prechecks": "前置校验（补数前先跑）",
         "rpt_sql": "补数语句（每块只写一个分区，可安全重跑）",
         "rpt_date": "业务日期",
+        "rpt_runner": "执行脚本（逐块执行，失败即停）",
         "rpt_postchecks": "对账（补数后跑 — 只列行数不一致的分区）",
         "rpt_warnings": "警告",
         "rpt_disclaimer": ("> 确定性生成 — 每条语句都通过 {date} 占位符"

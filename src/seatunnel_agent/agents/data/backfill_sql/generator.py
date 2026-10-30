@@ -26,6 +26,12 @@ from typing import Any
 
 MODES = ("overwrite", "delete_insert", "merge", "overwrite_dynamic")
 DIALECTS = ("hive", "spark", "mysql", "doris")
+RUNNERS = {
+    "spark-sql": 'spark-sql -e "$SQL"',
+    "beeline": 'beeline -u "$JDBC_URL" -e "$SQL"',
+    "hive": 'hive -e "$SQL"',
+    "mysql": 'mysql --defaults-extra-file="$MYSQL_CNF" -e "$SQL"',
+}
 GRAINS = ("day", "hour")
 MAX_DAYS = 366
 MAX_HOUR_DAYS = 31          # hourly grain: cap the range tighter
@@ -58,6 +64,7 @@ class BackfillSpec:
     source_table: str = ""            # for pre-flight counts (optional)
     dates: list[date] = field(default_factory=list)  # explicit slots
     # (overrides the start..end grid; day grain only)
+    runner: str = ""                  # optional: emit a bash runner script
 
 
 def parse_spec(text: str) -> BackfillSpec:
@@ -144,11 +151,15 @@ def parse_spec(text: str) -> BackfillSpec:
     source_table = str(data.get("source_table") or "").strip()
     if source_table and not _IDENT_RE.match(source_table):
         raise ValueError(f"bad identifier: {source_table!r}")
+    runner = str(data.get("runner") or "").strip().lower()
+    if runner and runner not in RUNNERS:
+        raise ValueError(f"runner must be one of {tuple(RUNNERS)}")
     return BackfillSpec(
         table=table, partition_col=partition_col, start=start, end=end,
         source=source, mode=mode, dialect=dialect,
         date_format=date_format, grain=grain,
-        keys=keys, source_table=source_table, dates=parsed_dates)
+        keys=keys, source_table=source_table, dates=parsed_dates,
+        runner=runner)
 
 
 @dataclass
@@ -171,6 +182,7 @@ class BackfillSql:
     prechecks: list[str] = field(default_factory=list)
     postchecks: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    runner_script: str = ""  # stop-on-fail bash wrapping every block
 
     def to_dict(self) -> dict[str, Any]:
         return {"table": self.table, "mode": self.mode,
@@ -178,7 +190,8 @@ class BackfillSql:
                 "dates": [d.to_dict() for d in self.dates],
                 "prechecks": list(self.prechecks),
                 "postchecks": list(self.postchecks),
-                "warnings": list(self.warnings)}
+                "warnings": list(self.warnings),
+                "runner_script": self.runner_script}
 
 
 def _generate_dynamic(spec: BackfillSpec, result: BackfillSql,
@@ -272,7 +285,10 @@ def generate(spec: BackfillSpec) -> BackfillSql:
             f"{spec.dialect}: MERGE needs engine support "
             "(Hive ACID / MySQL has none) — verify before running")
     if spec.mode == "overwrite_dynamic":
-        return _generate_dynamic(spec, result, strf)
+        _generate_dynamic(spec, result, strf)
+        if spec.runner:
+            result.runner_script = _runner_script(spec, result)
+        return result
     if spec.dates:
         slots = [datetime.combine(d, datetime.min.time())
                  for d in spec.dates]
@@ -298,4 +314,24 @@ def generate(spec: BackfillSpec) -> BackfillSql:
             statements=_statements(spec, pv, source)))
     _add_checks(spec, result, result.dates[0].partition_value,
                 result.dates[-1].partition_value)
+    if spec.runner:
+        result.runner_script = _runner_script(spec, result)
     return result
+
+
+def _runner_script(spec: BackfillSpec, result: BackfillSql) -> str:
+    """Stop-on-fail bash wrapping every statement block, heredoc-quoted."""
+    lines = ["#!/usr/bin/env bash",
+             f"# backfill {spec.table} — generated, review before running",
+             "set -euo pipefail", ""]
+    cmd = RUNNERS[spec.runner]
+    for block in result.dates:
+        lines.append(f"echo '>>> {spec.table} {block.date}'")
+        lines.append('SQL="$(cat <<\'ST_BACKFILL_SQL\'')
+        lines.extend(block.statements)
+        lines.append("ST_BACKFILL_SQL")
+        lines.append(')"')
+        lines.append(cmd)
+        lines.append("")
+    lines.append(f"echo 'done: {len(result.dates)} block(s)'")
+    return "\n".join(lines)
