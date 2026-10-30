@@ -194,3 +194,9 @@ tests/test_<name>.py        # 确定性核心测试
    delta vs the previous record - nightly cron catches critical-path creep.
 2. [x] manifests: refresh router_en/keywords so the orchestrator routes
    SLA/baseline-diff/DDL/status-export phrasing to the right tools.
+
+## Phase 17 roadmap (migration burn-down)
+
+1. [ ] generalize the jsonl creep-watch helper; pipe-migrate --history
+   FILE tracks jobs / effort mix / target mix per scan - the weekly
+   re-scan becomes a burn-down (drift printed, growth flagged).
