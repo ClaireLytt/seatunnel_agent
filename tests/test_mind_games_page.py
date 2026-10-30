@@ -115,3 +115,38 @@ def test_games_three_good_things_lights_the_lamp(page_url):
             "() => JSON.parse(localStorage.getItem('st_garden.notes.v1'))")
         assert notes and "a good walk" in notes[-1]["text"]
         browser.close()
+
+
+@pytest.mark.uitest
+def test_games_optimism_ledger_one_entry_per_day(page_url):
+    """A retake on the same day overwrites tonight's ledger entry: seed a
+    stale entry for today plus one older day, complete a round, and the
+    ledger still holds exactly one row per day with today's overwritten."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(page_url, wait_until="networkidle")
+        page.evaluate(
+            """() => {
+              const d = new Date();
+              const day = `${d.getFullYear()}-${String(d.getMonth() + 1)
+                .padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              localStorage.setItem('st_games.optledger.v1', JSON.stringify(
+                [{ day: '2026-10-01', score: 50 }, { day, score: -1 }]));
+            }""")
+        page.reload(wait_until="networkidle")
+
+        for _ in range(9):
+            page.locator("button.text-left").first.click()
+        expect(page.get_by_text("Reading")).to_be_visible(timeout=10000)
+
+        ledger = page.evaluate(
+            "() => JSON.parse(localStorage.getItem('st_games.optledger.v1'))")
+        days = [e["day"] for e in ledger]
+        assert len(days) == len(set(days)), f"duplicate days: {days}"
+        assert len(ledger) == 2                     # old day kept, today once
+        today_rows = [e for e in ledger if e["score"] != 50]
+        assert today_rows[0]["score"] >= 0          # seeded -1 was overwritten
+        browser.close()
