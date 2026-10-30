@@ -190,7 +190,7 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## Phase 16 roadmap (creep watch + router refresh)
 
-1. [ ] dagopt --history FILE: append run metrics (jsonl) and print the
+1. [x] dagopt --history FILE: append run metrics (jsonl) and print the
    delta vs the previous record - nightly cron catches critical-path creep.
-2. [ ] manifests: refresh router_en/keywords so the orchestrator routes
+2. [x] manifests: refresh router_en/keywords so the orchestrator routes
    SLA/baseline-diff/DDL/status-export phrasing to the right tools.

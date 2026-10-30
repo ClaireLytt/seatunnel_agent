@@ -24,13 +24,20 @@ MANIFEST = AgentManifest(
             ref="seatunnel_agent.agents.data.dag_optimize.tools:dag_optimize",
             desc_zh="DAG 依赖优化（冗余串行边、并行批次、关键路径与加速比）",
             desc_en="DAG optimization (redundant edges, waves, critical path)",
-            router_en="Optimize a task dependency DAG: find unnecessary "
-                      "serial dependencies via transitive reduction, layer "
-                      "tasks into parallel waves, and compute the "
-                      "duration-weighted critical path and ideal speedup.",
+            router_en="Optimize a task dependency DAG (JSON, Graphviz DOT "
+                      "from 'airflow dags show', or 'a -> b' lines): find "
+                      "unnecessary serial dependencies via transitive "
+                      "reduction, layer tasks into parallel waves, compute "
+                      "the duration-weighted critical path, makespan by "
+                      "worker count and bottleneck sensitivity, check an "
+                      "SLA deadline, and review a change against a "
+                      "baseline DAG (critical-path delta, introduced "
+                      "redundancy).",
             keywords=("依赖优化", "并行", "冗余依赖", "关键路径", "dag",
                       "parallelize", "critical path", "redundant",
-                      "transitive reduction", "串行"),
+                      "transitive reduction", "串行", "sla", "deadline",
+                      "变更评审", "基线", "baseline", "makespan", "瓶颈",
+                      "airflow", "dot"),
         ),
     ),
 )

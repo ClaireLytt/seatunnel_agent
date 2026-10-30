@@ -69,13 +69,16 @@ def _common(fn):
                    "（需配合 --base）")
 @click.option("--tolerance", type=float, default=0.0, show_default=True,
               help="--fail-on-regression 允许的关键路径增幅")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="劣化监测：本次指标追加到该 jsonl，并打印与上次的对比")
 @click.option("--deadline", type=float, default=0.0,
               help="SLA 时长 — 判定是否满足并给出最小提速集合")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 写优化行动清单（需配置 API key）")
 @_common
-def dagopt(path, text, base_path, fail_on_regression, tolerance, deadline,
-           use_llm, lang, fmt, output) -> None:
+def dagopt(path, text, base_path, fail_on_regression, tolerance,
+           history_path, deadline, use_llm, lang, fmt, output) -> None:
     """DAG 依赖优化 — 冗余串行边、并行批次、关键路径与加速比。"""
     from seatunnel_agent.agents.data.dag_optimize import (
         diff_dags,
@@ -106,6 +109,8 @@ def dagopt(path, text, base_path, fail_on_regression, tolerance, deadline,
         plan = action_plan(result, lang=lang)
         payload["action_plan"] = plan
         markdown += f"\n\n### {tp(lang, 'rpt_action_plan')}\n{plan}\n"
+    if history_path:
+        _track_history(history_path, result)
     _emit(payload, markdown, fmt, output)
     if fail_on_regression and diff is not None:
         problems: list[str] = []
@@ -119,6 +124,46 @@ def dagopt(path, text, base_path, fail_on_regression, tolerance, deadline,
             for p in problems:
                 console.print(f"[red]REGRESSION[/red] {p}")
             raise SystemExit(1)
+
+
+def _track_history(history_path: str, result) -> None:
+    """Append this run's metrics; print the drift vs the previous run."""
+    import json as _json
+    from datetime import datetime, timezone
+
+    path = Path(history_path)
+    previous = None
+    if path.is_file():
+        lines = [ln for ln in
+                 path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        if lines:
+            previous = _json.loads(lines[-1])
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "tasks": result.tasks,
+        "edges": result.edges,
+        "critical": result.critical_duration,
+        "makespan2": result.makespans.get("2", 0.0),
+        "redundant": len(result.redundant),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(_json.dumps(entry, ensure_ascii=False) + "\n")
+    if previous is None:
+        console.print(f"[dim]history: 首次记录 → {path}[/dim]")
+        return
+    deltas = []
+    for key in ("tasks", "edges", "critical", "makespan2", "redundant"):
+        before, after = previous.get(key, 0), entry[key]
+        if after != before:
+            deltas.append(f"{key} {before:g} → {after:g}")
+    if deltas:
+        worse = entry["critical"] > previous.get("critical", 0)
+        tone = "yellow" if worse else "dim"
+        console.print(f"[{tone}]history({previous.get('ts', '?')} → 本次): "
+                      + " · ".join(deltas) + f"[/{tone}]")
+    else:
+        console.print("[dim]history: 与上次记录持平[/dim]")
 
 
 @click.command("rerun")

@@ -31,6 +31,30 @@ def test_dagopt_cli_markdown_and_json():
     assert json.loads(res.output)["tasks"] == 7
 
 
+def test_dagopt_history_tracking(tmp_path):
+    runner = CliRunner()
+    hist = tmp_path / "runs" / "dag_history.jsonl"
+    dag = str(EX / "dagopt_demo" / "dag.json")
+    res = runner.invoke(dagopt, ["-f", dag, "--history", str(hist)])
+    assert res.exit_code == 0 and "首次记录" in res.output
+    # slower variant → drift line flags the critical-path creep
+    slower = json.loads((EX / "dagopt_demo" / "dag.json")
+                        .read_text("utf-8"))
+    slower["tasks"][4]["duration"] = 20  # join_wide 12 → 20
+    res = runner.invoke(dagopt, ["--text", json.dumps(slower),
+                                 "--history", str(hist)])
+    assert res.exit_code == 0
+    assert "critical 35 → 43" in res.output
+    # two jsonl records on disk, parseable
+    lines = hist.read_text("utf-8").splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[1])["critical"] == 43.0
+    # identical rerun reports steady state
+    res = runner.invoke(dagopt, ["--text", json.dumps(slower),
+                                 "--history", str(hist)])
+    assert "持平" in res.output
+
+
 def test_dagopt_regression_gate(tmp_path):
     runner = CliRunner()
     base = tmp_path / "base.json"
