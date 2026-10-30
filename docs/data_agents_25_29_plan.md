@@ -187,3 +187,10 @@ tests/test_<name>.py        # 确定性核心测试
    recommendation carries one of the named risk codes (typo-checked
    against the known set) - lets a tables.json repo gate unmeetable
    latency declarations in CI.
+
+## Phase 16 roadmap (creep watch + router refresh)
+
+1. [ ] dagopt --history FILE: append run metrics (jsonl) and print the
+   delta vs the previous record - nightly cron catches critical-path creep.
+2. [ ] manifests: refresh router_en/keywords so the orchestrator routes
+   SLA/baseline-diff/DDL/status-export phrasing to the right tools.
