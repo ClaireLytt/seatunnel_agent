@@ -116,11 +116,12 @@ class Recommendation:
     reasons: list[str] = field(default_factory=list)  # i18n reason codes
     risks: list[str] = field(default_factory=list)    # i18n risk codes
     config: str = ""  # SeaTunnel job-config skeleton for the strategy
+    schedule: str = ""  # cron, or "streaming" for a long-running job
 
     def to_dict(self) -> dict[str, Any]:
         return {"table": self.table, "strategy": self.strategy,
                 "reasons": list(self.reasons), "risks": list(self.risks),
-                "config": self.config}
+                "config": self.config, "schedule": self.schedule}
 
 
 def _recommend_one(t: SourceTable) -> Recommendation:
@@ -190,6 +191,18 @@ def recommend(tables: list[SourceTable]) -> StrategyReport:
     recs: list[Recommendation] = []
     for t in sorted(tables, key=lambda t: t.table):
         rec = _recommend_one(t)
+        rec.schedule = _schedule(t, rec.strategy)
         rec.config = config_stub(t, rec.strategy)
         recs.append(rec)
     return StrategyReport(recommendations=recs)
+
+
+def _schedule(t: SourceTable, strategy: str) -> str:
+    """Run cadence from the latency requirement and the strategy."""
+    if strategy == "cdc":
+        return "streaming"
+    if t.latency in ("realtime", "minutes"):
+        return "*/5 * * * *"
+    if t.latency == "hours":
+        return "0 * * * *"
+    return "30 2 * * *"

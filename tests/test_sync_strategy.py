@@ -133,6 +133,15 @@ def test_config_stubs_follow_strategy():
     assert all("sink {" in r.config for r in by.values())
 
 
+def test_schedule_suggestions():
+    by = _rec()
+    assert by["ods.orders"].schedule == "streaming"      # cdc
+    assert by["ods.users"].schedule == "0 * * * *"       # hours latency
+    assert by["ods.events"].schedule == "30 2 * * *"     # daily
+    md = render_markdown(recommend(parse_tables(DEMO)), lang="zh")
+    assert "常驻流作业" in md and "`0 * * * *`" in md
+
+
 def test_report_includes_config_section():
     report = recommend(parse_tables(DEMO))
     zh = render_markdown(report, lang="zh")

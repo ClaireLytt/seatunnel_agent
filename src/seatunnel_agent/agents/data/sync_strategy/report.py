@@ -20,16 +20,19 @@ def render_markdown(result: StrategyReport, lang: str = "zh") -> str:
              "",
              f"| {tp(lang, 'rpt_col_table')} "
              f"| {tp(lang, 'rpt_col_strategy')} "
+             f"| {tp(lang, 'rpt_col_schedule')} "
              f"| {tp(lang, 'rpt_col_reasons')} "
              f"| {tp(lang, 'rpt_col_risks')} |",
-             "|---|---|---|---|"]
+             "|---|---|---|---|---|"]
     for rec in result.recommendations:
         reasons = "; ".join(tp(lang, "reason_" + r) for r in rec.reasons)
         risks = ("; ".join(tp(lang, "risk_" + r) for r in rec.risks)
                  if rec.risks else "-")
+        schedule = (tp(lang, "schedule_streaming")
+                    if rec.schedule == "streaming" else f"`{rec.schedule}`")
         lines.append(f"| `{rec.table}` "
                      f"| **{tp(lang, 'strategy_' + rec.strategy)}** "
-                     f"| {reasons} | {risks} |")
+                     f"| {schedule} | {reasons} | {risks} |")
     lines.append("")
     lines.append(f"### {tp(lang, 'rpt_configs')}")
     for rec in result.recommendations:
