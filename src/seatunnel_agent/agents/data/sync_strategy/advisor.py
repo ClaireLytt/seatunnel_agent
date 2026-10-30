@@ -117,11 +117,15 @@ class Recommendation:
     risks: list[str] = field(default_factory=list)    # i18n risk codes
     config: str = ""  # SeaTunnel job-config skeleton for the strategy
     schedule: str = ""  # cron, or "streaming" for a long-running job
+    rows_per_sync: int = -1   # estimated rows moved per run (-1: unknown)
+    saving_ratio: float = -1.0  # 1 - rows_per_sync/rows (-1: unknown)
 
     def to_dict(self) -> dict[str, Any]:
         return {"table": self.table, "strategy": self.strategy,
                 "reasons": list(self.reasons), "risks": list(self.risks),
-                "config": self.config, "schedule": self.schedule}
+                "config": self.config, "schedule": self.schedule,
+                "rows_per_sync": self.rows_per_sync,
+                "saving_ratio": self.saving_ratio}
 
 
 def _recommend_one(t: SourceTable) -> Recommendation:
@@ -193,6 +197,11 @@ def recommend(tables: list[SourceTable]) -> StrategyReport:
         rec = _recommend_one(t)
         rec.schedule = _schedule(t, rec.strategy)
         rec.config = config_stub(t, rec.strategy)
+        if t.rows:
+            moved = t.rows if rec.strategy == "full" \
+                else t.daily_change_rows
+            rec.rows_per_sync = moved
+            rec.saving_ratio = round(1 - moved / t.rows, 4)
         recs.append(rec)
     return StrategyReport(recommendations=recs)
 

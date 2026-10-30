@@ -21,18 +21,27 @@ def render_markdown(result: StrategyReport, lang: str = "zh") -> str:
              f"| {tp(lang, 'rpt_col_table')} "
              f"| {tp(lang, 'rpt_col_strategy')} "
              f"| {tp(lang, 'rpt_col_schedule')} "
+             f"| {tp(lang, 'rpt_col_rows')} "
              f"| {tp(lang, 'rpt_col_reasons')} "
              f"| {tp(lang, 'rpt_col_risks')} |",
-             "|---|---|---|---|---|"]
+             "|---|---|---|---|---|---|"]
     for rec in result.recommendations:
         reasons = "; ".join(tp(lang, "reason_" + r) for r in rec.reasons)
         risks = ("; ".join(tp(lang, "risk_" + r) for r in rec.risks)
                  if rec.risks else "-")
         schedule = (tp(lang, "schedule_streaming")
                     if rec.schedule == "streaming" else f"`{rec.schedule}`")
+        if rec.rows_per_sync < 0:
+            rows = "-"
+        elif rec.strategy == "full":
+            rows = f"{rec.rows_per_sync:,}"
+        else:
+            rows = (f"{rec.rows_per_sync:,} "
+                    + tp(lang, "rows_saving").format(
+                        pct=f"{rec.saving_ratio * 100:.1f}"))
         lines.append(f"| `{rec.table}` "
                      f"| **{tp(lang, 'strategy_' + rec.strategy)}** "
-                     f"| {schedule} | {reasons} | {risks} |")
+                     f"| {schedule} | {rows} | {reasons} | {risks} |")
     lines.append("")
     lines.append(f"### {tp(lang, 'rpt_configs')}")
     for rec in result.recommendations:

@@ -133,6 +133,22 @@ def test_config_stubs_follow_strategy():
     assert all("sink {" in r.config for r in by.values())
 
 
+def test_rows_moved_estimate():
+    by = _rec()
+    # incremental moves only the churn; the saving is quantified
+    users = by["ods.users"]
+    assert users.rows_per_sync == 40000
+    assert users.saving_ratio == pytest.approx(1 - 40000 / 3000000, abs=1e-4)
+    # full reload moves everything, no saving ratio shown
+    assert by["ods.inventory"].rows_per_sync == 20000000
+    md = render_markdown(recommend(parse_tables(DEMO)), lang="en")
+    assert "saves 98.7% vs full" in md  # ods.users
+    # unknown row counts render as '-'
+    unknown = recommend(parse_tables('[{"table":"t","has_pk":true}]'))
+    assert unknown.recommendations[0].rows_per_sync == -1
+    assert "| - |" in render_markdown(unknown, lang="en")
+
+
 def test_schedule_suggestions():
     by = _rec()
     assert by["ods.orders"].schedule == "streaming"      # cdc
