@@ -79,3 +79,16 @@ tests/test_<name>.py        # 确定性核心测试
    与 grain 字段；按天/小时生成同样幂等的语句块。
 5. [x] pipeline_migrate：脚本间表级依赖提取（produced/consumed 表）→
    建议迁移顺序批次（上游任务先迁），并标出跨任务共享表。
+
+## 三期增强路线（输入省力 + 产物再进一步）
+
+1. [ ] sync_strategy：直接吃 DDL — 粘贴/指向 CREATE TABLE 脚本，自动识别
+   主键与更新时间列生成特征清单，免手写 JSON。
+2. [ ] dag_optimize：瓶颈敏感度 — 逐个把关键路径任务提速 50% 重算工期，
+   指出"优化哪个任务最值"，附每任务 slack。
+3. [ ] rerun_plan：直接吃调度器状态导出 — {"task":"failed|success"} JSON
+   一个输入替代手填 failed/succeeded 两个列表。
+4. [ ] backfill_sql：后置校验 — 补数后跑的 source×target 逐分区行数
+   对账 SQL（FULL OUTER JOIN，只列不一致分区）。
+5. [ ] pipeline_migrate：对判定为 SeaTunnel 的 sqoop 任务解析
+   --connect/--table 直接给出 SeaTunnel 配置骨架。
