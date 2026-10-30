@@ -38,5 +38,11 @@ def render_markdown(result: BackfillSql, lang: str = "zh") -> str:
         lines.append("\n".join(d.statements))
         lines.append("```")
     lines.append("")
+    if result.postchecks:
+        lines.append(f"### {tp(lang, 'rpt_postchecks')}")
+        lines.append("```sql")
+        lines.append("\n\n".join(result.postchecks))
+        lines.append("```")
+        lines.append("")
     lines.append(tp(lang, "rpt_disclaimer"))
     return "\n".join(lines)

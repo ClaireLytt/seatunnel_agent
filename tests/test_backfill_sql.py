@@ -67,6 +67,19 @@ def test_merge_requires_keys_and_bounds_partition():
     assert "ON t.order_id = s.order_id AND t.dt = '2024-05-01'" in stmt
 
 
+def test_reconciliation_postcheck():
+    result = generate(parse_spec(DEMO))
+    assert len(result.postchecks) == 1
+    post = result.postchecks[0]
+    assert "FULL OUTER JOIN" in post
+    assert "COALESCE(s.source_rows, -1) <> COALESCE(t.target_rows, -1)" in post
+    assert "FROM ods.orders" in post and "FROM dws.sales" in post
+    # no source_table → no reconciliation possible
+    assert generate(_spec(source_table="")).postchecks == []
+    md = render_markdown(result, lang="zh")
+    assert "对账" in md
+
+
 def test_hourly_grain():
     result = generate(_spec(date_format="yyyy-MM-dd HH", start="2024-05-01",
                             end="2024-05-01"))

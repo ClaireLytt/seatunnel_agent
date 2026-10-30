@@ -136,6 +136,7 @@ class BackfillSql:
     dialect: str
     dates: list[DateStatements] = field(default_factory=list)
     prechecks: list[str] = field(default_factory=list)
+    postchecks: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -143,6 +144,7 @@ class BackfillSql:
                 "dialect": self.dialect,
                 "dates": [d.to_dict() for d in self.dates],
                 "prechecks": list(self.prechecks),
+                "postchecks": list(self.postchecks),
                 "warnings": list(self.warnings)}
 
 
@@ -209,4 +211,20 @@ def generate(spec: BackfillSpec) -> BackfillSql:
             f"SELECT {spec.partition_col}, COUNT(*) AS source_rows\n"
             f"FROM {spec.source_table}\nWHERE {bound}\n"
             f"GROUP BY {spec.partition_col} ORDER BY 1;")
+        # reconciliation after the backfill: list only mismatched partitions
+        col = spec.partition_col
+        result.postchecks.append(
+            f"SELECT COALESCE(s.{col}, t.{col}) AS {col},\n"
+            f"       s.source_rows, t.target_rows\n"
+            f"FROM (SELECT {col}, COUNT(*) AS source_rows\n"
+            f"      FROM {spec.source_table} WHERE {bound}\n"
+            f"      GROUP BY {col}) s\n"
+            f"FULL OUTER JOIN\n"
+            f"     (SELECT {col}, COUNT(*) AS target_rows\n"
+            f"      FROM {spec.table} WHERE {bound}\n"
+            f"      GROUP BY {col}) t\n"
+            f"ON s.{col} = t.{col}\n"
+            f"WHERE COALESCE(s.source_rows, -1) <> "
+            f"COALESCE(t.target_rows, -1)\n"
+            f"ORDER BY 1;")
     return result
