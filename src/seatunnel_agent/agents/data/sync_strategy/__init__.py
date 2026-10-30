@@ -15,12 +15,14 @@ from .advisor import (
     parse_tables,
     recommend,
 )
+from .config_stub import config_stub
 from .report import render_markdown
 
 __all__ = [
     "Recommendation",
     "SourceTable",
     "StrategyReport",
+    "config_stub",
     "parse_tables",
     "recommend",
     "render_markdown",

@@ -46,6 +46,8 @@ class SourceTable:
     has_deletes: bool = False
     cdc_available: bool = False
     latency: str = "daily"
+    update_ts_col: str = ""   # optional: real watermark column name
+    pk_col: str = ""          # optional: real primary-key column name
 
     @property
     def change_ratio(self) -> float:
@@ -75,6 +77,8 @@ def _to_table(item: dict[str, Any]) -> SourceTable:
         raise ValueError(f"{name}: counts must be >= 0")
     return SourceTable(
         table=name, rows=rows, daily_change_rows=changed, latency=latency,
+        update_ts_col=str(item.get("update_ts_col") or "").strip(),
+        pk_col=str(item.get("pk_col") or "").strip(),
         **{f: _to_bool(item.get(f, False)) for f in _BOOL_FIELDS})
 
 
@@ -107,10 +111,12 @@ class Recommendation:
     strategy: str
     reasons: list[str] = field(default_factory=list)  # i18n reason codes
     risks: list[str] = field(default_factory=list)    # i18n risk codes
+    config: str = ""  # SeaTunnel job-config skeleton for the strategy
 
     def to_dict(self) -> dict[str, Any]:
         return {"table": self.table, "strategy": self.strategy,
-                "reasons": list(self.reasons), "risks": list(self.risks)}
+                "reasons": list(self.reasons), "risks": list(self.risks),
+                "config": self.config}
 
 
 def _recommend_one(t: SourceTable) -> Recommendation:
@@ -175,6 +181,11 @@ class StrategyReport:
 
 
 def recommend(tables: list[SourceTable]) -> StrategyReport:
-    return StrategyReport(
-        recommendations=[_recommend_one(t)
-                         for t in sorted(tables, key=lambda t: t.table)])
+    from .config_stub import config_stub  # local: avoids import cycle
+
+    recs: list[Recommendation] = []
+    for t in sorted(tables, key=lambda t: t.table):
+        rec = _recommend_one(t)
+        rec.config = config_stub(t, rec.strategy)
+        recs.append(rec)
+    return StrategyReport(recommendations=recs)

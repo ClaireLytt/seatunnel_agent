@@ -258,8 +258,10 @@ def _critical_path(graph: TaskGraph,
         return [], 0.0
     end = max(sorted(best), key=lambda n: best[n])
     path = [end]
-    while prev.get(path[-1]):
-        path.append(prev[path[-1]])  # type: ignore[arg-type]
+    node = prev.get(end)
+    while node:
+        path.append(node)
+        node = prev.get(node)
     return list(reversed(path)), best[end]
 
 

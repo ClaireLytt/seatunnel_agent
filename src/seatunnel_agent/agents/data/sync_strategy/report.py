@@ -31,5 +31,15 @@ def render_markdown(result: StrategyReport, lang: str = "zh") -> str:
                      f"| **{tp(lang, 'strategy_' + rec.strategy)}** "
                      f"| {reasons} | {risks} |")
     lines.append("")
+    lines.append(f"### {tp(lang, 'rpt_configs')}")
+    for rec in result.recommendations:
+        if not rec.config:
+            continue
+        lines.append(f"**`{rec.table}` — "
+                     f"{tp(lang, 'strategy_' + rec.strategy)}**")
+        lines.append("```hocon")
+        lines.append(rec.config)
+        lines.append("```")
+    lines.append("")
     lines.append(tp(lang, "rpt_disclaimer"))
     return "\n".join(lines)

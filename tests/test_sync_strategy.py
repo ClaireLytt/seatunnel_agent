@@ -79,6 +79,32 @@ def test_bad_inputs():
         parse_tables('{"nope": []}')
 
 
+def test_config_stubs_follow_strategy():
+    by = _rec()
+    # cdc → streaming MySQL-CDC source with the real table name
+    orders = by["ods.orders"].config
+    assert 'job.mode = "STREAMING"' in orders
+    assert 'table-names = ["ods.orders"]' in orders
+    # timestamp incremental → watermark-bounded query with the real column
+    users = by["ods.users"].config
+    assert 'job.mode = "BATCH"' in users
+    assert "WHERE modified_time >= '${watermark}'" in users
+    # pk incremental → last_max_pk bound (placeholder when col unknown)
+    events = by["ods.events"].config
+    assert "WHERE <pk_col> > ${last_max_pk}" in events
+    # full → plain bounded-by-nothing query, batch mode
+    assert "SELECT * FROM ods.dict_region" in by["ods.dict_region"].config
+    # every stub keeps the sink as an explicit TODO
+    assert all("sink {" in r.config for r in by.values())
+
+
+def test_report_includes_config_section():
+    report = recommend(parse_tables(DEMO))
+    zh = render_markdown(report, lang="zh")
+    assert "SeaTunnel 作业配置骨架" in zh
+    assert "```hocon" in zh
+
+
 def test_report_zh_en_and_tool():
     report = recommend(parse_tables(DEMO))
     zh = render_markdown(report, lang="zh")

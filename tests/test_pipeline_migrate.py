@@ -71,13 +71,14 @@ def test_effort_scales_with_complexity():
     assert big.score > small.score
 
 
-def test_bad_inputs():
+def test_bad_inputs(tmp_path):
     with pytest.raises(ValueError, match="not a directory"):
         assess_dir(DEMO_DIR / "nope")
     with pytest.raises(ValueError, match="empty script"):
         assess_text("x.sql", "  ")
+    (tmp_path / "readme.txt").write_text("not a script", encoding="utf-8")
     with pytest.raises(ValueError, match="no scripts"):
-        assess_dir(Path(__file__).resolve().parents[1] / "configs")
+        assess_dir(tmp_path)
 
 
 def test_report_zh_en_and_tool():

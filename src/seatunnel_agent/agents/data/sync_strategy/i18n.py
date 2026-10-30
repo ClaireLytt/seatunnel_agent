@@ -41,6 +41,8 @@ SYNC_I18N: dict[str, dict[str, str]] = {
                                    "are missed — keep an overlap window",
         "risk_pk_incr_misses_updates": "PK-based pull misses in-place "
                                        "updates — schedule periodic full compares",
+        "rpt_configs": "SeaTunnel job-config skeletons (fill in the "
+                       "placeholders and the sink)",
         "rpt_disclaimer": ("> Deterministic rules over the declared table "
                            "characteristics — verify binlog grants, "
                            "watermark columns and write modes before "
@@ -74,6 +76,7 @@ SYNC_I18N: dict[str, dict[str, str]] = {
         "risk_late_update_window": "晚于水位的更新会被漏掉 — 保留重叠窗口",
         "risk_pk_incr_misses_updates": "按主键拉取会漏掉原地更新 — "
                                        "需定期全量比对",
+        "rpt_configs": "SeaTunnel 作业配置骨架（填上占位符与 sink 即可用）",
         "rpt_disclaimer": ("> 基于清单声明特征的确定性规则 — 接入 SeaTunnel "
                            "作业前请核实 binlog 权限、水位列与写入模式。"),
     },
