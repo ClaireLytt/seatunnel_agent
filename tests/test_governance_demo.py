@@ -44,7 +44,7 @@ def test_demo_feeds_every_governance_agent():
     d = guard_dir(DEMO)
     dkinds = {f.kind for f in d.findings}
     assert {"drop_table", "drop_column", "truncate_table",
-            "type_narrowing", "rename_table"} <= dkinds
+            "type_narrowing", "rename_table", "live_grants"} <= dkinds
     assert d.undo_sql
 
 

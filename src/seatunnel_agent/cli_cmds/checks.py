@@ -1038,6 +1038,8 @@ def metaquality(
               help="契约 YAML（tables: 声明列/类型/注释要求/分区键）")
 @click.option("--init", "init_mode", is_flag=True, default=False,
               help="从现有 DDL 反向生成契约 YAML 底稿（配 -o 落盘）")
+@click.option("--diff", "diff_mode", is_flag=True, default=False,
+              help="反向漂移：列出现状超出契约的新表/新列（契约没跟上的部分）")
 @click.option("--dialect", default="hive", show_default=True,
               help="SQL 方言 (hive/spark/mysql/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
@@ -1053,6 +1055,7 @@ def contract(
     sql_file: str | None,
     contract_path: str | None,
     init_mode: bool,
+    diff_mode: bool,
     dialect: str,
     lang: str,
     fail_on: str | None,
@@ -1108,6 +1111,44 @@ def contract(
         parse_contract(contract_text)
     except ValueError as exc:
         raise click.ClickException(f"契约格式错误: {exc}")
+
+    if diff_mode:
+        import json as _json
+
+        from seatunnel_agent.agents.data.contract_check.bootstrap import (
+            diff_contract,
+        )
+
+        if not directory and not sql and not sql_file:
+            raise click.UsageError("Provide --dir / --sql / --file")
+        if directory:
+            files = sorted(Path(directory).rglob("*.sql"))
+            text = "\n;\n".join(f.read_text(encoding="utf-8") for f in files)
+        elif sql_file:
+            text = Path(sql_file).read_text(encoding="utf-8")
+        else:
+            text = sql or ""
+        try:
+            drift = diff_contract(contract_text, text, dialect=dialect)
+        except ValueError as exc:
+            raise click.ClickException(str(exc))
+        if fmt == "json":
+            print(_json.dumps(drift, ensure_ascii=False, indent=2))
+        else:
+            if not drift["new_tables"] and not drift["new_columns"]:
+                console.print("契约覆盖现状——没有反向漂移。")
+            if drift["new_tables"]:
+                console.print("[bold]契约没覆盖的新表[/bold]")
+                for t_ in drift["new_tables"]:
+                    console.print(f"  - {t_}")
+            if drift["new_columns"]:
+                console.print("[bold]已承诺表上的新列[/bold]")
+                for c_ in drift["new_columns"]:
+                    console.print(f"  - {c_}")
+        if fail_on and (drift["new_tables"] or drift["new_columns"]):
+            console.print("\n[red]现状已超出契约,请更新契约或回退 DDL。[/red]")
+            sys.exit(1)
+        return
 
     spec = CheckSpec(
         analyze_dir=check_dir,

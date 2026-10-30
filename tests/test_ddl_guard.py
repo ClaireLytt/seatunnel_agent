@@ -197,3 +197,23 @@ def test_tool_discovered_everywhere():
     assert cat["ddl_guard"].page == "/ddlguard"
     s = suggest("上线前帮我看看这份迁移脚本能不能回滚", cat)
     assert s and s[0].tool == "ddl_guard"
+
+
+def test_live_grants_cross_check():
+    sql = (
+        "CREATE TABLE dw.gone (id INT COMMENT 'i');\n"
+        "GRANT SELECT ON TABLE dw.gone TO USER analyst;\n"
+        "GRANT SELECT ON TABLE dw.moved TO ROLE bi;\n"
+        "GRANT SELECT ON TABLE dw.clean TO USER temp;\n"
+        "REVOKE SELECT ON TABLE dw.clean FROM USER temp;\n"
+        "DROP TABLE dw.gone;\n"
+        "DROP TABLE dw.clean;\n"
+        "ALTER TABLE dw.moved RENAME TO dw.moved_v2;"
+    )
+    r = scan_sql_text(sql)
+    live = {f.table: f.detail for f in r.findings if f.kind == "live_grants"}
+    assert "dw.gone" in live and "analyst" in live["dw.gone"]
+    assert "dw.moved" in live and "bi" in live["dw.moved"]
+    assert "dw.clean" not in live          # revoked grant does not count
+    assert all(f.severity == "medium" for f in r.findings
+               if f.kind == "live_grants")

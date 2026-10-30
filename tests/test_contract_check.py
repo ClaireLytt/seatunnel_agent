@@ -287,3 +287,40 @@ def test_tool_discovered_everywhere():
     assert cat["contract_check"].page == "/contract"
     s = suggest("帮我校验数据契约", cat)
     assert s and s[0].tool == "contract_check"
+
+
+def test_diff_surfaces_reverse_drift(tmp_path):
+    from seatunnel_agent.agents.data.contract_check.bootstrap import (
+        diff_contract,
+        generate_contract,
+    )
+    grown = CLEAN_DDL + (
+        "\nCREATE TABLE dwd.newcomer (x BIGINT COMMENT 'x');\n")
+    drift = diff_contract(CONTRACT, grown)
+    assert drift["new_tables"] == ["dwd.newcomer"]
+    # a new physical column on a table with typed promises surfaces too
+    grown2 = CLEAN_DDL.replace(
+        "buyer_id BIGINT COMMENT 'buyer'",
+        "buyer_id BIGINT COMMENT 'buyer',\n  channel STRING COMMENT 'c'")
+    drift2 = diff_contract(CONTRACT, grown2)
+    assert drift2["new_columns"] == ["dwd.orders.channel"]
+    # the bootstrap round-trip has no reverse drift by construction
+    clean = diff_contract(generate_contract(CLEAN_DDL), CLEAN_DDL)
+    assert clean == {"new_tables": [], "new_columns": []}
+
+
+def test_cli_contract_diff_gate(tmp_path):
+    cpath = _write_contract(tmp_path)
+    grown = CLEAN_DDL + "\nCREATE TABLE dwd.newcomer (x BIGINT COMMENT 'x');"
+    res = runner.invoke(cli, ["contract", "--diff", "--sql", grown,
+                              "-c", cpath, "-F", "json"])
+    assert res.exit_code == 0, res.output
+    assert json.loads(res.output)["new_tables"] == ["dwd.newcomer"]
+
+    res = runner.invoke(cli, ["contract", "--diff", "--sql", grown,
+                              "-c", cpath, "--fail-on", "high"])
+    assert res.exit_code == 1
+
+    res = runner.invoke(cli, ["contract", "--diff", "--sql", CLEAN_DDL,
+                              "-c", cpath])
+    assert res.exit_code == 0, res.output

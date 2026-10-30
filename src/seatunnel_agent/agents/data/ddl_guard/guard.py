@@ -37,6 +37,9 @@ KIND_SEVERITY = {
     "rename_table": "medium",
     "rename_column": "medium",
     "not_null_no_default": "medium",
+    # grant_scan cross-check: the object being dropped/renamed still
+    # carries net grants someone will chase after the migration
+    "live_grants": "medium",
 }
 
 _ID = r"[\w.`\"]+"
@@ -279,6 +282,32 @@ def _scan_text(sql_text: str, dialect: str, root: str) -> GuardReport:
         else:
             events.append((m.start(),
                            f"-- MANUAL: restore previous type of {t}.{c}"))
+
+    # grant_scan cross-check: dropping or renaming a table whose net grants
+    # survive leaves principals pointing at nothing (or at the old name)
+    from seatunnel_agent.agents.data.grant_scan.scanner import parse_grants
+
+    statements = parse_grants(sql_text)
+    effective: list[Any] = []
+    for s in statements:
+        if s.verb == "grant":
+            effective.append(s)
+        else:
+            effective = [g for g in effective if g.key() != s.key()]
+    granted: dict[str, list[str]] = {}
+    for g in effective:
+        granted.setdefault(g.target.lower(), []).append(g.principal)
+    gone = ([(_norm(m.group("t")), "dropped")
+             for m in _RE_DROP_TABLE.finditer(sql_text)]
+            + [(_norm(m.group("t")), "renamed")
+               for m in _RE_RENAME_TABLE.finditer(sql_text)])
+    for table, how in gone:
+        principals = granted.get(table.lower())
+        if principals:
+            add("live_grants", table,
+                detail=f"{how} while still granted to "
+                       f"{', '.join(sorted(set(principals)))} - revoke or "
+                       "re-grant as part of the migration")
 
     undo = [line for _, line in sorted(events, key=lambda e: e[0],
                                        reverse=True)]

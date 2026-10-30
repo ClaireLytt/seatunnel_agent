@@ -80,6 +80,12 @@ Web 页在 `/contract`,聊天/MCP 工具名 `contract_check`。
 seatunnel-agent contract --init -d warehouse_sql/ -o contract.yaml
 ```
 
+反方向的漂移(现状超出契约:契约没跟上的新表/新列)用 `--diff` 盯:
+
+```bash
+seatunnel-agent contract --diff -d warehouse_sql/ -c contract.yaml --fail-on high
+```
+
 想一次看全六个 agent 的输出,`examples/governance_demo/` 植入了
 全套病灶(见其 README)。
 
@@ -106,7 +112,9 @@ seatunnel-agent ddlguard -f migrate.sql --fail-on high -u undo.sql
 ```
 
 对上线迁移脚本(ALTER/DROP 流)分级:删表/删列/清空/类型收窄 high,
-重命名/类型变更/NOT NULL 无默认值 medium;同时生成**逆序回滚脚本**
+重命名/类型变更/NOT NULL 无默认值 medium;与权限面联动——被删/改名
+的表若仍挂着净授权(同脚本 GRANT/REVOKE 净面)另报「授权未回收」
+medium;同时生成**逆序回滚脚本**
 (`-u` 另存),不可逆步骤(数据已丢)保留为注释显式标注。门禁失败时
 回滚脚本照样落盘——越是要拦的变更越需要回滚预案。
 Web 页在 `/ddlguard`,聊天/MCP 工具名 `ddl_guard`。

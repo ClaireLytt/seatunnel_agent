@@ -20,7 +20,8 @@ _T = {
                  "truncate_table": "清空表", "type_narrowing": "类型收窄",
                  "type_change": "类型变更", "rename_table": "表重命名",
                  "rename_column": "列重命名",
-                 "not_null_no_default": "NOT NULL 无默认值"},
+                 "not_null_no_default": "NOT NULL 无默认值",
+                 "live_grants": "授权未回收"},
         "irrev_mark": "（不可逆）",
     },
     "en": {
@@ -38,7 +39,8 @@ _T = {
                  "type_change": "type change",
                  "rename_table": "table rename",
                  "rename_column": "column rename",
-                 "not_null_no_default": "NOT NULL without default"},
+                 "not_null_no_default": "NOT NULL without default",
+                 "live_grants": "live grants left behind"},
         "irrev_mark": " (irreversible)",
     },
 }

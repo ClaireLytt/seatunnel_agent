@@ -56,3 +56,28 @@ def generate_from_dir(directory: str | Path, dialect: str = "hive") -> str:
     files = sorted(base.rglob("*.sql"))
     text = "\n;\n".join(p.read_text(encoding="utf-8") for p in files)
     return generate_contract(text, dialect)
+
+
+def diff_contract(contract_text: str, sql_text: str,
+                  dialect: str = "hive") -> dict[str, list[str]]:
+    """Where the DDL has outgrown the contract (the check covers the other
+    direction): tables and columns that exist in the warehouse but carry no
+    declared promise. Silent drift is what ``contract --diff`` surfaces.
+
+    Returns ``{"new_tables": [...], "new_columns": ["table.column", ...]}``.
+    """
+    from .checker import parse_contract
+
+    declared = {tc.name.lower(): tc for tc in parse_contract(contract_text)}
+    current = {tc.name.lower(): tc
+               for tc in parse_contract(generate_contract(sql_text, dialect))}
+    new_tables = sorted(name for name in current if name not in declared)
+    new_columns: list[str] = []
+    for name, tc in sorted(current.items()):
+        promised = declared.get(name)
+        if promised is None or not promised.columns:
+            continue  # undeclared table already reported; no column promises
+        known = {c.name.lower() for c in promised.columns}
+        new_columns += [f"{tc.name}.{c.name}" for c in tc.columns
+                        if c.name.lower() not in known]
+    return {"new_tables": new_tables, "new_columns": new_columns}
