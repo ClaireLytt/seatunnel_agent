@@ -46,9 +46,23 @@ def test_jobs_sorted_easiest_first_and_counts():
     scores = [j.score for j in report.jobs]
     assert scores == sorted(scores)
     counts = report.counts()
-    assert counts == {"seatunnel": 1, "spark_sql": 2, "flink": 1,
+    assert counts == {"seatunnel": 2, "spark_sql": 2, "flink": 1,
                       "scheduler": 1}
-    assert sum(report.effort_counts().values()) == 5
+    assert sum(report.effort_counts().values()) == 6
+
+
+def test_datax_job_assessed_with_stub():
+    _, by = _by_job()
+    job = by["datax_items.json"]
+    assert job.kind == "datax"
+    assert job.target == "seatunnel"
+    assert job.reasons == ["plain_sync"]
+    assert 'url = "jdbc:mysql://db:3306/shop"' in job.stub
+    assert 'query = "SELECT * FROM items"' in job.stub
+    assert 'path = "/warehouse/ods/items"' in job.stub
+    # a non-DataX json file in the tree is ignored, not assessed
+    from seatunnel_agent.agents.data.pipeline_migrate import assess_text
+    assert assess_text("x.json", '{"reader": 1}').jobs[0].stub == ""
 
 
 def test_table_deps_and_migration_order():

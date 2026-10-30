@@ -50,6 +50,10 @@ _CONSUME_RE = re.compile(r"\b(?:from|join)\s+([\w.]+)", re.IGNORECASE)
 _SQOOP_CONNECT_RE = re.compile(r"--connect\s+(\S+)")
 _SQOOP_TABLE_RE = re.compile(r"--table\s+(\S+)")
 _SQOOP_TARGET_RE = re.compile(r"--target-dir\s+(\S+)")
+# DataX job JSON: reader/writer blocks, jdbcUrl possibly inside a list
+_DATAX_URL_RE = re.compile(r'"jdbcUrl"\s*:\s*\[?\s*"([^"]+)"')
+_DATAX_TABLE_RE = re.compile(r'"table"\s*:\s*\[?\s*"([^"]+)"')
+_DATAX_PATH_RE = re.compile(r'"path"\s*:\s*"([^"]+)"')
 
 # constructs that do not migrate mechanically → risk codes
 _RISK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -99,11 +103,15 @@ def _kind(name: str) -> str:
         return "sql"
     if suffix == ".py":
         return "python"
+    if suffix == ".json":
+        return "datax"
     return "shell"
 
 
 def assess_job(name: str, text: str) -> JobAssessment:
     kind = _kind(name)
+    if kind == "datax":
+        return _assess_datax(name, text)
     lines = len([ln for ln in text.splitlines() if ln.strip()])
     statements = len(_STMT_RE.findall(text)) or (1 if text.strip() else 0)
     joins = len(_JOIN_RE.findall(text))
@@ -145,6 +153,36 @@ def assess_job(name: str, text: str) -> JobAssessment:
                          effort=effort, score=score, reasons=reasons,
                          risks=risks, produces=produces, consumes=consumes,
                          stub=stub)
+
+
+def _assess_datax(name: str, text: str) -> JobAssessment:
+    """DataX reader/writer job → SeaTunnel, with the config skeleton."""
+    lines = len([ln for ln in text.splitlines() if ln.strip()])
+    url = _DATAX_URL_RE.search(text)
+    table = _DATAX_TABLE_RE.search(text)
+    path = _DATAX_PATH_RE.search(text)
+    stub = ""
+    if url and table:
+        sink = ("\n".join(["sink {", "  HdfsFile {",
+                           f'    path = "{path.group(1)}"',
+                           '    file_format_type = "orc"', "  }", "}"])
+                if path else
+                "sink {\n  # fill in: the warehouse sink "
+                "(Hive / Doris / Jdbc ...)\n}")
+        stub = "\n".join([
+            "env {", "  parallelism = 2", '  job.mode = "BATCH"', "}", "",
+            "source {", "  Jdbc {",
+            f'    url = "{url.group(1)}"',
+            '    driver = "com.mysql.cj.jdbc.Driver"',
+            '    user = "<user>"', '    password = "<password>"',
+            f'    query = "SELECT * FROM {table.group(1)}"',
+            "  }", "}", "", sink])
+    risks = ["dynamic_sql"] if "${" in text else []
+    score = 1 + 3 * len(risks) + lines // 50
+    return JobAssessment(
+        job=name, kind="datax", lines=lines, statements=1, joins=0,
+        target="seatunnel", effort="S" if score < 8 else "M", score=score,
+        reasons=["plain_sync"], risks=risks, stub=stub)
 
 
 def _seatunnel_stub(text: str) -> str:
@@ -208,14 +246,17 @@ def assess_dir(root: str | Path) -> MigrationReport:
     if not root.is_dir():
         raise ValueError(f"not a directory: {root}")
     report = MigrationReport()
+    suffixes = SCRIPT_SUFFIXES + (".json",)
     for path in sorted(root.rglob("*")):
-        if not path.is_file() or path.suffix.lower() not in SCRIPT_SUFFIXES:
+        if not path.is_file() or path.suffix.lower() not in suffixes:
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError as exc:
             report.warnings.append(f"{path.name}: {exc}")
             continue
+        if path.suffix.lower() == ".json" and '"reader"' not in text:
+            continue  # not a DataX job definition
         report.jobs.append(
             assess_job(str(path.relative_to(root)).replace("\\", "/"), text))
     if not report.jobs:

@@ -1,0 +1,28 @@
+{
+  "job": {
+    "content": [
+      {
+        "reader": {
+          "name": "mysqlreader",
+          "parameter": {
+            "username": "etl",
+            "password": "***",
+            "connection": [
+              {
+                "jdbcUrl": ["jdbc:mysql://db:3306/shop"],
+                "table": ["items"]
+              }
+            ]
+          }
+        },
+        "writer": {
+          "name": "hdfswriter",
+          "parameter": {
+            "path": "/warehouse/ods/items",
+            "fileType": "orc"
+          }
+        }
+      }
+    ]
+  }
+}
