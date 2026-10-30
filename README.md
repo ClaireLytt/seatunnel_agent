@@ -812,10 +812,19 @@ advice), REST under `/api/pipedoctor/` (whitelisted via
 `PIPEDOCTOR_API_ALLOWED_DIRS`), MCP tool `pipeline_diagnose`, demo data
 `examples/pipedoctor_demo/`:
 
+Matched signatures also carry a **copy-paste fix patch** (spark-submit
+`--conf` deltas, Hive `SET` statements, SeaTunnel `env { checkpoint }`
+blocks, install-plugin / kinit / quota commands). With a baseline the
+command switches to **run-regression diff** — "it worked yesterday":
+clusters are keyed by root-cause signature, only the ones new or grown
+vs the known-good run are diagnosed, shared noise is ignored
+(`POST /api/pipedoctor/rundiff`):
+
 ```bash
 seatunnel-agent pipedoctor --dir run_logs/                           # diagnose a run
 seatunnel-agent pipedoctor -f spark_oom.log --lang en                # single file
 seatunnel-agent pipedoctor --dir run_logs/ -F json --fail-on critical  # CI gate
+seatunnel-agent pipedoctor --dir today/ --baseline-dir yesterday/    # regression diff
 ```
 
 ### Schema Drift Check Agent
@@ -1713,10 +1722,17 @@ ERROR 簇单独列出。Web 页面 `/pipedoctor`（可选 `llm-generated` 建议
 REST `/api/pipedoctor/`（目录白名单 `PIPEDOCTOR_API_ALLOWED_DIRS`），
 MCP 工具 `pipeline_diagnose`，演示数据 `examples/pipedoctor_demo/`：
 
+命中的签名还带**复制即用的修复补丁**（spark-submit `--conf` 增量、Hive
+`SET` 语句、SeaTunnel `env { checkpoint }` 配置块、install-plugin /
+kinit / 配额命令）。给出基线后切换为**运行回归对比**——"昨天还好好的"：
+异常簇按根因签名对齐，只诊断相对成功运行新增/增长的簇，两次共有的噪声
+直接忽略（`POST /api/pipedoctor/rundiff`）：
+
 ```bash
 seatunnel-agent pipedoctor --dir run_logs/                           # 诊断一次运行
 seatunnel-agent pipedoctor -f spark_oom.log --lang en                # 单文件
 seatunnel-agent pipedoctor --dir run_logs/ -F json --fail-on critical  # CI 门禁
+seatunnel-agent pipedoctor --dir today/ --baseline-dir yesterday/    # 回归对比
 ```
 
 ### Schema 漂移检查 Agent

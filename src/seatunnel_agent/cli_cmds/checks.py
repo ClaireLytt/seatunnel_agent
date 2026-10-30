@@ -212,6 +212,10 @@ def loginspect(
               default=None, help="诊断单个日志文件")
 @click.option("--pattern", "-p", "patterns", multiple=True,
               help="文件通配符，可多次指定（默认 *.log / *.log.* / *.out / *.err）")
+@click.option("--baseline-dir", type=click.Path(exists=True, file_okay=False),
+              default=None, help="成功基线运行的日志目录 — 改为输出回归对比报告")
+@click.option("--baseline-file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="成功基线运行的单个日志文件")
 @click.option("--top", "-n", type=int, default=10, show_default=True,
               help="报告中展示的命中项数")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
@@ -225,21 +229,32 @@ def pipedoctor(
     directory: str | None,
     log_file: str | None,
     patterns: tuple[str, ...],
+    baseline_dir: str | None,
+    baseline_file: str | None,
     top: int,
     lang: str,
     fail_on: str | None,
     fmt: str,
     output: str | None,
 ) -> None:
-    """Pipeline 故障诊断 — 分析 Spark/Hive/SeaTunnel 运行日志，定位失败根因并给出修复方案。"""
+    """Pipeline 故障诊断 — 分析 Spark/Hive/SeaTunnel 运行日志，定位失败根因并给出修复方案。
+
+    给出 --baseline-dir/--baseline-file 时改为回归对比：只诊断相对成功基线
+    新增/增长的异常簇（"昨天还好好的"场景）。"""
     import json as _json
     from pathlib import Path
 
-    from seatunnel_agent.agents.data.log_inspect.clusterer import DEFAULT_PATTERNS
+    from seatunnel_agent.agents.data.log_inspect.clusterer import (
+        DEFAULT_PATTERNS,
+        scan_dir,
+        scan_files,
+    )
     from seatunnel_agent.agents.data.pipeline_doctor import (
         diagnose_dir,
         diagnose_files,
         diagnosis_to_dict,
+        diff_reports,
+        render_diff_markdown,
         render_markdown,
     )
     from seatunnel_agent.agents.data.pipeline_doctor.kb import SEVERITY_RANK
@@ -247,9 +262,48 @@ def pipedoctor(
     if not directory and not log_file:
         raise click.UsageError("Provide --dir or --file")
 
+    pats = tuple(patterns) or DEFAULT_PATTERNS
+
+    if baseline_dir or baseline_file:
+        # regression mode: diff the two runs, diagnose only the regressions
+        if directory:
+            cur = scan_dir(directory, patterns=pats)
+        else:
+            cur = scan_files([Path(log_file)], root=log_file)
+        if baseline_dir:
+            base = scan_dir(baseline_dir, patterns=pats)
+        else:
+            base = scan_files([Path(baseline_file)], root=baseline_file)
+        diff = diff_reports(cur, base)
+        if fmt == "json":
+            text_out = _json.dumps(diff.to_dict(), ensure_ascii=False,
+                                   indent=2)
+            print(text_out)
+        else:
+            text_out = render_diff_markdown(diff, lang, top=top)
+            console.print(text_out, markup=False)
+        if output:
+            Path(output).write_text(text_out, encoding="utf-8")
+            console.print(f"[dim]报告已保存: {output}[/dim]")
+        if fail_on:
+            gate = SEVERITY_RANK[fail_on]
+            # any new/grown error cluster gates at "error"; KB hits gate at
+            # their own severity
+            hit = any(SEVERITY_RANK[f.severity] >= gate
+                      for f in diff.findings) \
+                or (gate <= SEVERITY_RANK["error"]
+                    and (diff.appeared or diff.grew))
+            if hit:
+                msg = f"相对基线存在 {fail_on} 及以上级别的回归，检查未通过。"
+                if fmt == "json":
+                    print(msg, file=sys.stderr)
+                else:
+                    console.print(f"\n[red]{msg}[/red]")
+                sys.exit(1)
+        return
+
     if directory:
-        diag = diagnose_dir(directory,
-                            patterns=tuple(patterns) or DEFAULT_PATTERNS)
+        diag = diagnose_dir(directory, patterns=pats)
     else:
         diag = diagnose_files([Path(log_file)], root=log_file)
 

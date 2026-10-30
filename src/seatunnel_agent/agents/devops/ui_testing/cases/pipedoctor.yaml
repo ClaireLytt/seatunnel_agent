@@ -36,3 +36,19 @@
   expect:
     - text_contains: {in: 页面, text: 首要嫌疑}
     - text_contains: {in: 页面, text: 修复方案}
+    - text_contains: {in: 页面, text: 修复补丁}
+
+- id: PD4
+  title: 与基线对比出回归报告
+  tags: [full, sqlite]
+  page: /pipedoctor/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+    - click_css: "summary:has-text('与成功基线运行对比')"
+    - click: 与基线对比
+    - wait: 2500
+      note: 等 rundiff 接口返回并渲染报告
+  expect:
+    - text_contains: {in: 页面, text: 运行回归对比}
+    - text_contains: {in: 页面, text: 新出现的异常簇}

@@ -26,6 +26,22 @@ export function diagnoseText(text: string, top: number, lang: string): Promise<D
   return postDiagnose({ text, top, lang, report: true })
 }
 
+export function runDiff(
+  dir: string | null,
+  text: string | null,
+  baselineDir: string | null,
+  baselineText: string | null,
+  top: number,
+  lang: string,
+): Promise<DiagnoseResponse> {
+  const body: Record<string, unknown> = { top, lang, report: true }
+  if (dir) body.dir = dir
+  if (text) body.text = text
+  if (baselineDir) body.baseline_dir = baselineDir
+  if (baselineText) body.baseline_text = baselineText
+  return postStructured(`${BASE}/rundiff`, body, 'rundiff')
+}
+
 export function getAdvice(
   dir: string | null,
   text: string | null,

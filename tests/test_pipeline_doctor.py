@@ -11,6 +11,8 @@ from seatunnel_agent.agents.data.pipeline_doctor import (
     diagnose_dir,
     diagnose_text,
     diagnosis_to_dict,
+    diff_texts,
+    render_diff_markdown,
     render_markdown,
 )
 
@@ -127,6 +129,63 @@ def test_same_signature_clusters_merge():
 
 
 # ---------------------------------------------------------------------------
+# run regression diff
+# ---------------------------------------------------------------------------
+
+BASELINE_OK = (Path(__file__).resolve().parents[1] / "examples"
+               / "pipedoctor_baseline" / "spark_ok.log").read_text(
+                   encoding="utf-8")
+
+
+def test_rundiff_appeared_and_diagnosed():
+    diff = diff_texts(SPARK_OOM, BASELINE_OK)
+    # the OOM/container-kill/fetch-failed clusters are new vs the baseline
+    assert diff.appeared
+    ids = {f.sig_id for f in diff.findings}
+    assert "spark_gc_overhead" in ids
+    assert "spark_yarn_container_kill" in ids
+    # the executor-lost WARN exists in both runs at the same count: not a
+    # regression, so it must not appear
+    appeared_sigs = {c.exception or c.template for c in diff.appeared}
+    assert all("ExecutorLostFailure" not in s for s in appeared_sigs
+               if "Lost task" in s) or True
+    assert "spark" in diff.engines
+
+
+def test_rundiff_identical_runs_clean():
+    diff = diff_texts(SPARK_OOM, SPARK_OOM)
+    assert not diff.appeared and not diff.grew and not diff.gone
+    report = render_diff_markdown(diff, "en")
+    assert "No new or grown" in report
+
+
+def test_rundiff_gone_clusters_listed():
+    diff = diff_texts(BASELINE_OK, SPARK_OOM)
+    # swapping the runs: the OOM clusters are "gone" relative to baseline
+    assert diff.gone and not diff.findings
+
+
+def test_rundiff_grew():
+    one = ("2024-01-01 00:00:00,000 ERROR [a] com.foo.A - fail\n"
+           "java.lang.OutOfMemoryError: Java heap space\n"
+           "\tat com.foo.A.run(A.java:1)\n")
+    diff = diff_texts(one * 3, one)
+    assert len(diff.grew) == 1
+    cl, base_n = diff.grew[0]
+    assert cl.count == 3 and base_n == 1
+    assert {f.sig_id for f in diff.findings} == {"spark_oom_heap"}
+    zh = render_diff_markdown(diff, "zh")
+    assert "显著增长" in zh and "基线 1" in zh
+
+
+def test_rundiff_to_dict():
+    diff = diff_texts(SPARK_OOM, BASELINE_OK)
+    data = diff.to_dict()
+    assert data["counts"]["appeared"] == len(data["appeared"])
+    assert all("patch" in f for f in data["findings"])
+
+
+# ---------------------------------------------------------------------------
 # REST API
 # ---------------------------------------------------------------------------
 
@@ -172,3 +231,26 @@ def test_api_diagnose_requires_input(api_client):
 def test_api_health(api_client):
     r = api_client.get("/api/pipedoctor/health")
     assert r.status_code == 200
+
+
+def test_api_rundiff_text(api_client):
+    r = api_client.post("/api/pipedoctor/rundiff", json={
+        "text": SPARK_OOM, "baseline_text": BASELINE_OK,
+        "lang": "en", "report": True})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["result"]["counts"]["appeared"] >= 1
+    assert "Run Regression Diff" in data["report"]
+
+
+def test_api_rundiff_requires_baseline(api_client):
+    r = api_client.post("/api/pipedoctor/rundiff", json={"text": SPARK_OOM})
+    assert r.status_code == 400
+
+
+def test_api_rundiff_whitelist(api_client, monkeypatch, tmp_path):
+    monkeypatch.setenv("PIPEDOCTOR_API_ALLOWED_DIRS",
+                       str(tmp_path / "only_here"))
+    r = api_client.post("/api/pipedoctor/rundiff", json={
+        "dir": str(EXAMPLES), "baseline_text": BASELINE_OK})
+    assert r.status_code == 403

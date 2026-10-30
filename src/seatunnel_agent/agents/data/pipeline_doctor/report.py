@@ -80,6 +80,54 @@ def render_markdown(diag: Diagnosis, lang: str = "zh",
     return "\n".join(lines)
 
 
+def _cluster_line(cl, lang: str, extra: str = "") -> str:
+    head = cl.exception or cl.template or "(no message)"
+    note = extra or f"×{cl.count}"
+    return f"- `{head}` {note}"
+
+
+def render_diff_markdown(diff, lang: str = "zh", top: int = 10) -> str:
+    """Markdown for a RunDiff (current failed run vs good baseline)."""
+    lang = normalize_lang(lang)
+    c = diff.counts()
+    lines = [f"## 🩺 {tp(lang, 'diff_title')}",
+             tp(lang, "diff_roots").format(cur=diff.current_root,
+                                           base=diff.baseline_root),
+             "",
+             "**" + tp(lang, "diff_stats").format(**c) + "**",
+             ""]
+    if not diff.appeared and not diff.grew:
+        lines.append(tp(lang, "diff_clean"))
+        lines.append("")
+    if diff.findings:
+        lines.append(f"### 🎯 {tp(lang, 'diff_findings')}")
+        lines.append("")
+        for i, f in enumerate(diff.findings[:top], start=1):
+            lines.extend(_finding_block(f, lang, str(i)))
+    if diff.appeared:
+        lines.append(f"### 🟥 {tp(lang, 'diff_appeared')}")
+        lines.extend(_cluster_line(cl, lang)
+                     for cl in diff.appeared[:top])
+        lines.append("")
+    if diff.grew:
+        lines.append(f"### 🟧 {tp(lang, 'diff_grew')}")
+        for cl, base_n in diff.grew[:top]:
+            note = tp(lang, "diff_grew_note").format(now=cl.count,
+                                                     base=base_n)
+            lines.append(_cluster_line(cl, lang, note))
+        lines.append("")
+    if diff.gone:
+        lines.append(f"### 🟩 {tp(lang, 'diff_gone')}")
+        lines.extend(_cluster_line(cl, lang) for cl in diff.gone[:top])
+        lines.append("")
+    if diff.warnings:
+        lines.append(f"### ⚠️ {tp(lang, 'rpt_warnings')}")
+        lines.extend(f"- {w}" for w in diff.warnings)
+        lines.append("")
+    lines.append(tp(lang, "diff_disclaimer"))
+    return "\n".join(lines)
+
+
 def diagnosis_to_dict(diag: Diagnosis, top: int | None = None,
                       ) -> dict[str, Any]:
     findings = diag.findings if top is None else diag.findings[:top]

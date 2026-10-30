@@ -1,0 +1,5 @@
+2024-04-09 02:10:01,000 INFO  [main] org.apache.spark.SparkContext - Submitted application: ods_order_etl
+2024-04-09 02:10:05,210 INFO  [dispatcher] org.apache.spark.scheduler.DAGScheduler - Submitting 200 missing tasks from ShuffleMapStage 3
+2024-04-09 02:16:40,100 WARN  [dispatcher] org.apache.spark.scheduler.TaskSetManager - Lost task 88.0 in stage 3.0: ExecutorLostFailure (executor 2 exited caused by one of the running tasks)
+2024-04-09 02:21:03,440 INFO  [main] org.apache.spark.scheduler.DAGScheduler - Job 0 finished: insertInto at OrderEtl.scala:88, took 659.2 s
+2024-04-09 02:21:04,000 INFO  [main] org.apache.spark.SparkContext - Successfully stopped SparkContext

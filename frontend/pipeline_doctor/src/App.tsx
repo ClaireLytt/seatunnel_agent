@@ -3,11 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
-import { ApiError, diagnoseDir, diagnoseText, getAdvice } from '@/api'
+import { ApiError, diagnoseDir, diagnoseText, getAdvice, runDiff } from '@/api'
 
 export default function App() {
   const { t, i18n } = useTranslation()
   const [dir, setDir] = useState('examples/pipedoctor_demo')
+  const [baselineDir, setBaselineDir] = useState('examples/pipedoctor_baseline')
   const [text, setText] = useState('')
   const [top, setTop] = useState(10)
   const [busy, setBusy] = useState(false)
@@ -60,6 +61,43 @@ export default function App() {
     } catch (e) {
       setReport('')
       setError(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const runBaselineDiff = async () => {
+    if (!dir.trim() && !text.trim()) {
+      setError(t('empty_dir'))
+      setReport('')
+      return
+    }
+    if (!baselineDir.trim()) {
+      setError(t('empty_baseline'))
+      return
+    }
+    setBusy(true)
+    setError('')
+    setAdvice('')
+    try {
+      const res = await runDiff(
+        dir.trim() || null,
+        dir.trim() ? null : text,
+        baselineDir.trim(),
+        null,
+        top,
+        i18n.language,
+      )
+      setReport(res.report ?? '')
+      setLastDir(null)
+      setLastText(null)
+    } catch (e) {
+      setReport('')
+      if (e instanceof ApiError && e.code === 'bad_dir') {
+        setError(t('bad_dir') + e.path)
+      } else {
+        setError(String(e))
+      }
     } finally {
       setBusy(false)
     }
@@ -135,6 +173,33 @@ export default function App() {
             >
               {t('clear_btn')}
             </button>
+          </Card>
+
+          <Card>
+            <details>
+              <summary className="cursor-pointer select-none font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                {t('diff_acc')}
+              </summary>
+              <div className="mt-3 flex flex-col gap-3">
+                <label className="block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                  {t('diff_label')}
+                </label>
+                <input
+                  value={baselineDir}
+                  onChange={(e) => setBaselineDir(e.target.value)}
+                  placeholder={t('diff_ph')}
+                  spellCheck={false}
+                  className="w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink"
+                />
+                <button
+                  onClick={runBaselineDiff}
+                  disabled={busy}
+                  className="w-full rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm font-semibold text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard disabled:opacity-50"
+                >
+                  {t('diff_btn')}
+                </button>
+              </div>
+            </details>
           </Card>
 
           <Card>
