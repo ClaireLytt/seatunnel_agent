@@ -1,0 +1,57 @@
+"""EN/ZH strings for DAG optimization reports."""
+
+from __future__ import annotations
+
+from seatunnel_agent.common.utils import make_lookup
+
+DAGOPT_I18N: dict[str, dict[str, str]] = {
+    "en": {
+        "rpt_title": "DAG Dependency Optimization",
+        "rpt_stats": ("tasks {tasks} · edges {edges} · redundant edges "
+                      "{redundant} · waves {waves} · max parallelism {width} "
+                      "· ideal speedup {speedup}x"),
+        "rpt_redundant": "Redundant serial dependencies (safe to remove)",
+        "rpt_col_edge": "edge",
+        "rpt_col_via": "already implied by",
+        "rpt_no_redundant": "No redundant edges — the DAG is already a "
+                            "transitive reduction.",
+        "rpt_waves": "Parallel waves (tasks within a wave can run together)",
+        "rpt_col_wave": "wave",
+        "rpt_col_width": "width",
+        "rpt_col_tasks": "tasks",
+        "rpt_critical": "Critical path",
+        "rpt_critical_note": ("duration {dur} of total {total} — this chain "
+                              "bounds end-to-end latency"),
+        "rpt_chains": "Serial chains (single-in/single-out — consider fusing)",
+        "rpt_cycles": "On a cycle (unschedulable, excluded from analysis)",
+        "rpt_warnings": "Warnings",
+        "rpt_disclaimer": ("> Deterministic analysis — redundant edges come "
+                           "from transitive reduction, waves from Kahn "
+                           "layering, the critical path from task durations "
+                           "(default 1). No scheduler connection."),
+    },
+    "zh": {
+        "rpt_title": "DAG 依赖优化",
+        "rpt_stats": ("任务 {tasks} · 依赖边 {edges} · 冗余边 {redundant} · "
+                      "并行批次 {waves} · 最大并行度 {width} · "
+                      "理想加速比 {speedup}x"),
+        "rpt_redundant": "冗余串行依赖（可安全删除）",
+        "rpt_col_edge": "依赖边",
+        "rpt_col_via": "已由此路径保证",
+        "rpt_no_redundant": "没有冗余边 — DAG 已是传递归约。",
+        "rpt_waves": "并行批次（同批次内的任务可同时运行）",
+        "rpt_col_wave": "批次",
+        "rpt_col_width": "宽度",
+        "rpt_col_tasks": "任务",
+        "rpt_critical": "关键路径",
+        "rpt_critical_note": "时长 {dur} / 总时长 {total} — 该链决定端到端时延下限",
+        "rpt_chains": "串行链（单进单出 — 可考虑合并为一个任务）",
+        "rpt_cycles": "处于环上（不可调度，已排除出分析）",
+        "rpt_warnings": "警告",
+        "rpt_disclaimer": ("> 确定性分析 — 冗余边来自传递归约，批次来自 Kahn "
+                           "分层，关键路径按任务时长（缺省 1）计算。不连调度器。"),
+    },
+}
+
+
+tp = make_lookup(DAGOPT_I18N)
