@@ -75,3 +75,7 @@ seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
   --history slow_ledger.jsonl                        # 台账记录回归倍数与主因占比
 seatunnel-agent dagconflict -f scenario.json
 ```
+
+预算闸门的可复制 workflow 在
+`examples/ci/github-actions-sqlcost-budget.yml`：PR 改到的每条查询
+按表统计清单估算，超预算直接挡在上线前。

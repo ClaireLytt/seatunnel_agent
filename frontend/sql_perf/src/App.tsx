@@ -9,6 +9,8 @@ export default function App() {
   const { t, i18n } = useTranslation()
   const [file, setFile] = useState('examples/sqlperf_demo/plan.txt')
   const [text, setText] = useState('')
+  const [sql, setSql] = useState('')
+  const [llm, setLlm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
@@ -20,6 +22,11 @@ export default function App() {
       setReport('')
       return
     }
+    if (llm && !sql.trim()) {
+      setError(t('llm_needs_sql'))
+      setReport('')
+      return
+    }
     setBusy(true)
     setError('')
     try {
@@ -27,6 +34,8 @@ export default function App() {
         useText ? null : file.trim(),
         useText ? text : null,
         i18n.language,
+        llm,
+        sql,
       )
       setReport(res.report ?? '')
     } catch (e) {
@@ -44,6 +53,8 @@ export default function App() {
   const clear = () => {
     setFile('examples/sqlperf_demo/plan.txt')
     setText('')
+    setSql('')
+    setLlm(false)
     setError('')
     setReport('')
   }
@@ -105,6 +116,28 @@ export default function App() {
                 >
                   {t('run_text_btn')}
                 </button>
+              </div>
+            </details>
+          </Card>
+
+          <Card>
+            <details open={llm}>
+              <summary className="cursor-pointer select-none font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                {t('rewrite_acc')}
+              </summary>
+              <div className="mt-3 flex flex-col gap-3">
+                <textarea
+                  value={sql}
+                  onChange={(e) => setSql(e.target.value)}
+                  placeholder={t('sql_ph')}
+                  rows={8}
+                  spellCheck={false}
+                  className="w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink"
+                />
+                <label className="flex cursor-pointer items-center gap-2 font-mono text-[12px] text-ink-soft">
+                  <input type="checkbox" checked={llm} onChange={(e) => setLlm(e.target.checked)} />
+                  {t('llm_label')}
+                </label>
               </div>
             </details>
           </Card>

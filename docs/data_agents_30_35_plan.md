@@ -86,3 +86,11 @@ slots/memory）± 各 DAG 启动时刻。
    block PR queries whose estimated cost crosses the budget.
 3. [x] slow_query: --history incident ledger (top cause, share,
    regression) via the shared track_history.
+
+## Phase 3 roadmap (perf suite)
+
+1. [x] sql_perf web parity: SQL textarea + LLM checkbox on /sqlperf -
+   same llm+sql API fields the CLI uses; rewrite appended to the page
+   report; nokey-503 surfaced inline (page regression test).
+2. [x] sqlcost budget gate CI template: copyable workflow in
+   examples/ci/ (changed-query budget check), referenced in the guide.
