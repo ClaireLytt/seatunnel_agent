@@ -47,6 +47,9 @@ _PRODUCE_RE = re.compile(
     r"|\bcreate\s+table\s+(?:if\s+not\s+exists\s+)?([\w.]+)",
     re.IGNORECASE)
 _CONSUME_RE = re.compile(r"\b(?:from|join)\s+([\w.]+)", re.IGNORECASE)
+_SQOOP_CONNECT_RE = re.compile(r"--connect\s+(\S+)")
+_SQOOP_TABLE_RE = re.compile(r"--table\s+(\S+)")
+_SQOOP_TARGET_RE = re.compile(r"--target-dir\s+(\S+)")
 
 # constructs that do not migrate mechanically → risk codes
 _RISK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -77,6 +80,7 @@ class JobAssessment:
     risks: list[str] = field(default_factory=list)    # i18n codes
     produces: list[str] = field(default_factory=list)  # tables written
     consumes: list[str] = field(default_factory=list)  # tables read
+    stub: str = ""  # SeaTunnel config skeleton (plain-sync sqoop jobs)
 
     def to_dict(self) -> dict[str, Any]:
         return {"job": self.job, "kind": self.kind, "lines": self.lines,
@@ -85,7 +89,8 @@ class JobAssessment:
                 "score": self.score, "reasons": list(self.reasons),
                 "risks": list(self.risks),
                 "produces": list(self.produces),
-                "consumes": list(self.consumes)}
+                "consumes": list(self.consumes),
+                "stub": self.stub}
 
 
 def _kind(name: str) -> str:
@@ -134,10 +139,34 @@ def assess_job(name: str, text: str) -> JobAssessment:
                        for m in _PRODUCE_RE.finditer(text)})
     consumes = sorted({m.group(1) for m in _CONSUME_RE.finditer(text)}
                       - set(produces))
+    stub = _seatunnel_stub(text) if target == "seatunnel" else ""
     return JobAssessment(job=name, kind=kind, lines=lines,
                          statements=statements, joins=joins, target=target,
                          effort=effort, score=score, reasons=reasons,
-                         risks=risks, produces=produces, consumes=consumes)
+                         risks=risks, produces=produces, consumes=consumes,
+                         stub=stub)
+
+
+def _seatunnel_stub(text: str) -> str:
+    """Sqoop import args → SeaTunnel Jdbc-to-HdfsFile skeleton."""
+    connect = _SQOOP_CONNECT_RE.search(text)
+    table = _SQOOP_TABLE_RE.search(text)
+    if not (connect and table):
+        return ""
+    target = _SQOOP_TARGET_RE.search(text)
+    sink_path = target.group(1) if target else "<target-dir>"
+    return "\n".join([
+        "env {", "  parallelism = 2", '  job.mode = "BATCH"', "}", "",
+        "source {", "  Jdbc {",
+        f'    url = "{connect.group(1)}"',
+        '    driver = "com.mysql.cj.jdbc.Driver"',
+        '    user = "<user>"', '    password = "<password>"',
+        f'    query = "SELECT * FROM {table.group(1)}"',
+        "  }", "}", "",
+        "sink {", "  HdfsFile {",
+        f'    path = "{sink_path}"',
+        '    file_format_type = "orc"',
+        "  }", "}"])
 
 
 @dataclass

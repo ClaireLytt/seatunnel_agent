@@ -46,6 +46,15 @@ def render_markdown(result: MigrationReport, lang: str = "zh") -> str:
             consumers = ", ".join(f"`{c}`" for c in s["consumers"])
             lines.append(f"- `{s['table']}`: `{s['producer']}` → {consumers}")
         lines.append("")
+    stubs = [j for j in result.jobs if j.stub]
+    if stubs:
+        lines.append(f"### {tp(lang, 'rpt_stubs')}")
+        for job in stubs:
+            lines.append(f"**`{job.job}`**")
+            lines.append("```hocon")
+            lines.append(job.stub)
+            lines.append("```")
+        lines.append("")
     if result.warnings:
         lines.append(f"### {tp(lang, 'rpt_warnings')}")
         lines.extend(f"- {w}" for w in result.warnings)

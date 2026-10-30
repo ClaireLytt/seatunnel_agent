@@ -68,6 +68,20 @@ def test_table_deps_and_migration_order():
     assert shared["ods.users"]["consumers"] == ["build_sales.hql"]
 
 
+def test_seatunnel_stub_from_sqoop_args():
+    _, by = _by_job()
+    stub = by["sync_orders.sh"].stub
+    assert 'url = "jdbc:mysql://db/shop"' in stub
+    assert 'query = "SELECT * FROM orders"' in stub
+    assert 'path = "/warehouse/ods/orders"' in stub
+    assert 'job.mode = "BATCH"' in stub
+    # non-seatunnel targets carry no stub
+    assert by["build_sales.hql"].stub == ""
+    from seatunnel_agent.agents.data.pipeline_migrate import render_markdown
+    report, _ = _by_job()
+    assert "```hocon" in render_markdown(report, lang="en")
+
+
 def test_single_script_text():
     report = assess_text("legacy.sql",
                          "SELECT a FROM t1, t2 WHERE t1.id = t2.id(+);")

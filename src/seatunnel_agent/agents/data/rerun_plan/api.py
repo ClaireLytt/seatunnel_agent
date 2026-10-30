@@ -64,10 +64,10 @@ def run_plan(req: PlanRequest) -> PlanResponse:
     text = (_read_whitelisted(req.file or "") if (req.file or "").strip()
             else req.text or "")
     try:
+        failed: str | list[str] = req.failed
+        succeeded: str | list[str] = req.succeeded
         if req.statuses.strip():
             failed, succeeded = parse_statuses(req.statuses)
-        else:
-            failed, succeeded = req.failed, req.succeeded
         result = plan_rerun(parse_dag(text), failed, succeeded)
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
