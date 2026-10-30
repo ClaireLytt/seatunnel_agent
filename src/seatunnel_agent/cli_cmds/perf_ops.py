@@ -18,7 +18,6 @@ from pathlib import Path
 
 import click
 
-from ..common.cli_common import console  # noqa: F401  (rich tracebacks)
 from .check_runner import emit_payload as _emit
 from .check_runner import fail_check
 from .check_runner import track_history as _track_history
