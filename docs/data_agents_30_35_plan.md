@@ -76,3 +76,13 @@ slots/memory）± 各 DAG 启动时刻。
 
 每个 agent 独立提交：后端 + 测试 + 示例 + 前端页 + 页面回归 + 报告落盘；
 后期允许在每个 agent 上继续叠加功能（沿 25–29 的 phase 模式）。
+
+## Phase 2 roadmap (perf suite)
+
+1. [ ] sql_perf: opt-in LLM rewrite - findings + the original SQL
+   (optional input) -> an optimized-SQL draft; API llm flag + CLI --llm
+   --sql-file, same bounded/stubbed discipline as the ops suite.
+2. [ ] sql_cost: --fail-over-scan-gb / --fail-over-shuffle-gb CI gate -
+   block PR queries whose estimated cost crosses the budget.
+3. [ ] slow_query: --history incident ledger (top cause, share,
+   regression) via the shared track_history.
