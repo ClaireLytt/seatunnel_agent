@@ -46,6 +46,7 @@
     "sql_fmt",
     "sql_perf",
     "sql_cost",
+    "slow_query",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
