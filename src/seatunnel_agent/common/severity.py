@@ -16,7 +16,6 @@ DRIFT_MARK = {"breaking": "●", "risk": "◐", "info": "○"}
 
 
 SEVERITY_ORDER = ("high", "medium", "low")
-LEVEL_ORDER = ("error", "warn", "info")
 
 
 def severity_counts(items, keys=SEVERITY_ORDER,
