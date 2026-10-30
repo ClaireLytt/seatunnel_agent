@@ -28,6 +28,8 @@ class AnalyzeRequest(BaseModel):
     file: str | None = Field(
         None, description="Task DAG file (.json or text lines)")
     text: str | None = Field(None, description="Inline DAG definition")
+    deadline: float = Field(
+        0.0, ge=0, description="Optional SLA duration to check against")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
     report: bool = Field(False, description="Include the rendered markdown report")
 
@@ -54,7 +56,7 @@ def run_analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     text = (_read_whitelisted(req.file or "") if (req.file or "").strip()
             else req.text or "")
     try:
-        result = optimize(parse_dag(text))
+        result = optimize(parse_dag(text), deadline=req.deadline)
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # malformed JSON

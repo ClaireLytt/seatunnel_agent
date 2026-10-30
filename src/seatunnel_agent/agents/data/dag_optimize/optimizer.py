@@ -210,6 +210,10 @@ class DagOptimizeResult:
     bottlenecks: list[dict[str, Any]] = field(default_factory=list)
     # the task JSON with redundant edges removed — pasteable back
     optimized: dict[str, Any] = field(default_factory=dict)
+    deadline: float = 0.0          # SLA duration the caller asked about
+    deadline_met: bool | None = None
+    # critical tasks to halve (in gain order) until the deadline holds
+    deadline_plan: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -228,6 +232,9 @@ class DagOptimizeResult:
             "makespans": dict(self.makespans),
             "bottlenecks": [dict(b) for b in self.bottlenecks],
             "optimized": dict(self.optimized),
+            "deadline": self.deadline,
+            "deadline_met": self.deadline_met,
+            "deadline_plan": list(self.deadline_plan),
         }
 
 
@@ -342,7 +349,29 @@ def _makespan(graph: TaskGraph, order: list[str], workers: int) -> float:
     return max(finish.values(), default=0.0)
 
 
-def optimize(graph: TaskGraph) -> DagOptimizeResult:
+def _deadline_plan(graph: TaskGraph, order: list[str],
+                   bottlenecks: list[dict[str, Any]],
+                   deadline: float) -> tuple[bool, list[str]]:
+    """Halve bottleneck tasks (best gain first, cumulatively) until the
+    critical path fits the deadline. Returns (met, tasks halved)."""
+    halved: list[str] = []
+    saved: dict[str, float] = {}
+    try:
+        for b in bottlenecks:
+            _, duration = _critical_path(graph, order)
+            if duration <= deadline:
+                return True, halved
+            name = b["task"]
+            saved[name] = graph.nodes[name]
+            graph.nodes[name] = saved[name] / 2
+            halved.append(name)
+        _, duration = _critical_path(graph, order)
+        return duration <= deadline, halved
+    finally:
+        graph.nodes.update(saved)
+
+
+def optimize(graph: TaskGraph, deadline: float = 0.0) -> DagOptimizeResult:
     result = DagOptimizeResult(tasks=len(graph.nodes),
                                edges=len(graph.edges))
     batches, on_cycle = _kahn_batches(graph, skip=set())
@@ -373,6 +402,15 @@ def optimize(graph: TaskGraph) -> DagOptimizeResult:
     result.makespans["inf"] = round(result.critical_duration, 2)
     result.bottlenecks = _bottlenecks(graph, order, result.critical_path,
                                       result.critical_duration)
+    if deadline > 0:
+        result.deadline = deadline
+        if result.critical_duration <= deadline:
+            result.deadline_met = True
+        else:
+            met, plan = _deadline_plan(graph, order, result.bottlenecks,
+                                       deadline)
+            result.deadline_met = met
+            result.deadline_plan = plan
     if result.redundant:
         drop = {(r.up, r.down) for r in result.redundant}
         result.optimized = {"tasks": [

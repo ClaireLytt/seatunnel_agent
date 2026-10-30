@@ -55,6 +55,20 @@ def render_markdown(result: DagOptimizeResult, lang: str = "zh") -> str:
             dur=_num(result.critical_duration),
             total=_num(result.total_duration)))
         lines.append("")
+    if result.deadline:
+        if result.deadline_met and not result.deadline_plan:
+            lines.append(tp(lang, "rpt_deadline_ok").format(
+                deadline=_num(result.deadline),
+                dur=_num(result.critical_duration)))
+        elif result.deadline_met:
+            plan = " → ".join(f"`{t}`" for t in result.deadline_plan)
+            lines.append(tp(lang, "rpt_deadline_plan").format(
+                deadline=_num(result.deadline), plan=plan))
+        else:
+            lines.append(tp(lang, "rpt_deadline_miss").format(
+                deadline=_num(result.deadline),
+                dur=_num(result.critical_duration)))
+        lines.append("")
     if result.bottlenecks:
         lines.append(f"### {tp(lang, 'rpt_bottlenecks')}")
         lines.append(f"| {tp(lang, 'rpt_col_tasks')} "

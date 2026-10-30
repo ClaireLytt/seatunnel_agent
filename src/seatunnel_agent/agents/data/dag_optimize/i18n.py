@@ -22,6 +22,15 @@ DAGOPT_I18N: dict[str, dict[str, str]] = {
         "rpt_critical": "Critical path",
         "rpt_critical_note": ("duration {dur} of total {total} — this chain "
                               "bounds end-to-end latency"),
+        "rpt_deadline_ok": ("**Deadline {deadline}: met** — the critical "
+                            "path is {dur}."),
+        "rpt_deadline_plan": ("**Deadline {deadline}: reachable** — halve "
+                              "{plan} (in that order) and the critical "
+                              "path fits."),
+        "rpt_deadline_miss": ("**Deadline {deadline}: not reachable** — "
+                              "critical path {dur}; even halving the top "
+                              "bottlenecks is not enough. Restructure the "
+                              "chain."),
         "rpt_bottlenecks": "Bottleneck sensitivity (halve one task — what "
                            "the critical path becomes)",
         "rpt_col_duration": "duration",
@@ -56,6 +65,11 @@ DAGOPT_I18N: dict[str, dict[str, str]] = {
         "rpt_col_tasks": "任务",
         "rpt_critical": "关键路径",
         "rpt_critical_note": "时长 {dur} / 总时长 {total} — 该链决定端到端时延下限",
+        "rpt_deadline_ok": "**SLA {deadline}：满足** — 关键路径 {dur}。",
+        "rpt_deadline_plan": ("**SLA {deadline}：可达** — 依次把 {plan} "
+                              "提速一半即可满足。"),
+        "rpt_deadline_miss": ("**SLA {deadline}：不可达** — 关键路径 {dur}，"
+                              "把最大的几个瓶颈都减半也不够，需要重构链路。"),
         "rpt_bottlenecks": "瓶颈敏感度（单个任务提速一半后关键路径变成多少）",
         "rpt_col_duration": "时长",
         "rpt_col_halved": "提速后关键路径",

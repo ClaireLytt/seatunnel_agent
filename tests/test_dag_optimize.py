@@ -42,6 +42,28 @@ def test_demo_critical_path_durations_and_speedup():
     assert result.speedup == pytest.approx(47 / 35, abs=0.01)
 
 
+def test_deadline_check():
+    graph = parse_dag(DEMO)  # critical 35, total 47
+    # already met
+    ok = optimize(parse_dag(DEMO), deadline=40)
+    assert ok.deadline_met is True and ok.deadline_plan == []
+    # reachable by halving join_wide (35 → 29)
+    plan = optimize(parse_dag(DEMO), deadline=30)
+    assert plan.deadline_met is True
+    assert plan.deadline_plan == ["join_wide"]
+    # durations are restored after the what-if
+    again = optimize(graph)
+    assert again.critical_duration == 35.0
+    # unreachable even halving the top bottlenecks
+    miss = optimize(parse_dag(DEMO), deadline=10)
+    assert miss.deadline_met is False
+    md = render_markdown(plan, lang="zh")
+    assert "SLA 30：可达" in md and "`join_wide`" in md
+    assert "not reachable" in render_markdown(miss, lang="en")
+    # no deadline asked → no section
+    assert "SLA" not in render_markdown(optimize(parse_dag(DEMO)), lang="zh")
+
+
 def test_optimized_dag_export():
     result = optimize(parse_dag(DEMO))
     tasks = {t["name"]: t for t in result.optimized["tasks"]}

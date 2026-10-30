@@ -62,8 +62,10 @@ def _common(fn):
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="任务依赖图（JSON tasks/edges、DOT 或文本行）")
 @click.option("--text", type=str, default=None, help="内联依赖图")
+@click.option("--deadline", type=float, default=0.0,
+              help="SLA 时长 — 判定是否满足并给出最小提速集合")
 @_common
-def dagopt(path, text, lang, fmt, output) -> None:
+def dagopt(path, text, deadline, lang, fmt, output) -> None:
     """DAG 依赖优化 — 冗余串行边、并行批次、关键路径与加速比。"""
     from seatunnel_agent.agents.data.dag_optimize import (
         optimize,
@@ -71,7 +73,8 @@ def dagopt(path, text, lang, fmt, output) -> None:
         render_markdown,
     )
 
-    result = optimize(parse_dag(_read(path, text, "依赖图")))
+    result = optimize(parse_dag(_read(path, text, "依赖图")),
+                      deadline=deadline)
     _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)
 
 
