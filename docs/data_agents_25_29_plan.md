@@ -106,3 +106,13 @@ tests/test_<name>.py        # 确定性核心测试
    cron / daily cron) in the table and the config stub.
 5. [x] pipeline_migrate: DataX job JSON support - parse reader/writer,
    assess and emit the SeaTunnel skeleton like sqoop jobs.
+
+## Phase 5 roadmap (fewer, heavier)
+
+1. [ ] dag_optimize + rerun_plan: ingest Graphviz DOT (airflow dags show
+   output) - shared parse_dag learns digraph syntax.
+2. [ ] sync_strategy: rows-moved estimate per sync and the saving vs a
+   full reload - makes the incremental case quantitative.
+3. [ ] backfill_sql: overwrite_dynamic mode (Spark dynamic partition
+   overwrite) - one statement for the whole range, bounds enforced via
+   {start}/{end} placeholders.
