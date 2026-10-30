@@ -15,7 +15,7 @@ const resources = {
       file_ph: 'Task DAG (.json or text lines), e.g. examples/dagopt_demo/dag.json',
       run_btn: 'Analyze file',
       text_acc: 'Analyze pasted DAG',
-      text_label: 'JSON tasks/edges or "a -> b" lines',
+      text_label: 'JSON tasks/edges, DOT, or "a -> b" lines',
       text_ph:
         '{"tasks":[{"name":"clean","deps":["extract"],"duration":5}, ...]}\n' +
         'or one edge per line:  extract -> clean',
@@ -40,7 +40,7 @@ const resources = {
       file_ph: '任务依赖图 (.json 或文本行)，如 examples/dagopt_demo/dag.json',
       run_btn: '分析文件',
       text_acc: '用粘贴的依赖图分析',
-      text_label: 'JSON tasks/edges 或 "a -> b" 文本行',
+      text_label: 'JSON tasks/edges、DOT 或 "a -> b" 文本行',
       text_ph:
         '{"tasks":[{"name":"clean","deps":["extract"],"duration":5}, ...]}\n' +
         '或每行一条边：  extract -> clean',

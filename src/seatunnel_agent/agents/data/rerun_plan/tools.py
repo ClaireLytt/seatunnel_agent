@@ -11,7 +11,7 @@ from seatunnel_agent.common.utils import normalize_lang
 
 def rerun_plan(dag: str, failed: str = "", succeeded: str = "",
                statuses: str = "", cmd: str = "", lang: str = "") -> str:
-    """任务重跑规划（确定性）：粘贴任务依赖图（JSON tasks/edges 或
+    """任务重跑规划（确定性）：粘贴任务依赖图（JSON tasks/edges、Graphviz DOT 或
     ``a -> b`` 文本行）和失败任务名（逗号分隔），重跑集合 = 失败任务 +
     其下游闭包，上游产出保留、兄弟分支不动；可选已成功任务列表（闭包内
     曾成功的任务因输入失效仍会标记重跑），按拓扑批次输出并给出影响面。

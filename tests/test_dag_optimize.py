@@ -93,6 +93,25 @@ def test_text_arrow_lines_and_chain_detection():
     assert result.batches[0] == ["a"]
 
 
+def test_graphviz_dot_input():
+    dot = '''
+    digraph "etl_daily" {
+      rankdir=LR;
+      graph [label="etl_daily"];
+      node [shape=box, style=filled];
+      "extract" [color=lightblue];
+      "clean" [color=lightblue];
+      "extract" -> "clean";
+      "clean" -> "load" [style=dashed];
+      "audit";
+    }
+    '''
+    result = optimize(parse_dag(dot))
+    assert result.tasks == 4
+    assert result.batches == [["audit", "extract"], ["clean"], ["load"]]
+    assert result.chains == [["extract", "clean", "load"]]
+
+
 def test_chained_arrow_line():
     result = optimize(parse_dag("a -> b -> c"))
     assert result.batches == [["a"], ["b"], ["c"]]

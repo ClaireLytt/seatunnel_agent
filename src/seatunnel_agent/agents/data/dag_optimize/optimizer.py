@@ -26,6 +26,8 @@ from typing import Any
 WORKER_COUNTS = (1, 2, 4, 8)
 
 _ARROW_RE = re.compile(r"\s*->\s*|\s*=>\s*")
+_DOT_HEAD_RE = re.compile(r"^\s*(strict\s+)?(di)?graph\b", re.IGNORECASE)
+_DOT_ATTR_RE = re.compile(r"\[[^\]]*\]")  # [label=..., shape=...]
 
 
 @dataclass
@@ -100,7 +102,30 @@ def _from_edge_list(items: list[Any], graph: TaskGraph) -> None:
         graph.add_edge(u, d)
 
 
+def _strip_dot(text: str) -> str:
+    """Graphviz DOT (``airflow dags show`` output) → plain edge lines.
+
+    Drops the digraph header, braces, per-line attribute blocks,
+    ``graph/node/edge`` defaults and ``key=value`` statements; unquotes
+    names and strips trailing semicolons. What remains is the ``a -> b``
+    syntax the plain-text parser already understands.
+    """
+    out: list[str] = []
+    for raw in text.splitlines():
+        line = _DOT_ATTR_RE.sub("", raw).strip()
+        line = line.strip("{}").strip().rstrip(";").strip()
+        if (not line or _DOT_HEAD_RE.match(line)
+                or line.split("=")[0].strip().lower() in
+                ("rankdir", "label", "labelloc", "bgcolor", "splines")
+                or line.lower() in ("graph", "node", "edge")):
+            continue
+        out.append(line.replace('"', ""))
+    return "\n".join(out)
+
+
 def _from_text_lines(text: str, graph: TaskGraph) -> None:
+    if _DOT_HEAD_RE.match(text.lstrip()):
+        text = _strip_dot(text)
     for raw in text.splitlines():
         line = raw.strip()
         if not line or line.startswith("#"):

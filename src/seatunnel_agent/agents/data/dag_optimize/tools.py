@@ -10,7 +10,7 @@ from seatunnel_agent.common.utils import normalize_lang
 
 
 def dag_optimize(dag: str, lang: str = "") -> str:
-    """DAG 依赖优化（确定性）：粘贴任务依赖图（JSON tasks/edges 或
+    """DAG 依赖优化（确定性）：粘贴任务依赖图（JSON tasks/edges、Graphviz DOT 或
     ``a -> b`` 文本行，任务可带 duration），用传递归约找出不必要的串行
     依赖边并给出替代路径依据，按 Kahn 分层给出可并行的批次与最大并行度，
     按任务时长计算关键路径与理想加速比，并提示可合并的单进单出串行链。
