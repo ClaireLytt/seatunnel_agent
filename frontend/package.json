@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "shared",
+    "backfill",
     "config_lint",
     "contract_check",
     "dag_check",

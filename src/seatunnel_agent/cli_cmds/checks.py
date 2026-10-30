@@ -470,6 +470,89 @@ def freshness(
             sys.exit(1)
 
 
+@click.command()
+@click.option("--file", "-f", "events_file", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="表更新事件清单（JSON 或 CSV）")
+@click.option("--rules", "-r", "rules_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="新鲜度规则 JSON（表名通配 → interval/max_age）")
+@click.option("--sql-dir", type=click.Path(exists=True, file_okay=False),
+              default=None, help="血缘 SQL 目录（递归 *.sql，用于级联重跑）")
+@click.option("--now", default=None,
+              help="评估时刻（ISO 格式，默认取清单里最晚的更新时间）")
+@click.option("--since", default=None, help="只规划此时刻之后的分区")
+@click.option("--cmd", default="", help="命令模板，支持 {table} 与 {date} 占位")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on-missing", is_flag=True,
+              help="CI gate: 存在缺失分区时 exit 1")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def backfill(
+    events_file: str,
+    rules_file: str | None,
+    sql_dir: str | None,
+    now: str | None,
+    since: str | None,
+    cmd: str,
+    lang: str,
+    fail_on_missing: bool,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """分区补数计划 — 缺失分区 × 血缘级联 → 拓扑有序的补数/重跑清单。"""
+    import json as _json
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.backfill import (
+        plan,
+        plan_to_dict,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.data_freshness import (
+        parse_events,
+        parse_rules,
+    )
+
+    text = Path(events_file).read_text(encoding="utf-8", errors="replace")
+    rules_text = (Path(rules_file).read_text(encoding="utf-8", errors="replace")
+                  if rules_file else "")
+    graph = None
+    lineage_warnings: list[str] = []
+    if sql_dir:
+        from seatunnel_agent.agents.data.data_lineage.loaders import (
+            from_sql_dir,
+        )
+
+        graph, lineage_warnings = from_sql_dir(sql_dir)
+    try:
+        result = plan(parse_events(text), parse_rules(rules_text),
+                      graph=graph, now=(now or "").strip() or None,
+                      since=(since or "").strip() or None)
+    except ValueError as exc:
+        raise click.UsageError(str(exc))
+    result.warnings.extend(lineage_warnings)
+
+    if fmt == "json":
+        text_out = _json.dumps(plan_to_dict(result), ensure_ascii=False,
+                               indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang, cmd_template=cmd)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on_missing and result.total_slots:
+        msg = "存在缺失分区，检查未通过。"
+        if fmt == "json":
+            print(msg, file=sys.stderr)
+        else:
+            console.print(f"\n[red]{msg}[/red]")
+        sys.exit(1)
+
+
 @click.command(name="schemadiff")
 @click.option("--old", "old_path", type=click.Path(exists=True), required=True,
               help="旧版 DDL：文件或目录（递归 *.sql）")
@@ -1616,6 +1699,7 @@ def register(cli) -> None:
     cli.add_command(pipedoctor)
     cli.add_command(slatrace)
     cli.add_command(freshness)
+    cli.add_command(backfill)
     cli.add_command(schemadiff)
     cli.add_command(testgen)
     cli.add_command(conflint)
