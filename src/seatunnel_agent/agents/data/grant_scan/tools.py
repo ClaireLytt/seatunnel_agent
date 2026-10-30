@@ -6,9 +6,7 @@ the orchestrator catalog/router. String-in / markdown-out, deterministic.
 
 from __future__ import annotations
 
-
-def _lang(lang: str) -> str:
-    return "en" if (lang or "zh").strip().lower().startswith("en") else "zh"
+from seatunnel_agent.common.utils import normalize_lang
 
 
 def grant_scan(sql: str, dialect: str = "hive", lang: str = "") -> str:
@@ -26,4 +24,4 @@ def grant_scan(sql: str, dialect: str = "hive", lang: str = "") -> str:
         report = scan_sql_text(sql, dialect=dialect)
     except Exception as exc:
         return f"扫描失败 / scan failed: {exc}"
-    return render_markdown(report, lang=_lang(lang))
+    return render_markdown(report, lang=normalize_lang(lang))
