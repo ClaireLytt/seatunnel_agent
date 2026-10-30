@@ -69,9 +69,15 @@ function Bar({ label, value, max = 100 }: { label: string; value: number; max?: 
   )
 }
 
+// the active content language: games' scene text carries its own zh/en pair
+function useLang(): Lang {
+  const { i18n } = useTranslation()
+  return i18n.language === 'en' ? 'en' : 'zh'
+}
+
 function Optimism() {
-  const { t, i18n } = useTranslation()
-  const lang: Lang = i18n.language === 'en' ? 'en' : 'zh'
+  const { t } = useTranslation()
+  const lang = useLang()
   const [picks, setPicks] = useState<boolean[]>(() => load(OPT_KEY, []))
   const [prev, setPrev] = useState<number | null>(() => {
     const hist = load<number[]>(HIST_KEY + '.opt', [])
@@ -343,8 +349,8 @@ function ThreeGoodThings() {
 }
 
 function Strengths() {
-  const { t, i18n } = useTranslation()
-  const lang: Lang = i18n.language === 'en' ? 'en' : 'zh'
+  const { t } = useTranslation()
+  const lang = useLang()
   const [picks, setPicks] = useState<Strength[]>(() => load(STR_KEY, []))
   const done = picks.length >= STRENGTH_CARDS.length
   const card = STRENGTH_CARDS[picks.length]
@@ -390,7 +396,9 @@ function Strengths() {
           <p className="mg-label normal-case tracking-[0.14em]">
             NO.{i + 1} · {STRENGTH_LABEL[s.strength][lang]}
           </p>
-          <p className="mg-ink mt-2 text-base leading-relaxed">{STRENGTH_LABEL[s.strength].desc[lang]}</p>
+          <p className="mg-ink mt-2 text-base leading-relaxed">
+            {STRENGTH_LABEL[s.strength].desc[lang]}
+          </p>
         </div>
       ))}
       <button className="mg-btn self-start" onClick={() => setPicks([])}>
@@ -401,7 +409,8 @@ function Strengths() {
 }
 
 function Questions() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
+  const lang = useLang()
   const [answers, setAnswers] = useState<Record<Pillar, string>>(() =>
     load(Q_KEY, Object.fromEntries(PILLARS.map((p) => [p, ''])) as Record<Pillar, string>),
   )
@@ -416,7 +425,7 @@ function Questions() {
       {FIVE_QUESTIONS.map((q) => (
         <div key={q.pillar}>
           <p className="mg-label mb-2">
-            {PILLAR_LABEL[q.pillar].letter} · {i18n.language === 'en' ? q.en : q.zh}
+            {PILLAR_LABEL[q.pillar].letter} · {q[lang]}
           </p>
           <input
             value={answers[q.pillar]}
@@ -434,9 +443,7 @@ function Questions() {
           {PILLARS.map((p) => (
             <Bar
               key={p}
-              label={`${PILLAR_LABEL[p].letter} · ${
-                i18n.language === 'en' ? PILLAR_LABEL[p].en : PILLAR_LABEL[p].zh
-              }`}
+              label={`${PILLAR_LABEL[p].letter} · ${PILLAR_LABEL[p][lang]}`}
               value={scoreAnswer(p, answers[p])}
             />
           ))}
