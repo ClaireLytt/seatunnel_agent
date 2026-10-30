@@ -37,6 +37,7 @@
     "secret_scan",
     "prompt_lab",
     "release_notes",
+    "rerun_plan",
     "schema_drift",
     "seatunnel",
     "sql_fmt",

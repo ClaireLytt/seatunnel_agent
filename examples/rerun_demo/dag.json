@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    {"name": "extract_orders"},
+    {"name": "extract_users"},
+    {"name": "clean_orders", "deps": ["extract_orders"]},
+    {"name": "clean_users", "deps": ["extract_users"]},
+    {"name": "join_wide", "deps": ["clean_orders", "clean_users"]},
+    {"name": "agg_daily", "deps": ["join_wide"]},
+    {"name": "report", "deps": ["agg_daily"]},
+    {"name": "audit_users", "deps": ["clean_users"]}
+  ]
+}
