@@ -159,3 +159,11 @@ tests/test_<name>.py        # 确定性核心测试
    radius, ETA, groups) - ready to paste into the ops channel.
 3. [x] sync_strategy: rollout narrative - why each strategy, cutover
    steps and monitoring points, one bounded call per fleet.
+
+## Phase 12 roadmap (LLM layer complete)
+
+1. [ ] backfill_sql: LLM source fill - given the spec skeleton plus the
+   upstream DDL, fill the column list in the bounded SELECT ({date}
+   placeholder enforced, fallback to the skeleton on violation).
+2. [ ] dag_optimize: LLM action plan - the analysis JSON becomes a
+   prioritized to-do list for the scheduler owner.
