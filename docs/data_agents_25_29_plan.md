@@ -63,3 +63,19 @@ tests/test_<name>.py        # 确定性核心测试
 
 每个 agent 独立提交：后端 + 测试 + 示例 + 前端页 + workspace 注册
 （frontend/package.json workspaces、npm install、prettier、`seatunnel-agent ui --build` 验证）。
+
+## 二期增强路线（主题：分析结果 → 可执行产物）
+
+按价值排序，逐个实现、独立提交：
+
+1. [ ] sync_strategy：按推荐策略生成 SeaTunnel 作业配置骨架（hocon），
+   full/incr_timestamp/incr_pk → Jdbc source（带水位 where 模板），
+   cdc → MySQL-CDC source；清单可选 update_ts_col/pk_col 字段填充占位符。
+2. [ ] dag_optimize：有限并发模拟 — 给定 worker 数 k，按批次与时长估算
+   makespan，输出 k=1/2/4/8 与无限并发的对比表，量化"并行化值多少"。
+3. [ ] rerun_plan：时长感知 ETA — DAG 带 duration 时给出每批次与总计的
+   预计耗时（批内取最大，批间求和）。
+4. [ ] backfill_sql：小时级分区网格（date_format 含 HH 时步长改为小时）
+   与 grain 字段；按天/小时生成同样幂等的语句块。
+5. [ ] pipeline_migrate：脚本间表级依赖提取（produced/consumed 表）→
+   建议迁移顺序批次（上游任务先迁），并标出跨任务共享表。
