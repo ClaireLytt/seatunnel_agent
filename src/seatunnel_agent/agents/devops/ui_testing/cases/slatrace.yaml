@@ -1,0 +1,39 @@
+# SLT 组 · 调度依赖延迟分析:data 工作区卡片 + /slatrace React 页冒烟与真实分析。
+# 分析为确定性关键路径计算,离线可跑;示例导出随仓库自带。
+
+- id: SLT1
+  title: data 工作区展示延迟分析卡片
+  tags: [smoke, sqlite]
+  page: /data
+  steps:
+    - wait: 1000
+      note: 纯断言用例,等 cookie 语言切换完成
+  expect:
+    - text_contains: {in: 页面, text: 调度依赖延迟分析}
+
+- id: SLT2
+  title: 延迟分析页渲染(文件输入 + 分析按钮)
+  tags: [full, sqlite]
+  page: /slatrace/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+  expect:
+    - text_contains: {in: 页面, text: 调度依赖延迟分析}
+    - text_contains: {in: 页面, text: 导出文件路径}
+    - text_contains: {in: 页面, text: 分析文件}
+
+- id: SLT3
+  title: 分析示例导出得到关键路径
+  tags: [full, sqlite]
+  page: /slatrace/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+    - click: 分析文件
+    - wait: 2500
+      note: 等 trace 接口返回并渲染报告
+  expect:
+    - text_contains: {in: 页面, text: 关键路径}
+    - text_contains: {in: 页面, text: 延迟大户}
+    - text_contains: {in: 页面, text: ods_orders_sync}

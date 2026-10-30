@@ -827,6 +827,26 @@ seatunnel-agent pipedoctor --dir run_logs/ -F json --fail-on critical  # CI gate
 seatunnel-agent pipedoctor --dir today/ --baseline-dir yesterday/    # regression diff
 ```
 
+### Scheduling Delay Trace Agent
+
+Why did the pipeline finish late? Feed one scheduling run's task-instance
+export (JSON or CSV with `name/start/end/deps` — Airflow/DolphinScheduler
+dumps map onto the accepted synonyms) and the agent computes the
+**critical path** to the target task by always walking into the dependency
+that finished last — the one actually waited for — then attributes every
+hop to *waiting on deps* vs *own runtime*, ranks the top delay
+contributors, and gives an SLA met/breach verdict against an optional
+deadline. Web UI at `/slatrace`, REST under `/api/slatrace/` (file access
+whitelisted via `SLATRACE_API_ALLOWED_DIRS`), MCP tool `sla_trace`, demo
+data `examples/slatrace_demo/`:
+
+```bash
+seatunnel-agent slatrace -f run.json                                 # critical path
+seatunnel-agent slatrace -f run.json -t ads_sales_report --lang en   # explicit target
+seatunnel-agent slatrace -f run.json --deadline "2024-05-01 05:00:00" \
+  --fail-on-breach -F json                                           # CI gate
+```
+
 ### Schema Drift Check Agent
 
 Diff two schema snapshots (CREATE TABLE scripts — files, directories or
@@ -1733,6 +1753,23 @@ seatunnel-agent pipedoctor --dir run_logs/                           # 诊断一
 seatunnel-agent pipedoctor -f spark_oom.log --lang en                # 单文件
 seatunnel-agent pipedoctor --dir run_logs/ -F json --fail-on critical  # CI 门禁
 seatunnel-agent pipedoctor --dir today/ --baseline-dir yesterday/    # 回归对比
+```
+
+### 调度依赖延迟分析 Agent
+
+产出为什么晚了？喂入一轮调度的任务实例导出（JSON 或 CSV，字段
+`name/start/end/deps`，Airflow/DolphinScheduler 的导出字段同义词均可识别），
+计算到目标任务的**关键路径**——每一步都走向实际等待的那个依赖（最后完成者），
+再把每一跳拆成"等依赖"与"自身运行"两部分归因，排出延迟大户，并对可选的
+截止时间给出 SLA 达标/破线结论。Web 页面 `/slatrace`，REST
+`/api/slatrace/`（文件访问白名单 `SLATRACE_API_ALLOWED_DIRS`），MCP 工具
+`sla_trace`，演示数据 `examples/slatrace_demo/`：
+
+```bash
+seatunnel-agent slatrace -f run.json                                 # 关键路径
+seatunnel-agent slatrace -f run.json -t ads_sales_report --lang en   # 指定目标任务
+seatunnel-agent slatrace -f run.json --deadline "2024-05-01 05:00:00" \
+  --fail-on-breach -F json                                           # CI 门禁
 ```
 
 ### Schema 漂移检查 Agent

@@ -335,6 +335,71 @@ def pipedoctor(
             sys.exit(1)
 
 
+@click.command()
+@click.option("--file", "-f", "export_file", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="任务实例导出文件（JSON 数组或 CSV）")
+@click.option("--target", "-t", default="", help="目标任务名（默认取最晚结束的任务）")
+@click.option("--deadline", default=None, help="SLA 截止时间（ISO 格式）")
+@click.option("--top", "-n", type=int, default=5, show_default=True,
+              help="延迟大户展示条数")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on-breach", is_flag=True,
+              help="CI gate: SLA 破线时 exit 1（需要 --deadline）")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def slatrace(
+    export_file: str,
+    target: str,
+    deadline: str | None,
+    top: int,
+    lang: str,
+    fail_on_breach: bool,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """调度依赖延迟分析 — 任务实例导出 → 关键路径、延迟归因与 SLA 破线结论。"""
+    import json as _json
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.sla_trace import (
+        parse_instances,
+        render_markdown,
+        trace,
+        trace_to_dict,
+    )
+
+    text = Path(export_file).read_text(encoding="utf-8", errors="replace")
+    try:
+        result = trace(parse_instances(text), target=target.strip(),
+                       deadline=(deadline or "").strip() or None)
+    except ValueError as exc:
+        raise click.UsageError(str(exc))
+
+    if fmt == "json":
+        text_out = _json.dumps(trace_to_dict(result), ensure_ascii=False,
+                               indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang, top=top)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on_breach:
+        if not deadline:
+            raise click.UsageError("--fail-on-breach 需要 --deadline")
+        if result.breach_s > 0:
+            msg = "SLA 破线，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
 @click.command(name="schemadiff")
 @click.option("--old", "old_path", type=click.Path(exists=True), required=True,
               help="旧版 DDL：文件或目录（递归 *.sql）")
@@ -1479,6 +1544,7 @@ def register(cli) -> None:
     cli.add_command(metaquality_stats)
     cli.add_command(loginspect)
     cli.add_command(pipedoctor)
+    cli.add_command(slatrace)
     cli.add_command(schemadiff)
     cli.add_command(testgen)
     cli.add_command(conflint)

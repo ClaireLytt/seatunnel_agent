@@ -27,6 +27,7 @@
     "orchestrator",
     "pii_scan",
     "pipeline_doctor",
+    "sla_trace",
     "lineage_hygiene",
     "metadata_quality",
     "mind_games",
