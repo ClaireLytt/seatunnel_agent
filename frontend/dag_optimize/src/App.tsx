@@ -23,9 +23,8 @@ export default function App() {
       .then((res) => setReport(res.report ?? ''))
       .catch((e) => setError(String(e)))
       .finally(() => setBusy(false))
-    // run once on mount for the cross-page handoff
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    // the key is cleared above, so re-runs (language switch) are no-ops
+  }, [i18n.language])
 
   const run = async (useText: boolean) => {
     const src = useText ? text : file
