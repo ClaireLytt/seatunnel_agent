@@ -1,0 +1,12 @@
+2024-04-10 02:10:01,000 INFO  [main] org.apache.spark.SparkContext - Submitted application: ods_order_etl
+2024-04-10 02:10:05,210 INFO  [dispatcher] org.apache.spark.scheduler.DAGScheduler - Submitting 200 missing tasks from ShuffleMapStage 3
+2024-04-10 02:14:33,901 ERROR [Executor task launch worker] org.apache.spark.executor.Executor - Exception in task 117.0 in stage 3.0
+java.lang.OutOfMemoryError: GC overhead limit exceeded
+	at java.util.Arrays.copyOfRange(Arrays.java:3664)
+	at org.apache.spark.sql.catalyst.expressions.UnsafeRow.copy(UnsafeRow.java:504)
+	at org.apache.spark.sql.execution.aggregate.HashAggregateExec.doExecute(HashAggregateExec.scala:112)
+2024-04-10 02:14:40,120 WARN  [dispatcher] org.apache.spark.scheduler.TaskSetManager - Lost task 117.0 in stage 3.0: ExecutorLostFailure (executor 7 exited caused by one of the running tasks)
+2024-04-10 02:14:41,560 ERROR [dispatcher] org.apache.spark.scheduler.cluster.YarnScheduler - Lost executor 7 on worker-03: Container killed by YARN for exceeding physical memory limits. 8.2 GB of 8 GB physical memory used. Consider boosting spark.yarn.executor.memoryOverhead.
+2024-04-10 02:15:02,330 ERROR [task-result-getter] org.apache.spark.scheduler.TaskSetManager - Task 42 in stage 4.0 failed 4 times, most recent failure:
+org.apache.spark.shuffle.FetchFailedException: Failed to connect to worker-03/10.0.3.17:7337
+	at org.apache.spark.storage.ShuffleBlockFetcherIterator.throwFetchFailedException(ShuffleBlockFetcherIterator.scala:748)
