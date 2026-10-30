@@ -1,12 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
-import {
-  deleteFavorite,
-  fetchFavorites,
-  renameFavorite,
-  type Favorite,
-} from '@/api'
+import { deleteFavorite, fetchFavorites, renameFavorite, type Favorite } from '@/api'
 
 /** The #favorites view: list / search / rename / delete saved SQL queries. */
 export function FavoritesView() {
@@ -129,14 +124,15 @@ export function FavoritesView() {
         {filtered.length === 0 && (
           <div className="py-4 text-center font-mono text-[13px] text-muted">—</div>
         )}
-        {sel && (() => {
-          const f = favs.find((x) => x.id === sel)
-          return f ? (
-            <pre className="mt-2 overflow-x-auto rounded border border-line bg-paper px-2 py-1 font-mono text-[12px] text-fg">
-              {f.sql}
-            </pre>
-          ) : null
-        })()}
+        {sel &&
+          (() => {
+            const f = favs.find((x) => x.id === sel)
+            return f ? (
+              <pre className="mt-2 overflow-x-auto rounded border border-line bg-paper px-2 py-1 font-mono text-[12px] text-fg">
+                {f.sql}
+              </pre>
+            ) : null
+          })()}
       </Card>
     </div>
   )

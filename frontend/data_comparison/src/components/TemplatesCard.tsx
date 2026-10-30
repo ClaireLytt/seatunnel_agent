@@ -98,9 +98,7 @@ export function TemplatesCard({
   const onBatchRun = async () => {
     setBusy(true)
     try {
-      onResult(
-        await batchRunTemplates({ session_id: sessionId, names: batchSelected, lang }),
-      )
+      onResult(await batchRunTemplates({ session_id: sessionId, names: batchSelected, lang }))
     } catch (e) {
       fail(e)
     } finally {
@@ -169,9 +167,7 @@ export function TemplatesCard({
           multiple
           className={`${inputCls} min-h-[72px]`}
           value={batchSelected}
-          onChange={(e) =>
-            setBatchSelected(Array.from(e.target.selectedOptions, (o) => o.value))
-          }
+          onChange={(e) => setBatchSelected(Array.from(e.target.selectedOptions, (o) => o.value))}
         >
           {templates.map((tmpl) => (
             <option key={tmpl.id} value={tmpl.name}>

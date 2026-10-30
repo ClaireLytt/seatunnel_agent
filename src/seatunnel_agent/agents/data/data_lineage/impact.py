@@ -486,7 +486,7 @@ _IMPACT_I18N = {
     },
 }
 
-_LEVEL_MARK = {"error": "❌", "warn": "⚠️", "info": "ℹ️"}
+from seatunnel_agent.common.severity import LEVEL_MARK as _LEVEL_MARK
 
 
 def _headline(c: ChangedTable, t: dict[str, str]) -> str:

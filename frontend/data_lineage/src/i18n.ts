@@ -19,8 +19,7 @@ const resources = {
       sql_dialect_label: 'SQL dialect',
       st_dir_label: 'SeaTunnel config directory',
       st_dir_ph:
-        'Directory with SeaTunnel configs (*.conf/*.config/*.json), ' +
-        'source→sink lineage',
+        'Directory with SeaTunnel configs (*.conf/*.config/*.json), ' + 'source→sink lineage',
       use_hive: 'Load from the Hive metadata lineage table (requires HIVE_HOST in .env)',
       hive_adv: 'Hive advanced options',
       meta_table_label: 'Lineage metadata table',
@@ -67,7 +66,8 @@ const resources = {
       similar: 'Similar tables:',
       sql_dialect_info: 'Dialect used to parse the SQL files (column-level lineage AST)',
       path_dst_info: 'Shortest lineage path from the target table to this table',
-      built_stats: '✅ Lineage graph built: **{{tables}}** tables · **{{edges}}** edges · **{{col_edges}}** column edges · {{sla}} SLA tables',
+      built_stats:
+        '✅ Lineage graph built: **{{tables}}** tables · **{{edges}}** edges · **{{col_edges}}** column edges · {{sla}} SLA tables',
       agent_running: '⏳ Analyzing…',
       no_settings: 'No API key configured — set one on the Settings page.',
       snap_heading: 'Snapshots',
@@ -140,7 +140,8 @@ const resources = {
       similar: '相近的表：',
       sql_dialect_info: '解析 SQL 文件用的方言（影响字段级血缘 AST 解析）',
       path_dst_info: '查询目标表到该表的最短血缘路径',
-      built_stats: '✅ 血缘图已构建：**{{tables}}** 表 · **{{edges}}** 边 · **{{col_edges}}** 字段边 · SLA 表 {{sla}} 张',
+      built_stats:
+        '✅ 血缘图已构建：**{{tables}}** 表 · **{{edges}}** 边 · **{{col_edges}}** 字段边 · SLA 表 {{sla}} 张',
       agent_running: '⏳ 分析中…',
       no_settings: '未配置 API key——请在设置页配置。',
       snap_heading: '快照',

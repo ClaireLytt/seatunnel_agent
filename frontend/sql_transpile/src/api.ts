@@ -20,7 +20,6 @@ export interface AdviceResponse {
   detail?: string
 }
 
-
 async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
   return postStructured(`${BASE}${path}`, body, path)
 }

@@ -5,7 +5,7 @@ const resources = {
     translation: {
       title: 'Environment Doctor',
       subtitle:
-        'Describe what\'s wrong — the agent inspects ports, packages, ' +
+        "Describe what's wrong — the agent inspects ports, packages, " +
         'LLM config and log tails (all read-only) and prescribes the ' +
         'fix commands for YOU to run. Without an API key it prints a ' +
         'full deterministic check-up instead.',
@@ -15,7 +15,7 @@ const resources = {
       checkup_btn: 'Full check-up (no LLM)',
       clear_btn: 'Clear',
       report_ph: '▶ Diagnosis and prescribed commands appear here.',
-      empty: '⚠️ Describe the symptom first.',
+      empty: 'Describe the symptom first.',
       home: 'Home',
       running: 'Diagnosing…',
     },
@@ -33,7 +33,7 @@ const resources = {
       checkup_btn: '全量体检（不调 LLM）',
       clear_btn: '清空',
       report_ph: '▶ 诊断结论与修复命令在此显示。',
-      empty: '⚠️ 请先描述症状。',
+      empty: '请先描述症状。',
       home: '首页',
       running: '诊断中…',
     },

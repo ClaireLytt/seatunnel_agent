@@ -37,7 +37,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_lang": "Language",
         "dsk_empty_sql": "❌ Please paste a SQL script first.",
         "dsk_llm_unavailable": (
-            "⚠️ LLM is not configured (missing API key) — showing static scan only."
+            "LLM is not configured (missing API key) — showing static scan only."
         ),
         "dsk_running_static": "Running static skew scan…",
         "dsk_running_llm": "LLM is analyzing and rewriting the SQL…",
@@ -48,7 +48,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_preset_dd": "Saved connection",
         "dsk_preset_load": "Load saved connections",
         "dsk_preset_none": "No saved connections — add one on the Settings page.",
-        "dsk_preset_unsupported": "⚠️ Connection type '{t}' cannot run probes (LIMIT-incompatible).",
+        "dsk_preset_unsupported": "Connection type '{t}' cannot run probes (LIMIT-incompatible).",
         "dsk_ds_type": "Datasource type",
         "dsk_host": "Host",
         "dsk_port": "Port",
@@ -61,8 +61,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_conn_fail": "❌ Connection failed: {err}",
         "dsk_verify_btn": "Verify Skew (live data)",
         "dsk_verify_running": "Probing key distributions on the database…",
-        "dsk_verify_need_conn": "⚠️ Connect a data source first.",
-        "dsk_verify_need_analyze": "⚠️ Run an analysis first, then verify.",
+        "dsk_verify_need_conn": "◐ Connect a data source first.",
+        "dsk_verify_need_analyze": "◐ Run an analysis first, then verify.",
         "dsk_sample": "Probe sampling",
         "dsk_sample_full": "Full scan (no sampling)",
         # --- SQL file upload / analysis history ---
@@ -84,7 +84,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "No probeable base-table keys were found in the script "
             "(subquery-only keys cannot be probed)."
         ),
-        "prb_summary_confirmed": "⛔ Measured data confirms skew on {n} key(s).",
+        "prb_summary_confirmed": "● Measured data confirms skew on {n} key(s).",
         "prb_summary_clean": "✅ No significant skew measured on the probed keys.",
         "prb_col_target": "Table.Column",
         "prb_col_reason": "Probed because",
@@ -97,8 +97,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_reason_group_key": "GROUP BY key",
         "prb_reason_window_key": "window PARTITION BY key",
         "prb_reason_distinct_key": "leading DISTINCT column",
-        "prb_verdict_confirmed": "⛔ skew confirmed",
-        "prb_verdict_suspect": "⚠️ mild skew",
+        "prb_verdict_confirmed": "● skew confirmed",
+        "prb_verdict_suspect": "◐ mild skew",
         "prb_verdict_ok": "✅ balanced",
         "prb_verdict_empty": "empty table",
         "prb_verdict_error": "probe failed",
@@ -113,7 +113,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "partition_column will be measured against the connected database…"
         ),
         "spk_btn": "Check split key",
-        "spk_need_conn": "⚠️ Connect a data source first (the split key is measured on real data).",
+        "spk_need_conn": "◐ Connect a data source first (the split key is measured on real data).",
         "spk_empty_conf": "❌ Paste a SeaTunnel job config first.",
         "spk_parse_fail": "❌ Could not parse the config: {err}",
         "spk_no_source": "❌ No source block with a table/query was found in the config.",
@@ -134,10 +134,10 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "spk_col_top1": "Top-1 share",
         "spk_col_verdict": "Verdict",
         "spk_verdict_good": "✅ uniform — good split key",
-        "spk_verdict_suspect": "⚠️ mildly skewed — usable, watch task balance",
-        "spk_verdict_bad": "⛔ skewed — one task will read most of the data",
-        "spk_verdict_low_ndv": "⛔ NDV too low for the configured parallelism",
-        "spk_verdict_null": "⛔ NULL-heavy — NULL rows funnel into one split",
+        "spk_verdict_suspect": "◐ mildly skewed — usable, watch task balance",
+        "spk_verdict_bad": "● skewed — one task will read most of the data",
+        "spk_verdict_low_ndv": "● NDV too low for the configured parallelism",
+        "spk_verdict_null": "● NULL-heavy — NULL rows funnel into one split",
         "spk_verdict_error": "probe failed",
         "spk_candidates": "**Candidate split columns (measured, best first)**",
         "spk_no_candidates": (
@@ -155,12 +155,12 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         "spk_recheck_regressed": (
             "🔁 Re-check vs last run ({ts}, key=`{pk}`, verdict {pv}) → now "
-            "{cv} — ⚠️ regression: the key measured fine before, check for "
+            "{cv} — ◐ regression: the key measured fine before, check for "
             "data drift."
         ),
         "spk_recheck_still_bad": (
             "🔁 Re-check vs last run ({ts}, key=`{pk}`, verdict {pv}) → now "
-            "{cv} — ⚠️ still unresolved: switch partition_column to a ranked "
+            "{cv} — ◐ still unresolved: switch partition_column to a ranked "
             "candidate and re-check."
         ),
         "spk_apply_fail": (
@@ -172,7 +172,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "(original backed up as {bak}). Re-run the check to verify."
         ),
         "spk_apply_none": (
-            "ℹ️ Nothing to write back: no usable (good/suspect) key was "
+            "○ Nothing to write back: no usable (good/suspect) key was "
             "measured, or the configured key is already the best choice."
         ),
         "spk_apply_multi": (
@@ -236,7 +236,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "spk_batch_col_table": "Source table",
         "spk_batch_col_key": "Split key",
         "spk_batch_col_best": "Suggested key",
-        "spk_batch_no_key": "⚠️ no split key — single-threaded read",
+        "spk_batch_no_key": "◐ no split key — single-threaded read",
         "spk_batch_keep": "(keep)",
         "spk_batch_hint": (
             "Run `seatunnel-agent skew-splitkey <file>` on a flagged config "
@@ -250,11 +250,11 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         "snk_line": "sink {sink}, option `{opt}`:",
         "snk_verdict_good": "✅ uniform — safe distribution key",
-        "snk_verdict_suspect": "⚠️ mildly hot — watch write balance",
+        "snk_verdict_suspect": "◐ mildly hot — watch write balance",
         "snk_verdict_bad": (
-            "⛔ hot key — writes pile onto one bucket/shard/partition"
+            "● hot key — writes pile onto one bucket/shard/partition"
         ),
-        "snk_verdict_null": "⛔ NULL-heavy — NULL rows land in one bucket",
+        "snk_verdict_null": "● NULL-heavy — NULL rows land in one bucket",
         "snk_hot_note": (
             "A hot sink key materializes the skew into the target's storage "
             "(one bucket/partition keeps growing) — pick a more uniform "
@@ -290,8 +290,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "rt_col_shuf": "Shuffle read p50 → max",
         "rt_col_shuf_ratio": "Ratio",
         "rt_col_verdict": "Verdict",
-        "rt_verdict_confirmed": "⛔ straggler — skewed stage",
-        "rt_verdict_suspect": "⚠️ long tail — watch this stage",
+        "rt_verdict_confirmed": "● straggler — skewed stage",
+        "rt_verdict_suspect": "◐ long tail — watch this stage",
         "rt_verdict_ok": "✅ balanced",
         "rt_more_stages": "*…and {n} more balanced stages.*",
         "rt_sql_map_head": "**Skewed stages mapped to SQL (from the event log)**",
@@ -314,13 +314,13 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "({ds} {host}:{port}/{db}) — enter the password and click Connect."
         ),
         "dsk_conn_handoff_unsupported": (
-            "⚠️ The data source handed over from Data Comparison ({t}) does "
+            "The data source handed over from Data Comparison ({t}) does "
             "not support live probing here — pick a supported type manually."
         ),
         # --- consistency measurement ---
         "cst_btn": "Measure Consistency (runs both SQLs)",
         "cst_running": "Running the original and the optimized SQL for comparison…",
-        "cst_need_opt": "⚠️ Generate the optimized SQL first (LLM mode).",
+        "cst_need_opt": "◐ Generate the optimized SQL first (LLM mode).",
         "cst_section": "## Consistency Measurement (original vs optimized)",
         "cst_not_single": (
             "Only a single SELECT / WITH statement can be measured — the script "
@@ -328,11 +328,11 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         "cst_error": "❌ Measurement failed: {err}",
         "cst_mismatch": (
-            "⛔ Row counts differ: original {a} vs optimized {b} — review the rewrite."
+            "● Row counts differ: original {a} vs optimized {b} — review the rewrite."
         ),
         "cst_match_full": "✅ Row counts match and all {n} rows are identical.",
         "cst_rows_differ": (
-            "⛔ Same row count but the row contents differ — review the rewrite."
+            "● Same row count but the row contents differ — review the rewrite."
         ),
         "cst_match_count": (
             "✅ Row counts match (result too large for a row-level diff)."
@@ -342,7 +342,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "agree on all {n} shared column(s) (result too large for a row-level diff)."
         ),
         "cst_agg_differ": (
-            "⛔ Same row count but per-column aggregates differ across the {n} "
+            "● Same row count but per-column aggregates differ across the {n} "
             "shared column(s) — review the rewrite."
         ),
         "cst_col_metric": "Metric",
@@ -377,8 +377,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "rpt_source_llm": "LLM",
         "rpt_consistency": "## Consistency Check",
         "rpt_optimized_file": "Optimized SQL written to",
-        "rpt_verdict_high": "⛔ High skew risk: {n} high-risk pattern(s) found — fix before running on large data.",
-        "rpt_verdict_medium": "⚠️ Potential skew: {n} finding(s) worth reviewing.",
+        "rpt_verdict_high": "● High skew risk: {n} high-risk pattern(s) found — fix before running on large data.",
+        "rpt_verdict_medium": "◐ Potential skew: {n} finding(s) worth reviewing.",
         "rpt_verdict_clean": "✅ No obvious skew pattern found at the syntax level.",
         "rpt_engine_hints": "## Engine-Level Hints",
     },
@@ -403,7 +403,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_download_report": "下载报告（.md）",
         "dsk_lang": "语言",
         "dsk_empty_sql": "❌ 请先粘贴 SQL 脚本。",
-        "dsk_llm_unavailable": "⚠️ LLM 未配置（缺少 API Key）——仅展示静态扫描结果。",
+        "dsk_llm_unavailable": "LLM 未配置（缺少 API Key）——仅展示静态扫描结果。",
         "dsk_running_static": "正在执行静态倾斜扫描…",
         "dsk_running_llm": "LLM 正在分析并改写 SQL…",
         "dsk_error": "错误",
@@ -413,7 +413,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_preset_dd": "已保存连接",
         "dsk_preset_load": "读取已保存连接",
         "dsk_preset_none": "暂无已保存连接——可在设置页添加。",
-        "dsk_preset_unsupported": "⚠️ 连接类型 '{t}' 不支持探查（不兼容 LIMIT）。",
+        "dsk_preset_unsupported": "连接类型 '{t}' 不支持探查（不兼容 LIMIT）。",
         "dsk_ds_type": "数据源类型",
         "dsk_host": "主机",
         "dsk_port": "端口",
@@ -426,8 +426,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "dsk_conn_fail": "❌ 连接失败：{err}",
         "dsk_verify_btn": "验证倾斜（实测数据）",
         "dsk_verify_running": "正在探查数据库中键值分布…",
-        "dsk_verify_need_conn": "⚠️ 请先连接数据源。",
-        "dsk_verify_need_analyze": "⚠️ 请先执行一次分析，再进行验证。",
+        "dsk_verify_need_conn": "◐ 请先连接数据源。",
+        "dsk_verify_need_analyze": "◐ 请先执行一次分析，再进行验证。",
         "dsk_sample": "探查采样",
         "dsk_sample_full": "全量（不采样）",
         # --- SQL file upload / analysis history ---
@@ -446,7 +446,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         # --- probe section ---
         "prb_section": "## 倾斜验证（实测）",
         "prb_no_targets": "脚本中未解析到可探查的基表键（仅子查询内的键无法探查）。",
-        "prb_summary_confirmed": "⛔ 实测数据确认 {n} 个键存在倾斜。",
+        "prb_summary_confirmed": "● 实测数据确认 {n} 个键存在倾斜。",
         "prb_summary_clean": "✅ 探查的键未测得明显倾斜。",
         "prb_col_target": "表.列",
         "prb_col_reason": "探查原因",
@@ -459,8 +459,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "prb_reason_group_key": "GROUP BY 分组键",
         "prb_reason_window_key": "窗口 PARTITION BY 键",
         "prb_reason_distinct_key": "DISTINCT 首列",
-        "prb_verdict_confirmed": "⛔ 确认倾斜",
-        "prb_verdict_suspect": "⚠️ 轻度倾斜",
+        "prb_verdict_confirmed": "● 确认倾斜",
+        "prb_verdict_suspect": "◐ 轻度倾斜",
         "prb_verdict_ok": "✅ 分布均衡",
         "prb_verdict_empty": "空表",
         "prb_verdict_error": "探查失败",
@@ -475,7 +475,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "partition_column 分布是否均匀…"
         ),
         "spk_btn": "体检分片键",
-        "spk_need_conn": "⚠️ 请先连接数据源（分片键需在真实数据上实测）。",
+        "spk_need_conn": "◐ 请先连接数据源（分片键需在真实数据上实测）。",
         "spk_empty_conf": "❌ 请先粘贴 SeaTunnel 作业配置。",
         "spk_parse_fail": "❌ 配置解析失败：{err}",
         "spk_no_source": "❌ 配置中未找到带 table/query 的 source 块。",
@@ -493,10 +493,10 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "spk_col_top1": "Top-1 占比",
         "spk_col_verdict": "判定",
         "spk_verdict_good": "✅ 分布均匀——适合作分片键",
-        "spk_verdict_suspect": "⚠️ 轻度倾斜——可用，注意 task 均衡",
-        "spk_verdict_bad": "⛔ 倾斜——单个 task 将读取大部分数据",
-        "spk_verdict_low_ndv": "⛔ 基数过低，撑不起配置的并行度",
-        "spk_verdict_null": "⛔ NULL 过多——NULL 行会集中到同一分片",
+        "spk_verdict_suspect": "◐ 轻度倾斜——可用，注意 task 均衡",
+        "spk_verdict_bad": "● 倾斜——单个 task 将读取大部分数据",
+        "spk_verdict_low_ndv": "● 基数过低，撑不起配置的并行度",
+        "spk_verdict_null": "● NULL 过多——NULL 行会集中到同一分片",
         "spk_verdict_error": "探查失败",
         "spk_candidates": "**候选分片列（实测，优先级从高到低）**",
         "spk_no_candidates": "该表未能实测到数值/日期类候选列。",
@@ -512,11 +512,11 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         "spk_recheck_regressed": (
             "🔁 复测对比：上次体检（{ts}，key=`{pk}`，判定 {pv}）→ 本次判定 "
-            "{cv} —— ⚠️ 出现退化：该键此前实测正常，请排查数据分布变化。"
+            "{cv} —— ◐ 出现退化：该键此前实测正常，请排查数据分布变化。"
         ),
         "spk_recheck_still_bad": (
             "🔁 复测对比：上次体检（{ts}，key=`{pk}`，判定 {pv}）→ 本次判定 "
-            "{cv} —— ⚠️ 仍未解决：请按候选列修改 partition_column 后再次体检。"
+            "{cv} —— ◐ 仍未解决：请按候选列修改 partition_column 后再次体检。"
         ),
         "spk_apply_fail": "❌ 无法在配置文本中定位写入点，未做任何修改。",
         "spk_apply_done": (
@@ -524,7 +524,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "请重新体检验证。"
         ),
         "spk_apply_none": (
-            "ℹ️ 没有可写回的推荐分片键：未实测到 good/suspect 的键，"
+            "○ 没有可写回的推荐分片键：未实测到 good/suspect 的键，"
             "或现配置已是最优。"
         ),
         "spk_apply_multi": (
@@ -578,7 +578,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "spk_batch_col_table": "source 表",
         "spk_batch_col_key": "分片键",
         "spk_batch_col_best": "建议键",
-        "spk_batch_no_key": "⚠️ 未配置分片键——单线程读取",
+        "spk_batch_no_key": "◐ 未配置分片键——单线程读取",
         "spk_batch_keep": "（保持现配置）",
         "spk_batch_hint": (
             "对被标记的配置运行 `seatunnel-agent skew-splitkey <文件>` "
@@ -591,9 +591,9 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         "snk_line": "sink {sink}，选项 `{opt}`：",
         "snk_verdict_good": "✅ 均匀——可放心作分布键",
-        "snk_verdict_suspect": "⚠️ 轻度热点——关注写入均衡",
-        "snk_verdict_bad": "⛔ 热点键——写入会集中到同一分桶/分片/分区",
-        "snk_verdict_null": "⛔ NULL 过多——NULL 行会落入同一分桶",
+        "snk_verdict_suspect": "◐ 轻度热点——关注写入均衡",
+        "snk_verdict_bad": "● 热点键——写入会集中到同一分桶/分片/分区",
+        "snk_verdict_null": "● NULL 过多——NULL 行会落入同一分桶",
         "snk_hot_note": (
             "热点 sink 键会把倾斜物化到目标端存储（某个分桶/分区持续膨胀）"
             "——建议换更均匀的列或使用组合键。"
@@ -625,8 +625,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "rt_col_shuf": "shuffle 读 p50 → max",
         "rt_col_shuf_ratio": "倍数",
         "rt_col_verdict": "判定",
-        "rt_verdict_confirmed": "⛔ 拖尾任务——确认倾斜",
-        "rt_verdict_suspect": "⚠️ 长尾——建议关注",
+        "rt_verdict_confirmed": "● 拖尾任务——确认倾斜",
+        "rt_verdict_suspect": "◐ 长尾——建议关注",
         "rt_verdict_ok": "✅ 均衡",
         "rt_more_stages": "*……其余 {n} 个 stage 均衡。*",
         "rt_sql_map_head": "**倾斜 stage 对应的 SQL（来自 event log）**",
@@ -647,25 +647,25 @@ DSK_I18N: dict[str, dict[str, str]] = {
             "请补密码后点连接。"
         ),
         "dsk_conn_handoff_unsupported": (
-            "⚠️ 数据比对页带入的数据源类型（{t}）不支持在此实测——"
+            "数据比对页带入的数据源类型（{t}）不支持在此实测——"
             "请手动选择支持的类型。"
         ),
         # --- consistency measurement ---
         "cst_btn": "一致性实测（运行两版 SQL）",
         "cst_running": "正在运行原 SQL 与优化后 SQL 进行对比…",
-        "cst_need_opt": "⚠️ 请先在 LLM 模式下生成优化后 SQL。",
+        "cst_need_opt": "◐ 请先在 LLM 模式下生成优化后 SQL。",
         "cst_section": "## 一致性实测（原 SQL vs 优化 SQL）",
         "cst_not_single": (
             "仅支持单条 SELECT / WITH 查询的实测对比——脚本包含多条语句或写操作，"
             "未执行。"
         ),
         "cst_error": "❌ 实测失败：{err}",
-        "cst_mismatch": "⛔ 行数不一致：原 {a} 行 vs 优化后 {b} 行——请人工复核改写。",
+        "cst_mismatch": "● 行数不一致：原 {a} 行 vs 优化后 {b} 行——请人工复核改写。",
         "cst_match_full": "✅ 行数一致，且全部 {n} 行结果完全一致。",
-        "cst_rows_differ": "⛔ 行数一致但结果内容存在差异——请人工复核改写。",
+        "cst_rows_differ": "● 行数一致但结果内容存在差异——请人工复核改写。",
         "cst_match_count": "✅ 行数一致（结果集较大，未逐行比对）。",
         "cst_agg_match": "✅ 行数一致，且 {n} 个同名列的 COUNT / COUNT DISTINCT / MIN / MAX 逐列一致（结果集较大，未逐行比对）。",
-        "cst_agg_differ": "⛔ 行数一致但 {n} 个同名列的逐列聚合值存在差异——请人工复核改写。",
+        "cst_agg_differ": "● 行数一致但 {n} 个同名列的逐列聚合值存在差异——请人工复核改写。",
         "cst_col_metric": "指标",
         "cst_col_orig": "原 SQL",
         "cst_col_opt": "优化后 SQL",
@@ -698,8 +698,8 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "rpt_source_llm": "LLM",
         "rpt_consistency": "## 一致性检查",
         "rpt_optimized_file": "优化后 SQL 已写入",
-        "rpt_verdict_high": "⛔ 高倾斜风险：发现 {n} 处高风险写法——建议在大数据量运行前修复。",
-        "rpt_verdict_medium": "⚠️ 潜在倾斜：{n} 处发现值得排查。",
+        "rpt_verdict_high": "● 高倾斜风险：发现 {n} 处高风险写法——建议在大数据量运行前修复。",
+        "rpt_verdict_medium": "◐ 潜在倾斜：{n} 处发现值得排查。",
         "rpt_verdict_clean": "✅ 语法层面未发现明显倾斜写法。",
         "rpt_engine_hints": "## 引擎参数建议",
     },

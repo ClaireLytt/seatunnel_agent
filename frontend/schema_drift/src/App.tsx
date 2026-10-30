@@ -6,7 +6,6 @@ import { ApiError, diff } from '@/api'
 import { ReportView } from '@shared/components/ReportView'
 import { fieldCls, labelCls, textareaCls, DIALECTS } from '@shared/constants'
 
-
 export default function App() {
   const { t, i18n } = useTranslation()
   const [dialect, setDialect] = useState('hive')
@@ -29,7 +28,7 @@ export default function App() {
       if (e instanceof ApiError && e.code === 'bad_path') {
         setError(t('bad_path') + e.path)
       } else if (e instanceof ApiError && e.code === 'diff_failed') {
-        setError(`⚠️ ${e.error}`)  // legacy "⚠️ Type: msg" parity
+        setError(`${e.error}`) // legacy "Type: msg" parity
       } else {
         setError(String(e instanceof Error ? e.message : e))
       }
@@ -69,7 +68,11 @@ export default function App() {
         <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-[420px]">
           <Card>
             <label className={labelCls}>{t('dialect_label')}</label>
-            <select value={dialect} onChange={(e) => setDialect(e.target.value)} className={fieldCls}>
+            <select
+              value={dialect}
+              onChange={(e) => setDialect(e.target.value)}
+              className={fieldCls}
+            >
               {DIALECTS.map((d) => (
                 <option key={d} value={d}>
                   {d}

@@ -70,9 +70,11 @@ export function AgentPanel({
       })
     } catch (e) {
       setProgress('')
-      setAnswer(e instanceof ApiError && e.code === 'need_graph'
-        ? t('need_graph')
-        : String(e instanceof Error ? e.message : e))
+      setAnswer(
+        e instanceof ApiError && e.code === 'need_graph'
+          ? t('need_graph')
+          : String(e instanceof Error ? e.message : e),
+      )
     } finally {
       setBusy(false)
     }

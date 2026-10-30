@@ -47,7 +47,7 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
     "rows_label": {"en": "Rows per table", "zh": "每表行数"},
     "validate_label": {"en": "Validate on SQLite", "zh": "SQLite 验证"},
     "gen_btn": {"en": "Generate", "zh": "生成测试数据"},
-    "empty_sql": {"en": "⚠️ Paste a query first.", "zh": "⚠️ 请先粘贴查询 SQL。"},
+    "empty_sql": {"en": "Paste a query first.", "zh": "请先粘贴查询 SQL。"},
 }
 
 

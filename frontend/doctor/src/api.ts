@@ -8,10 +8,7 @@ export interface DiagnoseResponse {
   elapsed_ms: number
 }
 
-export function diagnose(
-  complaint: string,
-  lang: string,
-): Promise<DiagnoseResponse> {
+export function diagnose(complaint: string, lang: string): Promise<DiagnoseResponse> {
   return fetchJson(`${BASE}/diagnose`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

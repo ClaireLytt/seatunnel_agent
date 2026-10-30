@@ -131,10 +131,12 @@ export default function App() {
               </div>
             )}
             {result && result.conf && <ConfView conf={result.conf} />}
-            {result && <div className="mt-4"><ReportView className="cm-report" markdown={result.report} /></div>}
-            {!result && !error && (
-              <p className="text-sm text-muted">{t('job_ph')}</p>
+            {result && (
+              <div className="mt-4">
+                <ReportView className="cm-report" markdown={result.report} />
+              </div>
             )}
+            {!result && !error && <p className="text-sm text-muted">{t('job_ph')}</p>}
           </Card>
         </main>
       </div>

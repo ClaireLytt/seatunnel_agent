@@ -202,7 +202,7 @@ def test_render_respects_top_limit():
                    for i in range(8))
     report = scan_text(text)
     md = render_markdown(report, "zh", top=3)
-    assert md.count("### ⛔ 簇") == 3
+    assert md.count("### ● 簇") == 3
 
 
 def test_report_to_dict_is_json_serializable():

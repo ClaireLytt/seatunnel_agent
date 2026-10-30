@@ -58,7 +58,9 @@ export default function App() {
           </Card>
 
           <Card>
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">{t('dir_hint')}</p>
+            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+              {t('dir_hint')}
+            </p>
             <code className="mt-2 block rounded bg-[var(--grid)] px-2 py-1 font-mono text-xs text-ink">
               seatunnel-agent secretscan --fail-on high
             </code>

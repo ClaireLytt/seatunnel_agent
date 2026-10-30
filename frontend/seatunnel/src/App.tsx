@@ -60,15 +60,18 @@ export default function App() {
     refreshSessions()
   }, [refreshSessions])
 
-  const onLoadSession = useCallback(async (id: string) => {
-    try {
-      const d = await loadSession(id)
-      setChat((c) => ({ key: c.key + 1, id: d.id, messages: d.messages }))
-    } catch {
-      /* stale entry: refresh the list */
-      refreshSessions()
-    }
-  }, [refreshSessions])
+  const onLoadSession = useCallback(
+    async (id: string) => {
+      try {
+        const d = await loadSession(id)
+        setChat((c) => ({ key: c.key + 1, id: d.id, messages: d.messages }))
+      } catch {
+        /* stale entry: refresh the list */
+        refreshSessions()
+      }
+    },
+    [refreshSessions],
+  )
 
   const onRenameSession = useCallback(
     async (id: string, title: string) => {
@@ -110,7 +113,9 @@ export default function App() {
     try {
       const res = await connect()
       setStatus(
-        res.ok ? t('connected', { model: res.model }) : `❌ ${t('connectFailed', { error: res.error })}`,
+        res.ok
+          ? t('connected', { model: res.model })
+          : `❌ ${t('connectFailed', { error: res.error })}`,
       )
     } catch (e) {
       setStatus(`❌ ${t('connectFailed', { error: e instanceof Error ? e.message : String(e) })}`)

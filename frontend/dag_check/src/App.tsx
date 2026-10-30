@@ -6,20 +6,11 @@ import { ApiError, checkDag } from '@/api'
 import { ReportView } from '@/components/ReportView'
 
 // Pinned to the legacy _DIALECTS tuple (agents/data/dag_check/ui.py).
-const DIALECTS = [
-  'hive',
-  'spark',
-  'mysql',
-  'postgresql',
-  'clickhouse',
-  'doris',
-  'starrocks',
-]
+const DIALECTS = ['hive', 'spark', 'mysql', 'postgresql', 'clickhouse', 'doris', 'starrocks']
 
 const fieldCls =
   'w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink'
-const labelCls =
-  'mb-2 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft'
+const labelCls = 'mb-2 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft'
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -51,7 +42,7 @@ export default function App() {
       if (e instanceof ApiError && e.code === 'bad_dir') {
         setError(t('bad_dir') + e.path)
       } else if (e instanceof ApiError && e.code === 'check_failed') {
-        setError(`⚠️ ${e.error}`) // legacy "⚠️ Type: msg" parity
+        setError(`${e.error}`) // legacy "Type: msg" parity
       } else {
         // e.g. 403 whitelist rejection — server detail string, labeled
         setError(t('request_failed') + String(e instanceof Error ? e.message : e))
@@ -85,7 +76,11 @@ export default function App() {
               className={fieldCls}
             />
             <label className={`${labelCls} mt-3`}>{t('dialect_label')}</label>
-            <select value={dialect} onChange={(e) => setDialect(e.target.value)} className={fieldCls}>
+            <select
+              value={dialect}
+              onChange={(e) => setDialect(e.target.value)}
+              className={fieldCls}
+            >
               {DIALECTS.map((d) => (
                 <option key={d} value={d}>
                   {d}

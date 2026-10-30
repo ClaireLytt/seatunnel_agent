@@ -10,7 +10,7 @@ export interface AskResponse {
   elapsed_ms: number
 }
 
-// Errors surface as ApiError{status, detail}; the page shows ⚠️ detail.
+// Errors surface as ApiError{status, detail}; the page shows detail.
 // `k` is not sent — the endpoint default (4) matches the old Gradio page.
 export function ask(question: string, llm: boolean, lang: string): Promise<AskResponse> {
   return fetchJson(`${BASE}/ask`, {

@@ -394,7 +394,7 @@ def test_cli_utf8_stdio_helper(monkeypatch):
     monkeypatch.setattr(_sys, "stdout", gbk_out)
     _ensure_utf8_stdio()
     assert _sys.stdout.encoding.lower().replace("-", "") == "utf8"
-    _sys.stdout.write("❌ ⚠️ 变更影响")  # must not raise
+    _sys.stdout.write("❌ 变更影响")  # must not raise
     _sys.stdout.flush()
 
 

@@ -42,8 +42,8 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
     "report_ph": {"en": "▶ Root-cause clusters, flaky jobs and duration "
                         "drift appear here.",
                   "zh": "▶ 分析后在此显示根因聚类、flaky 作业与时长漂移。"},
-    "empty": {"en": "⚠️ Paste a log or runs JSON first.",
-              "zh": "⚠️ 请先粘贴日志或 runs JSON。"},
+    "empty": {"en": "Paste a log or runs JSON first.",
+              "zh": "请先粘贴日志或 runs JSON。"},
 }
 
 

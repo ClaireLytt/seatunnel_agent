@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from seatunnel_agent.common.severity import LEVEL_MARK as _LEVEL_MARK
 from seatunnel_agent.common.utils import normalize_lang
 
 from .i18n import issue_message, issue_suggestion, tp
 from .transpiler import BatchResult, Issue, TranspileResult
-
-_LEVEL_MARK = {"error": "❌", "warn": "⚠️", "info": "ℹ️"}
 
 
 def _issue_line(issue: Issue, lang: str) -> str:

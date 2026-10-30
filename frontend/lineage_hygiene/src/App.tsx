@@ -6,7 +6,6 @@ import { ApiError, scan } from '@/api'
 import { ReportView } from '@shared/components/ReportView'
 import { fieldCls, labelCls, DIALECTS } from '@shared/constants'
 
-
 export default function App() {
   const { t, i18n } = useTranslation()
   const [dir, setDir] = useState('examples/pii_demo')
@@ -27,7 +26,7 @@ export default function App() {
       if (e instanceof ApiError && e.code === 'bad_dir') {
         setError(t('bad_dir') + e.path)
       } else if (e instanceof ApiError && e.code === 'hygiene_failed') {
-        setError(`⚠️ ${e.error}`)
+        setError(`${e.error}`)
       } else {
         setError(String(e instanceof Error ? e.message : e))
       }
@@ -70,7 +69,11 @@ export default function App() {
               className={fieldCls}
             />
             <label className={`${labelCls} mt-3`}>{t('dialect_label')}</label>
-            <select value={dialect} onChange={(e) => setDialect(e.target.value)} className={fieldCls}>
+            <select
+              value={dialect}
+              onChange={(e) => setDialect(e.target.value)}
+              className={fieldCls}
+            >
               {DIALECTS.map((d) => (
                 <option key={d} value={d}>
                   {d}

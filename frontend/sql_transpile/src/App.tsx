@@ -3,19 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { TRANSPILE_SQL_KEY } from '@shared/bridge'
-import {
-  ApiError,
-  fetchDialects,
-  requestAdvice,
-  translateBatch,
-  translateSql,
-} from '@/api'
+import { ApiError, fetchDialects, requestAdvice, translateBatch, translateSql } from '@/api'
 import { ReportView } from '@shared/components/ReportView'
 import { SqlView } from '@/components/SqlView'
 import { fieldCls, labelCls } from '@shared/constants'
 
 const FALLBACK_DIALECTS = ['hive', 'spark', 'doris', 'starrocks']
-
 
 export default function App() {
   const { t, i18n } = useTranslation()
@@ -35,7 +28,9 @@ export default function App() {
   const [advising, setAdvising] = useState(false)
 
   useEffect(() => {
-    fetchDialects().then(setDialects).catch(() => {})
+    fetchDialects()
+      .then(setDialects)
+      .catch(() => {})
     // SQL handed over from the review page (localStorage bridge) — drain it
     try {
       const handed = localStorage.getItem(TRANSPILE_SQL_KEY)
@@ -110,7 +105,7 @@ export default function App() {
       const res = await requestAdvice(advised.sql, advised.to, advised.from, i18n.language)
       if (res.status === 'ok' && res.advice) setAdvice(res.advice)
       else if (res.status === 'no_key') setAdvice(t('advice_no_key'))
-      else if (res.status === 'error') setAdvice(`⚠️ ${res.detail ?? 'LLM error'}`)
+      else if (res.status === 'error') setAdvice(`${res.detail ?? 'LLM error'}`)
       else setAdvice(t('advice_none'))
     } catch (e) {
       setAdvice(String(e))

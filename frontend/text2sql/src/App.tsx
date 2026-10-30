@@ -152,7 +152,13 @@ export default function App() {
         ) : session && view === 'schema' ? (
           <SchemaBrowser session={session} />
         ) : session ? (
-          <ChatPanel session={session} onSessionReset={setSession} seed={seed} prefill={prefill} onPrefillUsed={() => setPrefill('')} />
+          <ChatPanel
+            session={session}
+            onSessionReset={setSession}
+            seed={seed}
+            prefill={prefill}
+            onPrefillUsed={() => setPrefill('')}
+          />
         ) : (
           <div className="st-session rounded border border-line bg-card p-4 font-mono text-sm text-muted">
             —

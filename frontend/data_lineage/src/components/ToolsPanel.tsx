@@ -43,7 +43,9 @@ export function ToolsPanel({
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    listSnapshots().then((r) => setSnaps(r.snapshots)).catch(() => {})
+    listSnapshots()
+      .then((r) => setSnaps(r.snapshots))
+      .catch(() => {})
   }, [])
 
   const guard = async (fn: () => Promise<void>) => {
@@ -68,9 +70,13 @@ export function ToolsPanel({
     }
     void guard(async () => {
       const res = await search(src(), keyword.trim())
-      setSearchMd(res.matches.length
-        ? res.matches.map((m) => (m.layer ? `• ${m.name}（${m.layer}）` : `• ${m.name}`)).join('\n')
-        : t('no_match', { kw: keyword.trim() }))
+      setSearchMd(
+        res.matches.length
+          ? res.matches
+              .map((m) => (m.layer ? `• ${m.name}（${m.layer}）` : `• ${m.name}`))
+              .join('\n')
+          : t('no_match', { kw: keyword.trim() }),
+      )
     })
   }
 
@@ -103,7 +109,7 @@ export function ToolsPanel({
       setSnapMd(t('snap_saved', { file: res.file }))
       const list = await listSnapshots()
       setSnaps(list.snapshots)
-      setSnapPick(res.file)  // legacy auto-selected the fresh snapshot
+      setSnapPick(res.file) // legacy auto-selected the fresh snapshot
     })
 
   const doDiffSnap = () => {
@@ -134,13 +140,17 @@ export function ToolsPanel({
           </button>
         </div>
         {searchMd && (
-          <pre className="mt-2 whitespace-pre-wrap font-mono text-[12px] text-muted">{searchMd}</pre>
+          <pre className="mt-2 whitespace-pre-wrap font-mono text-[12px] text-muted">
+            {searchMd}
+          </pre>
         )}
       </Card>
 
       <Card>
         <h2 className="mb-3 font-display text-base font-bold text-ink">{t('adv_heading')}</h2>
-        <label className={labelCls} title={t('path_dst_info')}>{t('path_dst_label')}</label>
+        <label className={labelCls} title={t('path_dst_info')}>
+          {t('path_dst_label')}
+        </label>
         <div className="flex gap-2">
           <input
             list="lin-tables-dst"
@@ -186,13 +196,21 @@ export function ToolsPanel({
             spellCheck={false}
             className={fieldCls}
           />
-          <button onClick={doSaveSnap} disabled={busy} className={`${smallBtnCls} whitespace-nowrap`}>
+          <button
+            onClick={doSaveSnap}
+            disabled={busy}
+            className={`${smallBtnCls} whitespace-nowrap`}
+          >
             {t('save_snap_btn')}
           </button>
         </div>
         <label className={`${labelCls} mt-3`}>{t('snap_dd_label')}</label>
         <div className="flex gap-2">
-          <select value={snapPick} onChange={(e) => setSnapPick(e.target.value)} className={fieldCls}>
+          <select
+            value={snapPick}
+            onChange={(e) => setSnapPick(e.target.value)}
+            className={fieldCls}
+          >
             <option value=""></option>
             {snaps.map((s) => (
               <option key={s.file} value={s.file}>
@@ -200,7 +218,11 @@ export function ToolsPanel({
               </option>
             ))}
           </select>
-          <button onClick={doDiffSnap} disabled={busy} className={`${smallBtnCls} whitespace-nowrap`}>
+          <button
+            onClick={doDiffSnap}
+            disabled={busy}
+            className={`${smallBtnCls} whitespace-nowrap`}
+          >
             {t('diff_snap_btn')}
           </button>
         </div>

@@ -163,17 +163,15 @@ export function Chat({
             </div>
             <div className="st-empty-title font-mono text-sm text-muted">{emptyHint}</div>
             <div className="st-empty-hints flex flex-wrap justify-center gap-2">
-              {(['placeholderHint1', 'placeholderHint2', 'placeholderHint3'] as const).map(
-                (k) => (
-                  <button
-                    key={k}
-                    onClick={() => setInput(t(k))}
-                    className="st-hint-card rounded border border-line bg-card px-3 py-2 font-mono text-xs text-fg transition hover:border-ink"
-                  >
-                    {t(k)}
-                  </button>
-                ),
-              )}
+              {(['placeholderHint1', 'placeholderHint2', 'placeholderHint3'] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setInput(t(k))}
+                  className="st-hint-card rounded border border-line bg-card px-3 py-2 font-mono text-xs text-fg transition hover:border-ink"
+                >
+                  {t(k)}
+                </button>
+              ))}
             </div>
             <a
               href="https://github.com/ClaireLytt/seatunnel_agent#readme"

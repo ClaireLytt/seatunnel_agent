@@ -28,7 +28,7 @@ export function PriceTable() {
         {t('priceAcc')}
       </summary>
       {error ? (
-        <p className="mt-3 font-mono text-sm text-ink">⚠️ {error}</p>
+        <p className="mt-3 font-mono text-sm text-ink">{error}</p>
       ) : resp ? (
         <div className="mt-3">
           <p className="font-mono text-xs text-muted">

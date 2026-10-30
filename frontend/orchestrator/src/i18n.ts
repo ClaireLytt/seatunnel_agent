@@ -19,8 +19,7 @@ const resources = {
       inputPh: 'e.g. Review this SQL and then format it: SELECT …',
       send: 'Send',
       newSession: 'New session',
-      noKey:
-        '⚠️ No LLM configured — suggestions only. Configure an API key on the Settings page.',
+      noKey: 'No LLM configured — suggestions only. Configure an API key on the Settings page.',
       working: '⏳ Routing & running agents…',
       home: 'Home',
       agentsAcc: 'Routable agents',
@@ -55,7 +54,7 @@ const resources = {
       inputPh: '例如:帮我审查这段 SQL 然后格式化:SELECT …',
       send: '发送',
       newSession: '新会话',
-      noKey: '⚠️ 未配置 LLM — 仅能做关键词推荐。请到设置页配置 API key。',
+      noKey: '未配置 LLM — 仅能做关键词推荐。请到设置页配置 API key。',
       working: '⏳ 正在路由并执行 agent…',
       home: '首页',
       agentsAcc: '可路由的 agent',

@@ -151,7 +151,7 @@ export default function App() {
                 key={i}
                 className="max-w-[90%] rounded border border-accent px-3 py-2 font-mono text-sm text-accent"
               >
-                ⚠️ {it.text}
+                {it.text}
               </div>
             ) : (
               <div

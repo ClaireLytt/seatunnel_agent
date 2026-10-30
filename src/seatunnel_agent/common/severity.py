@@ -9,3 +9,7 @@ in any font: ● high, ◐ medium, ○ low.
 from __future__ import annotations
 
 SEVERITY_MARK = {"high": "●", "medium": "◐", "low": "○"}
+
+# the error/warn/info and breaking/risk/info families share the same scale
+LEVEL_MARK = {"error": "●", "warn": "◐", "info": "○"}
+DRIFT_MARK = {"breaking": "●", "risk": "◐", "info": "○"}

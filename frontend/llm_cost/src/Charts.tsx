@@ -14,13 +14,7 @@ import {
 } from 'recharts'
 import type { Summary } from '@/api'
 
-const PALETTE = [
-  'var(--ink)',
-  'var(--accent)',
-  'var(--ok)',
-  'var(--ink-soft)',
-  'var(--muted)',
-]
+const PALETTE = ['var(--ink)', 'var(--accent)', 'var(--ok)', 'var(--ink-soft)', 'var(--muted)']
 
 const tickStyle = { fill: 'var(--muted)', fontSize: 10, fontFamily: 'IBM Plex Mono' }
 const tooltipStyle = {
@@ -55,12 +49,7 @@ export function CostChart({ summary, budget }: { summary: Summary; budget: numbe
             axisLine={{ stroke: 'var(--line)' }}
             tickLine={false}
           />
-          <YAxis
-            tick={tickStyle}
-            axisLine={{ stroke: 'var(--line)' }}
-            tickLine={false}
-            unit=""
-          />
+          <YAxis tick={tickStyle} axisLine={{ stroke: 'var(--line)' }} tickLine={false} unit="" />
           <Tooltip
             cursor={{ fill: 'var(--grid)' }}
             contentStyle={tooltipStyle}
@@ -125,11 +114,7 @@ export function TokensChart({ summary }: { summary: Summary }) {
             tickLine={false}
             interval={0}
           />
-          <YAxis
-            tick={tickStyle}
-            axisLine={{ stroke: 'var(--line)' }}
-            tickLine={false}
-          />
+          <YAxis tick={tickStyle} axisLine={{ stroke: 'var(--line)' }} tickLine={false} />
           <Tooltip cursor={{ fill: 'var(--grid)' }} contentStyle={tooltipStyle} />
           <Legend wrapperStyle={{ fontFamily: 'IBM Plex Mono', fontSize: 11 }} />
           <Bar

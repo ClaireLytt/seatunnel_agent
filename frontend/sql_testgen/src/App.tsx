@@ -15,7 +15,6 @@ JOIN dwd.order_pay o ON u.user_id = o.user_id
 WHERE o.dt = '2024-01-01' AND o.status IN ('PAID', 'DONE')
 GROUP BY u.user_id, u.user_name`
 
-
 export default function App() {
   const { t, i18n } = useTranslation()
   const [sql, setSql] = useState(DEMO_SQL)

@@ -237,7 +237,7 @@ def test_compare_query_results(tools, tmp_path):
     assert "✅" in same
     diff = tools["compare_query_results"](
         "dev-a", "SELECT id FROM t", "SELECT id FROM t WHERE id > 1")
-    assert "⛔" in diff
+    assert "●" in diff  # verdict mark comes from data_skew i18n's scale
     guarded = tools["compare_query_results"](
         "dev-a", "SELECT id FROM t", "DELETE FROM t")
     assert "仅支持单条" in guarded or "single" in guarded.lower()

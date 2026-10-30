@@ -145,7 +145,9 @@ export function ScheduleCard({
           {message && <p>{message}</p>}
           {status && (
             <p>
-              {status.active ? `● ${t('scheduleActive')} — ${status.interval} min` : `○ ${t('scheduleInactive')}`}
+              {status.active
+                ? `● ${t('scheduleActive')} — ${status.interval} min`
+                : `○ ${t('scheduleInactive')}`}
               {status.last_run && ` · ${t('scheduleLastRun')}: ${status.last_run}`}
               {status.last_error && ` · ${t('scheduleLastError')}: ${status.last_error}`}
             </p>

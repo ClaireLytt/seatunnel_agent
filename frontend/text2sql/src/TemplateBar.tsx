@@ -23,9 +23,7 @@ export function TemplateBar({ onSelect }: { onSelect: (hint: string) => void }) 
           onClick={() => {
             const name = lang === 'zh' ? t.name_zh : t.name_en
             const hint =
-              lang === 'zh'
-                ? `使用${name}模式分析 `
-                : `Use the ${name} pattern to analyze `
+              lang === 'zh' ? `使用${name}模式分析 ` : `Use the ${name} pattern to analyze `
             onSelect(hint)
           }}
           title={lang === 'zh' ? t.description_zh : t.description_en}

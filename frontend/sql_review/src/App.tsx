@@ -358,7 +358,9 @@ export default function App() {
           <div className="flex items-start justify-between gap-4">
             <div className="font-mono text-sm text-fg">
               {statsError && <p className="text-[var(--accent)]">{`❌ ${statsError}`}</p>}
-              {!stats && !statsError && <p className="italic text-muted">{t('statsPlaceholder')}</p>}
+              {!stats && !statsError && (
+                <p className="italic text-muted">{t('statsPlaceholder')}</p>
+              )}
               {stats && stats.summary.reviews === 0 && (
                 <p className="text-muted">{t('noRecords')}</p>
               )}
@@ -407,7 +409,6 @@ export default function App() {
           )}
         </Collapsible>
       </section>
-
     </div>
   )
 }

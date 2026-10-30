@@ -9,7 +9,6 @@ export interface FormatResponse {
   elapsed_ms: number
 }
 
-
 export async function formatSql(
   sql: string,
   dialect: string,

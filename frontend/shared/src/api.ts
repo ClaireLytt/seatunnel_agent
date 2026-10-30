@@ -3,7 +3,7 @@
  *
  * The canonical shape is `{ status, detail }`, thrown by `fetchJson` below —
  * `detail` is FastAPI's error detail (falling back to statusText / HTTP code)
- * and doubles as `message`, so pages can show `⚠️ e.message` directly.
+ * and doubles as `message`, so pages can show `e.message` directly.
  *
  * The legacy `(code, path, error)` constructor is kept for workspaces that
  * still build errors from `{ code, path, error }` payloads; new code should

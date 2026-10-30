@@ -339,7 +339,7 @@ def render_attribution_markdown(
         lines.append(f"- 分子变动效应: {_fmt(factor_split['numerator_effect'])}")
         lines.append(f"- 分母变动效应: {_fmt(factor_split['denominator_effect'])}")
         lines.append("- 恒等式: 分子效应 + 分母效应 = Δ"
-                     + ("" if factor_split.get("check_ok") else " ⚠️ 自检未通过"))
+                     + ("" if factor_split.get("check_ok") else " (自检未通过)"))
     for r in results:
         unit = f" {r.unit}" if r.unit else ""
         rate = (f"{r.change_rate * 100:+.2f}%" if r.change_rate is not None
@@ -355,7 +355,7 @@ def render_attribution_markdown(
         for b in r.dimensions:
             lines.append("")
             lines.append(f"### 按 {b.dimension} 分解"
-                         + ("" if b.check_ok else " ⚠️ 自检未通过"))
+                         + ("" if b.check_ok else " (自检未通过)"))
             lines.append("")
             lines.append("| 成员 | 基期 | 当期 | 变动 | 贡献率 |")
             lines.append("|---|---|---|---|---|")

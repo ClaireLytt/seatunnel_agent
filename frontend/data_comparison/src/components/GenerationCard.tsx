@@ -140,12 +140,7 @@ export function GenerationCard({
           value={lineageSql}
           onChange={(e) => setLineageSql(e.target.value)}
         />
-        <button
-          type="button"
-          className={`${smallBtnCls} mt-2`}
-          disabled={busy}
-          onClick={onLineage}
-        >
+        <button type="button" className={`${smallBtnCls} mt-2`} disabled={busy} onClick={onLineage}>
           {t('lineageTitle')}
         </button>
       </Collapsible>

@@ -11,7 +11,7 @@ export interface TriageResponse {
 }
 
 // Errors surface as ApiError{status, detail} (503 = no key, 502 = engine
-// failure); the page shows ⚠️ detail. `issues` is not sent — the endpoint
+// failure); the page shows detail. `issues` is not sent — the endpoint
 // then loads the bundled demo history, like the old Gradio page.
 export function runTriage(title: string, body: string, lang: string): Promise<TriageResponse> {
   return fetchJson(`${BASE}/run`, {

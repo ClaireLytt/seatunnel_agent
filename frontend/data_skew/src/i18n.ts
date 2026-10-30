@@ -45,7 +45,7 @@ const resources = {
       preset_dd: 'Saved connection',
       preset_load: 'Load saved connections',
       preset_none: 'No saved connections — add one on the Settings page.',
-      preset_unsupported: "⚠️ Connection type '{{t}}' cannot run probes (LIMIT-incompatible).",
+      preset_unsupported: "Connection type '{{t}}' cannot run probes (LIMIT-incompatible).",
       ds_type: 'Datasource type',
       sample: 'Probe sampling',
       sample_full: 'Full scan (no sampling)',
@@ -62,7 +62,7 @@ const resources = {
         '🔗 Connection handed over from Data Comparison side B ' +
         '({{ds}} {{host}}:{{port}}/{{db}}) — enter the password and click Connect.',
       conn_handoff_unsupported:
-        '⚠️ The data source handed over from Data Comparison ({{t}}) does not ' +
+        'The data source handed over from Data Comparison ({{t}}) does not ' +
         'support live probing here — pick a supported type manually.',
       verify_running: 'Probing key distributions on the database…',
       cst_running: 'Running the original and the optimized SQL for comparison…',
@@ -129,7 +129,7 @@ const resources = {
       preset_dd: '已保存连接',
       preset_load: '读取已保存连接',
       preset_none: '暂无已保存连接——可在设置页添加。',
-      preset_unsupported: "⚠️ 连接类型 '{{t}}' 不支持探查（不兼容 LIMIT）。",
+      preset_unsupported: "连接类型 '{{t}}' 不支持探查（不兼容 LIMIT）。",
       ds_type: '数据源类型',
       sample: '探查采样',
       sample_full: '全量（不采样）',
@@ -143,10 +143,9 @@ const resources = {
       cst_btn: '一致性实测（运行两版 SQL）',
       conn_status_none: '未连接',
       conn_handoff:
-        '🔗 已带入数据比对页 B 侧连接（{{ds}} {{host}}:{{port}}/{{db}}）' +
-        '——请补密码后点连接。',
+        '🔗 已带入数据比对页 B 侧连接（{{ds}} {{host}}:{{port}}/{{db}}）' + '——请补密码后点连接。',
       conn_handoff_unsupported:
-        '⚠️ 数据比对页带入的数据源类型（{{t}}）不支持在此实测——请手动选择支持的类型。',
+        '数据比对页带入的数据源类型（{{t}}）不支持在此实测——请手动选择支持的类型。',
       verify_running: '正在探查数据库中键值分布…',
       cst_running: '正在运行原 SQL 与优化后 SQL 进行对比…',
       spk_accordion: 'SeaTunnel 分片键体检（粘贴作业配置）',

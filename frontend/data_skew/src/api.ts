@@ -128,15 +128,11 @@ export function splitkey(body: Record<string, unknown>): Promise<SectionResponse
   return post('/splitkey', body)
 }
 
-export function runtimeHistoryServer(
-  body: Record<string, unknown>,
-): Promise<SectionResponse> {
+export function runtimeHistoryServer(body: Record<string, unknown>): Promise<SectionResponse> {
   return post('/runtime/history-server', body)
 }
 
-export function runtimeFlink(
-  body: Record<string, unknown>,
-): Promise<SectionResponse> {
+export function runtimeFlink(body: Record<string, unknown>): Promise<SectionResponse> {
   return post('/runtime/flink', body)
 }
 
@@ -172,9 +168,7 @@ export interface DriftItem {
 }
 
 export async function skewDrift(lang: string): Promise<DriftItem[]> {
-  const data = await request<{ items: DriftItem[] }>(
-    `/drift?lang=${encodeURIComponent(lang)}`,
-  )
+  const data = await request<{ items: DriftItem[] }>(`/drift?lang=${encodeURIComponent(lang)}`)
   return data.items
 }
 

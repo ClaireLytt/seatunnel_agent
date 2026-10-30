@@ -133,12 +133,12 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_skew_ndv": "NDV",
         "dc_skew_no_columns": "Please specify columns to analyze",
         "dc_skew_verdict_mismatch": (
-            "⛔ A/B distributions disagree on: {cols} — if B is synced from A "
+            "● A/B distributions disagree on: {cols} — if B is synced from A "
             "this points at the sync pipeline (split/filter logic): fix the "
             "data first, don't tune the compute."
         ),
         "dc_skew_verdict_both": (
-            "⚠️ Both sides skew the same way on: {cols} — a business fact "
+            "◐ Both sides skew the same way on: {cols} — a business fact "
             "(hot key). Protect downstream GROUP BY/JOIN on this key: see the "
             "Data Skew page for rewrites and engine settings."
         ),
@@ -318,11 +318,11 @@ DC_I18N: dict[str, dict[str, str]] = {
         "dc_skew_ndv": "去重值数",
         "dc_skew_no_columns": "请指定要分析的列",
         "dc_skew_verdict_mismatch": (
-            "⛔ 两侧分布不一致：{cols}——若 B 应同步自 A，先排查同步链路"
+            "● 两侧分布不一致：{cols}——若 B 应同步自 A，先排查同步链路"
             "（分片/过滤逻辑），修数据而不是调计算。"
         ),
         "dc_skew_verdict_both": (
-            "⚠️ 两侧一致倾斜：{cols}——业务事实（热 key）。下游按该键 "
+            "◐ 两侧一致倾斜：{cols}——业务事实（热 key）。下游按该键 "
             "GROUP BY/JOIN 时建议到「数据倾斜」页做改写与引擎参数防护。"
         ),
         "dc_skew_goto_dataskew": "去数据倾斜页分析 →",

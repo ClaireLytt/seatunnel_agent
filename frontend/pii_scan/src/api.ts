@@ -8,7 +8,6 @@ export interface ScanResponse {
   elapsed_ms: number
 }
 
-
 export async function scan(body: {
   sql?: string
   dir?: string

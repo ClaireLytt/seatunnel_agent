@@ -13,7 +13,6 @@ export interface BatchResponse {
   report: string
 }
 
-
 export function migrateText(text: string, lang: string): Promise<MigrateResponse> {
   return fetchJson(`${BASE}/migrate`, {
     method: 'POST',

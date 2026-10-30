@@ -65,9 +65,7 @@ export function Sessions({
           </button>
         </div>
       </div>
-      {sessions.length === 0 && (
-        <p className="font-mono text-sm text-muted">{t('noSessions')}</p>
-      )}
+      {sessions.length === 0 && <p className="font-mono text-sm text-muted">{t('noSessions')}</p>}
       <ul className="max-h-[320px] space-y-1 overflow-y-auto">
         {sessions.map((s) => (
           <li key={s.id} className="group">

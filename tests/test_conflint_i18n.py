@@ -47,10 +47,10 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
                      "e.g. examples/conflint_demo",
                "zh": "包含 *.conf 的目录（递归扫描），如 examples/conflint_demo"},
     "dir_btn": {"en": "Lint directory", "zh": "检查目录"},
-    "empty_conf": {"en": "⚠️ Paste a config first.", "zh": "⚠️ 请先粘贴配置。"},
-    "empty_dir": {"en": "⚠️ Provide a config directory first.",
-                  "zh": "⚠️ 请先填写配置目录。"},
-    "bad_dir": {"en": "⚠️ Not a directory: ", "zh": "⚠️ 不是有效目录: "},
+    "empty_conf": {"en": "Paste a config first.", "zh": "请先粘贴配置。"},
+    "empty_dir": {"en": "Provide a config directory first.",
+                  "zh": "请先填写配置目录。"},
+    "bad_dir": {"en": "Not a directory: ", "zh": "不是有效目录: "},
 }
 
 
