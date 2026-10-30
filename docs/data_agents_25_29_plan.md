@@ -92,3 +92,17 @@ tests/test_<name>.py        # 确定性核心测试
    对账 SQL（FULL OUTER JOIN，只列不一致分区）。
 5. [x] pipeline_migrate：对判定为 SeaTunnel 的 sqoop 任务解析
    --connect/--table 直接给出 SeaTunnel 配置骨架。
+
+## Phase 4 roadmap (chain the agents, real-scheduler fit)
+
+1. [ ] backfill_sql: explicit "dates" list in the spec (non-contiguous slots)
+   + specs_from_plan bridge - feed the backfill planner's plan JSON in,
+   get one ready-to-edit spec per impacted table out.
+2. [ ] dag_optimize: optimized-DAG export - the task JSON with redundant
+   edges removed, pasteable back into any DAG tool.
+3. [ ] rerun_plan: independent recovery groups - connected components of
+   the rerun set, so separate failures can be recovered in parallel.
+4. [ ] sync_strategy: schedule suggestion per latency (streaming / hourly
+   cron / daily cron) in the table and the config stub.
+5. [ ] pipeline_migrate: DataX job JSON support - parse reader/writer,
+   assess and emit the SeaTunnel skeleton like sqoop jobs.
