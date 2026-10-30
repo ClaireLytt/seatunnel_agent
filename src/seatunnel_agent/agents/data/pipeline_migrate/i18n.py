@@ -34,6 +34,8 @@ MIGRATE_I18N: dict[str, dict[str, str]] = {
                             "variant",
         "risk_local_fs": "reads/writes the local filesystem — breaks on a "
                          "cluster",
+        "rpt_order": "Migration order (producers before their consumers)",
+        "rpt_shared": "Shared tables across jobs (cut over together)",
         "rpt_warnings": "Warnings",
         "rpt_disclaimer": ("> Static analysis of the scripts only — nothing "
                            "was executed. Effort is a transparent score over "
@@ -66,6 +68,8 @@ MIGRATE_I18N: dict[str, dict[str, str]] = {
         "risk_shell_logic": "shell 控制流 — 逻辑需移入新任务或调度器",
         "risk_dynamic_sql": "运行时变量拼接的 SQL — 需核对每种展开",
         "risk_local_fs": "读写本地文件系统 — 集群上会失效",
+        "rpt_order": "迁移顺序（上游生产者先迁，消费者随后）",
+        "rpt_shared": "跨任务共享表（需一起切换）",
         "rpt_warnings": "警告",
         "rpt_disclaimer": ("> 仅对脚本做静态分析，未执行任何内容。工作量是"
                            "基于语句数、join 数、控制流与风险项的透明打分；"

@@ -46,9 +46,26 @@ def test_jobs_sorted_easiest_first_and_counts():
     scores = [j.score for j in report.jobs]
     assert scores == sorted(scores)
     counts = report.counts()
-    assert counts == {"seatunnel": 1, "spark_sql": 1, "flink": 1,
+    assert counts == {"seatunnel": 1, "spark_sql": 2, "flink": 1,
                       "scheduler": 1}
-    assert sum(report.effort_counts().values()) == 4
+    assert sum(report.effort_counts().values()) == 5
+
+
+def test_table_deps_and_migration_order():
+    report, by = _by_job()
+    assert by["load_users.sql"].produces == ["ods.users"]
+    assert "staging.users_raw" in by["load_users.sql"].consumes
+    # build_sales reads ods.users which load_users produces
+    assert "ods.users" in by["build_sales.hql"].consumes
+    assert "dws.sales" in by["build_sales.hql"].produces
+    # producer migrates in an earlier wave than its consumer
+    wave_of = {j: i for i, wave in enumerate(report.migration_order)
+               for j in wave}
+    assert wave_of["load_users.sql"] < wave_of["build_sales.hql"]
+    # the shared table names the producer and its consumers
+    shared = {s["table"]: s for s in report.shared_tables}
+    assert shared["ods.users"]["producer"] == "load_users.sql"
+    assert shared["ods.users"]["consumers"] == ["build_sales.hql"]
 
 
 def test_single_script_text():

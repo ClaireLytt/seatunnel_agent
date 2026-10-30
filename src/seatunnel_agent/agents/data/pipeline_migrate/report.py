@@ -35,6 +35,17 @@ def render_markdown(result: MigrationReport, lang: str = "zh") -> str:
                      f"| **{tp(lang, 'target_' + job.target)}** "
                      f"| {job.effort} ({job.score}) | {why} | {risks} |")
     lines.append("")
+    if result.migration_order:
+        lines.append(f"### {tp(lang, 'rpt_order')}")
+        for i, wave in enumerate(result.migration_order, 1):
+            lines.append(f"{i}. " + ", ".join(f"`{j}`" for j in wave))
+        lines.append("")
+    if result.shared_tables:
+        lines.append(f"### {tp(lang, 'rpt_shared')}")
+        for s in result.shared_tables:
+            consumers = ", ".join(f"`{c}`" for c in s["consumers"])
+            lines.append(f"- `{s['table']}`: `{s['producer']}` → {consumers}")
+        lines.append("")
     if result.warnings:
         lines.append(f"### {tp(lang, 'rpt_warnings')}")
         lines.extend(f"- {w}" for w in result.warnings)

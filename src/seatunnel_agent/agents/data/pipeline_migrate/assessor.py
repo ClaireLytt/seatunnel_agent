@@ -42,6 +42,11 @@ _SQL_EXEC_RE = re.compile(
     re.IGNORECASE)
 _WRITE_RE = re.compile(r"\binsert\s+(?:overwrite|into)\b|\bcreate\s+table\b",
                        re.IGNORECASE)
+_PRODUCE_RE = re.compile(
+    r"\binsert\s+(?:overwrite\s+table|into)\s+([\w.]+)"
+    r"|\bcreate\s+table\s+(?:if\s+not\s+exists\s+)?([\w.]+)",
+    re.IGNORECASE)
+_CONSUME_RE = re.compile(r"\b(?:from|join)\s+([\w.]+)", re.IGNORECASE)
 
 # constructs that do not migrate mechanically → risk codes
 _RISK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -70,13 +75,17 @@ class JobAssessment:
     score: int
     reasons: list[str] = field(default_factory=list)  # i18n codes
     risks: list[str] = field(default_factory=list)    # i18n codes
+    produces: list[str] = field(default_factory=list)  # tables written
+    consumes: list[str] = field(default_factory=list)  # tables read
 
     def to_dict(self) -> dict[str, Any]:
         return {"job": self.job, "kind": self.kind, "lines": self.lines,
                 "statements": self.statements, "joins": self.joins,
                 "target": self.target, "effort": self.effort,
                 "score": self.score, "reasons": list(self.reasons),
-                "risks": list(self.risks)}
+                "risks": list(self.risks),
+                "produces": list(self.produces),
+                "consumes": list(self.consumes)}
 
 
 def _kind(name: str) -> str:
@@ -121,16 +130,22 @@ def assess_job(name: str, text: str) -> JobAssessment:
     score = (statements + 2 * joins + 2 * ctrl + 3 * len(risks)
              + lines // 50)
     effort = "S" if score < 8 else ("M" if score < 20 else "L")
+    produces = sorted({m.group(1) or m.group(2)
+                       for m in _PRODUCE_RE.finditer(text)})
+    consumes = sorted({m.group(1) for m in _CONSUME_RE.finditer(text)}
+                      - set(produces))
     return JobAssessment(job=name, kind=kind, lines=lines,
                          statements=statements, joins=joins, target=target,
                          effort=effort, score=score, reasons=reasons,
-                         risks=risks)
+                         risks=risks, produces=produces, consumes=consumes)
 
 
 @dataclass
 class MigrationReport:
     jobs: list[JobAssessment] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    migration_order: list[list[str]] = field(default_factory=list)  # job waves
+    shared_tables: list[dict[str, Any]] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
         out = dict.fromkeys(TARGETS, 0)
@@ -148,7 +163,9 @@ class MigrationReport:
         return {"jobs": [j.to_dict() for j in self.jobs],
                 "counts": self.counts(),
                 "efforts": self.effort_counts(),
-                "warnings": list(self.warnings)}
+                "warnings": list(self.warnings),
+                "migration_order": [list(w) for w in self.migration_order],
+                "shared_tables": [dict(s) for s in self.shared_tables]}
 
 
 def assess_text(name: str, text: str) -> MigrationReport:
@@ -177,4 +194,40 @@ def assess_dir(root: str | Path) -> MigrationReport:
                          f"under: {root}")
     # migrate the easy wins first
     report.jobs.sort(key=lambda j: (j.score, j.job))
+    _link_jobs(report)
     return report
+
+
+def _link_jobs(report: MigrationReport) -> None:
+    """Table-level deps between jobs → migration waves + shared tables."""
+    producer: dict[str, str] = {}
+    for job in report.jobs:
+        for table in job.produces:
+            producer[table.lower()] = job.job
+    deps: dict[str, set[str]] = {j.job: set() for j in report.jobs}
+    for job in report.jobs:
+        for table in job.consumes:
+            up = producer.get(table.lower())
+            if up and up != job.job:
+                deps[job.job].add(up)
+                entry = next((s for s in report.shared_tables
+                              if s["table"] == table.lower()), None)
+                if entry is None:
+                    entry = {"table": table.lower(), "producer": up,
+                             "consumers": []}
+                    report.shared_tables.append(entry)
+                entry["consumers"].append(job.job)
+    # Kahn waves: produce-side jobs migrate before their consumers
+    remaining = dict(deps)
+    while remaining:
+        wave = sorted(j for j, ups in remaining.items()
+                      if not ups & set(remaining))
+        if not wave:
+            report.warnings.append(
+                "dependency cycle between jobs: "
+                + ", ".join(sorted(remaining)))
+            break
+        report.migration_order.append(wave)
+        for j in wave:
+            del remaining[j]
+    report.shared_tables.sort(key=lambda s: s["table"])
