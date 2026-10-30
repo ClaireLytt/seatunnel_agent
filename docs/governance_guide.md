@@ -77,6 +77,17 @@ Web 页在 `/contract`,聊天/MCP 工具名 `contract_check`。
 详见 [pii_guide.md](pii_guide.md)。要点：扫描（命名规则×血缘）→
 `--mask` 生成脱敏视图 → 覆盖回验让 `--fail-on` 只拦未处置的高危。
 
+## 收口：权限面
+
+```bash
+seatunnel-agent grants --dir warehouse_sql/ --fail-on high
+```
+
+解析 GRANT/REVOKE 并净面(同键 REVOKE 抵销),分级报出:
+对 PUBLIC 的授权(high)、对同脚本 PII 命中表的授权(high,与
+pii_scan 联动)、ALL 宽权限(medium)、库级宽范围(medium)。
+Web 页在 `/grants`,聊天/MCP 工具名 `grant_scan`。
+
 ## 度量：趋势
 
 每次 CLI/REST 运行自动落档 `logs/*.jsonl`：
