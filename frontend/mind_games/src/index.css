@@ -9,6 +9,10 @@
    rgba(217,154,78). Grain + vignette + drifting fog carry the room;
    .mg-paper is the aged document every exercise is written on. */
 
+html {
+  font-size: 120%;
+}
+
 html,
 body {
   background: #0d1018;
@@ -111,7 +115,7 @@ body {
 .mg-label {
   font-family: 'Special Elite', 'Courier New', monospace;
   letter-spacing: 0.22em;
-  font-size: 11px;
+  font-size: 13px;
   color: rgba(222, 165, 92, 0.9);
   text-transform: uppercase;
 }
@@ -184,7 +188,7 @@ body {
 /* tabs: archive register, amber underline carries the active state */
 .mg-tab {
   font-family: 'Special Elite', 'Courier New', monospace;
-  font-size: 12px;
+  font-size: 14px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.7);
@@ -212,7 +216,7 @@ body {
   width: 100%;
   padding: 14px 18px;
   font-family: inherit;
-  font-size: 16px;
+  font-size: 19px;
   line-height: 1.7;
   color: rgba(232, 220, 196, 0.92);
   background: linear-gradient(150deg, rgba(30, 23, 15, 0.6), rgba(18, 14, 10, 0.7));
@@ -235,7 +239,7 @@ body {
 .mg-btn {
   padding: 10px 22px;
   font-family: 'Special Elite', 'Courier New', monospace;
-  font-size: 12px;
+  font-size: 14px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.9);
@@ -264,7 +268,7 @@ body {
   box-sizing: border-box;
   padding: 10px 14px;
   font-family: inherit;
-  font-size: 16px;
+  font-size: 19px;
   color: rgba(232, 220, 196, 0.92);
   background: rgba(12, 9, 6, 0.6);
   border: 1px solid rgba(217, 154, 78, 0.18);
@@ -307,7 +311,7 @@ body {
 
 .mg-back {
   font-family: 'Special Elite', 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: 0.14em;
   color: rgba(232, 220, 196, 0.7);
   background: none;
@@ -325,7 +329,7 @@ body {
 
 .mg-home {
   font-family: 'Special Elite', 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 13px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: rgba(232, 220, 196, 0.55);
