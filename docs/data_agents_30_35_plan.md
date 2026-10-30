@@ -69,7 +69,7 @@ slots/memory）± 各 DAG 启动时刻。
 
 1. [x] 30 sql_perf（计划解析器是后续 31/32 的地基）
 2. [x] 33 index_advisor（复用 sql_review 列提取）
-3. [ ] 32 sql_cost（复用 30 的计划/SQL 结构 + 33 的清单解析）
+3. [x] 32 sql_cost（复用 30 的计划/SQL 结构 + 33 的清单解析）
 4. [ ] 31 slow_query（处方指向 30/34 的能力）
 5. [ ] 35 dag_conflict（复用 dag_optimize/pipeline_migrate）
 6. [ ] 34 data_skew shuffle 分布增强

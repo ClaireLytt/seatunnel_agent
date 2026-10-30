@@ -45,6 +45,7 @@
     "seatunnel",
     "sql_fmt",
     "sql_perf",
+    "sql_cost",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

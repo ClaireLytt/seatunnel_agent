@@ -1,0 +1,8 @@
+{
+  "tables": [
+    {"table": "ods.orders", "rows": 500000000, "bytes": 107374182400,
+     "partitions": 365, "partition_col": "dt", "columns": 20},
+    {"table": "ods.users", "rows": 3000000, "bytes": 536870912,
+     "partitions": 1, "columns": 10}
+  ]
+}
