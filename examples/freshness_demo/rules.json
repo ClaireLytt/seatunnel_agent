@@ -1,0 +1,4 @@
+{
+  "ods.*": {"interval": "1d"},
+  "dws.*": {"interval": "1d", "max_age": "26h"}
+}

@@ -400,6 +400,76 @@ def slatrace(
             sys.exit(1)
 
 
+@click.command()
+@click.option("--file", "-f", "events_file", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="表更新事件清单（JSON 或 CSV）")
+@click.option("--rules", "-r", "rules_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="新鲜度规则 JSON（表名通配 → interval/max_age）")
+@click.option("--now", default=None,
+              help="评估时刻（ISO 格式，默认取清单里最晚的更新时间）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["stalled", "stale", "late"]),
+              default=None, help="CI gate: exit 1 when verdicts at/above this severity exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def freshness(
+    events_file: str,
+    rules_file: str | None,
+    now: str | None,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """数据新鲜度监控 — 更新事件清单 → 按表判定迟到、断更、过期数据。"""
+    import json as _json
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.data_freshness import (
+        SEVERITY,
+        parse_events,
+        parse_rules,
+        render_markdown,
+        scan,
+        scan_to_dict,
+    )
+
+    text = Path(events_file).read_text(encoding="utf-8", errors="replace")
+    rules_text = (Path(rules_file).read_text(encoding="utf-8", errors="replace")
+                  if rules_file else "")
+    try:
+        result = scan(parse_events(text), parse_rules(rules_text),
+                      now=(now or "").strip() or None)
+    except ValueError as exc:
+        raise click.UsageError(str(exc))
+
+    if fmt == "json":
+        text_out = _json.dumps(scan_to_dict(result), ensure_ascii=False,
+                               indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        gate = SEVERITY.index(fail_on)
+        hits = [t for t in result.tables
+                if t.verdict != "unknown"
+                and SEVERITY.index(t.verdict) <= gate]
+        if hits:
+            msg = f"存在 {fail_on} 及以上级别的新鲜度问题，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
 @click.command(name="schemadiff")
 @click.option("--old", "old_path", type=click.Path(exists=True), required=True,
               help="旧版 DDL：文件或目录（递归 *.sql）")
@@ -1545,6 +1615,7 @@ def register(cli) -> None:
     cli.add_command(loginspect)
     cli.add_command(pipedoctor)
     cli.add_command(slatrace)
+    cli.add_command(freshness)
     cli.add_command(schemadiff)
     cli.add_command(testgen)
     cli.add_command(conflint)

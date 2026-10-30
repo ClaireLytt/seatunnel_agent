@@ -13,6 +13,7 @@
     "code_fix",
     "config_migrate",
     "data_comparison",
+    "data_freshness",
     "data_lineage",
     "data_skew",
     "ddl_guard",
