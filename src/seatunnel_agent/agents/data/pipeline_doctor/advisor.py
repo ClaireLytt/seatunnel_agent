@@ -12,7 +12,7 @@ from seatunnel_agent.common.llm import LLMClient
 
 from .diagnoser import Diagnosis
 
-ADVISOR_MARKER = "🤖 llm-generated"
+ADVISOR_MARKER = "[llm-generated]"
 
 _SYSTEM_PROMPT = """\
 You are a senior big-data platform SRE diagnosing one failed pipeline run \

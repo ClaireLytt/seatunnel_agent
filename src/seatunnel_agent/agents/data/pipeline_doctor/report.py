@@ -9,7 +9,7 @@ from seatunnel_agent.common.utils import normalize_lang
 from .diagnoser import Diagnosis, Finding
 from .i18n import tp
 
-_SEV_MARK = {"critical": "🟥", "error": "🟧", "warn": "🟨"}
+_SEV_MARK = {"critical": "[CRIT]", "error": "[ERR]", "warn": "[WARN]"}
 
 
 def _t(f: Finding, field: str, lang: str) -> str:
@@ -17,7 +17,7 @@ def _t(f: Finding, field: str, lang: str) -> str:
 
 
 def _finding_block(f: Finding, lang: str, heading: str) -> list[str]:
-    mark = _SEV_MARK.get(f.severity, "•")
+    mark = _SEV_MARK.get(f.severity, "-")
     lines = [f"### {mark} {heading}: {_t(f, 'title', lang)} "
              f"({f.engine} · {f.severity})",
              f"- {tp(lang, 'rpt_cause')}: {_t(f, 'cause', lang)}",
@@ -46,7 +46,7 @@ def render_markdown(diag: Diagnosis, lang: str = "zh",
     engines = (" · ".join(f"{e}×{n}" for e, n in
                           sorted(diag.engines.items(), key=lambda kv: -kv[1]))
                or tp(lang, "rpt_engine_unknown"))
-    lines = [f"## 🩺 {tp(lang, 'rpt_title')}",
+    lines = [f"## {tp(lang, 'rpt_title')}",
              f"{tp(lang, 'rpt_root')} `{diag.root}` · "
              f"{tp(lang, 'rpt_engines')}: {engines}",
              "",
@@ -66,14 +66,14 @@ def render_markdown(diag: Diagnosis, lang: str = "zh",
             lines.extend(_finding_block(f, lang,
                                         f"{tp(lang, 'rpt_findings')} {i}"))
     if diag.unmatched:
-        lines.append(f"### ❓ {tp(lang, 'rpt_unmatched')}")
+        lines.append(f"### {tp(lang, 'rpt_unmatched')}")
         lines.append(tp(lang, "rpt_unmatched_hint"))
         for cl in diag.unmatched[:top]:
             head = cl.exception or cl.template or "(no message)"
             lines.append(f"- `{head}` ×{cl.count}")
         lines.append("")
     if diag.warnings:
-        lines.append(f"### ⚠️ {tp(lang, 'rpt_warnings')}")
+        lines.append(f"### {tp(lang, 'rpt_warnings')}")
         lines.extend(f"- {w}" for w in diag.warnings)
         lines.append("")
     lines.append(tp(lang, "rpt_disclaimer"))
@@ -90,7 +90,7 @@ def render_diff_markdown(diff, lang: str = "zh", top: int = 10) -> str:
     """Markdown for a RunDiff (current failed run vs good baseline)."""
     lang = normalize_lang(lang)
     c = diff.counts()
-    lines = [f"## 🩺 {tp(lang, 'diff_title')}",
+    lines = [f"## {tp(lang, 'diff_title')}",
              tp(lang, "diff_roots").format(cur=diff.current_root,
                                            base=diff.baseline_root),
              "",
@@ -100,28 +100,28 @@ def render_diff_markdown(diff, lang: str = "zh", top: int = 10) -> str:
         lines.append(tp(lang, "diff_clean"))
         lines.append("")
     if diff.findings:
-        lines.append(f"### 🎯 {tp(lang, 'diff_findings')}")
+        lines.append(f"### {tp(lang, 'diff_findings')}")
         lines.append("")
         for i, f in enumerate(diff.findings[:top], start=1):
             lines.extend(_finding_block(f, lang, str(i)))
     if diff.appeared:
-        lines.append(f"### 🟥 {tp(lang, 'diff_appeared')}")
+        lines.append(f"### {tp(lang, 'diff_appeared')}")
         lines.extend(_cluster_line(cl, lang)
                      for cl in diff.appeared[:top])
         lines.append("")
     if diff.grew:
-        lines.append(f"### 🟧 {tp(lang, 'diff_grew')}")
+        lines.append(f"### {tp(lang, 'diff_grew')}")
         for cl, base_n in diff.grew[:top]:
             note = tp(lang, "diff_grew_note").format(now=cl.count,
                                                      base=base_n)
             lines.append(_cluster_line(cl, lang, note))
         lines.append("")
     if diff.gone:
-        lines.append(f"### 🟩 {tp(lang, 'diff_gone')}")
+        lines.append(f"### {tp(lang, 'diff_gone')}")
         lines.extend(_cluster_line(cl, lang) for cl in diff.gone[:top])
         lines.append("")
     if diff.warnings:
-        lines.append(f"### ⚠️ {tp(lang, 'rpt_warnings')}")
+        lines.append(f"### {tp(lang, 'rpt_warnings')}")
         lines.extend(f"- {w}" for w in diff.warnings)
         lines.append("")
     lines.append(tp(lang, "diff_disclaimer"))

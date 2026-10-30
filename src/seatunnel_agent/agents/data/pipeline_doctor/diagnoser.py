@@ -103,7 +103,7 @@ def detect_engines(text: str) -> dict[str, int]:
     return hits
 
 
-def _match(cluster: LogCluster) -> Signature | None:
+def match_cluster(cluster: LogCluster) -> Signature | None:
     """First KB signature matching the cluster's exception+message+sample."""
     haystack = f"{cluster.exception}: {cluster.template}\n{cluster.sample}"
     for sig in SIGNATURES:
@@ -112,7 +112,14 @@ def _match(cluster: LogCluster) -> Signature | None:
     return None
 
 
-def _finding(sig: Signature, c: LogCluster) -> Finding:
+def merge_cluster(f: Finding, c: LogCluster) -> None:
+    """Fold another cluster of the same signature into an existing finding."""
+    f.count += c.count
+    for name, n in c.files.items():
+        f.files[name] = f.files.get(name, 0) + n
+
+
+def build_finding(sig: Signature, c: LogCluster) -> Finding:
     return Finding(
         sig_id=sig.id, engine=sig.engine, severity=sig.severity,
         title_zh=sig.title_zh, title_en=sig.title_en,
@@ -132,22 +139,17 @@ def diagnose_report(report: InspectReport) -> Diagnosis:
                      warnings=list(report.warnings))
     sample_text = "\n".join(c.sample for c in report.clusters)
     diag.engines = detect_engines(sample_text)
-    seen: set[str] = set()   # one finding per signature; clusters merge into it
-    by_id: dict[str, Finding] = {}
+    by_id: dict[str, Finding] = {}  # one finding per signature; others merge
     for cluster in report.clusters:
-        sig = _match(cluster)
+        sig = match_cluster(cluster)
         if sig is None:
             if cluster.level == "error" and len(diag.unmatched) < MAX_UNMATCHED:
                 diag.unmatched.append(cluster)
             continue
-        if sig.id in seen:
-            f = by_id[sig.id]
-            f.count += cluster.count
-            for name, n in cluster.files.items():
-                f.files[name] = f.files.get(name, 0) + n
+        if sig.id in by_id:
+            merge_cluster(by_id[sig.id], cluster)
             continue
-        seen.add(sig.id)
-        by_id[sig.id] = _finding(sig, cluster)
+        by_id[sig.id] = build_finding(sig, cluster)
         diag.findings.append(by_id[sig.id])
     # primary suspect first: severity, then earliest occurrence, then count
     diag.findings.sort(key=lambda f: (

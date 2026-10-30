@@ -136,7 +136,10 @@ SIGNATURES: tuple[Signature, ...] = (
                "  --conf spark.kryoserializer.buffer.max=1g"),
     # ----------------------------------------------------------------- hive
     _sig("hive_metastore_conn", "hive", "critical",
-         r"Could not connect to meta store|MetaException|"
+         # NOT bare MetaException: AlreadyExists/InvalidObject etc. wrap in
+         # MetaException too and are not connection failures
+         r"Could not connect to meta store|"
+         r"MetaException\(message:Could not connect|"
          r"metastore.*Connection refused|TTransportException.*9083",
          title_zh="Metastore 连接失败",
          title_en="Hive metastore connection failure",
@@ -297,7 +300,11 @@ SIGNATURES: tuple[Signature, ...] = (
                "# grant the job user access (least privilege)\n"
                "hdfs dfs -setfacl -m user:<job_user>:rwx /path/from/the/error"),
     _sig("gen_kerberos", "generic", "critical",
-         r"GSSException|Kerberos|SASL.*(?:fail|error)|TGT",
+         # failure-context only: a log merely mentioning "kerberos" or the
+         # substring "tgt" must not be classified as an auth failure
+         r"GSSException|SaslException|No valid credentials provided|"
+         r"Failed to find any Kerberos tgt|TGT (?:expired|has expired)|"
+         r"Kerberos (?:authentication|ticket).*(?:fail|error|expired)",
          title_zh="Kerberos 认证失败",
          title_en="Kerberos authentication failure",
          cause_zh="票据过期、keytab 不对或 principal 配置错误。",

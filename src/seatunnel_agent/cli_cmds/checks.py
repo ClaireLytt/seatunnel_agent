@@ -287,12 +287,15 @@ def pipedoctor(
             console.print(f"[dim]报告已保存: {output}[/dim]")
         if fail_on:
             gate = SEVERITY_RANK[fail_on]
-            # any new/grown error cluster gates at "error"; KB hits gate at
-            # their own severity
+            # KB hits gate at their own severity; unmatched new/grown
+            # clusters gate at their log level (a WARN-only regression must
+            # not trip --fail-on error)
+            regressed = diff.appeared + [c for c, _ in diff.grew]
+            levels = {c.level for c in regressed}
             hit = any(SEVERITY_RANK[f.severity] >= gate
                       for f in diff.findings) \
-                or (gate <= SEVERITY_RANK["error"]
-                    and (diff.appeared or diff.grew))
+                or (gate <= SEVERITY_RANK["error"] and "error" in levels) \
+                or (gate <= SEVERITY_RANK["warn"] and "warn" in levels)
             if hit:
                 msg = f"相对基线存在 {fail_on} 及以上级别的回归，检查未通过。"
                 if fmt == "json":

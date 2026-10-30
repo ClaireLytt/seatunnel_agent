@@ -115,6 +115,57 @@ def test_no_patch_renders_no_patch_section():
     assert "修复补丁" not in render_markdown(diag, "zh")
 
 
+def test_kerberos_requires_failure_context():
+    # merely mentioning Kerberos (or containing "tgt" as a substring) must
+    # not classify as an auth failure
+    benign = diagnose_text(
+        "2024-01-01 00:00:00,000 ERROR [main] com.foo.Job - "
+        "job on kerberos cluster failed writing to /data/tgtable\n"
+        "com.foo.WriteException: disk write aborted\n"
+        "\tat com.foo.Job.run(Job.java:10)\n")
+    assert "gen_kerberos" not in {f.sig_id for f in benign.findings}
+    real = diagnose_text(
+        "2024-01-01 00:00:00,000 ERROR [main] org.apache.hadoop.ipc.Client - "
+        "SASL authentication failed\n"
+        "javax.security.sasl.SaslException: GSS initiate failed\n"
+        "Caused by: GSSException: No valid credentials provided "
+        "(Mechanism level: Failed to find any Kerberos tgt)\n")
+    assert "gen_kerberos" in {f.sig_id for f in real.findings}
+
+
+def test_meta_exception_not_always_connection_failure():
+    # MetaException wrapping AlreadyExists is not a metastore outage
+    diag = diagnose_text(
+        "2024-01-01 00:00:00,000 ERROR [main] hive.ql.Driver - create failed\n"
+        "MetaException(message:AlreadyExistsException(message:Table dw.t "
+        "already exists))\n")
+    assert "hive_metastore_conn" not in {f.sig_id for f in diag.findings}
+
+
+def test_rundiff_cli_gate_warn_only_regression():
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli_cmds.checks import pipedoctor
+
+    base = "2024-01-01 00:00:00,000 INFO [main] com.foo.Job - ok\n"
+    cur = (base +
+           "2024-01-01 00:01:00,000 WARN [main] com.foo.Job - slow response\n")
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        Path("cur.log").write_text(cur, encoding="utf-8")
+        Path("base.log").write_text(base, encoding="utf-8")
+        # a WARN-only regression must NOT trip --fail-on error ...
+        res = runner.invoke(pipedoctor, ["-f", "cur.log",
+                                         "--baseline-file", "base.log",
+                                         "--fail-on", "error", "-F", "json"])
+        assert res.exit_code == 0, res.output
+        # ... but does trip --fail-on warn
+        res = runner.invoke(pipedoctor, ["-f", "cur.log",
+                                         "--baseline-file", "base.log",
+                                         "--fail-on", "warn", "-F", "json"])
+        assert res.exit_code == 1
+
+
 def test_same_signature_clusters_merge():
     text = (
         "2024-01-01 00:00:00,000 ERROR [a] com.foo.A - fail\n"

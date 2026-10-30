@@ -30,7 +30,13 @@ from seatunnel_agent.agents.data.log_inspect.clusterer import (
     scan_text,
 )
 
-from .diagnoser import Finding, _finding, _match, detect_engines
+from .diagnoser import (
+    Finding,
+    build_finding,
+    detect_engines,
+    match_cluster,
+    merge_cluster,
+)
 
 GROWTH_MIN_FACTOR = 2      # "grew" = at least doubled (and +1 absolute)
 
@@ -93,17 +99,14 @@ def diff_reports(current: InspectReport, baseline: InspectReport) -> RunDiff:
     # diagnose only the regression candidates; merge per signature
     seen: dict[str, Finding] = {}
     for cluster in diff.appeared + [c for c, _ in diff.grew]:
-        sig = _match(cluster)
+        sig = match_cluster(cluster)
         if sig is None:
             continue
-        f = seen.get(sig.id)
-        if f is None:
-            seen[sig.id] = f = _finding(sig, cluster)
-            diff.findings.append(f)
+        if sig.id in seen:
+            merge_cluster(seen[sig.id], cluster)
         else:
-            f.count += cluster.count
-            for name, n in cluster.files.items():
-                f.files[name] = f.files.get(name, 0) + n
+            seen[sig.id] = build_finding(sig, cluster)
+            diff.findings.append(seen[sig.id])
     return diff
 
 

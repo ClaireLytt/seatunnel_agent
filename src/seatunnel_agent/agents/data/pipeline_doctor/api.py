@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field
 from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
 from seatunnel_agent.common.utils import normalize_lang
 
-from .diagnoser import diagnose_dir, diagnose_text
 from .report import diagnosis_to_dict, render_markdown
 
 router = APIRouter(prefix="/api/pipedoctor", tags=["pipeline_doctor"])
@@ -41,13 +40,25 @@ class DiagnoseResponse(BaseModel):
     elapsed_ms: int
 
 
-def _run_diagnosis(dir_: str | None, text: str | None,
-                   patterns: list[str] | None):
+def _scan_input(dir_: str | None, text: str | None,
+                patterns: list[str] | None, name: str):
+    """One whitelisted dir-or-inline-text scan (shared by all endpoints)."""
+    from seatunnel_agent.agents.data.log_inspect.clusterer import (
+        scan_dir,
+        scan_text,
+    )
+
     if (dir_ or "").strip():
         target = require_dir(dir_, "PIPEDOCTOR_API_ALLOWED_DIRS")
-        return diagnose_dir(target,
-                            patterns=tuple(patterns or DEFAULT_PATTERNS))
-    return diagnose_text(text or "")
+        return scan_dir(target, patterns=tuple(patterns or DEFAULT_PATTERNS))
+    return scan_text(text or "", name=name)
+
+
+def _run_diagnosis(dir_: str | None, text: str | None,
+                   patterns: list[str] | None):
+    from .diagnoser import diagnose_report
+
+    return diagnose_report(_scan_input(dir_, text, patterns, "<inline>"))
 
 
 @router.post("/diagnose", response_model=DiagnoseResponse)
@@ -88,11 +99,6 @@ class RunDiffResponse(BaseModel):
 @router.post("/rundiff", response_model=RunDiffResponse)
 def rundiff(req: RunDiffRequest) -> RunDiffResponse:
     """Regression diff: clusters new/grown vs a known-good baseline."""
-    from seatunnel_agent.agents.data.log_inspect.clusterer import (
-        scan_dir,
-        scan_text,
-    )
-
     from .report import render_diff_markdown
     from .rundiff import diff_reports
 
@@ -103,18 +109,9 @@ def rundiff(req: RunDiffRequest) -> RunDiffResponse:
             and not (req.baseline_text or "").strip()):
         raise HTTPException(status_code=400,
                             detail="Provide 'baseline_dir' or 'baseline_text'")
-    patterns = tuple(req.patterns or DEFAULT_PATTERNS)
-    if (req.dir or "").strip():
-        cur = scan_dir(require_dir(req.dir, "PIPEDOCTOR_API_ALLOWED_DIRS"),
-                       patterns=patterns)
-    else:
-        cur = scan_text(req.text or "", name="<current>")
-    if (req.baseline_dir or "").strip():
-        base = scan_dir(
-            require_dir(req.baseline_dir, "PIPEDOCTOR_API_ALLOWED_DIRS"),
-            patterns=patterns)
-    else:
-        base = scan_text(req.baseline_text or "", name="<baseline>")
+    cur = _scan_input(req.dir, req.text, req.patterns, "<current>")
+    base = _scan_input(req.baseline_dir, req.baseline_text, req.patterns,
+                       "<baseline>")
     diff = diff_reports(cur, base)
     lang = normalize_lang(req.lang)
     return RunDiffResponse(
