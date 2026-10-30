@@ -17,7 +17,8 @@ _DATEISH_RE = re.compile(r"(^|_)(date|day|time|dt)(_|$)")
 
 @dataclass
 class MetaFinding:
-    kind: str            # missing_comment | layer_naming | money_float | date_string
+    kind: str            # missing_comment | layer_naming | money_float |
+                         # date_string | money_string | unpartitioned_fact
     severity: str        # high | medium | low
     table: str
     column: str = ""
@@ -116,6 +117,12 @@ def _check_text(sql_text: str, dialect: str, root: str) -> MetaQualityReport:
                     table=name, column=c.name,
                     detail="date-named column typed bare STRING; "
                            "prefer DATE/TIMESTAMP or document the format"))
+            if _MONEY_RE.search(lname) and ltype == "string":
+                report.findings.append(MetaFinding(
+                    kind="money_string", severity="medium",
+                    table=name, column=c.name,
+                    detail="money-named column typed STRING; arithmetic "
+                           "silently casts - use DECIMAL"))
 
         # layer naming: only the unambiguous smell is flagged — a table whose
         # name claims a DIFFERENT layer than the database it lives in
@@ -131,6 +138,17 @@ def _check_text(sql_text: str, dialect: str, root: str) -> MetaQualityReport:
                 table=name,
                 detail=f"table prefix claims layer '{tbl_layer}' but lives "
                        f"in layer '{db_layer}'"))
+
+        # fact-layer tables (dwd/dws) without a partition spec: full scans
+        # and no retention story. dim/ods/ads stay silent - small dims and
+        # serving tables are legitimately unpartitioned.
+        fact_layer = db_layer or tbl_layer
+        if fact_layer in ("dwd", "dws") and not schema.partition_cols:
+            report.findings.append(MetaFinding(
+                kind="unpartitioned_fact", severity="medium",
+                table=name,
+                detail=f"'{fact_layer}' table has no PARTITIONED BY; "
+                       "fact tables need a partition and retention story"))
 
     return report
 

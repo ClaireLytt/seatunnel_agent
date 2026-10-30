@@ -43,7 +43,10 @@ seatunnel-agent metaquality --dir warehouse_sql/ --fail-on high
 - 注释覆盖率（逐表百分比 + 缺注释列）
 - 跨层命名错配（`dwd` 库里的 `ods_` 表；无前缀属风格、不报）
 - 类型反模式：金额列用 FLOAT/DOUBLE（high，丢分——用 DECIMAL）、
+  金额列用 STRING（medium，运算隐式转换）、
   非分区日期列用裸 STRING（medium）
+- 事实表无分区：`dwd`/`dws` 层的表没有 PARTITIONED BY（medium；
+  dim/ods/ads 不报——小维表与服务表合法无分区）
 
 ## 承诺：数据契约
 

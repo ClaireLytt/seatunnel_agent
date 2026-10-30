@@ -69,6 +69,32 @@ def test_layer_naming_only_cross_layer_mismatch():
     assert not any(f.table == "ods.user_log" for f in layer)
 
 
+def test_unpartitioned_fact_only_dwd_dws():
+    sql = """
+    CREATE TABLE dwd.fact_orders (oid BIGINT COMMENT 'o');
+    CREATE TABLE dws.agg_daily (d BIGINT COMMENT 'd');
+    CREATE TABLE dim.dim_user (uid BIGINT COMMENT 'u');
+    CREATE TABLE ods.raw_log (line STRING COMMENT 'l');
+    CREATE TABLE dwd.fact_ok (oid BIGINT COMMENT 'o')
+      PARTITIONED BY (dt STRING COMMENT 'p');
+    """
+    r = check_sql_text(sql)
+    hits = {f.table for f in r.findings if f.kind == "unpartitioned_fact"}
+    # dim/ods stay silent; a partitioned dwd table passes
+    assert hits == {"dwd.fact_orders", "dws.agg_daily"}
+    assert all(f.severity == "medium" for f in r.findings
+               if f.kind == "unpartitioned_fact")
+
+
+def test_money_string_is_medium():
+    sql = ("CREATE TABLE t (pay_amount STRING COMMENT 'a', "
+           "note STRING COMMENT 'n');")
+    r = check_sql_text(sql)
+    hits = [f for f in r.findings if f.kind == "money_string"]
+    assert [(f.column, f.severity) for f in hits] == [
+        ("pay_amount", "medium")]
+
+
 def test_clean_ddl_reports_clean():
     r = check_sql_text(CLEAN)
     assert r.counts()["total"] == 0
