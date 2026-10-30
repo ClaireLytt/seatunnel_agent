@@ -193,6 +193,7 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
                   dummy_llm_key: bool = False,
                   chdir: str | None = None,
                   extra_mounts: list[tuple[str, Any]] | None = None,
+                  extra_routers: list[str] | None = None,
                   post_setup: Callable[..., None] | None = None,
                   name: str = "page_url"):
     """Build the in-process uvicorn ``page_url`` fixture for a React page.
@@ -208,7 +209,9 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
     ``chdir`` is "tmp" or "root" (repo root), or None to stay put.
     ``extra_mounts`` mounts additional built dists ``(mount_path,
     manifest)`` on the same server (skipped when not built, matching the
-    historical inline behavior). ``post_setup(monkeypatch, tmp_path)``
+    historical inline behavior); ``extra_routers`` includes their API
+    routers (same "module:attr" form) so a mounted extra page is fully
+    functional — the pair enables cross-page handoff tests. ``post_setup(monkeypatch, tmp_path)``
     runs after env handling and before the app is assembled — the hook
     for module-level store/agent stubbing and data seeding. ``name``
     names the fixture (for a second server fixture in the same file)."""
@@ -260,6 +263,10 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
 
         app = FastAPI()
         app.include_router(router)
+        for extra_ref in (extra_routers or []):
+            extra_mod, extra_attr = extra_ref.split(":")
+            app.include_router(
+                getattr(importlib.import_module(extra_mod), extra_attr))
         app.mount(mount, StaticFiles(directory=dist, html=True))
         for extra_mount, extra_manifest in (extra_mounts or []):
             extra_dist = root / frontend_dist(extra_manifest)

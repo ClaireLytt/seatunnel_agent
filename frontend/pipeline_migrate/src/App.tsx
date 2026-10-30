@@ -12,6 +12,12 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
+  const [dagJson, setDagJson] = useState('')
+
+  const toDagopt = () => {
+    sessionStorage.setItem('seatunnel.handoff.dagopt', dagJson)
+    window.location.href = '/dagopt/'
+  }
 
   const run = async (useText: boolean) => {
     const src = useText ? text : dir
@@ -25,8 +31,11 @@ export default function App() {
     try {
       const res = await runAssess(useText ? null : dir.trim(), useText ? text : null, i18n.language)
       setReport(res.report ?? '')
+      const dag = res.result['migration_dag'] as Record<string, unknown> | undefined
+      setDagJson(dag && Object.keys(dag).length ? JSON.stringify(dag) : '')
     } catch (e) {
       setReport('')
+      setDagJson('')
       if (e instanceof ApiError && e.code === 'bad_dir') {
         setError(t('bad_dir') + e.path)
       } else {
@@ -42,6 +51,7 @@ export default function App() {
     setText('')
     setError('')
     setReport('')
+    setDagJson('')
   }
 
   return (
@@ -112,6 +122,14 @@ export default function App() {
               <div className="mb-3 font-mono text-sm" style={{ color: 'var(--accent)' }}>
                 {error}
               </div>
+            )}
+            {report && dagJson && (
+              <button
+                onClick={toDagopt}
+                className="mb-4 w-full rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm font-semibold text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+              >
+                {t('to_dagopt')}
+              </button>
             )}
             {report && <ReportView markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('report_ph')}</p>}

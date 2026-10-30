@@ -37,7 +37,8 @@ CI/脚本消费）、`-o` 落盘。`backfill-sql --plan '<计划JSON>'` 直接�
 自动归类）。输出：
 
 - 最小重跑集合 = 失败任务 + 下游闭包；上游产出保留、兄弟分支不动；
-- 拓扑批次 + 影响面百分比 + 按 duration 的每批次/总计 ETA；
+- 拓扑批次 + 影响面百分比 + 按 duration 的每批次/总计 ETA，
+  以及执行槽位 1/2/4 受限时的恢复总时长；
 - 闭包内曾成功的任务标记"上游数据失效"仍需重跑；
 - 互不相连的失败各成一组，可并行恢复；
 - 命令模板 `{task}` 渲染重跑命令。
@@ -86,14 +87,16 @@ CI/脚本消费）、`-o` 落盘。`backfill-sql --plan '<计划JSON>'` 直接�
 ## 典型工作流
 
 1. **断更恢复**：`/freshness` 发现断更 → `/backfill` 算出补哪些表哪些日期 →
-   计划 JSON 粘到 `/backfillsql` 转规格 → 填 source 生成幂等 SQL → 跑完
-   用对账 SQL 验收。
+   点报告上方「用此计划生成补数 SQL 规格」一键带到 `/backfillsql`（自动出
+   逐表规格骨架）→ 填 source 生成幂等 SQL → 跑完用对账 SQL 验收。
 2. **调度提速**：`airflow dags show` 的 DOT 粘到 `/dagopt` → 删冗余边的
    DAG 粘回调度器 → 按瓶颈敏感度表优先优化收益最大的任务。
 3. **夜间批量失败**：调度器状态导出粘到 `/rerun` → 按独立分组并行恢复，
    每组按批次顺序执行渲染好的命令。
 4. **存量迁移立项**：旧脚本目录丢给 `/pipemigrate` → 用 S/M/L 分布和迁移
-   波次排期，纯搬运任务拿骨架当天切 SeaTunnel。
+   波次排期，纯搬运任务拿骨架当天切 SeaTunnel；点「把迁移 DAG 带到依赖
+   优化页估工期」一键到 `/dagopt`，makespan 表直接回答"k 个人并行迁移
+   要多久"。
 
 示例输入都在 `examples/`：`dagopt_demo/`、`rerun_demo/`、`backfillsql_demo/`、
 `syncstrategy_demo/`、`pipemigrate_demo/`，各页默认预填即可直接点按钮体验。

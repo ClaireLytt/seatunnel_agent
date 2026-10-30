@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
@@ -12,6 +12,20 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
+
+  useEffect(() => {
+    const handed = sessionStorage.getItem('seatunnel.handoff.dagopt')
+    if (!handed) return
+    sessionStorage.removeItem('seatunnel.handoff.dagopt')
+    setText(handed)
+    setBusy(true)
+    runAnalyze(null, handed, i18n.language)
+      .then((res) => setReport(res.report ?? ''))
+      .catch((e) => setError(String(e)))
+      .finally(() => setBusy(false))
+    // run once on mount for the cross-page handoff
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const run = async (useText: boolean) => {
     const src = useText ? text : file

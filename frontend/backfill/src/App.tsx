@@ -15,6 +15,12 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
+  const [planJson, setPlanJson] = useState('')
+
+  const toBackfillSql = () => {
+    sessionStorage.setItem('seatunnel.handoff.backfillsql', planJson)
+    window.location.href = '/backfillsql/'
+  }
 
   const run = async (useText: boolean) => {
     const src = useText ? text : file
@@ -35,8 +41,10 @@ export default function App() {
         i18n.language,
       )
       setReport(res.report ?? '')
+      setPlanJson(JSON.stringify(res.result))
     } catch (e) {
       setReport('')
+      setPlanJson('')
       if (e instanceof ApiError && e.code === 'bad_dir') {
         setError(t('bad_dir') + e.path)
       } else {
@@ -55,6 +63,7 @@ export default function App() {
     setText('')
     setError('')
     setReport('')
+    setPlanJson('')
   }
 
   return (
@@ -155,6 +164,14 @@ export default function App() {
               <div className="mb-3 font-mono text-sm" style={{ color: 'var(--accent)' }}>
                 {error}
               </div>
+            )}
+            {report && planJson && (
+              <button
+                onClick={toBackfillSql}
+                className="mb-4 w-full rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm font-semibold text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+              >
+                {t('to_backfillsql')}
+              </button>
             )}
             {report && <ReportView markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('report_ph')}</p>}
