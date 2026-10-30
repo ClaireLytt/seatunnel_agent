@@ -29,6 +29,10 @@ from typing import Any
 
 STRATEGIES = ("full", "incr_timestamp", "incr_pk", "cdc")
 LATENCIES = ("realtime", "minutes", "hours", "daily")
+# every risk code a recommendation can carry (CI gates validate against it)
+RISK_CODES = ("cdc_no_pk", "latency_without_cdc", "full_on_big_table",
+              "incr_no_pk_append_only", "late_update_window",
+              "pk_incr_misses_updates")
 
 SMALL_ROWS = 1_000_000      # below this, full reload is cheap
 HIGH_CHURN = 0.30           # daily change ratio above this → full

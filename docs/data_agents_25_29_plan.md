@@ -183,7 +183,7 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## Phase 15 roadmap (inventory-as-code gate)
 
-1. [ ] sync-strategy --fail-on-risk CODE[,CODE]: exit 1 when any table's
+1. [x] sync-strategy --fail-on-risk CODE[,CODE]: exit 1 when any table's
    recommendation carries one of the named risk codes (typo-checked
    against the known set) - lets a tables.json repo gate unmeetable
    latency declarations in CI.

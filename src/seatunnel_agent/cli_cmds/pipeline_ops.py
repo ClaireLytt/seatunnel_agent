@@ -237,8 +237,12 @@ def _emit_confs(out_dir: str, items: list[tuple[str, str]]) -> None:
               default=None, help="把每张表的 SeaTunnel 配置骨架写到该目录")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 写落地推进方案（需配置 API key）")
+@click.option("--fail-on-risk", "fail_risks", default="",
+              help="CI gate：任一表命中这些风险码（逗号分隔，如 "
+                   "latency_without_cdc）即 exit 1")
 @_common
-def sync_strategy(path, text, emit_dir, use_llm, lang, fmt, output) -> None:
+def sync_strategy(path, text, emit_dir, use_llm, fail_risks, lang, fmt,
+                  output) -> None:
     """增量同步策略 — 全量/增量/CDC 推荐、风险与 SeaTunnel 配置骨架。"""
     from seatunnel_agent.agents.data.sync_strategy import (
         parse_tables,
@@ -262,6 +266,23 @@ def sync_strategy(path, text, emit_dir, use_llm, lang, fmt, output) -> None:
     if emit_dir:
         _emit_confs(emit_dir, [(r.table, r.config)
                                for r in result.recommendations if r.config])
+    if fail_risks.strip():
+        from seatunnel_agent.agents.data.sync_strategy.advisor import (
+            RISK_CODES,
+        )
+
+        wanted = [c.strip() for c in fail_risks.split(",") if c.strip()]
+        unknown = sorted(set(wanted) - set(RISK_CODES))
+        if unknown:
+            raise click.UsageError(
+                f"未知风险码 {', '.join(unknown)}；可用: "
+                f"{', '.join(RISK_CODES)}")
+        hits = [(r.table, c) for r in result.recommendations
+                for c in r.risks if c in wanted]
+        if hits:
+            for table, code in hits:
+                console.print(f"[red]RISK[/red] {table}: {code}")
+            raise SystemExit(1)
 
 
 @click.command("pipe-migrate")

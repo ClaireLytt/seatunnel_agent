@@ -98,6 +98,26 @@ def test_sync_strategy_cli():
     assert "Sync Strategy Recommendation" in res.output
 
 
+def test_sync_strategy_risk_gate():
+    runner = CliRunner()
+    inv = str(EX / "syncstrategy_demo" / "tables.json")
+    # demo has no table with the latency risk → green
+    res = runner.invoke(sync_strategy, [
+        "-f", inv, "--fail-on-risk", "latency_without_cdc"])
+    assert res.exit_code == 0
+    # a minutes-latency table without binlog trips the gate
+    bad = ('[{"table":"ods.t","rows":5000000,"has_update_ts":true,'
+           '"has_pk":true,"latency":"minutes"}]')
+    res = runner.invoke(sync_strategy, [
+        "--text", bad, "--fail-on-risk", "latency_without_cdc"])
+    assert res.exit_code == 1
+    assert "RISK" in res.output and "ods.t" in res.output
+    # typo in the code is a usage error naming the known set
+    res = runner.invoke(sync_strategy, [
+        "--text", bad, "--fail-on-risk", "latenzy"])
+    assert res.exit_code == 2 and "latency_without_cdc" in res.output
+
+
 def test_sync_strategy_emit_configs(tmp_path):
     runner = CliRunner()
     out = tmp_path / "confs"
