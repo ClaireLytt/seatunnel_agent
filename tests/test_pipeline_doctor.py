@@ -91,6 +91,28 @@ def test_render_markdown_bilingual():
     assert "memoryOverhead" in en
 
 
+def test_fix_patch_in_findings_and_report():
+    diag = diagnose_text(SPARK_OOM)
+    gc = next(f for f in diag.findings if f.sig_id == "spark_gc_overhead")
+    assert "spark.sql.adaptive.skewJoin.enabled=true" in gc.patch
+    zh = render_markdown(diag, "zh")
+    en = render_markdown(diag, "en")
+    assert "修复补丁" in zh and gc.patch in zh
+    assert "fix patch" in en
+    data = diagnosis_to_dict(diag)
+    assert any(f["patch"] for f in data["findings"])
+
+
+def test_no_patch_renders_no_patch_section():
+    # hive_semantic has no copy-paste patch template
+    diag = diagnose_text(
+        "2024-01-01 00:00:00,000 ERROR [main] hive.ql.Driver - FAILED: "
+        "SemanticException [Error 10001]: Table not found dwd.orders\n")
+    f = diag.primary
+    assert f.sig_id == "hive_semantic" and f.patch == ""
+    assert "修复补丁" not in render_markdown(diag, "zh")
+
+
 def test_same_signature_clusters_merge():
     text = (
         "2024-01-01 00:00:00,000 ERROR [a] com.foo.A - fail\n"

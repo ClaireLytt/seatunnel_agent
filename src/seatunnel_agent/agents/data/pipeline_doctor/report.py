@@ -29,6 +29,9 @@ def _finding_block(f: Finding, lang: str, heading: str) -> list[str]:
                        sorted(f.files.items(), key=lambda kv: -kv[1])[:5])
     if files:
         lines.append(f"- {tp(lang, 'rpt_files')}: {files}")
+    if f.patch:
+        lines.append(f"- {tp(lang, 'rpt_patch')}:")
+        lines.append("```text\n" + f.patch + "\n```")
     if f.sample:
         lines.append(f"- {tp(lang, 'rpt_evidence')}:")
         lines.append("```text\n" + f.sample + "\n```")

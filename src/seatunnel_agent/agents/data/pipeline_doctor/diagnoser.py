@@ -41,6 +41,7 @@ class Finding:
     cause_en: str
     fix_zh: str
     fix_en: str
+    patch: str          # copy-paste fix patch; "" when none applies
     exception: str
     template: str
     count: int
@@ -57,6 +58,7 @@ class Finding:
             "title_zh": self.title_zh, "title_en": self.title_en,
             "cause_zh": self.cause_zh, "cause_en": self.cause_en,
             "fix_zh": self.fix_zh, "fix_en": self.fix_en,
+            "patch": self.patch,
             "exception": self.exception,
             "template": self.template,
             "count": self.count,
@@ -115,7 +117,7 @@ def _finding(sig: Signature, c: LogCluster) -> Finding:
         sig_id=sig.id, engine=sig.engine, severity=sig.severity,
         title_zh=sig.title_zh, title_en=sig.title_en,
         cause_zh=sig.cause_zh, cause_en=sig.cause_en,
-        fix_zh=sig.fix_zh, fix_en=sig.fix_en,
+        fix_zh=sig.fix_zh, fix_en=sig.fix_en, patch=sig.patch,
         exception=c.exception, template=c.template, count=c.count,
         files=dict(c.files), first_ts=c.first_ts, last_ts=c.last_ts,
         sample=c.sample)

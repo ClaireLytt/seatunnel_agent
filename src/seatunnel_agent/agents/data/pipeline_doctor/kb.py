@@ -26,16 +26,19 @@ class Signature:
     cause_en: str
     fix_zh: str
     fix_en: str
+    # copy-paste fix patch: concrete config/commands applying the fix
+    # (language-neutral; empty when no one-size template exists)
+    patch: str = ""
 
 
-def _sig(id: str, engine: str, severity: str, pattern: str, *,
+def _sig(sig_id: str, engine: str, severity: str, pattern: str, *,
          title_zh: str, title_en: str, cause_zh: str, cause_en: str,
-         fix_zh: str, fix_en: str) -> Signature:
-    return Signature(id=id, engine=engine, severity=severity,
+         fix_zh: str, fix_en: str, patch: str = "") -> Signature:
+    return Signature(id=sig_id, engine=engine, severity=severity,
                      pattern=re.compile(pattern, re.I | re.S),
                      title_zh=title_zh, title_en=title_en,
                      cause_zh=cause_zh, cause_en=cause_en,
-                     fix_zh=fix_zh, fix_en=fix_en)
+                     fix_zh=fix_zh, fix_en=fix_en, patch=patch)
 
 
 SIGNATURES: tuple[Signature, ...] = (
@@ -52,7 +55,11 @@ SIGNATURES: tuple[Signature, ...] = (
                 "检查是否误用 collect()/broadcast 大表。",
          fix_en="Raise spark.executor.memory / spark.driver.memory; increase "
                 "spark.sql.shuffle.partitions to shrink partitions; audit "
-                "collect()/broadcast usage on large tables."),
+                "collect()/broadcast usage on large tables.",
+         patch="spark-submit \\\n"
+               "  --conf spark.executor.memory=8g \\\n"
+               "  --conf spark.driver.memory=4g \\\n"
+               "  --conf spark.sql.shuffle.partitions=400"),
     _sig("spark_gc_overhead", "spark", "critical",
          r"OutOfMemoryError.*GC overhead limit exceeded",
          title_zh="GC 开销超限（堆接近耗尽）",
@@ -63,7 +70,11 @@ SIGNATURES: tuple[Signature, ...] = (
          fix_zh="先看是否个别 task 远慢于其他（倾斜）；调大 executor 内存或减少 "
                 "cache；倾斜键可加盐打散或开启 AQE skew join。",
          fix_en="Check for straggler tasks (skew); raise executor memory or "
-                "reduce caching; salt skewed keys or enable AQE skew join."),
+                "reduce caching; salt skewed keys or enable AQE skew join.",
+         patch="spark-submit \\\n"
+               "  --conf spark.executor.memory=8g \\\n"
+               "  --conf spark.sql.adaptive.enabled=true \\\n"
+               "  --conf spark.sql.adaptive.skewJoin.enabled=true"),
     _sig("spark_yarn_container_kill", "spark", "critical",
          r"Container killed by YARN for exceeding (?:physical |virtual )?memory",
          title_zh="容器超物理内存被 YARN 杀死",
@@ -74,7 +85,9 @@ SIGNATURES: tuple[Signature, ...] = (
          fix_zh="调大 spark.executor.memoryOverhead（建议 executor 内存的 "
                 "10%-20% 起步）；PySpark 任务检查 python 侧内存。",
          fix_en="Raise spark.executor.memoryOverhead (start at 10-20% of "
-                "executor memory); for PySpark audit Python-side memory."),
+                "executor memory); for PySpark audit Python-side memory.",
+         patch="spark-submit \\\n"
+               "  --conf spark.executor.memoryOverhead=2g"),
     _sig("spark_fetch_failed", "spark", "error",
          r"FetchFailedException|Failed to connect to .*shuffle",
          title_zh="Shuffle 拉取失败",
@@ -85,7 +98,10 @@ SIGNATURES: tuple[Signature, ...] = (
          fix_zh="先修复日志里更早的 executor 失联/OOM 根因；可调大 "
                 "spark.shuffle.io.maxRetries 与 retryWait 增强容错。",
          fix_en="Fix the earlier executor-loss/OOM root cause first; raise "
-                "spark.shuffle.io.maxRetries / retryWait for resilience."),
+                "spark.shuffle.io.maxRetries / retryWait for resilience.",
+         patch="spark-submit \\\n"
+               "  --conf spark.shuffle.io.maxRetries=10 \\\n"
+               "  --conf spark.shuffle.io.retryWait=15s"),
     _sig("spark_executor_lost", "spark", "error",
          r"ExecutorLostFailure|Lost executor \d+",
          title_zh="Executor 失联",
@@ -115,7 +131,9 @@ SIGNATURES: tuple[Signature, ...] = (
          cause_zh="单条记录序列化后超过 kryo 缓冲上限。",
          cause_en="A single record serialized larger than the kryo buffer cap.",
          fix_zh="调大 spark.kryoserializer.buffer.max（如 512m/1g）。",
-         fix_en="Raise spark.kryoserializer.buffer.max (e.g. 512m/1g)."),
+         fix_en="Raise spark.kryoserializer.buffer.max (e.g. 512m/1g).",
+         patch="spark-submit \\\n"
+               "  --conf spark.kryoserializer.buffer.max=1g"),
     # ----------------------------------------------------------------- hive
     _sig("hive_metastore_conn", "hive", "critical",
          r"Could not connect to meta store|MetaException|"
@@ -128,7 +146,11 @@ SIGNATURES: tuple[Signature, ...] = (
          fix_zh="确认 metastore 进程与端口存活（telnet host 9083）；核对 "
                 "hive.metastore.uris；查看 metastore 自身日志。",
          fix_en="Verify the metastore process/port (telnet host 9083); check "
-                "hive.metastore.uris; inspect the metastore's own log."),
+                "hive.metastore.uris; inspect the metastore's own log.",
+         patch="# confirm the metastore is reachable from the job's host\n"
+               "telnet <metastore-host> 9083\n"
+               "# check the configured address\n"
+               "grep -A1 hive.metastore.uris hive-site.xml"),
     _sig("hive_semantic", "hive", "error",
          r"SemanticException",
          title_zh="HQL 语义错误",
@@ -151,7 +173,10 @@ SIGNATURES: tuple[Signature, ...] = (
          fix_zh="确认分区键是否选错（高基数列误作分区）；确需超限时调大 "
                 "hive.exec.max.dynamic.partitions(.pernode)。",
          fix_en="Verify the partition key isn't a high-cardinality column by "
-                "mistake; otherwise raise hive.exec.max.dynamic.partitions(.pernode)."),
+                "mistake; otherwise raise hive.exec.max.dynamic.partitions(.pernode).",
+         patch="SET hive.exec.dynamic.partition.mode=nonstrict;\n"
+               "SET hive.exec.max.dynamic.partitions=5000;\n"
+               "SET hive.exec.max.dynamic.partitions.pernode=1000;"),
     _sig("hive_tez_vertex", "hive", "error",
          r"Vertex failed|Vertex did not succeed",
          title_zh="Tez Vertex 失败",
@@ -162,7 +187,9 @@ SIGNATURES: tuple[Signature, ...] = (
          fix_zh="用 yarn logs -applicationId <id> 拉取对应 task 日志，按其中的"
                 "首个异常继续定位。",
          fix_en="Pull the task log via yarn logs -applicationId <id> and "
-                "follow the first exception there."),
+                "follow the first exception there.",
+         patch="yarn logs -applicationId <application_id> | grep -B2 -A20 "
+               "'Caused by'"),
     # ------------------------------------------------------------ seatunnel
     _sig("st_config_parse", "seatunnel", "critical",
          r"com\.typesafe\.config\.ConfigException|ConfigException\.(Parse|Missing|WrongType)",
@@ -187,7 +214,11 @@ SIGNATURES: tuple[Signature, ...] = (
          fix_zh="核对 source/sink 的 plugin 名大小写；执行 install-plugin 或把"
                 "连接器 jar 放入 connectors/ 后重启。",
          fix_en="Check the source/sink plugin name casing; run install-plugin "
-                "or drop the connector jar into connectors/ and restart."),
+                "or drop the connector jar into connectors/ and restart.",
+         patch="# install the missing connector (name from the error)\n"
+               "sh bin/install-plugin.sh\n"
+               "# or drop the jar manually, then restart\n"
+               "cp seatunnel-connectors-<name>-<version>.jar connectors/"),
     _sig("st_type_mismatch", "seatunnel", "error",
          r"UnsupportedTypeException|Unsupported.*data type|"
          r"CatalogException.*type|DataTypeConvertException",
@@ -210,7 +241,11 @@ SIGNATURES: tuple[Signature, ...] = (
          fix_zh="调大 checkpoint.timeout；定位慢的 sink（批大小、并发、目标库"
                 "写入能力）；必要时降低 source 速率。",
          fix_en="Raise checkpoint.timeout; profile the slow sink (batch size, "
-                "parallelism, target write capacity); throttle the source."),
+                "parallelism, target write capacity); throttle the source.",
+         patch="env {\n"
+               "  checkpoint.interval = 60000\n"
+               "  checkpoint.timeout = 120000\n"
+               "}"),
     # -------------------------------------------- generic / hadoop / jdbc
     _sig("gen_class_not_found", "generic", "error",
          r"ClassNotFoundException|NoClassDefFoundError",
@@ -232,7 +267,11 @@ SIGNATURES: tuple[Signature, ...] = (
                   "the NameNode rejects writes.",
          fix_zh="清理过期数据/小文件，或找管理员调整配额（hdfs dfsadmin -setSpaceQuota）。",
          fix_en="Purge stale data/small files, or have an admin raise the "
-                "quota (hdfs dfsadmin -setSpaceQuota)."),
+                "quota (hdfs dfsadmin -setSpaceQuota).",
+         patch="# inspect the quota and usage of the rejected directory\n"
+               "hdfs dfs -count -q -h /path/to/dir\n"
+               "# admin: raise the space quota\n"
+               "hdfs dfsadmin -setSpaceQuota 10t /path/to/dir"),
     _sig("gen_no_space", "generic", "critical",
          r"No space left on device",
          title_zh="本地磁盘写满",
@@ -252,7 +291,11 @@ SIGNATURES: tuple[Signature, ...] = (
          fix_zh="确认任务以哪个账号提交；用 hdfs dfs -ls 查看目录属主与权限，"
                 "按最小权限原则授权。",
          fix_en="Confirm the submitting user; inspect ownership with hdfs dfs "
-                "-ls and grant least-privilege access."),
+                "-ls and grant least-privilege access.",
+         patch="# who owns the path, and with what mode?\n"
+               "hdfs dfs -ls -d /path/from/the/error\n"
+               "# grant the job user access (least privilege)\n"
+               "hdfs dfs -setfacl -m user:<job_user>:rwx /path/from/the/error"),
     _sig("gen_kerberos", "generic", "critical",
          r"GSSException|Kerberos|SASL.*(?:fail|error)|TGT",
          title_zh="Kerberos 认证失败",
@@ -262,7 +305,10 @@ SIGNATURES: tuple[Signature, ...] = (
                   "principal.",
          fix_zh="kinit 重新获取票据；核对 keytab 与 principal；长任务配置自动续票。",
          fix_en="Re-kinit; verify keytab and principal; configure ticket "
-                "renewal for long jobs."),
+                "renewal for long jobs.",
+         patch="# renew the ticket with the job's keytab\n"
+               "kinit -kt /path/to/job.keytab <principal>@<REALM>\n"
+               "klist   # verify expiry"),
     _sig("gen_jdbc_refused", "generic", "error",
          r"Connection refused|CommunicationsException|"
          r"Could not open client transport|connect timed out",
