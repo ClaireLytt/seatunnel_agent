@@ -109,10 +109,10 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## Phase 5 roadmap (fewer, heavier)
 
-1. [ ] dag_optimize + rerun_plan: ingest Graphviz DOT (airflow dags show
+1. [x] dag_optimize + rerun_plan: ingest Graphviz DOT (airflow dags show
    output) - shared parse_dag learns digraph syntax.
-2. [ ] sync_strategy: rows-moved estimate per sync and the saving vs a
+2. [x] sync_strategy: rows-moved estimate per sync and the saving vs a
    full reload - makes the incremental case quantitative.
-3. [ ] backfill_sql: overwrite_dynamic mode (Spark dynamic partition
+3. [x] backfill_sql: overwrite_dynamic mode (Spark dynamic partition
    overwrite) - one statement for the whole range, bounds enforced via
    {start}/{end} placeholders.
