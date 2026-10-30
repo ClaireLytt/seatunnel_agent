@@ -47,6 +47,11 @@ def render_markdown(result: RerunPlan, lang: str = "zh",
             lines.extend(result.commands(cmd_template.strip()))
             lines.append("```")
             lines.append("")
+    if len(result.groups) > 1:
+        lines.append(f"### {tp(lang, 'rpt_groups')}")
+        for i, group in enumerate(result.groups, 1):
+            lines.append(f"{i}. " + ", ".join(f"`{n}`" for n in group))
+        lines.append("")
     if result.untouched:
         lines.append(f"### {tp(lang, 'rpt_untouched')}")
         lines.append(", ".join(f"`{n}`" for n in result.untouched))

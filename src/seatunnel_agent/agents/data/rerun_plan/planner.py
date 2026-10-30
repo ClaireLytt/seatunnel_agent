@@ -53,6 +53,8 @@ class RerunPlan:
     warnings: list[str] = field(default_factory=list)
     batch_etas: list[float] = field(default_factory=list)  # max dur per batch
     total_eta: float = 0.0  # sum of batch ETAs (batches run sequentially)
+    # connected components of the rerun set — independent recovery tracks
+    groups: list[list[str]] = field(default_factory=list)
 
     @property
     def blast_radius(self) -> float:
@@ -72,6 +74,7 @@ class RerunPlan:
             "warnings": list(self.warnings),
             "batch_etas": list(self.batch_etas),
             "total_eta": self.total_eta,
+            "groups": [list(g) for g in self.groups],
         }
 
 
@@ -195,4 +198,28 @@ def plan_rerun(graph: TaskGraph, failed: str | list[str],
     plan.batch_etas = [round(max(graph.nodes[n] for n in batch), 2)
                        for batch in batches]
     plan.total_eta = round(sum(plan.batch_etas), 2)
+    plan.groups = _recovery_groups(graph, members)
     return plan
+
+
+def _recovery_groups(graph: TaskGraph,
+                     members: set[str]) -> list[list[str]]:
+    """Connected components of the rerun subgraph (edges both ways) —
+    each group recovers independently of the others."""
+    seen: set[str] = set()
+    groups: list[list[str]] = []
+    for start in sorted(members):
+        if start in seen:
+            continue
+        component: list[str] = []
+        stack = [start]
+        seen.add(start)
+        while stack:
+            node = stack.pop()
+            component.append(node)
+            for nxt in (graph.up[node] | graph.down[node]) & members:
+                if nxt not in seen:
+                    seen.add(nxt)
+                    stack.append(nxt)
+        groups.append(sorted(component))
+    return groups

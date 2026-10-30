@@ -65,6 +65,20 @@ def test_failed_root_through_failed_root():
     assert by["c"].from_failed == ["a", "b"]
 
 
+def test_independent_recovery_groups():
+    # clean_orders cascades to the sales chain; audit path fails separately
+    result = plan_rerun(parse_dag(DEMO), "clean_orders, audit_users")
+    assert result.groups == [
+        ["agg_daily", "clean_orders", "join_wide", "report"],
+        ["audit_users"]]
+    md = render_markdown(result, lang="zh")
+    assert "可独立恢复的分组" in md
+    # a single connected rerun set renders no group section
+    single = plan_rerun(parse_dag(DEMO), "clean_orders")
+    assert len(single.groups) == 1
+    assert "可独立恢复" not in render_markdown(single, lang="zh")
+
+
 def test_duration_aware_eta():
     dag = ('{"tasks":[{"name":"a","duration":10},'
            '{"name":"b","deps":["a"],"duration":3},'
