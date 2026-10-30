@@ -82,6 +82,24 @@ def test_table_deps_and_migration_order():
     assert shared["ods.users"]["consumers"] == ["build_sales.hql"]
 
 
+def test_migration_dag_feeds_the_dag_optimizer():
+    import json as _json
+
+    from seatunnel_agent.agents.data.dag_optimize import optimize, parse_dag
+
+    report, by = _by_job()
+    dag = report.migration_dag
+    tasks = {t["name"]: t for t in dag["tasks"]}
+    assert tasks["build_sales.hql"]["deps"] == ["load_users.sql"]
+    assert tasks["build_sales.hql"]["duration"] == by["build_sales.hql"].score
+    # round-trips straight into the DAG optimizer: migration makespan
+    result = optimize(parse_dag(_json.dumps(dag)))
+    assert result.tasks == len(report.jobs)
+    assert result.makespans["1"] > result.makespans["4"]
+    md = render_markdown(report, lang="zh")
+    assert "迁移 DAG" in md
+
+
 def test_seatunnel_stub_from_sqoop_args():
     _, by = _by_job()
     stub = by["sync_orders.sh"].stub

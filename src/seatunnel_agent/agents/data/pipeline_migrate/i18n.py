@@ -38,6 +38,9 @@ MIGRATE_I18N: dict[str, dict[str, str]] = {
                      "(fill in credentials)",
         "rpt_order": "Migration order (producers before their consumers)",
         "rpt_shared": "Shared tables across jobs (cut over together)",
+        "rpt_migration_dag": "Migration DAG (effort as duration — paste "
+                             "into the DAG Optimizer to plan the migration "
+                             "itself: how long with k people)",
         "rpt_warnings": "Warnings",
         "rpt_disclaimer": ("> Static analysis of the scripts only — nothing "
                            "was executed. Effort is a transparent score over "
@@ -73,6 +76,8 @@ MIGRATE_I18N: dict[str, dict[str, str]] = {
         "rpt_stubs": "纯搬运任务的 SeaTunnel 配置骨架（填上凭据即可用）",
         "rpt_order": "迁移顺序（上游生产者先迁，消费者随后）",
         "rpt_shared": "跨任务共享表（需一起切换）",
+        "rpt_migration_dag": "迁移 DAG（工作量当时长 — 粘到 DAG 依赖优化页"
+                             "即可估算 k 个人并行迁移要多久）",
         "rpt_warnings": "警告",
         "rpt_disclaimer": ("> 仅对脚本做静态分析，未执行任何内容。工作量是"
                            "基于语句数、join 数、控制流与风险项的透明打分；"

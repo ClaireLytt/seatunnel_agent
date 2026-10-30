@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from seatunnel_agent.common.utils import normalize_lang
 
 from .assessor import MigrationReport
@@ -54,6 +56,13 @@ def render_markdown(result: MigrationReport, lang: str = "zh") -> str:
             lines.append("```hocon")
             lines.append(job.stub)
             lines.append("```")
+        lines.append("")
+    if result.migration_dag:
+        lines.append(f"### {tp(lang, 'rpt_migration_dag')}")
+        lines.append("```json")
+        lines.append(json.dumps(result.migration_dag, ensure_ascii=False,
+                                indent=2))
+        lines.append("```")
         lines.append("")
     if result.warnings:
         lines.append(f"### {tp(lang, 'rpt_warnings')}")

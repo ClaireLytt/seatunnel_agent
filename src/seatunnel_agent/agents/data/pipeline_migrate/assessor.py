@@ -213,6 +213,9 @@ class MigrationReport:
     warnings: list[str] = field(default_factory=list)
     migration_order: list[list[str]] = field(default_factory=list)  # job waves
     shared_tables: list[dict[str, Any]] = field(default_factory=list)
+    # job-dependency graph, effort score as duration — paste into the
+    # DAG optimizer to plan the migration itself ("how long with k people")
+    migration_dag: dict[str, Any] = field(default_factory=dict)
 
     def counts(self) -> dict[str, int]:
         out = dict.fromkeys(TARGETS, 0)
@@ -232,7 +235,8 @@ class MigrationReport:
                 "efforts": self.effort_counts(),
                 "warnings": list(self.warnings),
                 "migration_order": [list(w) for w in self.migration_order],
-                "shared_tables": [dict(s) for s in self.shared_tables]}
+                "shared_tables": [dict(s) for s in self.shared_tables],
+                "migration_dag": dict(self.migration_dag)}
 
 
 def assess_text(name: str, text: str) -> MigrationReport:
@@ -301,3 +305,7 @@ def _link_jobs(report: MigrationReport) -> None:
         for j in wave:
             del remaining[j]
     report.shared_tables.sort(key=lambda s: s["table"])
+    report.migration_dag = {"tasks": [
+        {"name": j.job, "deps": sorted(deps[j.job]),
+         "duration": max(j.score, 1)}
+        for j in sorted(report.jobs, key=lambda j: j.job)]}
