@@ -6,6 +6,7 @@ import {
   STYLE_LABEL,
   scoreStyle,
   styleVerdict,
+  type Lang,
 } from '@/lib/optimism'
 import { STRENGTH_CARDS, STRENGTH_LABEL, type Strength, topStrengths } from '@/lib/strengths'
 import { FIVE_QUESTIONS, PILLARS, PILLAR_LABEL, type Pillar, scoreAnswer } from '@/lib/perma'
@@ -69,7 +70,8 @@ function Bar({ label, value, max = 100 }: { label: string; value: number; max?: 
 }
 
 function Optimism() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const lang: Lang = i18n.language === 'en' ? 'en' : 'zh'
   const [picks, setPicks] = useState<boolean[]>(() => load(OPT_KEY, []))
   const [prev, setPrev] = useState<number | null>(() => {
     const hist = load<number[]>(HIST_KEY + '.opt', [])
@@ -104,12 +106,12 @@ function Optimism() {
         <p className="mg-label">
           {t('progress')} {picks.length + 1} / {STYLE_ITEMS.length}
         </p>
-        <p className="mg-ink text-lg leading-relaxed">{item.situation}</p>
+        <p className="mg-ink text-lg leading-relaxed">{item.situation[lang]}</p>
         <p className="mg-sub text-sm">{t('optimism_hint')}</p>
         <div className="flex flex-col gap-3">
           {item.options.map((o, i) => (
             <button key={i} className="mg-option text-left" onClick={() => pick(o.optimistic)}>
-              {o.text}
+              {o.text[lang]}
             </button>
           ))}
         </div>
@@ -126,11 +128,11 @@ function Optimism() {
     <div className="flex flex-col gap-4">
       {STYLE_DIMENSIONS.map((d) => {
         const r = result.byDimension[d]
-        return <Bar key={d} label={STYLE_LABEL[d].zh} value={r.optimistic} max={r.total || 1} />
+        return <Bar key={d} label={STYLE_LABEL[d][lang]} value={r.optimistic} max={r.total || 1} />
       })}
       <p className="mg-ink mt-2 text-base leading-relaxed">
         <span className="mg-label">{t('verdict_label')} · </span>
-        {styleVerdict(result.overall)}
+        {styleVerdict(result.overall, lang)}
       </p>
       {prev !== null && (
         <p className="mg-fade text-sm">{t('last_vs', { a: prev, b: result.overall })}</p>
@@ -341,7 +343,8 @@ function ThreeGoodThings() {
 }
 
 function Strengths() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const lang: Lang = i18n.language === 'en' ? 'en' : 'zh'
   const [picks, setPicks] = useState<Strength[]>(() => load(STR_KEY, []))
   const done = picks.length >= STRENGTH_CARDS.length
   const card = STRENGTH_CARDS[picks.length]
@@ -361,13 +364,13 @@ function Strengths() {
             className="mg-option text-left"
             onClick={() => setPicks((p) => [...p, card.a.strength])}
           >
-            {card.a.text}
+            {card.a.text[lang]}
           </button>
           <button
             className="mg-option text-left"
             onClick={() => setPicks((p) => [...p, card.b.strength])}
           >
-            {card.b.text}
+            {card.b.text[lang]}
           </button>
         </div>
         {picks.length > 0 && (
@@ -385,9 +388,9 @@ function Strengths() {
       {top3.map((s, i) => (
         <div key={s.strength} className="mg-card">
           <p className="mg-label normal-case tracking-[0.14em]">
-            NO.{i + 1} · {STRENGTH_LABEL[s.strength].zh}
+            NO.{i + 1} · {STRENGTH_LABEL[s.strength][lang]}
           </p>
-          <p className="mg-ink mt-2 text-base leading-relaxed">{STRENGTH_LABEL[s.strength].desc}</p>
+          <p className="mg-ink mt-2 text-base leading-relaxed">{STRENGTH_LABEL[s.strength].desc[lang]}</p>
         </div>
       ))}
       <button className="mg-btn self-start" onClick={() => setPicks([])}>
