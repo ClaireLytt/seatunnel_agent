@@ -133,13 +133,13 @@ class MigrationReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = {t: 0 for t in TARGETS}
+        out = dict.fromkeys(TARGETS, 0)
         for job in self.jobs:
             out[job.target] += 1
         return out
 
     def effort_counts(self) -> dict[str, int]:
-        out = {e: 0 for e in EFFORTS}
+        out = dict.fromkeys(EFFORTS, 0)
         for job in self.jobs:
             out[job.effort] += 1
         return out

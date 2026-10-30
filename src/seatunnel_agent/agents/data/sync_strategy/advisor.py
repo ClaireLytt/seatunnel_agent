@@ -163,7 +163,7 @@ class StrategyReport:
     recommendations: list[Recommendation] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = {s: 0 for s in STRATEGIES}
+        out = dict.fromkeys(STRATEGIES, 0)
         for rec in self.recommendations:
             out[rec.strategy] += 1
         return out
