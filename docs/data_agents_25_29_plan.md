@@ -125,3 +125,11 @@ tests/test_<name>.py        # 确定性核心测试
    duration - feed it to dagopt to answer "how long with k engineers".
 3. [x] sync_strategy: fleet summary - daily rows moved by the
    recommended mix vs all-full, one quantified line.
+
+## Phase 7 roadmap (one-click handoffs)
+
+1. [ ] /backfill -> /backfillsql: "generate backfill SQL" button hands the
+   plan JSON over via sessionStorage; target page auto-fills and runs.
+2. [ ] /pipemigrate -> /dagopt: "estimate with k engineers" button hands
+   the migration DAG over the same way.
+3. [ ] guide: document the handoffs and phase-6 capacity features.
