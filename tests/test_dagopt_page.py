@@ -44,10 +44,14 @@ def test_dagopt_page_run_flow(page_url):
                                 name="DAG Optimizer")).to_be_visible()
         assert (page.locator("input").first.input_value()
                 == "examples/dagopt_demo/dag.json")
+        page.locator("input").nth(1).fill("30")  # SLA duration
         page.get_by_role("button", name="Analyze file", exact=True).click()
 
         expect(page.get_by_role(
             "heading", name="DAG Dependency Optimization")).to_be_visible()
+        # the SLA verdict line names the minimal speed-up set
+        expect(page.get_by_text("Deadline 30: reachable",
+                                exact=False)).to_be_visible()
         expect(page.get_by_role("heading", name="Critical path",
                                 exact=True)).to_be_visible()
         for section in ("Redundant serial dependencies", "Parallel waves",
