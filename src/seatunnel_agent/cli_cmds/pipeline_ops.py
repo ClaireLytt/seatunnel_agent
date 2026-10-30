@@ -412,7 +412,48 @@ def pipe_migrate(directory, path, emit_dir, use_llm, history_path, lang,
                                for j in result.jobs if j.stub])
 
 
+@click.command("trends")
+@click.argument("paths", nargs=-1, type=click.Path(exists=True))
+@click.option("--last", "-n", type=int, default=0,
+              help="只看最近 N 条（默认全量首尾对比）")
+def trends(paths, last) -> None:
+    """运维趋势汇总 — 读取 --history 产出的 jsonl，逐文件打印首尾对比。
+
+    PATHS 为 jsonl 文件或目录（目录递归收集 *.jsonl）。
+    """
+    import json as _json
+
+    files: list[Path] = []
+    for raw in paths:
+        p = Path(raw)
+        files.extend(sorted(p.rglob("*.jsonl")) if p.is_dir() else [p])
+    if not files:
+        raise click.UsageError("没有找到 jsonl 趋势文件")
+    for path in files:
+        entries = [_json.loads(ln) for ln in
+                   path.read_text(encoding="utf-8").splitlines()
+                   if ln.strip()]
+        if last > 0:
+            entries = entries[-last:]
+        if not entries:
+            console.print(f"[dim]{path}: 空[/dim]")
+            continue
+        first, final = entries[0], entries[-1]
+        span = (f"{first.get('ts', '?')} → {final.get('ts', '?')}"
+                if len(entries) > 1 else first.get("ts", "?"))
+        console.print(f"[bold]{path.name}[/bold]  "
+                      f"{len(entries)} 条  {span}")
+        for key, value in final.items():
+            if key == "ts" or not isinstance(value, (int, float)):
+                continue
+            start = first.get(key, 0)
+            mark = "" if value == start else (
+                " [yellow]↑[/yellow]" if value > start else " [green]↓[/green]")
+            console.print(f"  {key}: {start:g} → {value:g}{mark}")
+
+
 def register(cli) -> None:
+    cli.add_command(trends)
     cli.add_command(dagopt)
     cli.add_command(rerun)
     cli.add_command(backfill_sql)

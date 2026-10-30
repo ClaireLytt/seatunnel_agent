@@ -500,6 +500,9 @@ def freshness(
               show_default=True, help="Report language")
 @click.option("--fail-on-missing", is_flag=True,
               help="CI gate: 存在缺失分区时 exit 1")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="补数台账：本次计划的规模指标追加到该 jsonl，并与上次对比")
 @click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
               default="markdown", help="Report format (json for machines/CI)")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
@@ -512,6 +515,7 @@ def backfill(
     cmd: str,
     lang: str,
     fail_on_missing: bool,
+    history_path: str | None,
     fmt: str,
     output: str | None,
 ) -> None:
@@ -558,6 +562,16 @@ def backfill(
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if history_path:
+        from .pipeline_ops import _track_history
+
+        _track_history(history_path, {
+            "tables": len(result.tables),
+            "slots": result.total_slots,
+            "batches": result.batches,
+            "skipped": len(result.skipped),
+        }, worse_key="slots")
 
     if fail_on_missing and result.total_slots:
         msg = "存在缺失分区，检查未通过。"

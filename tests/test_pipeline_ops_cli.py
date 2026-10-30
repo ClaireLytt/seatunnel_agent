@@ -99,6 +99,32 @@ def test_rerun_cli_failed_and_statuses():
     assert res.exit_code != 0  # neither --failed nor --statuses
 
 
+def test_backfill_ledger_and_trends_summary(tmp_path):
+    from seatunnel_agent.cli_cmds.checks import backfill
+    from seatunnel_agent.cli_cmds.pipeline_ops import trends
+
+    runner = CliRunner()
+    tdir = tmp_path / "trends"
+    hist = tdir / "backfill_ledger.jsonl"
+    args = ["-f", str(EX / "backfill_demo" / "updates.json"),
+            "-r", str(EX / "backfill_demo" / "rules.json"),
+            "--sql-dir", str(EX / "backfill_demo" / "sql"),
+            "--history", str(hist)]
+    assert runner.invoke(backfill, args).exit_code == 0
+    assert runner.invoke(backfill, args).exit_code == 0
+    entry = json.loads(hist.read_text("utf-8").splitlines()[0])
+    assert entry["tables"] == 3 and entry["slots"] == 6
+    # trends summarizes any watcher jsonl, directory mode included
+    res = runner.invoke(trends, [str(tdir)])
+    assert res.exit_code == 0
+    assert "backfill_ledger.jsonl" in res.output
+    assert "2 条" in res.output and "slots: 6 → 6" in res.output
+    res = runner.invoke(trends, [str(hist), "-n", "1"])
+    assert res.exit_code == 0 and "1 条" in res.output
+    res = runner.invoke(trends, [str(tmp_path / "empty_dir_missing")] )
+    assert res.exit_code != 0
+
+
 def test_rerun_incident_ledger(tmp_path):
     runner = CliRunner()
     hist = tmp_path / "incidents.jsonl"
