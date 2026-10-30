@@ -16,6 +16,7 @@ from .advisor import (
     recommend,
 )
 from .config_stub import config_stub
+from .ddl import tables_from_ddl
 from .report import render_markdown
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "parse_tables",
     "recommend",
     "render_markdown",
+    "tables_from_ddl",
 ]

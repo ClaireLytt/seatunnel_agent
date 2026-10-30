@@ -79,6 +79,41 @@ def test_bad_inputs():
         parse_tables('{"nope": []}')
 
 
+def test_inventory_from_ddl():
+    ddl = """
+    -- user dimension
+    CREATE TABLE IF NOT EXISTS ods.users (
+      user_id BIGINT PRIMARY KEY,
+      user_name VARCHAR(64),
+      updated_at TIMESTAMP
+    ) ENGINE=InnoDB;
+
+    CREATE TABLE ods.events (
+      event_id BIGINT,
+      payload TEXT,
+      PRIMARY KEY (event_id)
+    );
+    """
+    tables = parse_tables(ddl)
+    by = {t.table: t for t in tables}
+    users = by["ods.users"]
+    assert users.has_pk and users.pk_col == "user_id"
+    assert users.has_update_ts and users.update_ts_col == "updated_at"
+    events = by["ods.events"]
+    assert events.has_pk and events.pk_col == "event_id"
+    assert not events.has_update_ts
+    # recommendations run off schema facts: ts → incr_timestamp, pk → incr_pk
+    recs = {r.table: r for r in recommend(tables).recommendations}
+    assert recs["ods.users"].strategy == "incr_timestamp"
+    assert recs["ods.events"].strategy == "incr_pk"
+    assert "WHERE updated_at >= '${watermark}'" in recs["ods.users"].config
+
+
+def test_ddl_without_create_table_rejected():
+    with pytest.raises(ValueError, match="no CREATE TABLE"):
+        parse_tables("CREATE TABLE broken")
+
+
 def test_config_stubs_follow_strategy():
     by = _rec()
     # cdc → streaming MySQL-CDC source with the real table name

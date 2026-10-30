@@ -87,6 +87,10 @@ def parse_tables(text: str) -> list[SourceTable]:
     stripped = (text or "").strip()
     if not stripped:
         raise ValueError("empty inventory")
+    from .ddl import looks_like_ddl, tables_from_ddl  # local: avoids cycle
+
+    if looks_like_ddl(stripped):
+        return tables_from_ddl(stripped)
     if stripped[0] in "[{":
         data = json.loads(stripped)
         if isinstance(data, dict):
