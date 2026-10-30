@@ -149,6 +149,17 @@ def test_rows_moved_estimate():
     assert "| - |" in render_markdown(unknown, lang="en")
 
 
+def test_fleet_rows_summary():
+    report = recommend(parse_tables(DEMO))
+    moved, full = report.fleet_rows()
+    # full tables move everything; incrementals/CDC move only the churn
+    assert full == 50000000 + 3000000 + 5000 + 900000000 + 20000000
+    assert moved == 800000 + 40000 + 5000 + 30000000 + 20000000
+    assert report.to_dict()["fleet_rows_moved"] == moved
+    md = render_markdown(report, lang="en")
+    assert "Recommended mix moves" in md and "saves" in md
+
+
 def test_schedule_suggestions():
     by = _rec()
     assert by["ods.orders"].schedule == "streaming"      # cdc

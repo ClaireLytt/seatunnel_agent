@@ -17,14 +17,21 @@ def render_markdown(result: StrategyReport, lang: str = "zh") -> str:
              "",
              "**" + tp(lang, "rpt_stats").format(
                  tables=len(result.recommendations), **counts) + "**",
-             "",
-             f"| {tp(lang, 'rpt_col_table')} "
-             f"| {tp(lang, 'rpt_col_strategy')} "
-             f"| {tp(lang, 'rpt_col_schedule')} "
-             f"| {tp(lang, 'rpt_col_rows')} "
-             f"| {tp(lang, 'rpt_col_reasons')} "
-             f"| {tp(lang, 'rpt_col_risks')} |",
-             "|---|---|---|---|---|---|"]
+             ""]
+    moved, full = result.fleet_rows()
+    if full:
+        lines.append(tp(lang, "rpt_fleet").format(
+            moved=f"{moved:,}", full=f"{full:,}",
+            pct=f"{(1 - moved / full) * 100:.1f}"))
+        lines.append("")
+    lines.extend([
+        f"| {tp(lang, 'rpt_col_table')} "
+        f"| {tp(lang, 'rpt_col_strategy')} "
+        f"| {tp(lang, 'rpt_col_schedule')} "
+        f"| {tp(lang, 'rpt_col_rows')} "
+        f"| {tp(lang, 'rpt_col_reasons')} "
+        f"| {tp(lang, 'rpt_col_risks')} |",
+        "|---|---|---|---|---|---|"])
     for rec in result.recommendations:
         reasons = "; ".join(tp(lang, "reason_" + r) for r in rec.reasons)
         risks = ("; ".join(tp(lang, "risk_" + r) for r in rec.risks)

@@ -183,16 +183,29 @@ class StrategyReport:
             out[rec.strategy] += 1
         return out
 
+    def fleet_rows(self) -> tuple[int, int]:
+        """(rows the recommended mix moves daily, rows all-full would)."""
+        moved = sum(r.rows_per_sync for r in self.recommendations
+                    if r.rows_per_sync >= 0)
+        full = sum(t for t in self._full_rows)
+        return moved, full
+
+    _full_rows: list[int] = field(default_factory=list)
+
     def to_dict(self) -> dict[str, Any]:
+        moved, full = self.fleet_rows()
         return {"recommendations": [r.to_dict()
                                     for r in self.recommendations],
-                "counts": self.counts()}
+                "counts": self.counts(),
+                "fleet_rows_moved": moved,
+                "fleet_rows_full": full}
 
 
 def recommend(tables: list[SourceTable]) -> StrategyReport:
     from .config_stub import config_stub  # local: avoids import cycle
 
     recs: list[Recommendation] = []
+    full_rows: list[int] = []
     for t in sorted(tables, key=lambda t: t.table):
         rec = _recommend_one(t)
         rec.schedule = _schedule(t, rec.strategy)
@@ -202,8 +215,11 @@ def recommend(tables: list[SourceTable]) -> StrategyReport:
                 else t.daily_change_rows
             rec.rows_per_sync = moved
             rec.saving_ratio = round(1 - moved / t.rows, 4)
+            full_rows.append(t.rows)
         recs.append(rec)
-    return StrategyReport(recommendations=recs)
+    report = StrategyReport(recommendations=recs)
+    report._full_rows = full_rows
+    return report
 
 
 def _schedule(t: SourceTable, strategy: str) -> str:
