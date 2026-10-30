@@ -18,6 +18,8 @@ Finding kinds (severity):
 
 from __future__ import annotations
 
+from seatunnel_agent.common.severity import severity_counts
+
 import difflib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -66,11 +68,7 @@ class LintResult:
     connectors: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = dict.fromkeys(SEVERITIES, 0)
-        for f in self.findings:
-            out[f.severity] += 1
-        out["total"] = len(self.findings)
-        return out
+        return severity_counts(self.findings, SEVERITIES)
 
     @property
     def ok(self) -> bool:

@@ -23,6 +23,8 @@ promise" rather than "did anything change".
 
 from __future__ import annotations
 
+from seatunnel_agent.common.severity import severity_counts
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -80,10 +82,7 @@ class ContractReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        sev = {"high": 0, "medium": 0, "low": 0}
-        for f in self.findings:
-            sev[f.severity] += 1
-        return {**sev, "total": len(self.findings)}
+        return severity_counts(self.findings)
 
     def to_dict(self) -> dict[str, Any]:
         return {

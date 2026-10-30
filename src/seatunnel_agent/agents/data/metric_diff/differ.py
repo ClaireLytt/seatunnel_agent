@@ -11,6 +11,8 @@ sqlglot round-trip (or a regex fallback when the fragment does not parse),
 
 from __future__ import annotations
 
+from seatunnel_agent.common.severity import severity_counts
+
 import re
 from dataclasses import dataclass, field
 from typing import Any
@@ -90,11 +92,7 @@ class MetricReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = dict.fromkeys(SEVERITIES, 0)
-        for c in self.conflicts:
-            out[c.severity] += 1
-        out["total"] = len(self.conflicts)
-        return out
+        return severity_counts(self.conflicts, SEVERITIES)
 
     def to_dict(self) -> dict[str, Any]:
         return {"root": self.root, "dialect": self.dialect,

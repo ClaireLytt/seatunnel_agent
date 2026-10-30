@@ -23,6 +23,8 @@ irreversible steps stay in as comments so nothing is silently skipped.
 
 from __future__ import annotations
 
+from seatunnel_agent.common.severity import severity_counts
+
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -99,10 +101,7 @@ class GuardReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        sev = {"high": 0, "medium": 0, "low": 0}
-        for f in self.findings:
-            sev[f.severity] += 1
-        return {**sev, "total": len(self.findings),
+        return {**severity_counts(self.findings),
                 "irreversible": sum(1 for f in self.findings
                                     if not f.reversible)}
 

@@ -9,6 +9,8 @@ is collapsed into one "possible rename" risk finding.
 
 from __future__ import annotations
 
+from seatunnel_agent.common.severity import severity_counts
+
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -64,11 +66,7 @@ class DriftReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = dict.fromkeys(SEVERITIES, 0)
-        for f in self.findings:
-            out[f.severity] += 1
-        out["total"] = len(self.findings)
-        return out
+        return severity_counts(self.findings, SEVERITIES)
 
     def to_dict(self) -> dict[str, Any]:
         return {
