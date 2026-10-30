@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from seatunnel_agent.common.api_guard import add_health, ms_since, require_dir
 from seatunnel_agent.common.utils import normalize_lang
 
-from .planner import parse_dag, plan_rerun
+from .planner import parse_dag, parse_statuses, plan_rerun
 from .report import render_markdown
 
 router = APIRouter(prefix="/api/rerun", tags=["rerun_plan"])
@@ -28,9 +28,12 @@ class PlanRequest(BaseModel):
     file: str | None = Field(
         None, description="Task DAG file (.json or text lines)")
     text: str | None = Field(None, description="Inline DAG definition")
-    failed: str = Field(..., description="Failed task names, comma-separated")
+    failed: str = Field("", description="Failed task names, comma-separated")
     succeeded: str = Field(
         "", description="Already-succeeded task names, comma-separated")
+    statuses: str = Field(
+        "", description="Scheduler status export: {'task':'state'} JSON or "
+                        "task=state lines (overrides failed/succeeded)")
     cmd: str = Field("", description="Command template with {task}")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
     report: bool = Field(False, description="Include the rendered markdown report")
@@ -55,12 +58,17 @@ def run_plan(req: PlanRequest) -> PlanResponse:
     start = time.time()
     if not (req.file or "").strip() and not (req.text or "").strip():
         raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
-    if not req.failed.strip():
-        raise HTTPException(status_code=400, detail="Provide 'failed'")
+    if not req.failed.strip() and not req.statuses.strip():
+        raise HTTPException(status_code=400,
+                            detail="Provide 'failed' or 'statuses'")
     text = (_read_whitelisted(req.file or "") if (req.file or "").strip()
             else req.text or "")
     try:
-        result = plan_rerun(parse_dag(text), req.failed, req.succeeded)
+        if req.statuses.strip():
+            failed, succeeded = parse_statuses(req.statuses)
+        else:
+            failed, succeeded = req.failed, req.succeeded
+        result = plan_rerun(parse_dag(text), failed, succeeded)
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:  # malformed JSON

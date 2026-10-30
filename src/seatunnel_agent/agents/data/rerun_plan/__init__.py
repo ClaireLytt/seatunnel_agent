@@ -8,13 +8,20 @@ stale, and order the set into topological batches with the blast
 radius.  No scheduler or database connection.
 """
 
-from .planner import RerunPlan, RerunTask, parse_dag, plan_rerun
+from .planner import (
+    RerunPlan,
+    RerunTask,
+    parse_dag,
+    parse_statuses,
+    plan_rerun,
+)
 from .report import render_markdown
 
 __all__ = [
     "RerunPlan",
     "RerunTask",
     "parse_dag",
+    "parse_statuses",
     "plan_rerun",
     "render_markdown",
 ]

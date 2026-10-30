@@ -20,7 +20,12 @@ from seatunnel_agent.agents.data.dag_optimize.optimizer import (
     parse_dag,
 )
 
-__all__ = ["RerunPlan", "RerunTask", "parse_dag", "plan_rerun"]
+__all__ = ["RerunPlan", "RerunTask", "parse_dag", "parse_statuses",
+           "plan_rerun"]
+
+# scheduler-export states mapped onto failed / succeeded
+_FAILED_STATES = ("failed", "error", "failure", "up_for_retry", "killed")
+_SUCCESS_STATES = ("success", "succeeded", "ok", "done")
 
 
 @dataclass
@@ -68,6 +73,42 @@ class RerunPlan:
             "batch_etas": list(self.batch_etas),
             "total_eta": self.total_eta,
         }
+
+
+def parse_statuses(text: str) -> tuple[list[str], list[str]]:
+    """Scheduler status export → (failed, succeeded).
+
+    JSON object ``{"task": "state"}`` or ``task=state`` / ``task,state``
+    lines.  Failed states: failed/error/failure/up_for_retry/killed;
+    success states: success/succeeded/ok/done; anything else (running,
+    queued, skipped...) is neither.
+    """
+    import json
+
+    stripped = (text or "").strip()
+    if not stripped:
+        raise ValueError("empty status export")
+    if stripped[0] == "{":
+        data = json.loads(stripped)
+        if not isinstance(data, dict):
+            raise ValueError("status JSON must be an object")
+        items = [(str(k), str(v)) for k, v in data.items()]
+    else:
+        items = []
+        for raw in stripped.splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            sep = "=" if "=" in line else ","
+            name, _, state = line.partition(sep)
+            if not name.strip() or not state.strip():
+                raise ValueError(f"status line must be 'task=state': {line!r}")
+            items.append((name.strip(), state.strip()))
+    failed = [n for n, s in items if s.lower() in _FAILED_STATES]
+    succeeded = [n for n, s in items if s.lower() in _SUCCESS_STATES]
+    if not failed:
+        raise ValueError("status export contains no failed tasks")
+    return failed, succeeded
 
 
 def _parse_names(raw: str) -> list[str]:

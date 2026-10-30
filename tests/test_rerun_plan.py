@@ -78,6 +78,30 @@ def test_duration_aware_eta():
     assert "Estimated duration 19" in md
 
 
+def test_statuses_json_and_lines():
+    from seatunnel_agent.agents.data.rerun_plan import parse_statuses
+
+    failed, ok = parse_statuses(
+        '{"clean_orders":"failed","join_wide":"success",'
+        '"report":"queued","agg_daily":"up_for_retry"}')
+    assert failed == ["clean_orders", "agg_daily"]
+    assert ok == ["join_wide"]
+    failed, ok = parse_statuses(
+        "clean_orders=failed\n# comment\njoin_wide=success\n")
+    assert failed == ["clean_orders"] and ok == ["join_wide"]
+    with pytest.raises(ValueError, match="no failed"):
+        parse_statuses('{"a":"success"}')
+    with pytest.raises(ValueError, match="task=state"):
+        parse_statuses("just-a-task-name")
+
+
+def test_statuses_drive_the_plan_via_tool():
+    md = rerun_plan(DEMO, statuses='{"clean_orders":"failed",'
+                                   '"join_wide":"success"}', lang="en")
+    assert "stale inputs (had succeeded)" in md
+    assert "must not be empty" in rerun_plan(DEMO)
+
+
 def test_bad_inputs():
     graph = parse_dag(DEMO)
     with pytest.raises(ValueError, match="no failed"):
