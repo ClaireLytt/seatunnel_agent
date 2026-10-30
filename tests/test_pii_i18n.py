@@ -38,10 +38,10 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
     "sql_ph": {"en": "Paste CREATE TABLE / INSERT ... SELECT statements…",
                "zh": "粘贴 CREATE TABLE / INSERT ... SELECT 语句…"},
     "scan_sql_btn": {"en": "Scan SQL", "zh": "扫描 SQL"},
-    "empty_dir": {"en": "⚠️ Provide a SQL directory first.",
-                  "zh": "⚠️ 请先填写 SQL 目录。"},
-    "bad_dir": {"en": "⚠️ Not a directory: ", "zh": "⚠️ 不是有效目录: "},
-    "empty_sql": {"en": "⚠️ Paste some SQL first.", "zh": "⚠️ 请先粘贴 SQL。"},
+    "empty_dir": {"en": "Provide a SQL directory first.",
+                  "zh": "请先填写 SQL 目录。"},
+    "bad_dir": {"en": "Not a directory: ", "zh": "不是有效目录: "},
+    "empty_sql": {"en": "Paste some SQL first.", "zh": "请先粘贴 SQL。"},
 }
 
 LEGACY_DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",

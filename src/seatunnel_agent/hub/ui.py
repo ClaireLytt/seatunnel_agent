@@ -166,6 +166,52 @@ def _resolve_ui_auth(host: str, share: bool, insecure: bool) -> tuple[str, str] 
     )
 
 
+def mount_react_pages(app: gr.Blocks) -> None:
+    """Mount every manifest's REST router and React static bundle on the
+    FastAPI instance actually serving (``app.app``).
+
+    Must run AFTER ``app.launch()`` — Gradio 6's launch() builds a fresh
+    FastAPI instance, silently discarding anything registered beforehand.
+    Shared by launch_app() and the UI-testing app-under-test snippet."""
+    # React page backends: every manifest with an api= field gets its router
+    # mounted unconditionally (React pages call them directly, not via --api).
+    from fastapi.responses import HTMLResponse
+    from fastapi.staticfiles import StaticFiles
+
+    from seatunnel_agent.hub.registry import discover, frontend_dist, resolve
+
+    manifests = discover()
+    for mf in manifests:
+        if mf.api:
+            app.app.include_router(resolve(mf.api))
+
+    # Rebuilt React pages: every external manifest mounts from the
+    # frontend/<name>/dist convention; unbuilt bundles get a hint page.
+    def _register_hint(route: str, name: str, legacy: str | None) -> None:
+        legacy_html = (
+            f" Legacy page: <a href='{legacy}'>{legacy}</a>" if legacy else "")
+        body = (
+            f"<pre style='margin:40px;font-size:15px'>{name} frontend is "
+            f"not built.\n\n  cd frontend &amp;&amp; npm ci &amp;&amp; "
+            f"npm run build --workspace {name}\n\nthen restart the UI."
+            f"{legacy_html}</pre>")
+
+        @app.app.get(route, include_in_schema=False)
+        @app.app.get(route + "/", include_in_schema=False)
+        def _unbuilt() -> HTMLResponse:
+            return HTMLResponse(body)
+
+    for mf in manifests:
+        if not mf.external:
+            continue
+        dist = frontend_dist(mf)
+        if (dist / "index.html").is_file():
+            app.app.mount(mf.route, StaticFiles(directory=dist, html=True),
+                          name=f"{mf.name}-frontend")
+        else:
+            _register_hint(mf.route, mf.name, mf.legacy)
+
+
 def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share: bool = False, api: bool = False, insecure: bool = False) -> None:
     ui_auth = _resolve_ui_auth(host, share, insecure)
     if _port_has_listener(port):
@@ -196,45 +242,7 @@ def launch_app(app: gr.Blocks, port: int = 7860, host: str = "127.0.0.1", share:
         prevent_thread_lock=True,
     )
 
-    # React page backends: every manifest with an api= field gets its router
-    # mounted unconditionally (React pages call them directly, not via --api).
-    from seatunnel_agent.hub.registry import discover, resolve
-
-    manifests = discover()
-    for mf in manifests:
-        if mf.api:
-            app.app.include_router(resolve(mf.api))
-
-    # Rebuilt React pages: every external manifest mounts from the
-    # frontend/<name>/dist convention; unbuilt bundles get a hint page.
-    from fastapi.responses import HTMLResponse
-    from fastapi.staticfiles import StaticFiles
-
-    from seatunnel_agent.hub.registry import frontend_dist
-
-    def _register_hint(route: str, name: str, legacy: str | None) -> None:
-        legacy_html = (
-            f" Legacy page: <a href='{legacy}'>{legacy}</a>" if legacy else "")
-        body = (
-            f"<pre style='margin:40px;font-size:15px'>{name} frontend is "
-            f"not built.\n\n  cd frontend &amp;&amp; npm ci &amp;&amp; "
-            f"npm run build --workspace {name}\n\nthen restart the UI."
-            f"{legacy_html}</pre>")
-
-        @app.app.get(route, include_in_schema=False)
-        @app.app.get(route + "/", include_in_schema=False)
-        def _unbuilt() -> HTMLResponse:
-            return HTMLResponse(body)
-
-    for mf in manifests:
-        if not mf.external:
-            continue
-        dist = frontend_dist(mf)
-        if (dist / "index.html").is_file():
-            app.app.mount(mf.route, StaticFiles(directory=dist, html=True),
-                          name=f"{mf.name}-frontend")
-        else:
-            _register_hint(mf.route, mf.name, mf.legacy)
+    mount_react_pages(app)
 
     if api:
         from fastapi import Depends

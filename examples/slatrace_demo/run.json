@@ -1,0 +1,11 @@
+{
+  "tasks": [
+    {"name": "ods_orders_sync", "start": "2024-05-01 00:05:00", "end": "2024-05-01 02:40:00", "deps": []},
+    {"name": "ods_users_sync", "start": "2024-05-01 00:05:00", "end": "2024-05-01 00:35:00", "deps": []},
+    {"name": "ods_items_sync", "start": "2024-05-01 00:05:00", "end": "2024-05-01 00:50:00", "deps": []},
+    {"name": "dwd_orders", "start": "2024-05-01 02:41:00", "end": "2024-05-01 03:30:00", "deps": ["ods_orders_sync", "ods_users_sync"]},
+    {"name": "dwd_items", "start": "2024-05-01 00:51:00", "end": "2024-05-01 01:20:00", "deps": ["ods_items_sync"]},
+    {"name": "dws_sales", "start": "2024-05-01 03:32:00", "end": "2024-05-01 04:45:00", "deps": ["dwd_orders", "dwd_items"]},
+    {"name": "ads_sales_report", "start": "2024-05-01 04:46:00", "end": "2024-05-01 05:10:00", "deps": ["dws_sales"]}
+  ]
+}

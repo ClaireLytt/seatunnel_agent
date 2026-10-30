@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import { fetchTemplates, type Template } from '@/api'
 
 /** Quick-access template buttons above the chat input. */
@@ -13,7 +14,7 @@ export function TemplateBar({ onSelect }: { onSelect: (hint: string) => void }) 
 
   if (templates.length === 0) return null
 
-  const lang = i18n.language === 'zh' ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   return (
     <div className="st-template-bar flex flex-wrap gap-1.5 pb-2">
@@ -23,9 +24,7 @@ export function TemplateBar({ onSelect }: { onSelect: (hint: string) => void }) 
           onClick={() => {
             const name = lang === 'zh' ? t.name_zh : t.name_en
             const hint =
-              lang === 'zh'
-                ? `使用${name}模式分析 `
-                : `Use the ${name} pattern to analyze `
+              lang === 'zh' ? `使用${name}模式分析 ` : `Use the ${name} pattern to analyze `
             onSelect(hint)
           }}
           title={lang === 'zh' ? t.description_zh : t.description_en}

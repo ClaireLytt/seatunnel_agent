@@ -1,0 +1,12 @@
+# Demo contract: promises the warehouse partially violates on purpose.
+#   seatunnel-agent contract -d examples/governance_demo -c examples/governance_demo/contract.yaml
+tables:
+  - name: dwd.fact_orders
+    columns:
+      - { name: order_id, type: bigint }
+      - { name: pay_amount, type: 'decimal(16,2)' } # actual DOUBLE -> type violation
+      - { name: discount, type: bigint } # declared but absent -> missing column
+    partitioned_by: [dt]
+    require_comments: true
+  - name: dws.agg_daily
+    partitioned_by: [dt] # actual: unpartitioned -> partition violation

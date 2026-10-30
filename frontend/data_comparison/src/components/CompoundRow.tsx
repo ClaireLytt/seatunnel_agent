@@ -59,9 +59,7 @@ export function CompoundRow({
       const html =
         action === 'profile'
           ? await compareProfile(params)
-          : await compareStream(action, params, (value, desc) =>
-              setProgress({ value, desc }),
-            )
+          : await compareStream(action, params, (value, desc) => setProgress({ value, desc }))
       onResult(html)
     } catch (e) {
       onResult(
@@ -83,9 +81,7 @@ export function CompoundRow({
             key={action}
             data-testid={`action-${action}`}
             onClick={() => run(action)}
-            disabled={
-              busy !== null || !sessionId || (needsTables && !(tableA && tableB))
-            }
+            disabled={busy !== null || !sessionId || (needsTables && !(tableA && tableB))}
             className="rounded border-[1.5px] border-ink px-3 py-1.5 font-mono text-[13px] text-ink transition enabled:hover:-translate-x-px enabled:hover:-translate-y-px enabled:hover:shadow-hard disabled:opacity-40"
           >
             {busy === action ? t('running') : t(labelKey)}
@@ -100,9 +96,7 @@ export function CompoundRow({
               style={{ width: `${Math.round(progress.value * 100)}%` }}
             />
           </div>
-          <p className="mt-1 font-mono text-[11px] text-muted">
-            {progress.desc || t('running')}
-          </p>
+          <p className="mt-1 font-mono text-[11px] text-muted">{progress.desc || t('running')}</p>
         </div>
       )}
     </Card>

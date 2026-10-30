@@ -30,7 +30,6 @@ _KEYWORDS: dict[str, tuple[str, ...]] = {
     "sql_fmt": ("格式化", "format", "排版", "美化"),
     "config_lint": ("配置", "hocon", "conf", "lint", "连接器", "connector"),
     "schema_drift": ("漂移", "drift", "ddl", "表结构变更", "schema"),
-    "pii_scan": ("敏感", "pii", "脱敏", "手机号", "身份证"),
     "sql_testgen": ("造数", "测试数据", "test data", "testgen", "mock"),
     "secret_scan": ("凭证", "密钥", "泄漏", "secret", "secrets", "leak",
                     "leaked", "credential", "credentials", "token",
@@ -66,8 +65,6 @@ _DESCRIPTIONS_EN: dict[str, str] = {
                     "built-in connector docs, with did-you-mean hints."),
     "schema_drift": ("Diff two DDL snapshots — breaking / risk / info severity "
                      "for every structural change."),
-    "pii_scan": ("Find sensitive columns via naming rules × column lineage and "
-                 "flag unmasked downstream spread."),
     "sql_testgen": ("Generate join-aware test datasets that exercise a query, "
                     "validated on in-memory SQLite."),
     "secret_scan": ("Scan text for leaked credentials — provider tokens, "
@@ -79,6 +76,19 @@ _DESCRIPTIONS_EN: dict[str, str] = {
     "ci_triage": ("Cluster failed CI job logs into root causes; spot flaky "
                   "jobs and duration drift."),
 }
+
+
+# manifest-declared tools (governance agents) contribute their own routing
+# keywords and EN descriptions
+def _merge_manifest_tools() -> None:
+    from seatunnel_agent.hub.registry import discover_tools
+
+    for tm in discover_tools():
+        _KEYWORDS.setdefault(tm.name, tm.keywords)
+        _DESCRIPTIONS_EN.setdefault(tm.name, tm.router_en)
+
+
+_merge_manifest_tools()
 
 
 @dataclass

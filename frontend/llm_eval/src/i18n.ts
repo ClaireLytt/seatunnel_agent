@@ -26,7 +26,7 @@ const resources = {
       runBtn: 'Run suite',
       reportPh:
         '▶ Results appear here after a run — per-case scores, failed checks, and the regression verdict vs the previous run.',
-      emptySuite: '⚠️ Paste a YAML suite first.',
+      emptySuite: 'Paste a YAML suite first.',
       running: 'Running suite against the LLM…',
       home: 'Home',
     },
@@ -47,7 +47,7 @@ const resources = {
       judgeLabel: '运行 judge 评分(仅参考)',
       runBtn: '运行套件',
       reportPh: '▶ 运行后在此显示结果 — 每个 case 的得分、未通过的检查,以及与上次运行的回归对比。',
-      emptySuite: '⚠️ 请先粘贴 YAML 套件。',
+      emptySuite: '请先粘贴 YAML 套件。',
       running: '正在用 LLM 运行套件…',
       home: '首页',
     },

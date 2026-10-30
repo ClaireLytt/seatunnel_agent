@@ -30,6 +30,7 @@ package); :func:`create_mcp_server` only wires them into FastMCP.
 from __future__ import annotations
 
 import functools
+import inspect
 import json
 import os
 import re
@@ -246,6 +247,27 @@ def build_tool_functions(
     tools.update(sql_review=sql_review, sql_transpile=sql_transpile,
                  impact_diff=impact_diff,
                  migrate_to_seatunnel=migrate_to_seatunnel)
+
+    # manifest-declared tools (governance agents): each agent ships its
+    # callable in <pkg>/tools.py and declares it in its manifest; an empty
+    # ``lang`` argument is filled with the server's default language here
+    from seatunnel_agent.hub.registry import discover_tools, resolve
+
+    def _with_default_lang(fn: Callable[..., str]) -> Callable[..., str]:
+        sig = inspect.signature(fn)
+        if "lang" not in sig.parameters:
+            return fn
+
+        @functools.wraps(fn)
+        def wrapped(*args: Any, **kwargs: Any) -> str:
+            bound = sig.bind(*args, **kwargs)
+            bound.arguments["lang"] = _lang(bound.arguments.get("lang", ""))
+            return fn(*bound.args, **bound.kwargs)
+
+        return wrapped
+
+    for tm in discover_tools():
+        tools[tm.name] = _with_default_lang(resolve(tm.ref))
 
     # data-skew tools (already factored for MCP) — history source stays 'mcp'
     from seatunnel_agent.agents.data.data_skew.mcp_server import (
@@ -746,8 +768,11 @@ def create_mcp_server(
 
     # every tool is read-only; the pure-static ones are idempotent too
     # (db-backed answers can change between calls as data changes)
+    from seatunnel_agent.hub.registry import discover_tools
+
     static_names = {"sql_review", "sql_transpile", "skew_check",
                     "skew_check_file", "impact_diff", "migrate_to_seatunnel"}
+    static_names |= {tm.name for tm in discover_tools() if tm.static}
     annotations_cls = None
     try:
         from mcp.types import ToolAnnotations as annotations_cls

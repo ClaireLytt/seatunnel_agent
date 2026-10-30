@@ -276,9 +276,7 @@ export function ResultBlock({
             >
               👎
             </button>
-            {fb && (
-              <span className="text-[11px] text-muted">{t('feedbackSent')}</span>
-            )}
+            {fb && <span className="text-[11px] text-muted">{t('feedbackSent')}</span>}
           </span>
         )}
       </div>

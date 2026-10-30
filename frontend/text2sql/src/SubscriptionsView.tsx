@@ -48,7 +48,10 @@ export function SubscriptionsView() {
         threshold_pct: Number(form.threshold_pct) || 10,
         watch_mode: form.watch_mode,
         max_lag_days: Number(form.max_lag_days) || 1,
-        metrics: form.metrics.split(',').map((s) => s.trim()).filter(Boolean),
+        metrics: form.metrics
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
       })
       setForm(emptyForm)
       setShowForm(false)
@@ -63,9 +66,7 @@ export function SubscriptionsView() {
     refresh()
   }
 
-  const [backtest, setBacktest] = useState<
-    { name: string; result: BacktestResult } | null
-  >(null)
+  const [backtest, setBacktest] = useState<{ name: string; result: BacktestResult } | null>(null)
   const [backtesting, setBacktesting] = useState('')
 
   const doBacktest = async (s: Subscription) => {
@@ -236,8 +237,17 @@ export function SubscriptionsView() {
                       : `${s.metric}${s.source_type === 'metric_watch' ? ' ⚡' : s.source_type === 'freshness' ? ' ⏰' : ''}`}
                 </td>
                 <td className="px-2 py-1">
-                  <span style={{ color: s.last_status === 'ok' ? 'var(--ok)' : s.last_status ? 'var(--accent)' : 'var(--muted)' }}>
-                    {s.enabled ? (s.last_status || '—') : 'disabled'}
+                  <span
+                    style={{
+                      color:
+                        s.last_status === 'ok'
+                          ? 'var(--ok)'
+                          : s.last_status
+                            ? 'var(--accent)'
+                            : 'var(--muted)',
+                    }}
+                  >
+                    {s.enabled ? s.last_status || '—' : 'disabled'}
                   </span>
                 </td>
                 <td className="px-2 py-1">
@@ -286,12 +296,12 @@ export function SubscriptionsView() {
           <div className="mt-3 rounded border border-line bg-paper p-3 font-mono text-[12px]">
             <div className="mb-1 flex items-center gap-2">
               <span className="text-ink">
-                📈 {backtest.name} · {t('backtestSummary', {
+                📈 {backtest.name} ·{' '}
+                {t('backtestSummary', {
                   count: backtest.result.alert_count,
                   days: backtest.result.days_evaluated,
                 })}
-                {backtest.result.alert_rate_pct !== null &&
-                  ` (${backtest.result.alert_rate_pct}%)`}
+                {backtest.result.alert_rate_pct !== null && ` (${backtest.result.alert_rate_pct}%)`}
               </span>
               <button
                 onClick={() => setBacktest(null)}

@@ -7,7 +7,8 @@ Two sources:
   ``include_db=False`` — the chat entry gets zero DB/file attack surface;
   file-path tools are filtered out for the same reason), and
 * thin wrappers over the inline cores not in the toolbox (sql_fmt,
-  config_lint, schema_drift, pii_scan, sql_testgen).
+  config_lint, schema_drift, sql_testgen); the governance tools arrive
+  through the toolbox, declared in their agents' manifests.
 
 Everything is string-in / markdown-out, deterministic, and safe to run from
 a chat request.  Tool schemas are derived from the function signatures;
@@ -37,13 +38,21 @@ _PAGES = {
     "sql_fmt": "/sqlfmt",
     "config_lint": "/conflint",
     "schema_drift": "/schemadrift",
-    "pii_scan": "/pii",
     "sql_testgen": "/testgen",
     "secret_scan": "/secretscan",
     "dep_check": "/depcheck",
     "release_notes": "/release",
     "ci_triage": "/ciinspect",
 }
+
+# manifest-declared tools (governance agents) carry their own page route
+def _manifest_tool_pages() -> dict[str, str]:
+    from seatunnel_agent.hub.registry import discover_tools
+
+    return {tm.name: tm.page for tm in discover_tools()}
+
+
+_PAGES.update(_manifest_tool_pages())
 
 _TYPE_MAP = {str: "string", int: "integer", float: "number", bool: "boolean"}
 
@@ -113,16 +122,6 @@ def _wrap_schema_drift(old_ddl: str, new_ddl: str, dialect: str = "hive",
         return "需要同时提供旧/新 DDL / both old and new DDL are required"
     return render_markdown(diff_scripts(old_ddl, new_ddl, dialect=dialect),
                            lang)
-
-
-def _wrap_pii_scan(sql: str, dialect: str = "hive", lang: str = "zh") -> str:
-    """敏感数据扫描(PII):命名规则 × 字段血缘,识别手机号/身份证/银行卡等
-    敏感列并标出未脱敏的下游扩散。入参为 SQL/DDL 脚本文本。"""
-    from seatunnel_agent.agents.data.pii_scan.report import render_markdown
-    from seatunnel_agent.agents.data.pii_scan.scanner import scan_sql_text
-    if not (sql or "").strip():
-        return "SQL 不能为空 / SQL must not be empty"
-    return render_markdown(scan_sql_text(sql, dialect=dialect), lang)
 
 
 def _wrap_sql_testgen(sql: str, ddl: str = "", rows: int = 20,
@@ -196,7 +195,6 @@ _WRAPPERS: dict[str, Callable[..., str]] = {
     "sql_fmt": _wrap_sql_fmt,
     "config_lint": _wrap_config_lint,
     "schema_drift": _wrap_schema_drift,
-    "pii_scan": _wrap_pii_scan,
     "sql_testgen": _wrap_sql_testgen,
     "secret_scan": _wrap_secret_scan,
     "dep_check": _wrap_dep_check,

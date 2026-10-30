@@ -5,13 +5,7 @@ let seq = 0
 
 /** Mermaid lineage graph; clicking a node reports its table name (legacy
  * iframe node-jump bridge, now a plain callback). */
-export function GraphView({
-  source,
-  onNode,
-}: {
-  source: string
-  onNode: (table: string) => void
-}) {
+export function GraphView({ source, onNode }: { source: string; onNode: (table: string) => void }) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {

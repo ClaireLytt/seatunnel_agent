@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import { load as parseYaml } from 'js-yaml'
 import {
   ApiError,
@@ -34,7 +35,7 @@ const categoryLabel = (c: TopCategory, lang: 'zh' | 'en') =>
 
 export default function App() {
   const { t, i18n } = useTranslation()
-  const lang: 'zh' | 'en' = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   const [sql, setSql] = useState('')
   const [dialect, setDialect] = useState('hive')
@@ -358,7 +359,9 @@ export default function App() {
           <div className="flex items-start justify-between gap-4">
             <div className="font-mono text-sm text-fg">
               {statsError && <p className="text-[var(--accent)]">{`❌ ${statsError}`}</p>}
-              {!stats && !statsError && <p className="italic text-muted">{t('statsPlaceholder')}</p>}
+              {!stats && !statsError && (
+                <p className="italic text-muted">{t('statsPlaceholder')}</p>
+              )}
               {stats && stats.summary.reviews === 0 && (
                 <p className="text-muted">{t('noRecords')}</p>
               )}
@@ -407,7 +410,6 @@ export default function App() {
           )}
         </Collapsible>
       </section>
-
     </div>
   )
 }

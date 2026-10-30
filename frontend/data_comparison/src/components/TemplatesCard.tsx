@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import {
   batchRunTemplates,
   deleteTemplate,
@@ -28,7 +29,7 @@ export function TemplatesCard({
   resetSeq: number
 }) {
   const { t, i18n } = useTranslation()
-  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
   const [name, setName] = useState('')
   const [templates, setTemplates] = useState<TemplateSummary[]>([])
   const [selected, setSelected] = useState('')
@@ -98,9 +99,7 @@ export function TemplatesCard({
   const onBatchRun = async () => {
     setBusy(true)
     try {
-      onResult(
-        await batchRunTemplates({ session_id: sessionId, names: batchSelected, lang }),
-      )
+      onResult(await batchRunTemplates({ session_id: sessionId, names: batchSelected, lang }))
     } catch (e) {
       fail(e)
     } finally {
@@ -169,9 +168,7 @@ export function TemplatesCard({
           multiple
           className={`${inputCls} min-h-[72px]`}
           value={batchSelected}
-          onChange={(e) =>
-            setBatchSelected(Array.from(e.target.selectedOptions, (o) => o.value))
-          }
+          onChange={(e) => setBatchSelected(Array.from(e.target.selectedOptions, (o) => o.value))}
         >
           {templates.map((tmpl) => (
             <option key={tmpl.id} value={tmpl.name}>

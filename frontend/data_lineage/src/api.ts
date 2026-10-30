@@ -60,18 +60,26 @@ async function throwHttpError(r: Response, path: string): Promise<never> {
     .catch(() => '')
   if (detail && typeof detail === 'object') {
     const d = detail as { code?: string; message?: string; suggestions?: string[] }
-    throw new ApiError(d.code ?? 'error', d.message ?? d.code ?? `${path}: HTTP ${r.status}`,
-      d.suggestions ?? [])
+    throw new ApiError(
+      d.code ?? 'error',
+      d.message ?? d.code ?? `${path}: HTTP ${r.status}`,
+      d.suggestions ?? [],
+    )
   }
   throw new Error((detail as string) || `${path}: HTTP ${r.status}`)
 }
 
 async function request<T>(path: string, body?: Record<string, unknown>): Promise<T> {
-  const r = await fetch(`${BASE}${path}`, body === undefined ? undefined : {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+  const r = await fetch(
+    `${BASE}${path}`,
+    body === undefined
+      ? undefined
+      : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        },
+  )
   if (!r.ok) await throwHttpError(r, path)
   return r.json()
 }

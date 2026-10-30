@@ -38,11 +38,11 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
     "old_dir_label": {"en": "Old directory / file", "zh": "旧目录 / 文件"},
     "new_dir_label": {"en": "New directory / file", "zh": "新目录 / 文件"},
     "dirs_btn": {"en": "Compare directories", "zh": "对比目录"},
-    "empty_sql": {"en": "⚠️ Paste both DDL scripts first.",
-                  "zh": "⚠️ 请先粘贴两份 DDL。"},
-    "empty_dirs": {"en": "⚠️ Provide both paths first.",
-                   "zh": "⚠️ 请先填写两个路径。"},
-    "bad_path": {"en": "⚠️ Path does not exist: ", "zh": "⚠️ 路径不存在: "},
+    "empty_sql": {"en": "Paste both DDL scripts first.",
+                  "zh": "请先粘贴两份 DDL。"},
+    "empty_dirs": {"en": "Provide both paths first.",
+                   "zh": "请先填写两个路径。"},
+    "bad_path": {"en": "Path does not exist: ", "zh": "路径不存在: "},
 }
 
 # Legacy _DIALECTS tuple (retired ui.py) — the React copy must match it

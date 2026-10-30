@@ -3,13 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { langOf } from '@shared/lang'
-import {
-  ApiError,
-  build,
-  getSessionId,
-  query,
-  type SourceParams,
-} from '@/api'
+import { ApiError, build, getSessionId, query, type SourceParams } from '@/api'
 import { AgentPanel } from '@/components/AgentPanel'
 import { GraphView } from '@/components/GraphView'
 import { ReportView } from '@shared/components/ReportView'
@@ -43,19 +37,24 @@ export default function App() {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    getSessionId().then(setSessionId).catch(() => {})
+    getSessionId()
+      .then(setSessionId)
+      .catch(() => {})
   }, [])
 
-  const src = useCallback((): SourceParams => ({
-    session_id: sessionId,
-    sql_dir: sqlDir.trim() || undefined,
-    sql_dialect: sqlDialect,
-    seatunnel_dir: stDir.trim() || undefined,
-    use_hive: useHive,
-    meta_table: metaTable.trim() || undefined,
-    partition: partition.trim() || undefined,
-    lang: langOf(i18n),
-  }), [sessionId, sqlDir, sqlDialect, stDir, useHive, metaTable, partition, i18n])
+  const src = useCallback(
+    (): SourceParams => ({
+      session_id: sessionId,
+      sql_dir: sqlDir.trim() || undefined,
+      sql_dialect: sqlDialect,
+      seatunnel_dir: stDir.trim() || undefined,
+      use_hive: useHive,
+      meta_table: metaTable.trim() || undefined,
+      partition: partition.trim() || undefined,
+      lang: langOf(i18n),
+    }),
+    [sessionId, sqlDir, sqlDialect, stDir, useHive, metaTable, partition, i18n],
+  )
 
   const showError = (e: unknown) => {
     if (e instanceof ApiError) {
@@ -90,13 +89,17 @@ export default function App() {
     try {
       const res = await build(src())
       const s = res.stats
-      setStats([
-        t('built_stats', {
-          tables: s.tables, edges: s.edges,
-          col_edges: s.column_edges, sla: s.sla_tables,
-        }),
-        ...res.warnings.map((w) => `⚠️ ${w}`),
-      ].join('\n'))
+      setStats(
+        [
+          t('built_stats', {
+            tables: s.tables,
+            edges: s.edges,
+            col_edges: s.column_edges,
+            sla: s.sla_tables,
+          }),
+          ...res.warnings.map((w) => `${w}`),
+        ].join('\n'),
+      )
       setTables(res.tables)
     } catch (e) {
       showError(e)
@@ -106,32 +109,37 @@ export default function App() {
     }
   }
 
-  const runQuery = useCallback(async (target?: string, noColumn = false) => {
-    const tbl = (target ?? table).trim()
-    setNotice('')
-    if (!tbl) {
-      setNotice(t('need_table'))
-      return
-    }
-    setBusy(true)
-    try {
-      const res = await query(src(), tbl, direction, depth,
-        noColumn ? '' : column.trim())
-      setReport(res.report)
-      setMermaidSrc(res.mermaid)
-    } catch (e) {
-      showError(e)
-    } finally {
-      setBusy(false)
-    }
+  const runQuery = useCallback(
+    async (target?: string, noColumn = false) => {
+      const tbl = (target ?? table).trim()
+      setNotice('')
+      if (!tbl) {
+        setNotice(t('need_table'))
+        return
+      }
+      setBusy(true)
+      try {
+        const res = await query(src(), tbl, direction, depth, noColumn ? '' : column.trim())
+        setReport(res.report)
+        setMermaidSrc(res.mermaid)
+      } catch (e) {
+        showError(e)
+      } finally {
+        setBusy(false)
+      }
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [table, direction, depth, column, src, t])
+    [table, direction, depth, column, src, t],
+  )
 
-  const onNodeClick = useCallback((name: string) => {
-    setTable(name)
-    // legacy do_node_jump queried with column=None
-    void runQuery(name, true)
-  }, [runQuery])
+  const onNodeClick = useCallback(
+    (name: string) => {
+      setTable(name)
+      // legacy do_node_jump queried with column=None
+      void runQuery(name, true)
+    },
+    [runQuery],
+  )
 
   const copySrc = async () => {
     try {
@@ -159,8 +167,14 @@ export default function App() {
               spellCheck={false}
               className={fieldCls}
             />
-            <label className={`${labelCls} mt-3`} title={t('sql_dialect_info')}>{t('sql_dialect_label')}</label>
-            <select value={sqlDialect} onChange={(e) => setSqlDialect(e.target.value)} className={fieldCls}>
+            <label className={`${labelCls} mt-3`} title={t('sql_dialect_info')}>
+              {t('sql_dialect_label')}
+            </label>
+            <select
+              value={sqlDialect}
+              onChange={(e) => setSqlDialect(e.target.value)}
+              className={fieldCls}
+            >
               {SQL_DIALECTS.map((d) => (
                 <option key={d} value={d}>
                   {d}
@@ -238,7 +252,11 @@ export default function App() {
               ))}
             </datalist>
             <label className={`${labelCls} mt-3`}>{t('direction_label')}</label>
-            <select value={direction} onChange={(e) => setDirection(e.target.value)} className={fieldCls}>
+            <select
+              value={direction}
+              onChange={(e) => setDirection(e.target.value)}
+              className={fieldCls}
+            >
               <option value="both">{t('dir_both')}</option>
               <option value="upstream">{t('dir_up')}</option>
               <option value="downstream">{t('dir_down')}</option>
@@ -290,7 +308,10 @@ export default function App() {
         <main className="st-lin-main flex min-w-0 flex-1 flex-col gap-4">
           <Card>
             {notice && (
-              <div className="mb-3 whitespace-pre-wrap font-mono text-sm" style={{ color: 'var(--accent)' }}>
+              <div
+                className="mb-3 whitespace-pre-wrap font-mono text-sm"
+                style={{ color: 'var(--accent)' }}
+              >
                 {notice}
               </div>
             )}

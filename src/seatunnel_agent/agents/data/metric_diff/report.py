@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from seatunnel_agent.common.severity import SEVERITY_MARK as _LEVEL_MARK
 from seatunnel_agent.common.utils import normalize_lang
 
 from .differ import MetricReport
 from .i18n import tp
-
-_LEVEL_MARK = {"high": "⛔", "medium": "⚠️"}
 
 
 def render_markdown(report: MetricReport, lang: str = "zh") -> str:

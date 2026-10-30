@@ -8,7 +8,6 @@ export interface LintResponse {
   elapsed_ms: number
 }
 
-
 export async function lintConfig(config: string, lang: string): Promise<LintResponse> {
   return postLint({ config, lang, report: true })
 }

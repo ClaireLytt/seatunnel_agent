@@ -65,8 +65,7 @@ export function DriftCard() {
               )}
               {it.drifts.map((d) => (
                 <div key={d.metric} className="pl-2 font-mono text-xs text-muted">
-                  {d.metric}: {d.baseline} → {d.current} (
-                  {d.delta > 0 ? `+${d.delta}` : d.delta})
+                  {d.metric}: {d.baseline} → {d.current} ({d.delta > 0 ? `+${d.delta}` : d.delta})
                 </div>
               ))}
             </div>

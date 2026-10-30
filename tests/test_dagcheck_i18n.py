@@ -40,9 +40,9 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
               "zh": "合并 *.conf 的 source→sink 血缘"},
     "dialect_label": {"en": "SQL dialect", "zh": "SQL 方言"},
     "check_btn": {"en": "Check DAG", "zh": "体检 DAG"},
-    "empty_dir": {"en": "⚠️ Provide a SQL directory first.",
-                  "zh": "⚠️ 请先填写 SQL 目录。"},
-    "bad_dir": {"en": "⚠️ Not a directory: ", "zh": "⚠️ 不是有效目录: "},
+    "empty_dir": {"en": "Provide a SQL directory first.",
+                  "zh": "请先填写 SQL 目录。"},
+    "bad_dir": {"en": "Not a directory: ", "zh": "不是有效目录: "},
 }
 
 LEGACY_DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",

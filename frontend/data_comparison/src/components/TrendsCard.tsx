@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import {
   Bar,
   BarChart,
@@ -15,7 +16,7 @@ import i18n from '@/i18n'
 import { fetchTrends, type TrendEntry } from '@/api'
 import { Collapsible, inputCls, labelCls, smallBtnCls } from '@/components/Collapsible'
 
-const lang = () => (i18n.language.startsWith('zh') ? 'zh' : 'en')
+const lang = () => langOf(i18n)
 
 // History trends (legacy accordion H, ui.py:818): the matplotlib PNG is
 // replaced by recharts panels fed by GET /trends; alert evaluation stays

@@ -9,8 +9,16 @@ import { fieldCls, labelCls } from '@/ui'
 
 // SQL_DIALECTS from sqlglot_lineage (impact shares the lineage parser).
 const SQL_DIALECTS = [
-  'hive', 'spark', 'flink', 'maxcompute', 'mysql',
-  'postgresql', 'clickhouse', 'doris', 'starrocks', 'sqlite',
+  'hive',
+  'spark',
+  'flink',
+  'maxcompute',
+  'mysql',
+  'postgresql',
+  'clickhouse',
+  'doris',
+  'starrocks',
+  'sqlite',
 ]
 
 type Mode = 'dirs' | 'paste'
@@ -162,7 +170,11 @@ export default function App() {
             )}
 
             <label className={`${labelCls} mt-3`}>{t('dialect_label')}</label>
-            <select value={dialect} onChange={(e) => setDialect(e.target.value)} className={fieldCls}>
+            <select
+              value={dialect}
+              onChange={(e) => setDialect(e.target.value)}
+              className={fieldCls}
+            >
               {SQL_DIALECTS.map((d) => (
                 <option key={d} value={d}>
                   {d}

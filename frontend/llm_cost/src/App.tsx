@@ -115,7 +115,7 @@ export default function App() {
         {loading ? (
           <p className="font-mono text-sm text-muted">{t('loading')}</p>
         ) : error ? (
-          <p className="font-mono text-sm text-ink">⚠️ {error}</p>
+          <p className="font-mono text-sm text-ink">{error}</p>
         ) : resp ? (
           <>
             {banner && (

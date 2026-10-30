@@ -8,7 +8,6 @@ export interface ScanResponse {
   elapsed_ms: number
 }
 
-
 export async function scan(body: {
   sql?: string
   dir?: string
@@ -16,4 +15,19 @@ export async function scan(body: {
   lang: string
 }): Promise<ScanResponse> {
   return postStructured(`${BASE}/scan`, { ...body, report: true }, 'scan')
+}
+
+export interface MaskResponse {
+  result: { counts: Record<string, number> } & Record<string, unknown>
+  sql: string
+  elapsed_ms: number
+}
+
+export async function mask(body: {
+  sql?: string
+  dir?: string
+  dialect: string
+  min_confidence: string
+}): Promise<MaskResponse> {
+  return postStructured(`${BASE}/mask`, body, 'mask')
 }

@@ -27,6 +27,11 @@ from ..common.cli_common import _handle_error, console
 @click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
               default="markdown", help="Report format (json for machines/CI)")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+@click.option("--mask", "emit_mask", is_flag=True, default=False,
+              help="输出处置方案：为命中列生成脱敏视图 SQL（代替扫描报告）")
+@click.option("--min-confidence", type=click.Choice(["low", "high"]),
+              default="low", show_default=True,
+              help="--mask 时纳入的最低置信度（high 跳过弱命中如裸 name 列）")
 def pii(
     directory: str | None,
     sql: str | None,
@@ -37,6 +42,8 @@ def pii(
     fail_on: str | None,
     fmt: str,
     output: str | None,
+    emit_mask: bool,
+    min_confidence: str,
 ) -> None:
     """敏感数据扫描 — 命名规则 × 字段血缘，静态识别 PII 列及未脱敏扩散。"""
     import json as _json
@@ -52,8 +59,15 @@ def pii(
         scan_sql_text,
     )
 
-    if not directory and not sql and not sql_file:
-        raise click.UsageError("Provide --dir / --sql / --file")
+    from .check_runner import (
+        SEVERITY_RANK,
+        CheckSpec,
+        analyze_input,
+        emit_report,
+        fail_check,
+        save_output,
+        severity_gate,
+    )
 
     rules = list(DEFAULT_RULES)
     if rules_path:
@@ -62,40 +76,58 @@ def pii(
         except ValueError as exc:
             raise click.ClickException(str(exc))
 
-    try:
+    spec = CheckSpec(
+        analyze_dir=scan_dir,
+        analyze_file=scan_files,
+        analyze_sql=scan_sql_text,
+        render=render_markdown,
+        to_dict=report_to_dict,
+        error_label="扫描失败",
+    )
+    report = analyze_input(spec, directory, sql, sql_file, dialect,
+                           rules=rules)
+
+    if emit_mask:
+        from seatunnel_agent.agents.data.pii_scan import (
+            build_mask_plan,
+            collect_columns_from_ddl,
+            render_mask_sql,
+        )
+
         if directory:
-            report = scan_dir(directory, dialect=dialect, rules=rules)
+            sources = sorted(Path(directory).rglob("*.sql"))
+            text = "\n;\n".join(p.read_text(encoding="utf-8")
+                                for p in sources)
         elif sql_file:
-            report = scan_files([Path(sql_file)], dialect=dialect,
-                                rules=rules, root=sql_file)
+            text = Path(sql_file).read_text(encoding="utf-8")
         else:
-            report = scan_sql_text(sql, dialect=dialect, rules=rules)
-    except (OSError, UnicodeDecodeError) as exc:
-        console.print(f"[red]扫描失败:[/red] {exc}")
-        sys.exit(1)
-
-    if fmt == "json":
-        text_out = _json.dumps(report_to_dict(report, lang),
-                               ensure_ascii=False, indent=2)
-        print(text_out)
+            text = sql or ""
+        inventory, _ = collect_columns_from_ddl(text, dialect)
+        plan = build_mask_plan(report, inventory, min_confidence)
+        if fmt == "json":
+            text_out = _json.dumps(plan.to_dict(),
+                                   ensure_ascii=False, indent=2)
+            print(text_out)
+        else:
+            text_out = render_mask_sql(plan)
+            console.print(text_out, markup=False)
+        save_output(text_out, output)
+        if fail_on:
+            # treatment-aware gate: findings the generated views already
+            # cover are remediated — only UNCOVERED ones can fail the CI
+            worst_sev = plan.coverage.worst_uncovered()
+            worst = SEVERITY_RANK[worst_sev] if worst_sev else 0
+            if worst >= SEVERITY_RANK[fail_on]:
+                fail_check(f"存在 {fail_on} 及以上级别且脱敏方案未覆盖的敏感列，"
+                           "检查未通过。", fmt)
     else:
-        text_out = render_markdown(report, lang)
-        console.print(text_out, markup=False)
-    if output:
-        Path(output).write_text(text_out, encoding="utf-8")
-        console.print(f"[dim]报告已保存: {output}[/dim]")
-
-    if fail_on:
-        rank = {"low": 1, "medium": 2, "high": 3}
-        threshold = rank[fail_on]
-        worst = max((rank[f.severity] for f in report.findings), default=0)
-        if worst >= threshold:
-            msg = f"存在 {fail_on} 及以上级别的敏感列风险，检查未通过。"
-            if fmt == "json":
-                print(msg, file=sys.stderr)
-            else:
-                console.print(f"\n[red]{msg}[/red]")
-            sys.exit(1)
+        emit_report(spec, report, lang, fmt, output)
+        if fail_on:
+            msg = severity_gate(
+                report.findings, fail_on,
+                f"存在 {fail_on} 及以上级别的敏感列风险，检查未通过。")
+            if msg:
+                fail_check(msg, fmt)
 
 
 @click.command()
@@ -166,6 +198,201 @@ def loginspect(
         hit = c["error"] > 0 or (fail_on == "warn" and c["warn"] > 0)
         if hit:
             msg = f"存在 {fail_on} 及以上级别的日志异常簇，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@click.command()
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="日志目录（递归扫描）")
+@click.option("--file", "-f", "log_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="诊断单个日志文件")
+@click.option("--pattern", "-p", "patterns", multiple=True,
+              help="文件通配符，可多次指定（默认 *.log / *.log.* / *.out / *.err）")
+@click.option("--baseline-dir", type=click.Path(exists=True, file_okay=False),
+              default=None, help="成功基线运行的日志目录 — 改为输出回归对比报告")
+@click.option("--baseline-file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="成功基线运行的单个日志文件")
+@click.option("--top", "-n", type=int, default=10, show_default=True,
+              help="报告中展示的命中项数")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["critical", "error", "warn"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def pipedoctor(
+    directory: str | None,
+    log_file: str | None,
+    patterns: tuple[str, ...],
+    baseline_dir: str | None,
+    baseline_file: str | None,
+    top: int,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """Pipeline 故障诊断 — 分析 Spark/Hive/SeaTunnel 运行日志，定位失败根因并给出修复方案。
+
+    给出 --baseline-dir/--baseline-file 时改为回归对比：只诊断相对成功基线
+    新增/增长的异常簇（"昨天还好好的"场景）。"""
+    import json as _json
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.log_inspect.clusterer import (
+        DEFAULT_PATTERNS,
+        scan_dir,
+        scan_files,
+    )
+    from seatunnel_agent.agents.data.pipeline_doctor import (
+        diagnose_dir,
+        diagnose_files,
+        diagnosis_to_dict,
+        diff_reports,
+        render_diff_markdown,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.pipeline_doctor.kb import SEVERITY_RANK
+
+    if not directory and not log_file:
+        raise click.UsageError("Provide --dir or --file")
+
+    pats = tuple(patterns) or DEFAULT_PATTERNS
+
+    if baseline_dir or baseline_file:
+        # regression mode: diff the two runs, diagnose only the regressions
+        if directory:
+            cur = scan_dir(directory, patterns=pats)
+        else:
+            cur = scan_files([Path(log_file)], root=log_file)
+        if baseline_dir:
+            base = scan_dir(baseline_dir, patterns=pats)
+        else:
+            base = scan_files([Path(baseline_file)], root=baseline_file)
+        diff = diff_reports(cur, base)
+        if fmt == "json":
+            text_out = _json.dumps(diff.to_dict(), ensure_ascii=False,
+                                   indent=2)
+            print(text_out)
+        else:
+            text_out = render_diff_markdown(diff, lang, top=top)
+            console.print(text_out, markup=False)
+        if output:
+            Path(output).write_text(text_out, encoding="utf-8")
+            console.print(f"[dim]报告已保存: {output}[/dim]")
+        if fail_on:
+            gate = SEVERITY_RANK[fail_on]
+            # KB hits gate at their own severity; unmatched new/grown
+            # clusters gate at their log level (a WARN-only regression must
+            # not trip --fail-on error)
+            regressed = diff.appeared + [c for c, _ in diff.grew]
+            levels = {c.level for c in regressed}
+            hit = any(SEVERITY_RANK[f.severity] >= gate
+                      for f in diff.findings) \
+                or (gate <= SEVERITY_RANK["error"] and "error" in levels) \
+                or (gate <= SEVERITY_RANK["warn"] and "warn" in levels)
+            if hit:
+                msg = f"相对基线存在 {fail_on} 及以上级别的回归，检查未通过。"
+                if fmt == "json":
+                    print(msg, file=sys.stderr)
+                else:
+                    console.print(f"\n[red]{msg}[/red]")
+                sys.exit(1)
+        return
+
+    if directory:
+        diag = diagnose_dir(directory, patterns=pats)
+    else:
+        diag = diagnose_files([Path(log_file)], root=log_file)
+
+    if fmt == "json":
+        text_out = _json.dumps(diagnosis_to_dict(diag, top=top),
+                               ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(diag, lang, top=top)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on:
+        gate = SEVERITY_RANK[fail_on]
+        # unmatched clusters are extracted ERROR events — they gate at "error"
+        hit = any(SEVERITY_RANK[f.severity] >= gate for f in diag.findings) \
+            or (gate <= SEVERITY_RANK["error"] and diag.unmatched)
+        if hit:
+            msg = f"存在 {fail_on} 及以上级别的故障命中，检查未通过。"
+            if fmt == "json":
+                print(msg, file=sys.stderr)
+            else:
+                console.print(f"\n[red]{msg}[/red]")
+            sys.exit(1)
+
+
+@click.command()
+@click.option("--file", "-f", "export_file", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="任务实例导出文件（JSON 数组或 CSV）")
+@click.option("--target", "-t", default="", help="目标任务名（默认取最晚结束的任务）")
+@click.option("--deadline", default=None, help="SLA 截止时间（ISO 格式）")
+@click.option("--top", "-n", type=int, default=5, show_default=True,
+              help="延迟大户展示条数")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on-breach", is_flag=True,
+              help="CI gate: SLA 破线时 exit 1（需要 --deadline）")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def slatrace(
+    export_file: str,
+    target: str,
+    deadline: str | None,
+    top: int,
+    lang: str,
+    fail_on_breach: bool,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """调度依赖延迟分析 — 任务实例导出 → 关键路径、延迟归因与 SLA 破线结论。"""
+    import json as _json
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.sla_trace import (
+        parse_instances,
+        render_markdown,
+        trace,
+        trace_to_dict,
+    )
+
+    text = Path(export_file).read_text(encoding="utf-8", errors="replace")
+    try:
+        result = trace(parse_instances(text), target=target.strip(),
+                       deadline=(deadline or "").strip() or None)
+    except ValueError as exc:
+        raise click.UsageError(str(exc))
+
+    if fmt == "json":
+        text_out = _json.dumps(trace_to_dict(result), ensure_ascii=False,
+                               indent=2)
+        print(text_out)
+    else:
+        text_out = render_markdown(result, lang, top=top)
+        console.print(text_out, markup=False)
+    if output:
+        Path(output).write_text(text_out, encoding="utf-8")
+        console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if fail_on_breach:
+        if not deadline:
+            raise click.UsageError("--fail-on-breach 需要 --deadline")
+        if result.breach_s > 0:
+            msg = "SLA 破线，检查未通过。"
             if fmt == "json":
                 print(msg, file=sys.stderr)
             else:
@@ -856,9 +1083,468 @@ def ciinspect(
         sys.exit(1)
 
 
+@click.command()
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--sql", type=str, default=None, help="直接分析一段 SQL")
+@click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="分析单个 SQL 文件")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--exempt", "exempt_path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="孤儿豁免清单 YAML(tables: [通配模式],外部 BI 直读的表)")
+@click.option("--fail-on", type=click.Choice(["orphans", "dead", "dangling", "any"]),
+              default=None, help="CI gate: exit 1 when the chosen kind exists")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def hygiene(
+    directory: str | None,
+    sql: str | None,
+    sql_file: str | None,
+    dialect: str,
+    exempt_path: str | None,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """数仓卫生检查 — 血缘驱动的死重报告：只写不读的表、无人取的列、悬空 DDL。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.lineage_hygiene import (
+        analyze_dir,
+        analyze_sql_text,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.lineage_hygiene.analyzer import analyze_files
+    from seatunnel_agent.agents.data.lineage_hygiene.history import HygieneLogger
+
+    from .check_runner import CheckSpec, run_check
+
+    exempt: list[str] = []
+    if exempt_path:
+        import yaml
+
+        try:
+            raw = yaml.safe_load(Path(exempt_path).read_text(
+                encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            raise click.ClickException(f"无法读取豁免清单 {exempt_path}: {exc}")
+        items = raw.get("tables") if isinstance(raw, dict) else raw
+        if not isinstance(items, list):
+            raise click.ClickException(
+                f"{exempt_path}: 期望顶层为 tables: [...] 列表")
+        exempt = [str(x) for x in items]
+
+    def _gate(report, fail_on: str) -> str | None:
+        c = report.counts()
+        hit = {
+            "orphans": c["orphan_outputs"],
+            "dead": c["dead_columns"],
+            "dangling": c["dangling_defs"],
+            "any": c["total"],
+        }[fail_on]
+        if hit:
+            return f"存在 {fail_on} 类数仓死重（{hit} 项），检查未通过。"
+        return None
+
+    spec = CheckSpec(
+        analyze_dir=analyze_dir,
+        analyze_file=analyze_files,
+        analyze_sql=analyze_sql_text,
+        render=render_markdown,
+        to_dict=lambda report, lang: report.to_dict(),
+        error_label="分析失败",
+        gate=_gate,
+        log_run=lambda report: HygieneLogger().log_run(report, source="cli"),
+    )
+    run_check(spec, directory=directory, sql=sql, sql_file=sql_file,
+              dialect=dialect, lang=lang, fmt=fmt, output=output,
+              fail_on=fail_on, exempt=exempt)
+
+
+@click.command()
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--sql", type=str, default=None, help="直接检查一段 DDL")
+@click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="检查单个 SQL 文件")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def metaquality(
+    directory: str | None,
+    sql: str | None,
+    sql_file: str | None,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """元数据质量体检 — 注释覆盖率、分层命名错配、金额浮点/日期裸 STRING 反模式。"""
+    from seatunnel_agent.agents.data.metadata_quality import (
+        check_dir,
+        check_sql_text,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.metadata_quality.checker import check_files
+    from seatunnel_agent.agents.data.metadata_quality.history import (
+        MetaQualityLogger,
+    )
+
+    from .check_runner import CheckSpec, run_check, severity_gate
+
+    spec = CheckSpec(
+        analyze_dir=check_dir,
+        analyze_file=check_files,
+        analyze_sql=check_sql_text,
+        render=render_markdown,
+        to_dict=lambda report, lang: report.to_dict(),
+        error_label="检查失败",
+        gate=lambda report, fail_on: severity_gate(
+            report.findings, fail_on,
+            f"存在 {fail_on} 及以上级别的元数据问题，检查未通过。"),
+        log_run=lambda report: MetaQualityLogger().log_run(report,
+                                                           source="cli"),
+    )
+    run_check(spec, directory=directory, sql=sql, sql_file=sql_file,
+              dialect=dialect, lang=lang, fmt=fmt, output=output,
+              fail_on=fail_on)
+
+
+@click.command()
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--sql", type=str, default=None, help="直接校验一段 DDL")
+@click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="校验单个 SQL 文件")
+@click.option("--contract", "-c", "contract_path",
+              type=click.Path(exists=True, dir_okay=False),
+              help="契约 YAML（tables: 声明列/类型/注释要求/分区键）")
+@click.option("--init", "init_mode", is_flag=True, default=False,
+              help="从现有 DDL 反向生成契约 YAML 底稿（配 -o 落盘）")
+@click.option("--diff", "diff_mode", is_flag=True, default=False,
+              help="反向漂移：列出现状超出契约的新表/新列（契约没跟上的部分）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
+              default=None, help="CI gate: exit 1 when violations at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def contract(
+    directory: str | None,
+    sql: str | None,
+    sql_file: str | None,
+    contract_path: str | None,
+    init_mode: bool,
+    diff_mode: bool,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """数据契约校验 — YAML 声明的表承诺 vs 实际 DDL，违约分级报出。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.contract_check import (
+        check_dir,
+        check_files,
+        check_sql_text,
+        parse_contract,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.contract_check.history import (
+        ContractLogger,
+    )
+
+    from .check_runner import CheckSpec, run_check, severity_gate
+
+    if init_mode:
+        from seatunnel_agent.agents.data.contract_check.bootstrap import (
+            generate_contract,
+            generate_from_dir,
+        )
+
+        if not directory and not sql and not sql_file:
+            raise click.UsageError("Provide --dir / --sql / --file")
+        try:
+            if directory:
+                draft = generate_from_dir(directory, dialect=dialect)
+            elif sql_file:
+                draft = generate_contract(
+                    Path(sql_file).read_text(encoding="utf-8"),
+                    dialect=dialect)
+            else:
+                draft = generate_contract(sql or "", dialect=dialect)
+        except ValueError as exc:
+            raise click.ClickException(str(exc))
+        print(draft, end="")
+        if output:
+            Path(output).write_text(draft, encoding="utf-8")
+            console.print(f"[dim]契约底稿已保存: {output}[/dim]")
+        return
+
+    if not contract_path:
+        raise click.UsageError("Provide --contract (or use --init to "
+                               "generate a draft)")
+    contract_text = Path(contract_path).read_text(encoding="utf-8")
+    try:
+        parse_contract(contract_text)
+    except ValueError as exc:
+        raise click.ClickException(f"契约格式错误: {exc}")
+
+    if diff_mode:
+        import json as _json
+
+        from seatunnel_agent.agents.data.contract_check.bootstrap import (
+            diff_contract,
+        )
+
+        if not directory and not sql and not sql_file:
+            raise click.UsageError("Provide --dir / --sql / --file")
+        if directory:
+            files = sorted(Path(directory).rglob("*.sql"))
+            text = "\n;\n".join(f.read_text(encoding="utf-8") for f in files)
+        elif sql_file:
+            text = Path(sql_file).read_text(encoding="utf-8")
+        else:
+            text = sql or ""
+        try:
+            drift = diff_contract(contract_text, text, dialect=dialect)
+        except ValueError as exc:
+            raise click.ClickException(str(exc))
+        if fmt == "json":
+            print(_json.dumps(drift, ensure_ascii=False, indent=2))
+        else:
+            if not drift["new_tables"] and not drift["new_columns"]:
+                console.print("契约覆盖现状——没有反向漂移。")
+            if drift["new_tables"]:
+                console.print("[bold]契约没覆盖的新表[/bold]")
+                for t_ in drift["new_tables"]:
+                    console.print(f"  - {t_}")
+            if drift["new_columns"]:
+                console.print("[bold]已承诺表上的新列[/bold]")
+                for c_ in drift["new_columns"]:
+                    console.print(f"  - {c_}")
+        if fail_on and (drift["new_tables"] or drift["new_columns"]):
+            console.print("\n[red]现状已超出契约,请更新契约或回退 DDL。[/red]")
+            sys.exit(1)
+        return
+
+    spec = CheckSpec(
+        analyze_dir=check_dir,
+        analyze_file=check_files,
+        analyze_sql=check_sql_text,
+        render=render_markdown,
+        to_dict=lambda report, lang: report.to_dict(),
+        error_label="校验失败",
+        gate=lambda report, fail_on: severity_gate(
+            report.findings, fail_on,
+            f"存在 {fail_on} 及以上级别的契约违约，检查未通过。"),
+        log_run=lambda report: ContractLogger().log_run(report, source="cli"),
+    )
+    run_check(spec, directory=directory, sql=sql, sql_file=sql_file,
+              dialect=dialect, lang=lang, fmt=fmt, output=output,
+              fail_on=fail_on, contract=contract_text)
+
+
+@click.command()
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--sql", type=str, default=None, help="直接扫描一段 SQL")
+@click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="扫描单个 SQL 文件")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium"]),
+              default=None, help="CI gate: exit 1 when findings at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def grants(
+    directory: str | None,
+    sql: str | None,
+    sql_file: str | None,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """权限面扫描 — GRANT/REVOKE 净面,公开授权/宽权限/敏感表外授分级。"""
+    from seatunnel_agent.agents.data.grant_scan import (
+        render_markdown,
+        scan_dir,
+        scan_files,
+        scan_sql_text,
+    )
+    from seatunnel_agent.agents.data.grant_scan.history import GrantsLogger
+
+    from .check_runner import CheckSpec, run_check, severity_gate
+
+    spec = CheckSpec(
+        analyze_dir=scan_dir,
+        analyze_file=scan_files,
+        analyze_sql=scan_sql_text,
+        render=render_markdown,
+        to_dict=lambda report, lang: report.to_dict(),
+        error_label="扫描失败",
+        gate=lambda report, fail_on: severity_gate(
+            report.findings, fail_on,
+            f"存在 {fail_on} 及以上级别的权限面风险，检查未通过。"),
+        log_run=lambda report: GrantsLogger().log_run(report, source="cli"),
+    )
+    run_check(spec, directory=directory, sql=sql, sql_file=sql_file,
+              dialect=dialect, lang=lang, fmt=fmt, output=output,
+              fail_on=fail_on)
+
+
+@click.command(name="ddlguard")
+@click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
+              default=None, help="SQL 目录（递归扫描 *.sql）")
+@click.option("--sql", type=str, default=None, help="直接扫描一段迁移 SQL")
+@click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="扫描单个迁移脚本")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言 (hive/spark/mysql/...)")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["high", "medium"]),
+              default=None, help="CI gate: exit 1 when operations at/above this level exist")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+@click.option("--undo", "-u", "undo_path", type=click.Path(), default=None,
+              help="把回滚脚本另存为 SQL 文件")
+def ddlguard(
+    directory: str | None,
+    sql: str | None,
+    sql_file: str | None,
+    dialect: str,
+    lang: str,
+    fail_on: str | None,
+    fmt: str,
+    output: str | None,
+    undo_path: str | None,
+) -> None:
+    """迁移守卫 — 危险 DDL 分级(删表/收窄 high),并生成回滚脚本。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.ddl_guard import (
+        render_markdown,
+        scan_dir,
+        scan_files,
+        scan_sql_text,
+    )
+    from seatunnel_agent.agents.data.ddl_guard.history import DdlGuardLogger
+
+    from .check_runner import CheckSpec, run_check, severity_gate
+
+    def _save_undo(report) -> None:
+        # runs before the gate: the rollback must land even when CI fails
+        if undo_path and report.undo_sql:
+            Path(undo_path).write_text(report.undo_sql, encoding="utf-8")
+            console.print(f"[dim]回滚脚本已保存: {undo_path}[/dim]")
+        DdlGuardLogger().log_run(report, source="cli")
+
+    spec = CheckSpec(
+        analyze_dir=scan_dir,
+        analyze_file=scan_files,
+        analyze_sql=scan_sql_text,
+        render=render_markdown,
+        to_dict=lambda report, lang: report.to_dict(),
+        error_label="扫描失败",
+        gate=lambda report, fail_on: severity_gate(
+            report.findings, fail_on,
+            f"存在 {fail_on} 及以上级别的危险 DDL 操作，检查未通过。"),
+        log_run=_save_undo,
+    )
+    run_check(spec, directory=directory, sql=sql, sql_file=sql_file,
+              dialect=dialect, lang=lang, fmt=fmt, output=output,
+              fail_on=fail_on)
+
+
+@click.command(name="hygiene-stats")
+@click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
+def hygiene_stats(recent: int) -> None:
+    """数仓卫生历史与趋势 (logs/hygiene.jsonl)。"""
+    from seatunnel_agent.agents.data.lineage_hygiene.history import (
+        HygieneLogger,
+    )
+
+    records = HygieneLogger().recent(recent)
+    if not records:
+        console.print("[yellow]还没有数仓卫生检查记录。[/yellow]")
+        return
+    console.print("[bold]数仓卫生检查历史[/bold]")
+    for r in records:
+        c = r.get("counts") or {}
+        console.print(
+            f"  {r.get('timestamp', '')}  [{r.get('source', '')}] "
+            f"表={r.get('tables_seen', 0)}  孤儿={c.get('orphan_outputs', 0)} "
+            f"死列={c.get('dead_columns', 0)} 悬空={c.get('dangling_defs', 0)} "
+            f"豁免={r.get('exempted', 0)}")
+    first, last = records[0], records[-1]
+    fo = (first.get("counts") or {}).get("orphan_outputs", 0)
+    lo = (last.get("counts") or {}).get("orphan_outputs", 0)
+    console.print(f"\n[bold]趋势[/bold] 孤儿表 {fo} → {lo}"
+                  f"(最近 {len(records)} 次)")
+
+
+@click.command(name="metaquality-stats")
+@click.option("--recent", "-n", type=int, default=20, help="显示最近 N 条")
+def metaquality_stats(recent: int) -> None:
+    """元数据质量历史与趋势 (logs/metaquality.jsonl)。"""
+    from seatunnel_agent.agents.data.metadata_quality.history import (
+        MetaQualityLogger,
+    )
+
+    records = MetaQualityLogger().recent(recent)
+    if not records:
+        console.print("[yellow]还没有元数据质量检查记录。[/yellow]")
+        return
+    console.print("[bold]元数据质量检查历史[/bold]")
+    for r in records:
+        c = r.get("counts") or {}
+        console.print(
+            f"  {r.get('timestamp', '')}  [{r.get('source', '')}] "
+            f"表={r.get('tables_checked', 0)}  high={c.get('high', 0)} "
+            f"medium={c.get('medium', 0)} low={c.get('low', 0)}  "
+            f"注释覆盖={r.get('comment_pct', 100)}%")
+    first, last = records[0], records[-1]
+    console.print(f"\n[bold]趋势[/bold] 注释覆盖 "
+                  f"{first.get('comment_pct', 100)}% → "
+                  f"{last.get('comment_pct', 100)}%(最近 {len(records)} 次)")
+
+
 def register(cli) -> None:
     cli.add_command(pii)
+    cli.add_command(hygiene)
+    cli.add_command(metaquality)
+    cli.add_command(contract)
+    cli.add_command(grants)
+    cli.add_command(ddlguard)
+    cli.add_command(hygiene_stats)
+    cli.add_command(metaquality_stats)
     cli.add_command(loginspect)
+    cli.add_command(pipedoctor)
+    cli.add_command(slatrace)
     cli.add_command(schemadiff)
     cli.add_command(testgen)
     cli.add_command(conflint)

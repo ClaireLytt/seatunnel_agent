@@ -1,0 +1,9 @@
+2024-04-11 09:00:00,100 INFO  [main] org.apache.hadoop.hive.ql.Driver - Compiling command: insert overwrite table dw.dws_sales partition(dt) select * from dw.dwd_orders
+2024-04-11 09:00:01,420 ERROR [main] org.apache.hadoop.hive.metastore.HiveMetaStoreClient - Failed to connect to the MetaStore Server
+org.apache.thrift.transport.TTransportException: java.net.ConnectException: Connection refused (Connection refused)
+	at org.apache.thrift.transport.TSocket.open(TSocket.java:226)
+	at org.apache.hadoop.hive.metastore.HiveMetaStoreClient.open(HiveMetaStoreClient.java:516)
+2024-04-11 09:00:01,425 ERROR [main] org.apache.hadoop.hive.ql.Driver - FAILED: SemanticException org.apache.hadoop.hive.ql.metadata.HiveException: java.lang.RuntimeException: Unable to instantiate org.apache.hadoop.hive.ql.metadata.SessionHiveMetaStoreClient
+org.apache.hadoop.hive.ql.parse.SemanticException: Unable to instantiate SessionHiveMetaStoreClient
+	at org.apache.hadoop.hive.ql.parse.BaseSemanticAnalyzer.getTable(BaseSemanticAnalyzer.java:1594)
+	Caused by: MetaException(message:Could not connect to meta store using any of the URIs provided. Most recent failure: org.apache.thrift.transport.TTransportException: java.net.ConnectException: Connection refused)

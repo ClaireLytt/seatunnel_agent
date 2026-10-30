@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from seatunnel_agent.agents.data.data_lineage.graph import norm_table
+from seatunnel_agent.common.severity import severity_counts
 
 SEVERITIES = ("breaking", "risk", "info")
 _SEV_RANK = {"info": 1, "risk": 2, "breaking": 3}
@@ -64,11 +65,7 @@ class DriftReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = dict.fromkeys(SEVERITIES, 0)
-        for f in self.findings:
-            out[f.severity] += 1
-        out["total"] = len(self.findings)
-        return out
+        return severity_counts(self.findings, SEVERITIES)
 
     def to_dict(self) -> dict[str, Any]:
         return {

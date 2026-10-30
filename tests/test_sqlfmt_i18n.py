@@ -46,10 +46,10 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
                      "e.g. examples/sqlfmt_demo",
                "zh": "包含 *.sql 的目录（递归扫描），如 examples/sqlfmt_demo"},
     "dir_btn": {"en": "Check directory", "zh": "检查目录"},
-    "empty_sql": {"en": "⚠️ Paste some SQL first.", "zh": "⚠️ 请先粘贴 SQL。"},
-    "empty_dir": {"en": "⚠️ Provide a SQL directory first.",
-                  "zh": "⚠️ 请先填写 SQL 目录。"},
-    "bad_dir": {"en": "⚠️ Not a directory: ", "zh": "⚠️ 不是有效目录: "},
+    "empty_sql": {"en": "Paste some SQL first.", "zh": "请先粘贴 SQL。"},
+    "empty_dir": {"en": "Provide a SQL directory first.",
+                  "zh": "请先填写 SQL 目录。"},
+    "bad_dir": {"en": "Not a directory: ", "zh": "不是有效目录: "},
 }
 
 

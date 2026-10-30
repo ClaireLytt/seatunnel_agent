@@ -19,7 +19,6 @@ const DIALECTS: [string, string][] = [
   ['Hive SQL', 'hive'],
 ]
 
-
 export default function App() {
   const { t, i18n } = useTranslation()
   const [sessionId, setSessionId] = useState('')
@@ -36,7 +35,9 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    getSessionId().then(setSessionId).catch(() => {})
+    getSessionId()
+      .then(setSessionId)
+      .catch(() => {})
     // SQL handed over from sql_review / data comparison (localStorage bridge)
     try {
       const handed = localStorage.getItem(DATASKEW_SQL_KEY)

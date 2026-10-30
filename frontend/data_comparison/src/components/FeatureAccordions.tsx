@@ -138,7 +138,9 @@ export function FeatureAccordions({
       <Collapsible title={t('quality')} testId="accordion-quality">
         <div className="flex flex-col gap-2">
           {field(t('qualityRules'), qualityRules, setQualityRules, t('qualityRulesHint'))}
-          {runBtn(t('qualityRun'), 'quality', () => run('quality', { quality_rules: qualityRules }))}
+          {runBtn(t('qualityRun'), 'quality', () =>
+            run('quality', { quality_rules: qualityRules }),
+          )}
         </div>
       </Collapsible>
 

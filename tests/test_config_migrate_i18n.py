@@ -51,9 +51,9 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
                "zh": "填写后按原结构写出 *.conf"},
     "batch_btn": {"en": "Batch migrate", "zh": "批量迁移"},
     "conf_label": {"en": "SeaTunnel config", "zh": "SeaTunnel 配置"},
-    "empty": {"en": "⚠️ Paste a DataX job or sqoop command first.",
-              "zh": "⚠️ 请先粘贴 DataX job 或 sqoop 命令。"},
-    "bad_dir": {"en": "⚠️ Not a directory: ", "zh": "⚠️ 不是有效目录: "},
+    "empty": {"en": "Paste a DataX job or sqoop command first.",
+              "zh": "请先粘贴 DataX job 或 sqoop 命令。"},
+    "bad_dir": {"en": "Not a directory: ", "zh": "不是有效目录: "},
 }
 
 

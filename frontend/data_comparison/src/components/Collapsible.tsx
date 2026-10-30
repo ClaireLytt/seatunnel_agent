@@ -37,8 +37,7 @@ export const inputCls =
   'w-full rounded border border-line bg-card px-2.5 py-1.5 font-mono text-[13px] text-fg ' +
   'outline-none focus:border-ink'
 
-export const labelCls =
-  'mb-1 block font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft'
+export const labelCls = 'mb-1 block font-mono text-[10px] uppercase tracking-[0.16em] text-ink-soft'
 
 export const smallBtnCls =
   'rounded border-[1.5px] border-ink px-3 py-1.5 font-mono text-[12px] text-ink transition ' +

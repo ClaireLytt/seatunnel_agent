@@ -121,7 +121,7 @@ def _review_sql(files: list[PatchFile]) -> list[BotFinding]:
 
 
 _SEV_ORDER = {"high": 0, "medium": 1, "low": 2}
-_SEV_MARK = {"high": "🔴", "medium": "🟠", "low": "🟡"}
+from seatunnel_agent.common.severity import SEVERITY_MARK as _SEV_MARK
 
 
 def review_patch(patch: str) -> tuple[list[BotFinding], str]:

@@ -7,18 +7,14 @@ import { fieldCls, labelCls, smallBtnCls as btnCls } from '@/ui'
 
 function verdictMark(rec: HistoryRecord): string {
   const c = rec.counts ?? {}
-  return `⛔${c.high ?? 0} ⚠️${c.medium ?? 0} 🔵${c.low ?? 0}`
+  return `⛔${c.high ?? 0} !${c.medium ?? 0} 🔵${c.low ?? 0}`
 }
 
 function snippet(rec: HistoryRecord, n: number): string {
   return (rec.sql ?? '').split(/\s+/).join(' ').slice(0, n)
 }
 
-export function HistoryPanel({
-  onLoad,
-}: {
-  onLoad: (sql: string, dialect: string) => void
-}) {
+export function HistoryPanel({ onLoad }: { onLoad: (sql: string, dialect: string) => void }) {
   const { t } = useTranslation()
   const [records, setRecords] = useState<HistoryRecord[]>([])
   const [picked, setPicked] = useState<number>(0)
@@ -76,16 +72,16 @@ export function HistoryPanel({
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr>
-                    {(['h_time', 'h_source', 'h_dialect', 'h_mode', 'h_findings', 'h_sql'] as const).map(
-                      (k) => (
-                        <th
-                          key={k}
-                          className="border border-line px-2 py-1 text-left font-mono text-[11px] uppercase tracking-wider text-ink-soft"
-                        >
-                          {t(k)}
-                        </th>
-                      ),
-                    )}
+                    {(
+                      ['h_time', 'h_source', 'h_dialect', 'h_mode', 'h_findings', 'h_sql'] as const
+                    ).map((k) => (
+                      <th
+                        key={k}
+                        className="border border-line px-2 py-1 text-left font-mono text-[11px] uppercase tracking-wider text-ink-soft"
+                      >
+                        {t(k)}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -100,9 +96,7 @@ export function HistoryPanel({
                       <td className="border border-line px-2 py-1 whitespace-nowrap">
                         {verdictMark(r)}
                       </td>
-                      <td className="border border-line px-2 py-1 font-mono">
-                        {snippet(r, 60)}
-                      </td>
+                      <td className="border border-line px-2 py-1 font-mono">{snippet(r, 60)}</td>
                     </tr>
                   ))}
                 </tbody>

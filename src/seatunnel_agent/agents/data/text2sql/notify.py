@@ -365,7 +365,7 @@ def flush_aggregated(buffer: dict, timeout: int = 15) -> None:
                     f"**{title}**\n{body}" for title, body in items
                 )
                 push_card(
-                    url, f"⚠️ {len(items)} 条告警", merged,
+                    url, f"{len(items)} 条告警", merged,
                     ok=False, timeout=timeout,
                 )
         except Exception:

@@ -62,7 +62,7 @@ _MSG = {
     },
 }
 
-_MARK = {"error": "❌", "warn": "⚠️", "info": "ℹ️"}
+from seatunnel_agent.common.severity import LEVEL_MARK as _MARK
 
 
 def _issue_line(issue: Issue, lang: str) -> str:

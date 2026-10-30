@@ -24,9 +24,8 @@ const resources = {
         '[{"workflow":"tests","conclusion":"failure",' +
         '"head_sha":"abc1234","duration_s":312}, …]',
       analyze_btn: 'Analyze',
-      report_ph:
-        '▶ Root-cause clusters, flaky jobs and duration drift appear here.',
-      empty: '⚠️ Paste a log or runs JSON first.',
+      report_ph: '▶ Root-cause clusters, flaky jobs and duration drift appear here.',
+      empty: 'Paste a log or runs JSON first.',
       running: 'Analyzing…',
       home: 'Home',
     },
@@ -49,7 +48,7 @@ const resources = {
         '"head_sha":"abc1234","duration_s":312}, …]',
       analyze_btn: '分析',
       report_ph: '▶ 分析后在此显示根因聚类、flaky 作业与时长漂移。',
-      empty: '⚠️ 请先粘贴日志或 runs JSON。',
+      empty: '请先粘贴日志或 runs JSON。',
       running: '分析中…',
       home: '首页',
     },

@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
-import {
-  fetchMetricHealth,
-  fetchWeeklyReport,
-  type HealthRow,
-  type SessionMeta,
-} from '@/api'
+import { fetchMetricHealth, fetchWeeklyReport, type HealthRow, type SessionMeta } from '@/api'
 
 const DOT: Record<string, string> = {
   red: 'var(--accent)',
@@ -45,9 +40,7 @@ export function HealthView({ session }: { session: SessionMeta | null }) {
     <div className="st-health-view space-y-4">
       <Card>
         <div className="mb-2 flex items-center gap-3 font-mono text-[12px]">
-          <span className="uppercase tracking-[0.18em] text-ink-soft">
-            {t('healthTitle')}
-          </span>
+          <span className="uppercase tracking-[0.18em] text-ink-soft">{t('healthTitle')}</span>
           <button onClick={refresh} className="rounded border border-line px-2 text-muted">
             {loading ? '…' : '⟳'}
           </button>
@@ -92,10 +85,7 @@ export function HealthView({ session }: { session: SessionMeta | null }) {
                   {r.metric}
                   <span className="text-muted">（{r.display_name}）</span>
                   {r.alerting && (
-                    <span style={{ color: 'var(--accent)' }}>
-                      {' '}
-                      ⚠ {r.alerting_since}
-                    </span>
+                    <span style={{ color: 'var(--accent)' }}> ⚠ {r.alerting_since}</span>
                   )}
                 </td>
                 <td className="px-2 py-1 text-muted">

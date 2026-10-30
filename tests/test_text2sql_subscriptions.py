@@ -1077,21 +1077,21 @@ def test_push_card_aggregation_merges_red_cards(monkeypatch) -> None:
     monkeypatch.delenv("T2S_WEBHOOK_ALLOW_HOSTS", raising=False)
 
     with notify.aggregate_pushes() as buf:
-        ok, msg = notify.push_card("https://h/a", "⚠️ A", "body-a", ok=False)
+        ok, msg = notify.push_card("https://h/a", "A", "body-a", ok=False)
         assert ok and msg == "deferred"
-        notify.push_card("https://h/a", "⚠️ B", "body-b", ok=False)
-        notify.push_card("https://h/other", "⚠️ C", "body-c", ok=False)
+        notify.push_card("https://h/a", "B", "body-b", ok=False)
+        notify.push_card("https://h/other", "C", "body-c", ok=False)
         notify.push_card("https://h/a", "📊 日报", "green", ok=True)  # 绿卡直发
         assert [s[1] for s in sent] == ["📊 日报"]
     notify.flush_aggregated(buf)
     titles = sorted(s[1] for s in sent)
-    assert "⚠️ 2 条告警" in titles  # h/a 两卡合一
-    assert "⚠️ C" in titles        # 单卡原样
-    merged = next(s for s in sent if s[1] == "⚠️ 2 条告警")
-    assert "**⚠️ A**" in merged[2] and "body-b" in merged[2]
+    assert "2 条告警" in titles  # h/a 两卡合一
+    assert "C" in titles        # 单卡原样
+    merged = next(s for s in sent if s[1] == "2 条告警")
+    assert "**A**" in merged[2] and "body-b" in merged[2]
     # 上下文外不缓冲
-    notify.push_card("https://h/a", "⚠️ D", "x", ok=False)
-    assert any(s[1] == "⚠️ D" for s in sent)
+    notify.push_card("https://h/a", "D", "x", ok=False)
+    assert any(s[1] == "D" for s in sent)
 
 
 def test_scheduler_aggregates_same_cycle_alerts(tmp_path, stores, monkeypatch) -> None:
@@ -1125,8 +1125,8 @@ def test_scheduler_aggregates_same_cycle_alerts(tmp_path, stores, monkeypatch) -
     sched = Scheduler(store=store, run_fn=run_fn)
     fired = sched.check_once(now=datetime(2026, 3, 3, 9, 0, 5))
     assert len(fired) == 2
-    red = [s for s in sent if "告警" in s[0] or s[0].startswith("⚠️")]
-    assert len(red) == 1 and red[0][0] == "⚠️ 2 条告警"
+    red = [s for s in sent if "告警" in s[0] or s[0].startswith("!")]
+    assert len(red) == 1 and red[0][0] == "2 条告警"
     assert "w1" in red[0][1] and "w2" in red[0][1]
     for s in store.list():
         assert s["last_status"] == "alerted"

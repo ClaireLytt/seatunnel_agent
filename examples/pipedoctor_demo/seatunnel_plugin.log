@@ -1,0 +1,9 @@
+2024-04-12 14:00:00,050 INFO  [main] org.apache.seatunnel.core.starter.SeaTunnel - Starting job mysql_to_starrocks_1
+2024-04-12 14:00:00,900 ERROR [main] org.apache.seatunnel.core.starter.command.Command - Run SeaTunnel on local mode failed
+org.apache.seatunnel.core.starter.exception.CommandExecuteException: SeaTunnel job executed failed
+	at org.apache.seatunnel.core.starter.seatunnel.command.ClientExecuteCommand.execute(ClientExecuteCommand.java:202)
+	Caused by: org.apache.seatunnel.plugin.discovery.PluginLoadException: Plugin PluginIdentifier{engineType='seatunnel', pluginType='sink', pluginName='StarRocks'} not found
+	at org.apache.seatunnel.plugin.discovery.AbstractPluginDiscovery.createPluginInstance(AbstractPluginDiscovery.java:210)
+2024-04-12 14:05:12,330 ERROR [main] org.apache.seatunnel.core.starter.SeaTunnel - Config parse failed
+com.typesafe.config.ConfigException$Parse: config.conf: 18: Expecting a value but got wrong token: '}' (if you intended '}' to be part of a key, try enclosing the key in double quotes)
+	at com.typesafe.config.impl.Parser$ParseContext.parseError(Parser.java:435)

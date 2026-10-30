@@ -35,7 +35,7 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
                         "and a masked preview.",
                   "zh": "▶ 扫描后在此显示结果 — 严重度、规则、文件:行号与"
                         "脱敏预览。"},
-    "empty_text": {"en": "⚠️ Paste some text first.", "zh": "⚠️ 请先粘贴文本。"},
+    "empty_text": {"en": "Paste some text first.", "zh": "请先粘贴文本。"},
 }
 
 

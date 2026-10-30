@@ -163,8 +163,7 @@ export interface Board {
   created_at: string
 }
 
-export const fetchBoards = (): Promise<{ boards: Board[] }> =>
-  fetchJson(`${BASE}/boards`)
+export const fetchBoards = (): Promise<{ boards: Board[] }> => fetchJson(`${BASE}/boards`)
 
 export const createBoard = (name: string): Promise<{ board: Board }> =>
   fetchJson(`${BASE}/boards`, {
@@ -224,15 +223,22 @@ export interface Subscription {
 export const fetchSubscriptions = (): Promise<{ subscriptions: Subscription[] }> =>
   fetchJson(`${BASE}/subscriptions`)
 
-export const createSubscription = (
-  data: {
-    name: string; cron: string; source_type: string; metric?: string
-    favorite_id?: string; ds_type?: string; connection?: string
-    database?: string; webhook_url?: string; lang?: string
-    threshold_pct?: number; watch_mode?: string; max_lag_days?: number
-    metrics?: string[]
-  },
-): Promise<{ subscription: Subscription }> =>
+export const createSubscription = (data: {
+  name: string
+  cron: string
+  source_type: string
+  metric?: string
+  favorite_id?: string
+  ds_type?: string
+  connection?: string
+  database?: string
+  webhook_url?: string
+  lang?: string
+  threshold_pct?: number
+  watch_mode?: string
+  max_lag_days?: number
+  metrics?: string[]
+}): Promise<{ subscription: Subscription }> =>
   fetchJson(`${BASE}/subscriptions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -289,9 +295,7 @@ export interface HealthRow {
   subscriptions: number
 }
 
-export const fetchMetricHealth = (
-  sessionId: string,
-): Promise<{ rows: HealthRow[] }> =>
+export const fetchMetricHealth = (sessionId: string): Promise<{ rows: HealthRow[] }> =>
   fetchJson(`${BASE}/session/${sessionId}/metrics/health`)
 
 export const fetchWeeklyReport = (
@@ -299,10 +303,7 @@ export const fetchWeeklyReport = (
 ): Promise<{ week: { start: string; end: string }; markdown: string }> =>
   fetchJson(`${BASE}/session/${sessionId}/report/weekly`)
 
-export const backtestSubscription = (
-  id: string,
-  days = 90,
-): Promise<BacktestResult> =>
+export const backtestSubscription = (id: string, days = 90): Promise<BacktestResult> =>
   fetchJson(`${BASE}/subscriptions/${id}/backtest?days=${days}`, {
     method: 'POST',
   })

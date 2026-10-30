@@ -111,7 +111,7 @@ const BASE = '/api/sql_review'
 
 // non-2xx responses throw the shared ApiError{status, detail}, so callers
 // can branch on the HTTP status instead of matching the detail wording
-const post = <T,>(path: string, body: unknown): Promise<T> =>
+const post = <T>(path: string, body: unknown): Promise<T> =>
   fetchJson<T>(`${BASE}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

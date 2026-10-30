@@ -1,0 +1,54 @@
+# PD 组 · Pipeline 故障诊断:data 工作区卡片 + /pipedoctor React 页冒烟与真实诊断。
+# 诊断走确定性知识库匹配,离线可跑;示例目录随仓库自带。
+
+- id: PD1
+  title: data 工作区展示故障诊断卡片
+  tags: [smoke, sqlite]
+  page: /data
+  steps:
+    - wait: 1000
+      note: 纯断言用例,等 cookie 语言切换完成
+  expect:
+    - text_contains: {in: 页面, text: Pipeline 故障诊断}
+
+- id: PD2
+  title: 故障诊断页渲染(目录输入 + 诊断按钮)
+  tags: [full, sqlite]
+  page: /pipedoctor/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+  expect:
+    - text_contains: {in: 页面, text: Pipeline 故障诊断}
+    - text_contains: {in: 页面, text: 运行日志目录}
+    - text_contains: {in: 页面, text: 诊断目录}
+
+- id: PD3
+  title: 诊断示例目录出首要嫌疑
+  tags: [full, sqlite]
+  page: /pipedoctor/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+    - click: 诊断目录
+    - wait: 2500
+      note: 等诊断接口返回并渲染报告
+  expect:
+    - text_contains: {in: 页面, text: 首要嫌疑}
+    - text_contains: {in: 页面, text: 修复方案}
+    - text_contains: {in: 页面, text: 修复补丁}
+
+- id: PD4
+  title: 与基线对比出回归报告
+  tags: [full, sqlite]
+  page: /pipedoctor/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+    - click_css: "summary:has-text('与成功基线运行对比')"
+    - click: 与基线对比
+    - wait: 2500
+      note: 等 rundiff 接口返回并渲染报告
+  expect:
+    - text_contains: {in: 页面, text: 运行回归对比}
+    - text_contains: {in: 页面, text: 新出现的异常簇}

@@ -128,6 +128,16 @@ _TOOL_DESC: dict[str, dict[str, str]] = {
                               "en": "Consistency measurement: verify two SQLs return equal results"},
 }
 
+# manifest-declared tools (governance agents) contribute their own rows
+def _manifest_tool_descs() -> dict[str, dict[str, str]]:
+    from seatunnel_agent.hub.registry import discover_tools
+
+    return {tm.name: {"zh": tm.desc_zh, "en": tm.desc_en}
+            for tm in discover_tools()}
+
+
+_TOOL_DESC.update(_manifest_tool_descs())
+
 _SETUP_BASH = """pip install 'seatunnel-agent[mcp]'
 seatunnel-agent mcp                          # 15 tools
 seatunnel-agent mcp --no-db                  # pure-static (6 tools)

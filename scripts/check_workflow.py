@@ -69,23 +69,57 @@ def parse_diff(diff: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]
     return added, removed
 
 
+_RE_LOCATOR_ARG = re.compile(
+    r"""(locator|get_by_placeholder|get_by_text|get_by_label)\(\s*"""
+    r"""(?P<q>["'])(?:(?!(?P=q)).)*(?P=q)"""
+)
+
+
 def _assert_shape(text: str) -> str:
-    """Digits-normalized form of an assert line (counts drift as code grows)."""
+    """Normalized form of an assert line: digits (counts drift as code grows),
+    element-addressing selector strings (tightening a locator is an
+    addressing detail, not an expectation change — the compared value keeps
+    full protection because only the selector argument is blanked), and
+    non-ASCII glyphs plus whitespace (mark/emoji migrations swap a glyph
+    inside the asserted string; every ASCII word stays protected)."""
     import re as _re
 
-    return _re.sub(r"\d+", "#", text.strip())
+    s = _re.sub(r"\d+", "#", text.strip())
+    s = _RE_LOCATOR_ARG.sub(r"\1(<sel>", s)
+    s = _re.sub(r"[^\x00-\x7f]+", "", s)
+    return _re.sub(r"\s+", "", s)
+
+
+def _split_eq(text: str) -> tuple[str, str] | None:
+    """``assert LHS == RHS`` → (LHS, RHS); None for any other assert."""
+    s = text.strip()
+    if not s.startswith("assert ") or "==" not in s:
+        return None
+    lhs, _, rhs = s.partition("==")
+    return lhs, rhs.strip()
 
 
 def _assert_updated(
     file: str, removed_text: str, added: list[tuple[str, str]]
 ) -> bool:
     """True when the same file gains an assert that differs only in numbers —
-    an updated expectation, not a deleted one."""
+    an updated expectation, not a deleted one. A ``== <magic number>``
+    expectation re-derived as an expression over the same compared value
+    (same LHS, still ``==``) also counts: the comparison survives, only the
+    hand-synced constant is replaced by its source of truth."""
+    import re as _re
+
     shape = _assert_shape(removed_text)
-    return any(
-        f == file and a.lstrip().startswith("assert ") and _assert_shape(a) == shape
-        for f, a in added
-    )
+    for f, a in added:
+        if f == file and a.lstrip().startswith("assert ") and _assert_shape(a) == shape:
+            return True
+    removed_eq = _split_eq(removed_text)
+    if removed_eq and _re.fullmatch(r"\d+", removed_eq[1]):
+        for f, a in added:
+            added_eq = _split_eq(a) if f == file else None
+            if added_eq and _assert_shape(added_eq[0]) == _assert_shape(removed_eq[0]):
+                return True
+    return False
 
 
 def floor_findings(
@@ -138,6 +172,43 @@ def check_floor(rng: str | None) -> tuple[bool, str]:
             "  " + f for f in findings
         )
     return True, f"无作弊变绿改动(范围 {rng})"
+
+
+_RE_WORKSPACE_ENTRY = re.compile(r'^\s*"[\w-]+",?\s*$')
+
+
+def frontend_lock_findings(
+    added: list[tuple[str, str]], changed_files: list[str]
+) -> list[str]:
+    """New frontend workspace entries must ship the regenerated lock file.
+
+    教训(2026-10-29):contract_check workspace 进了 package.json 但
+    package-lock.json 没跟上,CI 的 `npm ci` 直接红。workspace 条目是
+    纯名字行(不含冒号),devDependencies 之类的 "k": "v" 行不误伤。"""
+    ws_added = [
+        text.strip()
+        for file, text in added
+        if file == "frontend/package.json" and _RE_WORKSPACE_ENTRY.match(text)
+    ]
+    if ws_added and "frontend/package-lock.json" not in changed_files:
+        return [
+            f"[锁文件未更新] frontend/package.json 新增 workspace {t} "
+            "但 package-lock.json 未变(先跑 cd frontend && npm install)"
+            for t in ws_added
+        ]
+    return []
+
+
+def check_frontend_lock(rng: str | None) -> tuple[bool, str]:
+    if rng is None:
+        return True, "无远端分支,跳过锁文件检查"
+    diff = _git("diff", "--unified=0", rng, "--", "frontend/package.json")
+    changed_files = _git("diff", "--name-only", rng).splitlines()
+    added, _ = parse_diff(diff)
+    findings = frontend_lock_findings(added, changed_files)
+    if findings:
+        return False, "\n".join("  " + f for f in findings)
+    return True, f"workspace 与锁文件同步(范围 {rng})"
 
 
 def _git(*args: str) -> str:
@@ -242,6 +313,7 @@ def main() -> int:
         ("报告落盘", check_report_committed(rng)),
         ("报告含验证输出", check_report_has_workflow_output(rng)),
         ("floor", check_floor(rng)),
+        ("前端锁文件", check_frontend_lock(rng)),
     ]
     # Windows 默认 cp1252 无法打印中文检查名,统一切 UTF-8
     if hasattr(sys.stdout, "reconfigure"):

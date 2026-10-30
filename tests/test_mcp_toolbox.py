@@ -92,6 +92,20 @@ def test_migrate_auto_detects_datax_and_sqoop(tools):
     assert "不能为空" in tools["migrate_to_seatunnel"]("   ")
 
 
+def test_pii_scan_and_mask(tools):
+    ddl = ("CREATE TABLE ods.u (uid BIGINT, phone STRING COMMENT '手机号', "
+           "email STRING COMMENT '邮箱');")
+    out = tools["pii_scan"](ddl)
+    assert "phone" in out
+    assert "不能为空" in tools["pii_scan"]("  ")
+
+    masked = tools["pii_mask"](ddl)
+    assert "CREATE OR REPLACE VIEW ods.u_masked" in masked
+    assert "substr(phone, 1, 3)" in masked
+    assert "min_confidence" in tools["pii_mask"](ddl, min_confidence="mid")
+    assert "不能为空" in tools["pii_mask"]("  ")
+
+
 # ── database tools over named connections ──────────────────────────────────
 
 
@@ -223,7 +237,7 @@ def test_compare_query_results(tools, tmp_path):
     assert "✅" in same
     diff = tools["compare_query_results"](
         "dev-a", "SELECT id FROM t", "SELECT id FROM t WHERE id > 1")
-    assert "⛔" in diff
+    assert "●" in diff
     guarded = tools["compare_query_results"](
         "dev-a", "SELECT id FROM t", "DELETE FROM t")
     assert "仅支持单条" in guarded or "single" in guarded.lower()
@@ -370,10 +384,14 @@ def test_no_db_profile(tmp_path, monkeypatch):
     monkeypatch.setenv("SEATUNNEL_MCP_AUDIT_PATH",
                        str(tmp_path / "audit.jsonl"))
     fns = build_tool_functions(include_db=False)
+    from seatunnel_agent.hub.registry import discover_tools
+    manifest_names = {tm.name for tm in discover_tools()}
+    assert manifest_names  # the governance agents declare tools
     assert set(fns) == {"sql_review", "sql_transpile", "skew_check",
                         "skew_check_file", "skew_runtime_eventlog",
-                        "skew_runtime_history", "skew_runtime_flink", "skew_drift", "impact_diff",
-                        "migrate_to_seatunnel"}
+                        "skew_runtime_history", "skew_runtime_flink",
+                        "skew_drift", "impact_diff",
+                        "migrate_to_seatunnel"} | manifest_names
 
 
 def test_dead_connection_cache_self_heals(tools, tmp_path):
@@ -453,7 +471,9 @@ def test_mcp_server_resources():
     s2 = create_mcp_server(include_db=False)
     uris2 = {str(r.uri) for r in anyio.run(s2.list_resources)}
     assert "seatunnel://connections" not in uris2
-    assert len(anyio.run(s2.list_tools)) == 10
+    from seatunnel_agent.agents.data.mcp_toolbox.core import build_tool_functions
+    expected = len(build_tool_functions(include_db=False))
+    assert len(anyio.run(s2.list_tools)) == expected
 
 
 def test_server_json_manifest_valid():

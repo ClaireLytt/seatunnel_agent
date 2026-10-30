@@ -24,8 +24,7 @@ export function runSuite(suiteYaml: string, judge: boolean, lang: string): Promi
 // ── Reserved for ticket 03 (validate / demo / history) ───────────────────────
 
 export type ValidateResponse =
-  | { ok: true; cases: number; agents: string[] }
-  | { ok: false; error: string }
+  { ok: true; cases: number; agents: string[] } | { ok: false; error: string }
 
 export function validateSuite(suiteYaml: string): Promise<ValidateResponse> {
   return fetchJson(`${BASE}/validate`, {

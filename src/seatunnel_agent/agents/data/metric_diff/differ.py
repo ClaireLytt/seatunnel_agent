@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from seatunnel_agent.agents.data.data_lineage.graph import LineageGraph
+from seatunnel_agent.common.severity import severity_counts
 
 SEVERITIES = ("high", "medium")
 _SEV_RANK = {"medium": 1, "high": 2}
@@ -90,11 +91,7 @@ class MetricReport:
     warnings: list[str] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = dict.fromkeys(SEVERITIES, 0)
-        for c in self.conflicts:
-            out[c.severity] += 1
-        out["total"] = len(self.conflicts)
-        return out
+        return severity_counts(self.conflicts, SEVERITIES)
 
     def to_dict(self) -> dict[str, Any]:
         return {"root": self.root, "dialect": self.dialect,

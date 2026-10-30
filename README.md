@@ -731,6 +731,50 @@ seatunnel-agent pii --dir warehouse_sql/                             # scan a di
 seatunnel-agent pii --sql "CREATE TABLE t (phone STRING COMMENT '手机号');"
 seatunnel-agent pii --dir sql/ --rules my_rules.yaml --lang en       # custom rules
 seatunnel-agent pii --dir sql/ -F json --fail-on high                # CI gate
+seatunnel-agent pii --dir sql/ --mask -o masked_views.sql            # disposal: masked-view DDL
+```
+
+The `--mask` flag (REST `POST /api/pii/mask`, UI button on `/pii`) is the
+disposal half of the scanner: for every table whose DDL was parsed it emits
+`CREATE OR REPLACE VIEW <table>_masked AS SELECT ...` with each flagged
+column replaced by a category-appropriate expression (phone keeps 3+4
+digits, national ID keeps 6+4, e-mail keeps the first letter and domain,
+salary is suppressed to NULL, unknown categories fall back to `md5()`);
+columns known only from lineage degrade to expression snippets with a
+warning. `--min-confidence high` skips weak hits such as a bare `name`
+column.
+
+### Warehouse Hygiene Agent
+
+Lineage-driven dead-weight report — the question nobody else in the suite
+answers: *what could be retired?* Write-only tables (orphan outputs, final
+`ads_*` marts exempt), columns of read tables that no downstream ever
+selects (dead columns), and DDL-defined tables absent from every lineage
+edge (dangling definitions). CLI `seatunnel-agent hygiene`, REST
+`/api/hygiene/` (whitelisted via `HYGIENE_API_ALLOWED_DIRS`), MCP tool
+`warehouse_hygiene`; deterministic — no DB, no LLM:
+
+```bash
+seatunnel-agent hygiene --dir warehouse_sql/                 # dead-weight report
+seatunnel-agent hygiene --dir warehouse_sql/ --fail-on orphans   # CI gate
+seatunnel-agent hygiene --sql "..." -F json
+```
+
+### Metadata Quality Agent
+
+DDL-level conventions check — how tables are *declared*, complementing
+sql_review (how queries are written) and schema_drift (how structures
+change): per-table comment coverage with the missing columns listed,
+cross-layer naming mismatches (an `ods_` table living in a `dwd` database),
+and type anti-patterns (money-named columns on FLOAT/DOUBLE — use DECIMAL;
+date-named non-partition columns on bare STRING). CLI
+`seatunnel-agent metaquality` with `--fail-on high|medium|low`, REST
+`/api/metaquality/` (whitelisted via `METAQUALITY_API_ALLOWED_DIRS`), MCP
+tool `metadata_quality`; deterministic — no DB, no LLM:
+
+```bash
+seatunnel-agent metaquality --dir warehouse_sql/                # conventions report
+seatunnel-agent metaquality --dir warehouse_sql/ --fail-on high # CI gate
 ```
 
 ### Batch Log Inspection Agent
@@ -750,6 +794,57 @@ seatunnel-agent loginspect --dir logs/                               # cluster a
 seatunnel-agent loginspect --dir logs/ --no-warn --top 5             # errors only, top 5
 seatunnel-agent loginspect -f seatunnel.log --lang en                # single file
 seatunnel-agent loginspect --dir logs/ -F json --fail-on error       # CI gate
+```
+
+### Pipeline Failure Diagnosis Agent
+
+Diagnose one failed Spark/Hive/SeaTunnel run from its logs: the engine is
+detected from package markers, exception clusters (reusing the log-
+inspection extractor) are matched against a **failure-signature knowledge
+base** — Spark OOM / GC overhead / YARN container kills / shuffle fetch
+failures, Hive metastore / semantic / dynamic-partition errors, SeaTunnel
+config-parse / missing-connector / type-mismatch failures, plus generic
+Kerberos / quota / permission / JDBC signatures — and every hit carries
+the likely cause and the concrete fix. The highest-severity, earliest
+finding is named the primary suspect; unknown ERROR clusters are listed
+as unmatched. Web UI at `/pipedoctor` (with optional `llm-generated`
+advice), REST under `/api/pipedoctor/` (whitelisted via
+`PIPEDOCTOR_API_ALLOWED_DIRS`), MCP tool `pipeline_diagnose`, demo data
+`examples/pipedoctor_demo/`:
+
+Matched signatures also carry a **copy-paste fix patch** (spark-submit
+`--conf` deltas, Hive `SET` statements, SeaTunnel `env { checkpoint }`
+blocks, install-plugin / kinit / quota commands). With a baseline the
+command switches to **run-regression diff** — "it worked yesterday":
+clusters are keyed by root-cause signature, only the ones new or grown
+vs the known-good run are diagnosed, shared noise is ignored
+(`POST /api/pipedoctor/rundiff`):
+
+```bash
+seatunnel-agent pipedoctor --dir run_logs/                           # diagnose a run
+seatunnel-agent pipedoctor -f spark_oom.log --lang en                # single file
+seatunnel-agent pipedoctor --dir run_logs/ -F json --fail-on critical  # CI gate
+seatunnel-agent pipedoctor --dir today/ --baseline-dir yesterday/    # regression diff
+```
+
+### Scheduling Delay Trace Agent
+
+Why did the pipeline finish late? Feed one scheduling run's task-instance
+export (JSON or CSV with `name/start/end/deps` — Airflow/DolphinScheduler
+dumps map onto the accepted synonyms) and the agent computes the
+**critical path** to the target task by always walking into the dependency
+that finished last — the one actually waited for — then attributes every
+hop to *waiting on deps* vs *own runtime*, ranks the top delay
+contributors, and gives an SLA met/breach verdict against an optional
+deadline. Web UI at `/slatrace`, REST under `/api/slatrace/` (file access
+whitelisted via `SLATRACE_API_ALLOWED_DIRS`), MCP tool `sla_trace`, demo
+data `examples/slatrace_demo/`:
+
+```bash
+seatunnel-agent slatrace -f run.json                                 # critical path
+seatunnel-agent slatrace -f run.json -t ads_sales_report --lang en   # explicit target
+seatunnel-agent slatrace -f run.json --deadline "2024-05-01 05:00:00" \
+  --fail-on-breach -F json                                           # CI gate
 ```
 
 ### Schema Drift Check Agent
@@ -1633,6 +1728,48 @@ seatunnel-agent loginspect --dir logs/                               # 聚类整
 seatunnel-agent loginspect --dir logs/ --no-warn --top 5             # 只看 error,前 5 簇
 seatunnel-agent loginspect -f seatunnel.log --lang en                # 单文件
 seatunnel-agent loginspect --dir logs/ -F json --fail-on error       # CI 门禁
+```
+
+### Pipeline 故障诊断 Agent
+
+分析一次失败的 Spark/Hive/SeaTunnel 运行日志：按包名标记识别引擎，复用
+日志巡检的异常抽取，把异常簇与**故障签名知识库**匹配——Spark 的
+OOM / GC 超限 / YARN 杀容器 / shuffle 拉取失败，Hive 的 metastore 失联 /
+语义错误 / 动态分区超限，SeaTunnel 的配置解析 / 连接器缺失 / 类型不匹配，
+外加 Kerberos / 配额 / 权限 / JDBC 等通用签名——每个命中都带可能原因与
+具体修复方案。严重度最高、出现最早的命中项列为首要嫌疑；知识库未覆盖的
+ERROR 簇单独列出。Web 页面 `/pipedoctor`（可选 `llm-generated` 建议），
+REST `/api/pipedoctor/`（目录白名单 `PIPEDOCTOR_API_ALLOWED_DIRS`），
+MCP 工具 `pipeline_diagnose`，演示数据 `examples/pipedoctor_demo/`：
+
+命中的签名还带**复制即用的修复补丁**（spark-submit `--conf` 增量、Hive
+`SET` 语句、SeaTunnel `env { checkpoint }` 配置块、install-plugin /
+kinit / 配额命令）。给出基线后切换为**运行回归对比**——"昨天还好好的"：
+异常簇按根因签名对齐，只诊断相对成功运行新增/增长的簇，两次共有的噪声
+直接忽略（`POST /api/pipedoctor/rundiff`）：
+
+```bash
+seatunnel-agent pipedoctor --dir run_logs/                           # 诊断一次运行
+seatunnel-agent pipedoctor -f spark_oom.log --lang en                # 单文件
+seatunnel-agent pipedoctor --dir run_logs/ -F json --fail-on critical  # CI 门禁
+seatunnel-agent pipedoctor --dir today/ --baseline-dir yesterday/    # 回归对比
+```
+
+### 调度依赖延迟分析 Agent
+
+产出为什么晚了？喂入一轮调度的任务实例导出（JSON 或 CSV，字段
+`name/start/end/deps`，Airflow/DolphinScheduler 的导出字段同义词均可识别），
+计算到目标任务的**关键路径**——每一步都走向实际等待的那个依赖（最后完成者），
+再把每一跳拆成"等依赖"与"自身运行"两部分归因，排出延迟大户，并对可选的
+截止时间给出 SLA 达标/破线结论。Web 页面 `/slatrace`，REST
+`/api/slatrace/`（文件访问白名单 `SLATRACE_API_ALLOWED_DIRS`），MCP 工具
+`sla_trace`，演示数据 `examples/slatrace_demo/`：
+
+```bash
+seatunnel-agent slatrace -f run.json                                 # 关键路径
+seatunnel-agent slatrace -f run.json -t ads_sales_report --lang en   # 指定目标任务
+seatunnel-agent slatrace -f run.json --deadline "2024-05-01 05:00:00" \
+  --fail-on-breach -F json                                           # CI 门禁
 ```
 
 ### Schema 漂移检查 Agent

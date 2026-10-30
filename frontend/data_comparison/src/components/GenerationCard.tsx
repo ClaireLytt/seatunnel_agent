@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import {
   compareEnvironments,
   generateDiffSql,
@@ -29,7 +30,7 @@ export function GenerationCard({
   resetSeq: number
 }) {
   const { t, i18n } = useTranslation()
-  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
   const [busy, setBusy] = useState(false)
   const [downloadId, setDownloadId] = useState('')
   const [lineageSql, setLineageSql] = useState('')
@@ -140,12 +141,7 @@ export function GenerationCard({
           value={lineageSql}
           onChange={(e) => setLineageSql(e.target.value)}
         />
-        <button
-          type="button"
-          className={`${smallBtnCls} mt-2`}
-          disabled={busy}
-          onClick={onLineage}
-        >
+        <button type="button" className={`${smallBtnCls} mt-2`} disabled={busy} onClick={onLineage}>
           {t('lineageTitle')}
         </button>
       </Collapsible>

@@ -1,0 +1,390 @@
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Special+Elite&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* === Room 1913 visual world, ported for the mind-games page ===========
+   Midnight study: #0d1018 night, parchment ink #e8dcc4, amber lamplight
+   rgba(217,154,78). Grain + vignette + drifting fog carry the room;
+   .mg-paper is the aged document every exercise is written on. */
+
+html {
+  font-size: 120%;
+}
+
+html,
+body {
+  background: #0d1018;
+  color: #e8dcc4;
+}
+
+body {
+  font-family: 'Cormorant Garamond', 'EB Garamond', Georgia, 'Times New Roman', serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background:
+    radial-gradient(
+      ellipse at 78% 12%,
+      rgba(255, 190, 110, 0.16) 0%,
+      rgba(217, 154, 78, 0.07) 26%,
+      transparent 55%
+    ),
+    radial-gradient(ellipse at 12% 90%, rgba(217, 140, 70, 0.08) 0%, transparent 50%),
+    linear-gradient(180deg, #11141d 0%, #0d1018 45%, #090b11 100%);
+  background-attachment: fixed;
+}
+
+::selection {
+  background: rgba(217, 154, 78, 0.35);
+  color: #f4ead2;
+}
+
+:focus-visible {
+  outline: 1px solid rgba(217, 154, 78, 0.65);
+  outline-offset: 2px;
+}
+
+/* film grain */
+.mg-grain::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  opacity: 0.08;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)' opacity='0.6'/></svg>");
+}
+
+/* deep vignette around screen edges */
+.mg-vignette {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 55;
+  background: radial-gradient(
+    ellipse at 50% 50%,
+    rgba(0, 0, 0, 0) 42%,
+    rgba(0, 0, 0, 0.5) 82%,
+    rgba(0, 0, 0, 0.88) 100%
+  );
+}
+
+/* drifting fog, two depths */
+.mg-fog {
+  position: fixed;
+  inset: -10%;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.5;
+  background:
+    radial-gradient(ellipse at 20% 80%, rgba(80, 55, 30, 0.2), transparent 55%),
+    radial-gradient(ellipse at 80% 20%, rgba(60, 40, 22, 0.16), transparent 60%),
+    radial-gradient(ellipse at 60% 60%, rgba(40, 28, 16, 0.16), transparent 65%);
+  filter: blur(40px);
+  animation: mg-fog-drift 32s cubic-bezier(0.22, 1, 0.36, 1) infinite alternate;
+  mix-blend-mode: screen;
+}
+
+@keyframes mg-fog-drift {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(2%, -1.5%, 0) scale(1.06);
+  }
+  100% {
+    transform: translate3d(-2%, 1.5%, 0) scale(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mg-fog {
+    animation: none;
+  }
+}
+
+.mg-shell {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+}
+
+/* typewriter archival labels */
+.mg-label {
+  font-family: 'Special Elite', 'Courier New', monospace;
+  letter-spacing: 0.22em;
+  font-size: 13px;
+  color: rgba(222, 165, 92, 0.9);
+  text-transform: uppercase;
+}
+
+.mg-title {
+  font-family: 'Playfair Display', 'Cormorant Garamond', serif;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #efe3c8;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.6);
+}
+
+.mg-sub {
+  font-style: italic;
+  color: rgba(236, 225, 203, 0.82);
+}
+
+.mg-ink {
+  color: rgba(238, 228, 206, 0.94);
+}
+.mg-fade {
+  color: rgba(236, 225, 203, 0.82);
+}
+.mg-mute {
+  color: rgba(232, 220, 196, 0.68);
+}
+
+/* aged paper — archival document feel */
+.mg-paper {
+  position: relative;
+  background:
+    radial-gradient(ellipse at 30% 18%, rgba(255, 230, 180, 0.07), transparent 55%),
+    radial-gradient(ellipse at 80% 90%, rgba(120, 70, 30, 0.08), transparent 60%),
+    linear-gradient(180deg, #1d150d 0%, #140d07 60%, #0e0805 100%);
+  border: 1px solid rgba(217, 154, 78, 0.16);
+  border-radius: 6px;
+  box-shadow:
+    inset 0 0 90px rgba(0, 0, 0, 0.65),
+    inset 0 0 24px rgba(217, 154, 78, 0.05),
+    0 40px 80px rgba(0, 0, 0, 0.6),
+    0 8px 30px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.mg-paper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.14;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='p'><feTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='2' seed='3'/><feColorMatrix values='0 0 0 0 0.85  0 0 0 0 0.72  0 0 0 0 0.5  0 0 0 0.55 0'/></filter><rect width='100%' height='100%' filter='url(%23p)'/></svg>");
+}
+
+.mg-paper::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.45) 100%),
+    linear-gradient(135deg, rgba(255, 210, 150, 0.04), transparent 40%);
+}
+
+.mg-paper > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* tabs: archive register, amber underline carries the active state */
+.mg-tab {
+  font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(232, 220, 196, 0.7);
+  padding: 10px 2px;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  cursor: pointer;
+  transition:
+    color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mg-tab:hover {
+  color: rgba(232, 220, 196, 0.85);
+}
+
+.mg-tab-active {
+  color: rgba(217, 154, 78, 0.95);
+  border-bottom-color: rgba(217, 154, 78, 0.65);
+}
+
+/* answer options: lamplit slips of paper */
+.mg-option {
+  width: 100%;
+  padding: 14px 18px;
+  font-family: inherit;
+  font-size: 19px;
+  line-height: 1.7;
+  color: rgba(232, 220, 196, 0.92);
+  background: linear-gradient(150deg, rgba(30, 23, 15, 0.6), rgba(18, 14, 10, 0.7));
+  border: 1px solid rgba(217, 154, 78, 0.16);
+  border-radius: 4px;
+  cursor: pointer;
+  transition:
+    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mg-option:hover {
+  border-color: rgba(217, 154, 78, 0.5);
+  background: linear-gradient(150deg, rgba(38, 29, 18, 0.7), rgba(22, 17, 12, 0.8));
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* primary action — the garden button */
+.mg-btn {
+  padding: 10px 22px;
+  font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(232, 220, 196, 0.9);
+  background: rgba(217, 154, 78, 0.12);
+  border: 1px solid rgba(217, 154, 78, 0.35);
+  border-radius: 4px;
+  cursor: pointer;
+  transition:
+    background 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mg-btn:hover:not(:disabled) {
+  background: rgba(217, 154, 78, 0.22);
+  border-color: rgba(217, 154, 78, 0.6);
+}
+
+.mg-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* writing surface */
+.mg-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 19px;
+  color: rgba(232, 220, 196, 0.92);
+  background: rgba(12, 9, 6, 0.6);
+  border: 1px solid rgba(217, 154, 78, 0.18);
+  border-radius: 4px;
+  outline: none;
+  caret-color: rgba(217, 154, 78, 0.9);
+  transition: border-color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mg-input:focus {
+  border-color: rgba(217, 154, 78, 0.5);
+}
+
+.mg-input::placeholder {
+  color: rgba(232, 220, 196, 0.55);
+}
+
+/* result cards */
+.mg-card {
+  padding: 16px 18px;
+  border-radius: 4px;
+  border: 1px solid rgba(217, 154, 78, 0.16);
+  background: linear-gradient(150deg, rgba(30, 23, 15, 0.6), rgba(18, 14, 10, 0.7));
+}
+
+/* amber measure bars */
+.mg-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(217, 154, 78, 0.1);
+  overflow: hidden;
+}
+
+.mg-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(217, 154, 78, 0.55), rgba(255, 190, 110, 0.85));
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mg-back {
+  font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: rgba(232, 220, 196, 0.7);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  transition: color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mg-back:hover {
+  color: rgba(217, 154, 78, 0.85);
+}
+
+.mg-home {
+  font-family: 'Special Elite', 'Courier New', monospace;
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(232, 220, 196, 0.55);
+  border: 1px solid rgba(217, 154, 78, 0.25);
+  border-radius: 4px;
+  padding: 8px 14px;
+  text-decoration: none;
+  transition:
+    color 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mg-home:hover {
+  color: rgba(217, 154, 78, 0.95);
+  border-color: rgba(217, 154, 78, 0.6);
+}
+
+/* breathing ring — one swell of lamplight, paced by the 4-7-8 phases */
+.mg-breath-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid rgba(217, 154, 78, 0.45);
+  background: radial-gradient(
+    circle at 50% 42%,
+    rgba(255, 190, 110, 0.18) 0%,
+    rgba(217, 154, 78, 0.08) 45%,
+    transparent 70%
+  );
+  box-shadow:
+    0 0 60px rgba(255, 190, 110, 0.12),
+    inset 0 0 40px rgba(217, 154, 78, 0.08);
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mg-breath-ring {
+    transition: none;
+    transform: none !important;
+  }
+}
+
+/* ornamental rule under the header, same stroke as the letterpress hub */
+.mg-rule {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: rgba(217, 154, 78, 0.45);
+}
+
+.mg-rule::before,
+.mg-rule::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, transparent, rgba(217, 154, 78, 0.35), transparent);
+}

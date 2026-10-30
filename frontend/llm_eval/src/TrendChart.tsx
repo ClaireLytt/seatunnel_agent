@@ -1,24 +1,10 @@
 // Score trend line chart — one line per suite, last 20 runs each
 // (mirrors the Gradio page's _trend_figure in agents/ai/llm_eval/ui.py).
 // Colors follow the uitest CountsChart precedent: theme tokens only.
-import {
-  Legend,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { HistoryRun } from '@/api'
 
-const PALETTE = [
-  'var(--ink)',
-  'var(--accent)',
-  'var(--ok)',
-  'var(--ink-soft)',
-  'var(--muted)',
-]
+const PALETTE = ['var(--ink)', 'var(--accent)', 'var(--ok)', 'var(--ink-soft)', 'var(--muted)']
 
 export function TrendChart({ runs }: { runs: HistoryRun[] }) {
   const bySuite = new Map<string, { ts: string; score: number }[]>()

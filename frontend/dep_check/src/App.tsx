@@ -21,13 +21,8 @@ export default function App() {
     setBusy(true)
     setError('')
     try {
-      const isPyproject =
-        text.includes('[project]') || text.includes('[build-system]')
-      const res = await checkText(
-        isPyproject ? text : '',
-        isPyproject ? '' : text,
-        i18n.language,
-      )
+      const isPyproject = text.includes('[project]') || text.includes('[build-system]')
+      const res = await checkText(isPyproject ? text : '', isPyproject ? '' : text, i18n.language)
       setReport(res.report ?? '')
     } catch (e) {
       setReport('')

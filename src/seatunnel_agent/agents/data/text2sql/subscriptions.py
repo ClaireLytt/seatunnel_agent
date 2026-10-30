@@ -875,7 +875,7 @@ def _run_metric_watch(
             + contributor_block
         )
     if webhook:
-        pushed, msg = push_fn(webhook, f"⚠️ {name}", body, ok=False)
+        pushed, msg = push_fn(webhook, f"{name}", body, ok=False)
         if not pushed:
             outcome["status"] = "push_failed"
             outcome["error"] = msg

@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from seatunnel_agent.common.severity import DRIFT_MARK as _LEVEL_MARK
 from seatunnel_agent.common.utils import normalize_lang
 
 from .differ import DriftFinding, DriftReport
 from .i18n import finding_message, tp
-
-_LEVEL_MARK = {"breaking": "⛔", "risk": "⚠️", "info": "ℹ️"}
 
 
 def _finding_line(f: DriftFinding, lang: str) -> str:

@@ -8,7 +8,6 @@ export interface DriftResponse {
   elapsed_ms: number
 }
 
-
 export async function diff(body: {
   old_sql?: string
   new_sql?: string

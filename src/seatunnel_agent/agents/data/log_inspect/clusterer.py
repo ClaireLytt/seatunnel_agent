@@ -29,7 +29,8 @@ _LEVEL_RE = re.compile(r"\b(FATAL|ERROR|WARN(?:ING)?)\b")
 _CALM_RE = re.compile(r"\b(INFO|DEBUG|TRACE)\b")
 # java.lang.FooException[: message] — standalone trace head or Caused by
 _EXC_RE = re.compile(
-    r"(?:Caused by:\s*)?([\w$.]+(?:Exception|Error|Throwable))(?::\s*(.*))?$")
+    r"(?:Caused by:\s*)?([\w$.]+(?:Exception|Error|Throwable)"
+    r"(?:\$\w+)?)(?::\s*(.*))?$")
 _CAUSED_RE = re.compile(r"^\s*Caused by:\s*([\w$.]+)(?::\s*(.*))?$")
 # capture the method path only (no (File.java:123) suffix): clusters must
 # not split when the same failure moves a few lines inside one file

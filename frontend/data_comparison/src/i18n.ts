@@ -126,7 +126,8 @@ const resources = {
       webhookOnFail: 'Notify on failure only',
       trends: 'Trends',
       alertRules: 'Alert Rules',
-      alertRulesHint: 'metric>threshold:consecutive (e.g. delta>100:3, skew_top1>50:2, skew_top1_jump>10:1)',
+      alertRulesHint:
+        'metric>threshold:consecutive (e.g. delta>100:3, skew_top1>50:2, skew_top1_jump>10:1)',
       trendShow: 'Comparison Trends',
       trendNoData: 'No historical data for trends',
       trendRecords: '{{n}} comparison records',

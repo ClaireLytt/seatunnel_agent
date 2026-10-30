@@ -84,7 +84,7 @@ export default function App() {
         ),
       )
     } catch (e) {
-      setDiffMd(`⚠️ ${e instanceof Error ? e.message : e}`)
+      setDiffMd(`${e instanceof Error ? e.message : e}`)
     }
   }
 
@@ -122,10 +122,7 @@ export default function App() {
             <legend className={labelCls}>{t('profilesLabel')}</legend>
             <div className="mt-1 flex flex-col gap-1.5">
               {profiles.map((name) => (
-                <label
-                  key={name}
-                  className="flex items-center gap-2 font-mono text-sm text-fg"
-                >
+                <label key={name} className="flex items-center gap-2 font-mono text-sm text-fg">
                   <input
                     type="checkbox"
                     checked={selected.includes(name)}
@@ -141,9 +138,7 @@ export default function App() {
             <p className="mt-2 text-xs text-muted">
               <Trans
                 i18nKey="profilesHint"
-                components={[
-                  <a key="settings" href="/settings" className="underline" />,
-                ]}
+                components={[<a key="settings" href="/settings" className="underline" />]}
               />
             </p>
           )}

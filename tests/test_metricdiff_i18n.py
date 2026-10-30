@@ -32,9 +32,9 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
                "zh": "包含 *.sql 的目录（递归扫描），如 examples/metricdiff_demo"},
     "dialect_label": {"en": "SQL dialect", "zh": "SQL 方言"},
     "check_btn": {"en": "Check metrics", "zh": "检查口径"},
-    "empty_dir": {"en": "⚠️ Provide a SQL directory first.",
-                  "zh": "⚠️ 请先填写 SQL 目录。"},
-    "bad_dir": {"en": "⚠️ Not a directory: ", "zh": "⚠️ 不是有效目录: "},
+    "empty_dir": {"en": "Provide a SQL directory first.",
+                  "zh": "请先填写 SQL 目录。"},
+    "bad_dir": {"en": "Not a directory: ", "zh": "不是有效目录: "},
 }
 
 LEGACY_DIALECTS = ["hive", "spark", "mysql", "postgresql", "clickhouse",

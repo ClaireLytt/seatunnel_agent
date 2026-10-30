@@ -69,6 +69,109 @@ def test_removed_assert_in_surviving_test_flagged() -> None:
     assert hits and "删断言" in hits[0]
 
 
+def test_assert_locator_tightening_is_an_update() -> None:
+    # addressing detail changed, compared value identical -> not a deletion
+    diff = _diff(
+        "tests/test_a.py",
+        removed=['    assert page.locator("input").input_value() == "demo"'],
+        added=['    assert page.locator("input:not([type=checkbox])")'
+               '.input_value() == "demo"'],
+    )
+    assert _findings(diff) == []
+
+
+def test_new_workspace_without_lockfile_flagged() -> None:
+    added = [("frontend/package.json", '    "contract_check",')]
+    hits = check_workflow.frontend_lock_findings(
+        added, ["frontend/package.json"])
+    assert hits and "锁文件未更新" in hits[0]
+
+
+def test_new_workspace_with_lockfile_passes() -> None:
+    added = [("frontend/package.json", '    "contract_check",')]
+    assert check_workflow.frontend_lock_findings(
+        added, ["frontend/package.json", "frontend/package-lock.json"]) == []
+
+
+def test_dependency_line_not_mistaken_for_workspace() -> None:
+    added = [("frontend/package.json", '    "vite": "^6.0.7",')]
+    assert check_workflow.frontend_lock_findings(
+        added, ["frontend/package.json"]) == []
+
+
+def test_assert_glyph_swap_is_an_update() -> None:
+    # mark migrations swap a non-ASCII glyph inside the asserted string;
+    # the ASCII expectation is unchanged -> an update, not a deletion
+    diff = _diff(
+        "tests/test_a.py",
+        removed=['    assert "⛔ skew confirmed" in en'],
+        added=['    assert "● skew confirmed" in en'],
+    )
+    assert _findings(diff) == []
+    # dropping a decorative emoji prefix is the same presentation move
+    diff2 = _diff(
+        "tests/test_a.py",
+        removed=['    assert "⚠️ 2 条告警" in titles'],
+        added=['    assert "2 条告警" in titles'],
+    )
+    assert _findings(diff2) == []
+
+
+def test_assert_ascii_expectation_still_protected() -> None:
+    # the glyph rule must not excuse a changed ASCII expectation
+    diff = _diff(
+        "tests/test_a.py",
+        removed=['    assert "● skew confirmed" in en'],
+        added=['    assert "● skew denied" in en'],
+    )
+    hits = _findings(diff)
+    assert hits and "删断言" in hits[0]
+
+
+def test_assert_magic_number_rederived_is_an_update() -> None:
+    # "== 14" replaced by "== <expression>" on the same compared value:
+    # the hand-synced constant now comes from its source of truth
+    diff = _diff(
+        "tests/test_a.py",
+        removed=["    assert len(run(s2.list_tools)) == 14"],
+        added=["    assert len(run(s2.list_tools)) == expected"],
+    )
+    assert _findings(diff) == []
+
+
+def test_assert_rederive_needs_same_lhs() -> None:
+    # a different compared value is a new assertion, not an update
+    diff = _diff(
+        "tests/test_a.py",
+        removed=["    assert len(run(s2.list_tools)) == 14"],
+        added=["    assert len(other) == expected"],
+    )
+    hits = _findings(diff)
+    assert hits and "删断言" in hits[0]
+
+
+def test_assert_rederive_only_for_numeric_literals() -> None:
+    # a non-numeric expectation swapped for an expression stays flagged
+    diff = _diff(
+        "tests/test_a.py",
+        removed=['    assert out == "demo"'],
+        added=["    assert out == anything()"],
+    )
+    hits = _findings(diff)
+    assert hits and "删断言" in hits[0]
+
+
+def test_assert_expected_value_change_still_flagged() -> None:
+    # the selector rule must not excuse a weakened expectation
+    diff = _diff(
+        "tests/test_a.py",
+        removed=['    assert page.locator("input").input_value() == "demo"'],
+        added=['    assert page.locator("input").input_value() != "demo"'],
+    )
+    hits = _findings(diff)
+    assert hits and "删断言" in hits[0]
+
+
 def test_removed_assert_in_deleted_file_not_double_counted() -> None:
     diff = _diff("tests/test_gone.py", removed=["    assert result == 3"])
     hits = _findings(diff, deleted=["tests/test_gone.py"])

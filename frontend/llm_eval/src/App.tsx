@@ -24,7 +24,7 @@ export default function App() {
     try {
       setSuiteYaml(await fetchDemoSuite())
     } catch (e) {
-      setError(`⚠️ ${e instanceof Error ? e.message : e}`)
+      setError(`${e instanceof Error ? e.message : e}`)
     }
   }
 
@@ -37,13 +37,9 @@ export default function App() {
     }
     try {
       const r = await validateSuite(suiteYaml)
-      setError(
-        r.ok
-          ? t('validOk', { n: r.cases, agents: r.agents.join(', ') })
-          : `⚠️ ${r.error}`,
-      )
+      setError(r.ok ? t('validOk', { n: r.cases, agents: r.agents.join(', ') }) : `${r.error}`)
     } catch (e) {
-      setError(`⚠️ ${e instanceof Error ? e.message : e}`)
+      setError(`${e instanceof Error ? e.message : e}`)
     }
   }
 

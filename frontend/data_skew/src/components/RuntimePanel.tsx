@@ -99,7 +99,11 @@ export function RuntimePanel({
             <button onClick={fetchFlink} disabled={busy} className={smallBtnCls}>
               {t('rt_flink_btn')}
             </button>
-            <button onClick={() => fileRef.current?.click()} disabled={busy} className={smallBtnCls}>
+            <button
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+              className={smallBtnCls}
+            >
               {t('rt_upload_btn')}
             </button>
             <input

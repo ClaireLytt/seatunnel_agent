@@ -665,7 +665,7 @@ def test_render_probe_section_zh_and_en():
     en = render_probe_section([_fake_result()], "en")
     assert "## Skew Verification (measured)" in en
     assert "confirms skew on 1 key(s)" in en
-    assert "⛔ skew confirmed" in en
+    assert "● skew confirmed" in en
 
 
 def test_render_probe_section_no_targets():

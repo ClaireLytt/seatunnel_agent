@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import { runFix } from '@/api'
 import type { DoneEvent } from '@/api'
 import { Card } from '@shared/components/card'
@@ -24,7 +25,7 @@ function errorText(e: unknown): string {
 
 export default function App() {
   const { t, i18n } = useTranslation()
-  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   const [path, setPath] = useState('')
   const [tests, setTests] = useState('')
@@ -60,18 +61,18 @@ export default function App() {
               i,
               tool: e.tool,
               ms: e.elapsed_ms,
-              err: e.error ? ' · ⚠️' : '',
+              err: e.error ? ' · ●' : '',
             })
             setStepLines((prev) => [...prev, line])
           } else if (e.type === 'done') {
             setResult(e)
           } else {
-            setNotice(`⚠️ ${e.message}`)
+            setNotice(e.message)
           }
         },
       )
     } catch (e) {
-      setNotice(`⚠️ ${errorText(e)}`)
+      setNotice(errorText(e))
     } finally {
       setRunning(false)
     }
@@ -181,7 +182,7 @@ export default function App() {
               <ol className="flex flex-col gap-1 font-mono text-xs text-fg">
                 {result.steps.map((s, idx) => (
                   <li key={idx}>
-                    {idx + 1}. {s.error ? '⚠️ ' : ''}
+                    {idx + 1}. {s.error ? '● ' : ''}
                     <code>{s.tool}</code> · {s.elapsed_ms} ms
                   </li>
                 ))}

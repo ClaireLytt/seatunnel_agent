@@ -237,7 +237,7 @@ def build_quality_card(warnings: list[dict], lang: str = "en") -> str:
     return (
         f'<details style="margin-top:6px;">'
         f'<summary style="cursor:pointer;font-weight:600;font-size:12px;color:#f59e0b;">'
-        f'⚠️ {t("quality_title")} — {t("quality_warnings").format(n=len(warnings))}</summary>'
+        f'{t("quality_title")} — {t("quality_warnings").format(n=len(warnings))}</summary>'
         f'<div style="font-size:12px;line-height:1.5;padding:4px;margin-top:4px;'
         f'border:1px solid #fde68a;border-radius:6px;background:#fffbeb;">{body}</div></details>'
     )

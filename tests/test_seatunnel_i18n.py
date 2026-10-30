@@ -81,7 +81,7 @@ LEGACY_EXPECTED: dict[str, dict[str, str]] = {
     },
     # ui.py:632-633: these two were English in BOTH locales in the legacy
     # page (the f-strings had no lang branch) — kept identical on purpose
-    "errorLabel": {"en": "⚠️ **Error**: {{msg}}", "zh": "⚠️ **Error**: {{msg}}"},
+    "errorLabel": {"en": "**Error**: {{msg}}", "zh": "**Error**: {{msg}}"},
     "completedIn": {"en": "⏱️ Completed in {{s}}s", "zh": "⏱️ Completed in {{s}}s"},
     # ui.py:689 docs_text branches
     "docsLink": {"en": "📖 Docs — View documentation", "zh": "📖 Docs — 查看使用文档"},

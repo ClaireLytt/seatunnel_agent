@@ -8,7 +8,6 @@ export interface CheckResponse {
   elapsed_ms: number
 }
 
-
 export async function checkMetrics(body: {
   sql_dir: string
   dialect: string

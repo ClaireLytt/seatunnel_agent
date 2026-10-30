@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import { runTask } from '@/api'
 import type { DoneEvent } from '@/api'
 import { Card } from '@shared/components/card'
@@ -24,7 +25,7 @@ function errorText(e: unknown): string {
 
 export default function App() {
   const { t, i18n } = useTranslation()
-  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   const [goal, setGoal] = useState('')
   const [url, setUrl] = useState('http://127.0.0.1:7860/')
@@ -50,27 +51,24 @@ export default function App() {
     setNotice('')
     let i = 0
     try {
-      await runTask(
-        { goal: goal.trim(), url: url.trim(), max_steps: maxSteps, lang },
-        (e) => {
-          if (e.type === 'step') {
-            i += 1
-            const line = t('stepLine', {
-              i,
-              tool: e.tool,
-              ms: e.elapsed_ms,
-              err: e.error ? ' · ⚠️' : '',
-            })
-            setStepLines((prev) => [...prev, line])
-          } else if (e.type === 'done') {
-            setResult(e)
-          } else {
-            setNotice(`⚠️ ${e.message}`)
-          }
-        },
-      )
+      await runTask({ goal: goal.trim(), url: url.trim(), max_steps: maxSteps, lang }, (e) => {
+        if (e.type === 'step') {
+          i += 1
+          const line = t('stepLine', {
+            i,
+            tool: e.tool,
+            ms: e.elapsed_ms,
+            err: e.error ? ' · !' : '',
+          })
+          setStepLines((prev) => [...prev, line])
+        } else if (e.type === 'done') {
+          setResult(e)
+        } else {
+          setNotice(`${e.message}`)
+        }
+      })
     } catch (e) {
-      setNotice(`⚠️ ${errorText(e)}`)
+      setNotice(`${errorText(e)}`)
     } finally {
       setRunning(false)
     }
@@ -168,7 +166,7 @@ export default function App() {
               <ol className="flex flex-col gap-1 font-mono text-xs text-fg">
                 {result.steps.map((s, idx) => (
                   <li key={idx}>
-                    {idx + 1}. {s.error ? '⚠️ ' : ''}
+                    {idx + 1}. {s.error ? '' : ''}
                     <code>{s.tool}</code> · {s.elapsed_ms} ms
                   </li>
                 ))}

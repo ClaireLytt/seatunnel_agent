@@ -123,7 +123,9 @@ export function BoardsView({ session }: { session: SessionMeta | null }) {
                             <thead>
                               <tr className="border-b border-line">
                                 {r.columns?.map((c: string) => (
-                                  <th key={c} className="px-1 text-left text-ink">{c}</th>
+                                  <th key={c} className="px-1 text-left text-ink">
+                                    {c}
+                                  </th>
                                 ))}
                               </tr>
                             </thead>
@@ -131,7 +133,9 @@ export function BoardsView({ session }: { session: SessionMeta | null }) {
                               {r.rows?.map((row, ri) => (
                                 <tr key={ri} className="border-b border-line last:border-b-0">
                                   {row.map((v, ci) => (
-                                    <td key={ci} className="px-1 text-fg">{String(v ?? '')}</td>
+                                    <td key={ci} className="px-1 text-fg">
+                                      {String(v ?? '')}
+                                    </td>
                                   ))}
                                 </tr>
                               ))}
