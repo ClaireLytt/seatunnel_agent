@@ -176,9 +176,12 @@ def _track_history(history_path: str, entry: dict,
 @click.option("--cmd", default="", help="命令模板，用 {task} 占位")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草事故通告（需配置 API key）")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="事故台账：本次重跑的规模指标追加到该 jsonl，并与上次对比")
 @_common
-def rerun(path, text, failed, succeeded, statuses, use_llm, lang, fmt,
-          output, cmd) -> None:
+def rerun(path, text, failed, succeeded, statuses, use_llm, history_path,
+          lang, fmt, output, cmd) -> None:
     """任务重跑规划 — 失败节点 × 下游闭包的最小重跑批次与影响面。"""
     from seatunnel_agent.agents.data.rerun_plan import (
         parse_dag,
@@ -206,6 +209,16 @@ def rerun(path, text, failed, succeeded, statuses, use_llm, lang, fmt,
         note = incident_note(result, lang=lang)
         payload["incident_note"] = note
         markdown += f"\n\n### {tp(lang, 'rpt_incident_note')}\n{note}\n"
+    if history_path:
+        failed_n = sum(1 for t in result.tasks if t.reason == "failed")
+        _track_history(history_path, {
+            "failed": failed_n,
+            "rerun": len(result.tasks),
+            "blast_pct": round(result.blast_radius * 100, 1),
+            "batches": result.batches,
+            "eta": result.total_eta,
+            "groups": len(result.groups),
+        }, worse_key="blast_pct")
     _emit(payload, markdown, fmt, output)
 
 

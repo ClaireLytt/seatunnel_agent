@@ -99,6 +99,24 @@ def test_rerun_cli_failed_and_statuses():
     assert res.exit_code != 0  # neither --failed nor --statuses
 
 
+def test_rerun_incident_ledger(tmp_path):
+    runner = CliRunner()
+    hist = tmp_path / "incidents.jsonl"
+    dag = str(EX / "rerun_demo" / "dag.json")
+    res = runner.invoke(rerun, ["-f", dag, "--failed", "report",
+                                "--history", str(hist)])
+    assert res.exit_code == 0 and "首次记录" in res.output
+    # a bigger incident later: blast radius growth is flagged
+    res = runner.invoke(rerun, ["-f", dag, "--failed", "clean_orders",
+                                "--history", str(hist)])
+    assert res.exit_code == 0
+    assert "blast_pct 12.5 → 50" in res.output
+    entries = [json.loads(ln) for ln in
+               hist.read_text("utf-8").splitlines()]
+    assert [e["rerun"] for e in entries] == [1, 4]
+    assert entries[1]["failed"] == 1 and entries[1]["groups"] == 1
+
+
 def test_backfill_sql_cli_spec_and_plan(tmp_path):
     runner = CliRunner()
     out = tmp_path / "report.md"
