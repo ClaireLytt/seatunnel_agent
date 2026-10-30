@@ -24,6 +24,7 @@ export default function App() {
   const [metrics, setMetrics] = useState(DEMO_METRICS)
   const [baselineFile, setBaselineFile] = useState('examples/slowquery_demo/baseline.jsonl')
   const [baselineText, setBaselineText] = useState('')
+  const [llm, setLlm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
@@ -42,6 +43,7 @@ export default function App() {
         baselineText.trim() ? null : baselineFile.trim() || null,
         baselineText,
         i18n.language,
+        llm,
       )
       setReport(res.report ?? '')
     } catch (e) {
@@ -92,6 +94,10 @@ export default function App() {
               spellCheck={false}
               className="w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink"
             />
+            <label className="mt-3 flex cursor-pointer items-center gap-2 font-mono text-[12px] text-ink-soft">
+              <input type="checkbox" checked={llm} onChange={(e) => setLlm(e.target.checked)} />
+              {t('llm_label')}
+            </label>
             <button
               onClick={run}
               disabled={busy}

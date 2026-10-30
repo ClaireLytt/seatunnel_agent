@@ -152,13 +152,15 @@ def sqlcost(sql_path, stats_path, fail_over_scan_gb, fail_over_shuffle_gb,
 @click.option("--history", "history_path", type=click.Path(dir_okay=False),
               default=None,
               help="慢查询台账：主因/占比/回归倍数追加到该 jsonl")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草慢查询通报（需配置 API key）")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
               default="markdown", help="Report format")
 @click.option("--output", "-o", type=click.Path(), default=None,
               help="Save report to file")
-def slowquery(path, text, baseline_path, history_path, lang, fmt,
+def slowquery(path, text, baseline_path, history_path, use_llm, lang, fmt,
               output) -> None:
     """慢查询根因 — 指标 × 基线 → 排序根因与处方；--history 记台账。"""
     from seatunnel_agent.agents.data.slow_query import (
@@ -173,7 +175,16 @@ def slowquery(path, text, baseline_path, history_path, lang, fmt,
                 if baseline_path else "")
     diag = diagnose(parse_metrics(_read(path, text, "执行指标")),
                     parse_baseline(baseline))
-    _emit(diag.to_dict(), render_markdown(diag, lang=lang), fmt, output)
+    markdown = render_markdown(diag, lang=lang)
+    payload = diag.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.slow_query import advisor_llm
+        from seatunnel_agent.agents.data.slow_query.i18n import tp
+
+        note = advisor_llm.incident_note(diag, lang=lang)
+        payload["incident_note"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_incident_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
     if history_path:
         top = diag.causes[0] if diag.causes else None
         _track_history(history_path, {

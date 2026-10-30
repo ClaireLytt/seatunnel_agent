@@ -86,3 +86,16 @@ def test_dagconflict_cli():
     res = runner.invoke(dagconflict, [
         "-f", str(EX / "dagconflict_demo" / "scenario.json"), "--lang", "en"])
     assert res.exit_code == 0 and "Stagger suggestion" in res.output
+
+
+def test_slowquery_llm_note_wiring(monkeypatch):
+    from seatunnel_agent.agents.data.slow_query import advisor_llm
+
+    monkeypatch.setattr(advisor_llm, "incident_note",
+                        lambda diag, lang="zh": "NOTE-CLI")
+    runner = CliRunner()
+    res = runner.invoke(slowquery, [
+        "-f", str(EX / "slowquery_demo" / "metrics.json"),
+        "--llm", "-F", "json"])
+    assert res.exit_code == 0
+    assert json.loads(res.output)["incident_note"] == "NOTE-CLI"

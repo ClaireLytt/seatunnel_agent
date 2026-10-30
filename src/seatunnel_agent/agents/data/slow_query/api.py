@@ -32,6 +32,9 @@ class DiagnoseRequest(BaseModel):
     baseline_file: str | None = Field(
         None, description="History baseline jsonl file")
     baseline_text: str = Field("", description="Inline baseline jsonl")
+    llm: bool = Field(
+        False, description="Also draft an ops-channel note via the "
+                           "configured LLM (needs an API key)")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
     report: bool = Field(False, description="Include the rendered markdown report")
 
@@ -57,7 +60,19 @@ def run_diagnose(req: DiagnoseRequest) -> DiagnoseResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     lang = normalize_lang(req.lang)
     report = render_markdown(diag, lang=lang) if req.report else None
-    return DiagnoseResponse(result=diag.to_dict(), report=report,
+    payload = diag.to_dict()
+    if req.llm:
+        from .advisor_llm import incident_note
+        from .i18n import tp
+
+        try:
+            note = incident_note(diag, lang=lang)
+        except Exception as exc:  # missing key, provider errors
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        payload["incident_note"] = note
+        if report is not None:
+            report += f"\n\n### {tp(lang, 'rpt_incident_note')}\n{note}\n"
+    return DiagnoseResponse(result=payload, report=report,
                             elapsed_ms=ms_since(start))
 
 

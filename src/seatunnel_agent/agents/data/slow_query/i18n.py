@@ -32,6 +32,8 @@ SLOWQ_I18N: dict[str, dict[str, str]] = {
                            "metrics; shares are estimates for ranking, "
                            "not an accounting identity. No cluster "
                            "connection."),
+        "rpt_incident_note": "Incident note draft (LLM — review before "
+                             "sending)",
     },
     "zh": {
         "rpt_title": "慢查询根因",
@@ -51,6 +53,7 @@ SLOWQ_I18N: dict[str, dict[str, str]] = {
         "rpt_none": "没有规则命中 — 整体均匀地慢；建议与一次快跑的计划对比。",
         "rpt_disclaimer": ("> 对提交指标的确定性规则判定；占比用于排序估计，"
                            "不构成会计恒等式。不连集群。"),
+        "rpt_incident_note": "慢查询通报草稿（LLM 生成 — 发出前请审阅）",
     },
 }
 

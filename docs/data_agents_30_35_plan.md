@@ -94,3 +94,6 @@ slots/memory）± 各 DAG 启动时刻。
    report; nokey-503 surfaced inline (page regression test).
 2. [x] sqlcost budget gate CI template: copyable workflow in
    examples/ci/ (changed-query budget check), referenced in the guide.
+3. [x] slow_query: opt-in LLM incident note (diagnosis -> paste-ready
+   ops-channel draft), web checkbox / API llm / CLI --llm, stubbed in
+   tests, nokey-503 page regression.

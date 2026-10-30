@@ -89,3 +89,30 @@ def test_report_zh_en_and_tool():
     assert "SQ001" in md
     assert "must not be empty" in slow_query(" ")
     assert "bad input" in slow_query("{broken")
+
+
+def test_incident_note_wiring(monkeypatch):
+    """API llm=true appends the drafted note; the LLM call is stubbed."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.slow_query import advisor_llm
+    from seatunnel_agent.agents.data.slow_query import api as sq_api
+
+    monkeypatch.setattr(advisor_llm, "incident_note",
+                        lambda diag, lang="zh": "NOTE-" + str(len(diag.causes)))
+    app = FastAPI()
+    app.include_router(sq_api.router)
+    client = TestClient(app)
+    metrics = (Path(__file__).resolve().parents[1] / "examples"
+               / "slowquery_demo" / "metrics.json").read_text("utf-8")
+    res = client.post("/api/slowquery/diagnose",
+                      json={"metrics": metrics, "llm": True,
+                            "report": True, "lang": "en"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["result"]["incident_note"].startswith("NOTE-")
+    assert "Incident note draft" in body["report"]
+    # default path untouched
+    res = client.post("/api/slowquery/diagnose", json={"metrics": metrics})
+    assert "incident_note" not in res.json()["result"]

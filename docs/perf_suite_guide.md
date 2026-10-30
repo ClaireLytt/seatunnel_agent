@@ -72,7 +72,7 @@ seatunnel-agent index-adv -d workload/ --ddl ddl.sql
 seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
   --fail-over-scan-gb 50 --fail-over-shuffle-gb 20   # 超预算 exit 1，可做 CI 闸门
 seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
-  --history slow_ledger.jsonl                        # 台账记录回归倍数与主因占比
+  --history slow_ledger.jsonl --llm                  # 台账 + LLM 通报草稿（可选）
 seatunnel-agent dagconflict -f scenario.json
 ```
 
