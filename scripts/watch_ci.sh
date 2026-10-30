@@ -6,8 +6,14 @@
 set -u
 limit="${1:-6}"
 branch="$(git rev-parse --abbrev-ref HEAD)"
-ids="$(gh run list --branch "$branch" --limit "$limit" \
-  --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId')"
+# a push registers its runs a few seconds later - retry before giving up
+ids=""
+for _ in 1 2 3; do
+  ids="$(gh run list --branch "$branch" --limit "$limit" \
+    --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId')"
+  [ -n "$ids" ] && break
+  sleep 10
+done
 if [ -z "$ids" ]; then
   echo "no in-progress runs on $branch"
   gh run list --branch "$branch" --limit "$limit"
