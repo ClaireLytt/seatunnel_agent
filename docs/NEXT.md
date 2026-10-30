@@ -32,6 +32,10 @@
 - **数据对比扩展** — data_comparison 完整；且属独立 ccmetr 任务 (#20)。
 - **hygiene 的"无前缀表"命名告警** — 实测对每张表报噪音，规则
   收紧为只报跨层错配；不要回退。
+- **小文件/compaction 体检、表热度画像** — 需要运行时元数据
+  （HDFS 列表、查询日志），静态 SQL 看不见；不做静态猜测版。
+- **SeaTunnel 配置升级助手** — config_migrate 已存在。
+- **样本数据脱敏预览** — sql_testgen × pii_mask 组合已覆盖。
 - **hub widget host（首页挂件宿主 seam）** — 2026-10-29 架构评审
   候选 4：目前只有 garden 一个首页挂件，单 adapter = 假想 seam；
   等第二个挂件真实出现再抽象，先按内联实现维护。

@@ -86,6 +86,23 @@ def test_unpartitioned_fact_only_dwd_dws():
                if f.kind == "unpartitioned_fact")
 
 
+def test_missing_owner_only_modelled_layers():
+    sql = """
+    CREATE TABLE dwd.fact_orders (oid BIGINT COMMENT 'o')
+      PARTITIONED BY (dt STRING COMMENT 'p');
+    CREATE TABLE ads.rpt_daily (d BIGINT COMMENT 'd')
+      PARTITIONED BY (dt STRING COMMENT 'p')
+      TBLPROPERTIES ('owner' = 'team-data');
+    CREATE TABLE ods.raw_log (line STRING COMMENT 'l');
+    """
+    r = check_sql_text(sql)
+    hits = {f.table for f in r.findings if f.kind == "missing_owner"}
+    # owned ads table and the ods layer stay silent
+    assert hits == {"dwd.fact_orders"}
+    assert all(f.severity == "low" for f in r.findings
+               if f.kind == "missing_owner")
+
+
 def test_money_string_is_medium():
     sql = ("CREATE TABLE t (pay_amount STRING COMMENT 'a', "
            "note STRING COMMENT 'n');")

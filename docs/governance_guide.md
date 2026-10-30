@@ -47,6 +47,8 @@ seatunnel-agent metaquality --dir warehouse_sql/ --fail-on high
   非分区日期列用裸 STRING（medium）
 - 事实表无分区：`dwd`/`dws` 层的表没有 PARTITIONED BY（medium；
   dim/ods/ads 不报——小维表与服务表合法无分区）
+- 无负责人标注：`dwd`/`dws`/`ads` 层的表 TBLPROPERTIES 里没有
+  owner/team 键（low——治理报告指出问题后得找得到人）
 
 ## 承诺：数据契约
 
@@ -87,6 +89,19 @@ seatunnel-agent grants --dir warehouse_sql/ --fail-on high
 对 PUBLIC 的授权(high)、对同脚本 PII 命中表的授权(high,与
 pii_scan 联动)、ALL 宽权限(medium)、库级宽范围(medium)。
 Web 页在 `/grants`,聊天/MCP 工具名 `grant_scan`。
+
+## 护航：迁移守卫
+
+```bash
+seatunnel-agent ddlguard -f migrate.sql --fail-on high -u undo.sql
+```
+
+对上线迁移脚本(ALTER/DROP 流)分级:删表/删列/清空/类型收窄 high,
+重命名/类型变更/NOT NULL 无默认值 medium;同时生成**逆序回滚脚本**
+(`-u` 另存),不可逆步骤(数据已丢)保留为注释显式标注。门禁失败时
+回滚脚本照样落盘——越是要拦的变更越需要回滚预案。
+Web 页在 `/ddlguard`,聊天/MCP 工具名 `ddl_guard`。
+与 schema_drift 的分界:drift 比两版快照,guard 审一条迁移流。
 
 ## 度量：趋势
 

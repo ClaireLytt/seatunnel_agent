@@ -16,7 +16,8 @@ _T = {
         "kind": {"missing_comment": "缺注释", "layer_naming": "分层命名",
                  "money_float": "金额用浮点", "date_string": "日期用裸 STRING",
                  "money_string": "金额用 STRING",
-                 "unpartitioned_fact": "事实表无分区"},
+                 "unpartitioned_fact": "事实表无分区",
+                 "missing_owner": "无负责人标注"},
     },
     "en": {
         "title": "# Metadata Quality Report",
@@ -31,7 +32,8 @@ _T = {
                  "money_float": "money on float",
                  "date_string": "date as bare STRING",
                  "money_string": "money as STRING",
-                 "unpartitioned_fact": "unpartitioned fact table"},
+                 "unpartitioned_fact": "unpartitioned fact table",
+                 "missing_owner": "missing owner"},
     },
 }
 

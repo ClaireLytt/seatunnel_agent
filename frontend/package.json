@@ -15,6 +15,7 @@
     "data_comparison",
     "data_lineage",
     "data_skew",
+    "ddl_guard",
     "grant_scan",
     "doc_qa",
     "issue_triage",

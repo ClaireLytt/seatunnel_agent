@@ -13,12 +13,18 @@ _MONEY_RE = re.compile(
     r"(^|_)(amount|amt|price|fee|salary|money|cost|income|pay)(_|$)")
 _FLOATY = ("float", "double")
 _DATEISH_RE = re.compile(r"(^|_)(date|day|time|dt)(_|$)")
+_OWNER_RE = re.compile(
+    r"TBLPROPERTIES\s*\([^)]*['\"](?:owner|team)['\"]", re.I | re.S)
+_CREATE_RE = re.compile(
+    r"\bCREATE\s+(?:EXTERNAL\s+)?TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"(?P<t>[\w.`\"]+)", re.I)
 
 
 @dataclass
 class MetaFinding:
     kind: str            # missing_comment | layer_naming | money_float |
-                         # date_string | money_string | unpartitioned_fact
+                         # date_string | money_string | unpartitioned_fact |
+                         # missing_owner
     severity: str        # high | medium | low
     table: str
     column: str = ""
@@ -149,6 +155,26 @@ def _check_text(sql_text: str, dialect: str, root: str) -> MetaQualityReport:
                 table=name,
                 detail=f"'{fact_layer}' table has no PARTITIONED BY; "
                        "fact tables need a partition and retention story"))
+
+    # ownership: governance reports (orphans, violations) need someone to
+    # call. Only modelled layers are held to it - ods/dim/tmp stay silent.
+    parsed = {n.lower() for n in tables}
+    for stmt in sql_text.split(";"):
+        m = _CREATE_RE.search(stmt)
+        if not m:
+            continue
+        name = m.group("t").strip().strip("`\"")
+        if name.lower() not in parsed:
+            continue
+        db, _, tbl = name.rpartition(".")
+        layer = (_layer_of(db) if db else None) or next(
+            (la for la in LAYERS if tbl.lower().startswith(la + "_")), None)
+        if layer in ("dwd", "dws", "ads") and not _OWNER_RE.search(stmt):
+            report.findings.append(MetaFinding(
+                kind="missing_owner", severity="low",
+                table=name,
+                detail="no owner/team in TBLPROPERTIES - governance "
+                       "findings on this table have no one to call"))
 
     return report
 
