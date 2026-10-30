@@ -146,8 +146,8 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## Phase 9 roadmap (decision outputs)
 
-1. [ ] dag_optimize: deadline check - given an SLA duration, verdict plus
+1. [x] dag_optimize: deadline check - given an SLA duration, verdict plus
    the minimal set of critical tasks to speed up (halving order) to meet it.
-2. [ ] rerun_plan: parallel runner script - cmd template renders bash with
+2. [x] rerun_plan: parallel runner script - cmd template renders bash with
    within-batch parallelism and barrier waits between batches.
-3. [ ] sync_strategy: config parallelism scaled by table size (1/2/4).
+3. [x] sync_strategy: config parallelism scaled by table size (1/2/4).
