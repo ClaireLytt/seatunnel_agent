@@ -61,3 +61,17 @@ sql_perf 读**引擎计划**、slow_query 读**运行指标** — 四个视角�
 示例输入在 `examples/`：`sqlperf_demo`、`indexadvisor_demo`、
 `sqlcost_demo`、`slowquery_demo`、`dagconflict_demo`、
 `dataskew_demo/eventlog_shuffle_dist.jsonl`，各页预填即点即用。
+
+## CLI 入口
+
+五个页面都有同名命令行入口，`-F json` 可进流水线：
+
+```bash
+seatunnel-agent sqlperf -f plan.txt                  # 加 --llm --sql-file q.sql 出改写草案
+seatunnel-agent index-adv -d workload/ --ddl ddl.sql
+seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
+  --fail-over-scan-gb 50 --fail-over-shuffle-gb 20   # 超预算 exit 1，可做 CI 闸门
+seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
+  --history slow_ledger.jsonl                        # 台账记录回归倍数与主因占比
+seatunnel-agent dagconflict -f scenario.json
+```
