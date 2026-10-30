@@ -64,13 +64,18 @@ def _common(fn):
 @click.option("--text", type=str, default=None, help="内联依赖图")
 @click.option("--base", "base_path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="基线 DAG 文件 — 额外输出变更评审")
+@click.option("--fail-on-regression", is_flag=True, default=False,
+              help="CI gate：关键路径变长超容忍值或引入新冗余边时 exit 1"
+                   "（需配合 --base）")
+@click.option("--tolerance", type=float, default=0.0, show_default=True,
+              help="--fail-on-regression 允许的关键路径增幅")
 @click.option("--deadline", type=float, default=0.0,
               help="SLA 时长 — 判定是否满足并给出最小提速集合")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 写优化行动清单（需配置 API key）")
 @_common
-def dagopt(path, text, base_path, deadline, use_llm, lang, fmt,
-           output) -> None:
+def dagopt(path, text, base_path, fail_on_regression, tolerance, deadline,
+           use_llm, lang, fmt, output) -> None:
     """DAG 依赖优化 — 冗余串行边、并行批次、关键路径与加速比。"""
     from seatunnel_agent.agents.data.dag_optimize import (
         diff_dags,
@@ -80,10 +85,13 @@ def dagopt(path, text, base_path, deadline, use_llm, lang, fmt,
         render_markdown,
     )
 
+    if fail_on_regression and not base_path:
+        raise click.UsageError("--fail-on-regression 需配合 --base")
     graph = parse_dag(_read(path, text, "依赖图"))
     result = optimize(graph, deadline=deadline)
     markdown = render_markdown(result, lang=lang)
     payload = result.to_dict()
+    diff = None
     if base_path:
         diff = diff_dags(parse_dag(Path(base_path).read_text(
             encoding="utf-8", errors="replace")), graph)
@@ -99,6 +107,18 @@ def dagopt(path, text, base_path, deadline, use_llm, lang, fmt,
         payload["action_plan"] = plan
         markdown += f"\n\n### {tp(lang, 'rpt_action_plan')}\n{plan}\n"
     _emit(payload, markdown, fmt, output)
+    if fail_on_regression and diff is not None:
+        problems: list[str] = []
+        if diff.critical_delta > tolerance:
+            problems.append(
+                f"关键路径 +{diff.critical_delta:g} 超出容忍值 {tolerance:g}")
+        if diff.new_redundant:
+            edges = ", ".join(f"{r.up}->{r.down}" for r in diff.new_redundant)
+            problems.append(f"引入新冗余边: {edges}")
+        if problems:
+            for p in problems:
+                console.print(f"[red]REGRESSION[/red] {p}")
+            raise SystemExit(1)
 
 
 @click.command("rerun")

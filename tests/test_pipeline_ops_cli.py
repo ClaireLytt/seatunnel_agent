@@ -31,6 +31,35 @@ def test_dagopt_cli_markdown_and_json():
     assert json.loads(res.output)["tasks"] == 7
 
 
+def test_dagopt_regression_gate(tmp_path):
+    runner = CliRunner()
+    base = tmp_path / "base.json"
+    base.write_text(
+        '{"tasks":[{"name":"a","duration":5},'
+        '{"name":"b","deps":["a"],"duration":5}]}', encoding="utf-8")
+    slower = ('{"tasks":[{"name":"a","duration":5},'
+              '{"name":"b","deps":["a"],"duration":9}]}')
+    # regression beyond tolerance → exit 1 with the reason
+    res = runner.invoke(dagopt, ["--text", slower, "--base", str(base),
+                                 "--fail-on-regression"])
+    assert res.exit_code == 1
+    assert "REGRESSION" in res.output and "+4" in res.output
+    # within tolerance → green
+    res = runner.invoke(dagopt, ["--text", slower, "--base", str(base),
+                                 "--fail-on-regression", "--tolerance", "5"])
+    assert res.exit_code == 0
+    # introduced redundancy fails even with a duration tolerance
+    redundant = ('{"tasks":[{"name":"a","duration":5},'
+                 '{"name":"b","deps":["a"],"duration":5},'
+                 '{"name":"c","deps":["b","a"],"duration":1}]}')
+    res = runner.invoke(dagopt, ["--text", redundant, "--base", str(base),
+                                 "--fail-on-regression", "--tolerance", "99"])
+    assert res.exit_code == 1 and "a->c" in res.output
+    # gate without a base is a usage error
+    res = runner.invoke(dagopt, ["--text", slower, "--fail-on-regression"])
+    assert res.exit_code == 2
+
+
 def test_rerun_cli_failed_and_statuses():
     runner = CliRunner()
     dag = str(EX / "rerun_demo" / "dag.json")
