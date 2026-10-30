@@ -55,11 +55,24 @@ metrics:
 # Runs create_ui + launch directly instead of ui.main() — no inbrowser,
 # no port-kill logic, quiet.
 _LAUNCH_SNIPPET = """
+import threading
 import seatunnel_agent.hub.ui as ui
 app = ui.create_ui()
+# prevent_thread_lock=True: launch() must return so the React static pages
+# and REST routers can mount on the served instance (Gradio 6 builds it
+# fresh inside launch()); then park the main thread.
 app.launch(server_name="127.0.0.1", server_port=%d, inbrowser=False,
            share=False, css=ui._CUSTOM_CSS, quiet=True,
-           prevent_thread_lock=False)
+           prevent_thread_lock=True)
+ui.mount_react_pages(app)
+
+# readiness sentinel: only exists once every React page is mounted, so the
+# runner never races a case against a half-mounted app
+@app.app.get("/uitest-app-ready")
+def _uitest_app_ready():
+    return {"ok": True}
+
+threading.Event().wait()
 """
 
 
@@ -152,7 +165,10 @@ class AppUnderTest:
         )
         atexit.register(self._kill)
         try:
-            _wait_http(self.base_url, timeout_s=60, proc=self.proc)
+            # the sentinel 404s until mount_react_pages finished, so cases
+            # never hit a React route before its static mount exists
+            _wait_http(self.base_url + "/uitest-app-ready",
+                       timeout_s=60, proc=self.proc)
         except Exception:
             self._kill()
             raise
