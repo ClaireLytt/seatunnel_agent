@@ -12,7 +12,10 @@
 | Pipeline 迁移评估 | `/pipemigrate` | `seatunnel-agent pipe-migrate` | 旧 ETL 迁到 SeaTunnel/Spark/Flink 的代价 |
 
 CLI 通用参数：`-f/--text` 输入、`--lang zh|en`、`-F markdown|json`（json 供
-CI/脚本消费）、`-o` 落盘。`backfill-sql --plan '<计划JSON>'` 直接出规格骨架。
+CI/脚本消费）、`-o` 落盘。`backfill-sql --plan '<计划JSON>'` 直接出规格骨架；
+`sync-strategy --emit-configs DIR` 与 `pipe-migrate --emit-stubs DIR` 把
+SeaTunnel 配置骨架逐个写成 .conf 文件；补数规格加 `"runner":
+"spark-sql|beeline|hive|mysql"` 会多出一段失败即停的 bash 执行脚本。
 
 每个 agent 同时是 MCP/编排器工具（`dag_optimize` / `rerun_plan` / `backfill_sql` /
 `backfill_specs` / `sync_strategy` / `pipeline_migrate`），统一入口

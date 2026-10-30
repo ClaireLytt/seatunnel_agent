@@ -136,10 +136,10 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## Phase 8 roadmap (artifacts on disk)
 
-1. [ ] backfill_sql: runner script - optional "runner" (spark-sql /
+1. [x] backfill_sql: runner script - optional "runner" (spark-sql /
    beeline / hive / mysql) renders a stop-on-fail bash script wrapping
    every statement block, heredoc-quoted.
-2. [ ] sync-strategy CLI: --emit-configs DIR writes one SeaTunnel .conf
+2. [x] sync-strategy CLI: --emit-configs DIR writes one SeaTunnel .conf
    per table.
-3. [ ] pipe-migrate CLI: --emit-stubs DIR writes one .conf per
+3. [x] pipe-migrate CLI: --emit-stubs DIR writes one .conf per
    SeaTunnel-target job.
