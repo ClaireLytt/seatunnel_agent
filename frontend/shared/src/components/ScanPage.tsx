@@ -131,7 +131,11 @@ export function ScanPage({ cfg }: { cfg: ScanPageConfig }) {
               className={fieldCls}
             />
             <label className={`${labelCls} mt-3`}>{t('dialect_label')}</label>
-            <select value={dialect} onChange={(e) => setDialect(e.target.value)} className={fieldCls}>
+            <select
+              value={dialect}
+              onChange={(e) => setDialect(e.target.value)}
+              className={fieldCls}
+            >
               {DIALECTS.map((d) => (
                 <option key={d} value={d}>
                   {d}
@@ -184,7 +188,9 @@ export function ScanPage({ cfg }: { cfg: ScanPageConfig }) {
               </div>
             )}
             {report && <ReportView className={cfg.reportClass} markdown={report} />}
-            {!report && !error && <p className="text-sm text-muted">{t(cfg.extra ? 'extra_ph' : 'sql_ph')}</p>}
+            {!report && !error && (
+              <p className="text-sm text-muted">{t(cfg.extra ? 'extra_ph' : 'sql_ph')}</p>
+            )}
           </Card>
         </main>
       </div>
