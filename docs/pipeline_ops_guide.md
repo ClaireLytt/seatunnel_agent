@@ -3,13 +3,16 @@
 围绕「调度优化 → 故障重跑 → 历史补数 → 同步选型 → 迁移评估」五个日常运维场景的
 确定性工具套件。全部不连数据库、不连调度器——粘贴导出物进来，拿可执行产物回去。
 
-| Agent | 入口 | 一句话 |
-|---|---|---|
-| DAG 依赖优化 | `/dagopt` | 调度在哪儿浪费时间、怎么并行化 |
-| 任务重跑规划 | `/rerun` | 失败后最少要重跑哪些、按什么顺序 |
-| 回溯补数 SQL | `/backfillsql` | 历史数据怎么补才安全幂等 |
-| 增量同步策略 | `/syncstrategy` | 全量、增量还是 CDC，理由与风险 |
-| Pipeline 迁移评估 | `/pipemigrate` | 旧 ETL 迁到 SeaTunnel/Spark/Flink 的代价 |
+| Agent | Web | CLI | 一句话 |
+|---|---|---|---|
+| DAG 依赖优化 | `/dagopt` | `seatunnel-agent dagopt` | 调度在哪儿浪费时间、怎么并行化 |
+| 任务重跑规划 | `/rerun` | `seatunnel-agent rerun` | 失败后最少要重跑哪些、按什么顺序 |
+| 回溯补数 SQL | `/backfillsql` | `seatunnel-agent backfill-sql` | 历史数据怎么补才安全幂等 |
+| 增量同步策略 | `/syncstrategy` | `seatunnel-agent sync-strategy` | 全量、增量还是 CDC，理由与风险 |
+| Pipeline 迁移评估 | `/pipemigrate` | `seatunnel-agent pipe-migrate` | 旧 ETL 迁到 SeaTunnel/Spark/Flink 的代价 |
+
+CLI 通用参数：`-f/--text` 输入、`--lang zh|en`、`-F markdown|json`（json 供
+CI/脚本消费）、`-o` 落盘。`backfill-sql --plan '<计划JSON>'` 直接出规格骨架。
 
 每个 agent 同时是 MCP/编排器工具（`dag_optimize` / `rerun_plan` / `backfill_sql` /
 `backfill_specs` / `sync_strategy` / `pipeline_migrate`），统一入口
