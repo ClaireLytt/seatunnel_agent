@@ -143,3 +143,11 @@ tests/test_<name>.py        # 确定性核心测试
    per table.
 3. [x] pipe-migrate CLI: --emit-stubs DIR writes one .conf per
    SeaTunnel-target job.
+
+## Phase 9 roadmap (decision outputs)
+
+1. [ ] dag_optimize: deadline check - given an SLA duration, verdict plus
+   the minimal set of critical tasks to speed up (halving order) to meet it.
+2. [ ] rerun_plan: parallel runner script - cmd template renders bash with
+   within-batch parallelism and barrier waits between batches.
+3. [ ] sync_strategy: config parallelism scaled by table size (1/2/4).
