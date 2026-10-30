@@ -69,6 +69,44 @@ def test_sync_strategy_cli():
     assert "Sync Strategy Recommendation" in res.output
 
 
+def test_sync_strategy_emit_configs(tmp_path):
+    runner = CliRunner()
+    out = tmp_path / "confs"
+    res = runner.invoke(sync_strategy, [
+        "-f", str(EX / "syncstrategy_demo" / "tables.json"),
+        "--emit-configs", str(out)])
+    assert res.exit_code == 0
+    files = sorted(p.name for p in out.glob("*.conf"))
+    assert "ods_orders.conf" in files and len(files) == 5
+    conf = (out / "ods_orders.conf").read_text("utf-8")
+    assert "MySQL-CDC" in conf  # cdc recommendation carried into the file
+
+
+def test_pipe_migrate_emit_stubs(tmp_path):
+    runner = CliRunner()
+    out = tmp_path / "stubs"
+    res = runner.invoke(pipe_migrate, [
+        "-d", str(EX / "pipemigrate_demo"), "--emit-stubs", str(out)])
+    assert res.exit_code == 0
+    files = sorted(p.name for p in out.glob("*.conf"))
+    # only the SeaTunnel-target jobs with stubs land on disk
+    assert files == ["datax_items_json.conf", "sync_orders_sh.conf"]
+    assert "HdfsFile" in (out / "sync_orders_sh.conf").read_text("utf-8")
+
+
+def test_backfill_sql_runner_in_cli(tmp_path):
+    import json as _json
+
+    runner = CliRunner()
+    spec = _json.loads((EX / "backfillsql_demo" / "spec.json")
+                       .read_text("utf-8"))
+    spec["runner"] = "beeline"
+    res = runner.invoke(backfill_sql, ["--text", _json.dumps(spec),
+                                       "-F", "json"])
+    assert res.exit_code == 0
+    assert 'beeline -u "$JDBC_URL"' in _json.loads(res.output)["runner_script"]
+
+
 def test_pipe_migrate_cli_dir_and_file():
     runner = CliRunner()
     res = runner.invoke(pipe_migrate, [

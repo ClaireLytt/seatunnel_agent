@@ -135,12 +135,28 @@ def backfill_sql(path, text, plan, lang, fmt, output) -> None:
     _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)
 
 
+def _safe_conf_name(name: str) -> str:
+    return "".join(c if c.isalnum() else "_" for c in name) + ".conf"
+
+
+def _emit_confs(out_dir: str, items: list[tuple[str, str]]) -> None:
+    target = Path(out_dir)
+    target.mkdir(parents=True, exist_ok=True)
+    for name, conf in items:
+        dest = target / _safe_conf_name(name)
+        dest.write_text(conf + "\n", encoding="utf-8")
+        console.print(f"[dim]已写入: {dest}[/dim]")
+    console.print(f"{len(items)} 个配置骨架已落盘 → {target}")
+
+
 @click.command("sync-strategy")
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="表特征清单（JSON/CSV）或 CREATE TABLE DDL")
 @click.option("--text", type=str, default=None, help="内联清单或 DDL")
+@click.option("--emit-configs", "emit_dir", type=click.Path(file_okay=False),
+              default=None, help="把每张表的 SeaTunnel 配置骨架写到该目录")
 @_common
-def sync_strategy(path, text, lang, fmt, output) -> None:
+def sync_strategy(path, text, emit_dir, lang, fmt, output) -> None:
     """增量同步策略 — 全量/增量/CDC 推荐、风险与 SeaTunnel 配置骨架。"""
     from seatunnel_agent.agents.data.sync_strategy import (
         parse_tables,
@@ -150,6 +166,9 @@ def sync_strategy(path, text, lang, fmt, output) -> None:
 
     result = recommend(parse_tables(_read(path, text, "表特征清单")))
     _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)
+    if emit_dir:
+        _emit_confs(emit_dir, [(r.table, r.config)
+                               for r in result.recommendations if r.config])
 
 
 @click.command("pipe-migrate")
@@ -158,8 +177,10 @@ def sync_strategy(path, text, lang, fmt, output) -> None:
               help="旧脚本目录（递归扫 .sql/.hql/.sh/.py 与 DataX .json）")
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="单个脚本文件")
+@click.option("--emit-stubs", "emit_dir", type=click.Path(file_okay=False),
+              default=None, help="把 SeaTunnel 目标任务的配置骨架写到该目录")
 @_common
-def pipe_migrate(directory, path, lang, fmt, output) -> None:
+def pipe_migrate(directory, path, emit_dir, lang, fmt, output) -> None:
     """Pipeline 迁移评估 — 目标引擎、S/M/L 工作量、风险与迁移波次。"""
     from seatunnel_agent.agents.data.pipeline_migrate import (
         assess_dir,
@@ -176,6 +197,9 @@ def pipe_migrate(directory, path, lang, fmt, output) -> None:
     else:
         raise click.UsageError("提供 --dir 或 --file")
     _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)
+    if emit_dir:
+        _emit_confs(emit_dir, [(j.job, j.stub)
+                               for j in result.jobs if j.stub])
 
 
 def register(cli) -> None:
