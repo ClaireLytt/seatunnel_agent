@@ -99,6 +99,35 @@ def test_dependency_line_not_mistaken_for_workspace() -> None:
         added, ["frontend/package.json"]) == []
 
 
+def test_assert_glyph_swap_is_an_update() -> None:
+    # mark migrations swap a non-ASCII glyph inside the asserted string;
+    # the ASCII expectation is unchanged -> an update, not a deletion
+    diff = _diff(
+        "tests/test_a.py",
+        removed=['    assert "⛔ skew confirmed" in en'],
+        added=['    assert "● skew confirmed" in en'],
+    )
+    assert _findings(diff) == []
+    # dropping a decorative emoji prefix is the same presentation move
+    diff2 = _diff(
+        "tests/test_a.py",
+        removed=['    assert "⚠️ 2 条告警" in titles'],
+        added=['    assert "2 条告警" in titles'],
+    )
+    assert _findings(diff2) == []
+
+
+def test_assert_ascii_expectation_still_protected() -> None:
+    # the glyph rule must not excuse a changed ASCII expectation
+    diff = _diff(
+        "tests/test_a.py",
+        removed=['    assert "● skew confirmed" in en'],
+        added=['    assert "● skew denied" in en'],
+    )
+    hits = _findings(diff)
+    assert hits and "删断言" in hits[0]
+
+
 def test_assert_magic_number_rederived_is_an_update() -> None:
     # "== 14" replaced by "== <expression>" on the same compared value:
     # the hand-synced constant now comes from its source of truth

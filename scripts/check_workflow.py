@@ -76,14 +76,18 @@ _RE_LOCATOR_ARG = re.compile(
 
 
 def _assert_shape(text: str) -> str:
-    """Normalized form of an assert line: digits (counts drift as code grows)
-    and element-addressing selector strings (tightening a locator is an
+    """Normalized form of an assert line: digits (counts drift as code grows),
+    element-addressing selector strings (tightening a locator is an
     addressing detail, not an expectation change — the compared value keeps
-    full protection because only the selector argument is blanked)."""
+    full protection because only the selector argument is blanked), and
+    non-ASCII glyphs plus whitespace (mark/emoji migrations swap a glyph
+    inside the asserted string; every ASCII word stays protected)."""
     import re as _re
 
     s = _re.sub(r"\d+", "#", text.strip())
-    return _RE_LOCATOR_ARG.sub(r"\1(<sel>", s)
+    s = _RE_LOCATOR_ARG.sub(r"\1(<sel>", s)
+    s = _re.sub(r"[^\x00-\x7f]+", "", s)
+    return _re.sub(r"\s+", "", s)
 
 
 def _split_eq(text: str) -> tuple[str, str] | None:
