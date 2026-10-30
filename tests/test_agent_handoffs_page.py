@@ -1,15 +1,16 @@
 """Browser tests for the cross-page handoffs (sessionStorage).
 
-Two servers, each mounting the source page next to the target page:
+Servers mounting the source page(s) next to the target page:
 
-* /backfill    → /backfillsql  (plan JSON → spec skeletons, auto-run)
-* /pipemigrate → /dagopt       (migration DAG → analysis, auto-run)
+* /freshness → /backfill → /backfillsql  (the full recovery chain)
+* /pipemigrate → /dagopt                 (migration DAG → analysis)
 
 Deselected by default:  pytest -m uitest tests/test_agent_handoffs_page.py
 """
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -27,21 +28,31 @@ from seatunnel_agent.agents.data.backfill_sql.manifest import (
 from seatunnel_agent.agents.data.dag_optimize.manifest import (
     MANIFEST as DAGOPT_MF,
 )
+from seatunnel_agent.agents.data.data_freshness.manifest import (
+    MANIFEST as FRESHNESS_MF,
+)
 from seatunnel_agent.agents.data.pipeline_migrate.manifest import (
     MANIFEST as PIPEMIGRATE_MF,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+_DEMO_DIRS = os.pathsep.join(
+    str(ROOT / "examples" / d)
+    for d in ("backfill_demo", "freshness_demo"))
 
 backfill_pair_url = make_page_url(
     BACKFILLSQL_MF,
     "seatunnel_agent.agents.data.backfill_sql.api:router",
     "/backfillsql", chdir="root",
-    env={"BACKFILL_API_ALLOWED_DIRS": str(ROOT / "examples" / "backfill_demo"),
+    env={"BACKFILL_API_ALLOWED_DIRS": _DEMO_DIRS,
+         "FRESHNESS_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "freshness_demo"),
          "BACKFILLSQL_API_ALLOWED_DIRS":
              str(ROOT / "examples" / "backfillsql_demo")},
-    extra_mounts=[("/backfill", BACKFILL_MF)],
-    extra_routers=["seatunnel_agent.agents.data.backfill.api:router"],
+    extra_mounts=[("/backfill", BACKFILL_MF),
+                  ("/freshness", FRESHNESS_MF)],
+    extra_routers=["seatunnel_agent.agents.data.backfill.api:router",
+                   "seatunnel_agent.agents.data.data_freshness.api:router"],
     name="backfill_pair_url")
 
 migrate_pair_url = make_page_url(
@@ -78,6 +89,33 @@ def test_backfill_plan_hands_off_to_backfillsql(backfill_pair_url):
         # the handed-over plan's tables appear in the spec JSON
         content = page.content()
         assert "ods.items" in content and "ads.sales_report" in content
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_full_recovery_chain_freshness_to_specs(backfill_pair_url):
+    """/freshness scan → /backfill auto-plan → /backfillsql auto-specs."""
+    from playwright.sync_api import expect, sync_playwright
+
+    base = backfill_pair_url.rsplit("/backfillsql", 1)[0]
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{base}/freshness/", wait_until="networkidle")
+        page.get_by_role("button", name="Scan file", exact=True).click()
+        page.get_by_role(
+            "button", name="Plan a backfill from this inventory").click()
+        page.wait_for_url("**/backfill/")
+        # the plan auto-ran off the handed-over freshness inventory
+        expect(page.get_by_role("heading", name="Backfill Plan",
+                                exact=True)).to_be_visible()
+        page.get_by_role(
+            "button",
+            name="Generate backfill SQL specs from this plan").click()
+        page.wait_for_url("**/backfillsql/")
+        expect(page.get_by_role(
+            "heading", name="Backfill spec skeletons",
+            exact=False)).to_be_visible()
         browser.close()
 
 

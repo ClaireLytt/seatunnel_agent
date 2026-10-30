@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
@@ -21,6 +21,31 @@ export default function App() {
     sessionStorage.setItem('seatunnel.handoff.backfillsql', planJson)
     window.location.href = '/backfillsql/'
   }
+
+  useEffect(() => {
+    const handed = sessionStorage.getItem('seatunnel.handoff.backfill')
+    if (!handed) return
+    sessionStorage.removeItem('seatunnel.handoff.backfill')
+    let inv: { file: string; rules: string; text: string }
+    try {
+      inv = JSON.parse(handed)
+    } catch {
+      return
+    }
+    setFile(inv.file)
+    setRulesFile(inv.rules)
+    setText(inv.text)
+    setSqlDir('') // the demo lineage dir does not apply to handed-over data
+    setBusy(true)
+    runPlan(inv.file || null, inv.text || null, inv.rules, '', '', i18n.language)
+      .then((res) => {
+        setReport(res.report ?? '')
+        setPlanJson(JSON.stringify(res.result))
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setBusy(false))
+    // the key is cleared above, so re-runs (language switch) are no-ops
+  }, [i18n.language])
 
   const run = async (useText: boolean) => {
     const src = useText ? text : file

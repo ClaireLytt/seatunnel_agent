@@ -32,7 +32,7 @@ const resources = {
     translation: {
       title: 'DAG 依赖优化',
       subtitle:
-        '调度在哪儿浪费时间？粘贴任务依赖图（JSON tasks/edges 或 ' +
+        '调度在哪儿浪费时间？粘贴任务依赖图（JSON tasks/edges、DOT 或 ' +
         '"a -> b" 文本行，任务可带时长）— 传递归约找出冗余串行边，' +
         'Kahn 分层给出可并行的批次，按时长加权的关键路径决定理想加速比。' +
         '确定性分析，不连调度器。',

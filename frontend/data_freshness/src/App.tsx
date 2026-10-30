@@ -14,6 +14,13 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
+  const [scanned, setScanned] = useState<{ file: string; rules: string; text: string } | null>(null)
+
+  const toBackfill = () => {
+    if (!scanned) return
+    sessionStorage.setItem('seatunnel.handoff.backfill', JSON.stringify(scanned))
+    window.location.href = '/backfill/'
+  }
 
   const run = async (useText: boolean) => {
     const src = useText ? text : file
@@ -33,8 +40,14 @@ export default function App() {
         i18n.language,
       )
       setReport(res.report ?? '')
+      setScanned(
+        useText
+          ? { file: '', rules: '', text }
+          : { file: file.trim(), rules: rulesFile.trim(), text: '' },
+      )
     } catch (e) {
       setReport('')
+      setScanned(null)
       if (e instanceof ApiError && e.code === 'bad_dir') {
         setError(t('bad_dir') + e.path)
       } else {
@@ -52,6 +65,7 @@ export default function App() {
     setNow('')
     setError('')
     setReport('')
+    setScanned(null)
   }
 
   return (
@@ -142,6 +156,14 @@ export default function App() {
               <div className="mb-3 font-mono text-sm" style={{ color: 'var(--accent)' }}>
                 {error}
               </div>
+            )}
+            {report && scanned && (
+              <button
+                onClick={toBackfill}
+                className="mb-4 w-full rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm font-semibold text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+              >
+                {t('to_backfill')}
+              </button>
             )}
             {report && <ReportView markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('report_ph')}</p>}

@@ -6,8 +6,8 @@ const resources = {
       title: 'Sync Strategy',
       subtitle:
         'Full, incremental or CDC? Point at the per-table characteristics ' +
-        'inventory (JSON or CSV — rows, daily churn, update timestamp, ' +
-        'primary key, deletes, binlog availability, latency) and each ' +
+        'inventory (JSON, CSV or CREATE TABLE DDL — rows, daily churn, ' +
+        'update timestamp, primary key, deletes, binlog, latency) and each ' +
         'table gets a recommended strategy with the rule trace and the ' +
         'residual risks. Deterministic, no database connection.',
       file_label: 'Inventory file path',
@@ -32,7 +32,7 @@ const resources = {
     translation: {
       title: '增量同步策略',
       subtitle:
-        '全量、增量还是 CDC？指向按表的特征清单（JSON 或 CSV — 行数、' +
+        '全量、增量还是 CDC？指向按表的特征清单（JSON、CSV 或 CREATE TABLE DDL — 行数、' +
         '日变更量、更新时间列、主键、物理删除、binlog 可用性、时延要求），' +
         '逐表给出推荐策略、规则依据与剩余风险。确定性规则，不连数据库。',
       file_label: '清单文件路径',
