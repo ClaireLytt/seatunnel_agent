@@ -45,7 +45,7 @@ def run_assess(req: AssessRequest) -> AssessResponse:
         raise HTTPException(status_code=400, detail="Provide 'dir' or 'text'")
     try:
         if (req.dir or "").strip():
-            result = assess_dir(require_dir(req.dir, _ENV))
+            result = assess_dir(require_dir(req.dir or "", _ENV))
         else:
             result = assess_text(req.name, req.text or "")
     except (ValueError, TypeError) as exc:

@@ -50,7 +50,7 @@ def run_generate(req: GenerateRequest) -> GenerateResponse:
     start = time.time()
     if not (req.file or "").strip() and not (req.text or "").strip():
         raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
-    text = (_read_whitelisted(req.file) if (req.file or "").strip()
+    text = (_read_whitelisted(req.file or "") if (req.file or "").strip()
             else req.text or "")
     try:
         result = generate(parse_spec(text))

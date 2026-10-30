@@ -57,7 +57,7 @@ def run_plan(req: PlanRequest) -> PlanResponse:
         raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
     if not req.failed.strip():
         raise HTTPException(status_code=400, detail="Provide 'failed'")
-    text = (_read_whitelisted(req.file) if (req.file or "").strip()
+    text = (_read_whitelisted(req.file or "") if (req.file or "").strip()
             else req.text or "")
     try:
         result = plan_rerun(parse_dag(text), req.failed, req.succeeded)
