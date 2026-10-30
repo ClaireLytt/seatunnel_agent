@@ -411,6 +411,9 @@ def slatrace(
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["stalled", "stale", "late"]),
               default=None, help="CI gate: exit 1 when verdicts at/above this severity exist")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="健康趋势：各判定数量追加到该 jsonl，并打印与上次的对比")
 @click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
               default="markdown", help="Report format (json for machines/CI)")
 @click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
@@ -420,6 +423,7 @@ def freshness(
     now: str | None,
     lang: str,
     fail_on: str | None,
+    history_path: str | None,
     fmt: str,
     output: str | None,
 ) -> None:
@@ -455,6 +459,17 @@ def freshness(
     if output:
         Path(output).write_text(text_out, encoding="utf-8")
         console.print(f"[dim]报告已保存: {output}[/dim]")
+
+    if history_path:
+        from .pipeline_ops import _track_history
+
+        counts = scan_to_dict(result)["counts"]
+        bad = sum(v for k, v in counts.items() if k not in ("ok", "unknown"))
+        _track_history(history_path, {
+            "tables": len(result.tables), "bad": bad,
+            **{k: counts.get(k, 0)
+               for k in ("late", "stalled", "stale", "ok")},
+        }, worse_key="bad")
 
     if fail_on:
         gate = SEVERITY.index(fail_on)

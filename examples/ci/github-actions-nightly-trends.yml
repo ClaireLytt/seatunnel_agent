@@ -1,0 +1,53 @@
+# Copy to .github/workflows/nightly-trends.yml in your platform repo.
+# Every night: run the three creep/burn-down watchers over the exported
+# state, append the metrics to the jsonl histories and commit them back —
+# the drift lines land in the job log, the curves live in git.
+name: Nightly Pipeline Trends
+
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+
+jobs:
+  trends:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install analyzer
+        run: pip install git+https://github.com/ClaireLytt/seatunnel_agent.git
+
+      # Adjust the three inputs to your exports:
+      #   dags/daily.json        - scheduler DAG export (JSON / DOT / lines)
+      #   legacy/                - the not-yet-migrated script tree
+      #   state/updates.json     - per-table update events (+ rules)
+      - name: DAG critical-path creep
+        run: |
+          seatunnel-agent dagopt -f dags/daily.json \
+            --history trends/dag_history.jsonl > /dev/null
+
+      - name: Migration burn-down
+        run: |
+          seatunnel-agent pipe-migrate -d legacy/ \
+            --history trends/migration_burndown.jsonl > /dev/null
+
+      - name: Freshness health trend
+        run: |
+          seatunnel-agent freshness -f state/updates.json \
+            -r state/rules.json \
+            --history trends/freshness_health.jsonl > /dev/null
+
+      - name: Commit the trend files
+        run: |
+          git config user.name "pipeline-trends-bot"
+          git config user.email "noreply@example.com"
+          git add trends/
+          git diff --cached --quiet || git commit -m "chore: nightly pipeline trends"
+          git push

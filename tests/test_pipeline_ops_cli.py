@@ -180,6 +180,24 @@ def test_backfill_sql_runner_in_cli(tmp_path):
     assert 'beeline -u "$JDBC_URL"' in _json.loads(res.output)["runner_script"]
 
 
+def test_freshness_health_history(tmp_path):
+    from seatunnel_agent.cli_cmds.checks import freshness
+
+    runner = CliRunner()
+    hist = tmp_path / "health.jsonl"
+    args = ["-f", str(EX / "freshness_demo" / "updates.json"),
+            "-r", str(EX / "freshness_demo" / "rules.json"),
+            "--history", str(hist)]
+    res = runner.invoke(freshness, args)
+    assert res.exit_code == 0 and "首次记录" in res.output
+    res = runner.invoke(freshness, args)
+    assert res.exit_code == 0 and "持平" in res.output
+    entry = json.loads(hist.read_text("utf-8").splitlines()[0])
+    assert entry["tables"] == entry["ok"] + entry["bad"] + entry.get(
+        "unknown", entry["tables"] - entry["ok"] - entry["bad"])
+    assert entry["bad"] == entry["late"] + entry["stalled"] + entry["stale"]
+
+
 def test_pipe_migrate_burn_down_history(tmp_path):
     import shutil
 
