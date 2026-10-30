@@ -71,7 +71,7 @@ slots/memory）± 各 DAG 启动时刻。
 2. [x] 33 index_advisor（复用 sql_review 列提取）
 3. [x] 32 sql_cost（复用 30 的计划/SQL 结构 + 33 的清单解析）
 4. [x] 31 slow_query（处方指向 30/34 的能力）
-5. [ ] 35 dag_conflict（复用 dag_optimize/pipeline_migrate）
+5. [x] 35 dag_conflict（复用 dag_optimize/pipeline_migrate）
 6. [ ] 34 data_skew shuffle 分布增强
 
 每个 agent 独立提交：后端 + 测试 + 示例 + 前端页 + 页面回归 + 报告落盘；

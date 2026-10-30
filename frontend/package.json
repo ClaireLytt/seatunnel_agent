@@ -9,6 +9,7 @@
     "contract_check",
     "dag_check",
     "dag_optimize",
+    "dag_conflict",
     "dep_check",
     "doctor",
     "change_impact",
