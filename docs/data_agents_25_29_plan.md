@@ -82,13 +82,13 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## 三期增强路线（输入省力 + 产物再进一步）
 
-1. [ ] sync_strategy：直接吃 DDL — 粘贴/指向 CREATE TABLE 脚本，自动识别
+1. [x] sync_strategy：直接吃 DDL — 粘贴/指向 CREATE TABLE 脚本，自动识别
    主键与更新时间列生成特征清单，免手写 JSON。
-2. [ ] dag_optimize：瓶颈敏感度 — 逐个把关键路径任务提速 50% 重算工期，
+2. [x] dag_optimize：瓶颈敏感度 — 逐个把关键路径任务提速 50% 重算工期，
    指出"优化哪个任务最值"，附每任务 slack。
-3. [ ] rerun_plan：直接吃调度器状态导出 — {"task":"failed|success"} JSON
+3. [x] rerun_plan：直接吃调度器状态导出 — {"task":"failed|success"} JSON
    一个输入替代手填 failed/succeeded 两个列表。
-4. [ ] backfill_sql：后置校验 — 补数后跑的 source×target 逐分区行数
+4. [x] backfill_sql：后置校验 — 补数后跑的 source×target 逐分区行数
    对账 SQL（FULL OUTER JOIN，只列不一致分区）。
-5. [ ] pipeline_migrate：对判定为 SeaTunnel 的 sqoop 任务解析
+5. [x] pipeline_migrate：对判定为 SeaTunnel 的 sqoop 任务解析
    --connect/--table 直接给出 SeaTunnel 配置骨架。
