@@ -67,6 +67,25 @@ def test_merge_requires_keys_and_bounds_partition():
     assert "ON t.order_id = s.order_id AND t.dt = '2024-05-01'" in stmt
 
 
+def test_hourly_grain():
+    result = generate(_spec(date_format="yyyy-MM-dd HH", start="2024-05-01",
+                            end="2024-05-01"))
+    assert len(result.dates) == 24  # one slot per hour
+    assert result.dates[0].partition_value == "2024-05-01 00"
+    assert result.dates[-1].partition_value == "2024-05-01 23"
+    assert result.dates[5].date == "2024-05-01T05"
+    assert "WHERE dt = '2024-05-01 05'" in result.dates[5].statements[0]
+
+
+def test_hourly_grain_safety():
+    with pytest.raises(ValueError, match="hourly range exceeds"):
+        _spec(date_format="yyyyMMddHH", start="2024-01-01", end="2024-03-01")
+    with pytest.raises(ValueError, match="needs 'HH'"):
+        _spec(grain="hour")
+    with pytest.raises(ValueError, match="grain must be"):
+        _spec(grain="minute")
+
+
 def test_safety_rules():
     with pytest.raises(ValueError, match="placeholder"):
         _spec(source="SELECT * FROM ods.orders")

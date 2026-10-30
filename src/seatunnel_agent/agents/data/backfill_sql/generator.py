@@ -21,14 +21,16 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 MODES = ("overwrite", "delete_insert", "merge")
 DIALECTS = ("hive", "spark", "mysql", "doris")
+GRAINS = ("day", "hour")
 MAX_DAYS = 366
+MAX_HOUR_DAYS = 31          # hourly grain: cap the range tighter
 
-_FMT_TOKENS = (("yyyy", "%Y"), ("MM", "%m"), ("dd", "%d"))
+_FMT_TOKENS = (("yyyy", "%Y"), ("MM", "%m"), ("dd", "%d"), ("HH", "%H"))
 _IDENT_RE = re.compile(r"^[\w.]+$")
 
 
@@ -51,6 +53,7 @@ class BackfillSpec:
     mode: str = "overwrite"
     dialect: str = "hive"
     date_format: str = "yyyy-MM-dd"
+    grain: str = "day"                # "day" | "hour" (one slot per hour)
     keys: list[str] = field(default_factory=list)  # merge only
     source_table: str = ""            # for pre-flight counts (optional)
 
@@ -78,8 +81,19 @@ def parse_spec(text: str) -> BackfillSpec:
         raise ValueError(f"start/end must be ISO dates: {exc}") from exc
     if end < start:
         raise ValueError("end date before start date")
-    if (end - start).days + 1 > MAX_DAYS:
+    date_format = str(data.get("date_format") or "yyyy-MM-dd")
+    grain = str(data.get("grain") or
+                ("hour" if "HH" in date_format else "day")).strip().lower()
+    if grain not in GRAINS:
+        raise ValueError(f"grain must be one of {GRAINS}")
+    days = (end - start).days + 1
+    if grain == "day" and days > MAX_DAYS:
         raise ValueError(f"range exceeds {MAX_DAYS} days — split the backfill")
+    if grain == "hour" and days > MAX_HOUR_DAYS:
+        raise ValueError(f"hourly range exceeds {MAX_HOUR_DAYS} days — "
+                         f"split the backfill")
+    if grain == "hour" and "HH" not in date_format:
+        raise ValueError("hourly grain needs 'HH' in date_format")
     mode = str(data.get("mode") or "overwrite").strip().lower()
     if mode not in MODES:
         raise ValueError(f"mode must be one of {MODES}")
@@ -100,7 +114,7 @@ def parse_spec(text: str) -> BackfillSpec:
     return BackfillSpec(
         table=table, partition_col=partition_col, start=start, end=end,
         source=source, mode=mode, dialect=dialect,
-        date_format=str(data.get("date_format") or "yyyy-MM-dd"),
+        date_format=date_format, grain=grain,
         keys=keys, source_table=source_table)
 
 
@@ -167,14 +181,22 @@ def generate(spec: BackfillSpec) -> BackfillSql:
         result.warnings.append(
             f"{spec.dialect}: MERGE needs engine support "
             "(Hive ACID / MySQL has none) — verify before running")
-    day = spec.start
-    while day <= spec.end:
-        pv = day.strftime(strf)
+    slot = datetime.combine(spec.start, datetime.min.time())
+    stop = datetime.combine(spec.end, datetime.min.time())
+    if spec.grain == "hour":
+        stop += timedelta(hours=23)
+        step = timedelta(hours=1)
+    else:
+        step = timedelta(days=1)
+    while slot <= stop:
+        pv = slot.strftime(strf)
         source = spec.source.replace("{date}", pv)
+        label = slot.date().isoformat() if spec.grain == "day" \
+            else slot.isoformat(timespec="hours")
         result.dates.append(DateStatements(
-            date=day.isoformat(), partition_value=pv,
+            date=label, partition_value=pv,
             statements=_statements(spec, pv, source)))
-        day += timedelta(days=1)
+        slot += step
     first = result.dates[0].partition_value
     last = result.dates[-1].partition_value
     bound = (f"{spec.partition_col} BETWEEN '{first}' AND '{last}'")
