@@ -200,3 +200,12 @@ tests/test_<name>.py        # 确定性核心测试
 1. [x] generalize the jsonl creep-watch helper; pipe-migrate --history
    FILE tracks jobs / effort mix / target mix per scan - the weekly
    re-scan becomes a burn-down (drift printed, growth flagged).
+
+## Phase 21 roadmap (trends on the wall)
+
+1. [ ] ops_trends web page (/trends): point at the watchers' jsonl
+   directory (allowlisted), render per-file record count, time span and
+   first-to-last deltas with direction marks; summary core shared with
+   the trends CLI (extract, do not duplicate). Blocked on: the four
+   simplify reviewers finishing, since the extraction touches
+   cli_cmds/pipeline_ops.py which is in their scope.
