@@ -180,6 +180,9 @@ class DagOptimizeResult:
     cycles: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     makespans: dict[str, float] = field(default_factory=dict)  # workers → time
+    # critical tasks, most impactful first: task, duration, and the
+    # critical-path duration if that one task were cut in half
+    bottlenecks: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -196,6 +199,7 @@ class DagOptimizeResult:
             "cycles": list(self.cycles),
             "warnings": list(self.warnings),
             "makespans": dict(self.makespans),
+            "bottlenecks": [dict(b) for b in self.bottlenecks],
         }
 
 
@@ -339,4 +343,27 @@ def optimize(graph: TaskGraph) -> DagOptimizeResult:
     for k in WORKER_COUNTS:
         result.makespans[str(k)] = round(_makespan(graph, order, k), 2)
     result.makespans["inf"] = round(result.critical_duration, 2)
+    result.bottlenecks = _bottlenecks(graph, order, result.critical_path,
+                                      result.critical_duration)
     return result
+
+
+def _bottlenecks(graph: TaskGraph, order: list[str],
+                 critical_path: list[str], critical_duration: float,
+                 top: int = 3) -> list[dict[str, Any]]:
+    """What-if per critical task: halve it, recompute the critical path.
+
+    The tasks whose speedup shrinks end-to-end latency the most come
+    first — they are where optimisation effort pays.
+    """
+    out: list[dict[str, Any]] = []
+    for name in critical_path:
+        saved = graph.nodes[name]
+        graph.nodes[name] = saved / 2
+        _, new_duration = _critical_path(graph, order)
+        graph.nodes[name] = saved
+        out.append({"task": name, "duration": saved,
+                    "halved_critical": round(new_duration, 2),
+                    "gain": round(critical_duration - new_duration, 2)})
+    out.sort(key=lambda b: (-b["gain"], b["task"]))
+    return out[:top]

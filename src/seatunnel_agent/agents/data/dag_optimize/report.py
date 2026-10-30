@@ -53,6 +53,18 @@ def render_markdown(result: DagOptimizeResult, lang: str = "zh") -> str:
             dur=_num(result.critical_duration),
             total=_num(result.total_duration)))
         lines.append("")
+    if result.bottlenecks:
+        lines.append(f"### {tp(lang, 'rpt_bottlenecks')}")
+        lines.append(f"| {tp(lang, 'rpt_col_tasks')} "
+                     f"| {tp(lang, 'rpt_col_duration')} "
+                     f"| {tp(lang, 'rpt_col_halved')} "
+                     f"| {tp(lang, 'rpt_col_gain')} |")
+        lines.append("|---|---|---|---|")
+        for b in result.bottlenecks:
+            lines.append(f"| `{b['task']}` | {_num(b['duration'])} "
+                         f"| {_num(b['halved_critical'])} "
+                         f"| -{_num(b['gain'])} |")
+        lines.append("")
     if result.makespans:
         lines.append(f"### {tp(lang, 'rpt_makespan')}")
         lines.append(f"| {tp(lang, 'rpt_col_workers')} "

@@ -22,6 +22,11 @@ DAGOPT_I18N: dict[str, dict[str, str]] = {
         "rpt_critical": "Critical path",
         "rpt_critical_note": ("duration {dur} of total {total} — this chain "
                               "bounds end-to-end latency"),
+        "rpt_bottlenecks": "Bottleneck sensitivity (halve one task — what "
+                           "the critical path becomes)",
+        "rpt_col_duration": "duration",
+        "rpt_col_halved": "critical path if halved",
+        "rpt_col_gain": "end-to-end gain",
         "rpt_makespan": "Makespan by worker count (what parallelism buys)",
         "rpt_col_workers": "workers",
         "rpt_col_makespan": "makespan",
@@ -49,6 +54,10 @@ DAGOPT_I18N: dict[str, dict[str, str]] = {
         "rpt_col_tasks": "任务",
         "rpt_critical": "关键路径",
         "rpt_critical_note": "时长 {dur} / 总时长 {total} — 该链决定端到端时延下限",
+        "rpt_bottlenecks": "瓶颈敏感度（单个任务提速一半后关键路径变成多少）",
+        "rpt_col_duration": "时长",
+        "rpt_col_halved": "提速后关键路径",
+        "rpt_col_gain": "端到端收益",
         "rpt_makespan": "按并发数估算的总工期（并行化值多少）",
         "rpt_col_workers": "并发数",
         "rpt_col_makespan": "总工期",

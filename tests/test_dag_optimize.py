@@ -53,6 +53,21 @@ def test_makespans_by_worker_count():
     assert result.makespans["2"] == 35.0
 
 
+def test_bottleneck_sensitivity():
+    result = optimize(parse_dag(DEMO))
+    # join_wide (12) is the longest critical task: halving it gains 6
+    top = result.bottlenecks[0]
+    assert top["task"] == "join_wide"
+    assert top["duration"] == 12.0
+    assert top["halved_critical"] == 29.0
+    assert top["gain"] == 6.0
+    # gains are sorted descending and only critical tasks are listed
+    gains = [b["gain"] for b in result.bottlenecks]
+    assert gains == sorted(gains, reverse=True)
+    assert all(b["task"] in result.critical_path
+               for b in result.bottlenecks)
+
+
 def test_text_arrow_lines_and_chain_detection():
     result = optimize(parse_dag("a -> b\nb -> c\nc -> d\na -> e\n"))
     # b, c, d form the tail of a single-in/single-out chain from b
