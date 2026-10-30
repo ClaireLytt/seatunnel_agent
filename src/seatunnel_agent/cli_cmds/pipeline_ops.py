@@ -110,7 +110,12 @@ def dagopt(path, text, base_path, fail_on_regression, tolerance,
         payload["action_plan"] = plan
         markdown += f"\n\n### {tp(lang, 'rpt_action_plan')}\n{plan}\n"
     if history_path:
-        _track_history(history_path, result)
+        _track_history(history_path, {
+            "tasks": result.tasks, "edges": result.edges,
+            "critical": result.critical_duration,
+            "makespan2": result.makespans.get("2", 0.0),
+            "redundant": len(result.redundant),
+        }, worse_key="critical")
     _emit(payload, markdown, fmt, output)
     if fail_on_regression and diff is not None:
         problems: list[str] = []
@@ -126,8 +131,10 @@ def dagopt(path, text, base_path, fail_on_regression, tolerance,
             raise SystemExit(1)
 
 
-def _track_history(history_path: str, result) -> None:
-    """Append this run's metrics; print the drift vs the previous run."""
+def _track_history(history_path: str, entry: dict,
+                   worse_key: str) -> None:
+    """Append *entry* (plus a ts) to the jsonl; print the drift vs the
+    previous record — yellow when *worse_key* grew, dim otherwise."""
     import json as _json
     from datetime import datetime, timezone
 
@@ -138,27 +145,19 @@ def _track_history(history_path: str, result) -> None:
                  path.read_text(encoding="utf-8").splitlines() if ln.strip()]
         if lines:
             previous = _json.loads(lines[-1])
-    entry = {
-        "ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "tasks": result.tasks,
-        "edges": result.edges,
-        "critical": result.critical_duration,
-        "makespan2": result.makespans.get("2", 0.0),
-        "redundant": len(result.redundant),
-    }
+    entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             **entry}
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(_json.dumps(entry, ensure_ascii=False) + "\n")
     if previous is None:
         console.print(f"[dim]history: 首次记录 → {path}[/dim]")
         return
-    deltas = []
-    for key in ("tasks", "edges", "critical", "makespan2", "redundant"):
-        before, after = previous.get(key, 0), entry[key]
-        if after != before:
-            deltas.append(f"{key} {before:g} → {after:g}")
+    deltas = [f"{k} {previous.get(k, 0):g} → {v:g}"
+              for k, v in entry.items()
+              if k != "ts" and v != previous.get(k, 0)]
     if deltas:
-        worse = entry["critical"] > previous.get("critical", 0)
+        worse = entry[worse_key] > previous.get(worse_key, 0)
         tone = "yellow" if worse else "dim"
         console.print(f"[{tone}]history({previous.get('ts', '?')} → 本次): "
                       + " · ".join(deltas) + f"[/{tone}]")
@@ -340,9 +339,12 @@ def sync_strategy(path, text, emit_dir, use_llm, fail_risks, lang, fmt,
               default=None, help="把 SeaTunnel 目标任务的配置骨架写到该目录")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="对风险最大的任务额外请求 LLM 改写建议（需配置 API key）")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="迁移燃尽：本次盘点追加到该 jsonl，并打印与上次的对比")
 @_common
-def pipe_migrate(directory, path, emit_dir, use_llm, lang, fmt,
-                 output) -> None:
+def pipe_migrate(directory, path, emit_dir, use_llm, history_path, lang,
+                 fmt, output) -> None:
     """Pipeline 迁移评估 — 目标引擎、S/M/L 工作量、风险与迁移波次。"""
     from seatunnel_agent.agents.data.pipeline_migrate import (
         assess_dir,
@@ -381,6 +383,16 @@ def pipe_migrate(directory, path, emit_dir, use_llm, lang, fmt,
             markdown += f"\n\n### {tp(lang, 'rpt_llm_advice')}\n"
             for job, text in advice:
                 markdown += f"**`{job}`**\n{text}\n\n"
+    if history_path:
+        efforts = result.effort_counts()
+        counts = result.counts()
+        _track_history(history_path, {
+            "jobs": len(result.jobs),
+            "effort_l": efforts["L"], "effort_m": efforts["M"],
+            "effort_s": efforts["S"],
+            "to_seatunnel": counts["seatunnel"],
+            "risks": sum(len(j.risks) for j in result.jobs),
+        }, worse_key="jobs")
     _emit(payload, markdown, fmt, output)
     if emit_dir:
         _emit_confs(emit_dir, [(j.job, j.stub)

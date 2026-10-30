@@ -197,6 +197,6 @@ tests/test_<name>.py        # 确定性核心测试
 
 ## Phase 17 roadmap (migration burn-down)
 
-1. [ ] generalize the jsonl creep-watch helper; pipe-migrate --history
+1. [x] generalize the jsonl creep-watch helper; pipe-migrate --history
    FILE tracks jobs / effort mix / target mix per scan - the weekly
    re-scan becomes a burn-down (drift printed, growth flagged).

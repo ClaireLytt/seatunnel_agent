@@ -180,6 +180,27 @@ def test_backfill_sql_runner_in_cli(tmp_path):
     assert 'beeline -u "$JDBC_URL"' in _json.loads(res.output)["runner_script"]
 
 
+def test_pipe_migrate_burn_down_history(tmp_path):
+    import shutil
+
+    runner = CliRunner()
+    hist = tmp_path / "burndown.jsonl"
+    legacy = tmp_path / "legacy"
+    shutil.copytree(EX / "pipemigrate_demo", legacy)
+    res = runner.invoke(pipe_migrate, ["-d", str(legacy),
+                                       "--history", str(hist)])
+    assert res.exit_code == 0 and "首次记录" in res.output
+    # a job got migrated away → the burn-down shows jobs shrinking
+    (legacy / "sync_orders.sh").unlink()
+    res = runner.invoke(pipe_migrate, ["-d", str(legacy),
+                                       "--history", str(hist)])
+    assert res.exit_code == 0
+    assert "jobs 6 → 5" in res.output
+    assert "to_seatunnel 2 → 1" in res.output
+    lines = hist.read_text("utf-8").splitlines()
+    assert len(lines) == 2 and json.loads(lines[1])["jobs"] == 5
+
+
 def test_pipe_migrate_cli_dir_and_file():
     runner = CliRunner()
     res = runner.invoke(pipe_migrate, [
