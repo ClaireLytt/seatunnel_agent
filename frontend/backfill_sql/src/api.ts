@@ -19,3 +19,13 @@ export function runGenerate(
   if (text) body.text = text
   return postStructured(`${BASE}/generate`, body, 'generate')
 }
+
+export interface SpecsResponse {
+  result: Record<string, unknown>[]
+  report: string
+  elapsed_ms: number
+}
+
+export function runSpecs(plan: string, lang: string): Promise<SpecsResponse> {
+  return postStructured(`${BASE}/specs`, { plan, lang }, 'specs')
+}

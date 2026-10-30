@@ -1,6 +1,7 @@
 """REST API for the backfill SQL agent — FastAPI router.
 
   POST /api/backfillsql/generate — partition-bounded backfill statements
+  POST /api/backfillsql/specs    — backfill planner JSON → spec skeletons
   GET  /api/backfillsql/health   — health check
 """
 
@@ -62,6 +63,40 @@ def run_generate(req: GenerateRequest) -> GenerateResponse:
     report = render_markdown(result, lang=lang) if req.report else None
     return GenerateResponse(result=result.to_dict(), report=report,
                             elapsed_ms=ms_since(start))
+
+
+class SpecsRequest(BaseModel):
+    plan: str = Field(..., description="Backfill planner plan JSON")
+    partition_col: str = Field("dt", description="Partition column name")
+    dialect: str = Field("hive", description="Target dialect")
+    lang: str = Field("zh", description="Report language: 'zh' or 'en'")
+
+
+class SpecsResponse(BaseModel):
+    result: list[dict[str, Any]]
+    report: str
+    elapsed_ms: int
+
+
+@router.post("/specs", response_model=SpecsResponse)
+def run_specs(req: SpecsRequest) -> SpecsResponse:
+    from .bridge import specs_from_plan
+    from .tools import backfill_specs
+
+    start = time.time()
+    if not req.plan.strip():
+        raise HTTPException(status_code=400, detail="Provide 'plan'")
+    try:
+        specs = specs_from_plan(req.plan, partition_col=req.partition_col,
+                                dialect=req.dialect)
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # malformed JSON
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    report = backfill_specs(req.plan, partition_col=req.partition_col,
+                            dialect=req.dialect, lang=req.lang)
+    return SpecsResponse(result=specs, report=report,
+                         elapsed_ms=ms_since(start))
 
 
 add_health(router, "backfill_sql")

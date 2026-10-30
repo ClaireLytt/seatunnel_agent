@@ -21,6 +21,13 @@ const resources = {
         '"end":"2024-05-03","mode":"overwrite","dialect":"hive",' +
         '"source":"SELECT ... FROM ods.orders WHERE dt = \'{date}\'"}',
       run_text_btn: 'Generate from text',
+      plan_acc: 'Specs from a backfill plan',
+      plan_label: 'Backfill planner plan JSON',
+      plan_ph:
+        'Paste the plan JSON from the Backfill Planner (/backfill) — one ' +
+        'ready-to-edit spec per impacted table comes back.',
+      plan_btn: 'Specs from plan',
+      empty_plan: 'Paste the backfill plan JSON first.',
       clear_btn: 'Clear',
       empty_input: 'Provide the spec file or paste the spec first.',
       bad_dir: 'Not allowed: ',
@@ -47,6 +54,11 @@ const resources = {
         '"end":"2024-05-03","mode":"overwrite","dialect":"hive",' +
         '"source":"SELECT ... FROM ods.orders WHERE dt = \'{date}\'"}',
       run_text_btn: '用文本生成',
+      plan_acc: '从补数计划生成规格',
+      plan_label: '补数计划器的计划 JSON',
+      plan_ph: '粘贴分区补数计划页（/backfill）输出的计划 JSON — 返回逐表可编辑的规格骨架。',
+      plan_btn: '计划转规格',
+      empty_plan: '请先粘贴补数计划 JSON。',
       clear_btn: '清空',
       empty_input: '请先填写规格文件路径或粘贴规格。',
       bad_dir: '目录不在白名单: ',

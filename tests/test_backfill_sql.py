@@ -149,6 +149,28 @@ def test_specs_from_plan_bridge():
     assert "bad input" in backfill_specs('{"tables": []}')
 
 
+def test_specs_api_endpoint():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.backfill_sql.api import router
+
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
+    plan = ('{"tables": [{"table": "dws.sales", '
+            '"missing": ["2024-05-05"], "cascade": []}]}')
+    res = client.post("/api/backfillsql/specs", json={"plan": plan})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["result"][0]["table"] == "dws.sales"
+    assert "```json" in body["report"]
+    assert client.post("/api/backfillsql/specs",
+                       json={"plan": "  "}).status_code == 400
+    assert client.post("/api/backfillsql/specs",
+                       json={"plan": "{broken"}).status_code == 400
+
+
 def test_report_zh_en_and_tool():
     result = generate(parse_spec(DEMO))
     zh = render_markdown(result, lang="zh")

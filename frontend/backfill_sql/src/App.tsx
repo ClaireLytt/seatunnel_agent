@@ -3,15 +3,35 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
-import { ApiError, runGenerate } from '@/api'
+import { ApiError, runGenerate, runSpecs } from '@/api'
 
 export default function App() {
   const { t, i18n } = useTranslation()
   const [file, setFile] = useState('examples/backfillsql_demo/spec.json')
   const [text, setText] = useState('')
+  const [plan, setPlan] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
+
+  const specs = async () => {
+    if (!plan.trim()) {
+      setError(t('empty_plan'))
+      setReport('')
+      return
+    }
+    setBusy(true)
+    setError('')
+    try {
+      const res = await runSpecs(plan, i18n.language)
+      setReport(res.report)
+    } catch (e) {
+      setReport('')
+      setError(String(e))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const run = async (useText: boolean) => {
     const src = useText ? text : file
@@ -44,6 +64,7 @@ export default function App() {
   const clear = () => {
     setFile('examples/backfillsql_demo/spec.json')
     setText('')
+    setPlan('')
     setError('')
     setReport('')
   }
@@ -104,6 +125,34 @@ export default function App() {
                   className="w-full rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm font-semibold text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard disabled:opacity-50"
                 >
                   {t('run_text_btn')}
+                </button>
+              </div>
+            </details>
+          </Card>
+
+          <Card>
+            <details>
+              <summary className="cursor-pointer select-none font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                {t('plan_acc')}
+              </summary>
+              <div className="mt-3 flex flex-col gap-3">
+                <label className="block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                  {t('plan_label')}
+                </label>
+                <textarea
+                  value={plan}
+                  onChange={(e) => setPlan(e.target.value)}
+                  placeholder={t('plan_ph')}
+                  rows={8}
+                  spellCheck={false}
+                  className="w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink"
+                />
+                <button
+                  onClick={specs}
+                  disabled={busy}
+                  className="w-full rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm font-semibold text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard disabled:opacity-50"
+                >
+                  {t('plan_btn')}
                 </button>
               </div>
             </details>
