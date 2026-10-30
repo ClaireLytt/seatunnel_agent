@@ -343,6 +343,32 @@ body {
   border-color: rgba(217, 154, 78, 0.6);
 }
 
+/* breathing ring — one swell of lamplight, paced by the 4-7-8 phases */
+.mg-breath-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid rgba(217, 154, 78, 0.45);
+  background: radial-gradient(
+    circle at 50% 42%,
+    rgba(255, 190, 110, 0.18) 0%,
+    rgba(217, 154, 78, 0.08) 45%,
+    transparent 70%
+  );
+  box-shadow:
+    0 0 60px rgba(255, 190, 110, 0.12),
+    inset 0 0 40px rgba(217, 154, 78, 0.08);
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mg-breath-ring {
+    transition: none;
+    transform: none !important;
+  }
+}
+
 /* ornamental rule under the header, same stroke as the letterpress hub */
 .mg-rule {
   display: flex;

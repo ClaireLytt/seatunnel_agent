@@ -5,9 +5,10 @@ const resources = {
     translation: {
       title: 'Mind Games',
       subtitle:
-        'Three positive-psychology exercises, fully in the browser: ' +
-        'the learned-optimism cards, the VIA signature-strengths picker ' +
-        'and the five PERMA questions. Nothing leaves this page.',
+        'Positive-psychology exercises, fully in the browser: the ' +
+        'learned-optimism cards, the VIA strengths picker, the five PERMA ' +
+        'questions, three good things with a lamp, and a 4-7-8 breathing ' +
+        'window. Nothing leaves this page.',
       tab_optimism: 'Learned Optimism',
       tab_strengths: 'Signature Strengths',
       tab_questions: 'Five Questions',
@@ -36,14 +37,34 @@ const resources = {
       recent_evenings: 'Past evenings',
       from_corner: 'From the hall notebook',
       corner_note: 'Entries also land in the notebook on the landing page.',
+      tab_breath: 'Breathing',
+      breath_hint:
+        'The 4-7-8 pattern: in through the nose for four, hold for seven, ' +
+        'out through the mouth for eight. Three rounds settle the evening.',
+      breath_in: 'Breathe in',
+      breath_hold: 'Hold',
+      breath_out: 'Breathe out',
+      breath_start: 'Begin',
+      breath_again: 'Once more',
+      breath_round: 'Round {{i}} of {{n}}',
+      breath_done: 'Three rounds, done. The room is quieter.',
+      breath_write: 'Set this moment down as a good thing',
+      suitcase_export: 'Pack the suitcase',
+      suitcase_import: 'Unpack a suitcase',
+      suitcase_note:
+        'Everything here lives in this browser. The suitcase carries it: ' +
+        'export a file, unpack it elsewhere — merged, never deleted.',
+      suitcase_merged: 'Unpacked: {{n}} records merged.',
+      suitcase_bad: 'That file is not a suitcase from this page.',
     },
   },
   zh: {
     translation: {
       title: '心理小游戏',
       subtitle:
-        '三个积极心理学练习，全部在浏览器本地运行：乐观解释风格卡片、' +
-        'VIA 品格优势二选一、PERMA 五问画像。数据不离开这个页面。',
+        '积极心理学练习，全部在浏览器本地运行：乐观解释风格卡片、' +
+        'VIA 品格优势二选一、PERMA 五问画像、三件好事与油灯、' +
+        '4-7-8 呼吸窗。数据不离开这个页面。',
       tab_optimism: '乐观解释风格',
       tab_strengths: '品格优势',
       tab_questions: '五个问题',
@@ -72,6 +93,22 @@ const resources = {
       recent_evenings: '过去的夜晚',
       from_corner: '来自门厅笔记本',
       corner_note: '写下的好事也会落到首页角落的笔记本里。',
+      tab_breath: '呼吸窗',
+      breath_hint: '4-7-8 呼吸:用鼻吸气四拍,屏息七拍,用嘴呼气八拍。三轮,把晚上安顿下来。',
+      breath_in: '吸气',
+      breath_hold: '屏息',
+      breath_out: '呼气',
+      breath_start: '开始',
+      breath_again: '再来一次',
+      breath_round: '第 {{i}} / {{n}} 轮',
+      breath_done: '三轮结束。房间安静了一些。',
+      breath_write: '把此刻写成一件好事',
+      suitcase_export: '收拾行囊',
+      suitcase_import: '打开行囊',
+      suitcase_note:
+        '这里的一切都住在当前浏览器。行囊负责搬家:导出一个文件,' + '在别处打开——只合并,不删除。',
+      suitcase_merged: '已打开:合并 {{n}} 条记录。',
+      suitcase_bad: '这不是本页的行囊文件。',
     },
   },
 }

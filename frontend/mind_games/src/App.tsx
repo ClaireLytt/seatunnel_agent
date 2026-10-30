@@ -19,7 +19,18 @@ const THREE_KEY = 'st_games.three.v1'
 // shared with the landing page's garden-corner notebook (hub pages.py)
 const GARDEN_KEY = 'st_garden.notes.v1'
 
-type Tab = 'optimism' | 'strengths' | 'questions' | 'three'
+type Tab = 'optimism' | 'strengths' | 'questions' | 'three' | 'breath'
+
+// every key the suitcase carries between browsers
+const SUITCASE_KEYS = [
+  OPT_KEY,
+  STR_KEY,
+  Q_KEY,
+  HIST_KEY + '.opt',
+  LEDGER_KEY,
+  THREE_KEY,
+  GARDEN_KEY,
+] as const
 
 function today(): string {
   const d = new Date()
@@ -432,6 +443,189 @@ function Questions() {
   )
 }
 
+const PHASES = [
+  { key: 'breath_in', secs: 4 },
+  { key: 'breath_hold', secs: 7 },
+  { key: 'breath_out', secs: 8 },
+] as const
+const ROUNDS = 3
+
+function Breathing({ onWrite }: { onWrite: () => void }) {
+  const { t } = useTranslation()
+  const [state, setState] = useState<'idle' | 'running' | 'done'>('idle')
+  const [phase, setPhase] = useState(0)
+  const [round, setRound] = useState(1)
+  const [left, setLeft] = useState<number>(PHASES[0].secs)
+
+  useEffect(() => {
+    if (state !== 'running') return
+    const tick = setInterval(() => {
+      setLeft((s) => {
+        if (s > 1) return s - 1
+        // phase over: advance phase, then round, then finish
+        setPhase((p) => {
+          const np = (p + 1) % PHASES.length
+          if (np === 0) {
+            setRound((r) => {
+              if (r >= ROUNDS) {
+                setState('done')
+                return r
+              }
+              return r + 1
+            })
+          }
+          return np
+        })
+        return 0 // the phase effect below reloads the counter
+      })
+    }, 1000)
+    return () => clearInterval(tick)
+  }, [state])
+
+  useEffect(() => {
+    if (state === 'running') setLeft(PHASES[phase].secs)
+  }, [phase, state])
+
+  const scale = state !== 'running' ? 1 : phase === 0 ? 1.35 : phase === 1 ? 1.35 : 1
+
+  return (
+    <div className="flex flex-col items-center gap-6 py-4 text-center">
+      <p className="mg-sub max-w-[480px] text-sm leading-relaxed">{t('breath_hint')}</p>
+      <div className="relative flex h-56 w-56 items-center justify-center">
+        <div
+          className="mg-breath-ring"
+          style={{
+            transform: `scale(${scale})`,
+            transitionDuration: state === 'running' ? `${PHASES[phase].secs}s` : '1s',
+          }}
+          aria-hidden="true"
+        />
+        <div className="relative text-center">
+          {state === 'running' ? (
+            <>
+              <p className="mg-label">{t(PHASES[phase].key)}</p>
+              <p className="mg-title mt-2 text-5xl">{left}</p>
+            </>
+          ) : state === 'done' ? (
+            <p className="mg-label">{t('breath_done')}</p>
+          ) : (
+            <p className="mg-label">4 · 7 · 8</p>
+          )}
+        </div>
+      </div>
+      {state === 'running' && (
+        <p className="mg-mute text-sm">{t('breath_round', { i: round, n: ROUNDS })}</p>
+      )}
+      {state === 'idle' && (
+        <button
+          className="mg-btn"
+          onClick={() => {
+            setPhase(0)
+            setRound(1)
+            setLeft(PHASES[0].secs)
+            setState('running')
+          }}
+        >
+          {t('breath_start')}
+        </button>
+      )}
+      {state === 'done' && (
+        <div className="flex gap-4">
+          <button className="mg-btn" onClick={onWrite}>
+            {t('breath_write')}
+          </button>
+          <button className="mg-back" onClick={() => setState('idle')}>
+            {t('breath_again')}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Suitcase() {
+  const { t } = useTranslation()
+  const [note, setNote] = useState('')
+
+  const exportAll = () => {
+    const bag: Record<string, unknown> = { st_suitcase: 1 }
+    for (const k of SUITCASE_KEYS) bag[k] = load(k, null)
+    const blob = new Blob([JSON.stringify(bag, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `mind-games-suitcase-${today()}.json`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
+  const importAll = (file: File) => {
+    void file.text().then((text) => {
+      let bag: Record<string, unknown>
+      try {
+        bag = JSON.parse(text)
+      } catch {
+        setNote(t('suitcase_bad'))
+        return
+      }
+      if (!bag || bag.st_suitcase !== 1) {
+        setNote(t('suitcase_bad'))
+        return
+      }
+      let merged = 0
+      for (const k of SUITCASE_KEYS) {
+        const incoming = bag[k]
+        if (incoming == null) continue
+        const mine = load<unknown>(k, null)
+        if (Array.isArray(incoming) && Array.isArray(mine)) {
+          // day-keyed records merge by day, existing wins; plain lists union
+          const hasDay = (v: unknown): v is { day: string } =>
+            typeof v === 'object' && v !== null && 'day' in v
+          if (incoming.every(hasDay) && mine.every(hasDay)) {
+            const days = new Set(mine.map((e) => e.day))
+            const add = incoming.filter((e) => !days.has(e.day))
+            if (add.length) save(k, [...mine, ...add])
+            merged += add.length
+          } else {
+            const add = incoming.filter(
+              (v) => !mine.some((m) => JSON.stringify(m) === JSON.stringify(v)),
+            )
+            if (add.length) save(k, [...mine, ...add])
+            merged += add.length
+          }
+        } else if (mine == null) {
+          save(k, incoming)
+          merged += 1
+        }
+      }
+      setNote(t('suitcase_merged', { n: merged }))
+    })
+  }
+
+  return (
+    <div className="mt-8 flex flex-wrap items-center gap-5">
+      <button className="mg-back" onClick={exportAll}>
+        {t('suitcase_export')}
+      </button>
+      <label className="mg-back cursor-pointer">
+        {t('suitcase_import')}
+        <input
+          type="file"
+          accept="application/json"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            if (f) importAll(f)
+            e.target.value = ''
+          }}
+        />
+      </label>
+      <span className="mg-mute max-w-[420px] text-xs leading-relaxed">
+        {note || t('suitcase_note')}
+      </span>
+    </div>
+  )
+}
+
 export default function App() {
   const { t } = useTranslation()
   const [tab, setTab] = useState<Tab>('optimism')
@@ -441,6 +635,7 @@ export default function App() {
     { id: 'strengths', label: t('tab_strengths') },
     { id: 'questions', label: t('tab_questions') },
     { id: 'three', label: t('tab_three') },
+    { id: 'breath', label: t('tab_breath') },
   ]
 
   return (
@@ -480,7 +675,10 @@ export default function App() {
           {tab === 'strengths' && <Strengths />}
           {tab === 'questions' && <Questions />}
           {tab === 'three' && <ThreeGoodThings />}
+          {tab === 'breath' && <Breathing onWrite={() => setTab('three')} />}
         </section>
+
+        <Suitcase />
       </div>
     </div>
   )
