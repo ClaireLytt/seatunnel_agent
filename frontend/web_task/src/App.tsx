@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import { runTask } from '@/api'
 import type { DoneEvent } from '@/api'
 import { Card } from '@shared/components/card'
@@ -24,7 +25,7 @@ function errorText(e: unknown): string {
 
 export default function App() {
   const { t, i18n } = useTranslation()
-  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   const [goal, setGoal] = useState('')
   const [url, setUrl] = useState('http://127.0.0.1:7860/')

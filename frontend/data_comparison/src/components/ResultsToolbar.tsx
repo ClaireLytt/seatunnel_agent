@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import i18n from '@/i18n'
 import { exportUrl, standaloneReportUrl } from '@/api'
 
@@ -11,7 +12,7 @@ const linkCls =
 // download, standalone report opens in a new tab.
 export function ResultsToolbar({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation()
-  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   return (
     <div data-testid="results-toolbar" className="flex items-center gap-2">

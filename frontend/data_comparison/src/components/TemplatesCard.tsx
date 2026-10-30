@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import {
   batchRunTemplates,
   deleteTemplate,
@@ -28,7 +29,7 @@ export function TemplatesCard({
   resetSeq: number
 }) {
   const { t, i18n } = useTranslation()
-  const lang = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
   const [name, setName] = useState('')
   const [templates, setTemplates] = useState<TemplateSummary[]>([])
   const [selected, setSelected] = useState('')

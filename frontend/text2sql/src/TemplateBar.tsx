@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import { fetchTemplates, type Template } from '@/api'
 
 /** Quick-access template buttons above the chat input. */
@@ -13,7 +14,7 @@ export function TemplateBar({ onSelect }: { onSelect: (hint: string) => void }) 
 
   if (templates.length === 0) return null
 
-  const lang = i18n.language === 'zh' ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   return (
     <div className="st-template-bar flex flex-wrap gap-1.5 pb-2">

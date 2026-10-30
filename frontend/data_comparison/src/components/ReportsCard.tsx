@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import i18n from '@/i18n'
 import { diffReports, listReports, loadReport, saveReport } from '@/api'
 import { Collapsible, inputCls, labelCls, smallBtnCls } from '@/components/Collapsible'
 
-const lang = () => (i18n.language.startsWith('zh') ? 'zh' : 'en')
+const lang = () => langOf(i18n)
 
 // Report persistence (legacy ui.py _save_report/_list_reports/_load_report
 // + report diff ui.py:1353): save the current comparison under a

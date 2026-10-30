@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import { load as parseYaml } from 'js-yaml'
 import {
   ApiError,
@@ -34,7 +35,7 @@ const categoryLabel = (c: TopCategory, lang: 'zh' | 'en') =>
 
 export default function App() {
   const { t, i18n } = useTranslation()
-  const lang: 'zh' | 'en' = i18n.language.startsWith('zh') ? 'zh' : 'en'
+  const lang = langOf(i18n)
 
   const [sql, setSql] = useState('')
   const [dialect, setDialect] = useState('hive')

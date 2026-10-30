@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { langOf } from '@shared/lang'
 import i18n from '@/i18n'
 import {
   scheduleStart,
@@ -12,7 +13,7 @@ import {
 } from '@/api'
 import { Collapsible, inputCls, labelCls, smallBtnCls } from '@/components/Collapsible'
 
-const lang = () => (i18n.language.startsWith('zh') ? 'zh' : 'en')
+const lang = () => langOf(i18n)
 
 // Scheduled comparison (legacy accordion E, ui.py:1276) + webhook fields
 // (legacy accordion X, ui.py:1292). The webhook URL / notify-on-fail ride
