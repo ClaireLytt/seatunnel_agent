@@ -9,6 +9,9 @@ RERUN_I18N: dict[str, dict[str, str]] = {
         "rpt_title": "Rerun Plan",
         "rpt_stats": ("rerun {rerun} of {total} tasks · batches {batches} · "
                       "blast radius {radius}% · untouched {untouched}"),
+        "rpt_eta": ("Estimated duration {total} (per batch: {batches} — "
+                    "max within a batch, batches in sequence; task "
+                    "durations default to 1)"),
         "rpt_steps": "Plan (run batches in order, tasks within a batch in parallel)",
         "rpt_col_batch": "batch",
         "rpt_col_task": "task",
@@ -32,6 +35,8 @@ RERUN_I18N: dict[str, dict[str, str]] = {
         "rpt_title": "任务重跑计划",
         "rpt_stats": ("重跑 {rerun} / 共 {total} 个任务 · 批次 {batches} · "
                       "影响面 {radius}% · 不受影响 {untouched}"),
+        "rpt_eta": ("预计耗时 {total}（各批次 {batches} — 批内取最大、"
+                    "批间相加；任务时长缺省为 1）"),
         "rpt_steps": "计划（按批次顺序执行，同批次内可并行）",
         "rpt_col_batch": "批次",
         "rpt_col_task": "任务",

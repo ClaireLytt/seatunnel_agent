@@ -46,6 +46,8 @@ class RerunPlan:
     untouched: list[str] = field(default_factory=list)
     unschedulable: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    batch_etas: list[float] = field(default_factory=list)  # max dur per batch
+    total_eta: float = 0.0  # sum of batch ETAs (batches run sequentially)
 
     @property
     def blast_radius(self) -> float:
@@ -63,6 +65,8 @@ class RerunPlan:
             "untouched": list(self.untouched),
             "unschedulable": list(self.unschedulable),
             "warnings": list(self.warnings),
+            "batch_etas": list(self.batch_etas),
+            "total_eta": self.total_eta,
         }
 
 
@@ -146,4 +150,8 @@ def plan_rerun(graph: TaskGraph, failed: str | list[str],
                 from_failed=roots,
                 stale_success=name in ok_names and name not in failed_names))
     plan.untouched = sorted(set(graph.nodes) - members)
+    # ETA: tasks within a batch run in parallel (max), batches in sequence
+    plan.batch_etas = [round(max(graph.nodes[n] for n in batch), 2)
+                       for batch in batches]
+    plan.total_eta = round(sum(plan.batch_etas), 2)
     return plan

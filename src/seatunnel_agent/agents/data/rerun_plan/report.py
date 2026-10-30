@@ -21,6 +21,11 @@ def render_markdown(result: RerunPlan, lang: str = "zh",
                  radius=f"{result.blast_radius * 100:g}",
                  untouched=len(result.untouched)) + "**",
              ""]
+    if result.total_eta:
+        etas = " + ".join(f"{e:g}" for e in result.batch_etas)
+        lines.append(tp(lang, "rpt_eta").format(
+            total=f"{result.total_eta:g}", batches=etas))
+        lines.append("")
     if result.tasks:
         lines.append(f"### {tp(lang, 'rpt_steps')}")
         lines.append(f"| {tp(lang, 'rpt_col_batch')} "

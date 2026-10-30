@@ -65,6 +65,19 @@ def test_failed_root_through_failed_root():
     assert by["c"].from_failed == ["a", "b"]
 
 
+def test_duration_aware_eta():
+    dag = ('{"tasks":[{"name":"a","duration":10},'
+           '{"name":"b","deps":["a"],"duration":3},'
+           '{"name":"c","deps":["a"],"duration":7},'
+           '{"name":"d","deps":["b","c"],"duration":2}]}')
+    result = plan_rerun(parse_dag(dag), "a")
+    # batch1 a=10, batch2 max(b=3, c=7)=7, batch3 d=2
+    assert result.batch_etas == [10.0, 7.0, 2.0]
+    assert result.total_eta == 19.0
+    md = render_markdown(result, lang="en")
+    assert "Estimated duration 19" in md
+
+
 def test_bad_inputs():
     graph = parse_dag(DEMO)
     with pytest.raises(ValueError, match="no failed"):
