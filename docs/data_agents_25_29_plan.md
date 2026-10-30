@@ -151,3 +151,11 @@ tests/test_<name>.py        # 确定性核心测试
 2. [x] rerun_plan: parallel runner script - cmd template renders bash with
    within-batch parallelism and barrier waits between batches.
 3. [x] sync_strategy: config parallelism scaled by table size (1/2/4).
+
+## Phase 11 roadmap (LLM layer, opt-in everywhere)
+
+1. [x] pipeline_migrate: rewrite advice for the riskiest jobs.
+2. [ ] rerun_plan: incident-note draft from the plan (failed set, blast
+   radius, ETA, groups) - ready to paste into the ops channel.
+3. [ ] sync_strategy: rollout narrative - why each strategy, cutover
+   steps and monitoring points, one bounded call per fleet.
