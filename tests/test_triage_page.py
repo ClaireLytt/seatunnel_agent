@@ -86,8 +86,8 @@ def test_triage_no_key_503_surfaced(page_url):
 
         page.locator("input[type=text]").first.fill("Doris sink 写入丢数据")
         page.get_by_role("button", name="分诊", exact=True).click()
-        expect(page.get_by_text("!", exact=False)).to_be_visible(
-            timeout=15000)
+        expect(page.get_by_text("API_KEY is not set",
+                                exact=False)).to_be_visible(timeout=15000)
         expect(page.locator("body")).not_to_contain_text("Traceback")
         browser.close()
 
