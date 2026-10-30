@@ -8,8 +8,8 @@ const resources = {
         'Check actual DDL against the promises a team declared in YAML — ' +
         'missing tables and columns, type and partition violations, ' +
         'comment requirements. No database connection, nothing executed.',
-      contract_label: 'Contract (YAML)',
-      contract_ph:
+      extra_label: 'Contract (YAML)',
+      extra_ph:
         'tables:\n' +
         '  - name: dwd.orders\n' +
         '    columns:\n' +
@@ -27,7 +27,7 @@ const resources = {
       sql_ph: 'Paste CREATE TABLE statements…',
       scan_sql_btn: 'Check DDL',
       empty_dir: '⚠️ Provide a SQL directory first.',
-      empty_contract: '⚠️ Paste the YAML contract first.',
+      empty_extra: '⚠️ Paste the YAML contract first.',
       bad_dir: '⚠️ Not a directory: ',
       empty_sql: '⚠️ Paste some DDL first.',
       running: 'Checking…',
@@ -40,8 +40,8 @@ const resources = {
       subtitle:
         '拿 YAML 里声明的表承诺对照实际 DDL — 表/列缺失、类型与分区' +
         '违约、注释要求逐条报出。不连接数据库、不执行任何语句。',
-      contract_label: '契约（YAML）',
-      contract_ph:
+      extra_label: '契约（YAML）',
+      extra_ph:
         'tables:\n' +
         '  - name: dwd.orders\n' +
         '    columns:\n' +
@@ -56,7 +56,7 @@ const resources = {
       sql_label: 'DDL 输入',
       sql_ph: '粘贴 CREATE TABLE 语句…',
       empty_dir: '⚠️ 请先填写 SQL 目录。',
-      empty_contract: '⚠️ 请先粘贴契约 YAML。',
+      empty_extra: '⚠️ 请先粘贴契约 YAML。',
       bad_dir: '⚠️ 不是有效目录: ',
       empty_sql: '⚠️ 请先粘贴 DDL。',
       scan_sql_btn: '校验 DDL',
