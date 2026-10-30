@@ -28,6 +28,9 @@ class RecommendRequest(BaseModel):
     file: str | None = Field(
         None, description="Table characteristics inventory (.json/.csv)")
     text: str | None = Field(None, description="Inline JSON/CSV inventory")
+    llm: bool = Field(
+        False, description="Also write the rollout narrative via the "
+                           "configured LLM (needs an API key)")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
     report: bool = Field(False, description="Include the rendered markdown report")
 
@@ -61,7 +64,19 @@ def run_recommend(req: RecommendRequest) -> RecommendResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     lang = normalize_lang(req.lang)
     report = render_markdown(result, lang=lang) if req.report else None
-    return RecommendResponse(result=result.to_dict(), report=report,
+    payload = result.to_dict()
+    if req.llm:
+        from .advisor_llm import rollout_narrative
+        from .i18n import tp
+
+        try:
+            narrative = rollout_narrative(result, lang=lang)
+        except Exception as exc:  # missing key, provider errors
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        payload["rollout_narrative"] = narrative
+        if report is not None:
+            report += (f"\n\n### {tp(lang, 'rpt_rollout')}\n{narrative}\n")
+    return RecommendResponse(result=payload, report=report,
                              elapsed_ms=ms_since(start))
 
 

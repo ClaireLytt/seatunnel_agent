@@ -35,6 +35,9 @@ class PlanRequest(BaseModel):
         "", description="Scheduler status export: {'task':'state'} JSON or "
                         "task=state lines (overrides failed/succeeded)")
     cmd: str = Field("", description="Command template with {task}")
+    llm: bool = Field(
+        False, description="Also draft an incident note via the configured "
+                           "LLM (needs an API key)")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
     report: bool = Field(False, description="Include the rendered markdown report")
 
@@ -76,7 +79,19 @@ def run_plan(req: PlanRequest) -> PlanResponse:
     lang = normalize_lang(req.lang)
     report = (render_markdown(result, lang=lang, cmd_template=req.cmd)
               if req.report else None)
-    return PlanResponse(result=result.to_dict(), report=report,
+    payload = result.to_dict()
+    if req.llm:
+        from .advisor_llm import incident_note
+        from .i18n import tp
+
+        try:
+            note = incident_note(result, lang=lang)
+        except Exception as exc:  # missing key, provider errors
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        payload["incident_note"] = note
+        if report is not None:
+            report += f"\n\n### {tp(lang, 'rpt_incident_note')}\n{note}\n"
+    return PlanResponse(result=payload, report=report,
                         elapsed_ms=ms_since(start))
 
 

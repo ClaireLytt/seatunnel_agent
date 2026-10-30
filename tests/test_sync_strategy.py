@@ -149,6 +149,37 @@ def test_rows_moved_estimate():
     assert "| - |" in render_markdown(unknown, lang="en")
 
 
+def test_rollout_narrative_wiring(monkeypatch):
+    """API llm=true appends the narrative; the LLM call is stubbed and
+    receives the report without the long config blobs."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.sync_strategy import advisor_llm
+    from seatunnel_agent.agents.data.sync_strategy import api as ss_api
+
+    seen: dict = {}
+
+    def fake(report, lang="zh"):
+        seen["n"] = len(report.recommendations)
+        return "ROLLOUT"
+
+    monkeypatch.setattr(advisor_llm, "rollout_narrative", fake)
+    app = FastAPI()
+    app.include_router(ss_api.router)
+    client = TestClient(app)
+    res = client.post("/api/syncstrategy/recommend",
+                      json={"text": DEMO, "llm": True, "report": True,
+                            "lang": "zh"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["result"]["rollout_narrative"] == "ROLLOUT"
+    assert seen["n"] == 5
+    assert "落地推进方案" in body["report"]
+    res = client.post("/api/syncstrategy/recommend", json={"text": DEMO})
+    assert "rollout_narrative" not in res.json()["result"]
+
+
 def test_config_parallelism_scales_with_rows():
     by = _rec()
     assert "parallelism = 1" in by["ods.dict_region"].config   # 5k rows

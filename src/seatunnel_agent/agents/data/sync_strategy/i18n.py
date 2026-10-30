@@ -14,6 +14,7 @@ SYNC_I18N: dict[str, dict[str, str]] = {
         "rpt_col_schedule": "schedule",
         "rpt_fleet": ("Recommended mix moves {moved} rows/day vs {full} "
                       "all-full — saves {pct}%"),
+        "rpt_rollout": "Rollout narrative (LLM — review before executing)",
         "rpt_col_rows": "rows/sync (est.)",
         "rows_saving": "(saves {pct}% vs full)",
         "schedule_streaming": "streaming (long-running)",
@@ -63,6 +64,7 @@ SYNC_I18N: dict[str, dict[str, str]] = {
         "rpt_col_schedule": "调度",
         "rpt_fleet": ("推荐组合每日搬运 {moved} 行，全部全量则为 {full} 行 — "
                       "省 {pct}%"),
+        "rpt_rollout": "落地推进方案（LLM 生成 — 执行前请审阅）",
         "rpt_col_rows": "每次同步行数(估)",
         "rows_saving": "（比全量省 {pct}%）",
         "schedule_streaming": "常驻流作业",

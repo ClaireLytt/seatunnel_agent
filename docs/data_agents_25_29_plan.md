@@ -155,7 +155,7 @@ tests/test_<name>.py        # 确定性核心测试
 ## Phase 11 roadmap (LLM layer, opt-in everywhere)
 
 1. [x] pipeline_migrate: rewrite advice for the riskiest jobs.
-2. [ ] rerun_plan: incident-note draft from the plan (failed set, blast
+2. [x] rerun_plan: incident-note draft from the plan (failed set, blast
    radius, ETA, groups) - ready to paste into the ops channel.
-3. [ ] sync_strategy: rollout narrative - why each strategy, cutover
+3. [x] sync_strategy: rollout narrative - why each strategy, cutover
    steps and monitoring points, one bounded call per fleet.

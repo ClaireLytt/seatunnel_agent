@@ -87,9 +87,11 @@ def dagopt(path, text, deadline, lang, fmt, output) -> None:
 @click.option("--statuses", default="",
               help='调度器状态导出（{"task":"state"} JSON 或 task=state 行）')
 @click.option("--cmd", default="", help="命令模板，用 {task} 占位")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草事故通告（需配置 API key）")
 @_common
-def rerun(path, text, failed, succeeded, statuses, lang, fmt, output,
-          cmd) -> None:
+def rerun(path, text, failed, succeeded, statuses, use_llm, lang, fmt,
+          output, cmd) -> None:
     """任务重跑规划 — 失败节点 × 下游闭包的最小重跑批次与影响面。"""
     from seatunnel_agent.agents.data.rerun_plan import (
         parse_dag,
@@ -106,8 +108,18 @@ def rerun(path, text, failed, succeeded, statuses, lang, fmt, output,
         result = plan_rerun(graph, failed, succeeded)
     else:
         raise click.UsageError("提供 --failed 或 --statuses")
-    _emit(result.to_dict(),
-          render_markdown(result, lang=lang, cmd_template=cmd), fmt, output)
+    markdown = render_markdown(result, lang=lang, cmd_template=cmd)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.rerun_plan.advisor_llm import (
+            incident_note,
+        )
+        from seatunnel_agent.agents.data.rerun_plan.i18n import tp
+
+        note = incident_note(result, lang=lang)
+        payload["incident_note"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_incident_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
 
 
 @click.command("backfill-sql")
@@ -158,8 +170,10 @@ def _emit_confs(out_dir: str, items: list[tuple[str, str]]) -> None:
 @click.option("--text", type=str, default=None, help="内联清单或 DDL")
 @click.option("--emit-configs", "emit_dir", type=click.Path(file_okay=False),
               default=None, help="把每张表的 SeaTunnel 配置骨架写到该目录")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 写落地推进方案（需配置 API key）")
 @_common
-def sync_strategy(path, text, emit_dir, lang, fmt, output) -> None:
+def sync_strategy(path, text, emit_dir, use_llm, lang, fmt, output) -> None:
     """增量同步策略 — 全量/增量/CDC 推荐、风险与 SeaTunnel 配置骨架。"""
     from seatunnel_agent.agents.data.sync_strategy import (
         parse_tables,
@@ -168,7 +182,18 @@ def sync_strategy(path, text, emit_dir, lang, fmt, output) -> None:
     )
 
     result = recommend(parse_tables(_read(path, text, "表特征清单")))
-    _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.sync_strategy.advisor_llm import (
+            rollout_narrative,
+        )
+        from seatunnel_agent.agents.data.sync_strategy.i18n import tp
+
+        narrative = rollout_narrative(result, lang=lang)
+        payload["rollout_narrative"] = narrative
+        markdown += f"\n\n### {tp(lang, 'rpt_rollout')}\n{narrative}\n"
+    _emit(payload, markdown, fmt, output)
     if emit_dir:
         _emit_confs(emit_dir, [(r.table, r.config)
                                for r in result.recommendations if r.config])

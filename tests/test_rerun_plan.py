@@ -65,6 +65,32 @@ def test_failed_root_through_failed_root():
     assert by["c"].from_failed == ["a", "b"]
 
 
+def test_incident_note_wiring(monkeypatch):
+    """API llm=true appends the drafted note; the LLM call is stubbed."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.rerun_plan import advisor_llm
+    from seatunnel_agent.agents.data.rerun_plan import api as rp_api
+
+    monkeypatch.setattr(advisor_llm, "incident_note",
+                        lambda plan, lang="zh": "NOTE-" + str(len(plan.tasks)))
+    app = FastAPI()
+    app.include_router(rp_api.router)
+    client = TestClient(app)
+    res = client.post("/api/rerun/plan",
+                      json={"text": "a -> b", "failed": "a",
+                            "llm": True, "report": True, "lang": "zh"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["result"]["incident_note"] == "NOTE-2"
+    assert "事故通告草稿" in body["report"]
+    # default path untouched
+    res = client.post("/api/rerun/plan",
+                      json={"text": "a -> b", "failed": "a"})
+    assert "incident_note" not in res.json()["result"]
+
+
 def test_runner_script_parallel_batches():
     result = plan_rerun(parse_dag(DEMO), "clean_orders, clean_users")
     script = result.runner_script("rerun {task}")
