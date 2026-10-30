@@ -112,7 +112,7 @@ body {
   font-family: 'Special Elite', 'Courier New', monospace;
   letter-spacing: 0.22em;
   font-size: 11px;
-  color: rgba(217, 154, 78, 0.72);
+  color: rgba(222, 165, 92, 0.9);
   text-transform: uppercase;
 }
 
@@ -126,17 +126,17 @@ body {
 
 .mg-sub {
   font-style: italic;
-  color: rgba(232, 220, 196, 0.62);
+  color: rgba(236, 225, 203, 0.82);
 }
 
 .mg-ink {
-  color: rgba(232, 220, 196, 0.88);
+  color: rgba(238, 228, 206, 0.94);
 }
 .mg-fade {
-  color: rgba(232, 220, 196, 0.62);
+  color: rgba(236, 225, 203, 0.82);
 }
 .mg-mute {
-  color: rgba(232, 220, 196, 0.42);
+  color: rgba(232, 220, 196, 0.68);
 }
 
 /* aged paper — archival document feel */
@@ -187,7 +187,7 @@ body {
   font-size: 12px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: rgba(232, 220, 196, 0.5);
+  color: rgba(232, 220, 196, 0.7);
   padding: 10px 2px;
   border: 0;
   border-bottom: 1px solid transparent;
@@ -279,7 +279,7 @@ body {
 }
 
 .mg-input::placeholder {
-  color: rgba(232, 220, 196, 0.3);
+  color: rgba(232, 220, 196, 0.55);
 }
 
 /* result cards */
@@ -309,7 +309,7 @@ body {
   font-family: 'Special Elite', 'Courier New', monospace;
   font-size: 11px;
   letter-spacing: 0.14em;
-  color: rgba(232, 220, 196, 0.5);
+  color: rgba(232, 220, 196, 0.7);
   background: none;
   border: 0;
   padding: 0;

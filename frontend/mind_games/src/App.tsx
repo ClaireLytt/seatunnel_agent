@@ -647,7 +647,6 @@ export default function App() {
       <div className="relative mx-auto max-w-[760px] px-4 py-12">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <p className="mg-label mb-4">Room 1913 · {t('badge', 'the garden corner')}</p>
             <h1 className="mg-title text-4xl md:text-5xl">{t('title')}</h1>
             <p className="mg-sub mt-4 max-w-[560px] text-base leading-relaxed">{t('subtitle')}</p>
           </div>
