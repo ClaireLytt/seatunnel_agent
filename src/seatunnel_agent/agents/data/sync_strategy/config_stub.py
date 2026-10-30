@@ -13,10 +13,24 @@ from .advisor import SourceTable
 
 __all__ = ["config_stub"]
 
-_ENV_BATCH = 'env {\n  parallelism = 2\n  job.mode = "BATCH"\n}'
-_ENV_STREAM = 'env {\n  parallelism = 2\n  job.mode = "STREAMING"\n}'
 _SINK = ('sink {\n  # fill in: the warehouse sink '
          '(Hive / Doris / Jdbc ...)\n}')
+
+
+def _parallelism(rows: int) -> int:
+    """Scale source parallelism with table size (unknown rows → 2)."""
+    if not rows:
+        return 2
+    if rows < 1_000_000:
+        return 1
+    if rows < 100_000_000:
+        return 2
+    return 4
+
+
+def _env(table: SourceTable, mode: str) -> str:
+    return (f"env {{\n  parallelism = {_parallelism(table.rows)}\n"
+            f'  job.mode = "{mode}"\n}}')
 
 
 def _jdbc_source(query: str, note: str = "") -> str:
@@ -47,7 +61,7 @@ def config_stub(table: SourceTable, strategy: str) -> str:
             '    startup.mode = "initial"',
             "  }",
             "}"])
-        return "\n\n".join([_ENV_STREAM, source, _SINK])
+        return "\n\n".join([_env(table, "STREAMING"), source, _SINK])
     if strategy == "incr_timestamp":
         source = _jdbc_source(
             f"SELECT * FROM {table.table} "
@@ -61,4 +75,4 @@ def config_stub(table: SourceTable, strategy: str) -> str:
             note="append-only pull; schedule periodic full compares")
     else:  # full
         source = _jdbc_source(f"SELECT * FROM {table.table}")
-    return "\n\n".join([_ENV_BATCH, source, _SINK])
+    return "\n\n".join([_env(table, "BATCH"), source, _SINK])

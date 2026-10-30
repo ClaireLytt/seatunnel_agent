@@ -149,6 +149,16 @@ def test_rows_moved_estimate():
     assert "| - |" in render_markdown(unknown, lang="en")
 
 
+def test_config_parallelism_scales_with_rows():
+    by = _rec()
+    assert "parallelism = 1" in by["ods.dict_region"].config   # 5k rows
+    assert "parallelism = 2" in by["ods.users"].config          # 3M
+    assert "parallelism = 4" in by["ods.events"].config         # 900M
+    # unknown rows (e.g. from DDL) default to 2
+    unknown = recommend(parse_tables('[{"table":"t","has_pk":true}]'))
+    assert "parallelism = 2" in unknown.recommendations[0].config
+
+
 def test_fleet_rows_summary():
     report = recommend(parse_tables(DEMO))
     moved, full = report.fleet_rows()
