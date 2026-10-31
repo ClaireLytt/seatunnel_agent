@@ -81,6 +81,7 @@
     "model_review",
     "dup_pipeline",
     "mask_preview",
+    "mock_data",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

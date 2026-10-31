@@ -382,6 +382,7 @@ def register(cli) -> None:
     cli.add_command(modelreview)
     cli.add_command(duppipeline)
     cli.add_command(maskpreview)
+    cli.add_command(mockdata)
 
 
 @click.command("rollbackplan")
@@ -1610,3 +1611,46 @@ def maskpreview(path, text, preview_rows, use_llm, fail_high,
     _emit(payload, markdown, fmt, output)
     if fail_high:
         fail_on_high(preview.columns, fmt, label=lambda c: c.name)
+@click.command("mockdata")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="样例 CSV（带表头）或 JSONL 文件")
+@click.option("--text", type=str, default=None, help="内联样例行")
+@click.option("--count", "-n", type=click.IntRange(min=1, max=10000),
+              default=50, show_default=True, help="生成行数")
+@click.option("--seed", type=int, default=42, show_default=True,
+              help="随机种子（同样例同种子必得同结果）")
+@click.option("--csv-out", "csv_out", type=click.Path(dir_okay=False),
+              default=None, help="把生成的 CSV 另存到该文件")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草数据集说明（需配置 API key,只发策略不发数据）")
+@report_options
+def mockdata(path, text, count, seed, csv_out, use_llm,
+             lang, fmt, output) -> None:
+    """测试数据生成 — 真实样例 → 保形确定性 mock 行。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.mock_data import (
+        generate_mock,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+
+    try:
+        headers, rows = parse_rows(_read(path, text, "样例行"))
+        result = generate_mock(headers, rows, count=count, seed=seed)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if csv_out:
+        Path(csv_out).write_text(result.to_csv(), encoding="utf-8")
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.mock_data.advisor_llm import (
+            dataset_note,
+        )
+        from seatunnel_agent.agents.data.mock_data.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, dataset_note(result, lang=lang),
+            "dataset_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
