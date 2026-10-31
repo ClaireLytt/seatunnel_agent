@@ -253,9 +253,24 @@ def analyze_workload(sql_text: str,
     return advice
 
 
-def recommend(advice: WorkloadAdvice,
-              ddl_text: str = "") -> WorkloadAdvice:
-    """Attach partition / bucket / index picks and DDL fragments."""
+def _bucket_count(table_bytes: float | None) -> int:
+    """Bucket count sized to the table: ~256MB per bucket, a power of
+    two clamped to [4, 512]; 32 when the size is unknown."""
+    if not table_bytes or table_bytes <= 0:
+        return 32
+    import math
+
+    raw = max(table_bytes / (256 * 1024 * 1024), 1.0)
+    return min(512, max(4, 2 ** round(math.log2(raw))))
+
+
+def recommend(advice: WorkloadAdvice, ddl_text: str = "",
+              table_bytes: dict[str, float] | None = None) -> WorkloadAdvice:
+    """Attach partition / bucket / index picks and DDL fragments.
+
+    ``table_bytes`` (from a stats inventory) sizes the bucket count;
+    without it the conventional 32 is kept.
+    """
     types = parse_ddl_types(ddl_text)
     for t in advice.tables:
         cols = t.columns
@@ -276,7 +291,9 @@ def recommend(advice: WorkloadAdvice,
             key=lambda n: (-cols[n].join, -cols[n].total, n))
         if join_cands:
             t.bucket_col = join_cands[0]
-            t.ddl.append(f"CLUSTERED BY ({t.bucket_col}) INTO 32 BUCKETS")
+            buckets = _bucket_count((table_bytes or {}).get(t.table))
+            t.ddl.append(f"CLUSTERED BY ({t.bucket_col}) "
+                         f"INTO {buckets} BUCKETS")
         eq_cols = sorted((name for name, s in cols.items()
                           if s.eq and name != t.partition_col),
                          key=lambda n: (-cols[n].eq, n))

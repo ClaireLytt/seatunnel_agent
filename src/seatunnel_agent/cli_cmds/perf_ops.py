@@ -149,23 +149,28 @@ def index_adv(directory, text, ddl_path, dialect, fail_on_audit, stats_path,
         raise click.UsageError("提供 --dir 或 --text")
     ddl = (Path(ddl_path).read_text(encoding="utf-8", errors="replace")
            if ddl_path else "")
-    advice = recommend(analyze_workload(workload, dialect=dialect),
-                       ddl_text=ddl)
+    stats = None
+    if stats_path:
+        from seatunnel_agent.agents.data.sql_cost import parse_stats
+
+        stats = parse_stats(Path(stats_path).read_text(encoding="utf-8",
+                                                       errors="replace"))
+    advice = recommend(
+        analyze_workload(workload, dialect=dialect), ddl_text=ddl,
+        table_bytes={t: float(s.bytes) for t, s in stats.items()}
+        if stats else None)
     payload = advice.to_dict()
     markdown = render_markdown(advice, lang=lang)
     if ddl:
         findings = audit(advice, ddl)
         payload["audit"] = findings
         markdown += "\n\n" + render_audit(findings, lang=lang)
-    if stats_path:
+    if stats is not None:
         from seatunnel_agent.agents.data.index_advisor.roi import (
             partition_roi,
             render_roi,
         )
-        from seatunnel_agent.agents.data.sql_cost import parse_stats
 
-        stats = parse_stats(Path(stats_path).read_text(encoding="utf-8",
-                                                       errors="replace"))
         payload["roi"] = partition_roi(advice, workload, stats)
         markdown += "\n\n" + render_roi(payload["roi"], lang=lang)
     _emit(payload, markdown, fmt, output)

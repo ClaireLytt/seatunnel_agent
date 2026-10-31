@@ -309,6 +309,13 @@ def test_index_adv_partition_roi():
         "-d", str(EX / "indexadvisor_demo"), "--stats", stats,
         "--lang", "en"])
     assert res.exit_code == 0 and "Partition ROI" in res.output
+    # bucket counts sized by table bytes: 100GB orders -> 512-capped
+    # power of two, tiny dim.regions -> the 4 floor
+    assert "CLUSTERED BY (user_id) INTO 512 BUCKETS" in res.output
+    assert "INTO 4 BUCKETS" in res.output
+    # without stats the conventional 32 is kept
+    res = runner.invoke(index_adv, ["-d", str(EX / "indexadvisor_demo")])
+    assert "INTO 32 BUCKETS" in res.output
 
 
 def test_index_adv_fail_on_audit_gate():
