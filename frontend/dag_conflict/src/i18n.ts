@@ -14,6 +14,8 @@ const resources = {
       file_label: 'Scenario file path',
       file_ph: 'scenario JSON, e.g. examples/dagconflict_demo/scenario.json',
       run_btn: 'Simulate file',
+      place_label: 'Admission check: DAG name (optional)',
+      place_ph: 'e.g. etl_users — sweeps start offsets for the best slot',
       text_acc: 'Simulate pasted scenario',
       text_label: 'Scenario JSON',
       text_ph:
@@ -40,6 +42,8 @@ const resources = {
       file_label: '场景文件路径',
       file_ph: '场景 JSON，如 examples/dagconflict_demo/scenario.json',
       run_btn: '模拟文件',
+      place_label: '准入检查：DAG 名（可选）',
+      place_ph: '如 etl_users — 扫描候选起点选最优错峰位',
       text_acc: '用粘贴的场景模拟',
       text_label: '场景 JSON',
       text_ph:

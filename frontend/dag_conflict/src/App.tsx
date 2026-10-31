@@ -9,6 +9,7 @@ export default function App() {
   const { t, i18n } = useTranslation()
   const [file, setFile] = useState('examples/dagconflict_demo/scenario.json')
   const [text, setText] = useState('')
+  const [place, setPlace] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
@@ -27,6 +28,7 @@ export default function App() {
         useText ? null : file.trim(),
         useText ? text : null,
         i18n.language,
+        place,
       )
       setReport(res.report ?? '')
     } catch (e) {
@@ -44,6 +46,7 @@ export default function App() {
   const clear = () => {
     setFile('examples/dagconflict_demo/scenario.json')
     setText('')
+    setPlace('')
     setError('')
     setReport('')
   }
@@ -62,6 +65,16 @@ export default function App() {
               value={file}
               onChange={(e) => setFile(e.target.value)}
               placeholder={t('file_ph')}
+              spellCheck={false}
+              className="w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink"
+            />
+            <label className="mb-2 mt-3 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+              {t('place_label')}
+            </label>
+            <input
+              value={place}
+              onChange={(e) => setPlace(e.target.value)}
+              placeholder={t('place_ph')}
               spellCheck={false}
               className="w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink"
             />

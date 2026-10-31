@@ -86,3 +86,25 @@ def test_report_zh_en_and_tool():
     assert "dws.sales" in md
     assert "must not be empty" in dag_conflict(" ")
     assert "bad input" in dag_conflict("{broken")
+
+
+def test_api_place_admission():
+    """'place' adds the placement payload and section; unknown dag 400s."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.dag_conflict import api as dc_api
+
+    app = FastAPI()
+    app.include_router(dc_api.router)
+    client = TestClient(app)
+    res = client.post("/api/dagconflict/simulate", json={
+        "text": DEMO, "place": "etl_users", "report": True, "lang": "en"})
+    assert res.status_code == 200
+    body = res.json()
+    best = body["result"]["placement"]["best"]
+    assert best["windows"] == 0 and best["write_conflicts"] == 0
+    assert "Admission check" in body["report"]
+    res = client.post("/api/dagconflict/simulate", json={
+        "text": DEMO, "place": "nope"})
+    assert res.status_code == 400
