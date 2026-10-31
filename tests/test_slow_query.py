@@ -89,6 +89,9 @@ def test_report_zh_en_and_tool():
     assert "SQ001" in md
     assert "must not be empty" in slow_query(" ")
     assert "bad input" in slow_query("{broken")
+    # the stage breakdown table lists every submitted stage
+    assert "Stage breakdown" in en or "Stage 分解" in zh
+    assert all(s["stage"] in zh for s in diag.stages)
 
 
 def test_incident_note_wiring(monkeypatch):

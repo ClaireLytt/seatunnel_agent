@@ -110,6 +110,7 @@ class Diagnosis:
     duration_s: float
     baseline_median_s: float = 0.0   # 0: no baseline given
     causes: list[Cause] = field(default_factory=list)
+    stages: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def regression(self) -> float:
@@ -121,12 +122,18 @@ class Diagnosis:
         return {"name": self.name, "duration_s": self.duration_s,
                 "baseline_median_s": self.baseline_median_s,
                 "regression": self.regression,
-                "causes": [c.to_dict() for c in self.causes]}
+                "causes": [c.to_dict() for c in self.causes],
+                "stages": list(self.stages)}
 
 
 def diagnose(run: RunMetrics,
              baseline: list[dict[str, Any]] | None = None) -> Diagnosis:
     diag = Diagnosis(name=run.name, duration_s=run.duration_s)
+    diag.stages = [{"stage": s.stage, "task_max_s": s.task_max_s,
+                    "task_median_s": s.task_median_s,
+                    "spill_bytes": s.spill_bytes,
+                    "input_bytes": s.input_bytes, "tasks": s.tasks}
+                   for s in run.stages]
     add = diag.causes.append
 
     worst_skew = 0.0

@@ -78,5 +78,18 @@ def render_markdown(diag: Diagnosis, lang: str = "zh") -> str:
     else:
         lines.append(tp(lang, "rpt_none"))
         lines.append("")
+    if diag.stages:
+        from seatunnel_agent.common.utils import md_table
+
+        lines.append(f"### {tp(lang, 'rpt_stages')}")
+        lines.extend(md_table(
+            ["stage", "task max", "task median",
+             tp(lang, "rpt_col_spill"), tp(lang, "rpt_col_input"),
+             tp(lang, "rpt_col_tasks")],
+            [[s["stage"], fmt_secs(s["task_max_s"]),
+              fmt_secs(s["task_median_s"]), fmt_bytes(s["spill_bytes"]),
+              fmt_bytes(s["input_bytes"]), str(s["tasks"])]
+             for s in diag.stages]))
+        lines.append("")
     lines.append(tp(lang, "rpt_disclaimer"))
     return "\n".join(lines)

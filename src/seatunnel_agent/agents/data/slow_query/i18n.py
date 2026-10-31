@@ -50,6 +50,10 @@ SLOWQ_I18N: dict[str, dict[str, str]] = {
         "diff_stages": "Stages (worst task-max growth first)",
         "diff_only_a": "Stages only in A:",
         "diff_only_b": "Stages only in B:",
+        "rpt_stages": "Stage breakdown",
+        "rpt_col_spill": "spill",
+        "rpt_col_input": "input",
+        "rpt_col_tasks": "tasks",
     },
     "zh": {
         "rpt_title": "慢查询根因",
@@ -85,6 +89,10 @@ SLOWQ_I18N: dict[str, dict[str, str]] = {
         "diff_stages": "各 stage（按 task max 涨幅排序）",
         "diff_only_a": "仅 A 有的 stage：",
         "diff_only_b": "仅 B 有的 stage：",
+        "rpt_stages": "Stage 分解",
+        "rpt_col_spill": "溢写",
+        "rpt_col_input": "输入",
+        "rpt_col_tasks": "任务数",
     },
 }
 
