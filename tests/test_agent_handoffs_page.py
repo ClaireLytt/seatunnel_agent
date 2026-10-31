@@ -142,3 +142,48 @@ def test_pipemigrate_hands_off_migration_dag_to_dagopt(migrate_pair_url):
         # migration jobs became DAG tasks
         assert "build_sales.hql" in page.content()
         browser.close()
+
+
+from seatunnel_agent.agents.data.index_advisor.manifest import (
+    MANIFEST as INDEXADV_MF,
+)
+from seatunnel_agent.agents.data.sql_cost.manifest import (
+    MANIFEST as SQLCOST_MF,
+)
+
+cost_pair_url = make_page_url(
+    SQLCOST_MF,
+    "seatunnel_agent.agents.data.sql_cost.api:router",
+    "/sqlcost", chdir="root",
+    env={"INDEXADVISOR_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "indexadvisor_demo"),
+         "SQLCOST_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "sqlcost_demo")},
+    extra_mounts=[("/indexadvisor", INDEXADV_MF)],
+    extra_routers=["seatunnel_agent.agents.data.index_advisor.api:router"],
+    name="cost_pair_url")
+
+
+@pytest.mark.uitest
+def test_indexadvisor_hands_off_workload_to_sqlcost(cost_pair_url):
+    """Pasted workload on /indexadvisor -> button -> SQL prefilled on
+    /sqlcost (no auto-run: the stats inventory is still the user's)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    workload = "SELECT amount FROM ods.orders WHERE dt = '2024-05-01'"
+    base = cost_pair_url.rsplit("/sqlcost", 1)[0]
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{base}/indexadvisor/", wait_until="networkidle")
+        page.get_by_text("Recommend from pasted SQL", exact=False).click()
+        page.locator("textarea").last.fill(workload)
+        page.get_by_role("button", name="Recommend from text",
+                         exact=True).click()
+        handoff = page.get_by_role(
+            "button", name="Verify the saving on the cost page")
+        expect(handoff).to_be_visible()
+        handoff.click()
+        page.wait_for_url("**/sqlcost/")
+        expect(page.locator("textarea").first).to_have_value(workload)
+        browser.close()

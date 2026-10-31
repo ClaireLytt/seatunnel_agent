@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
@@ -13,6 +13,14 @@ export default function App() {
   const [statsFile, setStatsFile] = useState('examples/sqlcost_demo/stats.json')
   const [statsText, setStatsText] = useState('')
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    const handed = sessionStorage.getItem('seatunnel.handoff.sqlcost')
+    if (!handed) return
+    sessionStorage.removeItem('seatunnel.handoff.sqlcost')
+    setSql(handed)
+  }, [])
+
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
 

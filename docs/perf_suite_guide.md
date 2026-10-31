@@ -55,8 +55,9 @@ sql_perf 读**引擎计划**、slow_query 读**运行指标** — 四个视角�
 
 - 夜里慢了：`/slowquery` 定位主因 → 倾斜去 data_skew / 计划问题去
   `/sqlperf` / 容量问题去 `/sqlcost` 重定容 / 排队去 `/dagconflict` 错峰。
-- 新表上线：`/indexadvisor` 按历史查询定分区分桶 → `/sqlcost` 预估大
-  查询的量级 → 上线后用 `/sqlperf` 验证裁剪真的生效。
+- 新表上线：`/indexadvisor` 按历史查询定分区分桶（粘贴负载时报告上方
+  有「到成本页验证」按钮，一键把 SQL 递到 `/sqlcost`）→ 预估大查询的
+  量级 → 上线后用 `/sqlperf` 验证裁剪真的生效。
 
 示例输入在 `examples/`：`sqlperf_demo`、`indexadvisor_demo`、
 `sqlcost_demo`、`slowquery_demo`、`dagconflict_demo`、
@@ -76,6 +77,8 @@ seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
   --assume-partition ods.users:user_id:10            # what-if:按建议分区重估,直接看省多少
 seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
   --history slow_ledger.jsonl --llm                  # 台账 + LLM 通报草稿（可选）
+seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
+  --fail-over-regression 3                           # 回归 >=3x 基线时 exit 1
 seatunnel-agent dagconflict -f scenario.json \
   --fail-on-conflict --history capacity.jsonl        # 有冲突 exit 1;峰值记台账
 ```

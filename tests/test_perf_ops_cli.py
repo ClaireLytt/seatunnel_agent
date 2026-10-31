@@ -142,3 +142,14 @@ def test_sqlcost_what_if_partition():
                          ).exit_code == 2
     assert runner.invoke(sqlcost, [*args, "--assume-partition",
                                    "ods.users:user_id"]).exit_code == 2
+
+
+def test_slowquery_regression_gate():
+    runner = CliRunner()
+    args = ["-f", str(EX / "slowquery_demo" / "metrics.json"),
+            "--baseline", str(EX / "slowquery_demo" / "baseline.jsonl")]
+    # demo regression is 4.19x: a 3x limit trips, a 10x limit passes
+    res = runner.invoke(slowquery, [*args, "--fail-over-regression", "3"])
+    assert res.exit_code == 1 and "REGRESSION 4.19x" in res.output
+    assert runner.invoke(slowquery, [*args, "--fail-over-regression", "10"]
+                         ).exit_code == 0

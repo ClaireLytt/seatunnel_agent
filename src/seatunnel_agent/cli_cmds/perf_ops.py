@@ -177,9 +177,13 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
               help="慢查询台账：主因/占比/回归倍数追加到该 jsonl")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草慢查询通报（需配置 API key）")
+@click.option("--fail-over-regression", "fail_regression", type=float,
+              default=0.0,
+              help="CI gate：相对基线中位数的回归倍数达到该值时 exit 1"
+                   "（需配合 --baseline）")
 @report_options
-def slowquery(path, text, baseline_path, history_path, use_llm, lang, fmt,
-              output) -> None:
+def slowquery(path, text, baseline_path, history_path, use_llm,
+              fail_regression, lang, fmt, output) -> None:
     """慢查询根因 — 指标 × 基线 → 排序根因与处方；--history 记台账。"""
     from seatunnel_agent.agents.data.slow_query import (
         diagnose,
@@ -211,6 +215,10 @@ def slowquery(path, text, baseline_path, history_path, use_llm, lang, fmt,
             "causes": len(diag.causes),
             "top_share": round(top.share, 3) if top else 0.0,
         }, worse_key="duration_s")
+    if fail_regression and diag.regression >= fail_regression:
+        fail_check(f"REGRESSION {diag.regression:g}x >= "
+                   f"{fail_regression:g}x (baseline median "
+                   f"{diag.baseline_median_s:g}s)", fmt)
 
 
 @click.command("dagconflict")

@@ -14,6 +14,11 @@ export default function App() {
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
 
+  const toSqlcost = () => {
+    sessionStorage.setItem('seatunnel.handoff.sqlcost', text)
+    window.location.href = '/sqlcost/'
+  }
+
   const run = async (useText: boolean) => {
     const src = useText ? text : dir
     if (!src.trim()) {
@@ -130,6 +135,14 @@ export default function App() {
               <div className="mb-3 font-mono text-sm" style={{ color: 'var(--accent)' }}>
                 {error}
               </div>
+            )}
+            {report && text.trim() && (
+              <button
+                onClick={toSqlcost}
+                className="mb-4 w-full rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm font-semibold text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+              >
+                {t('to_sqlcost')}
+              </button>
             )}
             {report && <ReportView markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('report_ph')}</p>}

@@ -103,3 +103,8 @@ slots/memory）± 各 DAG 启动时刻。
 5. [x] sqlcost --assume-partition table:col[:N] what-if: re-estimate
    with the advised partitioning, print the scan delta - quantifies
    index_advisor picks before any DDL runs.
+6. [x] slowquery --fail-over-regression X: exit 1 when the run reaches
+   X times the baseline median (nightly alarm gate).
+7. [x] first perf-suite page handoff: /indexadvisor pasted workload ->
+   "verify on the cost page" button -> /sqlcost SQL prefilled via
+   sessionStorage (no auto-run: stats stay the user's input).
