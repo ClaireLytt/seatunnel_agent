@@ -29,6 +29,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent alertstorm    -f alerts.json [--fail-on-high]
   seatunnel-agent metricattr    -b base.csv -c cur.csv --dims channel --metric gmv
   seatunnel-agent schemaalign   --source src.sql --sink sink.sql
+  seatunnel-agent rollbackplan  -f pipeline.sql -t dwd.t -p dt=2026-10-30
 """
 
 from __future__ import annotations
@@ -375,6 +376,53 @@ def register(cli) -> None:
     cli.add_command(alertstorm)
     cli.add_command(metricattr)
     cli.add_command(schemaalign)
+    cli.add_command(rollbackplan)
+
+
+@click.command("rollbackplan")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="流水线 SQL 脚本文件")
+@click.option("--text", type=str, default=None, help="内联 SQL 脚本")
+@click.option("--table", "-t", required=True, help="写坏的表")
+@click.option("--partitions", "-p", "parts", type=str, default="",
+              help="坏分区（逗号分隔,如 dt=2026-10-30）")
+@click.option("--mode", type=click.Choice(["snapshot", "rerun",
+                                           "overwrite"]),
+              default="rerun", show_default=True, help="恢复方式")
+@click.option("--snapshot", type=str, default="",
+              help="快照表名（mode=snapshot 时）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草事故进展通报（需配置 API key）")
+@report_options
+def rollbackplan(path, text, table, parts, mode, snapshot, dialect,
+                 use_llm, lang, fmt, output) -> None:
+    """回滚编排 — 坏表 × 血缘 → 分层恢复步骤 + 验证。"""
+    from seatunnel_agent.agents.data.rollback_plan import (
+        plan_rollback,
+        render_markdown,
+    )
+
+    partitions = [p.strip() for p in parts.split(",") if p.strip()]
+    try:
+        plan = plan_rollback(_read(path, text, "SQL 脚本"), table,
+                             partitions=partitions, mode=mode,
+                             snapshot=snapshot, dialect=dialect)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(plan, lang=lang)
+    payload = plan.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.rollback_plan.advisor_llm import (
+            rollback_note,
+        )
+        from seatunnel_agent.agents.data.rollback_plan.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, rollback_note(plan, lang=lang),
+            "rollback_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
 
 
 @click.command("schemaalign")

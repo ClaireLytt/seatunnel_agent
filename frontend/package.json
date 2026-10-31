@@ -75,6 +75,7 @@
     "alert_storm",
     "metric_attribution",
     "schema_align",
+    "rollback_plan",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
