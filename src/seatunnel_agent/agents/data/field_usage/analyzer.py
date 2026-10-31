@@ -133,11 +133,16 @@ def analyze_usage(ddl_text: str, queries_text: str,
             for real in set(sources):
                 usage[real].reads += 1
             for star in select.find_all(exp.Star):
+                # only projection stars count: a bare * directly under
+                # the SELECT, or a qualified t.* — the star inside
+                # COUNT(*)/aggregates reads no columns and must not
+                # flag a blind spot
                 owner = None
                 parent = star.parent
                 if isinstance(parent, exp.Column) and parent.table:
                     owner = alias_map.get(parent.table.lower())
-                elif len(set(sources)) == 1:
+                elif (isinstance(parent, exp.Select)
+                        and len(set(sources)) == 1):
                     owner = sources[0]
                 if owner:
                     usage[owner].star_reads += 1

@@ -36,8 +36,11 @@ MANIFEST = AgentManifest(
                       "destructive runs by accident. schema_drift "
                       "reports the diff; this ships the script. Hive "
                       "and MySQL spellings. No database connection.",
-            keywords=("ddl", "迁移", "alter", "migration", "schema",
-                      "脚本", "变更", "evolve", "表结构", "上线"),
+            # no 迁移/脚本/上线: those route ddl_guard's rollback-safety
+            # checks (test_ddl_guard pins them); this tool's distinct
+            # ask is generating ALTERs from two snapshots
+            keywords=("ddl", "alter", "migration", "evolve", "表结构",
+                      "快照", "生成", "加列", "改列"),
         ),
     ),
 )

@@ -103,12 +103,9 @@ def _decimals(values: list[str]) -> int:
 
 
 def _plan_column(name: str, values: list[str], profile) -> ColumnPlan:
-    from seatunnel_agent.agents.data.mask_preview.masker import (
-        _detect_by_name,
-        _detect_by_value,
-    )
+    from seatunnel_agent.agents.data.mask_preview import detect_category
 
-    category = _detect_by_name(name) or _detect_by_value(values[:200])
+    category = detect_category(name, values[:200])
     if category:
         return ColumnPlan(name, f"fake_{category}", category)
     if not values:

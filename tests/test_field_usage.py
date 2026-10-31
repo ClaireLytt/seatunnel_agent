@@ -57,6 +57,17 @@ def test_alias_resolution_and_unqualified():
     assert report.unresolved_refs >= 1        # ambiguous bare x
 
 
+def test_count_star_is_not_a_blind_spot():
+    # review finding: the star inside COUNT(*) reads no columns and
+    # must not flag FU003 (nor exempt the table from FU002)
+    report = analyze_usage("CREATE TABLE t (a INT, b INT)",
+                           "SELECT COUNT(*) FROM t WHERE a = 1")
+    (tu,) = report.tables
+    assert tu.star_reads == 0
+    codes = {f.code for f in report.findings}
+    assert "FU003" not in codes and "FU002" in codes
+
+
 def test_top_columns_ranked():
     report = _demo_report()
     assert report.top_columns[0] == ("dwd.orders.amount", 3)

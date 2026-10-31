@@ -8,12 +8,19 @@ after.  pii_scan plans SQL-level masking from DDL and lineage; this
 masks the data itself.  Nothing leaves the process.
 """
 
-from .masker import ColumnMask, MaskPreview, mask_value, preview_mask
+from .masker import (
+    ColumnMask,
+    MaskPreview,
+    detect_category,
+    mask_value,
+    preview_mask,
+)
 from .report import render_markdown
 
 __all__ = [
     "ColumnMask",
     "MaskPreview",
+    "detect_category",
     "mask_value",
     "preview_mask",
     "render_markdown",

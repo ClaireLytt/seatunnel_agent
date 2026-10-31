@@ -16,7 +16,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["ColumnMask", "MaskPreview", "mask_value", "preview_mask"]
+__all__ = ["ColumnMask", "MaskPreview", "detect_category", "mask_value",
+           "preview_mask"]
 
 # value-shape detectors: category -> regex over the raw cell
 _VALUE_PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
@@ -116,6 +117,13 @@ def _detect_by_value(values: list[str]) -> str | None:
         if hits / len(values) >= _VALUE_SHARE:
             return category
     return None
+
+
+def detect_category(name: str, values: list[str]) -> str | None:
+    """Public seam: sensitive category of a column, by name (pii_scan's
+    catalog) first and value shape second — mock_data synthesizes fakes
+    through this instead of reaching into the private detectors."""
+    return _detect_by_name(name) or _detect_by_value(values)
 
 
 def preview_mask(headers: list[str], rows: list[dict[str, str | None]],

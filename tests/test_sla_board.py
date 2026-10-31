@@ -58,6 +58,16 @@ def test_past_midnight_and_iso_times():
     assert t.misses == 1 and t.worst_late_min == 100.0
 
 
+def test_mixed_time_formats_in_one_row_raise():
+    # review finding: HH:MM and ISO live on different scales — a mixed
+    # row must refuse loudly instead of scoring garbage
+    csv = ("task,date,deadline,finish\n"
+           "t,2026-10-01,07:00,2026-10-01T07:20:00\n")
+    headers, rows = parse_rows(csv)
+    with pytest.raises(ValueError, match="mix HH:MM"):
+        build_board(headers, rows)
+
+
 def test_streak_resets_on_hit():
     csv = ("task,date,deadline,finish\n"
            "t,2026-10-01,07:00,08:00\n"

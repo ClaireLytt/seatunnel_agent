@@ -34,17 +34,21 @@ _STREAK_MIN = 3
 _P90_LATE_MIN = 60.0
 
 
-def _to_minutes(value: str, what: str) -> float:
-    """'HH:MM' (hours may exceed 24) or ISO datetime → minutes."""
+def _to_minutes(value: str, what: str) -> tuple[float, str]:
+    """'HH:MM' (hours may exceed 24) or ISO datetime → (minutes, kind).
+
+    The two kinds live on different scales (minutes-of-day vs epoch
+    minutes), so the caller must refuse rows that mix them — a mixed
+    row would otherwise produce an absurd lateness silently."""
     v = (value or "").strip()
     m = _HM_RE.match(v)
     if m:
-        return int(m.group(1)) * 60 + int(m.group(2))
+        return int(m.group(1)) * 60 + int(m.group(2)), "hm"
     try:
         from datetime import datetime
 
         dt = datetime.fromisoformat(v)
-        return dt.timestamp() / 60
+        return dt.timestamp() / 60, "iso"
     except ValueError:
         raise ValueError(f"{what}: cannot parse time '{v}' "
                          "(use HH:MM or an ISO datetime)")
@@ -137,10 +141,14 @@ def build_board(headers: list[str], rows: list[dict[str, str | None]],
         date = str(r.get(col["date"]) or "").strip()
         if not task or not date:
             raise ValueError(f"row {i + 1}: task and date are required")
-        deadline = _to_minutes(str(r.get(col["deadline"]) or ""),
-                               f"row {i + 1} deadline")
-        finish = _to_minutes(str(r.get(col["finish"]) or ""),
-                             f"row {i + 1} finish")
+        deadline, dk = _to_minutes(str(r.get(col["deadline"]) or ""),
+                                   f"row {i + 1} deadline")
+        finish, fk = _to_minutes(str(r.get(col["finish"]) or ""),
+                                 f"row {i + 1} finish")
+        if dk != fk:
+            raise ValueError(
+                f"row {i + 1}: deadline and finish mix HH:MM with an ISO "
+                "datetime — use one format per row")
         per_task.setdefault(task, []).append((date, finish - deadline))
 
     board = SlaBoard(target=target)

@@ -89,10 +89,10 @@ def _render_create(schema, dialect: str) -> str:
 
 def _change_column(table: str, column: str, col_type: str, comment: str,
                    dialect: str, new_name: str = "") -> str:
+    # hive and mysql happen to share the CHANGE COLUMN spelling, so one
+    # return serves both dialects (the parameter stays for the seam)
+    del dialect
     name_to = new_name or column
-    if dialect == "mysql":
-        return (f"ALTER TABLE {table} CHANGE COLUMN {column} {name_to} "
-                f"{col_type}{_comment_sql(comment)};")
     return (f"ALTER TABLE {table} CHANGE COLUMN {column} {name_to} "
             f"{col_type}{_comment_sql(comment)};")
 
