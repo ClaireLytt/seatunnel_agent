@@ -117,6 +117,13 @@ seatunnel-agent dagconflict -f scenario.json \
                                                      # 错峰建议若推过 deadline 会明说
 seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
   --calibrate metrics.json                           # 校准:预估 vs 实跑的倍率与区间判定
+seatunnel-agent sqlperf -f plan.txt --history plans.jsonl  # 计划台账:发现数/shuffle 趋势
+seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
+  --parallelism 64                                   # 并行度 what-if:指定核数重算耗时区间
+seatunnel-agent skew-runtime log.jsonl --shuffle-dist \
+  --dist-history dist.jsonl                          # 分布台账:最差倾斜比是否在恶化
+seatunnel-agent dagconflict -f scenario.json --compact  # 错峰编排:全部 DAG 贪心重排起点,
+                                                     # 建议起点表 + 前后冲突/峰值/完工对比
 seatunnel-agent perf-report -d inputs/ -o report.md  # 一键体检:按约定文件名
                                                      # (plan.txt/metrics.json/queries/+stats.json/
                                                      #  scenario.json/workload/)能跑的全跑合并一份
