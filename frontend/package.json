@@ -83,6 +83,7 @@
     "mask_preview",
     "mock_data",
     "join_audit",
+    "ddl_evolve",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

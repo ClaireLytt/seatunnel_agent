@@ -384,6 +384,7 @@ def register(cli) -> None:
     cli.add_command(maskpreview)
     cli.add_command(mockdata)
     cli.add_command(joinaudit)
+    cli.add_command(ddlevolve)
 
 
 @click.command("rollbackplan")
@@ -1701,3 +1702,45 @@ def joinaudit(left_path, right_path, keys, use_llm, fail_high,
     _emit(payload, markdown, fmt, output)
     if fail_high:
         fail_on_high(report.findings, fmt)
+@click.command("ddlevolve")
+@click.option("--old", "old_path", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="旧版 DDL 快照文件")
+@click.option("--new", "new_path", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="新版 DDL 快照文件")
+@click.option("--dialect", type=click.Choice(["hive", "mysql"]),
+              default="hive", show_default=True, help="目标方言")
+@click.option("--script-out", "script_out", type=click.Path(dir_okay=False),
+              default=None, help="把迁移脚本另存到该文件")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草上线建议（需配置 API key）")
+@report_options
+def ddlevolve(old_path, new_path, dialect, script_out, use_llm,
+              lang, fmt, output) -> None:
+    """DDL 迁移脚本 — 新旧快照 → 可执行 ALTER 脚本。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.ddl_evolve import (
+        build_migration,
+        render_markdown,
+    )
+
+    try:
+        plan = build_migration(
+            Path(old_path).read_text(encoding="utf-8"),
+            Path(new_path).read_text(encoding="utf-8"), dialect=dialect)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if script_out:
+        Path(script_out).write_text(plan.to_script(), encoding="utf-8")
+    markdown = render_markdown(plan, lang=lang)
+    payload = plan.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.ddl_evolve.advisor_llm import (
+            migration_note,
+        )
+        from seatunnel_agent.agents.data.ddl_evolve.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, migration_note(plan, lang=lang),
+            "migration_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
