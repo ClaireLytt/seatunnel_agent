@@ -10,11 +10,11 @@ from click.testing import CliRunner
 from seatunnel_agent.cli_cmds.perf_ops import (
     dagconflict,
     index_adv,
-    perf_report,
     slowquery,
     sqlcost,
     sqlperf,
 )
+from seatunnel_agent.cli_cmds.perf_report import perf_report
 
 ROOT = Path(__file__).resolve().parents[1]
 EX = ROOT / "examples"
@@ -425,6 +425,15 @@ def test_sqlcost_calibrate(tmp_path):
     cal = json.loads(res.output)["calibration"]
     assert cal["duration"]["actual"] == 600 and cal["duration"]["ratio"] > 0
     assert cal["scan_bytes"]["actual"] == 1000000000
+    # 600s is far outside the tiny pruned query's band -> off-band verdict
+    assert cal["duration"]["in_band"] is False
+    # an in-band run flips the verdict
+    mid = (cal["duration"]["band"][0] + cal["duration"]["band"][1]) / 2
+    actual.write_text(json.dumps({"duration_s": mid}), encoding="utf-8")
+    res = runner.invoke(sqlcost, ["--sql-file", q, "-f", stats,
+                                  "--calibrate", str(actual), "-F", "json"])
+    body, _ = json.JSONDecoder().raw_decode(res.output)
+    assert body["calibration"]["duration"]["in_band"] is True
     res = runner.invoke(sqlcost, ["--sql-file", q, "-f", stats,
                                   "--calibrate", str(actual), "--lang", "en"])
     assert res.exit_code == 0 and "Calibration" in res.output

@@ -7,8 +7,8 @@ from seatunnel_agent.common.utils import fmt_bytes, fmt_secs, normalize_lang
 from .estimator import CostCard
 from .i18n import tp
 
-__all__ = ["render_batch", "render_compare", "render_markdown",
-           "render_what_if"]
+__all__ = ["render_batch", "render_calibration", "render_compare",
+           "render_markdown", "render_what_if"]
 
 
 def render_markdown(card: CostCard, lang: str = "zh") -> str:
