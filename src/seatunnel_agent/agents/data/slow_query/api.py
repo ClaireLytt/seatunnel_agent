@@ -6,23 +6,12 @@
 
 from __future__ import annotations
 
-import time
-from typing import Any
-
-from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import (
-    add_health,
-    ms_since,
-    read_whitelisted_file,
-)
-from seatunnel_agent.common.utils import normalize_lang
+from seatunnel_agent.common.api_factory import make_text_router
 
 from .diagnoser import diagnose, parse_baseline, parse_metrics
 from .report import render_markdown
-
-router = APIRouter(prefix="/api/slowquery", tags=["slow_query"])
 
 _ENV = "SLOWQUERY_API_ALLOWED_DIRS"
 
@@ -39,41 +28,32 @@ class DiagnoseRequest(BaseModel):
     report: bool = Field(False, description="Include the rendered markdown report")
 
 
-class DiagnoseResponse(BaseModel):
-    result: dict[str, Any]
-    report: str | None = None
-    elapsed_ms: int
-
-
-@router.post("/diagnose", response_model=DiagnoseResponse)
-def run_diagnose(req: DiagnoseRequest) -> DiagnoseResponse:
-    start = time.time()
+def _core(req: DiagnoseRequest, resolve):
     if not req.metrics.strip():
+        from fastapi import HTTPException
+
         raise HTTPException(status_code=400, detail="Provide 'metrics'")
-    baseline_raw = (read_whitelisted_file(req.baseline_file or "", _ENV)
-                    if (req.baseline_file or "").strip()
-                    else req.baseline_text)
-    try:
-        diag = diagnose(parse_metrics(req.metrics),
-                        parse_baseline(baseline_raw))
-    except Exception as exc:  # bad input, malformed JSON
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    lang = normalize_lang(req.lang)
-    report = render_markdown(diag, lang=lang) if req.report else None
-    payload = diag.to_dict()
-    if req.llm:
-        from .advisor_llm import incident_note
-        from .i18n import tp
-
-        try:
-            note = incident_note(diag, lang=lang)
-        except Exception as exc:  # missing key, provider errors
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        payload["incident_note"] = note
-        if report is not None:
-            report += f"\n\n### {tp(lang, 'rpt_incident_note')}\n{note}\n"
-    return DiagnoseResponse(result=payload, report=report,
-                            elapsed_ms=ms_since(start))
+    baseline_raw = ""
+    if (req.baseline_file or "").strip() or req.baseline_text.strip():
+        baseline_raw = resolve(req.baseline_file, req.baseline_text,
+                               "'baseline_file' or 'baseline_text'")
+    return diagnose(parse_metrics(req.metrics), parse_baseline(baseline_raw))
 
 
-add_health(router, "slow_query")
+def _llm(req: DiagnoseRequest, diag, lang: str):
+    from .advisor_llm import incident_note
+    from .i18n import tp
+
+    note = incident_note(diag, lang=lang)
+    return ("incident_note", note,
+            f"### {tp(lang, 'rpt_incident_note')}\n{note}\n")
+
+
+router = make_text_router(
+    prefix="/api/slowquery", tags=["slow_query"],
+    endpoint="diagnose", request_model=DiagnoseRequest,
+    health_name="slow_query", env_var=_ENV,
+    core=_core,
+    render=lambda diag, req, lang: render_markdown(diag, lang=lang),
+    llm=_llm,
+)

@@ -6,23 +6,13 @@
 
 from __future__ import annotations
 
-import time
-from typing import Any
-
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import (
-    add_health,
-    ms_since,
-    read_whitelisted_file,
-)
-from seatunnel_agent.common.utils import normalize_lang
+from seatunnel_agent.common.api_factory import make_text_router
 
 from .planner import parse_dag, parse_statuses, plan_rerun
 from .report import render_markdown
-
-router = APIRouter(prefix="/api/rerun", tags=["rerun_plan"])
 
 _ENV = "RERUN_API_ALLOWED_DIRS"
 
@@ -45,48 +35,33 @@ class PlanRequest(BaseModel):
     report: bool = Field(False, description="Include the rendered markdown report")
 
 
-class PlanResponse(BaseModel):
-    result: dict[str, Any]
-    report: str | None = None
-    elapsed_ms: int
-
-
-
-@router.post("/plan", response_model=PlanResponse)
-def run_plan(req: PlanRequest) -> PlanResponse:
-    start = time.time()
-    if not (req.file or "").strip() and not (req.text or "").strip():
-        raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
+def _core(req: PlanRequest, resolve):
+    text = resolve(req.file, req.text, "'file' or 'text'")
     if not req.failed.strip() and not req.statuses.strip():
         raise HTTPException(status_code=400,
                             detail="Provide 'failed' or 'statuses'")
-    text = (read_whitelisted_file(req.file or "", _ENV) if (req.file or "").strip()
-            else req.text or "")
-    try:
-        failed: str | list[str] = req.failed
-        succeeded: str | list[str] = req.succeeded
-        if req.statuses.strip():
-            failed, succeeded = parse_statuses(req.statuses)
-        result = plan_rerun(parse_dag(text), failed, succeeded)
-    except Exception as exc:  # bad input, malformed JSON
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    lang = normalize_lang(req.lang)
-    report = (render_markdown(result, lang=lang, cmd_template=req.cmd)
-              if req.report else None)
-    payload = result.to_dict()
-    if req.llm:
-        from .advisor_llm import incident_note
-        from .i18n import tp
-
-        try:
-            note = incident_note(result, lang=lang)
-        except Exception as exc:  # missing key, provider errors
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        payload["incident_note"] = note
-        if report is not None:
-            report += f"\n\n### {tp(lang, 'rpt_incident_note')}\n{note}\n"
-    return PlanResponse(result=payload, report=report,
-                        elapsed_ms=ms_since(start))
+    failed: str | list[str] = req.failed
+    succeeded: str | list[str] = req.succeeded
+    if req.statuses.strip():
+        failed, succeeded = parse_statuses(req.statuses)
+    return plan_rerun(parse_dag(text), failed, succeeded)
 
 
-add_health(router, "rerun_plan")
+def _llm(req: PlanRequest, result, lang: str):
+    from .advisor_llm import incident_note
+    from .i18n import tp
+
+    note = incident_note(result, lang=lang)
+    return ("incident_note", note,
+            f"### {tp(lang, 'rpt_incident_note')}\n{note}\n")
+
+
+router = make_text_router(
+    prefix="/api/rerun", tags=["rerun_plan"],
+    endpoint="plan", request_model=PlanRequest,
+    health_name="rerun_plan", env_var=_ENV,
+    core=_core,
+    render=lambda result, req, lang: render_markdown(
+        result, lang=lang, cmd_template=req.cmd),
+    llm=_llm,
+)

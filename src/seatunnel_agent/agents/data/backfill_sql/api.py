@@ -10,20 +10,14 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import (
-    add_health,
-    ms_since,
-    read_whitelisted_file,
-)
-from seatunnel_agent.common.utils import normalize_lang
+from seatunnel_agent.common.api_factory import make_text_router
+from seatunnel_agent.common.api_guard import ms_since
 
 from .generator import generate, parse_spec
 from .report import render_markdown
-
-router = APIRouter(prefix="/api/backfillsql", tags=["backfill_sql"])
 
 _ENV = "BACKFILLSQL_API_ALLOWED_DIRS"
 
@@ -35,28 +29,14 @@ class GenerateRequest(BaseModel):
     report: bool = Field(False, description="Include the rendered markdown report")
 
 
-class GenerateResponse(BaseModel):
-    result: dict[str, Any]
-    report: str | None = None
-    elapsed_ms: int
-
-
-
-@router.post("/generate", response_model=GenerateResponse)
-def run_generate(req: GenerateRequest) -> GenerateResponse:
-    start = time.time()
-    if not (req.file or "").strip() and not (req.text or "").strip():
-        raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
-    text = (read_whitelisted_file(req.file or "", _ENV) if (req.file or "").strip()
-            else req.text or "")
-    try:
-        result = generate(parse_spec(text))
-    except Exception as exc:  # bad input, malformed JSON
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    lang = normalize_lang(req.lang)
-    report = render_markdown(result, lang=lang) if req.report else None
-    return GenerateResponse(result=result.to_dict(), report=report,
-                            elapsed_ms=ms_since(start))
+router = make_text_router(
+    prefix="/api/backfillsql", tags=["backfill_sql"],
+    endpoint="generate", request_model=GenerateRequest,
+    health_name="backfill_sql", env_var=_ENV,
+    core=lambda req, resolve: generate(
+        parse_spec(resolve(req.file, req.text, "'file' or 'text'"))),
+    render=lambda result, req, lang: render_markdown(result, lang=lang),
+)
 
 
 class SpecsRequest(BaseModel):
@@ -103,6 +83,3 @@ def run_specs(req: SpecsRequest) -> SpecsResponse:
     report = render_specs_markdown(specs, lang=req.lang, warnings=warnings)
     return SpecsResponse(result=specs, report=report,
                          elapsed_ms=ms_since(start))
-
-
-add_health(router, "backfill_sql")

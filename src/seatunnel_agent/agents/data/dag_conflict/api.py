@@ -6,23 +6,13 @@
 
 from __future__ import annotations
 
-import time
-from typing import Any
-
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
-from seatunnel_agent.common.api_guard import (
-    add_health,
-    ms_since,
-    resolve_file_or_text,
-)
-from seatunnel_agent.common.utils import normalize_lang
+from seatunnel_agent.common.api_factory import make_text_router
 
 from .conflictor import parse_scenario, place, simulate
 from .report import render_markdown, render_place
-
-router = APIRouter(prefix="/api/dagconflict", tags=["dag_conflict"])
 
 _ENV = "DAGCONFLICT_API_ALLOWED_DIRS"
 
@@ -37,34 +27,30 @@ class SimulateRequest(BaseModel):
     report: bool = Field(False, description="Include the rendered markdown report")
 
 
-class SimulateResponse(BaseModel):
-    result: dict[str, Any]
-    report: str | None = None
-    elapsed_ms: int
+def _core(req: SimulateRequest, resolve):
+    scenario = parse_scenario(resolve(req.file, req.text,
+                                      "'file' or 'text'"))
+    return scenario, simulate(scenario)
 
 
-@router.post("/simulate", response_model=SimulateResponse)
-def run_simulate(req: SimulateRequest) -> SimulateResponse:
-    start = time.time()
-    text = resolve_file_or_text(req.file, req.text, _ENV)
+def _post(req: SimulateRequest, result, payload, lang: str) -> list[str]:
+    scenario, _ = result
+    if not req.place.strip():
+        return []
     try:
-        scenario = parse_scenario(text)
-        result = simulate(scenario)
-    except Exception as exc:  # bad input, malformed JSON
+        placement = place(scenario, req.place.strip())
+    except ValueError as exc:  # unknown dag
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    lang = normalize_lang(req.lang)
-    report = render_markdown(result, lang=lang) if req.report else None
-    payload = result.to_dict()
-    if req.place.strip():
-        try:
-            placement = place(scenario, req.place.strip())
-        except ValueError as exc:  # unknown dag
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        payload["placement"] = placement
-        if report is not None:
-            report += "\n\n" + render_place(placement, lang=lang)
-    return SimulateResponse(result=payload, report=report,
-                            elapsed_ms=ms_since(start))
+    payload["placement"] = placement
+    return [render_place(placement, lang=lang)]
 
 
-add_health(router, "dag_conflict")
+router = make_text_router(
+    prefix="/api/dagconflict", tags=["dag_conflict"],
+    endpoint="simulate", request_model=SimulateRequest,
+    health_name="dag_conflict", env_var=_ENV,
+    core=_core,
+    to_payload=lambda result: result[1].to_dict(),
+    render=lambda result, req, lang: render_markdown(result[1], lang=lang),
+    post=_post,
+)

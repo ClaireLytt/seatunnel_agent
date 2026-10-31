@@ -6,24 +6,18 @@
 
 from __future__ import annotations
 
-import time
-from typing import Any
-
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 
+from seatunnel_agent.common.api_factory import make_text_router
 from seatunnel_agent.common.api_guard import (
-    add_health,
-    ms_since,
     read_whitelisted_file,
     require_dir,
 )
-from seatunnel_agent.common.utils import collect_sql_files, normalize_lang
+from seatunnel_agent.common.utils import collect_sql_files
 
 from .advisor import analyze_workload, audit, cold_columns, recommend
 from .report import render_audit, render_cold_columns, render_markdown
-
-router = APIRouter(prefix="/api/indexadvisor", tags=["index_advisor"])
 
 _ENV = "INDEXADVISOR_API_ALLOWED_DIRS"
 
@@ -38,45 +32,45 @@ class RecommendRequest(BaseModel):
     report: bool = Field(False, description="Include the rendered markdown report")
 
 
-class RecommendResponse(BaseModel):
-    result: dict[str, Any]
-    report: str | None = None
-    elapsed_ms: int
-
-
-@router.post("/recommend", response_model=RecommendResponse)
-def run_recommend(req: RecommendRequest) -> RecommendResponse:
-    start = time.time()
-    if not (req.sql_dir or "").strip() and not (req.text or "").strip():
-        raise HTTPException(status_code=400,
-                            detail="Provide 'sql_dir' or 'text'")
+def _workload(req: RecommendRequest) -> str:
     if (req.sql_dir or "").strip():
         sql_dir = require_dir(req.sql_dir or "", _ENV)
-        files = collect_sql_files(sql_dir)
-        text = "\n;\n".join(
-            read_whitelisted_file(str(p), _ENV) for p in files)
-    else:
-        text = req.text or ""
-    try:
-        advice = recommend(analyze_workload(text, dialect=req.dialect),
-                           ddl_text=req.ddl)
-    except Exception as exc:  # bad input
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    lang = normalize_lang(req.lang)
-    report = render_markdown(advice, lang=lang) if req.report else None
-    payload = advice.to_dict()
-    if req.ddl.strip():
-        findings = audit(advice, req.ddl)
-        payload["audit"] = findings
-        if report is not None:
-            report += "\n\n" + render_audit(findings, lang=lang)
-        cold = cold_columns(advice, req.ddl, text)
-        if cold:
-            payload["cold_columns"] = cold
-            if report is not None:
-                report += "\n\n" + render_cold_columns(cold, lang=lang)
-    return RecommendResponse(result=payload, report=report,
-                             elapsed_ms=ms_since(start))
+        return "\n;\n".join(
+            read_whitelisted_file(str(p), _ENV)
+            for p in collect_sql_files(sql_dir))
+    if (req.text or "").strip():
+        return req.text or ""
+    raise HTTPException(status_code=400, detail="Provide 'sql_dir' or 'text'")
 
 
-add_health(router, "index_advisor")
+def _core(req: RecommendRequest, resolve):
+    workload = _workload(req)
+    advice = recommend(analyze_workload(workload, dialect=req.dialect),
+                       ddl_text=req.ddl)
+    return workload, advice
+
+
+def _post(req: RecommendRequest, result, payload, lang: str) -> list[str]:
+    workload, advice = result
+    if not req.ddl.strip():
+        return []
+    sections = []
+    findings = audit(advice, req.ddl)
+    payload["audit"] = findings
+    sections.append(render_audit(findings, lang=lang))
+    cold = cold_columns(advice, req.ddl, workload)
+    if cold:
+        payload["cold_columns"] = cold
+        sections.append(render_cold_columns(cold, lang=lang))
+    return sections
+
+
+router = make_text_router(
+    prefix="/api/indexadvisor", tags=["index_advisor"],
+    endpoint="recommend", request_model=RecommendRequest,
+    health_name="index_advisor", env_var=_ENV,
+    core=_core,
+    to_payload=lambda result: result[1].to_dict(),
+    render=lambda result, req, lang: render_markdown(result[1], lang=lang),
+    post=_post,
+)
