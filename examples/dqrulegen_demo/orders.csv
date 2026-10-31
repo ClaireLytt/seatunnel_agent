@@ -1,0 +1,9 @@
+order_id,status,amount,city,note
+1,paid,10.5,bj,
+2,paid,20.0,sh,x
+3,refund,15.0,bj,
+4,paid,8.0,gz,
+5,paid,33.2,sh,
+6,refund,7.7,bj,y
+7,paid,18.4,gz,
+8,paid,25.1,sh,

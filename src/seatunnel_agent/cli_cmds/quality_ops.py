@@ -385,6 +385,7 @@ def register(cli) -> None:
     cli.add_command(mockdata)
     cli.add_command(joinaudit)
     cli.add_command(ddlevolve)
+    cli.add_command(dqrulegen)
 
 
 @click.command("rollbackplan")
@@ -1743,4 +1744,49 @@ def ddlevolve(old_path, new_path, dialect, script_out, use_llm,
         markdown = append_llm_note(
             payload, markdown, migration_note(plan, lang=lang),
             "migration_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+@click.command("dqrulegen")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="样例 CSV（带表头）或 JSONL 文件")
+@click.option("--text", type=str, default=None, help="内联样例行")
+@click.option("--table", "-t", required=True, help="规则要闸的表名")
+@click.option("--where", type=str, default="",
+              help="可选分区过滤,如 dt = '${yesterday_pt}'")
+@click.option("--max-change-pct", "max_change", type=float, default=50.0,
+              show_default=True, help="row_count 相对上次的变化护栏")
+@click.option("--yaml-out", "yaml_out", type=click.Path(dir_okay=False),
+              default=None, help="把 rules.yaml 另存到该文件")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 给出收紧建议（需配置 API key,只发检查元数据）")
+@report_options
+def dqrulegen(path, text, table, where, max_change, yaml_out, use_llm,
+              lang, fmt, output) -> None:
+    """质量规则草稿 — 表样例 → DQC 可加载的 rules.yaml。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.dq_rulegen import (
+        generate_rules,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+
+    try:
+        headers, rows = parse_rows(_read(path, text, "样例行"))
+        draft = generate_rules(headers, rows, table, where=where,
+                               max_change_pct=max_change)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if yaml_out:
+        Path(yaml_out).write_text(draft.yaml_text, encoding="utf-8")
+    markdown = render_markdown(draft, lang=lang)
+    payload = draft.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.dq_rulegen.advisor_llm import (
+            tighten_note,
+        )
+        from seatunnel_agent.agents.data.dq_rulegen.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, tighten_note(draft, lang=lang),
+            "tighten_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
