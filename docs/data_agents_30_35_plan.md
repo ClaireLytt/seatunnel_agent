@@ -100,3 +100,6 @@ slots/memory）± 各 DAG 启动时刻。
 4. [x] gate family completed: sqlperf --fail-on-severity (block plans
    with high findings) and dagconflict --fail-on-conflict + --history
    capacity ledger.
+5. [x] sqlcost --assume-partition table:col[:N] what-if: re-estimate
+   with the advised partitioning, print the scan delta - quantifies
+   index_advisor picks before any DDL runs.

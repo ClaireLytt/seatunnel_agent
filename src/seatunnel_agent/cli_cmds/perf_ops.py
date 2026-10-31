@@ -117,6 +117,9 @@ def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
 @click.option("--file", "-f", "stats_path",
               type=click.Path(exists=True, dir_okay=False), required=True,
               help="表统计清单（JSON/CSV）")
+@click.option("--assume-partition", "assume_partitions", multiple=True,
+              help="what-if：按 表:列[:分区数] 假设分区后重估一遍，"
+                   "打印扫描/耗时差异（可多次）")
 @click.option("--fail-over-scan-gb", type=float, default=0.0,
               help="CI gate：预估扫描超过该 GB 数时 exit 1")
 @click.option("--fail-over-shuffle-gb", type=float, default=0.0,
@@ -127,20 +130,53 @@ def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
               default="markdown", help="Report format")
 @click.option("--output", "-o", type=click.Path(), default=None,
               help="Save report to file")
-def sqlcost(sql_path, stats_path, fail_over_scan_gb, fail_over_shuffle_gb,
-            lang, fmt, output) -> None:
+def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
+            fail_over_shuffle_gb, lang, fmt, output) -> None:
     """资源消耗预测 — SQL × 表统计 → 代价卡；可按预算挡 CI。"""
+    import dataclasses
+
     from seatunnel_agent.agents.data.sql_cost import (
         estimate,
         parse_stats,
         render_markdown,
     )
 
-    card = estimate(
-        Path(sql_path).read_text(encoding="utf-8", errors="replace"),
-        parse_stats(Path(stats_path).read_text(encoding="utf-8",
-                                               errors="replace")))
-    _emit(card.to_dict(), render_markdown(card, lang=lang), fmt, output)
+    sql = Path(sql_path).read_text(encoding="utf-8", errors="replace")
+    stats = parse_stats(Path(stats_path).read_text(encoding="utf-8",
+                                                   errors="replace"))
+    card = estimate(sql, stats)
+    markdown = render_markdown(card, lang=lang)
+    payload = card.to_dict()
+    if assume_partitions:
+        whatif = dict(stats)
+        for spec in assume_partitions:
+            parts = spec.split(":")
+            if len(parts) not in (2, 3):
+                raise click.UsageError(
+                    f"--assume-partition 需为 表:列[:分区数]，得到 {spec!r}")
+            table, col = parts[0].strip().lower(), parts[1].strip().lower()
+            if table not in whatif:
+                raise click.UsageError(f"统计清单里没有表 {table!r}")
+            n = int(parts[2]) if len(parts) == 3 else whatif[table].partitions
+            if n < 2:
+                raise click.UsageError(
+                    f"{spec!r}：分区数未知，请用 表:列:分区数 显式给出")
+            whatif[table] = dataclasses.replace(
+                whatif[table], partition_col=col, partitions=n)
+        after = estimate(sql, whatif)
+        saved_pct = (round(100 * (1 - after.scan_bytes / card.scan_bytes), 1)
+                     if card.scan_bytes else 0.0)
+        payload["what_if"] = {"assumed": list(assume_partitions),
+                              "scan_bytes": round(after.scan_bytes),
+                              "scan_saved_pct": saved_pct}
+        markdown += ("\n\n### what-if\n"
+                     + "\n".join(f"- `{s}`" for s in assume_partitions)
+                     + f"\n\n扫描 {card.scan_bytes / (1 << 30):.2f} GB → "
+                       f"{after.scan_bytes / (1 << 30):.2f} GB"
+                       f"（省 {saved_pct:g}%）\n"
+                     + ("" if saved_pct > 0 else
+                        "\n> 没省：SQL 未对该列做等值过滤，分区裁剪不生效。\n"))
+    _emit(payload, markdown, fmt, output)
     problems: list[str] = []
     scan_gb = card.scan_bytes / (1 << 30)
     shuffle_gb = card.shuffle_bytes / (1 << 30)

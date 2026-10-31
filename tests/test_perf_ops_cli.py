@@ -125,3 +125,20 @@ def test_dagconflict_gate_and_ledger(tmp_path):
     assert res.exit_code == 1 and "CONFLICT windows=" in res.output
     entry = json.loads(hist.read_text("utf-8").splitlines()[0])
     assert entry["peak_slots"] > 0 and entry["write_conflicts"] >= 0
+
+
+def test_sqlcost_what_if_partition():
+    runner = CliRunner()
+    args = ["--sql-file", str(EX / "sqlcost_demo" / "query.sql"),
+            "-f", str(EX / "sqlcost_demo" / "stats.json")]
+    # partitioning users by the equality-joined key cuts its scan
+    res = runner.invoke(sqlcost, [*args, "--assume-partition",
+                                  "ods.users:user_id:10", "-F", "json"])
+    assert res.exit_code == 0
+    whatif = json.loads(res.output)["what_if"]
+    assert whatif["scan_saved_pct"] > 0
+    # malformed spec and unknown partition count are usage errors
+    assert runner.invoke(sqlcost, [*args, "--assume-partition", "nope"]
+                         ).exit_code == 2
+    assert runner.invoke(sqlcost, [*args, "--assume-partition",
+                                   "ods.users:user_id"]).exit_code == 2
