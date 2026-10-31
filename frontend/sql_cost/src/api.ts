@@ -15,10 +15,12 @@ export function runEstimate(
   statsText: string,
   lang: string,
   assume = '',
+  compareSql = '',
 ): Promise<EstimateResponse> {
   const body: Record<string, unknown> = { sql, lang, report: true }
   if (statsFile) body.stats_file = statsFile
   if (statsText.trim()) body.stats_text = statsText
+  if (compareSql.trim()) body.compare_sql = compareSql
   const specs = assume
     .split(/[\s,]+/)
     .map((s) => s.trim())

@@ -19,8 +19,8 @@ from seatunnel_agent.common.api_guard import (
 )
 from seatunnel_agent.common.utils import normalize_lang
 
-from .estimator import estimate, parse_assumptions, parse_stats, what_if
-from .report import render_markdown, render_what_if
+from .estimator import compare, estimate, parse_assumptions, parse_stats, what_if
+from .report import render_compare, render_markdown, render_what_if
 
 router = APIRouter(prefix="/api/sqlcost", tags=["sql_cost"])
 
@@ -36,6 +36,9 @@ class EstimateRequest(BaseModel):
         default_factory=list,
         description="What-if specs 'table:col[:N]' — re-estimate under "
                     "the assumed partitioning and report the scan delta")
+    compare_sql: str = Field(
+        "", description="A rewritten version of the SQL — estimated "
+                        "against the same stats, with a savings table")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
     report: bool = Field(False, description="Include the rendered markdown report")
 
@@ -72,6 +75,15 @@ def run_estimate(req: EstimateRequest) -> EstimateResponse:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if report is not None:
             report += "\n\n" + render_what_if(payload["what_if"], lang=lang)
+    if req.compare_sql.strip():
+        try:
+            rewrite_card = estimate(req.compare_sql, stats)
+        except Exception as exc:  # bad rewrite SQL
+            raise HTTPException(status_code=400,
+                                detail=f"compare_sql: {exc}") from exc
+        payload["compare"] = compare(card, rewrite_card)
+        if report is not None:
+            report += "\n\n" + render_compare(payload["compare"], lang=lang)
     return EstimateResponse(result=payload, report=report,
                             elapsed_ms=ms_since(start))
 

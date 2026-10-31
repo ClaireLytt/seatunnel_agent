@@ -17,6 +17,10 @@ const resources = {
       stats_ph: 'rows/bytes/partitions (.json/.csv), e.g. examples/sqlcost_demo/stats.json',
       run_btn: 'Estimate',
       stats_acc: 'Paste the stats inline',
+      compare_acc: 'Compare a rewritten SQL',
+      compare_ph:
+        'SELECT ...  -- the rewritten version; the report gains a\n' +
+        'scan / shuffle / memory / core-seconds savings table',
       stats_text_label: 'JSON / CSV table stats',
       stats_text_ph:
         '[{"table":"ods.orders","rows":500000000,"bytes":107374182400,' +
@@ -45,6 +49,8 @@ const resources = {
       stats_ph: 'rows/bytes/partitions (.json/.csv)，如 examples/sqlcost_demo/stats.json',
       run_btn: '估算',
       stats_acc: '粘贴统计清单',
+      compare_acc: '对比改写 SQL',
+      compare_ph: 'SELECT ...  -- 改写后的版本；报告将追加扫描 / shuffle / 内存 / 核·秒省比表',
       stats_text_label: 'JSON / CSV 表统计',
       stats_text_ph:
         '[{"table":"ods.orders","rows":500000000,"bytes":107374182400,' +

@@ -13,6 +13,7 @@ export default function App() {
   const [statsFile, setStatsFile] = useState('examples/sqlcost_demo/stats.json')
   const [statsText, setStatsText] = useState('')
   const [assume, setAssume] = useState('')
+  const [compareSql, setCompareSql] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -40,6 +41,7 @@ export default function App() {
         statsText,
         i18n.language,
         assume,
+        compareSql,
       )
       setReport(res.report ?? '')
     } catch (e) {
@@ -59,6 +61,7 @@ export default function App() {
     setStatsFile('examples/sqlcost_demo/stats.json')
     setStatsText('')
     setAssume('')
+    setCompareSql('')
     setError('')
     setReport('')
   }
@@ -115,6 +118,24 @@ export default function App() {
             >
               {t('clear_btn')}
             </button>
+          </Card>
+
+          <Card>
+            <details open={compareSql.trim() !== ''}>
+              <summary className="cursor-pointer select-none font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                {t('compare_acc')}
+              </summary>
+              <div className="mt-3 flex flex-col gap-3">
+                <textarea
+                  value={compareSql}
+                  onChange={(e) => setCompareSql(e.target.value)}
+                  placeholder={t('compare_ph')}
+                  rows={7}
+                  spellCheck={false}
+                  className="w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink"
+                />
+              </div>
+            </details>
           </Card>
 
           <Card>

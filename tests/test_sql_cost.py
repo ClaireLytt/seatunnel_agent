@@ -123,3 +123,15 @@ def test_api_what_if_assume_partitions():
         res = client.post("/api/sqlcost/estimate", json={
             "sql": sql, "stats_text": stats, "assume_partitions": [bad]})
         assert res.status_code == 400
+    # compare_sql appends the savings table; a broken rewrite is a 400
+    full = (root / "query_full_scan.sql").read_text("utf-8")
+    res = client.post("/api/sqlcost/estimate", json={
+        "sql": full, "stats_text": stats, "compare_sql": sql,
+        "report": True, "lang": "en"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["result"]["compare"]["saved_pct"]["scan"] > 90
+    assert "Rewrite comparison" in body["report"]
+    res = client.post("/api/sqlcost/estimate", json={
+        "sql": full, "stats_text": stats, "compare_sql": "not sql ((("})
+    assert res.status_code == 400 and "compare_sql" in res.text
