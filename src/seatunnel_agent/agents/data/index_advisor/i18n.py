@@ -35,6 +35,13 @@ INDEX_I18N: dict[str, dict[str, str]] = {
         "IA003": "the hottest join key is not the bucketing column "
                  "(declared -> recommended)",
         "IA004": "the bucketing column has no join hits in the workload",
+        "roi_title": "Partition ROI (estimated against the stats inventory)",
+        "roi_none": "No partition recommendation to price, or the tables "
+                    "are already partitioned as recommended.",
+        "roi_col_saved": "workload scan saved",
+        "roi_col_stmts": "statements estimated",
+        "roi_skipped": "Not priced (missing from the inventory or "
+                       "partition count < 2):",
     },
     "zh": {
         "rpt_title": "索引 / 分区推荐",
@@ -61,6 +68,11 @@ INDEX_I18N: dict[str, dict[str, str]] = {
         "IA002": "按负载另有更合适的分区列（已声明 -> 推荐）",
         "IA003": "最热 join key 不是分桶列（已声明 -> 推荐）",
         "IA004": "分桶列在负载中没有 join 命中",
+        "roi_title": "分区建议 ROI（按统计清单估算）",
+        "roi_none": "没有可定价的分区建议，或表已按建议分区。",
+        "roi_col_saved": "整个负载省的扫描",
+        "roi_col_stmts": "估算语句数",
+        "roi_skipped": "未定价（清单缺失或分区数 < 2）：",
     },
 }
 

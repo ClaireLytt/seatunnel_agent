@@ -120,9 +120,13 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
               default=False,
               help="CI gate：现状审计有发现（IA001–IA004）时 exit 1"
                    "（需配合 --ddl）")
+@click.option("--stats", "stats_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="表统计清单（同 sqlcost 格式）：对每条分区建议估算"
+                   "整个负载省多少扫描，按省量排序")
 @report_options
-def index_adv(directory, text, ddl_path, dialect, fail_on_audit, lang, fmt,
-              output) -> None:
+def index_adv(directory, text, ddl_path, dialect, fail_on_audit, stats_path,
+              lang, fmt, output) -> None:
     """索引分区推荐 — 查询频次 → 分区/分桶/组合索引与 DDL 片段。"""
     from seatunnel_agent.agents.data.index_advisor import (
         analyze_workload,
@@ -154,6 +158,17 @@ def index_adv(directory, text, ddl_path, dialect, fail_on_audit, lang, fmt,
         findings = audit(advice, ddl)
         payload["audit"] = findings
         markdown += "\n\n" + render_audit(findings, lang=lang)
+    if stats_path:
+        from seatunnel_agent.agents.data.index_advisor.roi import (
+            partition_roi,
+            render_roi,
+        )
+        from seatunnel_agent.agents.data.sql_cost import parse_stats
+
+        stats = parse_stats(Path(stats_path).read_text(encoding="utf-8",
+                                                       errors="replace"))
+        payload["roi"] = partition_roi(advice, workload, stats)
+        markdown += "\n\n" + render_roi(payload["roi"], lang=lang)
     _emit(payload, markdown, fmt, output)
     if fail_on_audit and payload.get("audit"):
         msg = "\n".join(f"AUDIT {f['code']} {f['table']} {f['detail']}"

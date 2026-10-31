@@ -287,6 +287,30 @@ def test_index_adv_layout_audit():
     assert "IA001" not in res.output and "IA004" not in res.output
 
 
+def test_index_adv_partition_roi():
+    runner = CliRunner()
+    stats = str(EX / "indexadvisor_demo" / "stats.json")
+    res = runner.invoke(index_adv, [
+        "-d", str(EX / "indexadvisor_demo"), "--stats", stats, "-F", "json"])
+    assert res.exit_code == 0
+    roi = json.loads(res.output)["roi"]
+    rows = {r["table"]: r for r in roi["rows"]}
+    # ods.orders: dt recommended, 365 declared partitions -> big saving
+    assert rows["ods.orders"]["partition_col"] == "dt"
+    assert rows["ods.orders"]["saved_bytes"] > 0
+    assert rows["ods.orders"]["statements_estimated"] > 0
+    # an already-as-recommended inventory prices nothing for that table
+    res = runner.invoke(index_adv, [
+        "-d", str(EX / "indexadvisor_demo"),
+        "--stats", str(EX / "sqlcost_demo" / "stats.json"), "-F", "json"])
+    tables = {r["table"] for r in json.loads(res.output)["roi"]["rows"]}
+    assert "ods.orders" not in tables
+    res = runner.invoke(index_adv, [
+        "-d", str(EX / "indexadvisor_demo"), "--stats", stats,
+        "--lang", "en"])
+    assert res.exit_code == 0 and "Partition ROI" in res.output
+
+
 def test_index_adv_fail_on_audit_gate():
     runner = CliRunner()
     res = runner.invoke(index_adv, [
