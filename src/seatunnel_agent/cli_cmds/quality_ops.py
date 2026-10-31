@@ -386,6 +386,7 @@ def register(cli) -> None:
     cli.add_command(joinaudit)
     cli.add_command(ddlevolve)
     cli.add_command(dqrulegen)
+    cli.add_command(seatunnelgen)
 
 
 @click.command("rollbackplan")
@@ -1789,4 +1790,52 @@ def dqrulegen(path, text, table, where, max_change, yaml_out, use_llm,
         markdown = append_llm_note(
             payload, markdown, tighten_note(draft, lang=lang),
             "tighten_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+@click.command("seatunnelgen")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="CREATE TABLE DDL 文件")
+@click.option("--text", type=str, default=None, help="内联 DDL")
+@click.option("--source", "-s", required=True,
+              help="源连接器,如 MySQL-CDC / Jdbc / Kafka")
+@click.option("--sink", "-k", required=True,
+              help="目标连接器,如 Doris / Hive / ClickHouse")
+@click.option("--job-mode", "job_mode",
+              type=click.Choice(["BATCH", "STREAMING", ""]), default="",
+              help="作业模式,留空自动（CDC 源 → STREAMING）")
+@click.option("--parallelism", type=click.IntRange(min=1), default=2,
+              show_default=True, help="env.parallelism")
+@click.option("--conf-out", "conf_out", type=click.Path(dir_okay=False),
+              default=None, help="把 job.conf 另存到该文件")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草运行前评审（需配置 API key）")
+@report_options
+def seatunnelgen(path, text, source, sink, job_mode, parallelism,
+                 conf_out, use_llm, lang, fmt, output) -> None:
+    """作业配置生成 — 表 DDL + 连接器对 → 零错误 job.conf。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.seatunnel_gen import (
+        generate_config,
+        render_markdown,
+    )
+
+    try:
+        draft = generate_config(_read(path, text, "DDL"), source, sink,
+                                job_mode=job_mode,
+                                parallelism=parallelism)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if conf_out:
+        Path(conf_out).write_text(draft.hocon_text, encoding="utf-8")
+    markdown = render_markdown(draft, lang=lang)
+    payload = draft.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.seatunnel_gen.advisor_llm import (
+            job_note,
+        )
+        from seatunnel_agent.agents.data.seatunnel_gen.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, job_note(draft, lang=lang),
+            "job_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)

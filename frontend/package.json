@@ -85,6 +85,7 @@
     "join_audit",
     "ddl_evolve",
     "dq_rulegen",
+    "seatunnel_gen",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
