@@ -388,6 +388,7 @@ def register(cli) -> None:
     cli.add_command(dqrulegen)
     cli.add_command(seatunnelgen)
     cli.add_command(slaboard)
+    cli.add_command(daggen)
 
 
 @click.command("rollbackplan")
@@ -1918,3 +1919,47 @@ def slaboard(path, text, target, history_path, trend_n, fail_on_trend,
                    f"{trend['from_v']:g} -> {trend['to_v']:g}")
     if fail_high:
         fail_on_high(board.findings, fmt, label=lambda f: f.task)
+@click.command("daggen")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="流水线 SQL 脚本文件")
+@click.option("--text", type=str, default=None, help="内联 SQL 脚本")
+@click.option("--dag-id", "dag_id", default="pipeline", show_default=True,
+              help="Airflow dag_id（标识符）")
+@click.option("--schedule", default="0 2 * * *", show_default=True,
+              help="cron 调度表达式")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--py-out", "py_out", type=click.Path(dir_okay=False),
+              default=None, help="把 dag.py 另存到该文件")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草部署前评审（需配置 API key）")
+@report_options
+def daggen(path, text, dag_id, schedule, dialect, py_out, use_llm,
+           lang, fmt, output) -> None:
+    """调度文件生成 — 流水线 SQL → 可 import 的 Airflow dag.py。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.dag_gen import (
+        generate_dag,
+        render_markdown,
+    )
+
+    try:
+        draft = generate_dag(_read(path, text, "SQL 脚本"), dag_id=dag_id,
+                             schedule=schedule, dialect=dialect)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if py_out:
+        Path(py_out).write_text(draft.python_text, encoding="utf-8")
+    markdown = render_markdown(draft, lang=lang)
+    payload = draft.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.dag_gen.advisor_llm import (
+            schedule_note,
+        )
+        from seatunnel_agent.agents.data.dag_gen.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, schedule_note(draft, lang=lang),
+            "schedule_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)

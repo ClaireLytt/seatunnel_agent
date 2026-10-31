@@ -87,6 +87,7 @@
     "dq_rulegen",
     "seatunnel_gen",
     "sla_board",
+    "dag_gen",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
