@@ -60,6 +60,7 @@
     "storage_cost",
     "db_diag",
     "grant_review",
+    "kafka_lag",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

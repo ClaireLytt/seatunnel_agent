@@ -1,0 +1,20 @@
+{
+  "group": "g-orders",
+  "topics": [
+    {
+      "topic": "orders",
+      "partitions": [
+        {"partition": 0, "log_end_offset": 1200000, "committed_offset": 1195000, "consume_rate": 800, "produce_rate": 790},
+        {"partition": 1, "log_end_offset": 1210000, "committed_offset": 1206000, "consume_rate": 820, "produce_rate": 800},
+        {"partition": 2, "log_end_offset": 1500000, "committed_offset": 600000, "consume_rate": 300, "produce_rate": 900},
+        {"partition": 3, "log_end_offset": 1190000, "committed_offset": 1100000, "consume_rate": 0, "produce_rate": 780}
+      ]
+    },
+    {
+      "topic": "payments",
+      "partitions": [
+        {"partition": 0, "log_end_offset": 400000, "committed_offset": 310000, "consume_rate": 500, "produce_rate": 460}
+      ]
+    }
+  ]
+}
