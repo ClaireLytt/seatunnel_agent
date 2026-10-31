@@ -104,11 +104,11 @@ def parse_plan(text: str) -> PlanReport:
         name = m.group(1)
         report.joins[name] = report.joins.get(name, 0) + 1
     report.exchanges = len(_EXCHANGE_RE.findall(stripped))
-    report.single_exchanges = sum(
-        1 for line in stripped.splitlines()
-        if (m := _EXCHANGE_RE.search(line))
-        and m.group(1) == "SinglePartition"
-        and "BROADCAST" not in line.upper())
+    for line in stripped.splitlines():
+        kind = _EXCHANGE_RE.search(line)
+        if (kind and kind.group(1) == "SinglePartition"
+                and "BROADCAST" not in line.upper()):
+            report.single_exchanges += 1
 
     lines = stripped.splitlines()
     filter_above = False
