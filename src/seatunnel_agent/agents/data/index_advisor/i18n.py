@@ -22,6 +22,19 @@ INDEX_I18N: dict[str, dict[str, str]] = {
                            "— frequencies say what the queries want, not "
                            "what the data allows; check cardinality before "
                            "applying. No database connection."),
+        "audit_title": "Layout audit (declared DDL vs workload)",
+        "audit_col_code": "code",
+        "audit_col_table": "table",
+        "audit_col_detail": "detail",
+        "audit_col_meaning": "what it means",
+        "audit_ok": "The declared layout matches the workload.",
+        "IA001": "the partition column is never equality-filtered by the "
+                 "workload — pruning never kicks in",
+        "IA002": "a different partition column fits the workload better "
+                 "(declared -> recommended)",
+        "IA003": "the hottest join key is not the bucketing column "
+                 "(declared -> recommended)",
+        "IA004": "the bucketing column has no join hits in the workload",
     },
     "zh": {
         "rpt_title": "索引 / 分区推荐",
@@ -38,6 +51,16 @@ INDEX_I18N: dict[str, dict[str, str]] = {
         "rpt_disclaimer": ("> 对已解析工作负载的确定性计数 — 频次反映查询"
                            "想要什么，不代表数据允许什么；应用前请核对基数。"
                            "不连数据库。"),
+        "audit_title": "现状审计（DDL 已声明布局 vs 负载）",
+        "audit_col_code": "编号",
+        "audit_col_table": "表",
+        "audit_col_detail": "明细",
+        "audit_col_meaning": "含义",
+        "audit_ok": "已声明布局与负载匹配。",
+        "IA001": "分区列在负载中从未被等值过滤 — 分区裁剪永远不生效",
+        "IA002": "按负载另有更合适的分区列（已声明 -> 推荐）",
+        "IA003": "最热 join key 不是分桶列（已声明 -> 推荐）",
+        "IA004": "分桶列在负载中没有 join 命中",
     },
 }
 

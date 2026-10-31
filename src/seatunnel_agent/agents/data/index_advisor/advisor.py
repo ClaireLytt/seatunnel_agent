@@ -38,6 +38,13 @@ _CREATE_TABLE_RE = re.compile(
     r"create\s+table\s+(?:if\s+not\s+exists\s+)?`?([\w.]+)`?\s*\((.*?)\)\s*"
     r"(?:engine|partitioned|stored|comment|with|distributed|;|$)",
     re.IGNORECASE | re.DOTALL)
+_CREATE_HEAD_RE = re.compile(
+    r"create\s+table\s+(?:if\s+not\s+exists\s+)?`?([\w.]+)`?",
+    re.IGNORECASE)
+_PARTITIONED_RE = re.compile(r"partitioned\s+by\s*\(\s*`?(\w+)`?",
+                             re.IGNORECASE)
+_CLUSTERED_RE = re.compile(r"clustered\s+by\s*\(\s*`?(\w+)`?",
+                           re.IGNORECASE)
 
 
 @dataclass
@@ -95,6 +102,65 @@ def parse_ddl_types(ddl_text: str) -> dict[str, dict[str, str]]:
                 for c, t in _CREATE_COL_RE.findall(m.group(2))}
         out[m.group(1).lower()] = cols
     return out
+
+
+def parse_ddl_layout(ddl_text: str) -> dict[str, dict[str, str | None]]:
+    """CREATE TABLE text → {table: {partition_col, bucket_col}}.
+
+    Reads the existing ``PARTITIONED BY`` / ``CLUSTERED BY`` clauses
+    (first column each, regex best-effort) so the audit can compare
+    what the tables have against what the workload wants.
+    """
+    out: dict[str, dict[str, str | None]] = {}
+    heads = list(_CREATE_HEAD_RE.finditer(ddl_text or ""))
+    for i, head in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(ddl_text)
+        segment = ddl_text[head.start():end]
+        part = _PARTITIONED_RE.search(segment)
+        bucket = _CLUSTERED_RE.search(segment)
+        out[head.group(1).lower()] = {
+            "partition_col": part.group(1).lower() if part else None,
+            "bucket_col": bucket.group(1).lower() if bucket else None,
+        }
+    return out
+
+
+def audit(advice: WorkloadAdvice, ddl_text: str) -> list[dict[str, str]]:
+    """Existing layout vs workload — mismatch findings per table.
+
+    IA001  the declared partition column is never equality-filtered
+    IA002  recommended partition column differs from the declared one
+    IA003  the hottest join key is not the bucketing column
+    IA004  the declared bucketing column has no join hits
+    Run after :func:`recommend` (uses its picks); tables absent from
+    the DDL are skipped, never guessed.
+    """
+    layout = parse_ddl_layout(ddl_text)
+    findings: list[dict[str, str]] = []
+
+    def add(code: str, table: str, detail: str) -> None:
+        findings.append({"code": code, "table": table, "detail": detail})
+
+    for t in advice.tables:
+        have = layout.get(t.table)
+        if have is None:
+            continue
+        part, bucket = have["partition_col"], have["bucket_col"]
+        if part:
+            stats = t.columns.get(part)
+            if not (stats and stats.eq):
+                add("IA001", t.table, part)
+        if t.partition_col and t.partition_col != part:
+            add("IA002", t.table,
+                f"{part or '-'} -> {t.partition_col}")
+        if t.bucket_col and t.bucket_col != bucket:
+            add("IA003", t.table,
+                f"{bucket or '-'} -> {t.bucket_col}")
+        if bucket:
+            stats = t.columns.get(bucket)
+            if not (stats and stats.join):
+                add("IA004", t.table, bucket)
+    return findings
 
 
 def _split(text: str) -> list[str]:

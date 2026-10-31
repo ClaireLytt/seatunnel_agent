@@ -7,7 +7,25 @@ from seatunnel_agent.common.utils import normalize_lang
 from .advisor import WorkloadAdvice
 from .i18n import tp
 
-__all__ = ["render_markdown"]
+__all__ = ["render_audit", "render_markdown"]
+
+
+def render_audit(findings: list[dict], lang: str = "zh") -> str:
+    """Markdown section for advisor.audit findings."""
+    lang = normalize_lang(lang)
+    lines = [f"### {tp(lang, 'audit_title')}"]
+    if not findings:
+        lines.append(tp(lang, "audit_ok"))
+        return "\n".join(lines)
+    lines.append(f"| {tp(lang, 'audit_col_code')} "
+                 f"| {tp(lang, 'audit_col_table')} "
+                 f"| {tp(lang, 'audit_col_detail')} "
+                 f"| {tp(lang, 'audit_col_meaning')} |")
+    lines.append("|---|---|---|---|")
+    for f in findings:
+        lines.append(f"| {f['code']} | `{f['table']}` | `{f['detail']}` "
+                     f"| {tp(lang, f['code'])} |")
+    return "\n".join(lines)
 
 
 def render_markdown(advice: WorkloadAdvice, lang: str = "zh") -> str:

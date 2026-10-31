@@ -13,17 +13,22 @@ from .advisor import (
     TableAdvice,
     WorkloadAdvice,
     analyze_workload,
+    audit,
+    parse_ddl_layout,
     parse_ddl_types,
     recommend,
 )
-from .report import render_markdown
+from .report import render_audit, render_markdown
 
 __all__ = [
     "ColumnStats",
     "TableAdvice",
     "WorkloadAdvice",
     "analyze_workload",
+    "audit",
+    "parse_ddl_layout",
     "parse_ddl_types",
     "recommend",
+    "render_audit",
     "render_markdown",
 ]

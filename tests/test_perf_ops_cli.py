@@ -233,6 +233,26 @@ def test_slowquery_promote_baseline(tmp_path):
     assert res.exit_code == 2
 
 
+def test_index_adv_layout_audit():
+    runner = CliRunner()
+    res = runner.invoke(index_adv, [
+        "-d", str(EX / "indexadvisor_demo"),
+        "--ddl", str(EX / "indexadvisor_demo" / "ddl_legacy.sql"),
+        "-F", "json"])
+    assert res.exit_code == 0
+    findings = json.loads(res.output)["audit"]
+    codes = {(f["code"], f["table"]) for f in findings}
+    assert ("IA002", "ods.orders") in codes  # status -> dt
+    assert ("IA004", "ods.users") in codes   # updated_at never joined
+    assert ("IA003", "ods.users") in codes
+    # clean DDL (no declared layout): no IA001/IA004, only gaps
+    res = runner.invoke(index_adv, [
+        "-d", str(EX / "indexadvisor_demo"),
+        "--ddl", str(EX / "indexadvisor_demo" / "ddl.sql"), "--lang", "en"])
+    assert res.exit_code == 0 and "Layout audit" in res.output
+    assert "IA001" not in res.output and "IA004" not in res.output
+
+
 def test_sqlcost_compare_rewrite():
     runner = CliRunner()
     res = runner.invoke(sqlcost, [

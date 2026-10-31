@@ -94,7 +94,9 @@ def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
     """索引分区推荐 — 查询频次 → 分区/分桶/组合索引与 DDL 片段。"""
     from seatunnel_agent.agents.data.index_advisor import (
         analyze_workload,
+        audit,
         recommend,
+        render_audit,
         render_markdown,
     )
     from seatunnel_agent.common.utils import collect_sql_files
@@ -112,7 +114,13 @@ def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
            if ddl_path else "")
     advice = recommend(analyze_workload(workload, dialect=dialect),
                        ddl_text=ddl)
-    _emit(advice.to_dict(), render_markdown(advice, lang=lang), fmt, output)
+    payload = advice.to_dict()
+    markdown = render_markdown(advice, lang=lang)
+    if ddl:
+        findings = audit(advice, ddl)
+        payload["audit"] = findings
+        markdown += "\n\n" + render_audit(findings, lang=lang)
+    _emit(payload, markdown, fmt, output)
 
 
 @click.command("sqlcost")
