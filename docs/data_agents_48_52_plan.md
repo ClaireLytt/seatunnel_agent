@@ -51,11 +51,11 @@ PASS。文本/快照输入，不连 Kafka/Flink/数据库。
 
 ## 实施顺序与里程碑
 
-1. [ ] 48 kafka_lag
-2. [ ] 49 flink_diag（处方指向 48 与 skew-runtime）
-3. [ ] 50 rt_latency
-4. [ ] 51 cdc_diag
-5. [ ] 52 rt_offline_diff（复用 sample_profile 行解析，套件收口）
+1. [x] 48 kafka_lag
+2. [x] 49 flink_diag（处方指向 48 与 skew-runtime）
+3. [x] 50 rt_latency
+4. [x] 51 cdc_diag
+5. [x] 52 rt_offline_diff（复用 sample_profile 行解析，套件收口）
 
 每个 agent 独立提交：后端 + 测试 + 示例 + 前端页 + 页面回归 + 报告落盘。
 CLI 统一挂在 cli_cmds/quality_ops.py（与 36–47 同一注册面）。
