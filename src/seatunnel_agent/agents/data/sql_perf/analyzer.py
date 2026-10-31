@@ -18,6 +18,9 @@ The rules turn those facts into findings (high/medium/low):
   PF005 (info)   SortMergeJoin present — evaluate broadcasting the
                  small side
   PF006 (info)   SELECT-star-ish ReadSchema (wide scan, prune columns)
+  PF007 (medium) Exchange SinglePartition — the whole stream funnels
+                 into one task (global sort / collect), typical of
+                 ORDER BY without LIMIT
 
 No engine connection — text in, findings out.
 """
@@ -74,6 +77,7 @@ class PerfFinding:
 class PlanReport:
     joins: dict[str, int] = field(default_factory=dict)
     exchanges: int = 0
+    single_exchanges: int = 0  # non-broadcast Exchange SinglePartition
     scans: list[ScanInfo] = field(default_factory=list)
     findings: list[PerfFinding] = field(default_factory=list)
 
@@ -84,6 +88,7 @@ class PlanReport:
 
     def to_dict(self) -> dict[str, Any]:
         return {"joins": dict(self.joins), "exchanges": self.exchanges,
+                "single_exchanges": self.single_exchanges,
                 "scans": [s.to_dict() for s in self.scans],
                 "counts": self.counts(),
                 "findings": [f.to_dict() for f in self.findings]}
@@ -99,6 +104,11 @@ def parse_plan(text: str) -> PlanReport:
         name = m.group(1)
         report.joins[name] = report.joins.get(name, 0) + 1
     report.exchanges = len(_EXCHANGE_RE.findall(stripped))
+    report.single_exchanges = sum(
+        1 for line in stripped.splitlines()
+        if (m := _EXCHANGE_RE.search(line))
+        and m.group(1) == "SinglePartition"
+        and "BROADCAST" not in line.upper())
 
     lines = stripped.splitlines()
     filter_above = False
@@ -151,6 +161,10 @@ def analyze(text: str) -> PlanReport:
     smj = report.joins.get("SortMergeJoin", 0)
     if smj:
         add(PerfFinding("PF005", "info", f"SortMergeJoin x{smj}"))
+    if report.single_exchanges:
+        add(PerfFinding("PF007", "medium",
+                        f"Exchange SinglePartition x"
+                        f"{report.single_exchanges}"))
     rank = {s: i for i, s in enumerate(SEVERITIES)}
     report.findings.sort(key=lambda f: (rank[f.severity], f.code, f.detail))
     return report

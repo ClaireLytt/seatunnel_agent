@@ -29,6 +29,9 @@ SQLPERF_I18N: dict[str, dict[str, str]] = {
                  "broadcast it (hint or autoBroadcastJoinThreshold)",
         "PF006": "wide scan — select only the needed columns so the "
                  "reader can prune",
+        "PF007": "the stream funnels into a single partition (global "
+                 "sort / collect) — add a LIMIT, sort within partitions "
+                 "(sortWithinPartitions), or aggregate before ordering",
         "rpt_scans": "Scans",
         "rpt_col_table": "table",
         "rpt_col_cols": "columns read",
@@ -70,6 +73,8 @@ SQLPERF_I18N: dict[str, dict[str, str]] = {
         "PF005": "计划里有 SortMergeJoin — 小表侧可广播（hint 或调大 "
                  "autoBroadcastJoinThreshold）",
         "PF006": "宽表扫描 — 只选需要的列让读取器裁剪",
+        "PF007": "数据汇聚到单分区（全局排序/collect）— 加 LIMIT、改分区内"
+                 "排序（sortWithinPartitions）或先聚合再排序",
         "rpt_scans": "扫描明细",
         "rpt_col_table": "表",
         "rpt_col_cols": "读取列数",

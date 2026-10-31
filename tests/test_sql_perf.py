@@ -110,3 +110,26 @@ def test_api_before_plan_diff():
     res = client.post("/api/sqlperf/analyze", json={
         "text": optimized, "before_text": "just some prose"})
     assert res.status_code == 400 and "before plan" in res.text
+
+
+def test_single_partition_exchange_pf007():
+    plan = (
+        "== Physical Plan ==\n"
+        "+- Sort [amount ASC NULLS FIRST], true, 0\n"
+        "   +- Exchange rangepartitioning(amount ASC, 1), "
+        "ENSURE_REQUIREMENTS\n"
+        "      +- Exchange SinglePartition, ENSURE_REQUIREMENTS\n"
+        "         +- FileScan parquet ods.orders[amount] "
+        "PartitionFilters: [isnotnull(dt), (dt = 1)], "
+        "PushedFilters: [IsNotNull(amount)]\n")
+    report = analyze(plan)
+    assert report.single_exchanges == 1
+    assert any(f.code == "PF007" and f.severity == "medium"
+               for f in report.findings)
+    # a broadcast SinglePartition exchange is not a funnel
+    optimized = (Path(__file__).resolve().parents[1] / "examples"
+                 / "sqlperf_demo" / "plan_optimized.txt"
+                 ).read_text(encoding="utf-8")
+    opt = analyze(optimized)
+    assert opt.single_exchanges == 0
+    assert not any(f.code == "PF007" for f in opt.findings)
