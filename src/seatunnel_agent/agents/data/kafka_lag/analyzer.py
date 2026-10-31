@@ -27,7 +27,7 @@ import json
 from dataclasses import dataclass, field
 
 __all__ = ["KafkaFinding", "LagResult", "PartitionLag", "analyze_lag",
-           "parse_lag_snapshot"]
+           "lag_trend", "parse_lag_snapshot"]
 
 _TOTAL_LAG = (100_000, 1_000_000)
 _HOT_RATIO = (5.0, 20.0)       # max lag vs median lag
@@ -117,6 +117,31 @@ def parse_lag_snapshot(text: str) -> tuple[str, list[PartitionLag]]:
     if not parts:
         raise ValueError("no partitions in the snapshot / 快照里没有分区")
     return group, parts
+
+
+def lag_trend(entries: list[dict], n: int) -> dict | None:
+    """Sustained backlog growth over the last *n* ledger snapshots.
+
+    Returns the trend facts when the last ``n`` recorded total lags rise
+    strictly snapshot over snapshot — the pattern a single-snapshot gate
+    misses because each step stays under its threshold.  ``None`` when
+    the ledger is shorter than ``n`` or any step held or shrank (the
+    backlog is draining).  Mirrors slow_query.detect_trend, keyed on
+    ``total_lag``.
+    """
+    if n < 2:
+        raise ValueError("trend window must be >= 2 snapshots")
+    lags = [float(e["total_lag"]) for e in entries
+            if isinstance(e.get("total_lag"), (int, float))]
+    if len(lags) < n:
+        return None
+    window = lags[-n:]
+    if any(b <= a for a, b in zip(window, window[1:])):
+        return None
+    return {"snapshots": n, "from_lag": int(window[0]),
+            "to_lag": int(window[-1]),
+            "growth_pct": round(100 * (window[-1] / window[0] - 1), 1)
+            if window[0] else None}
 
 
 def _median(xs: list[float]) -> float:

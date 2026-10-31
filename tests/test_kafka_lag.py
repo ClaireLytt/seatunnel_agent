@@ -214,3 +214,71 @@ def test_mcp_tool_markdown():
     assert "Kafka Consumer-Lag Diagnosis" in out and "KL003" in out
     assert "must not be empty" in kafka_lag("  ")
     assert "bad input" in kafka_lag('{"topics": []}')
+
+
+# ── history ledger + trend ───────────────────────────────────────────
+
+def test_lag_trend_strictly_rising_only():
+    from seatunnel_agent.agents.data.kafka_lag import lag_trend
+
+    rising = [{"total_lag": v} for v in (100, 200, 300)]
+    t = lag_trend(rising, 3)
+    assert t == {"snapshots": 3, "from_lag": 100, "to_lag": 300,
+                 "growth_pct": 200.0}
+    assert lag_trend([{"total_lag": v} for v in (100, 200, 200)], 3) is None
+    assert lag_trend(rising[:2], 3) is None
+    import pytest
+
+    with pytest.raises(ValueError):
+        lag_trend(rising, 1)
+
+
+def test_cli_history_and_trend(tmp_path):
+    import json as _json
+
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    ledger = tmp_path / "lag.jsonl"
+    ledger.write_text(
+        _json.dumps({"total_lag": 800000}) + "\n"
+        + _json.dumps({"total_lag": 900000}) + "\n", encoding="utf-8")
+    res = CliRunner().invoke(cli, [
+        "kafkalag", "-f", str(DEMO), "--history", str(ledger),
+        "--trend", "3", "--lang", "zh"])
+    assert res.exit_code == 0, res.output
+    assert "积压持续增长" in res.output
+    lines = [_json.loads(x) for x in
+             ledger.read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert lines[-1]["total_lag"] == 1089000
+
+
+def test_cli_fail_on_trend_gate(tmp_path):
+    import json as _json
+
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    ledger = tmp_path / "lag.jsonl"
+    ledger.write_text(
+        _json.dumps({"total_lag": 800000}) + "\n"
+        + _json.dumps({"total_lag": 900000}) + "\n", encoding="utf-8")
+    res = CliRunner().invoke(cli, [
+        "kafkalag", "-f", str(DEMO), "--history", str(ledger),
+        "--trend", "3", "--fail-on-trend"])
+    assert res.exit_code == 1
+    # draining ledger (higher than current) -> no trend -> exit 0
+    ledger2 = tmp_path / "lag2.jsonl"
+    ledger2.write_text(
+        _json.dumps({"total_lag": 5000000}) + "\n"
+        + _json.dumps({"total_lag": 2000000}) + "\n", encoding="utf-8")
+    ok = CliRunner().invoke(cli, [
+        "kafkalag", "-f", str(DEMO), "--history", str(ledger2),
+        "--trend", "3", "--fail-on-trend"])
+    assert ok.exit_code == 0, ok.output
+    # --trend without --history is a usage error
+    missing = CliRunner().invoke(cli, [
+        "kafkalag", "-f", str(DEMO), "--trend", "3"])
+    assert missing.exit_code == 2

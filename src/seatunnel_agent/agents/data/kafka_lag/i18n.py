@@ -49,6 +49,10 @@ KL_I18N: dict[str, dict[str, str]] = {
                           "Rates are optional; rate rules stay quiet "
                           "without them. No broker connection.",
         "rpt_llm_note": "Ops note (LLM — review before sending)",
+        "rpt_trend": ("**Sustained backlog growth** — the last "
+                      "{snapshots} ledger snapshots rose every time: "
+                      "{from_lag} -> {to_lag} (+{growth_pct}%). Each "
+                      "snapshot passed its own gate; the trend did not."),
     },
     "zh": {
         "rpt_title": "Kafka 消费积压诊断",
@@ -88,6 +92,10 @@ KL_I18N: dict[str, dict[str, str]] = {
                           "热点分区 5/20 倍中位数、追赶 ETA 30/180 分钟。"
                           "速率可选，缺省时相关规则静默。不连 broker。",
         "rpt_llm_note": "运维通报草稿（LLM — 发送前请复核）",
+        "rpt_trend": ("**积压持续增长** — 台账最近 {snapshots} 次快照"
+                      "逐次上涨：{from_lag} -> {to_lag}"
+                      "（+{growth_pct}%）。每次都没破单次阈值，"
+                      "但趋势破了。"),
     },
 }
 

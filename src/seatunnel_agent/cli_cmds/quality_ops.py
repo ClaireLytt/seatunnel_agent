@@ -35,6 +35,7 @@ from .check_runner import (
 )
 from .check_runner import emit_payload as _emit
 from .check_runner import read_input as _read
+from .check_runner import track_history as _track_history
 
 
 @click.command("sampleprofile")
@@ -530,19 +531,36 @@ def flinkdiag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="消费组快照文件（JSON 或 CSV）")
 @click.option("--text", type=str, default=None, help="内联快照")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="积压台账：group/total_lag 追加到该 jsonl 并打印漂移")
+@click.option("--trend", "trend_n", type=click.IntRange(min=2), default=None,
+              help="持续增长：台账（含本次）最近 N 次 total_lag 逐次上涨"
+                   "时在报告点名（需配合 --history）")
+@click.option("--fail-on-trend", "fail_on_trend", is_flag=True,
+              default=False, help="CI gate：检出持续增长时 exit 1")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草运维通报（需配置 API key）")
 @click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
               help="CI gate：存在 high 级发现时 exit 1")
 @report_options
-def kafkalag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
-    """Kafka 消费积压诊断 — 快照 → 发现 + 追赶 ETA。"""
+def kafkalag(path, text, history_path, trend_n, fail_on_trend, use_llm,
+             fail_high, lang, fmt, output) -> None:
+    """Kafka 消费积压诊断 — 快照 → 发现 + 追赶 ETA；--history 记台账。"""
+    import json as _json
+    from pathlib import Path
+
     from seatunnel_agent.agents.data.kafka_lag import (
         analyze_lag,
+        lag_trend,
         parse_lag_snapshot,
         render_markdown,
     )
 
+    require_with((trend_n or fail_on_trend) and not history_path,
+                 "--trend / --fail-on-trend", "--history")
+    require_with(fail_on_trend and not trend_n, "--fail-on-trend",
+                 "--trend N")
     try:
         group, parts = parse_lag_snapshot(_read(path, text, "快照"))
         result = analyze_lag(group, parts)
@@ -550,6 +568,20 @@ def kafkalag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
         raise click.UsageError(str(exc)) from exc
     markdown = render_markdown(result, lang=lang)
     payload = result.to_dict()
+    trend = None
+    if trend_n:
+        from seatunnel_agent.agents.data.kafka_lag.i18n import tp as _kl_tp
+
+        ledger = (Path(history_path).read_text(encoding="utf-8",
+                                               errors="replace")
+                  if Path(history_path).is_file() else "")
+        entries = [_json.loads(ln) for ln in ledger.splitlines()
+                   if ln.strip()]
+        entries.append({"total_lag": result.total_lag})
+        trend = lag_trend(entries, trend_n)
+        if trend:
+            payload["trend"] = trend
+            markdown += "\n\n" + _kl_tp(lang, "rpt_trend").format(**trend)
     if use_llm:
         from seatunnel_agent.agents.data.kafka_lag.advisor_llm import (
             ops_note,
@@ -560,6 +592,17 @@ def kafkalag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
             payload, markdown, ops_note(result, lang=lang),
             "ops_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
+    if history_path:
+        _track_history(history_path, {
+            "total_lag": result.total_lag,
+            "partitions": len(result.partitions),
+            "high_findings": sum(1 for f in result.findings
+                                 if f.severity == "high")},
+            worse_key="total_lag")
+    if fail_on_trend and trend:
+        fail_check(f"TREND total_lag {trend['from_lag']} -> "
+                   f"{trend['to_lag']} over {trend['snapshots']} "
+                   f"snapshots", fmt)
     if fail_high:
         fail_on_high(result.findings, fmt)
 

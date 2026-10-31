@@ -12,6 +12,7 @@ from .analyzer import (
     LagResult,
     PartitionLag,
     analyze_lag,
+    lag_trend,
     parse_lag_snapshot,
 )
 from .report import render_markdown
@@ -21,6 +22,7 @@ __all__ = [
     "LagResult",
     "PartitionLag",
     "analyze_lag",
+    "lag_trend",
     "parse_lag_snapshot",
     "render_markdown",
 ]
