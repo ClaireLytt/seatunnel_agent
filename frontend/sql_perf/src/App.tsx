@@ -10,6 +10,7 @@ export default function App() {
   const [file, setFile] = useState('examples/sqlperf_demo/plan.txt')
   const [text, setText] = useState('')
   const [sql, setSql] = useState('')
+  const [before, setBefore] = useState('')
   const [llm, setLlm] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -41,6 +42,7 @@ export default function App() {
         i18n.language,
         llm,
         sql,
+        before,
       )
       setReport(res.report ?? '')
     } catch (e) {
@@ -59,6 +61,7 @@ export default function App() {
     setFile('examples/sqlperf_demo/plan.txt')
     setText('')
     setSql('')
+    setBefore('')
     setLlm(false)
     setError('')
     setReport('')
@@ -121,6 +124,24 @@ export default function App() {
                 >
                   {t('run_text_btn')}
                 </button>
+              </div>
+            </details>
+          </Card>
+
+          <Card>
+            <details open={before.trim() !== ''}>
+              <summary className="cursor-pointer select-none font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+                {t('before_acc')}
+              </summary>
+              <div className="mt-3 flex flex-col gap-3">
+                <textarea
+                  value={before}
+                  onChange={(e) => setBefore(e.target.value)}
+                  placeholder={t('before_ph')}
+                  rows={8}
+                  spellCheck={false}
+                  className="w-full resize-y rounded border border-line bg-[var(--paper)] p-3 font-mono text-[13px] text-ink outline-none focus:border-ink"
+                />
               </div>
             </details>
           </Card>

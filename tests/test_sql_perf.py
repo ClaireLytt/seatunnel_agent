@@ -85,3 +85,28 @@ def test_report_zh_en_and_tool():
     assert "PF002" in md
     assert "must not be empty" in sql_perf(" ")
     assert "bad input" in sql_perf("just some prose")
+
+
+def test_api_before_plan_diff():
+    """before_text adds the diff; an unparseable before plan is a 400."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.sql_perf import api as sp_api
+
+    optimized = (Path(__file__).resolve().parents[1] / "examples"
+                 / "sqlperf_demo" / "plan_optimized.txt"
+                 ).read_text(encoding="utf-8")
+    app = FastAPI()
+    app.include_router(sp_api.router)
+    client = TestClient(app)
+    res = client.post("/api/sqlperf/analyze", json={
+        "text": optimized, "before_text": DEMO, "report": True,
+        "lang": "en"})
+    assert res.status_code == 200
+    body = res.json()
+    resolved = {f["code"] for f in body["result"]["diff"]["resolved"]}
+    assert "PF002" in resolved and "Plan Diff" in body["report"]
+    res = client.post("/api/sqlperf/analyze", json={
+        "text": optimized, "before_text": "just some prose"})
+    assert res.status_code == 400 and "before plan" in res.text

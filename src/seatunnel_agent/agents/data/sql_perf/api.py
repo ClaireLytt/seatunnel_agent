@@ -30,6 +30,11 @@ _ENV = "SQLPERF_API_ALLOWED_DIRS"
 class AnalyzeRequest(BaseModel):
     file: str | None = Field(None, description="EXPLAIN output file")
     text: str | None = Field(None, description="Inline EXPLAIN output")
+    before_file: str | None = Field(
+        None, description="Pre-optimization EXPLAIN file — adds a "
+                          "before/after plan diff")
+    before_text: str = Field(
+        "", description="Inline pre-optimization EXPLAIN output")
     sql: str = Field("", description="The original SQL — with llm=true "
                                      "an optimized rewrite is drafted")
     llm: bool = Field(False, description="Draft the rewrite via the "
@@ -56,6 +61,19 @@ def run_analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     lang = normalize_lang(req.lang)
     report = render_markdown(result, lang=lang) if req.report else None
     payload = result.to_dict()
+    if (req.before_file or "").strip() or req.before_text.strip():
+        from .diff import diff_plans, render_diff
+
+        before_raw = resolve_file_or_text(req.before_file,
+                                          req.before_text or None, _ENV)
+        try:
+            before = analyze(before_raw)
+        except Exception as exc:  # bad input
+            raise HTTPException(status_code=400,
+                                detail=f"before plan: {exc}") from exc
+        payload["diff"] = diff_plans(before, result)
+        if report is not None:
+            report += "\n\n" + render_diff(payload["diff"], lang=lang)
     if req.llm:
         if not req.sql.strip():
             raise HTTPException(status_code=400,

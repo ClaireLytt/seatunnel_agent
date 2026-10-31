@@ -22,6 +22,10 @@ const resources = {
       empty_input: 'Provide the plan file or paste the EXPLAIN output first.',
       bad_dir: 'Not allowed: ',
       report_ph: '▶ Findings, joins, shuffles and per-scan pruning appear here.',
+      before_acc: 'Compare against the pre-optimization plan',
+      before_ph:
+        '== Physical Plan ==  -- the EXPLAIN output BEFORE the change;\n' +
+        'the report gains a resolved / introduced / remaining diff',
       rewrite_acc: 'LLM rewrite of the SQL',
       sql_ph: 'SELECT ... -- the original SQL behind this plan',
       llm_label: 'Draft the optimized SQL (needs an API key)',
@@ -50,6 +54,9 @@ const resources = {
       empty_input: '请先填写计划文件路径或粘贴 EXPLAIN 输出。',
       bad_dir: '目录不在白名单: ',
       report_ph: '▶ 发现、join、shuffle 与各表裁剪情况在此显示。',
+      before_acc: '与优化前计划对比',
+      before_ph:
+        '== Physical Plan ==  -- 改动前的 EXPLAIN 输出；\n报告将追加已解决 / 新增 / 遗留对比节',
       rewrite_acc: 'LLM 改写 SQL',
       sql_ph: 'SELECT ... -- 该计划对应的原 SQL',
       llm_label: '生成优化 SQL 草案（需 API key）',
