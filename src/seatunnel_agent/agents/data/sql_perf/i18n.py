@@ -41,6 +41,18 @@ SQLPERF_I18N: dict[str, dict[str, str]] = {
         "rpt_disclaimer": ("> Deterministic read of the EXPLAIN text — "
                            "the findings reflect what the engine planned, "
                            "not runtime metrics. No engine connection."),
+        "diff_title": "Plan Diff (before -> after)",
+        "diff_stats": ("resolved {resolved} · introduced {introduced} · "
+                       "remaining {remaining} · shuffles {ex_before} -> "
+                       "{ex_after} · joins {j_before} -> {j_after}"),
+        "diff_resolved": "Resolved",
+        "diff_introduced": "Introduced (new in the after plan)",
+        "diff_remaining": "Remaining",
+        "diff_scans": "Scan changes",
+        "diff_col_before": "before",
+        "diff_col_after": "after",
+        "diff_cols": "cols",
+        "diff_no_change": "The two plans analyze identically.",
     },
     "zh": {
         "rpt_title": "执行计划分析",
@@ -69,6 +81,18 @@ SQLPERF_I18N: dict[str, dict[str, str]] = {
         "rpt_rewrite": "优化 SQL 草案（LLM 生成 — 运行前请审阅）",
         "rpt_disclaimer": ("> 对 EXPLAIN 文本的确定性解读 — 发现反映引擎的"
                            "计划决策，不是运行期指标。不连引擎。"),
+        "diff_title": "计划对比（优化前 -> 优化后）",
+        "diff_stats": ("已解决 {resolved} · 新增 {introduced} · 遗留 "
+                       "{remaining} · shuffle {ex_before} -> {ex_after} · "
+                       "join {j_before} -> {j_after}"),
+        "diff_resolved": "已解决",
+        "diff_introduced": "新增（仅在优化后计划出现）",
+        "diff_remaining": "遗留",
+        "diff_scans": "扫描变化",
+        "diff_col_before": "优化前",
+        "diff_col_after": "优化后",
+        "diff_cols": "列",
+        "diff_no_change": "两份计划分析结果一致。",
     },
 }
 

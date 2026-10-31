@@ -179,3 +179,23 @@ def test_slowquery_batch_dir(tmp_path):
     res = runner.invoke(slowquery, [*args, "--fail-over-regression", "3"])
     assert res.exit_code == 1 and "REGRESSION" in res.output
     assert runner.invoke(slowquery, [*args, "--llm"]).exit_code == 2
+
+
+def test_sqlperf_plan_diff():
+    runner = CliRunner()
+    res = runner.invoke(sqlperf, [
+        "-f", str(EX / "sqlperf_demo" / "plan_optimized.txt"),
+        "--before", str(EX / "sqlperf_demo" / "plan.txt"),
+        "-F", "json"])
+    assert res.exit_code == 0
+    diff = json.loads(res.output)["diff"]
+    resolved = {f["code"] for f in diff["resolved"]}
+    assert "PF002" in resolved and "PF005" in resolved
+    assert diff["exchanges"] == {"before": 3, "after": 2}
+    assert any(c["table"] == "ods.orders" for c in diff["scan_changes"])
+    # identical plans -> everything remains, nothing resolved
+    res = runner.invoke(sqlperf, [
+        "-f", str(EX / "sqlperf_demo" / "plan.txt"),
+        "--before", str(EX / "sqlperf_demo" / "plan.txt"), "-F", "json"])
+    diff = json.loads(res.output)["diff"]
+    assert not diff["resolved"] and not diff["introduced"]

@@ -35,15 +35,26 @@ from .check_runner import track_history as _track_history
 @click.option("--fail-on-severity", "fail_severity",
               type=click.Choice(["high", "medium"]), default=None,
               help="CI gate：出现该级别及以上的发现时 exit 1")
+@click.option("--before", "before_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="优化前的 EXPLAIN 文件（-f 为优化后，输出前后对比）")
 @report_options
-def sqlperf(path, text, sql_path, use_llm, fail_severity, lang, fmt,
-            output) -> None:
+def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
+            lang, fmt, output) -> None:
     """执行计划分析 — EXPLAIN 文本 → join/shuffle/裁剪/下推发现与处方。"""
     from seatunnel_agent.agents.data.sql_perf import analyze, render_markdown
 
     result = analyze(_read(path, text, "EXPLAIN 输出"))
     markdown = render_markdown(result, lang=lang)
     payload = result.to_dict()
+    if before_path:
+        from seatunnel_agent.agents.data.sql_perf.diff import diff_plans, render_diff
+
+        before = analyze(Path(before_path).read_text(encoding="utf-8",
+                                                     errors="replace"))
+        delta = diff_plans(before, result)
+        payload["diff"] = delta
+        markdown += "\n\n" + render_diff(delta, lang=lang)
     if use_llm:
         if not sql_path:
             raise click.UsageError("--llm 需配合 --sql-file")
