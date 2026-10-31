@@ -12,6 +12,21 @@
 | P5 | data_skew (34) | 加盐 what-if:对 shuffle 分布热点按 N 路打散重算 p99/倾斜比,未给 N 时找达标最小 N | `skew-runtime --shuffle-dist --what-if-salt [N]` |
 | P6 | dag_conflict (35) | 新 DAG 准入:对指定 DAG 在时间轴上扫描候选起点,选冲突窗最少、峰值最低的错峰位 | `dagconflict --place DAG` |
 
+## 验证
+
+结果与门禁输出见同批结果报告
+docs/reports/20261031-perf-phase4.md：
+
+```
+pytest tests (非 uitest) -> 3831 passed, 1 skipped
+python scripts/check_workflow.py --range origin/main...HEAD ->
+[PASS] AI 署名
+[PASS] 工作区
+[PASS] 报告落盘
+[PASS] floor
+[PASS] 前端锁文件
+```
+
 ## 边界
 
 - 不动 web 页结构;P1/P3 的 API 字段若一行可加则顺带,否则只做 CLI。
