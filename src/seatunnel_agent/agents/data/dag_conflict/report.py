@@ -7,7 +7,42 @@ from seatunnel_agent.common.utils import normalize_lang
 from .conflictor import ConflictReport
 from .i18n import tp
 
-__all__ = ["render_markdown"]
+__all__ = ["render_markdown", "render_place"]
+
+
+def render_place(placement: dict, lang: str = "zh") -> str:
+    """Markdown section for conflictor.place results."""
+    lang = normalize_lang(lang)
+    best, declared = placement["best"], placement["declared"]
+    lines = ["### " + tp(lang, "plc_title").format(dag=placement["dag"]),
+             "",
+             tp(lang, "plc_best").format(
+                 offset=f"{best['offset']:g}",
+                 windows=best["windows"], writes=best["write_conflicts"],
+                 peak=best["peak_slots"],
+                 declared_offset=f"{declared['offset']:g}",
+                 declared_windows=declared["windows"],
+                 declared_writes=declared["write_conflicts"],
+                 declared_peak=declared["peak_slots"])]
+    key = (declared["windows"] + declared["write_conflicts"],
+           declared["peak_slots"])
+    best_key = (best["windows"] + best["write_conflicts"],
+                best["peak_slots"])
+    if key == best_key:
+        lines.append("")
+        lines.append(tp(lang, "plc_keep"))
+    lines.append("")
+    lines.append(f"**{tp(lang, 'plc_candidates')}**")
+    lines.append(f"| {tp(lang, 'plc_col_offset')} "
+                 f"| {tp(lang, 'plc_col_windows')} "
+                 f"| {tp(lang, 'plc_col_writes')} "
+                 f"| {tp(lang, 'plc_col_peak')} |")
+    lines.append("|---|---|---|---|")
+    for c in placement["candidates"]:
+        mark = "**" if c is best else ""
+        lines.append(f"| {mark}{c['offset']:g}{mark} | {c['windows']} "
+                     f"| {c['write_conflicts']} | {c['peak_slots']} |")
+    return "\n".join(lines)
 
 
 def render_markdown(report: ConflictReport, lang: str = "zh") -> str:

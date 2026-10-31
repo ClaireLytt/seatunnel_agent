@@ -203,13 +203,9 @@ def _runs(scenario: Scenario) -> list[TaskRun]:
     return runs
 
 
-def simulate(scenario: Scenario) -> ConflictReport:
-    runs = _runs(scenario)
-    report = ConflictReport(cap_slots=scenario.cap_slots,
-                            cap_memory_gb=scenario.cap_memory_gb)
-    report.windows, report.peak_slots, report.peak_memory_gb = _sweep(
-        runs, scenario.cap_slots, scenario.cap_memory_gb)
-
+def _write_conflicts(runs: list[TaskRun]) -> list[dict[str, Any]]:
+    """Cross-DAG overlapping writers of the same table."""
+    conflicts: list[dict[str, Any]] = []
     by_table: dict[str, list[TaskRun]] = {}
     for r in runs:
         for table in r.writes:
@@ -219,12 +215,22 @@ def simulate(scenario: Scenario) -> ConflictReport:
             for b in writers[i + 1:]:
                 if (a.dag != b.dag and a.start < b.finish
                         and b.start < a.finish):
-                    report.write_conflicts.append({
+                    conflicts.append({
                         "table": table,
                         "a": f"{a.dag}:{a.task}",
                         "b": f"{b.dag}:{b.task}",
                         "overlap": [max(a.start, b.start),
                                     min(a.finish, b.finish)]})
+    return conflicts
+
+
+def simulate(scenario: Scenario) -> ConflictReport:
+    runs = _runs(scenario)
+    report = ConflictReport(cap_slots=scenario.cap_slots,
+                            cap_memory_gb=scenario.cap_memory_gb)
+    report.windows, report.peak_slots, report.peak_memory_gb = _sweep(
+        runs, scenario.cap_slots, scenario.cap_memory_gb)
+    report.write_conflicts = _write_conflicts(runs)
 
     if report.windows:
         worst = max(report.windows,
@@ -253,3 +259,45 @@ def simulate(scenario: Scenario) -> ConflictReport:
                 "peak_slots_after": after_peak,
                 "windows_after": len(after_windows)}
     return report
+
+
+def place(scenario: Scenario, dag_name: str) -> dict[str, Any]:
+    """Admission check: find the best start offset for one DAG.
+
+    The named DAG is lifted out of the scenario and re-inserted at
+    every candidate offset — 0 and each start/finish boundary of the
+    other DAGs' runs (between boundaries the overlap pattern cannot
+    change, so boundaries are the only offsets worth trying).  Each
+    candidate is fully re-simulated; the winner has the fewest
+    conflicts (windows + write conflicts), then the lowest slot peak,
+    then the earliest offset.
+    """
+    if dag_name not in scenario.dag_tasks:
+        raise ValueError(f"dag not in the scenario: {dag_name!r}")
+    others = [r for name, tasks in scenario.dag_tasks.items()
+              if name != dag_name
+              for r in _schedule_dag(name, tasks, scenario.starts[name])]
+    dag_runs = _schedule_dag(dag_name, scenario.dag_tasks[dag_name], 0.0)
+
+    offsets = {0.0, scenario.starts[dag_name]}
+    for r in others:
+        offsets.update((r.start, r.finish))
+    candidates: list[dict[str, Any]] = []
+    for off in sorted(offsets):
+        shifted = [dataclasses.replace(r, start=r.start + off,
+                                       finish=r.finish + off)
+                   for r in dag_runs]
+        runs = others + shifted
+        windows, peak_slots, _ = _sweep(
+            runs, scenario.cap_slots, scenario.cap_memory_gb)
+        writes = _write_conflicts(runs)
+        candidates.append({"offset": off, "windows": len(windows),
+                           "write_conflicts": len(writes),
+                           "peak_slots": peak_slots})
+    best = min(candidates,
+               key=lambda c: (c["windows"] + c["write_conflicts"],
+                              c["peak_slots"], c["offset"]))
+    declared = next(c for c in candidates
+                    if c["offset"] == scenario.starts[dag_name])
+    return {"dag": dag_name, "best": best, "declared": declared,
+            "candidates": candidates}

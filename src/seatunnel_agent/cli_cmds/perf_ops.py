@@ -309,18 +309,33 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
 @click.option("--history", "history_path", type=click.Path(dir_okay=False),
               default=None,
               help="容量台账：峰值 slots/内存与冲突数追加到该 jsonl")
+@click.option("--place", "place_dag", type=str, default=None,
+              help="准入检查：对该 DAG 扫描候选起点，"
+                   "选冲突最少、峰值最低的错峰位")
 @report_options
-def dagconflict(path, text, fail_on_conflict, history_path, lang, fmt,
-                output) -> None:
+def dagconflict(path, text, fail_on_conflict, history_path, place_dag,
+                lang, fmt, output) -> None:
     """并发冲突检测 — 多 DAG 场景 → 超容窗/写写冲突/错峰建议。"""
     from seatunnel_agent.agents.data.dag_conflict import (
         parse_scenario,
+        place,
         render_markdown,
+        render_place,
         simulate,
     )
 
-    result = simulate(parse_scenario(_read(path, text, "场景 JSON")))
-    _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)
+    scenario = parse_scenario(_read(path, text, "场景 JSON"))
+    result = simulate(scenario)
+    payload = result.to_dict()
+    markdown = render_markdown(result, lang=lang)
+    if place_dag:
+        try:
+            placement = place(scenario, place_dag)
+        except ValueError as exc:
+            raise click.UsageError(str(exc)) from exc
+        payload["placement"] = placement
+        markdown += "\n\n" + render_place(placement, lang=lang)
+    _emit(payload, markdown, fmt, output)
     if history_path:
         _track_history(history_path, {
             "peak_slots": result.peak_slots,

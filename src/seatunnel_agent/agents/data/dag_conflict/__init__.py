@@ -12,15 +12,18 @@ from .conflictor import (
     Scenario,
     Window,
     parse_scenario,
+    place,
     simulate,
 )
-from .report import render_markdown
+from .report import render_markdown, render_place
 
 __all__ = [
     "ConflictReport",
     "Scenario",
     "Window",
     "parse_scenario",
+    "place",
     "render_markdown",
+    "render_place",
     "simulate",
 ]

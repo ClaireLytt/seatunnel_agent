@@ -253,6 +253,28 @@ def test_index_adv_layout_audit():
     assert "IA001" not in res.output and "IA004" not in res.output
 
 
+def test_dagconflict_place():
+    runner = CliRunner()
+    demo = EX / "dagconflict_demo" / "scenario.json"
+    res = runner.invoke(dagconflict, ["-f", str(demo), "--place",
+                                      "etl_users", "-F", "json"])
+    assert res.exit_code == 0
+    placement = json.loads(res.output)["placement"]
+    best, declared = placement["best"], placement["declared"]
+    # the demo scenario conflicts at the declared offset; the best
+    # candidate removes every window and write conflict
+    assert declared["windows"] + declared["write_conflicts"] > 0
+    assert best["windows"] == 0 and best["write_conflicts"] == 0
+    assert best["offset"] != declared["offset"]
+    # unknown dag is a usage error
+    res = runner.invoke(dagconflict, ["-f", str(demo), "--place", "nope"])
+    assert res.exit_code == 2
+    # markdown shows the candidate table
+    res = runner.invoke(dagconflict, ["-f", str(demo), "--place",
+                                      "etl_users", "--lang", "en"])
+    assert res.exit_code == 0 and "Admission check" in res.output
+
+
 def test_sqlcost_compare_rewrite():
     runner = CliRunner()
     res = runner.invoke(sqlcost, [

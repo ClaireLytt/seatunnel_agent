@@ -27,6 +27,19 @@ DAGCONFLICT_I18N: dict[str, dict[str, str]] = {
                            "durations and resources — a what-if timeline, "
                            "not scheduler telemetry. No scheduler "
                            "connection."),
+        "plc_title": "Admission check for `{dag}`",
+        "plc_best": ("Best start offset **{offset}**: {windows} window(s), "
+                     "{writes} write conflict(s), peak {peak} slots "
+                     "(declared offset {declared_offset}: "
+                     "{declared_windows} / {declared_writes} / "
+                     "{declared_peak}). Every candidate re-simulated."),
+        "plc_keep": "The declared offset is already among the best.",
+        "plc_col_offset": "offset",
+        "plc_col_windows": "windows",
+        "plc_col_writes": "write conflicts",
+        "plc_col_peak": "peak slots",
+        "plc_candidates": "Candidate offsets (boundaries of the other "
+                          "DAGs' runs)",
     },
     "zh": {
         "rpt_title": "多 DAG 并发冲突",
@@ -44,6 +57,18 @@ DAGCONFLICT_I18N: dict[str, dict[str, str]] = {
         "rpt_all_ok": "没有超容时间窗，也没有写写冲突 — 这些调度可以共存。",
         "rpt_disclaimer": ("> 按声明的时长与资源做各 DAG 的 ASAP 时间线推演 "
                            "— what-if 模拟，不是调度器遥测。不连调度器。"),
+        "plc_title": "`{dag}` 准入检查",
+        "plc_best": ("最优起点 **{offset}**：超容窗 {windows} 个、写写冲突 "
+                     "{writes} 个、峰值 {peak} 槽（按声明起点 "
+                     "{declared_offset}：{declared_windows} / "
+                     "{declared_writes} / {declared_peak}）。"
+                     "每个候选都重新模拟过。"),
+        "plc_keep": "声明的起点已经是最优之一。",
+        "plc_col_offset": "起点",
+        "plc_col_windows": "超容窗",
+        "plc_col_writes": "写写冲突",
+        "plc_col_peak": "峰值槽",
+        "plc_candidates": "候选起点（其他 DAG 运行区间的边界）",
     },
 }
 
