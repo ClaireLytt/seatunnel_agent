@@ -10,6 +10,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent qualitytrace  -f pipeline.sql --table dws.t [--column c]
   seatunnel-agent datarepair    -f rows.csv --table dwd.t [--pk id]
   seatunnel-agent assetsearch   -f catalog.json --query "按日的订单金额"
+  seatunnel-agent datadict      -f catalog.json [--sql-file workload.sql]
 """
 
 from __future__ import annotations
@@ -335,3 +336,51 @@ def register(cli) -> None:
     cli.add_command(qualitytrace)
     cli.add_command(datarepair)
     cli.add_command(assetsearch)
+    cli.add_command(datadict)
+
+
+@click.command("datadict")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="资产目录：JSON 清单或建表 DDL 文件")
+@click.option("--text", type=str, default=None, help="内联目录")
+@click.option("--sql-file", "sql_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="可选 SQL 负载文件（统计使用频次）")
+@click.option("--min-coverage", "min_cov", type=float, default=0.0,
+              help="CI gate：平均注释覆盖率低于该值时 exit 1")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 草拟缺失的业务描述（需配置 API key）")
+@report_options
+def datadict(path, text, sql_path, min_cov, use_llm,
+             lang, fmt, output) -> None:
+    """数据字典生成 — 目录 ± SQL 负载 → 角色/频次/覆盖率骨架。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.data_dict import (
+        generate_dict,
+        render_markdown,
+    )
+
+    sql = (Path(sql_path).read_text(encoding="utf-8", errors="replace")
+           if sql_path else "")
+    try:
+        result = generate_dict(_read(path, text, "资产目录"), sql_text=sql)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.data_dict.advisor_llm import (
+            describe_columns,
+        )
+        from seatunnel_agent.agents.data.data_dict.i18n import tp
+
+        note = describe_columns(result, lang=lang)
+        payload["descriptions"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
+    if min_cov:
+        avg = (sum(t.comment_coverage for t in result.tables)
+               / len(result.tables)) if result.tables else 0.0
+        if avg < min_cov:
+            fail_check(f"COVERAGE {avg:.0f}% < {min_cov:g}%", fmt)

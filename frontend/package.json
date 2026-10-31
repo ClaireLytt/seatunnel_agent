@@ -55,6 +55,7 @@
     "quality_trace",
     "data_repair",
     "asset_search",
+    "data_dict",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
