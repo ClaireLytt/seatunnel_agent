@@ -69,6 +69,7 @@
     "schedule_advisor",
     "suite_overview",
     "layer_check",
+    "partition_health",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

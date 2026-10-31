@@ -23,6 +23,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent taskfailure   -f failures.json
   seatunnel-agent scheduleadvisor -f plan.json [--fail-on-breach]
   seatunnel-agent layercheck    -f pipeline.sql [--fail-on-high]
+  seatunnel-agent partitionhealth -f partitions.csv [--fail-on-high]
 """
 
 from __future__ import annotations
@@ -363,6 +364,47 @@ def register(cli) -> None:
     cli.add_command(taskfailure)
     cli.add_command(scheduleadvisor)
     cli.add_command(layercheck)
+    cli.add_command(partitionhealth)
+
+
+@click.command("partitionhealth")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="分区清单文件（CSV 或 JSON 列表）")
+@click.option("--text", type=str, default=None, help="内联清单")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草分区通报（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def partitionhealth(path, text, use_llm, fail_high,
+                    lang, fmt, output) -> None:
+    """分区健康体检 — 清单 → 断档/空分区/倾斜/涨缩。"""
+    from seatunnel_agent.agents.data.partition_health import (
+        analyze_partitions,
+        parse_partition_listing,
+        render_markdown,
+    )
+
+    try:
+        result = analyze_partitions(
+            parse_partition_listing(_read(path, text, "清单")))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.partition_health.advisor_llm import (
+            partition_note,
+        )
+        from seatunnel_agent.agents.data.partition_health.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, partition_note(result, lang=lang),
+            "partition_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(result.findings, fmt,
+                     label=lambda f: f"{f.code}:{f.table}")
 
 
 @click.command("layercheck")
