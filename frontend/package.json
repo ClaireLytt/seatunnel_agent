@@ -66,6 +66,7 @@
     "cdc_diag",
     "rt_offline_diff",
     "task_failure",
+    "schedule_advisor",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

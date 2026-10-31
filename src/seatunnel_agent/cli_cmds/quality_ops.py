@@ -21,6 +21,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent cdcdiag       -f sync.json [--fail-on-high]
   seatunnel-agent rtoffline     --realtime rt.csv --offline off.csv -k dt
   seatunnel-agent taskfailure   -f failures.json
+  seatunnel-agent scheduleadvisor -f plan.json [--fail-on-breach]
 """
 
 from __future__ import annotations
@@ -359,6 +360,46 @@ def register(cli) -> None:
     cli.add_command(cdcdiag)
     cli.add_command(rtoffline)
     cli.add_command(taskfailure)
+    cli.add_command(scheduleadvisor)
+
+
+@click.command("scheduleadvisor")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="排程计划 JSON 文件")
+@click.option("--text", type=str, default=None, help="内联计划 JSON")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草排程通报（需配置 API key）")
+@click.option("--fail-on-breach", "fail_breach", is_flag=True, default=False,
+              help="CI gate：SLA 余量为负时 exit 1")
+@report_options
+def scheduleadvisor(path, text, use_llm, fail_breach,
+                    lang, fmt, output) -> None:
+    """调度窗口优化 — 计划 → 时间线 + 关键路径 + SLA 余量。"""
+    from seatunnel_agent.agents.data.schedule_advisor import (
+        advise_schedule,
+        parse_plan,
+        render_markdown,
+    )
+
+    try:
+        result = advise_schedule(parse_plan(_read(path, text, "计划")))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.schedule_advisor.advisor_llm import (
+            schedule_note,
+        )
+        from seatunnel_agent.agents.data.schedule_advisor.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, schedule_note(result, lang=lang),
+            "schedule_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_breach and result.margin_min is not None \
+            and result.margin_min < 0:
+        fail_check(f"SLA BREACH margin {result.margin_min:g} min", fmt)
 
 
 @click.command("taskfailure")

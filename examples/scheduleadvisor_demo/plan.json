@@ -1,0 +1,13 @@
+{
+  "day_start": "00:30",
+  "sla": {"task": "ads_board_kpi", "deadline": "07:00"},
+  "tasks": [
+    {"name": "ods_load", "duration_min": 40, "deps": []},
+    {"name": "dwd_orders", "duration_min": 55, "deps": ["ods_load"]},
+    {"name": "dim_users", "duration_min": 20, "deps": ["ods_load"]},
+    {"name": "dwd_click_log", "duration_min": 150, "deps": ["ods_load"]},
+    {"name": "dws_orders_daily", "duration_min": 90, "deps": ["dwd_orders", "dim_users"]},
+    {"name": "ads_board_kpi", "duration_min": 30, "deps": ["dws_orders_daily"]},
+    {"name": "rpt_mail", "duration_min": 10, "deps": ["dws_orders_daily"]}
+  ]
+}
