@@ -153,3 +153,29 @@ def test_slowquery_regression_gate():
     assert res.exit_code == 1 and "REGRESSION 4.19x" in res.output
     assert runner.invoke(slowquery, [*args, "--fail-over-regression", "10"]
                          ).exit_code == 0
+
+
+def test_slowquery_batch_dir(tmp_path):
+    """-d dir: every *.json diagnosed, ranked by regression, worst gates."""
+    import shutil
+
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    src = EX / "slowquery_demo" / "metrics.json"
+    shutil.copy(src, runs / "heavy.json")
+    fast = json.loads(src.read_text("utf-8"))
+    fast["name"], fast["duration_s"] = "fast_run", 400
+    (runs / "fast.json").write_text(json.dumps(fast), encoding="utf-8")
+
+    runner = CliRunner()
+    args = ["-d", str(runs),
+            "--baseline", str(EX / "slowquery_demo" / "baseline.jsonl")]
+    res = runner.invoke(slowquery, [*args, "-F", "json"])
+    assert res.exit_code == 0
+    ranked = json.loads(res.output)["runs"]
+    assert [r["regression"] >= ranked[-1]["regression"] for r in ranked]
+    assert ranked[0]["duration_s"] == 1800  # the heavy run first
+    # the worst run trips the gate; batch mode refuses --llm
+    res = runner.invoke(slowquery, [*args, "--fail-over-regression", "3"])
+    assert res.exit_code == 1 and "REGRESSION" in res.output
+    assert runner.invoke(slowquery, [*args, "--llm"]).exit_code == 2

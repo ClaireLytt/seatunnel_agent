@@ -114,3 +114,6 @@ slots/memory）± 各 DAG 启动时刻。
 9. [x] three-page perf chain: /sqlperf "recommend indexes for this SQL"
    hands the pasted SQL to /indexadvisor (auto-runs) which already hands
    to /sqlcost - plan analysis -> advice -> cost verification.
+10. [x] slowquery -d DIR batch triage: every *.json diagnosed against
+    the baseline, ranked by regression; --fail-over-regression gates on
+    the worst run.

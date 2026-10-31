@@ -160,6 +160,9 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="执行指标 JSON 文件")
 @click.option("--text", type=str, default=None, help="内联指标 JSON")
+@click.option("--dir", "-d", "directory",
+              type=click.Path(exists=True, file_okay=False), default=None,
+              help="批量模式：目录下所有 *.json 逐个诊断，按回归排序出清单")
 @click.option("--baseline", "baseline_path",
               type=click.Path(exists=True, dir_okay=False), default=None,
               help="历史基线 jsonl")
@@ -173,7 +176,7 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
               help="CI gate：相对基线中位数的回归倍数达到该值时 exit 1"
                    "（需配合 --baseline）")
 @report_options
-def slowquery(path, text, baseline_path, history_path, use_llm,
+def slowquery(path, text, directory, baseline_path, history_path, use_llm,
               fail_regression, lang, fmt, output) -> None:
     """慢查询根因 — 指标 × 基线 → 排序根因与处方；--history 记台账。"""
     from seatunnel_agent.agents.data.slow_query import (
@@ -186,6 +189,34 @@ def slowquery(path, text, baseline_path, history_path, use_llm,
     baseline = (Path(baseline_path).read_text(encoding="utf-8",
                                               errors="replace")
                 if baseline_path else "")
+    if directory:
+        if use_llm or history_path:
+            raise click.UsageError("--dir 批量模式不支持 --llm / --history")
+        diags = []
+        for f in sorted(Path(directory).glob("*.json")):
+            try:
+                diags.append(diagnose(
+                    parse_metrics(f.read_text(encoding="utf-8",
+                                              errors="replace")),
+                    parse_baseline(baseline)))
+            except ValueError as exc:
+                raise click.UsageError(f"{f.name}: {exc}") from exc
+        if not diags:
+            raise click.UsageError("目录里没有 *.json 指标文件")
+        diags.sort(key=lambda d: (-d.regression, -d.duration_s, d.name))
+        rows = ["| run | duration_s | regression | top cause |",
+                "| --- | --- | --- | --- |"]
+        for d in diags:
+            top_code = d.causes[0].code if d.causes else "-"
+            rows.append(f"| {d.name} | {d.duration_s:g} | "
+                        f"{d.regression:g}x | {top_code} |")
+        _emit({"runs": [d.to_dict() for d in diags]},
+              "\n".join(rows), fmt, output)
+        worst = diags[0]
+        if fail_regression and worst.regression >= fail_regression:
+            fail_check(f"REGRESSION {worst.name} {worst.regression:g}x >= "
+                       f"{fail_regression:g}x", fmt)
+        return
     diag = diagnose(parse_metrics(_read(path, text, "执行指标")),
                     parse_baseline(baseline))
     markdown = render_markdown(diag, lang=lang)

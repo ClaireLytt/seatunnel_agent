@@ -82,6 +82,7 @@ seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
   --history slow_ledger.jsonl --llm                  # 台账 + LLM 通报草稿（可选）
 seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
   --fail-over-regression 3                           # 回归 >=3x 基线时 exit 1
+seatunnel-agent slowquery -d runs/ --baseline runs.jsonl  # 批量:全目录按回归排序
 seatunnel-agent dagconflict -f scenario.json \
   --fail-on-conflict --history capacity.jsonl        # 有冲突 exit 1;峰值记台账
 ```
