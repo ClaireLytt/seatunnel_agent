@@ -61,6 +61,7 @@
     "db_diag",
     "grant_review",
     "kafka_lag",
+    "flink_diag",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
