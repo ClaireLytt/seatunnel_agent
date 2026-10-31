@@ -359,6 +359,37 @@ def test_slowquery_trend_gate(tmp_path):
     assert res.exit_code == 2
 
 
+def test_sqlcost_batch_dir(tmp_path):
+    runner = CliRunner()
+    stats = str(EX / "sqlcost_demo" / "stats.json")
+    qdir = tmp_path / "queries"
+    qdir.mkdir()
+    (qdir / "big.sql").write_text(
+        (EX / "sqlcost_demo" / "query_full_scan.sql").read_text("utf-8"),
+        encoding="utf-8")
+    (qdir / "small.sql").write_text(
+        (EX / "sqlcost_demo" / "query.sql").read_text("utf-8"),
+        encoding="utf-8")
+    (qdir / "broken.sql").write_text("not sql (((", encoding="utf-8")
+    res = runner.invoke(sqlcost, ["-d", str(qdir), "-f", stats,
+                                  "-F", "json"])
+    assert res.exit_code == 0
+    body = json.loads(res.output)
+    assert [q["name"] for q in body["queries"]] == ["big.sql", "small.sql"]
+    assert body["totals"]["scan_bytes"] > 0
+    assert len(body["skipped"]) == 1 and "broken.sql" in body["skipped"][0]
+    # total budget gate trips on the full-scan query
+    res = runner.invoke(sqlcost, ["-d", str(qdir), "-f", stats,
+                                  "--fail-over-total-scan-gb", "1"])
+    assert res.exit_code == 1 and "BUDGET total scan" in res.output
+    # both or neither of --sql-file/--dir is a usage error
+    res = runner.invoke(sqlcost, ["-f", stats])
+    assert res.exit_code == 2
+    res = runner.invoke(sqlcost, ["-d", str(qdir), "-f", stats,
+                                  "--sql-file", str(qdir / "big.sql")])
+    assert res.exit_code == 2
+
+
 def test_slowquery_ab_diff(tmp_path):
     runner = CliRunner()
     a = tmp_path / "a.json"

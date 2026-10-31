@@ -163,10 +163,17 @@ def index_adv(directory, text, ddl_path, dialect, fail_on_audit, lang, fmt,
 
 @click.command("sqlcost")
 @click.option("--sql-file", "sql_path", type=click.Path(exists=True, dir_okay=False),
-              required=True, help="要估算的 SQL 文件")
+              default=None, help="要估算的 SQL 文件")
+@click.option("--dir", "-d", "directory",
+              type=click.Path(exists=True, file_okay=False), default=None,
+              help="批量模式：目录下所有 *.sql 对同一清单各估一次，"
+                   "按核·秒排序出最贵查询榜 + 合计行")
 @click.option("--file", "-f", "stats_path",
               type=click.Path(exists=True, dir_okay=False), required=True,
               help="表统计清单（JSON/CSV）")
+@click.option("--fail-over-total-scan-gb", type=float, default=0.0,
+              help="CI gate：批量合计扫描超过该 GB 数时 exit 1"
+                   "（需配合 --dir）")
 @click.option("--assume-partition", "assume_partitions", multiple=True,
               help="what-if：按 表:列[:分区数] 假设分区后重估一遍，"
                    "打印扫描/耗时差异（可多次）")
@@ -182,9 +189,9 @@ def index_adv(directory, text, ddl_path, dialect, fail_on_audit, lang, fmt,
               help="CI gate：改写在任一维度反而更贵时 exit 1"
                    "（需配合 --compare-sql-file）")
 @report_options
-def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
-            fail_over_shuffle_gb, compare_sql_path, fail_if_worse, lang,
-            fmt, output) -> None:
+def sqlcost(sql_path, directory, stats_path, fail_over_total_scan_gb,
+            assume_partitions, fail_over_scan_gb, fail_over_shuffle_gb,
+            compare_sql_path, fail_if_worse, lang, fmt, output) -> None:
     """资源消耗预测 — SQL × 表统计 → 代价卡；可按预算挡 CI。"""
     from seatunnel_agent.agents.data.sql_cost import (
         compare,
@@ -199,9 +206,54 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
 
     if fail_if_worse and not compare_sql_path:
         raise click.UsageError("--fail-if-worse 需配合 --compare-sql-file")
-    sql = Path(sql_path).read_text(encoding="utf-8", errors="replace")
+    if bool(sql_path) == bool(directory):
+        raise click.UsageError("提供 --sql-file 或 --dir（二选一）")
     stats = parse_stats(Path(stats_path).read_text(encoding="utf-8",
                                                    errors="replace"))
+    if directory:
+        if assume_partitions or compare_sql_path:
+            raise click.UsageError(
+                "--dir 批量模式不支持 --assume-partition / --compare-sql-file")
+        from seatunnel_agent.common.utils import collect_sql_files
+
+        cards = []
+        skipped = []
+        for p in collect_sql_files(directory):
+            try:
+                cards.append((Path(p).name, estimate(
+                    Path(p).read_text(encoding="utf-8", errors="replace"),
+                    stats)))
+            except ValueError as exc:
+                skipped.append(f"{Path(p).name}: {exc}")
+        if not cards:
+            raise click.UsageError("目录里没有可估算的 *.sql 文件")
+        cards.sort(key=lambda nc: (-nc[1].core_seconds, nc[0]))
+        total_scan = sum(c.scan_bytes for _, c in cards)
+        total_shuffle = sum(c.shuffle_bytes for _, c in cards)
+        total_core = sum(c.core_seconds for _, c in cards)
+        gb = 1 << 30
+        rows = ["| query | scan_gb | shuffle_gb | core_s |",
+                "| --- | --- | --- | --- |"]
+        rows += [f"| {name} | {c.scan_bytes / gb:.1f} "
+                 f"| {c.shuffle_bytes / gb:.1f} | {c.core_seconds:,.0f} |"
+                 for name, c in cards]
+        rows.append(f"| **total ({len(cards)})** | "
+                    f"**{total_scan / gb:.1f}** | "
+                    f"**{total_shuffle / gb:.1f}** | "
+                    f"**{total_core:,.0f}** |")
+        _emit({"queries": [{"name": name, **c.to_dict()}
+                           for name, c in cards],
+               "totals": {"scan_bytes": round(total_scan),
+                          "shuffle_bytes": round(total_shuffle),
+                          "core_seconds": round(total_core, 1)},
+               "skipped": skipped},
+              "\n".join(rows), fmt, output)
+        if (fail_over_total_scan_gb
+                and total_scan / gb > fail_over_total_scan_gb):
+            fail_check(f"BUDGET total scan {total_scan / gb:.1f} GB > "
+                       f"{fail_over_total_scan_gb:g} GB", fmt)
+        return
+    sql = Path(sql_path).read_text(encoding="utf-8", errors="replace")
     card = estimate(sql, stats)
     markdown = render_markdown(card, lang=lang)
     payload = card.to_dict()
