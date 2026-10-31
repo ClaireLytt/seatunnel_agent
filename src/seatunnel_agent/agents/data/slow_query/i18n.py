@@ -34,6 +34,10 @@ SLOWQ_I18N: dict[str, dict[str, str]] = {
                            "connection."),
         "rpt_incident_note": "Incident note draft (LLM — review before "
                              "sending)",
+        "rpt_trend": ("**Creeping slowdown** — the last {runs} ledger "
+                      "runs rose every time: {from_s} -> {to_s} "
+                      "(+{growth_pct}%). Each step passed the per-run "
+                      "gate; the trend did not."),
     },
     "zh": {
         "rpt_title": "慢查询根因",
@@ -54,6 +58,9 @@ SLOWQ_I18N: dict[str, dict[str, str]] = {
         "rpt_disclaimer": ("> 对提交指标的确定性规则判定；占比用于排序估计，"
                            "不构成会计恒等式。不连集群。"),
         "rpt_incident_note": "慢查询通报草稿（LLM 生成 — 发出前请审阅）",
+        "rpt_trend": ("**慢化趋势** — 台账最近 {runs} 次运行逐次上涨：{from_s} "
+                      "-> {to_s}（+{growth_pct}%）。每一步都没触发单次回归"
+                      "闸门，但趋势在涨。"),
     },
 }
 

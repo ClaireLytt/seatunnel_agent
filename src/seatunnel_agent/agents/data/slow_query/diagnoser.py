@@ -180,3 +180,24 @@ def diagnose(run: RunMetrics,
 
     diag.causes.sort(key=lambda c: (-c.share, c.code))
     return diag
+
+
+def detect_trend(entries: list[dict[str, Any]], n: int) -> dict[str, Any] | None:
+    """Creeping slowdown over the last *n* ledger entries.
+
+    Returns the trend facts when the last ``n`` recorded durations rise
+    strictly run over run — the pattern a single-run regression gate
+    misses because each step stays under its threshold.  ``None`` when
+    the ledger is shorter than ``n`` or any step held or improved.
+    """
+    if n < 2:
+        raise ValueError("trend window must be >= 2 runs")
+    durations = [float(e["duration_s"]) for e in entries
+                 if isinstance(e.get("duration_s"), (int, float))]
+    if len(durations) < n:
+        return None
+    window = durations[-n:]
+    if any(b <= a for a, b in zip(window, window[1:])):
+        return None
+    return {"runs": n, "from_s": window[0], "to_s": window[-1],
+            "growth_pct": round(100 * (window[-1] / window[0] - 1), 1)}

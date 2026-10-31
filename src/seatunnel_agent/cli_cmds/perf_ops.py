@@ -223,10 +223,15 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
 @click.option("--promote-under", "promote_under", type=float, default=1.5,
               show_default=True,
               help="晋升阈值：回归倍数达到该值的 run 不进基线")
+@click.option("--trend", "trend_n", type=int, default=0,
+              help="慢化趋势：台账（含本次）最近 N 次 duration 逐次上涨时"
+                   "在报告点名（需配合 --history）")
+@click.option("--fail-on-trend", "fail_on_trend", is_flag=True,
+              default=False, help="CI gate：检出慢化趋势时 exit 1")
 @report_options
 def slowquery(path, text, directory, baseline_path, history_path, use_llm,
-              fail_regression, promote, promote_under, lang, fmt,
-              output) -> None:
+              fail_regression, promote, promote_under, trend_n,
+              fail_on_trend, lang, fmt, output) -> None:
     """慢查询根因 — 指标 × 基线 → 排序根因与处方；--history 记台账。"""
     from seatunnel_agent.agents.data.slow_query import (
         diagnose,
@@ -269,10 +274,34 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
         return
     if promote and not baseline_path:
         raise click.UsageError("--promote-baseline 需配合 --baseline")
+    if (trend_n or fail_on_trend) and not history_path:
+        raise click.UsageError("--trend / --fail-on-trend 需配合 --history")
+    if fail_on_trend and not trend_n:
+        raise click.UsageError("--fail-on-trend 需配合 --trend N")
     run = parse_metrics(_read(path, text, "执行指标"))
     diag = diagnose(run, parse_baseline(baseline))
     markdown = render_markdown(diag, lang=lang)
     payload = diag.to_dict()
+    trend = None
+    if trend_n:
+        from seatunnel_agent.agents.data.slow_query import detect_trend
+        from seatunnel_agent.agents.data.slow_query.i18n import tp as _sq_tp
+
+        ledger = (Path(history_path).read_text(encoding="utf-8",
+                                               errors="replace")
+                  if Path(history_path).is_file() else "")
+        entries = parse_baseline(ledger)
+        entries.append({"duration_s": diag.duration_s})
+        try:
+            trend = detect_trend(entries, trend_n)
+        except ValueError as exc:
+            raise click.UsageError(str(exc)) from exc
+        if trend:
+            payload["trend"] = trend
+            markdown += "\n\n" + _sq_tp(lang, "rpt_trend").format(
+                runs=trend["runs"], from_s=f"{trend['from_s']:g}s",
+                to_s=f"{trend['to_s']:g}s",
+                growth_pct=f"{trend['growth_pct']:g}")
     if use_llm:
         from seatunnel_agent.agents.data.slow_query import advisor_llm
         from seatunnel_agent.agents.data.slow_query.i18n import tp
@@ -307,6 +336,10 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
         fail_check(f"REGRESSION {diag.regression:g}x >= "
                    f"{fail_regression:g}x (baseline median "
                    f"{diag.baseline_median_s:g}s)", fmt)
+    if fail_on_trend and trend:
+        fail_check(f"TREND {trend['runs']} runs rising "
+                   f"{trend['from_s']:g}s -> {trend['to_s']:g}s "
+                   f"(+{trend['growth_pct']:g}%)", fmt)
 
 
 @click.command("dagconflict")

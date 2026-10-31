@@ -270,6 +270,38 @@ def test_index_adv_layout_audit():
     assert "IA001" not in res.output and "IA004" not in res.output
 
 
+def test_slowquery_trend_gate(tmp_path):
+    runner = CliRunner()
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        '{"ts": "t1", "duration_s": 400}\n'
+        '{"ts": "t2", "duration_s": 440}\n'
+        '{"ts": "t3", "duration_s": 480}\n'
+        '{"ts": "t4", "duration_s": 520}\n', encoding="utf-8")
+    metrics = tmp_path / "m.json"
+    metrics.write_text('{"name": "q1", "duration_s": 560}',
+                       encoding="utf-8")
+    res = runner.invoke(slowquery, [
+        "-f", str(metrics), "--history", str(ledger), "--trend", "5",
+        "--fail-on-trend"])
+    assert res.exit_code == 1 and "TREND" in res.output
+    # a run that breaks the rise passes the gate
+    metrics.write_text('{"name": "q1", "duration_s": 480}',
+                       encoding="utf-8")
+    res = runner.invoke(slowquery, [
+        "-f", str(metrics), "--history", str(ledger), "--trend", "5",
+        "--fail-on-trend", "-F", "json"])
+    assert res.exit_code == 0
+    payload, _ = json.JSONDecoder().raw_decode(res.output)
+    assert "trend" not in payload
+    # usage errors: trend without history; fail-on-trend without --trend
+    res = runner.invoke(slowquery, ["-f", str(metrics), "--trend", "5"])
+    assert res.exit_code == 2
+    res = runner.invoke(slowquery, ["-f", str(metrics), "--history",
+                                    str(ledger), "--fail-on-trend"])
+    assert res.exit_code == 2
+
+
 def test_dagconflict_place():
     runner = CliRunner()
     demo = EX / "dagconflict_demo" / "scenario.json"
