@@ -99,8 +99,13 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
               default=None, help="建表 DDL 文件（可选）")
 @click.option("--dialect", default="hive", show_default=True,
               help="SQL 方言")
+@click.option("--fail-on-audit", "fail_on_audit", is_flag=True,
+              default=False,
+              help="CI gate：现状审计有发现（IA001–IA004）时 exit 1"
+                   "（需配合 --ddl）")
 @report_options
-def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
+def index_adv(directory, text, ddl_path, dialect, fail_on_audit, lang, fmt,
+              output) -> None:
     """索引分区推荐 — 查询频次 → 分区/分桶/组合索引与 DDL 片段。"""
     from seatunnel_agent.agents.data.index_advisor import (
         analyze_workload,
@@ -111,6 +116,8 @@ def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
     )
     from seatunnel_agent.common.utils import collect_sql_files
 
+    if fail_on_audit and not ddl_path:
+        raise click.UsageError("--fail-on-audit 需配合 --ddl")
     if directory:
         files = collect_sql_files(directory)
         workload = "\n;\n".join(
@@ -131,6 +138,10 @@ def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
         payload["audit"] = findings
         markdown += "\n\n" + render_audit(findings, lang=lang)
     _emit(payload, markdown, fmt, output)
+    if fail_on_audit and payload.get("audit"):
+        msg = "\n".join(f"AUDIT {f['code']} {f['table']} {f['detail']}"
+                        for f in payload["audit"])
+        fail_check(msg, fmt)
 
 
 @click.command("sqlcost")

@@ -270,6 +270,25 @@ def test_index_adv_layout_audit():
     assert "IA001" not in res.output and "IA004" not in res.output
 
 
+def test_index_adv_fail_on_audit_gate():
+    runner = CliRunner()
+    res = runner.invoke(index_adv, [
+        "-d", str(EX / "indexadvisor_demo"),
+        "--ddl", str(EX / "indexadvisor_demo" / "ddl_legacy.sql"),
+        "--fail-on-audit"])
+    assert res.exit_code == 1 and "AUDIT IA002" in res.output
+    # a layout matching the workload passes the gate
+    res = runner.invoke(index_adv, [
+        "-d", str(EX / "indexadvisor_demo"),
+        "--ddl", str(EX / "indexadvisor_demo" / "ddl_tuned.sql"),
+        "--fail-on-audit"])
+    assert res.exit_code == 0
+    # without --ddl it is a usage error
+    res = runner.invoke(index_adv, ["-d", str(EX / "indexadvisor_demo"),
+                                    "--fail-on-audit"])
+    assert res.exit_code == 2
+
+
 def test_sqlcost_fail_if_worse_gate():
     runner = CliRunner()
     stats = str(EX / "sqlcost_demo" / "stats.json")
