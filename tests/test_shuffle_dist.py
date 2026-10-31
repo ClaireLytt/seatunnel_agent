@@ -108,3 +108,20 @@ def test_skew_runtime_cli_salt_flag():
     # --what-if-salt without --shuffle-dist is a usage error
     res = runner.invoke(skew_runtime, [str(DEMO), "--what-if-salt", "4"])
     assert res.exit_code == 2
+
+
+def test_skew_runtime_fail_names_fat_tails():
+    """With --shuffle-dist the --fail message counts the confirmed fat
+    tails alongside the straggler stages."""
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli_cmds.skew import skew_runtime
+
+    runner = CliRunner()
+    res = runner.invoke(skew_runtime, [str(DEMO), "--shuffle-dist",
+                                       "--fail"])
+    assert res.exit_code == 1
+    assert "确认 shuffle 长尾" in res.output
+    # without the flag the message stays unchanged
+    res = runner.invoke(skew_runtime, [str(DEMO), "--fail"])
+    assert res.exit_code == 1 and "shuffle 长尾" not in res.output

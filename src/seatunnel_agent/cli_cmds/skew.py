@@ -697,17 +697,25 @@ def skew_runtime(
 
         dists = shuffle_distribution(eventlog)
         md += "\n\n" + render_shuffle_dist(dists, lang)
+        fat_tails = sum(1 for d in dists if d.verdict() == "confirmed")
         if salt_factor is not None:
             try:
                 rows = salt_what_if(dists, salt_factor)
             except ValueError as exc:
                 raise click.UsageError(str(exc)) from exc
             md += "\n\n" + render_salt_what_if(rows, lang)
+    else:
+        fat_tails = 0
     console.print(md)
     if output:
         _save_report(output, md)
-    if fail_flag and confirmed:
-        console.print(f"\n[red]{confirmed} 个 stage 确认倾斜，检查未通过。[/red]")
+    if fail_flag and (confirmed or fat_tails):
+        parts = []
+        if confirmed:
+            parts.append(f"{confirmed} 个 stage 确认倾斜")
+        if fat_tails:
+            parts.append(f"{fat_tails} 个 stage 确认 shuffle 长尾")
+        console.print(f"\n[red]{'，'.join(parts)}，检查未通过。[/red]")
         sys.exit(1)
 
 
