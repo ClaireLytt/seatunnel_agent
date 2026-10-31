@@ -14,6 +14,7 @@ from .estimator import (
     ScanEstimate,
     TableStats,
     estimate,
+    parse_assumptions,
     parse_stats,
     what_if,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "ScanEstimate",
     "TableStats",
     "estimate",
+    "parse_assumptions",
     "parse_stats",
     "render_markdown",
     "render_what_if",

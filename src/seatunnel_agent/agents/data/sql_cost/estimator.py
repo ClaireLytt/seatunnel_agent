@@ -247,3 +247,24 @@ def what_if(base: CostCard, sql: str, stats: dict[str, TableStats],
             "base_scan_bytes": round(base.scan_bytes),
             "scan_bytes": round(after.scan_bytes),
             "scan_saved_pct": saved_pct}
+
+
+def parse_assumptions(specs: list[str],
+                      stats: dict[str, TableStats]) -> list[tuple[str, str, int]]:
+    """"table:col[:N]" specs -> what_if assumption triples.
+
+    When N is omitted the table's declared partition count is used;
+    malformed specs raise ValueError (what_if validates the rest).
+    """
+    out: list[tuple[str, str, int]] = []
+    for spec in specs:
+        parts = spec.split(":")
+        if len(parts) not in (2, 3):
+            raise ValueError(
+                f"expected table:col[:N], got {spec!r}")
+        table, col = parts[0].strip().lower(), parts[1].strip().lower()
+        known = stats.get(table)
+        n = (int(parts[2]) if len(parts) == 3
+             else known.partitions if known else 0)
+        out.append((table, col, n))
+    return out

@@ -122,6 +122,7 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
     """资源消耗预测 — SQL × 表统计 → 代价卡；可按预算挡 CI。"""
     from seatunnel_agent.agents.data.sql_cost import (
         estimate,
+        parse_assumptions,
         parse_stats,
         render_markdown,
         render_what_if,
@@ -135,18 +136,8 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
     markdown = render_markdown(card, lang=lang)
     payload = card.to_dict()
     if assume_partitions:
-        assumptions: list[tuple[str, str, int]] = []
-        for spec in assume_partitions:
-            parts = spec.split(":")
-            if len(parts) not in (2, 3):
-                raise click.UsageError(
-                    f"--assume-partition 需为 表:列[:分区数]，得到 {spec!r}")
-            table, col = parts[0].strip().lower(), parts[1].strip().lower()
-            known = stats.get(table)
-            n = (int(parts[2]) if len(parts) == 3
-                 else known.partitions if known else 0)
-            assumptions.append((table, col, n))
         try:
+            assumptions = parse_assumptions(list(assume_partitions), stats)
             payload["what_if"] = what_if(card, sql, stats, assumptions)
         except ValueError as exc:
             raise click.UsageError(str(exc)) from exc

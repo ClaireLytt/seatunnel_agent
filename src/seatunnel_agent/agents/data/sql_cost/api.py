@@ -19,8 +19,8 @@ from seatunnel_agent.common.api_guard import (
 )
 from seatunnel_agent.common.utils import normalize_lang
 
-from .estimator import estimate, parse_stats
-from .report import render_markdown
+from .estimator import estimate, parse_assumptions, parse_stats, what_if
+from .report import render_markdown, render_what_if
 
 router = APIRouter(prefix="/api/sqlcost", tags=["sql_cost"])
 
@@ -32,6 +32,10 @@ class EstimateRequest(BaseModel):
     stats_file: str | None = Field(
         None, description="Table stats inventory file (.json/.csv)")
     stats_text: str = Field("", description="Inline stats inventory")
+    assume_partitions: list[str] = Field(
+        default_factory=list,
+        description="What-if specs 'table:col[:N]' — re-estimate under "
+                    "the assumed partitioning and report the scan delta")
     lang: str = Field("zh", description="Report language: 'zh' or 'en'")
     report: bool = Field(False, description="Include the rendered markdown report")
 
@@ -53,12 +57,22 @@ def run_estimate(req: EstimateRequest) -> EstimateResponse:
         raise HTTPException(status_code=400,
                             detail="Provide 'stats_file' or 'stats_text'")
     try:
-        card = estimate(req.sql, parse_stats(stats_raw))
+        stats = parse_stats(stats_raw)
+        card = estimate(req.sql, stats)
     except Exception as exc:  # bad input, malformed JSON
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     lang = normalize_lang(req.lang)
     report = render_markdown(card, lang=lang) if req.report else None
-    return EstimateResponse(result=card.to_dict(), report=report,
+    payload = card.to_dict()
+    if req.assume_partitions:
+        try:
+            assumptions = parse_assumptions(req.assume_partitions, stats)
+            payload["what_if"] = what_if(card, req.sql, stats, assumptions)
+        except Exception as exc:  # malformed spec, unknown table
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if report is not None:
+            report += "\n\n" + render_what_if(payload["what_if"], lang=lang)
+    return EstimateResponse(result=payload, report=report,
                             elapsed_ms=ms_since(start))
 
 

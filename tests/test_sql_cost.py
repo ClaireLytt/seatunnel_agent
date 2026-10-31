@@ -96,3 +96,30 @@ def test_report_zh_en_and_tool():
     assert "core-seconds" in md
     assert "must not be empty" in sql_cost(" ", STATS)
     assert "must not be empty" in sql_cost(SQL, " ")
+
+
+def test_api_what_if_assume_partitions():
+    """API assume_partitions appends the what-if delta; bad specs 400."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.sql_cost import api as sc_api
+
+    root = Path(__file__).resolve().parents[1] / "examples" / "sqlcost_demo"
+    sql = (root / "query.sql").read_text("utf-8")
+    stats = (root / "stats.json").read_text("utf-8")
+    app = FastAPI()
+    app.include_router(sc_api.router)
+    client = TestClient(app)
+    res = client.post("/api/sqlcost/estimate", json={
+        "sql": sql, "stats_text": stats, "report": True, "lang": "en",
+        "assume_partitions": ["ods.users:user_id:10"]})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["result"]["what_if"]["scan_saved_pct"] > 0
+    assert "What-if" in body["report"]
+    # malformed spec and unknown partition count are 400s, not guesses
+    for bad in ("nope", "ods.users:user_id"):
+        res = client.post("/api/sqlcost/estimate", json={
+            "sql": sql, "stats_text": stats, "assume_partitions": [bad]})
+        assert res.status_code == 400

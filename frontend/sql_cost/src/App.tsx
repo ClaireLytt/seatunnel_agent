@@ -12,6 +12,7 @@ export default function App() {
   )
   const [statsFile, setStatsFile] = useState('examples/sqlcost_demo/stats.json')
   const [statsText, setStatsText] = useState('')
+  const [assume, setAssume] = useState('')
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -38,6 +39,7 @@ export default function App() {
         statsText.trim() ? null : statsFile.trim(),
         statsText,
         i18n.language,
+        assume,
       )
       setReport(res.report ?? '')
     } catch (e) {
@@ -56,6 +58,7 @@ export default function App() {
     setSql('')
     setStatsFile('examples/sqlcost_demo/stats.json')
     setStatsText('')
+    setAssume('')
     setError('')
     setReport('')
   }
@@ -85,6 +88,16 @@ export default function App() {
               value={statsFile}
               onChange={(e) => setStatsFile(e.target.value)}
               placeholder={t('stats_ph')}
+              spellCheck={false}
+              className="w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink"
+            />
+            <label className="mb-2 mt-3 block font-mono text-[11px] uppercase tracking-[0.18em] text-ink-soft">
+              {t('assume_label')}
+            </label>
+            <input
+              value={assume}
+              onChange={(e) => setAssume(e.target.value)}
+              placeholder={t('assume_ph')}
               spellCheck={false}
               className="w-full rounded border border-line bg-[var(--paper)] p-2.5 font-mono text-[13px] text-ink outline-none focus:border-ink"
             />

@@ -108,3 +108,6 @@ slots/memory）± 各 DAG 启动时刻。
 7. [x] first perf-suite page handoff: /indexadvisor pasted workload ->
    "verify on the cost page" button -> /sqlcost SQL prefilled via
    sessionStorage (no auto-run: stats stay the user's input).
+8. [x] what-if web/API parity: assume_partitions on the sqlcost API and
+   an optional what-if input on /sqlcost; spec parsing sunk into
+   estimator.parse_assumptions shared by CLI and API.
