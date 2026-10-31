@@ -202,7 +202,7 @@ def diff_runs(a: RunMetrics, b: RunMetrics) -> dict[str, Any]:
 
     a_stages = {s.stage: s for s in a.stages}
     b_stages = {s.stage: s for s in b.stages}
-    stages = []
+    stages: list[dict[str, Any]] = []
     for name in a_stages.keys() & b_stages.keys():
         sa, sb = a_stages[name], b_stages[name]
         stages.append({
@@ -214,7 +214,7 @@ def diff_runs(a: RunMetrics, b: RunMetrics) -> dict[str, Any]:
                                              sb.task_median_s)},
             "spill_bytes": {"a": sa.spill_bytes, "b": sb.spill_bytes},
         })
-    stages.sort(key=lambda s: -s["task_max_s"]["ratio"])
+    stages.sort(key=lambda s: -float(s["task_max_s"]["ratio"]))
     return {
         "a": a.name, "b": b.name,
         "totals": totals,
