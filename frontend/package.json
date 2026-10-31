@@ -50,6 +50,7 @@
     "slow_query",
     "sample_profile",
     "dist_anomaly",
+    "dup_check",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
