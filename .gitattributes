@@ -1,0 +1,8 @@
+# Keep LF in the working tree so `git add` stops printing a CRLF
+# conversion warning per file (dozens per commit on Windows); prettier
+# already runs with endOfLine: auto on the frontend.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

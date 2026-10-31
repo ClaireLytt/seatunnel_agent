@@ -296,7 +296,10 @@ def check_report_has_workflow_output(rng: str | None) -> tuple[bool, str]:
         if "check_workflow" not in text or not re.search(r"\[(?:PASS|FAIL)\]", text):
             missing.append(f)
     if missing:
-        return False, "报告未粘贴 check_workflow 输出([PASS]/[FAIL] 行): " + ", ".join(missing)
+        return False, ("报告未粘贴 check_workflow 输出([PASS]/[FAIL] 行): "
+                       + ", ".join(missing)
+                       + " — 把本次运行打印的全部 [PASS]/[FAIL] 行原样粘进"
+                         "报告的 Gate 代码块再提交(自拟标签不算)")
     if reports:
         return True, "报告含 check_workflow 输出"
     return True, "本批无新报告,不检查输出"
