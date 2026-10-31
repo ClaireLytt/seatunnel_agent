@@ -61,6 +61,10 @@ sql_perf 读**引擎计划**、slow_query 读**运行指标** — 四个视角�
 - 三页连走：`/sqlperf` 贴了原 SQL 时报告上方有「用这条 SQL 推荐索引」，
   递到 `/indexadvisor` 自动出建议，再一键到 `/sqlcost` 验证省比——
   计划分析 → 索引建议 → 成本验证全程零复制。
+- 改完回看：`/sqlperf` 展开「与优化前计划对比」贴旧 EXPLAIN，报告追加
+  已解决/新增/遗留；`/sqlcost` 展开「对比改写 SQL」直接看省比表；
+  `/indexadvisor` 带 DDL 时自动附现状审计节；`/dagconflict` 填准入
+  DAG 名即得最优起点与候选表——四个 CLI 新能力页面同款。
 
 示例输入在 `examples/`：`sqlperf_demo`、`indexadvisor_demo`、
 `sqlcost_demo`、`slowquery_demo`、`dagconflict_demo`、
