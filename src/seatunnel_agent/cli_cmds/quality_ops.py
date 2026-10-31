@@ -28,6 +28,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent configdiff    --left dev.conf --right prod.conf
   seatunnel-agent alertstorm    -f alerts.json [--fail-on-high]
   seatunnel-agent metricattr    -b base.csv -c cur.csv --dims channel --metric gmv
+  seatunnel-agent schemaalign   --source src.sql --sink sink.sql
 """
 
 from __future__ import annotations
@@ -373,6 +374,52 @@ def register(cli) -> None:
     cli.add_command(configdiff)
     cli.add_command(alertstorm)
     cli.add_command(metricattr)
+    cli.add_command(schemaalign)
+
+
+@click.command("schemaalign")
+@click.option("--source", "-s", "src_path",
+              type=click.Path(exists=True, dir_okay=False), required=True,
+              help="源表 DDL 文件")
+@click.option("--sink", "sink_path",
+              type=click.Path(exists=True, dir_okay=False), required=True,
+              help="目标表 DDL 文件")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草对齐评审（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级风险时 exit 1")
+@report_options
+def schemaalign(src_path, sink_path, use_llm, fail_high,
+                lang, fmt, output) -> None:
+    """源目 Schema 对齐 — 双 DDL → 映射风险分级。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.schema_align import (
+        align_schemas,
+        render_markdown,
+    )
+
+    try:
+        result = align_schemas(
+            Path(src_path).read_text(encoding="utf-8", errors="replace"),
+            Path(sink_path).read_text(encoding="utf-8", errors="replace"))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.schema_align.advisor_llm import (
+            alignment_note,
+        )
+        from seatunnel_agent.agents.data.schema_align.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, alignment_note(result, lang=lang),
+            "alignment_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(result.findings, fmt,
+                     label=lambda f: f"{f.code}:{f.column}")
 
 
 @click.command("metricattr")

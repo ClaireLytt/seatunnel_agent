@@ -74,6 +74,7 @@
     "config_diff",
     "alert_storm",
     "metric_attribution",
+    "schema_align",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
