@@ -1,0 +1,11 @@
+order_id,channel,amount,discount
+1,mini,210.0,
+2,app,205.0,
+3,mini,190.0,
+4,mini,220.0,
+5,app,,
+6,mini,215.0,
+7,mini,,
+8,app,195.0,
+9,mini,208.0,
+10,mini,,

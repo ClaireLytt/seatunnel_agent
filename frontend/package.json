@@ -49,6 +49,7 @@
     "sql_cost",
     "slow_query",
     "sample_profile",
+    "dist_anomaly",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
