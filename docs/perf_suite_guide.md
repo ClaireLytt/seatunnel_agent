@@ -73,18 +73,28 @@ sql_perf 读**引擎计划**、slow_query 读**运行指标** — 四个视角�
 ```bash
 seatunnel-agent sqlperf -f plan.txt                  # 加 --llm --sql-file q.sql 出改写草案
 seatunnel-agent sqlperf -f plan.txt --fail-on-severity high  # 有 high 发现就 exit 1
-seatunnel-agent index-adv -d workload/ --ddl ddl.sql
+seatunnel-agent sqlperf -f new_plan.txt --before old_plan.txt  # 优化前后对比:已解决/新增/扫描变化
+seatunnel-agent index-adv -d workload/ --ddl ddl.sql # 带 --ddl 时自动附现状审计:
+                                                     # 分区列无人过滤/最热 join key 未分桶
 seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
   --fail-over-scan-gb 50 --fail-over-shuffle-gb 20   # 超预算 exit 1，可做 CI 闸门
 seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
   --assume-partition ods.users:user_id:10            # what-if:按建议分区重估,直接看省多少
+seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
+  --compare-sql-file q_rewritten.sql                 # 改写省比:扫描/shuffle/内存/核·秒差值表
 seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
   --history slow_ledger.jsonl --llm                  # 台账 + LLM 通报草稿（可选）
 seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
   --fail-over-regression 3                           # 回归 >=3x 基线时 exit 1
+seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
+  --promote-baseline                                 # 回归 <1.5x 时本次 run 滚入基线
 seatunnel-agent slowquery -d runs/ --baseline runs.jsonl  # 批量:全目录按回归排序
+seatunnel-agent skew-runtime eventlog.jsonl --shuffle-dist \
+  --what-if-salt 0                                   # 加盐 what-if:0=自动找恢复健康的最小盐值
 seatunnel-agent dagconflict -f scenario.json \
   --fail-on-conflict --history capacity.jsonl        # 有冲突 exit 1;峰值记台账
+seatunnel-agent dagconflict -f scenario.json --place etl_users \
+                                                     # 准入检查:扫描候选起点选最优错峰位
 ```
 
 预算闸门的可复制 workflow 在
