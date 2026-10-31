@@ -140,10 +140,9 @@ def make_text_router(
             return text or ""
         raise HTTPException(status_code=400, detail=f"Provide {what}")
 
-    @router.post(f"/{endpoint}", response_model=_StandardResponse)
-    def run(req: request_model) -> _StandardResponse:  # type: ignore[valid-type]
+    def run(req) -> _StandardResponse:
         start = time.time()
-        lang = normalize_lang(req.lang)  # type: ignore[attr-defined]
+        lang = normalize_lang(req.lang)
         try:
             result = core(req, resolve)
         except HTTPException:
@@ -153,7 +152,7 @@ def make_text_router(
         payload = (to_payload(result) if to_payload is not None
                    else result.to_dict())
         report = (render(result, req, lang)
-                  if req.report else None)  # type: ignore[attr-defined]
+                  if req.report else None)
         if post is not None:
             for section in post(req, result, payload, lang):
                 if report is not None:
@@ -170,6 +169,11 @@ def make_text_router(
                 report += "\n\n" + section
         return _StandardResponse(result=payload, report=report,
                                  elapsed_ms=ms_since(start))
+
+    # FastAPI reads the request type from the annotation; binding it here
+    # keeps the handler body free of per-model type suppressions.
+    run.__annotations__["req"] = request_model
+    router.post(f"/{endpoint}", response_model=_StandardResponse)(run)
 
     add_health(router, health_name)
     return router

@@ -203,7 +203,7 @@ def _skew_hints(sql: str, rt: Text2SQLRuntime, elapsed_ms: int) -> list[dict[str
     if elapsed_ms < threshold:
         return []
     try:
-        from seatunnel_agent.agents.data.data_skew.detector import detect_skew
+        from seatunnel_agent.agents.data.data_skew import detect_skew
 
         findings, _hints = detect_skew(sql, dialect=dialect)
         return [
@@ -267,8 +267,10 @@ def _tool_skew_check(inp: dict[str, Any], rt: Text2SQLRuntime) -> dict[str, Any]
     dialect = str(inp.get("dialect", "") or "").strip().lower() \
         or _SKEW_DIALECT_BY_DS.get(rt.ds_type, "spark")
     try:
-        from seatunnel_agent.agents.data.data_skew.agent import static_skew_report
-        from seatunnel_agent.agents.data.data_skew.report import render_report
+        from seatunnel_agent.agents.data.data_skew import (
+            render_report,
+            static_skew_report,
+        )
 
         report = static_skew_report(sql, dialect=dialect)
         return {

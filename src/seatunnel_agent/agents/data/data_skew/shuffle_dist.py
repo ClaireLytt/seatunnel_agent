@@ -30,9 +30,9 @@ from .runtime import (
     SHUF_MAX_SUSPECT,
     SHUF_RATIO_CONFIRMED,
     SHUF_RATIO_SUSPECT,
-    _fmt_bytes,
-    _iter_eventlog_lines,
-    _stage_name,
+    fmt_eventlog_bytes,
+    iter_eventlog_lines,
+    stage_name,
 )
 
 HOT_TOP_N = 5
@@ -77,7 +77,7 @@ def shuffle_distribution(path: str | Path) -> list[ShuffleDist]:
     """Per-stage shuffle-read distributions, worst ratio first."""
     per_stage: dict[int, list[tuple[int, float]]] = {}
     names: dict[int, str] = {}
-    for raw in _iter_eventlog_lines(Path(path)):
+    for raw in iter_eventlog_lines(Path(path)):
         raw = raw.strip()
         # cheap prefilter: skip the ~90% of events we never read
         if ('"SparkListenerTaskEnd"' not in raw
@@ -194,9 +194,9 @@ def render_salt_what_if(rows: list[dict[str, Any]], lang: str) -> str:
     lines.extend(md_table(
         [dsk(lang, "sd_col_stage"), dsk(lang, "sw_col_factor"), "p99",
          "p99/p50", dsk(lang, "sw_col_after")],
-        [[f"{r['stage_id']} {_stage_name(r['name'])}",
+        [[f"{r['stage_id']} {stage_name(r['name'])}",
           f"x{r['factor']}" if r["factor"] else dsk(lang, "sw_not_enough"),
-          f"{_fmt_bytes(r['p99_before'])} -> {_fmt_bytes(r['p99_after'])}",
+          f"{fmt_eventlog_bytes(r['p99_before'])} -> {fmt_eventlog_bytes(r['p99_after'])}",
           f"{r['ratio_before']:g}x -> {r['ratio_after']:g}x",
           dsk(lang, "sw_ok") if r["healthy"] else dsk(lang, "sw_still")]
          for r in rows]))
@@ -245,11 +245,11 @@ def render_shuffle_dist(dists: list[ShuffleDist], lang: str) -> str:
                  f"| {dsk(lang, 'sd_col_hot')} |")
     lines.append("|---|---|---|---|---|---|---|")
     for d in flagged:
-        hot = ", ".join(f"#{i} {_fmt_bytes(b)}" for i, b in d.hot[:3])
+        hot = ", ".join(f"#{i} {fmt_eventlog_bytes(b)}" for i, b in d.hot[:3])
         ratio = "∞" if d.ratio == float("inf") else f"{d.ratio:.1f}x"
         lines.append(
-            f"| {d.stage_id} {_stage_name(d.name)} | {d.tasks} "
-            f"| {_fmt_bytes(d.p50)} | {_fmt_bytes(d.p99)} | {ratio} "
+            f"| {d.stage_id} {stage_name(d.name)} | {d.tasks} "
+            f"| {fmt_eventlog_bytes(d.p50)} | {fmt_eventlog_bytes(d.p99)} | {ratio} "
             f"| {dsk(lang, 'sd_' + d.verdict())} | {hot} |")
     lines.append("")
     lines.append(dsk(lang, "sd_hint"))
