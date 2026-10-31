@@ -413,6 +413,16 @@ def test_slowquery_trend_gate(tmp_path):
     assert res.exit_code == 2
 
 
+def test_dagconflict_capacity_gap_line():
+    runner = CliRunner()
+    demo = EX / "dagconflict_demo" / "scenario.json"
+    res = runner.invoke(dagconflict, ["-f", str(demo), "--lang", "en"])
+    # the demo peaks over capacity -> the needed-capacity line shows
+    assert res.exit_code == 0 and "To run as declared" in res.output
+    res = runner.invoke(dagconflict, ["-f", str(demo)])
+    assert "按声明起点跑完需要" in res.output
+
+
 def test_dagconflict_deadline_gate(tmp_path):
     runner = CliRunner()
     demo = EX / "dagconflict_demo" / "scenario.json"

@@ -47,6 +47,10 @@ DAGCONFLICT_I18N: dict[str, dict[str, str]] = {
                                   "`{dag}` past its deadline "
                                   "({finish} > {deadline}) — stagger a "
                                   "different DAG or raise capacity."),
+        "rpt_capacity_gap": ("To run as declared the cluster needs "
+                             "**{slots} slots / {mem} GB** — short by "
+                             "{gap_slots} slots / {gap_mem} GB of the "
+                             "current capacity."),
     },
     "zh": {
         "rpt_title": "多 DAG 并发冲突",
@@ -82,6 +86,8 @@ DAGCONFLICT_I18N: dict[str, dict[str, str]] = {
         "rpt_suggestion_breaks": (" **注意**：该顺延会把 `{dag}` 推过 "
                                   "deadline（{finish} > {deadline}）— "
                                   "改错峰其他 DAG 或加容量。"),
+        "rpt_capacity_gap": ("按声明起点跑完需要 **{slots} 槽 / {mem} GB** "
+                             "— 比现容量缺 {gap_slots} 槽 / {gap_mem} GB。"),
     },
 }
 

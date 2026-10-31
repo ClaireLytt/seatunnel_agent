@@ -54,6 +54,13 @@ def render_markdown(report: ConflictReport, lang: str = "zh") -> str:
                  windows=len(report.windows),
                  writes=len(report.write_conflicts)) + "**",
              ""]
+    gap_slots = max(0, report.peak_slots - report.cap_slots)
+    gap_mem = max(0.0, report.peak_memory_gb - report.cap_memory_gb)
+    if gap_slots or gap_mem > 0:
+        lines.append(tp(lang, "rpt_capacity_gap").format(
+            slots=report.peak_slots, mem=f"{report.peak_memory_gb:g}",
+            gap_slots=gap_slots, gap_mem=f"{gap_mem:g}"))
+        lines.append("")
     if report.suggestion:
         s = report.suggestion
         line = tp(lang, "rpt_suggestion").format(
