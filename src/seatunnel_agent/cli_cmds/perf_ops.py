@@ -39,12 +39,17 @@ from .check_runner import track_history as _track_history
 @click.option("--before", "before_path",
               type=click.Path(exists=True, dir_okay=False), default=None,
               help="优化前的 EXPLAIN 文件（-f 为优化后，输出前后对比）")
+@click.option("--fail-on-new", "fail_on_new", is_flag=True, default=False,
+              help="CI gate：对比中优化后计划引入新发现时 exit 1"
+                   "（需配合 --before）")
 @report_options
 def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
-            lang, fmt, output) -> None:
+            fail_on_new, lang, fmt, output) -> None:
     """执行计划分析 — EXPLAIN 文本 → join/shuffle/裁剪/下推发现与处方。"""
     from seatunnel_agent.agents.data.sql_perf import analyze, render_markdown
 
+    if fail_on_new and not before_path:
+        raise click.UsageError("--fail-on-new 需配合 --before")
     result = analyze(_read(path, text, "EXPLAIN 输出"))
     markdown = render_markdown(result, lang=lang)
     payload = result.to_dict()
@@ -68,6 +73,11 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
         payload["rewrite"] = rewrite
         markdown += f"\n\n### {tp(lang, 'rpt_rewrite')}\n{rewrite}\n"
     _emit(payload, markdown, fmt, output)
+    if fail_on_new and payload.get("diff", {}).get("introduced"):
+        introduced = payload["diff"]["introduced"]
+        msg = "\n".join(f"INTRODUCED {f['code']} [{f['severity']}] "
+                        f"{f['detail']}" for f in introduced)
+        fail_check(msg, fmt)
     if fail_severity:
         from .check_runner import SEVERITY_RANK
 

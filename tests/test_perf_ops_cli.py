@@ -201,6 +201,23 @@ def test_sqlperf_plan_diff():
     assert not diff["resolved"] and not diff["introduced"]
 
 
+def test_sqlperf_fail_on_new_gate():
+    runner = CliRunner()
+    good = str(EX / "sqlperf_demo" / "plan_optimized.txt")
+    bad = str(EX / "sqlperf_demo" / "plan.txt")
+    # optimized plan introduces nothing -> pass
+    res = runner.invoke(sqlperf, ["-f", good, "--before", bad,
+                                  "--fail-on-new"])
+    assert res.exit_code == 0
+    # reversed direction introduces findings -> gate trips
+    res = runner.invoke(sqlperf, ["-f", bad, "--before", good,
+                                  "--fail-on-new"])
+    assert res.exit_code == 1 and "INTRODUCED" in res.output
+    # without --before it is a usage error
+    res = runner.invoke(sqlperf, ["-f", bad, "--fail-on-new"])
+    assert res.exit_code == 2
+
+
 def test_slowquery_promote_baseline(tmp_path):
     runner = CliRunner()
     base = tmp_path / "base.jsonl"
