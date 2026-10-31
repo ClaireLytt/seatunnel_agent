@@ -9,6 +9,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent datavolatility -f series.csv [--fail-on-high]
   seatunnel-agent qualitytrace  -f pipeline.sql --table dws.t [--column c]
   seatunnel-agent datarepair    -f rows.csv --table dwd.t [--pk id]
+  seatunnel-agent assetsearch   -f catalog.json --query "按日的订单金额"
 """
 
 from __future__ import annotations
@@ -289,6 +290,43 @@ def datarepair(path, text, table, pk, biz_key, use_llm,
     _emit(payload, markdown, fmt, output)
 
 
+@click.command("assetsearch")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="资产目录：JSON 清单或建表 DDL 文件")
+@click.option("--text", type=str, default=None, help="内联目录")
+@click.option("--query", "-q", required=True, help="自然语言业务需求")
+@click.option("--limit", type=click.IntRange(min=1), default=10,
+              show_default=True, help="返回命中数上限")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草选表推荐（需配置 API key）")
+@report_options
+def assetsearch(path, text, query, limit, use_llm, lang, fmt, output) -> None:
+    """数据资产搜索 — 目录 × 自然语言 → 可解释命中排行。"""
+    from seatunnel_agent.agents.data.asset_search import (
+        parse_catalog,
+        render_markdown,
+        search_assets,
+    )
+
+    try:
+        result = search_assets(parse_catalog(_read(path, text, "资产目录")),
+                               query, limit=limit)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.asset_search.advisor_llm import (
+            recommend_note,
+        )
+        from seatunnel_agent.agents.data.asset_search.i18n import tp
+
+        note = recommend_note(result, lang=lang)
+        payload["recommendation"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
+
+
 def register(cli) -> None:
     cli.add_command(sampleprofile)
     cli.add_command(distanomaly)
@@ -296,3 +334,4 @@ def register(cli) -> None:
     cli.add_command(datavolatility)
     cli.add_command(qualitytrace)
     cli.add_command(datarepair)
+    cli.add_command(assetsearch)

@@ -54,6 +54,7 @@
     "data_volatility",
     "quality_trace",
     "data_repair",
+    "asset_search",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
