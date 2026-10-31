@@ -14,6 +14,19 @@ from .i18n import tp
 
 __all__ = ["render_diff", "render_markdown"]
 
+# cause code -> copyable next-step command (unknown inputs stay <...>
+# placeholders; only causes actually found emit a line)
+_NEXT_CMDS = {
+    "SQ001": "seatunnel-agent skew-runtime <eventlog> --shuffle-dist "
+             "--what-if-salt 0",
+    "SQ002": "seatunnel-agent sqlperf -f <explain.txt> "
+             "--stats-template stats.json",
+    "SQ003": "seatunnel-agent sqlcost --sql-file <query.sql> "
+             "-f <stats.json> --calibrate <metrics.json>",
+    "SQ005": "seatunnel-agent dagconflict -f <scenario.json> "
+             "--place <dag>",
+}
+
 
 def render_diff(diff: dict, lang: str = "zh") -> str:
     """Markdown for an A/B run comparison (diagnoser.diff_runs)."""
@@ -91,6 +104,18 @@ def render_markdown(diag: Diagnosis, lang: str = "zh") -> str:
               fmt_secs(s["task_median_s"]), fmt_bytes(s["spill_bytes"]),
               fmt_bytes(s["input_bytes"]), str(s["tasks"])]
              for s in diag.stages]))
+        lines.append("")
+    cmds = []
+    seen = set()
+    for c in diag.causes:
+        if c.code in _NEXT_CMDS and c.code not in seen:
+            seen.add(c.code)
+            cmds.append(f"# {c.code}\n{_NEXT_CMDS[c.code]}")
+    if cmds:
+        lines.append(f"### {tp(lang, 'rpt_next')}")
+        lines.append("```bash")
+        lines.extend(cmds)
+        lines.append("```")
         lines.append("")
     lines.append(tp(lang, "rpt_disclaimer"))
     return "\n".join(lines)

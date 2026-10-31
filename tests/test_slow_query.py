@@ -92,6 +92,11 @@ def test_report_zh_en_and_tool():
     # the stage breakdown table lists every submitted stage
     assert "Stage breakdown" in en or "Stage 分解" in zh
     assert all(s["stage"] in zh for s in diag.stages)
+    # next-step commands appear once per distinct found cause
+    codes = {c.code for c in diag.causes}
+    if "SQ001" in codes:
+        assert "skew-runtime <eventlog>" in en and en.count("# SQ001") == 1
+    assert "下一步命令" in zh and "Next steps" in en
 
 
 def test_incident_note_wiring(monkeypatch):
