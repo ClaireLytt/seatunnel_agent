@@ -7,6 +7,7 @@ from . import (
     perf_ops,
     pipeline_ops,
     platform,
+    quality_ops,
     skew,
     sql_review,
     text2sql,
@@ -23,3 +24,4 @@ def register(cli) -> None:
     platform.register(cli)
     pipeline_ops.register(cli)
     perf_ops.register(cli)
+    quality_ops.register(cli)

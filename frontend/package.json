@@ -48,6 +48,7 @@
     "sql_perf",
     "sql_cost",
     "slow_query",
+    "sample_profile",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
