@@ -11,18 +11,21 @@ from .conflictor import (
     ConflictReport,
     Scenario,
     Window,
+    compact,
     parse_scenario,
     place,
     simulate,
 )
-from .report import render_markdown, render_place
+from .report import render_compact, render_markdown, render_place
 
 __all__ = [
     "ConflictReport",
     "Scenario",
     "Window",
+    "compact",
     "parse_scenario",
     "place",
+    "render_compact",
     "render_markdown",
     "render_place",
     "simulate",

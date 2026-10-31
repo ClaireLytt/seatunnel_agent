@@ -514,14 +514,19 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
 @click.option("--fail-on-deadline-miss", "fail_on_deadline", is_flag=True,
               default=False,
               help="CI gate：任一声明了 deadline 的 DAG 超期时 exit 1")
+@click.option("--compact", "do_compact", is_flag=True, default=False,
+              help="错峰编排：对全部 DAG 贪心重排起点，输出建议起点表"
+                   "与前后对比（建议输出，不改输入）")
 @report_options
 def dagconflict(path, text, fail_on_conflict, history_path, place_dag,
-                fail_if_misplaced, fail_on_deadline, lang, fmt,
+                fail_if_misplaced, fail_on_deadline, do_compact, lang, fmt,
                 output) -> None:
     """并发冲突检测 — 多 DAG 场景 → 超容窗/写写冲突/错峰建议。"""
     from seatunnel_agent.agents.data.dag_conflict import (
+        compact,
         parse_scenario,
         place,
+        render_compact,
         render_markdown,
         render_place,
         simulate,
@@ -540,6 +545,10 @@ def dagconflict(path, text, fail_on_conflict, history_path, place_dag,
             raise click.UsageError(str(exc)) from exc
         payload["placement"] = placement
         markdown += "\n\n" + render_place(placement, lang=lang)
+    if do_compact:
+        plan = compact(scenario)
+        payload["compact"] = plan
+        markdown += "\n\n" + render_compact(plan, lang=lang)
     _emit(payload, markdown, fmt, output)
     if history_path:
         _track_history(history_path, {

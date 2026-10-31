@@ -540,6 +540,27 @@ def test_slowquery_trend_gate(tmp_path):
     assert res.exit_code == 2
 
 
+def test_dagconflict_compact():
+    runner = CliRunner()
+    demo = EX / "dagconflict_demo" / "scenario.json"
+    res = runner.invoke(dagconflict, ["-f", str(demo), "--compact",
+                                      "-F", "json"])
+    assert res.exit_code == 0
+    body, _ = json.JSONDecoder().raw_decode(res.output)
+    plan = body["compact"]
+    # the demo scenario conflicts as declared; the plan removes it all
+    assert plan["before"]["windows"] + plan["before"]["write_conflicts"] > 0
+    assert plan["after"]["windows"] == 0
+    assert plan["after"]["write_conflicts"] == 0
+    assert plan["after"]["deadline_misses"] == 0
+    assert plan["after"]["peak_slots"] <= 10
+    assert {r["dag"] for r in plan["offsets"]} == {"etl_sales", "etl_users"}
+    # markdown renders the proposal table
+    res = runner.invoke(dagconflict, ["-f", str(demo), "--compact",
+                                      "--lang", "en"])
+    assert res.exit_code == 0 and "Stagger plan" in res.output
+
+
 def test_dagconflict_capacity_gap_line():
     runner = CliRunner()
     demo = EX / "dagconflict_demo" / "scenario.json"

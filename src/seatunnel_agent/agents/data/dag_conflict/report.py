@@ -10,6 +10,31 @@ from .i18n import tp
 __all__ = ["render_markdown", "render_place"]
 
 
+def render_compact(plan: dict, lang: str = "zh") -> str:
+    """Markdown section for conflictor.compact results."""
+    lang = normalize_lang(lang)
+    b, a = plan["before"], plan["after"]
+    lines = [f"### {tp(lang, 'cpt_title')}", "",
+             tp(lang, "cpt_stats").format(
+                 w_before=b["windows"], w_after=a["windows"],
+                 c_before=b["write_conflicts"],
+                 c_after=a["write_conflicts"],
+                 p_before=b["peak_slots"], p_after=a["peak_slots"],
+                 m_before=f"{b['makespan']:g}", m_after=f"{a['makespan']:g}",
+                 d_before=b["deadline_misses"],
+                 d_after=a["deadline_misses"]),
+             ""]
+    lines.extend(md_table(
+        [tp(lang, "cpt_col_dag"), tp(lang, "cpt_col_declared"),
+         tp(lang, "cpt_col_proposed")],
+        [[f"`{row['dag']}`", f"{row['declared']:g}",
+          (f"**{row['proposed']:g}**"
+           if row["proposed"] != row["declared"]
+           else f"{row['proposed']:g}")]
+         for row in plan["offsets"]]))
+    return "\n".join(lines)
+
+
 def render_place(placement: dict, lang: str = "zh") -> str:
     """Markdown section for conflictor.place results."""
     lang = normalize_lang(lang)

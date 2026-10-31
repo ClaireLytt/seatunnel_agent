@@ -51,6 +51,14 @@ DAGCONFLICT_I18N: dict[str, dict[str, str]] = {
                              "**{slots} slots / {mem} GB** — short by "
                              "{gap_slots} slots / {gap_mem} GB of the "
                              "current capacity."),
+        "cpt_title": "Stagger plan (greedy, re-simulated)",
+        "cpt_col_dag": "DAG",
+        "cpt_col_declared": "declared start",
+        "cpt_col_proposed": "proposed start",
+        "cpt_stats": ("windows {w_before} -> {w_after} · write conflicts "
+                      "{c_before} -> {c_after} · peak {p_before} -> "
+                      "{p_after} slots · makespan {m_before} -> {m_after} "
+                      "· deadline misses {d_before} -> {d_after}"),
     },
     "zh": {
         "rpt_title": "多 DAG 并发冲突",
@@ -88,6 +96,14 @@ DAGCONFLICT_I18N: dict[str, dict[str, str]] = {
                                   "改错峰其他 DAG 或加容量。"),
         "rpt_capacity_gap": ("按声明起点跑完需要 **{slots} 槽 / {mem} GB** "
                              "— 比现容量缺 {gap_slots} 槽 / {gap_mem} GB。"),
+        "cpt_title": "错峰编排建议（贪心放置，已重新模拟）",
+        "cpt_col_dag": "DAG",
+        "cpt_col_declared": "声明起点",
+        "cpt_col_proposed": "建议起点",
+        "cpt_stats": ("超容窗 {w_before} -> {w_after} · 写写冲突 {c_before} "
+                      "-> {c_after} · 峰值 {p_before} -> {p_after} 槽 · "
+                      "完工 {m_before} -> {m_after} · 超期 {d_before} -> "
+                      "{d_after}"),
     },
 }
 

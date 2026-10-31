@@ -281,6 +281,72 @@ def simulate(scenario: Scenario) -> ConflictReport:
     return report
 
 
+def compact(scenario: Scenario) -> dict[str, Any]:
+    """Greedy stagger plan for every DAG of the scenario.
+
+    DAGs are placed largest own-peak first; each goes to the earliest
+    boundary offset (0 and the start/finish edges of already-placed
+    runs) that adds no over-capacity window and no write conflict —
+    when nothing fits, the least-conflicting candidate wins.  The
+    proposed schedule is then fully re-simulated (deadlines included),
+    so the before/after numbers are verified, not hoped.
+    """
+    own: dict[str, list[TaskRun]] = {
+        name: _schedule_dag(name, tasks, 0.0)
+        for name, tasks in scenario.dag_tasks.items()}
+
+    def own_peak(name: str) -> int:
+        _, peak, _ = _sweep(own[name], scenario.cap_slots,
+                            scenario.cap_memory_gb)
+        return peak
+
+    placed: list[TaskRun] = []
+    offsets: dict[str, float] = {}
+    for name in sorted(scenario.dag_tasks, key=lambda n: (-own_peak(n), n)):
+        candidates = {0.0}
+        for r in placed:
+            candidates.update((r.start, r.finish))
+        best: tuple[tuple[int, int, float], float, list[TaskRun]] | None = None
+        for off in sorted(candidates):
+            shifted = [dataclasses.replace(r, start=r.start + off,
+                                           finish=r.finish + off)
+                       for r in own[name]]
+            runs = placed + shifted
+            windows, peak, _ = _sweep(runs, scenario.cap_slots,
+                                      scenario.cap_memory_gb)
+            conflicts = len(windows) + len(_write_conflicts(runs))
+            key = (conflicts, peak, off)
+            if best is None or key < best[0]:
+                best = (key, off, shifted)
+            if conflicts == 0:
+                break
+        assert best is not None  # candidates always holds 0.0
+        offsets[name] = best[1]
+        placed.extend(best[2])
+
+    proposed = Scenario(
+        cap_slots=scenario.cap_slots, cap_memory_gb=scenario.cap_memory_gb,
+        starts=offsets, dag_tasks=scenario.dag_tasks,
+        deadlines=scenario.deadlines)
+    before = simulate(scenario)
+    after = simulate(proposed)
+
+    def summary(report: ConflictReport, runs: list[TaskRun]) -> dict[str, Any]:
+        return {"windows": len(report.windows),
+                "write_conflicts": len(report.write_conflicts),
+                "peak_slots": report.peak_slots,
+                "deadline_misses": len(report.deadline_misses),
+                "makespan": max((r.finish for r in runs), default=0.0)}
+
+    return {
+        "offsets": [{"dag": name, "declared": scenario.starts[name],
+                     "proposed": offsets[name]}
+                    for name in sorted(scenario.dag_tasks)],
+        "before": summary(before, _runs(scenario)),
+        "after": summary(after, _runs(proposed)),
+    }
+
+
 def place(scenario: Scenario, dag_name: str) -> dict[str, Any]:
     """Admission check: find the best start offset for one DAG.
 
