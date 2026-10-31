@@ -90,6 +90,7 @@
     "dag_gen",
     "field_usage",
     "offboard_plan",
+    "retention_policy",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

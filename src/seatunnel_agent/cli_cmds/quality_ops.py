@@ -391,6 +391,7 @@ def register(cli) -> None:
     cli.add_command(daggen)
     cli.add_command(fieldusage)
     cli.add_command(offboardplan)
+    cli.add_command(retention)
 
 
 @click.command("rollbackplan")
@@ -2054,3 +2055,43 @@ def offboardplan(path, text, table, grace_days, archive_db, use_llm,
     if fail_blocked and plan.blocked:
         fail_check(fmt, "下游仍在读 / downstream still reads: "
                    + ", ".join(sorted(plan.downstream)))
+@click.command("retention")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="分区清单 CSV（带表头）或 JSONL 文件")
+@click.option("--text", type=str, default=None, help="内联分区清单")
+@click.option("--active-days", "active_days", type=click.IntRange(min=1),
+              default=90, show_default=True,
+              help="访问在该窗口内的分区视为仍在用")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草清理提案（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def retention(path, text, active_days, use_llm, fail_high,
+              lang, fmt, output) -> None:
+    """生命周期建议 — 分区清单 → TTL/归档/清理候选。"""
+    from seatunnel_agent.agents.data.retention_policy import (
+        advise_retention,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+
+    try:
+        headers, rows = parse_rows(_read(path, text, "分区清单"))
+        report = advise_retention(headers, rows, active_days=active_days)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(report, lang=lang)
+    payload = report.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.retention_policy.advisor_llm import (
+            retention_note,
+        )
+        from seatunnel_agent.agents.data.retention_policy.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, retention_note(report, lang=lang),
+            "retention_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(report.findings, fmt, label=lambda f: f.table)
