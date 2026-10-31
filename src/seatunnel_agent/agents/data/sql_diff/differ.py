@@ -23,7 +23,8 @@ from typing import Any
 
 from seatunnel_agent.common.severity import severity_counts
 
-__all__ = ["SqlDiffFinding", "SqlDiffReport", "diff_sql"]
+__all__ = ["SqlDiffFinding", "SqlDiffReport", "diff_sql",
+           "statement_shapes"]
 
 SEVERITIES = ("breaking", "risk", "info")
 
@@ -149,7 +150,8 @@ def _statement_shapes(sql_text: str, read) -> tuple[list[_Shape], list[str]]:
             name = (e.alias_or_name or _canon(e, read)).lower()
             shape.columns[name] = _canon(
                 e.this if isinstance(e, exp.Alias) else e, read)
-        from_ = query.args.get("from")
+        # sqlglot names the arg "from" or "from_" depending on version
+        from_ = query.args.get("from") or query.args.get("from_")
         if from_ is not None:
             for t in from_.find_all(exp.Table):
                 shape.sources[_table_name(t)] = "from"
@@ -164,6 +166,19 @@ def _statement_shapes(sql_text: str, read) -> tuple[list[_Shape], list[str]]:
         shape.aggregation = " ".join(p for p in agg if p)
         shapes.append(shape)
     return shapes, warnings
+
+
+def statement_shapes(sql_text: str, dialect: str = "hive",
+                     ) -> tuple[list[_Shape], list[str]]:
+    """Public seam: per-statement semantic shapes (dup_pipeline reuses
+    the same parse instead of growing its own)."""
+    from seatunnel_agent.agents.data.data_lineage.sqlglot_lineage import (
+        resolve_sqlglot_dialect,
+    )
+
+    if not (sql_text or "").strip():
+        raise ValueError("SQL must not be empty")
+    return _statement_shapes(sql_text, resolve_sqlglot_dialect(dialect))
 
 
 # ---------------------------------------------------------------------------

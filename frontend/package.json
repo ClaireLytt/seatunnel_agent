@@ -79,6 +79,7 @@
     "contract_gen",
     "sql_diff",
     "model_review",
+    "dup_pipeline",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

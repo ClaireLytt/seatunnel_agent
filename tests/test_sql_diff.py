@@ -70,6 +70,14 @@ def test_column_added_and_aggregation_changed():
     assert "column_added" in kinds and "aggregation_changed" in kinds
 
 
+def test_from_table_change_detected():
+    # regression: this sqlglot keys the FROM arg "from_", not "from"
+    report = diff_sql("INSERT INTO t SELECT a FROM old_src",
+                      "INSERT INTO t SELECT a FROM new_src")
+    kinds = _kinds(report)
+    assert {"source_added", "source_removed"} <= kinds
+
+
 def test_source_added_join_kind():
     old = "INSERT INTO t SELECT a FROM x"
     new = "INSERT INTO t SELECT a FROM x LEFT JOIN y ON x.id = y.id"

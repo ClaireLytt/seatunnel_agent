@@ -380,6 +380,7 @@ def register(cli) -> None:
     cli.add_command(contractgen)
     cli.add_command(sqldiff)
     cli.add_command(modelreview)
+    cli.add_command(duppipeline)
 
 
 @click.command("rollbackplan")
@@ -1526,6 +1527,46 @@ def modelreview(path, text, wide_limit, dialect, use_llm, fail_high,
         markdown = append_llm_note(
             payload, markdown, modeling_note(report, lang=lang),
             "modeling_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(report.findings, fmt)
+@click.command("duppipeline")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="流水线 SQL 脚本文件")
+@click.option("--text", type=str, default=None, help="内联 SQL 脚本")
+@click.option("--fanout", type=click.IntRange(min=2), default=3,
+              show_default=True, help="源表直读目标数达到该值记 DP003")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草收敛方案（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def duppipeline(path, text, fanout, dialect, use_llm, fail_high,
+                lang, fmt, output) -> None:
+    """重复建设检测 — 流水线 SQL → 同源双建分级发现。"""
+    from seatunnel_agent.agents.data.dup_pipeline import (
+        detect_dup_pipelines,
+        render_markdown,
+    )
+
+    try:
+        report = detect_dup_pipelines(_read(path, text, "SQL 脚本"),
+                                      dialect=dialect, fanout=fanout)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(report, lang=lang)
+    payload = report.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.dup_pipeline.advisor_llm import (
+            consolidation_note,
+        )
+        from seatunnel_agent.agents.data.dup_pipeline.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, consolidation_note(report, lang=lang),
+            "consolidation_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_high:
         fail_on_high(report.findings, fmt)
