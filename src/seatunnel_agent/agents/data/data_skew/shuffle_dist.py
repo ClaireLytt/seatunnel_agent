@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from seatunnel_agent.common.utils import md_table
+
 from .runtime import (
     MIN_TASKS,
     SHUF_MAX_CONFIRMED,
@@ -130,7 +132,7 @@ def shuffle_distribution(path: str | Path) -> list[ShuffleDist]:
 MAX_SALT = 64
 
 
-def _salted_ok(p50: float, p99: float, factor: int) -> tuple[float, float,
+def _salted_estimate(p50: float, p99: float, factor: int) -> tuple[float, float,
                                                              bool]:
     """(new_p99, new_ratio, healthy?) after an N-way key salt.
 
@@ -161,11 +163,11 @@ def salt_what_if(dists: list[ShuffleDist],
             continue
         if factor:
             n = factor
-            new_p99, ratio, healthy = _salted_ok(d.p50, d.p99, n)
+            new_p99, ratio, healthy = _salted_estimate(d.p50, d.p99, n)
         else:
             n, new_p99, ratio, healthy = 0, d.p99, d.ratio, False
             for cand in range(2, MAX_SALT + 1):
-                new_p99, ratio, healthy = _salted_ok(d.p50, d.p99, cand)
+                new_p99, ratio, healthy = _salted_estimate(d.p50, d.p99, cand)
                 if healthy:
                     n = cand
                     break
@@ -183,8 +185,6 @@ def salt_what_if(dists: list[ShuffleDist],
 
 def render_salt_what_if(rows: list[dict[str, Any]], lang: str) -> str:
     """Markdown section appended under the shuffle-dist table."""
-    from seatunnel_agent.common.utils import md_table
-
     from .i18n import dsk
 
     lines = [f"### {dsk(lang, 'sw_title')}"]

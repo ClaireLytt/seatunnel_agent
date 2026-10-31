@@ -683,8 +683,9 @@ def skew_runtime(
 
     md, confirmed, _ = diagnose_and_log(
         default_history(), stages, label, lang, source="cli")
-    if salt_factor is not None and not shuffle_dist_flag:
-        raise click.UsageError("--what-if-salt 需配合 --shuffle-dist")
+    from seatunnel_agent.cli_cmds.check_runner import require_with
+    require_with(salt_factor is not None and not shuffle_dist_flag,
+                 "--what-if-salt", "--shuffle-dist")
     fat_tails = 0
     if shuffle_dist_flag:
         if not eventlog:

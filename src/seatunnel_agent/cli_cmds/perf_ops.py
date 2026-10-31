@@ -20,7 +20,12 @@ from pathlib import Path
 import click
 
 from .check_runner import emit_payload as _emit
-from .check_runner import fail_check, report_options, severity_gate
+from .check_runner import (
+    fail_check,
+    report_options,
+    require_with,
+    severity_gate,
+)
 from .check_runner import read_input as _read
 from .check_runner import track_history as _track_history
 
@@ -52,8 +57,7 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
     """执行计划分析 — EXPLAIN 文本 → join/shuffle/裁剪/下推发现与处方。"""
     from seatunnel_agent.agents.data.sql_perf import analyze, render_markdown
 
-    if fail_on_new and not before_path:
-        raise click.UsageError("--fail-on-new 需配合 --before")
+    require_with(fail_on_new and not before_path, "--fail-on-new", "--before")
     result = analyze(_read(path, text, "EXPLAIN 输出"))
     markdown = render_markdown(result, lang=lang)
     payload = result.to_dict()
@@ -65,8 +69,7 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
         payload["diff"] = delta
         markdown += "\n\n" + render_diff(delta, lang=lang)
     if use_llm:
-        if not sql_path:
-            raise click.UsageError("--llm 需配合 --sql-file")
+        require_with(not sql_path, "--llm", "--sql-file")
         from seatunnel_agent.agents.data.sql_perf import advisor_llm
         from seatunnel_agent.agents.data.sql_perf.i18n import tp
 
@@ -136,8 +139,7 @@ def index_adv(directory, text, ddl_path, dialect, fail_on_audit, stats_path,
     )
     from seatunnel_agent.common.utils import collect_sql_files
 
-    if fail_on_audit and not ddl_path:
-        raise click.UsageError("--fail-on-audit 需配合 --ddl")
+    require_with(fail_on_audit and not ddl_path, "--fail-on-audit", "--ddl")
     if directory:
         files = collect_sql_files(directory)
         workload = "\n;\n".join(
@@ -232,8 +234,8 @@ def sqlcost(sql_path, directory, stats_path, fail_over_total_scan_gb,
         what_if,
     )
 
-    if fail_if_worse and not compare_sql_path:
-        raise click.UsageError("--fail-if-worse 需配合 --compare-sql-file")
+    require_with(fail_if_worse and not compare_sql_path, "--fail-if-worse",
+                 "--compare-sql-file")
     if bool(sql_path) == bool(directory):
         raise click.UsageError("提供 --sql-file 或 --dir（二选一）")
     stats = parse_stats(Path(stats_path).read_text(encoding="utf-8",
@@ -395,12 +397,12 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
             fail_check(f"REGRESSION {worst.name} {worst.regression:g}x >= "
                        f"{fail_regression:g}x", fmt)
         return
-    if promote and not baseline_path:
-        raise click.UsageError("--promote-baseline 需配合 --baseline")
-    if (trend_n or fail_on_trend) and not history_path:
-        raise click.UsageError("--trend / --fail-on-trend 需配合 --history")
-    if fail_on_trend and not trend_n:
-        raise click.UsageError("--fail-on-trend 需配合 --trend N")
+    require_with(promote and not baseline_path, "--promote-baseline",
+                 "--baseline")
+    require_with((trend_n or fail_on_trend) and not history_path,
+                 "--trend / --fail-on-trend", "--history")
+    require_with(fail_on_trend and not trend_n, "--fail-on-trend",
+                 "--trend N")
     run = parse_metrics(_read(path, text, "执行指标"))
     diag = diagnose(run, parse_baseline(baseline))
     markdown = render_markdown(diag, lang=lang)
@@ -493,8 +495,8 @@ def dagconflict(path, text, fail_on_conflict, history_path, place_dag,
         simulate,
     )
 
-    if fail_if_misplaced and not place_dag:
-        raise click.UsageError("--fail-if-misplaced 需配合 --place")
+    require_with(fail_if_misplaced and not place_dag, "--fail-if-misplaced",
+                 "--place")
     scenario = parse_scenario(_read(path, text, "场景 JSON"))
     result = simulate(scenario)
     payload = result.to_dict()

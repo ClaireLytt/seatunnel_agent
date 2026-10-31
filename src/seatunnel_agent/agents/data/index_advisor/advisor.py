@@ -25,6 +25,7 @@ skipped and reported — never guessed at.
 
 from __future__ import annotations
 
+import math
 import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -258,8 +259,6 @@ def _bucket_count(table_bytes: float | None) -> int:
     two clamped to [4, 512]; 32 when the size is unknown."""
     if not table_bytes or table_bytes <= 0:
         return 32
-    import math
-
     raw = max(table_bytes / (256 * 1024 * 1024), 1.0)
     return min(512, max(4, 2 ** round(math.log2(raw))))
 

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from seatunnel_agent.common.utils import md_table
+
 from .analyzer import PlanReport
 
 
@@ -75,8 +77,6 @@ def render_diff(diff: dict[str, Any], lang: str = "zh") -> str:
                      for f in items)
         lines.append("")
     if diff["scan_changes"]:
-        from seatunnel_agent.common.utils import md_table
-
         lines.append(f"**{tp(lang, 'diff_scans')}**")
 
         def cell(s: dict[str, Any]) -> str:

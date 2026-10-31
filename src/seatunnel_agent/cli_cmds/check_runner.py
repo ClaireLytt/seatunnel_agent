@@ -41,6 +41,12 @@ def report_options(fn):
     return fn
 
 
+def require_with(flag_set: Any, flag: str, dep: str) -> None:
+    """Fail with the standard message when *flag* is used without *dep*."""
+    if flag_set:
+        raise click.UsageError(f"{flag} 需配合 {dep}")
+
+
 def read_input(path: str | None, text: str | None, what: str) -> str:
     """Resolve the --file/--text pair every analyze command takes."""
     if path:

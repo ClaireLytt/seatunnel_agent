@@ -570,6 +570,14 @@ def test_slowquery_ab_diff(tmp_path):
     assert res.exit_code == 0 and "A/B diff" in res.output
     res = runner.invoke(slowquery, ["--diff", str(a), str(b), "-f", str(a)])
     assert res.exit_code == 2
+    # the shipped demo pair works as-is
+    res = runner.invoke(slowquery, [
+        "--diff", str(EX / "slowquery_demo" / "metrics_fast.json"),
+        str(EX / "slowquery_demo" / "metrics.json"), "-F", "json"])
+    assert res.exit_code == 0
+    delta = json.loads(res.output)
+    assert delta["totals"]["duration_s"]["ratio"] > 4
+    assert delta["stages"][0]["stage"] == "join+agg"
 
 
 def test_dagconflict_place():

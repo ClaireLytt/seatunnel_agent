@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from seatunnel_agent.common.utils import fmt_bytes, fmt_secs, normalize_lang
+from seatunnel_agent.common.utils import (
+    fmt_bytes,
+    fmt_secs,
+    md_table,
+    normalize_lang,
+)
 
 from .estimator import CostCard
 from .i18n import tp
@@ -83,8 +88,6 @@ def render_compare(cmp: dict, lang: str = "zh") -> str:
         ("cmp_core", f"{base['core_seconds']:,.0f}",
          f"{rewrite['core_seconds']:,.0f}", saved["core_seconds"]),
     ]
-    from seatunnel_agent.common.utils import md_table
-
     lines = [f"### {tp(lang, 'cmp_title')}"]
     lines.extend(md_table(
         [tp(lang, "cmp_col_axis"), tp(lang, "cmp_col_base"),
@@ -100,8 +103,6 @@ def render_compare(cmp: dict, lang: str = "zh") -> str:
 
 def render_calibration(cal: dict, lang: str = "zh") -> str:
     """Markdown for estimator.calibrate output."""
-    from seatunnel_agent.common.utils import md_table
-
     lang = normalize_lang(lang)
     rows = []
     dur = cal["duration"]
@@ -129,8 +130,6 @@ def render_calibration(cal: dict, lang: str = "zh") -> str:
 
 def render_batch(batch: dict, lang: str = "zh") -> str:
     """Markdown for a workload ranking (estimator.estimate_batch)."""
-    from seatunnel_agent.common.utils import md_table
-
     lang = normalize_lang(lang)
     rows = [[q["name"], fmt_bytes(q["scan_bytes"]),
              fmt_bytes(q["shuffle_bytes"]), f"{q['core_seconds']:,.0f}"]

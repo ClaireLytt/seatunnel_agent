@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from seatunnel_agent.common.utils import fmt_bytes, fmt_secs, normalize_lang
+from seatunnel_agent.common.utils import (
+    fmt_bytes,
+    fmt_secs,
+    md_table,
+    normalize_lang,
+)
 
 from .diagnoser import Diagnosis
 from .i18n import tp
@@ -18,8 +23,6 @@ def render_diff(diff: dict, lang: str = "zh") -> str:
     def fmt(key: str, value: float) -> str:
         return (fmt_bytes(value) if key.endswith("bytes")
                 else fmt_secs(value))
-
-    from seatunnel_agent.common.utils import md_table
 
     lines = [f"## {tp(lang, 'diff_title').format(a=diff['a'], b=diff['b'])}",
              ""]
@@ -79,8 +82,6 @@ def render_markdown(diag: Diagnosis, lang: str = "zh") -> str:
         lines.append(tp(lang, "rpt_none"))
         lines.append("")
     if diag.stages:
-        from seatunnel_agent.common.utils import md_table
-
         lines.append(f"### {tp(lang, 'rpt_stages')}")
         lines.extend(md_table(
             ["stage", "task max", "task median",

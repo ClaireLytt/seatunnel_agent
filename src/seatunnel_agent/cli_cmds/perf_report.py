@@ -196,7 +196,8 @@ def perf_report(directory, lang, fmt, output) -> None:
     run_section("index", t["sec_index"], index_section)
 
     if not sections and not failed:
-        raise click.UsageError(t["nothing"] + " " + t["hint"][2:])
+        raise click.UsageError(
+            t["nothing"] + " " + t["hint"].removeprefix("> "))
     if skipped:
         parts.append(t["skipped"] + " " + ", ".join(f"`{s}`"
                                                     for s in skipped))
