@@ -52,6 +52,7 @@
     "dist_anomaly",
     "dup_check",
     "data_volatility",
+    "quality_trace",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

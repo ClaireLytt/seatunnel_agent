@@ -7,6 +7,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent distanomaly   --baseline base.csv --current cur.csv
   seatunnel-agent dupcheck      -f rows.csv [--pk id --biz-key "user,ts"]
   seatunnel-agent datavolatility -f series.csv [--fail-on-high]
+  seatunnel-agent qualitytrace  -f pipeline.sql --table dws.t [--column c]
 """
 
 from __future__ import annotations
@@ -205,8 +206,51 @@ def datavolatility(path, text, use_llm, fail_high, lang, fmt, output) -> None:
                 fmt)
 
 
+@click.command("qualitytrace")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="流水线 SQL 脚本文件")
+@click.option("--text", type=str, default=None, help="内联 SQL 脚本")
+@click.option("--table", "-t", required=True, help="出问题的表")
+@click.option("--column", "-c", default="", help="出问题的列（可选）")
+@click.option("--symptom", default="", help="一句话症状（可选）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草追踪通报（需配置 API key）")
+@report_options
+def qualitytrace(path, text, table, column, symptom, dialect, use_llm,
+                 lang, fmt, output) -> None:
+    """质量根因追踪 — 事件 × SQL 血缘 → 嫌疑排行 + 验证 SQL。"""
+    from seatunnel_agent.agents.data.quality_trace import (
+        build_graph_from_sql,
+        render_markdown,
+        trace_quality,
+    )
+
+    try:
+        graph, warnings = build_graph_from_sql(
+            _read(path, text, "SQL 脚本"), dialect=dialect)
+        result = trace_quality(graph, warnings, table,
+                               column=column, symptom=symptom)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.quality_trace.advisor_llm import (
+            trace_note,
+        )
+        from seatunnel_agent.agents.data.quality_trace.i18n import tp
+
+        note = trace_note(result, lang=lang)
+        payload["trace_note"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
+
+
 def register(cli) -> None:
     cli.add_command(sampleprofile)
     cli.add_command(distanomaly)
     cli.add_command(dupcheck)
     cli.add_command(datavolatility)
+    cli.add_command(qualitytrace)
