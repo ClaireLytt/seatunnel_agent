@@ -202,6 +202,17 @@ def test_sqlperf_plan_diff():
     assert not diff["resolved"] and not diff["introduced"]
 
 
+def test_sqlperf_history_ledger(tmp_path):
+    runner = CliRunner()
+    ledger = tmp_path / "plans.jsonl"
+    res = runner.invoke(sqlperf, ["-f", str(EX / "sqlperf_demo" / "plan.txt"),
+                                  "--history", str(ledger)])
+    assert res.exit_code == 0
+    entry = json.loads(ledger.read_text(encoding="utf-8").splitlines()[0])
+    assert entry["high"] >= 1 and entry["exchanges"] == 3
+    assert entry["scans"] == 2 and "ts" in entry
+
+
 def test_sqlperf_fail_on_new_gate():
     runner = CliRunner()
     good = str(EX / "sqlperf_demo" / "plan_optimized.txt")

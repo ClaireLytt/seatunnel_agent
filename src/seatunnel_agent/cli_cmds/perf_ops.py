@@ -51,9 +51,13 @@ from .check_runner import track_history as _track_history
               type=click.Path(dir_okay=False), default=None,
               help="从扫描明细生成 sqlcost 统计清单骨架 JSON 写到该文件"
                    "（表名/列数已填，行数/字节/分区待补）")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="计划台账：高/中/提示发现数与 shuffle 数追加到该 jsonl")
 @report_options
 def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
-            fail_on_new, stats_template_path, lang, fmt, output) -> None:
+            fail_on_new, stats_template_path, history_path, lang, fmt,
+            output) -> None:
     """执行计划分析 — EXPLAIN 文本 → join/shuffle/裁剪/下推发现与处方。"""
     from seatunnel_agent.agents.data.sql_perf import analyze, render_markdown
 
@@ -92,6 +96,13 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
                    f"{stats_template_path}（补上 rows/bytes/partitions "
                    f"即可直接喂给 sqlcost）", err=True)
     _emit(payload, markdown, fmt, output)
+    if history_path:
+        counts = result.counts()
+        _track_history(history_path, {
+            "high": counts["high"], "medium": counts["medium"],
+            "info": counts["info"], "exchanges": result.exchanges,
+            "scans": len(result.scans),
+        }, worse_key="high")
     if fail_on_new and payload.get("diff", {}).get("introduced"):
         introduced = payload["diff"]["introduced"]
         msg = "\n".join(f"INTRODUCED {f['code']} [{f['severity']}] "
