@@ -1,0 +1,6 @@
+table,size_gb,access_cnt_30d,last_access,downstream_cnt,avg_file_mb
+dwd.orders,900,420,2026-10-30,6,128
+tmp.backfill_201902,2300,0,2026-02-11,0,64
+bak.orders_v1,1800,0,2026-05-02,0,256
+ods.click_log,600,80,2026-10-30,3,4
+dim.users,15,510,2026-10-29,12,32

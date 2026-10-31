@@ -12,6 +12,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent assetsearch   -f catalog.json --query "按日的订单金额"
   seatunnel-agent datadict      -f catalog.json [--sql-file workload.sql]
   seatunnel-agent assetvalue    -f inventory.csv
+  seatunnel-agent storagecost   -f inventory.csv [--partitions parts.csv]
 """
 
 from __future__ import annotations
@@ -339,6 +340,51 @@ def register(cli) -> None:
     cli.add_command(assetsearch)
     cli.add_command(datadict)
     cli.add_command(assetvalue)
+    cli.add_command(storagecost)
+
+
+@click.command("storagecost")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="资产清单：CSV 或 JSON 文件(可含 avg_file_mb)")
+@click.option("--text", type=str, default=None, help="内联清单行")
+@click.option("--partitions", "parts_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="可选分区明细：table,partition,size_gb")
+@click.option("--retention-days", "retention", type=click.IntRange(min=1),
+              default=365, show_default=True, help="分区保留天数")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草治理通报（需配置 API key）")
+@report_options
+def storagecost(path, text, parts_path, retention, use_llm,
+                lang, fmt, output) -> None:
+    """存储成本治理 — 清单 ± 分区 → 迁冷/清理/合并动作。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.storage_cost import (
+        render_markdown,
+        run_storage_analysis,
+    )
+
+    parts = (Path(parts_path).read_text(encoding="utf-8", errors="replace")
+             if parts_path else "")
+    try:
+        result = run_storage_analysis(_read(path, text, "资产清单"),
+                                      partitions_text=parts,
+                                      retention_days=retention)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.storage_cost.advisor_llm import (
+            governance_note,
+        )
+        from seatunnel_agent.agents.data.storage_cost.i18n import tp
+
+        note = governance_note(result, lang=lang)
+        payload["governance_note"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
 
 
 @click.command("assetvalue")
