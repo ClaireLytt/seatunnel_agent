@@ -1,0 +1,241 @@
+"""Browser tests for the cross-page handoffs (sessionStorage).
+
+Servers mounting the source page(s) next to the target page:
+
+* /freshness → /backfill → /backfillsql  (the full recovery chain)
+* /pipemigrate → /dagopt                 (migration DAG → analysis)
+
+Deselected by default:  pytest -m uitest tests/test_agent_handoffs_page.py
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import pytest
+
+from tests.conftest import make_page_url
+
+pytestmark = pytest.mark.uitest
+
+from seatunnel_agent.agents.data.backfill.manifest import (
+    MANIFEST as BACKFILL_MF,
+)
+from seatunnel_agent.agents.data.backfill_sql.manifest import (
+    MANIFEST as BACKFILLSQL_MF,
+)
+from seatunnel_agent.agents.data.dag_optimize.manifest import (
+    MANIFEST as DAGOPT_MF,
+)
+from seatunnel_agent.agents.data.data_freshness.manifest import (
+    MANIFEST as FRESHNESS_MF,
+)
+from seatunnel_agent.agents.data.pipeline_migrate.manifest import (
+    MANIFEST as PIPEMIGRATE_MF,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+_DEMO_DIRS = os.pathsep.join(
+    str(ROOT / "examples" / d)
+    for d in ("backfill_demo", "freshness_demo"))
+
+backfill_pair_url = make_page_url(
+    BACKFILLSQL_MF,
+    "seatunnel_agent.agents.data.backfill_sql.api:router",
+    "/backfillsql", chdir="root",
+    env={"BACKFILL_API_ALLOWED_DIRS": _DEMO_DIRS,
+         "FRESHNESS_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "freshness_demo"),
+         "BACKFILLSQL_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "backfillsql_demo")},
+    extra_mounts=[("/backfill", BACKFILL_MF),
+                  ("/freshness", FRESHNESS_MF)],
+    extra_routers=["seatunnel_agent.agents.data.backfill.api:router",
+                   "seatunnel_agent.agents.data.data_freshness.api:router"],
+    name="backfill_pair_url")
+
+migrate_pair_url = make_page_url(
+    DAGOPT_MF,
+    "seatunnel_agent.agents.data.dag_optimize.api:router",
+    "/dagopt", chdir="root",
+    env={"PIPEMIGRATE_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "pipemigrate_demo"),
+         "DAGOPT_API_ALLOWED_DIRS": str(ROOT / "examples" / "dagopt_demo")},
+    extra_mounts=[("/pipemigrate", PIPEMIGRATE_MF)],
+    extra_routers=["seatunnel_agent.agents.data.pipeline_migrate.api:router"],
+    name="migrate_pair_url")
+
+
+@pytest.mark.uitest
+def test_backfill_plan_hands_off_to_backfillsql(backfill_pair_url):
+    """Plan on /backfill → handoff button → specs auto-run on /backfillsql."""
+    from playwright.sync_api import expect, sync_playwright
+
+    base = backfill_pair_url.rsplit("/backfillsql", 1)[0]
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{base}/backfill/", wait_until="networkidle")
+        page.get_by_role("button", name="Plan file", exact=True).click()
+        handoff = page.get_by_role(
+            "button", name="Generate backfill SQL specs from this plan")
+        expect(handoff).to_be_visible()
+        handoff.click()
+        page.wait_for_url("**/backfillsql/")
+        expect(page.get_by_role(
+            "heading", name="Backfill spec skeletons",
+            exact=False)).to_be_visible()
+        # the handed-over plan's tables appear in the spec JSON
+        content = page.content()
+        assert "ods.items" in content and "ads.sales_report" in content
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_full_recovery_chain_freshness_to_specs(backfill_pair_url):
+    """/freshness scan → /backfill auto-plan → /backfillsql auto-specs."""
+    from playwright.sync_api import expect, sync_playwright
+
+    base = backfill_pair_url.rsplit("/backfillsql", 1)[0]
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{base}/freshness/", wait_until="networkidle")
+        page.get_by_role("button", name="Scan file", exact=True).click()
+        page.get_by_role(
+            "button", name="Plan a backfill from this inventory").click()
+        page.wait_for_url("**/backfill/")
+        # the plan auto-ran off the handed-over freshness inventory
+        expect(page.get_by_role("heading", name="Backfill Plan",
+                                exact=True)).to_be_visible()
+        page.get_by_role(
+            "button",
+            name="Generate backfill SQL specs from this plan").click()
+        page.wait_for_url("**/backfillsql/")
+        expect(page.get_by_role(
+            "heading", name="Backfill spec skeletons",
+            exact=False)).to_be_visible()
+        browser.close()
+
+
+@pytest.mark.uitest
+def test_pipemigrate_hands_off_migration_dag_to_dagopt(migrate_pair_url):
+    """Assess on /pipemigrate → handoff → DAG analysis auto-runs on /dagopt."""
+    from playwright.sync_api import expect, sync_playwright
+
+    base = migrate_pair_url.rsplit("/dagopt", 1)[0]
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{base}/pipemigrate/", wait_until="networkidle")
+        page.get_by_role("button", name="Assess directory",
+                         exact=True).click()
+        handoff = page.get_by_role(
+            "button", name="Estimate the migration itself in the "
+                           "DAG Optimizer")
+        expect(handoff).to_be_visible()
+        handoff.click()
+        page.wait_for_url("**/dagopt/")
+        expect(page.get_by_role(
+            "heading", name="DAG Dependency Optimization")).to_be_visible()
+        # migration jobs became DAG tasks
+        assert "build_sales.hql" in page.content()
+        browser.close()
+
+
+from seatunnel_agent.agents.data.index_advisor.manifest import (
+    MANIFEST as INDEXADV_MF,
+)
+from seatunnel_agent.agents.data.sql_cost.manifest import (
+    MANIFEST as SQLCOST_MF,
+)
+
+cost_pair_url = make_page_url(
+    SQLCOST_MF,
+    "seatunnel_agent.agents.data.sql_cost.api:router",
+    "/sqlcost", chdir="root",
+    env={"INDEXADVISOR_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "indexadvisor_demo"),
+         "SQLCOST_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "sqlcost_demo")},
+    extra_mounts=[("/indexadvisor", INDEXADV_MF)],
+    extra_routers=["seatunnel_agent.agents.data.index_advisor.api:router"],
+    name="cost_pair_url")
+
+
+@pytest.mark.uitest
+def test_indexadvisor_hands_off_workload_to_sqlcost(cost_pair_url):
+    """Pasted workload on /indexadvisor -> button -> SQL prefilled on
+    /sqlcost (no auto-run: the stats inventory is still the user's)."""
+    from playwright.sync_api import expect, sync_playwright
+
+    workload = "SELECT amount FROM ods.orders WHERE dt = '2024-05-01'"
+    base = cost_pair_url.rsplit("/sqlcost", 1)[0]
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{base}/indexadvisor/", wait_until="networkidle")
+        page.get_by_text("Recommend from pasted SQL", exact=False).click()
+        page.locator("textarea").last.fill(workload)
+        page.get_by_role("button", name="Recommend from text",
+                         exact=True).click()
+        handoff = page.get_by_role(
+            "button", name="Verify the saving on the cost page")
+        expect(handoff).to_be_visible()
+        handoff.click()
+        page.wait_for_url("**/sqlcost/")
+        expect(page.locator("textarea").first).to_have_value(workload)
+        browser.close()
+
+
+from seatunnel_agent.agents.data.sql_perf.manifest import (
+    MANIFEST as SQLPERF_MF,
+)
+
+perf_chain_url = make_page_url(
+    SQLCOST_MF,
+    "seatunnel_agent.agents.data.sql_cost.api:router",
+    "/sqlcost", chdir="root",
+    env={"SQLPERF_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "sqlperf_demo"),
+         "INDEXADVISOR_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "indexadvisor_demo"),
+         "SQLCOST_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "sqlcost_demo")},
+    extra_mounts=[("/sqlperf", SQLPERF_MF),
+                  ("/indexadvisor", INDEXADV_MF)],
+    extra_routers=["seatunnel_agent.agents.data.sql_perf.api:router",
+                   "seatunnel_agent.agents.data.index_advisor.api:router"],
+    name="perf_chain_url")
+
+
+@pytest.mark.uitest
+def test_perf_chain_sqlperf_to_indexadvisor_to_sqlcost(perf_chain_url):
+    """/sqlperf (plan + SQL) -> index advice auto-runs on /indexadvisor
+    -> SQL prefilled on /sqlcost."""
+    from playwright.sync_api import expect, sync_playwright
+
+    the_sql = "SELECT amount FROM ods.orders WHERE dt = '2024-05-01'"
+    base = perf_chain_url.rsplit("/sqlcost", 1)[0]
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{base}/sqlperf/", wait_until="networkidle")
+        page.get_by_text("LLM rewrite of the SQL", exact=False).click()
+        page.locator("textarea").nth(1).fill(the_sql)
+        page.get_by_role("button", name="Analyze file", exact=True).click()
+        handoff = page.get_by_role(
+            "button", name="Recommend indexes for this SQL")
+        expect(handoff).to_be_visible()
+        handoff.click()
+        page.wait_for_url("**/indexadvisor/")
+        # the advice auto-ran off the handed SQL
+        expect(page.get_by_role(
+            "heading", name="Index / Partition Recommendation",
+            exact=False)).to_be_visible(timeout=15000)
+        page.get_by_role(
+            "button", name="Verify the saving on the cost page").click()
+        page.wait_for_url("**/sqlcost/")
+        expect(page.locator("textarea").first).to_have_value(the_sql)
+        browser.close()

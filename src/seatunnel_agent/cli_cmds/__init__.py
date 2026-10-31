@@ -1,6 +1,16 @@
 from __future__ import annotations
 
-from . import checks, core, lineage, platform, skew, sql_review, text2sql
+from . import (
+    checks,
+    core,
+    lineage,
+    perf_ops,
+    pipeline_ops,
+    platform,
+    skew,
+    sql_review,
+    text2sql,
+)
 
 
 def register(cli) -> None:
@@ -11,3 +21,5 @@ def register(cli) -> None:
     text2sql.register(cli)
     checks.register(cli)
     platform.register(cli)
+    pipeline_ops.register(cli)
+    perf_ops.register(cli)

@@ -55,6 +55,16 @@ def require_dir(raw_path: str, env_var: str) -> str:
     return path
 
 
+def read_whitelisted_file(raw_path: str, env_var: str) -> str:
+    """Whitelist-check the file's parent dir, then read it (replace
+    errors) — the shared head of every file-taking API endpoint."""
+    path = Path((raw_path or "").strip())
+    require_dir(str(path.parent), env_var)
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail=f"Not a file: {path}")
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
 def ms_since(start: float) -> int:
     """Elapsed milliseconds since a ``time.time()`` start stamp."""
     return int((time.time() - start) * 1000)
@@ -65,3 +75,17 @@ def add_health(router: APIRouter, agent: str) -> None:
     @router.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok", "agent": agent}
+
+
+def resolve_file_or_text(file: str | None, text: str | None,
+                         env_var: str) -> str:
+    """The file-or-inline-text input shape shared by the agent routers:
+    400 when neither is given, whitelisted read when a file is."""
+    from fastapi import HTTPException
+
+    if not (file or "").strip() and not (text or "").strip():
+        raise HTTPException(status_code=400,
+                            detail="Provide 'file' or 'text'")
+    if (file or "").strip():
+        return read_whitelisted_file(file or "", env_var)
+    return text or ""

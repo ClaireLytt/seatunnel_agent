@@ -38,8 +38,10 @@ def test_release_notes_page_smoke(page_url):
         textarea.fill("a1b2c3d\tfeat(hub): new landing\nb2c3d4e\tfix: broken link")
         page.get_by_role("button", name="Generate").click()
 
-        # report appears
-        expect(page.locator("main")).to_contain_text("feat", timeout=30000)
+        # report appears — commits grouped under type headings
+        expect(page.locator("main")).to_contain_text("Features",
+                                                     timeout=30000)
+        expect(page.locator("main")).to_contain_text("Bug Fixes")
 
         # Clear resets
         page.get_by_role("button", name="Clear").click()

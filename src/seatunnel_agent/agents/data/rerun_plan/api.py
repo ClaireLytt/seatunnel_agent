@@ -1,0 +1,92 @@
+"""REST API for the rerun planner agent — FastAPI router.
+
+  POST /api/rerun/plan   — minimal rerun set in topological batches
+  GET  /api/rerun/health — health check
+"""
+
+from __future__ import annotations
+
+import time
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from seatunnel_agent.common.api_guard import (
+    add_health,
+    ms_since,
+    read_whitelisted_file,
+)
+from seatunnel_agent.common.utils import normalize_lang
+
+from .planner import parse_dag, parse_statuses, plan_rerun
+from .report import render_markdown
+
+router = APIRouter(prefix="/api/rerun", tags=["rerun_plan"])
+
+_ENV = "RERUN_API_ALLOWED_DIRS"
+
+
+class PlanRequest(BaseModel):
+    file: str | None = Field(
+        None, description="Task DAG file (.json or text lines)")
+    text: str | None = Field(None, description="Inline DAG definition")
+    failed: str = Field("", description="Failed task names, comma-separated")
+    succeeded: str = Field(
+        "", description="Already-succeeded task names, comma-separated")
+    statuses: str = Field(
+        "", description="Scheduler status export: {'task':'state'} JSON or "
+                        "task=state lines (overrides failed/succeeded)")
+    cmd: str = Field("", description="Command template with {task}")
+    llm: bool = Field(
+        False, description="Also draft an incident note via the configured "
+                           "LLM (needs an API key)")
+    lang: str = Field("zh", description="Report language: 'zh' or 'en'")
+    report: bool = Field(False, description="Include the rendered markdown report")
+
+
+class PlanResponse(BaseModel):
+    result: dict[str, Any]
+    report: str | None = None
+    elapsed_ms: int
+
+
+
+@router.post("/plan", response_model=PlanResponse)
+def run_plan(req: PlanRequest) -> PlanResponse:
+    start = time.time()
+    if not (req.file or "").strip() and not (req.text or "").strip():
+        raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
+    if not req.failed.strip() and not req.statuses.strip():
+        raise HTTPException(status_code=400,
+                            detail="Provide 'failed' or 'statuses'")
+    text = (read_whitelisted_file(req.file or "", _ENV) if (req.file or "").strip()
+            else req.text or "")
+    try:
+        failed: str | list[str] = req.failed
+        succeeded: str | list[str] = req.succeeded
+        if req.statuses.strip():
+            failed, succeeded = parse_statuses(req.statuses)
+        result = plan_rerun(parse_dag(text), failed, succeeded)
+    except Exception as exc:  # bad input, malformed JSON
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    lang = normalize_lang(req.lang)
+    report = (render_markdown(result, lang=lang, cmd_template=req.cmd)
+              if req.report else None)
+    payload = result.to_dict()
+    if req.llm:
+        from .advisor_llm import incident_note
+        from .i18n import tp
+
+        try:
+            note = incident_note(result, lang=lang)
+        except Exception as exc:  # missing key, provider errors
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        payload["incident_note"] = note
+        if report is not None:
+            report += f"\n\n### {tp(lang, 'rpt_incident_note')}\n{note}\n"
+    return PlanResponse(result=payload, report=report,
+                        elapsed_ms=ms_since(start))
+
+
+add_health(router, "rerun_plan")

@@ -1,0 +1,39 @@
+# BKF 组 · 分区补数计划:data 工作区卡片 + /backfill React 页冒烟与真实规划。
+# 规划为确定性计算,离线可跑;示例清单、规则与血缘 SQL 随仓库自带。
+
+- id: BKF1
+  title: data 工作区展示补数计划卡片
+  tags: [smoke, sqlite]
+  page: /data
+  steps:
+    - wait: 1000
+      note: 纯断言用例,等 cookie 语言切换完成
+  expect:
+    - text_contains: {in: 页面, text: 分区补数计划}
+
+- id: BKF2
+  title: 补数计划页渲染(文件输入 + 生成按钮)
+  tags: [full, sqlite]
+  page: /backfill/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+  expect:
+    - text_contains: {in: 页面, text: 分区补数计划}
+    - text_contains: {in: 页面, text: 清单文件路径}
+    - text_contains: {in: 页面, text: 生成计划}
+
+- id: BKF3
+  title: 用示例清单生成级联补数计划
+  tags: [full, sqlite]
+  page: /backfill/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+    - click: 生成计划
+    - wait: 2500
+      note: 等 plan 接口返回并渲染报告
+  expect:
+    - text_contains: {in: 页面, text: 批次}
+    - text_contains: {in: 页面, text: 级联重跑}
+    - text_contains: {in: 页面, text: ods.items}

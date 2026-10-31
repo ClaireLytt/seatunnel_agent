@@ -1,0 +1,132 @@
+"""Render a ConflictReport as markdown."""
+
+from __future__ import annotations
+
+from seatunnel_agent.common.utils import md_table, normalize_lang
+
+from .conflictor import ConflictReport
+from .i18n import tp
+
+__all__ = ["render_markdown", "render_place"]
+
+
+def render_compact(plan: dict, lang: str = "zh") -> str:
+    """Markdown section for conflictor.compact results."""
+    lang = normalize_lang(lang)
+    b, a = plan["before"], plan["after"]
+    lines = [f"### {tp(lang, 'cpt_title')}", "",
+             tp(lang, "cpt_stats").format(
+                 w_before=b["windows"], w_after=a["windows"],
+                 c_before=b["write_conflicts"],
+                 c_after=a["write_conflicts"],
+                 p_before=b["peak_slots"], p_after=a["peak_slots"],
+                 m_before=f"{b['makespan']:g}", m_after=f"{a['makespan']:g}",
+                 d_before=b["deadline_misses"],
+                 d_after=a["deadline_misses"]),
+             ""]
+    lines.extend(md_table(
+        [tp(lang, "cpt_col_dag"), tp(lang, "cpt_col_declared"),
+         tp(lang, "cpt_col_proposed")],
+        [[f"`{row['dag']}`", f"{row['declared']:g}",
+          (f"**{row['proposed']:g}**"
+           if row["proposed"] != row["declared"]
+           else f"{row['proposed']:g}")]
+         for row in plan["offsets"]]))
+    return "\n".join(lines)
+
+
+def render_place(placement: dict, lang: str = "zh") -> str:
+    """Markdown section for conflictor.place results."""
+    lang = normalize_lang(lang)
+    best, declared = placement["best"], placement["declared"]
+    lines = ["### " + tp(lang, "plc_title").format(dag=placement["dag"]),
+             "",
+             tp(lang, "plc_best").format(
+                 offset=f"{best['offset']:g}",
+                 windows=best["windows"], writes=best["write_conflicts"],
+                 peak=best["peak_slots"],
+                 declared_offset=f"{declared['offset']:g}",
+                 declared_windows=declared["windows"],
+                 declared_writes=declared["write_conflicts"],
+                 declared_peak=declared["peak_slots"])]
+    if placement["declared_is_best"]:
+        lines.append("")
+        lines.append(tp(lang, "plc_keep"))
+    lines.append("")
+    lines.append(f"**{tp(lang, 'plc_candidates')}**")
+
+    def cell(c: dict, value: str) -> str:
+        return f"**{value}**" if c is best else value
+
+    lines.extend(md_table(
+        [tp(lang, "plc_col_offset"), tp(lang, "plc_col_windows"),
+         tp(lang, "plc_col_writes"), tp(lang, "plc_col_peak")],
+        [[cell(c, f"{c['offset']:g}"), str(c["windows"]),
+          str(c["write_conflicts"]), str(c["peak_slots"])]
+         for c in placement["candidates"]]))
+    return "\n".join(lines)
+
+
+def render_markdown(report: ConflictReport, lang: str = "zh") -> str:
+    lang = normalize_lang(lang)
+    lines = [f"## {tp(lang, 'rpt_title')}",
+             "",
+             "**" + tp(lang, "rpt_stats").format(
+                 cap_slots=report.cap_slots,
+                 cap_mem=f"{report.cap_memory_gb:g}",
+                 peak_slots=report.peak_slots,
+                 peak_mem=f"{report.peak_memory_gb:g}",
+                 windows=len(report.windows),
+                 writes=len(report.write_conflicts)) + "**",
+             ""]
+    gap_slots = max(0, report.peak_slots - report.cap_slots)
+    gap_mem = max(0.0, report.peak_memory_gb - report.cap_memory_gb)
+    if gap_slots or gap_mem > 0:
+        lines.append(tp(lang, "rpt_capacity_gap").format(
+            slots=report.peak_slots, mem=f"{report.peak_memory_gb:g}",
+            gap_slots=gap_slots, gap_mem=f"{gap_mem:g}"))
+        lines.append("")
+    if report.suggestion:
+        s = report.suggestion
+        line = tp(lang, "rpt_suggestion").format(
+            dag=s["dag"], delay=f"{s['delay']:g}",
+            before=s["peak_slots_before"], after=s["peak_slots_after"],
+            windows_after=s["windows_after"])
+        if s.get("breaks_deadline"):
+            bd = s["breaks_deadline"]
+            line += tp(lang, "rpt_suggestion_breaks").format(
+                dag=s["dag"], finish=f"{bd['finish']:g}",
+                deadline=f"{bd['deadline']:g}")
+        lines.append(line)
+        lines.append("")
+    if report.deadline_misses:
+        lines.append(f"### {tp(lang, 'rpt_deadlines')}")
+        for m in report.deadline_misses:
+            lines.append("- " + tp(lang, "rpt_deadline_row").format(
+                dag=m["dag"], finish=f"{m['finish']:g}",
+                deadline=f"{m['deadline']:g}",
+                late=f"{m['finish'] - m['deadline']:g}"))
+        lines.append("")
+    if report.windows:
+        lines.append(f"### {tp(lang, 'rpt_windows')}")
+        lines.append(f"| {tp(lang, 'rpt_col_window')} "
+                     f"| {tp(lang, 'rpt_col_peak')} "
+                     f"| {tp(lang, 'rpt_col_tasks')} |")
+        lines.append("|---|---|---|")
+        for w in report.windows:
+            tasks = ", ".join(f"`{d}:{t}`" for d, t in w.tasks)
+            lines.append(f"| {w.start:g} – {w.end:g} "
+                         f"| {w.peak_slots} / {w.peak_memory_gb:g} "
+                         f"| {tasks} |")
+        lines.append("")
+    if report.write_conflicts:
+        lines.append(f"### {tp(lang, 'rpt_writes')}")
+        for c in report.write_conflicts:
+            lines.append(f"- `{c['table']}`: `{c['a']}` × `{c['b']}` "
+                         f"({c['overlap'][0]:g} – {c['overlap'][1]:g})")
+        lines.append("")
+    if not report.windows and not report.write_conflicts:
+        lines.append(tp(lang, "rpt_all_ok"))
+        lines.append("")
+    lines.append(tp(lang, "rpt_disclaimer"))
+    return "\n".join(lines)

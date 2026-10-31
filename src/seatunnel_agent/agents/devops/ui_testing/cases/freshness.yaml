@@ -1,0 +1,39 @@
+# FRS 组 · 数据新鲜度监控:data 工作区卡片 + /freshness React 页冒烟与真实扫描。
+# 扫描为确定性判定,离线可跑;示例清单与规则随仓库自带。
+
+- id: FRS1
+  title: data 工作区展示新鲜度监控卡片
+  tags: [smoke, sqlite]
+  page: /data
+  steps:
+    - wait: 1000
+      note: 纯断言用例,等 cookie 语言切换完成
+  expect:
+    - text_contains: {in: 页面, text: 数据新鲜度监控}
+
+- id: FRS2
+  title: 新鲜度页渲染(文件输入 + 扫描按钮)
+  tags: [full, sqlite]
+  page: /freshness/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+  expect:
+    - text_contains: {in: 页面, text: 数据新鲜度监控}
+    - text_contains: {in: 页面, text: 清单文件路径}
+    - text_contains: {in: 页面, text: 扫描文件}
+
+- id: FRS3
+  title: 扫描示例清单得到迟到断更过期判定
+  tags: [full, sqlite]
+  page: /freshness/
+  steps:
+    - wait: 1200
+      note: React bundle 挂载
+    - click: 扫描文件
+    - wait: 2500
+      note: 等 scan 接口返回并渲染报告
+  expect:
+    - text_contains: {in: 页面, text: 问题明细}
+    - text_contains: {in: 页面, text: 断更}
+    - text_contains: {in: 页面, text: ods.items}

@@ -1,0 +1,77 @@
+"""REST API for the sync-strategy agent — FastAPI router.
+
+  POST /api/syncstrategy/recommend — per-table strategy with reasons
+  GET  /api/syncstrategy/health    — health check
+"""
+
+from __future__ import annotations
+
+import time
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from seatunnel_agent.common.api_guard import (
+    add_health,
+    ms_since,
+    read_whitelisted_file,
+)
+from seatunnel_agent.common.utils import normalize_lang
+
+from .advisor import parse_tables, recommend
+from .report import render_markdown
+
+router = APIRouter(prefix="/api/syncstrategy", tags=["sync_strategy"])
+
+_ENV = "SYNCSTRATEGY_API_ALLOWED_DIRS"
+
+
+class RecommendRequest(BaseModel):
+    file: str | None = Field(
+        None, description="Table characteristics inventory (.json/.csv)")
+    text: str | None = Field(None, description="Inline JSON/CSV inventory")
+    llm: bool = Field(
+        False, description="Also write the rollout narrative via the "
+                           "configured LLM (needs an API key)")
+    lang: str = Field("zh", description="Report language: 'zh' or 'en'")
+    report: bool = Field(False, description="Include the rendered markdown report")
+
+
+class RecommendResponse(BaseModel):
+    result: dict[str, Any]
+    report: str | None = None
+    elapsed_ms: int
+
+
+
+@router.post("/recommend", response_model=RecommendResponse)
+def run_recommend(req: RecommendRequest) -> RecommendResponse:
+    start = time.time()
+    if not (req.file or "").strip() and not (req.text or "").strip():
+        raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
+    text = (read_whitelisted_file(req.file or "", _ENV) if (req.file or "").strip()
+            else req.text or "")
+    try:
+        result = recommend(parse_tables(text))
+    except Exception as exc:  # bad input, malformed JSON
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    lang = normalize_lang(req.lang)
+    report = render_markdown(result, lang=lang) if req.report else None
+    payload = result.to_dict()
+    if req.llm:
+        from .advisor_llm import rollout_narrative
+        from .i18n import tp
+
+        try:
+            narrative = rollout_narrative(result, lang=lang)
+        except Exception as exc:  # missing key, provider errors
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        payload["rollout_narrative"] = narrative
+        if report is not None:
+            report += (f"\n\n### {tp(lang, 'rpt_rollout')}\n{narrative}\n")
+    return RecommendResponse(result=payload, report=report,
+                             elapsed_ms=ms_since(start))
+
+
+add_health(router, "sync_strategy")

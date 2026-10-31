@@ -1,0 +1,245 @@
+"""Deterministic core tests for the DAG optimizer agent."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from seatunnel_agent.agents.data.dag_optimize import (
+    optimize,
+    parse_dag,
+    render_markdown,
+)
+from seatunnel_agent.agents.data.dag_optimize.tools import dag_optimize
+
+DEMO = (Path(__file__).resolve().parents[1] / "examples" / "dagopt_demo"
+        / "dag.json").read_text(encoding="utf-8")
+
+
+def test_demo_redundant_edge_and_waves():
+    result = optimize(parse_dag(DEMO))
+    assert result.tasks == 7
+    # extract_orders → join_wide is implied by extract_orders → clean_orders → join_wide
+    assert [(r.up, r.down) for r in result.redundant] == [
+        ("extract_orders", "join_wide")]
+    assert result.redundant[0].via == [
+        "extract_orders", "clean_orders", "join_wide"]
+    assert result.batches == [
+        ["extract_orders", "extract_users"],
+        ["clean_orders", "clean_users"],
+        ["join_wide"], ["agg_daily"], ["report"]]
+    assert result.max_width == 2
+    assert result.cycles == []
+
+
+def test_demo_critical_path_durations_and_speedup():
+    result = optimize(parse_dag(DEMO))
+    assert result.critical_path == [
+        "extract_orders", "clean_orders", "join_wide", "agg_daily", "report"]
+    assert result.critical_duration == 35.0
+    assert result.total_duration == 47.0
+    assert result.speedup == pytest.approx(47 / 35, abs=0.01)
+
+
+def test_deadline_check():
+    graph = parse_dag(DEMO)  # critical 35, total 47
+    # already met
+    ok = optimize(parse_dag(DEMO), deadline=40)
+    assert ok.deadline_met is True and ok.deadline_plan == []
+    # reachable by halving join_wide (35 → 29)
+    plan = optimize(parse_dag(DEMO), deadline=30)
+    assert plan.deadline_met is True
+    assert plan.deadline_plan == ["join_wide"]
+    # durations are restored after the what-if
+    again = optimize(graph)
+    assert again.critical_duration == 35.0
+    # unreachable even halving the top bottlenecks
+    miss = optimize(parse_dag(DEMO), deadline=10)
+    assert miss.deadline_met is False
+    md = render_markdown(plan, lang="zh")
+    assert "SLA 30：可达" in md and "`join_wide`" in md
+    assert "not reachable" in render_markdown(miss, lang="en")
+    # no deadline asked → no section
+    assert "SLA" not in render_markdown(optimize(parse_dag(DEMO)), lang="zh")
+
+
+def test_optimized_dag_export():
+    result = optimize(parse_dag(DEMO))
+    tasks = {t["name"]: t for t in result.optimized["tasks"]}
+    # the redundant extract_orders → join_wide edge is gone, others kept
+    assert tasks["join_wide"]["deps"] == ["clean_orders", "clean_users"]
+    assert tasks["clean_orders"]["deps"] == ["extract_orders"]
+    assert tasks["join_wide"]["duration"] == 12.0
+    # the export round-trips: re-analysing it finds nothing redundant
+    import json as _json
+    again = optimize(parse_dag(_json.dumps(result.optimized)))
+    assert again.redundant == []
+    assert again.critical_duration == result.critical_duration
+    assert again.optimized == {}  # nothing left to remove
+    md = render_markdown(result, lang="en")
+    assert "Optimized DAG" in md
+
+
+def test_makespans_by_worker_count():
+    result = optimize(parse_dag(DEMO))
+    # serial = total duration; unlimited = critical path duration
+    assert result.makespans["1"] == 47.0
+    assert result.makespans["inf"] == 35.0
+    # two extracts/cleans overlap with 2 workers; monotone non-increasing
+    spans = [result.makespans[k] for k in ("1", "2", "4", "8")]
+    assert spans == sorted(spans, reverse=True)
+    assert result.makespans["2"] == 35.0
+
+
+def test_bottleneck_sensitivity():
+    result = optimize(parse_dag(DEMO))
+    # join_wide (12) is the longest critical task: halving it gains 6
+    top = result.bottlenecks[0]
+    assert top["task"] == "join_wide"
+    assert top["duration"] == 12.0
+    assert top["halved_critical"] == 29.0
+    assert top["gain"] == 6.0
+    # gains are sorted descending and only critical tasks are listed
+    gains = [b["gain"] for b in result.bottlenecks]
+    assert gains == sorted(gains, reverse=True)
+    assert all(b["task"] in result.critical_path
+               for b in result.bottlenecks)
+
+
+def test_text_arrow_lines_and_chain_detection():
+    result = optimize(parse_dag("a -> b\nb -> c\nc -> d\na -> e\n"))
+    # b, c, d form the tail of a single-in/single-out chain from b
+    assert result.chains == [["b", "c", "d"]]
+    assert result.redundant == []
+    assert result.batches[0] == ["a"]
+
+
+def test_graphviz_dot_input():
+    dot = '''
+    digraph "etl_daily" {
+      rankdir=LR;
+      graph [label="etl_daily"];
+      node [shape=box, style=filled];
+      "extract" [color=lightblue];
+      "clean" [color=lightblue];
+      "extract" -> "clean";
+      "clean" -> "load" [style=dashed];
+      "audit";
+    }
+    '''
+    result = optimize(parse_dag(dot))
+    assert result.tasks == 4
+    assert result.batches == [["audit", "extract"], ["clean"], ["load"]]
+    assert result.chains == [["extract", "clean", "load"]]
+
+
+def test_chained_arrow_line():
+    result = optimize(parse_dag("a -> b -> c"))
+    assert result.batches == [["a"], ["b"], ["c"]]
+    assert result.chains == [["a", "b", "c"]]
+
+
+def test_csv_edges_and_isolated_node():
+    result = optimize(parse_dag("up,down\nload,transform\ntransform,publish\naudit\n"))
+    assert result.tasks == 4
+    assert ["audit"] not in result.batches  # audit sits in wave 1 with load
+    assert result.batches[0] == ["audit", "load"]
+
+
+def test_cycle_excluded_with_warning():
+    result = optimize(parse_dag("a -> b\nb -> a\nb -> c\n"))
+    # c is downstream of the cycle, so it is unschedulable too
+    assert set(result.cycles) == {"a", "b", "c"}
+    assert result.warnings
+    assert result.batches == []
+
+
+def test_json_edges_object_form():
+    result = optimize(parse_dag(
+        '{"edges": [["x", "y"], {"up": "y", "down": "z"}]}'))
+    assert result.batches == [["x"], ["y"], ["z"]]
+
+
+def test_bad_inputs():
+    with pytest.raises(ValueError):
+        parse_dag("")
+    with pytest.raises(ValueError):
+        parse_dag('{"nope": 1}')
+    with pytest.raises(ValueError):
+        parse_dag('{"tasks": [{"deps": ["a"]}]}')
+    with pytest.raises(ValueError):
+        parse_dag('{"tasks": [{"name": "a", "duration": 0}]}')
+
+
+def test_dag_change_review():
+    from seatunnel_agent.agents.data.dag_optimize import (
+        diff_dags,
+        render_diff_markdown,
+    )
+
+    base = parse_dag('{"tasks":[{"name":"a","duration":5},'
+                     '{"name":"b","deps":["a"],"duration":5},'
+                     '{"name":"c","deps":["b"],"duration":5}]}')
+    # the change adds d plus a redundant a→c shortcut-turned-constraint
+    new = parse_dag('{"tasks":[{"name":"a","duration":5},'
+                    '{"name":"b","deps":["a"],"duration":5},'
+                    '{"name":"c","deps":["b","a"],"duration":5},'
+                    '{"name":"d","deps":["c"],"duration":4}]}')
+    diff = diff_dags(base, new)
+    assert diff.added_tasks == ["d"] and diff.removed_tasks == []
+    assert ("a", "c") in diff.added_edges and ("c", "d") in diff.added_edges
+    assert diff.critical_before == 15.0 and diff.critical_after == 19.0
+    assert diff.critical_delta == 4.0
+    assert [(r.up, r.down) for r in diff.new_redundant] == [("a", "c")]
+    md = render_diff_markdown(diff, lang="zh")
+    assert "DAG 变更评审" in md and "↑4" in md
+    assert "本次变更引入的冗余" in md
+    # the tool prepends the review when a base is given
+    base_json = ('{"tasks":[{"name":"a","duration":5},'
+                 '{"name":"b","deps":["a"],"duration":5},'
+                 '{"name":"c","deps":["b"],"duration":5}]}')
+    new_json = ('{"tasks":[{"name":"a","duration":5},'
+                '{"name":"b","deps":["a"],"duration":5},'
+                '{"name":"c","deps":["b","a"],"duration":5},'
+                '{"name":"d","deps":["c"],"duration":4}]}')
+    md = dag_optimize(new_json, base=base_json, lang="en")
+    assert md.startswith("## DAG Change Review")
+    assert "DAG Dependency Optimization" in md
+
+
+def test_llm_action_plan_wiring(monkeypatch):
+    """API llm=true appends the action plan; the LLM call is stubbed."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.dag_optimize import advisor_llm
+    from seatunnel_agent.agents.data.dag_optimize import api as do_api
+
+    monkeypatch.setattr(advisor_llm, "action_plan",
+                        lambda result, lang="zh": "PLAN-" + str(result.tasks))
+    app = FastAPI()
+    app.include_router(do_api.router)
+    client = TestClient(app)
+    res = client.post("/api/dagopt/analyze",
+                      json={"text": DEMO, "llm": True, "report": True,
+                            "lang": "zh"})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["result"]["action_plan"] == "PLAN-7"
+    assert "优化行动清单" in body["report"]
+    res = client.post("/api/dagopt/analyze", json={"text": DEMO})
+    assert "action_plan" not in res.json()["result"]
+
+
+def test_report_zh_en_and_tool():
+    result = optimize(parse_dag(DEMO))
+    zh = render_markdown(result, lang="zh")
+    en = render_markdown(result, lang="en")
+    assert "DAG 依赖优化" in zh and "关键路径" in zh
+    assert "DAG Dependency Optimization" in en and "Critical path" in en
+    assert "`extract_orders` → `join_wide`" in en
+    md = dag_optimize(DEMO, lang="en")
+    assert "ideal speedup" in md
+    assert "must not be empty" in dag_optimize("  ")
+    assert "bad input" in dag_optimize("{broken")

@@ -1,0 +1,134 @@
+# SQL 性能套件使用指南
+
+围绕「跑前预判 → 跑后归因」的性能工具组（30–35 批次），与管道运维套件
+（docs/pipeline_ops_guide.md）互补。全部确定性核心、不连引擎/集群：
+粘贴导出物进来，拿结论和处方回去。
+
+| Agent | Web | 一句话 |
+|---|---|---|
+| 执行计划分析 | `/sqlperf` | 引擎到底计划了什么：join/shuffle/裁剪/下推 |
+| 索引分区推荐 | `/indexadvisor` | 查询频次说话：分区、分桶、组合索引该给谁 |
+| 资源消耗预测 | `/sqlcost` | 跑之前算量级：扫描/shuffle/内存/耗时 |
+| 慢查询根因 | `/slowquery` | 跑完归因：倾斜/暴涨/溢写/GC/排队/小文件 |
+| 并发冲突检测 | `/dagconflict` | 多 DAG 同集群：超容窗、写写冲突、错峰 |
+| 倾斜长尾（增强） | `skew-runtime --shuffle-dist` | p99 肥尾与热点分区（挂在 data_skew） |
+
+与既有工具的分工：sql_review 读**源码**、data_skew 管**倾斜专项**、
+sql_perf 读**引擎计划**、slow_query 读**运行指标** — 四个视角互不重叠，
+处方互相指路。
+
+## 跑前三件套
+
+1. **`/sqlperf`** — 粘 `EXPLAIN [FORMATTED]` 输出（Spark/Hive）。
+   发现 PF001–PF006：笛卡尔积（高）、PartitionFilters 为空的全分区扫描
+   （高）、谓词未下推（中，典型如过滤列套了 cast）、超出 join 所需的
+   重复 shuffle（中）、可广播的 SortMergeJoin、≥20 列的宽扫描。
+   每条带处方；扫描明细表列出每表的裁剪与下推状态。
+2. **`/indexadvisor`** — 查询目录或粘贴多条 SQL，可选建表 DDL。
+   sqlglot 统计每表每列的等值/范围/join/group 频次：分区列=时间样式且
+   等值最高频，分桶列=最热 join key，组合索引=等值按频次+范围列收尾。
+   附命中语句数与 DDL 片段；解析不了的语句列出不乱猜。
+3. **`/sqlcost`** — SQL × 表统计（rows/bytes/partitions/partition_col/
+   columns）。扫描按分区与列裁剪打折，join 两侧交换（≤10MB 自动广播），
+   聚合再交换一次；输出内存峰值、核·秒、建议并行度下 0.5x–2x 耗时区间。
+   假设全部随报告列出，清单缺的表点名排除。
+
+## 跑后归因
+
+4. **`/slowquery`** — 执行指标 JSON（duration、scan/shuffle 字节、GC/
+   排队、各 stage 的 task max/median 与溢写）± 历史基线 jsonl。
+   根因 SQ001–SQ006 按占比排序：倾斜（→data_skew）、扫描暴涨对比基线
+   （→sqlperf）、溢写（→sqlcost）、GC、排队（→dagconflict）、小文件。
+   标题给出相对基线中位数的回归倍数。
+5. **`skew-runtime <eventlog> --shuffle-dist`** — 在既有拖尾诊断之外看
+   p99 长尾：几个热点分区的模式 max/median 可能不夸张但 p99 很肥；
+   表格给出 p50/p99/倾斜比/热点任务，处方是换高基数键或对热点加盐。
+
+## 并发推演
+
+6. **`/dagconflict`** — 场景 JSON：集群容量 + 各 DAG 的任务（deps/
+   duration/slots/memory_gb/writes）与启动偏移。按依赖 ASAP 推演时间线：
+   超容时间窗与窗内任务、跨 DAG 写同表的写写冲突；错峰建议先重新模拟
+   再给出（顺延哪个 DAG 多久、峰值降到多少、剩几个窗）。
+
+## 典型闭环
+
+- 夜里慢了：`/slowquery` 定位主因 → 倾斜去 data_skew / 计划问题去
+  `/sqlperf` / 容量问题去 `/sqlcost` 重定容 / 排队去 `/dagconflict` 错峰。
+- 新表上线：`/indexadvisor` 按历史查询定分区分桶（粘贴负载时报告上方
+  有「到成本页验证」按钮，一键把 SQL 递到 `/sqlcost`）→ 预估大查询的
+  量级 → 上线后用 `/sqlperf` 验证裁剪真的生效。
+- 三页连走：`/sqlperf` 贴了原 SQL 时报告上方有「用这条 SQL 推荐索引」，
+  递到 `/indexadvisor` 自动出建议，再一键到 `/sqlcost` 验证省比——
+  计划分析 → 索引建议 → 成本验证全程零复制。
+- 改完回看：`/sqlperf` 展开「与优化前计划对比」贴旧 EXPLAIN，报告追加
+  已解决/新增/遗留；`/sqlcost` 展开「对比改写 SQL」直接看省比表；
+  `/indexadvisor` 带 DDL 时自动附现状审计节；`/dagconflict` 填准入
+  DAG 名即得最优起点与候选表——四个 CLI 新能力页面同款。
+
+示例输入在 `examples/`：`sqlperf_demo`、`indexadvisor_demo`、
+`sqlcost_demo`、`slowquery_demo`、`dagconflict_demo`、
+`dataskew_demo/eventlog_shuffle_dist.jsonl`，各页预填即点即用。
+
+## CLI 入口
+
+五个页面都有同名命令行入口，`-F json` 可进流水线：
+
+```bash
+seatunnel-agent sqlperf -f plan.txt                  # 加 --llm --sql-file q.sql 出改写草案
+seatunnel-agent sqlperf -f plan.txt --fail-on-severity high  # 有 high 发现就 exit 1
+seatunnel-agent sqlperf -f new_plan.txt --before old_plan.txt \
+  --fail-on-new                                      # 优化前后对比;引入新发现则 exit 1
+seatunnel-agent sqlperf -f plan.txt --stats-template stats.json \
+                                                     # 从扫描明细生成 sqlcost 清单骨架
+seatunnel-agent index-adv -d workload/ --ddl ddl.sql \
+  --fail-on-audit                                    # 带 --ddl 自动附现状审计(分区列无人过滤/
+                                                     # 最热 join key 未分桶);有发现则 exit 1
+seatunnel-agent index-adv -d workload/ --stats stats.json \
+                                                     # 分区建议 ROI:整个负载省多少扫描,按省量排序
+seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
+  --fail-over-scan-gb 50 --fail-over-shuffle-gb 20   # 超预算 exit 1，可做 CI 闸门
+seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
+  --assume-partition ods.users:user_id:10            # what-if:按建议分区重估,直接看省多少
+seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
+  --compare-sql-file q_rewritten.sql --fail-if-worse # 改写省比表;任一维度变贵则 exit 1
+seatunnel-agent sqlcost -d queries/ -f stats.json \
+  --fail-over-total-scan-gb 500                      # 批量:最贵查询榜+合计行;合计超预算 exit 1
+seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
+  --history slow_ledger.jsonl --llm                  # 台账 + LLM 通报草稿（可选）
+seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
+  --fail-over-regression 3                           # 回归 >=3x 基线时 exit 1
+seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
+  --promote-baseline                                 # 回归 <1.5x 时本次 run 滚入基线
+seatunnel-agent slowquery -d runs/ --baseline runs.jsonl  # 批量:全目录按回归排序
+seatunnel-agent slowquery --diff fast.json slow.json # A/B 对比:按 stage 对齐的差值表
+seatunnel-agent slowquery -f metrics.json --history ledger.jsonl \
+  --trend 5 --fail-on-trend                          # 台账最近5次逐次上涨(慢化趋势)则 exit 1
+seatunnel-agent skew-runtime eventlog.jsonl --shuffle-dist \
+  --what-if-salt 0                                   # 加盐 what-if:0=自动找恢复健康的最小盐值,
+                                                     # 达标时附加盐 join SQL 骨架
+seatunnel-agent dagconflict -f scenario.json \
+  --fail-on-conflict --history capacity.jsonl        # 有冲突 exit 1;峰值记台账
+seatunnel-agent dagconflict -f scenario.json --place etl_users \
+  --fail-if-misplaced                                # 准入检查:扫描候选起点选最优错峰位;
+                                                     # 声明起点劣于最优则 exit 1
+seatunnel-agent dagconflict -f scenario.json \
+  --fail-on-deadline-miss                            # DAG 可声明 deadline;超期 exit 1,
+                                                     # 错峰建议若推过 deadline 会明说
+seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
+  --calibrate metrics.json                           # 校准:预估 vs 实跑的倍率与区间判定
+seatunnel-agent sqlperf -f plan.txt --history plans.jsonl  # 计划台账:发现数/shuffle 趋势
+seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
+  --parallelism 64                                   # 并行度 what-if:指定核数重算耗时区间
+seatunnel-agent skew-runtime log.jsonl --shuffle-dist \
+  --dist-history dist.jsonl                          # 分布台账:最差倾斜比是否在恶化
+seatunnel-agent dagconflict -f scenario.json --compact  # 错峰编排:全部 DAG 贪心重排起点,
+                                                     # 建议起点表 + 前后冲突/峰值/完工对比
+seatunnel-agent perf-report -d inputs/ -o report.md  # 一键体检:按约定文件名
+                                                     # (plan.txt/metrics.json/queries/+stats.json/
+                                                     #  scenario.json/workload/)能跑的全跑合并一份
+```
+
+预算闸门的可复制 workflow 在
+`examples/ci/github-actions-sqlcost-budget.yml`：PR 改到的每条查询
+按表统计清单估算，超预算直接挡在上线前。

@@ -1,0 +1,76 @@
+import { initI18n } from '@shared/i18n'
+
+const resources = {
+  en: {
+    translation: {
+      title: 'Backfill SQL',
+      subtitle:
+        'How to backfill history safely? Describe the backfill in a JSON ' +
+        'spec — target table, partition column, business date range, a ' +
+        'source SELECT bounded by the {date} placeholder, write mode and ' +
+        'dialect — and get one idempotent, partition-bounded statement ' +
+        'block per date plus row-count pre-checks. The SQL is generated, ' +
+        'never executed.',
+      file_label: 'Spec file path',
+      file_ph: 'Backfill spec (.json), e.g. examples/backfillsql_demo/spec.json',
+      run_btn: 'Generate from file',
+      text_acc: 'Generate from pasted spec',
+      text_label: 'JSON backfill spec',
+      text_ph:
+        '{"table":"dws.sales","partition_col":"dt","start":"2024-05-01",' +
+        '"end":"2024-05-03","mode":"overwrite","dialect":"hive",' +
+        '"source":"SELECT ... FROM ods.orders WHERE dt = \'{date}\'"}',
+      run_text_btn: 'Generate from text',
+      plan_acc: 'Specs from a backfill plan',
+      plan_label: 'Backfill planner plan JSON',
+      plan_ph:
+        'Paste the plan JSON from the Backfill Planner (/backfill) — one ' +
+        'ready-to-edit spec per impacted table comes back.',
+      plan_btn: 'Specs from plan',
+      llm_label: 'LLM fills the source columns from DDL (needs an API key)',
+      ddl_ph: 'Upstream CREATE TABLE DDL — the {date} bound always survives.',
+      empty_plan: 'Paste the backfill plan JSON first.',
+      clear_btn: 'Clear',
+      empty_input: 'Provide the spec file or paste the spec first.',
+      bad_dir: 'Not allowed: ',
+      report_ph: '▶ The pre-checks and per-date backfill statements appear here.',
+      home: 'Home',
+      running: 'Generating…',
+    },
+  },
+  zh: {
+    translation: {
+      title: '回溯补数 SQL',
+      subtitle:
+        '历史数据怎么补才安全？用 JSON 规格描述补数 — 目标表、分区列、' +
+        '业务日期区间、带 {date} 占位符的 source SELECT、写入模式与方言 — ' +
+        '按日期生成幂等、带分区边界的补数语句块，附行数前置校验。' +
+        'SQL 只生成，不执行。',
+      file_label: '规格文件路径',
+      file_ph: '补数规格 (.json)，如 examples/backfillsql_demo/spec.json',
+      run_btn: '从文件生成',
+      text_acc: '用粘贴的规格生成',
+      text_label: 'JSON 补数规格',
+      text_ph:
+        '{"table":"dws.sales","partition_col":"dt","start":"2024-05-01",' +
+        '"end":"2024-05-03","mode":"overwrite","dialect":"hive",' +
+        '"source":"SELECT ... FROM ods.orders WHERE dt = \'{date}\'"}',
+      run_text_btn: '用文本生成',
+      plan_acc: '从补数计划生成规格',
+      plan_label: '补数计划器的计划 JSON',
+      plan_ph: '粘贴分区补数计划页（/backfill）输出的计划 JSON — 返回逐表可编辑的规格骨架。',
+      plan_btn: '计划转规格',
+      llm_label: 'LLM 按 DDL 填充 source 列（需 API key）',
+      ddl_ph: '上游 CREATE TABLE DDL — {date} 边界始终保留。',
+      empty_plan: '请先粘贴补数计划 JSON。',
+      clear_btn: '清空',
+      empty_input: '请先填写规格文件路径或粘贴规格。',
+      bad_dir: '目录不在白名单: ',
+      report_ph: '▶ 前置校验与按日期的补数语句在此显示。',
+      home: '首页',
+      running: '生成中…',
+    },
+  },
+}
+
+export default initI18n(resources)
