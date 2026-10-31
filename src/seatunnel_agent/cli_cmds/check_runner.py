@@ -169,6 +169,26 @@ def fail_check(msg: str, fmt: str) -> None:
     sys.exit(1)
 
 
+def rising_trend(entries: list[dict[str, Any]], key: str,
+                 n: int) -> dict[str, Any] | None:
+    """Strictly-rising trend of ``entries[*][key]`` over the last *n*
+    records — the pattern a single-run gate misses because each step
+    stays under its threshold.  ``None`` when the ledger is shorter
+    than ``n`` or any step held or improved."""
+    if n < 2:
+        raise ValueError("trend window must be >= 2 records")
+    values = [float(e[key]) for e in entries
+              if isinstance(e.get(key), (int, float))]
+    if len(values) < n:
+        return None
+    window = values[-n:]
+    if any(b <= a for a, b in zip(window, window[1:])):
+        return None
+    return {"records": n, "from_v": window[0], "to_v": window[-1],
+            "growth_pct": round(100 * (window[-1] / window[0] - 1), 1)
+            if window[0] else None}
+
+
 def fail_on_high(findings: Iterable[Any], fmt: str,
                  label=lambda f: f.code) -> None:
     """The CI gate every snapshot-diagnosis command repeats: exit 1 when

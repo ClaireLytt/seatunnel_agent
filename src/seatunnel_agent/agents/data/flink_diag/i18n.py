@@ -51,6 +51,11 @@ FD_I18N: dict[str, dict[str, str]] = {
                           "0.5/0.8, watermark lag 60/300s, restarts "
                           "1/3 per hour. No cluster connection.",
         "rpt_llm_note": "Ops note (LLM — review before sending)",
+        "rpt_trend": ("**Checkpoint duration creeping up** — the last "
+                      "{records} ledger runs rose every time: "
+                      "{from_v:g}ms -> {to_v:g}ms (+{growth_pct}%). "
+                      "State growth or growing backpressure; check FD004 "
+                      "and state TTL before it times out."),
     },
     "zh": {
         "rpt_title": "Flink 作业诊断",
@@ -94,6 +99,10 @@ FD_I18N: dict[str, dict[str, str]] = {
                           "watermark 滞后 60/300s、重启 1/3 次每小时。"
                           "不连集群。",
         "rpt_llm_note": "运维通报草稿（LLM — 发送前请复核）",
+        "rpt_trend": ("**checkpoint 时长持续爬升** — 台账最近 {records} "
+                      "次逐次上涨：{from_v:g}ms -> {to_v:g}ms"
+                      "（+{growth_pct}%）。状态在变大或背压在加重；"
+                      "在超时前先看 FD004 与状态 TTL。"),
     },
 }
 

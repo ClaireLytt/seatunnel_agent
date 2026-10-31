@@ -196,3 +196,55 @@ def test_mcp_tool_markdown():
     assert "Flink Job Diagnosis" in out and "FD003" in out
     assert "must not be empty" in flink_diag("  ")
     assert "bad input" in flink_diag("not json")
+
+
+# ── checkpoint duration ledger + trend ───────────────────────────────
+
+def test_cli_history_and_trend(tmp_path):
+    import json as _json
+
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    ledger = tmp_path / "ckpt.jsonl"
+    ledger.write_text(
+        _json.dumps({"last_ckpt_ms": 60000}) + "\n"
+        + _json.dumps({"last_ckpt_ms": 80000}) + "\n", encoding="utf-8")
+    res = CliRunner().invoke(cli, [
+        "flinkdiag", "-f", str(DEMO), "--history", str(ledger),
+        "--trend", "3", "--lang", "zh"])
+    assert res.exit_code == 0, res.output
+    assert "checkpoint 时长持续爬升" in res.output
+    lines = [_json.loads(x) for x in
+             ledger.read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert lines[-1]["last_ckpt_ms"] == 95000.0
+
+
+def test_cli_fail_on_trend_gate(tmp_path):
+    import json as _json
+
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    ledger = tmp_path / "ckpt.jsonl"
+    ledger.write_text(
+        _json.dumps({"last_ckpt_ms": 60000}) + "\n"
+        + _json.dumps({"last_ckpt_ms": 80000}) + "\n", encoding="utf-8")
+    res = CliRunner().invoke(cli, [
+        "flinkdiag", "-f", str(DEMO), "--history", str(ledger),
+        "--trend", "3", "--fail-on-trend"])
+    assert res.exit_code == 1
+    # a ledger already slower than this run -> draining -> exit 0
+    ledger2 = tmp_path / "ckpt2.jsonl"
+    ledger2.write_text(
+        _json.dumps({"last_ckpt_ms": 200000}) + "\n"
+        + _json.dumps({"last_ckpt_ms": 150000}) + "\n", encoding="utf-8")
+    ok = CliRunner().invoke(cli, [
+        "flinkdiag", "-f", str(DEMO), "--history", str(ledger2),
+        "--trend", "3", "--fail-on-trend"])
+    assert ok.exit_code == 0, ok.output
+    missing = CliRunner().invoke(cli, [
+        "flinkdiag", "-f", str(DEMO), "--trend", "3"])
+    assert missing.exit_code == 2

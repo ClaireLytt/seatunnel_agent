@@ -494,25 +494,61 @@ def rtlatency(path, text, sla_ms, fail_breach, use_llm,
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="作业快照 JSON 文件")
 @click.option("--text", type=str, default=None, help="内联快照 JSON")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="checkpoint 台账：最近成功 checkpoint 时长追加到该 jsonl")
+@click.option("--trend", "trend_n", type=click.IntRange(min=2), default=None,
+              help="爬升趋势：台账（含本次）最近 N 次时长逐次上涨时在"
+                   "报告点名（需配合 --history）")
+@click.option("--fail-on-trend", "fail_on_trend", is_flag=True,
+              default=False, help="CI gate：检出爬升趋势时 exit 1")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草运维通报（需配置 API key）")
 @click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
               help="CI gate：存在 high 级发现时 exit 1")
 @report_options
-def flinkdiag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
+def flinkdiag(path, text, history_path, trend_n, fail_on_trend, use_llm,
+              fail_high, lang, fmt, output) -> None:
     """Flink 作业诊断 — 快照 → checkpoint/背压/watermark 发现。"""
+    import json as _json
+    from pathlib import Path
+
     from seatunnel_agent.agents.data.flink_diag import (
         diagnose_job,
         parse_job_snapshot,
         render_markdown,
     )
 
+    require_with((trend_n or fail_on_trend) and not history_path,
+                 "--trend / --fail-on-trend", "--history")
+    require_with(fail_on_trend and not trend_n, "--fail-on-trend",
+                 "--trend N")
     try:
-        diag = diagnose_job(parse_job_snapshot(_read(path, text, "快照")))
+        snap = parse_job_snapshot(_read(path, text, "快照"))
+        diag = diagnose_job(snap)
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
     markdown = render_markdown(diag, lang=lang)
     payload = diag.to_dict()
+    oks = [c for c in (snap.get("checkpoints") or ())
+           if isinstance(c, dict) and not c.get("failed")]
+    last_ckpt_ms = float(oks[-1].get("duration_ms") or 0) if oks else None
+    trend = None
+    if trend_n and last_ckpt_ms is not None:
+        from seatunnel_agent.agents.data.flink_diag.i18n import tp as _fd_tp
+
+        from .check_runner import rising_trend
+
+        ledger = (Path(history_path).read_text(encoding="utf-8",
+                                               errors="replace")
+                  if Path(history_path).is_file() else "")
+        entries = [_json.loads(ln) for ln in ledger.splitlines()
+                   if ln.strip()]
+        entries.append({"last_ckpt_ms": last_ckpt_ms})
+        trend = rising_trend(entries, "last_ckpt_ms", trend_n)
+        if trend:
+            payload["trend"] = trend
+            markdown += "\n\n" + _fd_tp(lang, "rpt_trend").format(**trend)
     if use_llm:
         from seatunnel_agent.agents.data.flink_diag.advisor_llm import (
             ops_note,
@@ -523,6 +559,15 @@ def flinkdiag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
             payload, markdown, ops_note(diag, lang=lang),
             "ops_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
+    if history_path and last_ckpt_ms is not None:
+        _track_history(history_path, {
+            "last_ckpt_ms": last_ckpt_ms,
+            "high_findings": sum(1 for f in diag.findings
+                                 if f.severity == "high")},
+            worse_key="last_ckpt_ms")
+    if fail_on_trend and trend:
+        fail_check(f"TREND last_ckpt_ms {trend['from_v']:g} -> "
+                   f"{trend['to_v']:g} over {trend['records']} runs", fmt)
     if fail_high:
         fail_on_high(diag.findings, fmt)
 
