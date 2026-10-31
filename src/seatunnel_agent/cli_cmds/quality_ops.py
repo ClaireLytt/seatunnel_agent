@@ -17,6 +17,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent grantreview   -f applications.json [--fail-on-reject]
   seatunnel-agent kafkalag      -f snapshot.json [--fail-on-high]
   seatunnel-agent flinkdiag     -f job.json [--fail-on-high]
+  seatunnel-agent rtlatency     -f events.csv [--sla-ms 60000]
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from __future__ import annotations
 import click
 
 from .check_runner import emit_payload as _emit
-from .check_runner import fail_check, report_options
+from .check_runner import fail_check, report_options, require_with
 from .check_runner import read_input as _read
 
 
@@ -349,6 +350,50 @@ def register(cli) -> None:
     cli.add_command(grantreview)
     cli.add_command(kafkalag)
     cli.add_command(flinkdiag)
+    cli.add_command(rtlatency)
+
+
+@click.command("rtlatency")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="事件时间戳行文件（CSV 或 JSONL）")
+@click.option("--text", type=str, default=None, help="内联事件行")
+@click.option("--sla-ms", "sla_ms", type=float, default=0.0,
+              help="端到端 SLA（毫秒，0 为不检）")
+@click.option("--fail-on-breach", "fail_breach", is_flag=True, default=False,
+              help="CI gate：存在 SLA 破线事件时 exit 1（需配合 --sla-ms）")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草延迟通报（需配置 API key）")
+@report_options
+def rtlatency(path, text, sla_ms, fail_breach, use_llm,
+              lang, fmt, output) -> None:
+    """实时延迟分析 — 事件时间戳 → 分段分位 + 离群事件。"""
+    from seatunnel_agent.agents.data.rt_latency import (
+        analyze_latency,
+        parse_events,
+        render_markdown,
+    )
+
+    require_with(fail_breach and not sla_ms, "--fail-on-breach", "--sla-ms")
+    try:
+        stages, events = parse_events(_read(path, text, "事件行"))
+        result = analyze_latency(stages, events, sla_ms=sla_ms)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.rt_latency.advisor_llm import (
+            latency_note,
+        )
+        from seatunnel_agent.agents.data.rt_latency.i18n import tp
+
+        note = latency_note(result, lang=lang)
+        payload["latency_note"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
+    if fail_breach and result.breaches:
+        fail_check(f"SLA {result.breaches} breach(es) over "
+                   f"{sla_ms:g}ms", fmt)
 
 
 @click.command("flinkdiag")
