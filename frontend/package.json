@@ -80,6 +80,7 @@
     "sql_diff",
     "model_review",
     "dup_pipeline",
+    "mask_preview",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

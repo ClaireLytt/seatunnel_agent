@@ -381,6 +381,7 @@ def register(cli) -> None:
     cli.add_command(sqldiff)
     cli.add_command(modelreview)
     cli.add_command(duppipeline)
+    cli.add_command(maskpreview)
 
 
 @click.command("rollbackplan")
@@ -1570,3 +1571,42 @@ def duppipeline(path, text, fanout, dialect, use_llm, fail_high,
     _emit(payload, markdown, fmt, output)
     if fail_high:
         fail_on_high(report.findings, fmt)
+@click.command("maskpreview")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="CSV（带表头）或 JSONL 数据文件")
+@click.option("--text", type=str, default=None, help="内联数据行")
+@click.option("--preview-rows", "preview_rows", type=click.IntRange(min=1),
+              default=20, show_default=True, help="脱敏样例行数")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草脱敏策略说明（需配置 API key,只发规则元数据不发数据）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：检出 high 级敏感列时 exit 1")
+@report_options
+def maskpreview(path, text, preview_rows, use_llm, fail_high,
+                lang, fmt, output) -> None:
+    """脱敏预览 — 数据行 → 敏感列判定 + 保格式脱敏样例。"""
+    from seatunnel_agent.agents.data.mask_preview import (
+        preview_mask,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+
+    try:
+        headers, rows = parse_rows(_read(path, text, "数据行"))
+        preview = preview_mask(headers, rows, preview_rows=preview_rows)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(preview, lang=lang)
+    payload = preview.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.mask_preview.advisor_llm import (
+            policy_note,
+        )
+        from seatunnel_agent.agents.data.mask_preview.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, policy_note(preview, lang=lang),
+            "policy_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(preview.columns, fmt, label=lambda c: c.name)
