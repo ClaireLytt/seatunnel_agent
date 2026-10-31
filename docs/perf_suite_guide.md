@@ -115,6 +115,11 @@ seatunnel-agent dagconflict -f scenario.json --place etl_users \
 seatunnel-agent dagconflict -f scenario.json \
   --fail-on-deadline-miss                            # DAG 可声明 deadline;超期 exit 1,
                                                      # 错峰建议若推过 deadline 会明说
+seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
+  --calibrate metrics.json                           # 校准:预估 vs 实跑的倍率与区间判定
+seatunnel-agent perf-report -d inputs/ -o report.md  # 一键体检:按约定文件名
+                                                     # (plan.txt/metrics.json/queries/+stats.json/
+                                                     #  scenario.json/workload/)能跑的全跑合并一份
 ```
 
 预算闸门的可复制 workflow 在
