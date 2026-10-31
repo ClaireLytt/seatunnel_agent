@@ -445,13 +445,17 @@ def taskfailure(path, text, use_llm, lang, fmt, output) -> None:
 @click.option("--keys", "-k", required=True, help="键列（逗号分隔）")
 @click.option("--tolerance", "tolerance_pct", type=float, default=1.0,
               show_default=True, help="相对容差（%）")
+@click.option("--grace-key", "grace_key", type=str, default="",
+              help="迟到宽限的时间形键列（须是键列之一）")
+@click.option("--grace", type=click.IntRange(min=0), default=0,
+              help="排除宽限键最新 N 个值（窗口未闭不参与判定）")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草核对通报（需配置 API key）")
 @click.option("--fail-on-diff", "fail_diff", is_flag=True, default=False,
               help="CI gate：存在缺失键或超差时 exit 1")
 @report_options
-def rtoffline(rt_path, off_path, keys, tolerance_pct, use_llm, fail_diff,
-              lang, fmt, output) -> None:
+def rtoffline(rt_path, off_path, keys, tolerance_pct, grace_key, grace,
+              use_llm, fail_diff, lang, fmt, output) -> None:
     """实时离线核对 — 双结果集 × 键 × 容差 → 差异 + 偏差判定。"""
     from pathlib import Path
 
@@ -464,7 +468,8 @@ def rtoffline(rt_path, off_path, keys, tolerance_pct, use_llm, fail_diff,
         result = compare_results(
             Path(rt_path).read_text(encoding="utf-8", errors="replace"),
             Path(off_path).read_text(encoding="utf-8", errors="replace"),
-            keys, tolerance_pct=tolerance_pct)
+            keys, tolerance_pct=tolerance_pct,
+            grace_key=grace_key, grace=grace)
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
     markdown = render_markdown(result, lang=lang)
@@ -732,21 +737,32 @@ def kafkalag(path, text, history_path, trend_n, fail_on_trend, use_llm,
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="申请单 JSON 文件（单份或列表）")
 @click.option("--text", type=str, default=None, help="内联申请单 JSON")
+@click.option("--vocabulary", "vocab_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="自定义敏感词表 JSON 文件（{s3: [...], s2: [...]}，"
+                   "按级替换内置词表）")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草逐份回复（需配置 API key）")
 @click.option("--fail-on-reject", "fail_reject", is_flag=True, default=False,
               help="CI gate：存在拒绝结论时 exit 1")
 @report_options
-def grantreview(path, text, use_llm, fail_reject, lang, fmt, output) -> None:
+def grantreview(path, text, vocab_path, use_llm, fail_reject,
+                lang, fmt, output) -> None:
     """权限申请审核 — 申请单 → 风险分 + 批准/降级/拒绝。"""
+    from pathlib import Path
+
     from seatunnel_agent.agents.data.grant_review import (
         parse_applications,
+        parse_vocabulary,
         render_markdown,
         review_grants,
     )
 
     try:
-        result = review_grants(parse_applications(_read(path, text, "申请单")))
+        vocab = (parse_vocabulary(Path(vocab_path).read_text(
+            encoding="utf-8", errors="replace")) if vocab_path else None)
+        result = review_grants(parse_applications(_read(path, text, "申请单")),
+                               vocab=vocab)
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
     markdown = render_markdown(result, lang=lang)

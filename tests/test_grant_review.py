@@ -193,3 +193,72 @@ def test_mcp_tool_markdown():
     assert "Permission Application Review" in out and "li4" in out
     assert "must not be empty" in grant_review("  ")
     assert "bad input" in grant_review("not json")
+
+
+# ── custom sensitivity vocabulary ────────────────────────────────────
+
+def test_custom_vocabulary_replaces_builtin_level():
+    from seatunnel_agent.agents.data.grant_review import parse_vocabulary
+
+    vocab = parse_vocabulary(
+        '{"s3": ["wechat_openid"], "s2": ["nickname"]}')
+    app = json.dumps({"applicant": "a", "role": "analyst",
+                      "purpose": "正常业务分析用途说明",
+                      "tables": [{"table": "t",
+                                  "columns": ["wechat_openid",
+                                              "nickname", "phone"]}],
+                      "duration_days": 30})
+    result = review_grants(parse_applications(app), vocab=vocab)
+    r = result.reviews[0]
+    # custom s3 catches openid; builtin 'phone' no longer counts as s3
+    assert r.s3_columns == ["t.wechat_openid"]
+    assert "t.nickname" in r.s2_columns
+    assert "t.phone" not in r.s3_columns
+
+
+def test_vocabulary_partial_keeps_other_level_default():
+    from seatunnel_agent.agents.data.grant_review import parse_vocabulary
+
+    vocab = parse_vocabulary('{"s3": ["secret_sauce"]}')
+    app = json.dumps({"applicant": "a", "role": "analyst",
+                      "purpose": "正常业务分析用途说明",
+                      "tables": [{"table": "t",
+                                  "columns": ["secret_sauce", "city"]}],
+                      "duration_days": 30})
+    r = review_grants(parse_applications(app), vocab=vocab).reviews[0]
+    assert r.s3_columns == ["t.secret_sauce"]
+    assert "t.city" in r.s2_columns          # builtin s2 still active
+
+
+def test_vocabulary_rejects_garbage():
+    import pytest
+
+    from seatunnel_agent.agents.data.grant_review import parse_vocabulary
+
+    with pytest.raises(ValueError):
+        parse_vocabulary("  ")
+    with pytest.raises(ValueError):
+        parse_vocabulary("not json")
+    with pytest.raises(ValueError):
+        parse_vocabulary('{"nope": []}')
+
+
+def test_cli_vocabulary_option(tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    vocab = tmp_path / "vocab.json"
+    vocab.write_text('{"s3": ["gmv"]}', encoding="utf-8")
+    app = tmp_path / "app.json"
+    app.write_text(json.dumps({
+        "applicant": "a", "role": "analyst",
+        "purpose": "正常业务分析用途说明",
+        "tables": [{"table": "t", "columns": ["gmv", "gmv2"]}],
+        "duration_days": 30}), encoding="utf-8")
+    res = CliRunner().invoke(cli, [
+        "grantreview", "-f", str(app), "--vocabulary", str(vocab),
+        "--format", "json"])
+    assert res.exit_code == 0, res.output
+    out = json.loads(res.output)
+    assert "t.gmv" in out["reviews"][0]["s3_columns"]

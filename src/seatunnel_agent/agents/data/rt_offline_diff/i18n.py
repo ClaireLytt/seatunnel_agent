@@ -10,6 +10,8 @@ RO_I18N: dict[str, dict[str, str]] = {
         "rpt_scope": "keys {keys} · tolerance ±{tol:g}% · realtime "
                      "**{rt}** rows vs offline **{off}** rows · matched "
                      "**{matched}** · consistent **{consistent}%**",
+        "rpt_grace": " · grace on `{key}`: {values} excluded (window "
+                     "may not have closed)",
         "rpt_missing": "Missing keys",
         "missing_rt": "- missing in realtime ({n}): {examples}",
         "missing_off": "- missing in offline ({n}): {examples}",
@@ -43,6 +45,7 @@ RO_I18N: dict[str, dict[str, str]] = {
         "rpt_scope": "键 {keys} · 容差 ±{tol:g}% · 实时 **{rt}** 行 vs "
                      "离线 **{off}** 行 · 对齐 **{matched}** · 一致率 "
                      "**{consistent}%**",
+        "rpt_grace": " · `{key}` 宽限：排除 {values}（窗口可能未闭合）",
         "rpt_missing": "缺失键",
         "missing_rt": "- 实时侧缺失（{n}）：{examples}",
         "missing_off": "- 离线侧缺失（{n}）：{examples}",

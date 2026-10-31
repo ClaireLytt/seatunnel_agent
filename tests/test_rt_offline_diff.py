@@ -203,3 +203,44 @@ def test_mcp_tool_markdown():
     assert "Reconciliation" in out and "rt_lower" not in out
     assert "required" in rt_offline_diff(" ", OFF, "dt")
     assert "bad input" in rt_offline_diff(RT, OFF, "nope")
+
+
+# ── late-data grace window ───────────────────────────────────────────
+
+def test_grace_excludes_newest_key_values():
+    result = compare_results(RT, OFF, "dt,channel", tolerance_pct=1.0,
+                             grace_key="dt", grace=1)
+    # every demo mismatch sits on 2026-10-30 -> excluded -> consistent
+    assert result.grace_excluded == ["2026-10-30"]
+    assert result.mismatches == [] and result.biases == []
+    assert result.consistent_pct == 100.0
+    # the 10-29 missing key survives the grace
+    assert result.missing_in_rt == ["2026-10-29, mini"]
+
+
+def test_grace_zero_is_noop():
+    a = compare_results(RT, OFF, "dt,channel").to_dict()
+    b = compare_results(RT, OFF, "dt,channel", grace_key="dt",
+                        grace=0).to_dict()
+    b["grace_key"] = a["grace_key"]       # only the echo differs
+    assert a == b
+
+
+def test_grace_key_must_be_a_key_column():
+    import pytest
+
+    with pytest.raises(ValueError):
+        compare_results(RT, OFF, "dt,channel", grace_key="gmv", grace=1)
+
+
+def test_cli_grace_options(tmp_path):
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    res = CliRunner().invoke(cli, [
+        "rtoffline", "-r", str(DEMO / "realtime.csv"),
+        "--offline", str(DEMO / "offline.csv"), "-k", "dt,channel",
+        "--grace-key", "dt", "--grace", "1", "--lang", "zh"])
+    assert res.exit_code == 0, res.output
+    assert "宽限" in res.output and "100.0%" in res.output

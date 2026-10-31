@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from seatunnel_agent.common.api_factory import make_text_router
 
 from .report import render_markdown
-from .reviewer import parse_applications, review_grants
+from .reviewer import parse_applications, parse_vocabulary, review_grants
 
 _ENV = "GRANTREVIEW_API_ALLOWED_DIRS"
 
@@ -20,6 +20,10 @@ class ReviewRequest(BaseModel):
     application_file: str | None = Field(
         None, description="Application JSON file (object or list)")
     application_text: str = Field("", description="Inline application JSON")
+    vocabulary_text: str = Field(
+        "", description="Optional custom sensitivity vocabulary JSON "
+                        "{\"s3\": [...], \"s2\": [...]} — replaces the "
+                        "built-in list per level")
     llm: bool = Field(
         False, description="Also draft per-application replies via the "
                            "configured LLM (needs an API key)")
@@ -30,7 +34,9 @@ class ReviewRequest(BaseModel):
 def _core(req: ReviewRequest, resolve):
     raw = resolve(req.application_file, req.application_text,
                   "'application_file' or 'application_text'")
-    return review_grants(parse_applications(raw))
+    vocab = (parse_vocabulary(req.vocabulary_text)
+             if req.vocabulary_text.strip() else None)
+    return review_grants(parse_applications(raw), vocab=vocab)
 
 
 def _llm(req: ReviewRequest, result, lang: str):

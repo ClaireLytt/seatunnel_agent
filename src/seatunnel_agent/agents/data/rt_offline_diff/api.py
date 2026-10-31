@@ -26,6 +26,11 @@ class CompareRequest(BaseModel):
     keys: str = Field(..., description="Key column(s), comma-separated")
     tolerance_pct: float = Field(1.0, ge=0,
                                  description="Relative tolerance in %")
+    grace_key: str = Field(
+        "", description="Time-shaped key column for the late-data grace")
+    grace: int = Field(
+        0, ge=0, description="Exclude the newest N values of grace_key "
+                             "from every judgment")
     llm: bool = Field(
         False, description="Also draft a reconciliation note via the "
                            "configured LLM (needs an API key)")
@@ -39,7 +44,8 @@ def _core(req: CompareRequest, resolve):
     off_raw = resolve(req.offline_file, req.offline_text,
                       "'offline_file' or 'offline_text'")
     return compare_results(rt_raw, off_raw, req.keys,
-                           tolerance_pct=req.tolerance_pct)
+                           tolerance_pct=req.tolerance_pct,
+                           grace_key=req.grace_key, grace=req.grace)
 
 
 def _llm(req: CompareRequest, result, lang: str):

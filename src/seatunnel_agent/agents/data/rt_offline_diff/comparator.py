@@ -46,6 +46,8 @@ class DiffResult:
     missing_in_off: list[str] = field(default_factory=list)
     mismatches: list[dict] = field(default_factory=list)
     biases: list[MetricBias] = field(default_factory=list)
+    grace_key: str = ""
+    grace_excluded: list[str] = field(default_factory=list)
 
     @property
     def consistent_pct(self) -> float:
@@ -65,7 +67,9 @@ class DiffResult:
                 "missing_in_off_count": len(self.missing_in_off),
                 "mismatches": self.mismatches[:20],
                 "mismatch_count": len(self.mismatches),
-                "biases": [b.to_dict() for b in self.biases]}
+                "biases": [b.to_dict() for b in self.biases],
+                "grace_key": self.grace_key,
+                "grace_excluded": self.grace_excluded}
 
 
 def _index(headers: list[str], rows: list[dict], keys: list[str],
@@ -97,20 +101,38 @@ def _num(value) -> float | None:
 
 
 def compare_results(realtime_text: str, offline_text: str, keys: str,
-                    tolerance_pct: float = 1.0) -> DiffResult:
+                    tolerance_pct: float = 1.0, grace_key: str = "",
+                    grace: int = 0) -> DiffResult:
     key_cols = [k.strip() for k in (keys or "").split(",") if k.strip()]
     if not key_cols:
         raise ValueError("key column(s) required / 需要键列")
+    grace_key = (grace_key or "").strip()
+    if grace_key and grace_key not in key_cols:
+        raise ValueError(f"grace_key '{grace_key}' must be one of the "
+                         f"key columns / 宽限键须是键列之一")
     rt_headers, rt_rows = parse_rows(realtime_text)
     off_headers, off_rows = parse_rows(offline_text)
     rt_idx = _index(rt_headers, rt_rows, key_cols, "realtime")
     off_idx = _index(off_headers, off_rows, key_cols, "offline")
 
+    # late-data grace: the newest N values of the time-shaped key are
+    # still inside the open window — exclude them from every judgment
+    excluded: set = set()
+    if grace_key and grace > 0:
+        pos = key_cols.index(grace_key)
+        values = sorted({k[pos] for k in rt_idx} | {k[pos] for k in off_idx}
+                        - {None}, key=str)
+        excluded = set(values[-grace:])
+        rt_idx = {k: v for k, v in rt_idx.items() if k[pos] not in excluded}
+        off_idx = {k: v for k, v in off_idx.items()
+                   if k[pos] not in excluded}
+
     metric_cols = [c for c in off_headers
                    if c in rt_headers and c not in key_cols]
     result = DiffResult(keys=key_cols, tolerance_pct=tolerance_pct,
                         rt_rows=len(rt_rows), off_rows=len(off_rows),
-                        matched=0)
+                        matched=0, grace_key=grace_key,
+                        grace_excluded=sorted(str(v) for v in excluded))
 
     def _key_str(key: tuple) -> str:
         return ", ".join("∅" if v is None else str(v) for v in key)

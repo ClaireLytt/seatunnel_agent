@@ -13,6 +13,7 @@ from .reviewer import (
     GrantReview,
     ReviewResult,
     parse_applications,
+    parse_vocabulary,
     review_grants,
 )
 
@@ -20,6 +21,7 @@ __all__ = [
     "GrantReview",
     "ReviewResult",
     "parse_applications",
+    "parse_vocabulary",
     "render_markdown",
     "review_grants",
 ]

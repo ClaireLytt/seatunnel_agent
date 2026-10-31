@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass, field
 
 __all__ = ["GrantReview", "ReviewResult", "parse_applications",
-           "review_grants"]
+           "parse_vocabulary", "review_grants"]
 
 # sensitivity vocabulary: level -> name patterns (CN pinyin + EN)
 _S3 = re.compile(r"(phone|mobile|id_?card|idcard|identity|passport|bank|"
@@ -37,10 +37,42 @@ _WRITE_ROLES = {"admin", "dba", "etl", "owner", "developer"}
 _DECISIONS = (("reject", 70.0), ("downgrade", 40.0))
 
 
-def _sensitivity(column: str) -> int:
-    if _S3.search(column):
+def parse_vocabulary(text: str) -> dict[int, re.Pattern[str]]:
+    """Custom sensitivity vocabulary: JSON {"s3": [terms], "s2": [terms]}.
+
+    Terms are joined into case-insensitive alternations and REPLACE the
+    built-in word list for that level (the other level keeps its
+    default), so a site's own classification wins outright.
+    """
+    body = (text or "").strip()
+    if not body:
+        raise ValueError("empty vocabulary / 词表为空")
+    try:
+        vocab = json.loads(body)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"vocabulary must be JSON: {exc}") from exc
+    if not isinstance(vocab, dict) or not (vocab.get("s3")
+                                           or vocab.get("s2")):
+        raise ValueError("vocabulary needs 's3' and/or 's2' term lists / "
+                         "词表需要 s3/s2 列表")
+    out: dict[int, re.Pattern[str]] = {}
+    for level, key in ((3, "s3"), (2, "s2")):
+        terms = [str(t).strip() for t in (vocab.get(key) or ())
+                 if str(t).strip()]
+        if terms:
+            out[level] = re.compile(
+                "(" + "|".join(re.escape(t) for t in terms) + ")",
+                re.IGNORECASE)
+    return out
+
+
+def _sensitivity(column: str,
+                 vocab: dict[int, re.Pattern[str]] | None = None) -> int:
+    s3 = (vocab or {}).get(3, _S3)
+    s2 = (vocab or {}).get(2, _S2)
+    if s3.search(column):
         return 3
-    if _S2.search(column):
+    if s2.search(column):
         return 2
     return 1
 
@@ -88,7 +120,9 @@ def parse_applications(text: str) -> list[dict]:
     return items
 
 
-def _review_one(app: dict) -> GrantReview:
+def _review_one(app: dict,
+                vocab: dict[int, re.Pattern[str]] | None = None
+                ) -> GrantReview:
     risk = 0.0
     reasons: list[str] = []
     downgrades: list[str] = []
@@ -103,7 +137,7 @@ def _review_one(app: dict) -> GrantReview:
             wildcard = True
             reasons.append(f"whole_table:{table}")
         for col in columns:
-            lvl = _sensitivity(str(col))
+            lvl = _sensitivity(str(col), vocab)
             ref = f"{table}.{col}"
             if lvl == 3:
                 s3.append(ref)
@@ -165,7 +199,9 @@ def _review_one(app: dict) -> GrantReview:
                        downgrades=downgrades)
 
 
-def review_grants(apps: list[dict]) -> ReviewResult:
-    reviews = [_review_one(a) for a in apps]
+def review_grants(apps: list[dict],
+                  vocab: dict[int, re.Pattern[str]] | None = None
+                  ) -> ReviewResult:
+    reviews = [_review_one(a, vocab) for a in apps]
     reviews.sort(key=lambda r: (-r.risk, r.applicant))
     return ReviewResult(reviews=reviews)
