@@ -70,6 +70,7 @@
     "suite_overview",
     "layer_check",
     "partition_health",
+    "capacity_forecast",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

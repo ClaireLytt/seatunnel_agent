@@ -24,6 +24,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent scheduleadvisor -f plan.json [--fail-on-breach]
   seatunnel-agent layercheck    -f pipeline.sql [--fail-on-high]
   seatunnel-agent partitionhealth -f partitions.csv [--fail-on-high]
+  seatunnel-agent capacityforecast -f storage.csv --quota 2000
 """
 
 from __future__ import annotations
@@ -365,6 +366,49 @@ def register(cli) -> None:
     cli.add_command(scheduleadvisor)
     cli.add_command(layercheck)
     cli.add_command(partitionhealth)
+    cli.add_command(capacityforecast)
+
+
+@click.command("capacityforecast")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="存储序列文件：date,metric,value 的 CSV/JSONL")
+@click.option("--text", type=str, default=None, help="内联序列行")
+@click.option("--quota", type=float, required=True,
+              help="容量配额（与数值同单位，GB 或行数）")
+@click.option("--window", type=click.IntRange(min=2), default=14,
+              show_default=True, help="斜率窗口点数")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草容量通报（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级告警（30 天内耗尽）时 exit 1")
+@report_options
+def capacityforecast(path, text, quota, window, use_llm, fail_high,
+                     lang, fmt, output) -> None:
+    """容量耗尽预测 — 序列 × 配额 → 耗尽日期 + 增长大户。"""
+    from seatunnel_agent.agents.data.capacity_forecast import (
+        forecast_capacity,
+        render_markdown,
+    )
+
+    try:
+        result = forecast_capacity(_read(path, text, "序列行"),
+                                   quota=quota, window=window)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.capacity_forecast.advisor_llm import (
+            capacity_note,
+        )
+        from seatunnel_agent.agents.data.capacity_forecast.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, capacity_note(result, lang=lang),
+            "capacity_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(result.findings, fmt)
 
 
 @click.command("partitionhealth")
