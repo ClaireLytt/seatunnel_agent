@@ -199,3 +199,35 @@ def test_sqlperf_plan_diff():
         "--before", str(EX / "sqlperf_demo" / "plan.txt"), "-F", "json"])
     diff = json.loads(res.output)["diff"]
     assert not diff["resolved"] and not diff["introduced"]
+
+
+def test_slowquery_promote_baseline(tmp_path):
+    runner = CliRunner()
+    base = tmp_path / "base.jsonl"
+    base.write_text(
+        '{"ts": "t1", "duration_s": 400, "scan_bytes": 1000}\n'
+        '{"ts": "t2", "duration_s": 420, "scan_bytes": 1000}\n'
+        '{"ts": "t3", "duration_s": 410, "scan_bytes": 1000}\n',
+        encoding="utf-8")
+    metrics = tmp_path / "m.json"
+    metrics.write_text('{"name": "q1", "duration_s": 430, '
+                       '"scan_bytes": 1100}', encoding="utf-8")
+    res = runner.invoke(slowquery, [
+        "-f", str(metrics), "--baseline", str(base), "--promote-baseline"])
+    assert res.exit_code == 0
+    lines = base.read_text(encoding="utf-8").strip().splitlines()
+    assert len(lines) == 4 and json.loads(lines[-1])["duration_s"] == 430
+    # a regressed run must not be promoted
+    metrics.write_text('{"name": "q1", "duration_s": 5000}',
+                       encoding="utf-8")
+    res = runner.invoke(slowquery, [
+        "-f", str(metrics), "--baseline", str(base), "--promote-baseline"])
+    assert res.exit_code == 0
+    assert len(base.read_text(encoding="utf-8").strip().splitlines()) == 4
+    # without --baseline it is a usage error; in --dir mode too
+    res = runner.invoke(slowquery, ["-f", str(metrics),
+                                    "--promote-baseline"])
+    assert res.exit_code == 2
+    res = runner.invoke(slowquery, ["-d", str(tmp_path), "--baseline",
+                                    str(base), "--promote-baseline"])
+    assert res.exit_code == 2

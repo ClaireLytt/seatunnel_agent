@@ -14,6 +14,7 @@ pipeline_ops.py (shared _read/_emit/fail_check/track_history):
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import click
@@ -186,9 +187,16 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
               default=0.0,
               help="CI gate：相对基线中位数的回归倍数达到该值时 exit 1"
                    "（需配合 --baseline）")
+@click.option("--promote-baseline", "promote", is_flag=True, default=False,
+              help="本次 run 回归低于 --promote-under 时追加进基线 jsonl，"
+                   "基线自动滚动（需配合 --baseline，单 run 模式）")
+@click.option("--promote-under", "promote_under", type=float, default=1.5,
+              show_default=True,
+              help="晋升阈值：回归倍数达到该值的 run 不进基线")
 @report_options
 def slowquery(path, text, directory, baseline_path, history_path, use_llm,
-              fail_regression, lang, fmt, output) -> None:
+              fail_regression, promote, promote_under, lang, fmt,
+              output) -> None:
     """慢查询根因 — 指标 × 基线 → 排序根因与处方；--history 记台账。"""
     from seatunnel_agent.agents.data.slow_query import (
         diagnose,
@@ -201,8 +209,9 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
                                               errors="replace")
                 if baseline_path else "")
     if directory:
-        if use_llm or history_path:
-            raise click.UsageError("--dir 批量模式不支持 --llm / --history")
+        if use_llm or history_path or promote:
+            raise click.UsageError(
+                "--dir 批量模式不支持 --llm / --history / --promote-baseline")
         diags = []
         for f in sorted(Path(directory).glob("*.json")):
             try:
@@ -228,8 +237,10 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
             fail_check(f"REGRESSION {worst.name} {worst.regression:g}x >= "
                        f"{fail_regression:g}x", fmt)
         return
-    diag = diagnose(parse_metrics(_read(path, text, "执行指标")),
-                    parse_baseline(baseline))
+    if promote and not baseline_path:
+        raise click.UsageError("--promote-baseline 需配合 --baseline")
+    run = parse_metrics(_read(path, text, "执行指标"))
+    diag = diagnose(run, parse_baseline(baseline))
     markdown = render_markdown(diag, lang=lang)
     payload = diag.to_dict()
     if use_llm:
@@ -248,6 +259,20 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
             "causes": len(diag.causes),
             "top_share": round(top.share, 3) if top else 0.0,
         }, worse_key="duration_s")
+    if promote:
+        if diag.regression and diag.regression >= promote_under:
+            click.echo(f"promote: skipped — regression {diag.regression:g}x "
+                       f">= {promote_under:g}x", err=True)
+        else:
+            from datetime import datetime, timezone
+            entry = {"ts": datetime.now(timezone.utc).isoformat(
+                         timespec="seconds"),
+                     "name": run.name, "duration_s": run.duration_s,
+                     "scan_bytes": run.scan_bytes,
+                     "shuffle_bytes": run.shuffle_bytes}
+            with Path(baseline_path).open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            click.echo(f"promote: appended to {baseline_path}", err=True)
     if fail_regression and diag.regression >= fail_regression:
         fail_check(f"REGRESSION {diag.regression:g}x >= "
                    f"{fail_regression:g}x (baseline median "
