@@ -44,6 +44,20 @@ jobs:
             -r state/rules.json \
             --history trends/freshness_health.jsonl > /dev/null
 
+      # Perf-suite ledgers (optional — drop the steps you don't export):
+      #   state/slow_metrics.json - last night's heaviest run metrics
+      #   state/scenario.json     - the concurrent-DAG capacity scenario
+      - name: Slow-query ledger
+        run: |
+          seatunnel-agent slowquery -f state/slow_metrics.json \
+            --baseline trends/slow_ledger.jsonl \
+            --history trends/slow_ledger.jsonl > /dev/null
+
+      - name: Capacity ledger
+        run: |
+          seatunnel-agent dagconflict -f state/scenario.json \
+            --history trends/capacity.jsonl > /dev/null
+
       - name: Commit the trend files
         run: |
           git config user.name "pipeline-trends-bot"
