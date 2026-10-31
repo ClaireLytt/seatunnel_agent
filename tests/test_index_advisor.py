@@ -85,3 +85,29 @@ def test_report_zh_en_and_tool():
     md = index_advisor(QUERIES, ddl=DDL, lang="en")
     assert "CLUSTERED BY (user_id)" in md
     assert "must not be empty" in index_advisor(" ")
+
+
+def test_api_ddl_appends_audit():
+    """A ddl in the request adds the layout-audit findings and section."""
+    from pathlib import Path
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.index_advisor import api as ia_api
+
+    root = Path(__file__).resolve().parents[1] / "examples" / "indexadvisor_demo"
+    queries = (root / "queries.sql").read_text("utf-8")
+    legacy = (root / "ddl_legacy.sql").read_text("utf-8")
+    app = FastAPI()
+    app.include_router(ia_api.router)
+    client = TestClient(app)
+    res = client.post("/api/indexadvisor/recommend", json={
+        "text": queries, "ddl": legacy, "report": True, "lang": "en"})
+    assert res.status_code == 200
+    body = res.json()
+    codes = {f["code"] for f in body["result"]["audit"]}
+    assert "IA002" in codes and "Layout audit" in body["report"]
+    # no ddl -> no audit key
+    res = client.post("/api/indexadvisor/recommend", json={"text": queries})
+    assert "audit" not in res.json()["result"]

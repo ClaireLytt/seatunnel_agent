@@ -20,8 +20,8 @@ from seatunnel_agent.common.api_guard import (
 )
 from seatunnel_agent.common.utils import collect_sql_files, normalize_lang
 
-from .advisor import analyze_workload, recommend
-from .report import render_markdown
+from .advisor import analyze_workload, audit, recommend
+from .report import render_audit, render_markdown
 
 router = APIRouter(prefix="/api/indexadvisor", tags=["index_advisor"])
 
@@ -64,7 +64,13 @@ def run_recommend(req: RecommendRequest) -> RecommendResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     lang = normalize_lang(req.lang)
     report = render_markdown(advice, lang=lang) if req.report else None
-    return RecommendResponse(result=advice.to_dict(), report=report,
+    payload = advice.to_dict()
+    if req.ddl.strip():
+        findings = audit(advice, req.ddl)
+        payload["audit"] = findings
+        if report is not None:
+            report += "\n\n" + render_audit(findings, lang=lang)
+    return RecommendResponse(result=payload, report=report,
                              elapsed_ms=ms_since(start))
 
 
