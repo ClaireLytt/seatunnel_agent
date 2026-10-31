@@ -82,6 +82,7 @@
     "dup_pipeline",
     "mask_preview",
     "mock_data",
+    "join_audit",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

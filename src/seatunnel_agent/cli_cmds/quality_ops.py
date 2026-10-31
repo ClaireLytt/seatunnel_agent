@@ -383,6 +383,7 @@ def register(cli) -> None:
     cli.add_command(duppipeline)
     cli.add_command(maskpreview)
     cli.add_command(mockdata)
+    cli.add_command(joinaudit)
 
 
 @click.command("rollbackplan")
@@ -1654,3 +1655,49 @@ def mockdata(path, text, count, seed, csv_out, use_llm,
             payload, markdown, dataset_note(result, lang=lang),
             "dataset_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
+@click.command("joinaudit")
+@click.option("--left", "-l", "left_path",
+              type=click.Path(exists=True, dir_okay=False), required=True,
+              help="左表数据文件（CSV 带表头或 JSONL）")
+@click.option("--right", "-r", "right_path",
+              type=click.Path(exists=True, dir_okay=False), required=True,
+              help="右表数据文件（CSV 带表头或 JSONL）")
+@click.option("--keys", "-k", required=True,
+              help="关联键:同名写 k,异名写 lk=rk,逗号组合多键")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草关联评审（需配置 API key,只发指标不发数据）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def joinaudit(left_path, right_path, keys, use_llm, fail_high,
+              lang, fmt, output) -> None:
+    """关联质量审计 — 两份数据行 + 键 → 匹配率/孤儿键/爆炸系数。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.join_audit import (
+        audit_join,
+        parse_keys,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+
+    try:
+        lh, lrows = parse_rows(Path(left_path).read_text(encoding="utf-8"))
+        rh, rrows = parse_rows(Path(right_path).read_text(encoding="utf-8"))
+        report = audit_join(lh, lrows, rh, rrows, parse_keys(keys))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(report, lang=lang)
+    payload = report.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.join_audit.advisor_llm import (
+            join_note,
+        )
+        from seatunnel_agent.agents.data.join_audit.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, join_note(report, lang=lang),
+            "join_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(report.findings, fmt)
