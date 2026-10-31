@@ -128,14 +128,20 @@ def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
               help="CI gate：预估扫描超过该 GB 数时 exit 1")
 @click.option("--fail-over-shuffle-gb", type=float, default=0.0,
               help="CI gate：预估 shuffle 超过该 GB 数时 exit 1")
+@click.option("--compare-sql-file", "compare_sql_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="改写后的 SQL 文件：同清单各估一次，输出省比表")
 @report_options
 def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
-            fail_over_shuffle_gb, lang, fmt, output) -> None:
+            fail_over_shuffle_gb, compare_sql_path, lang, fmt,
+            output) -> None:
     """资源消耗预测 — SQL × 表统计 → 代价卡；可按预算挡 CI。"""
     from seatunnel_agent.agents.data.sql_cost import (
+        compare,
         estimate,
         parse_assumptions,
         parse_stats,
+        render_compare,
         render_markdown,
         render_what_if,
         what_if,
@@ -147,6 +153,12 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
     card = estimate(sql, stats)
     markdown = render_markdown(card, lang=lang)
     payload = card.to_dict()
+    if compare_sql_path:
+        rewrite_card = estimate(
+            Path(compare_sql_path).read_text(encoding="utf-8",
+                                             errors="replace"), stats)
+        payload["compare"] = compare(card, rewrite_card)
+        markdown += "\n\n" + render_compare(payload["compare"], lang=lang)
     if assume_partitions:
         try:
             assumptions = parse_assumptions(list(assume_partitions), stats)

@@ -33,6 +33,17 @@ SQLCOST_I18N: dict[str, dict[str, str]] = {
         "rpt_disclaimer": ("> Order-of-magnitude estimate from the declared "
                            "stats — validate against a real run before "
                            "capacity decisions. No database connection."),
+        "cmp_title": "Rewrite comparison (original vs rewritten SQL)",
+        "cmp_col_axis": "axis",
+        "cmp_col_base": "original",
+        "cmp_col_rewrite": "rewritten",
+        "cmp_col_saved": "saved",
+        "cmp_scan": "scan",
+        "cmp_shuffle": "shuffle",
+        "cmp_memory": "peak task memory",
+        "cmp_core": "core-seconds",
+        "cmp_worse": "> The rewrite is MORE expensive on the axes marked "
+                     "negative — re-check it before shipping.",
     },
     "zh": {
         "rpt_title": "SQL 代价卡",
@@ -58,6 +69,16 @@ SQLCOST_I18N: dict[str, dict[str, str]] = {
         "wi_no_save": "> 没省：SQL 未对该列做等值过滤，分区裁剪不生效。",
         "rpt_disclaimer": ("> 基于声明统计的量级估算 — 容量决策前请用真实"
                            "运行校准。不连数据库。"),
+        "cmp_title": "改写省比（原 SQL vs 改写 SQL）",
+        "cmp_col_axis": "维度",
+        "cmp_col_base": "原 SQL",
+        "cmp_col_rewrite": "改写后",
+        "cmp_col_saved": "省",
+        "cmp_scan": "扫描",
+        "cmp_shuffle": "shuffle",
+        "cmp_memory": "任务内存峰值",
+        "cmp_core": "核·秒",
+        "cmp_worse": "> 标负号的维度改写反而更贵 — 上线前再核对一遍。",
     },
 }
 

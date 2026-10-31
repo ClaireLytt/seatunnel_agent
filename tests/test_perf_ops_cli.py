@@ -231,3 +231,24 @@ def test_slowquery_promote_baseline(tmp_path):
     res = runner.invoke(slowquery, ["-d", str(tmp_path), "--baseline",
                                     str(base), "--promote-baseline"])
     assert res.exit_code == 2
+
+
+def test_sqlcost_compare_rewrite():
+    runner = CliRunner()
+    res = runner.invoke(sqlcost, [
+        "--sql-file", str(EX / "sqlcost_demo" / "query_full_scan.sql"),
+        "-f", str(EX / "sqlcost_demo" / "stats.json"),
+        "--compare-sql-file",
+        str(EX / "sqlcost_demo" / "query_rewritten.sql"),
+        "-F", "json"])
+    assert res.exit_code == 0
+    cmp = json.loads(res.output)["compare"]
+    assert cmp["saved_pct"]["scan"] > 90  # pruning 365 partitions
+    assert cmp["rewrite"]["scan_bytes"] < cmp["base"]["scan_bytes"]
+    # markdown path renders the comparison table
+    res = runner.invoke(sqlcost, [
+        "--sql-file", str(EX / "sqlcost_demo" / "query_full_scan.sql"),
+        "-f", str(EX / "sqlcost_demo" / "stats.json"),
+        "--compare-sql-file",
+        str(EX / "sqlcost_demo" / "query_rewritten.sql"), "--lang", "en"])
+    assert res.exit_code == 0 and "Rewrite comparison" in res.output

@@ -7,7 +7,7 @@ from seatunnel_agent.common.utils import fmt_bytes, fmt_secs, normalize_lang
 from .estimator import CostCard
 from .i18n import tp
 
-__all__ = ["render_markdown", "render_what_if"]
+__all__ = ["render_compare", "render_markdown", "render_what_if"]
 
 
 def render_markdown(card: CostCard, lang: str = "zh") -> str:
@@ -65,4 +65,32 @@ def render_what_if(whatif: dict, lang: str = "zh") -> str:
     if whatif["scan_saved_pct"] <= 0:
         lines.append("")
         lines.append(tp(lang, "wi_no_save"))
+    return "\n".join(lines)
+
+
+def render_compare(cmp: dict, lang: str = "zh") -> str:
+    """Markdown section for an original-vs-rewrite delta (estimator.compare)."""
+    lang = normalize_lang(lang)
+    base, rewrite, saved = cmp["base"], cmp["rewrite"], cmp["saved_pct"]
+    rows = [
+        ("cmp_scan", fmt_bytes(base["scan_bytes"]),
+         fmt_bytes(rewrite["scan_bytes"]), saved["scan"]),
+        ("cmp_shuffle", fmt_bytes(base["shuffle_bytes"]),
+         fmt_bytes(rewrite["shuffle_bytes"]), saved["shuffle"]),
+        ("cmp_memory", fmt_bytes(base["memory_peak_bytes"]),
+         fmt_bytes(rewrite["memory_peak_bytes"]), saved["memory"]),
+        ("cmp_core", f"{base['core_seconds']:,.0f}",
+         f"{rewrite['core_seconds']:,.0f}", saved["core_seconds"]),
+    ]
+    lines = [f"### {tp(lang, 'cmp_title')}",
+             f"| {tp(lang, 'cmp_col_axis')} | {tp(lang, 'cmp_col_base')} "
+             f"| {tp(lang, 'cmp_col_rewrite')} "
+             f"| {tp(lang, 'cmp_col_saved')} |",
+             "|---|---|---|---|"]
+    for key, before, after, pct in rows:
+        mark = f"**{pct:g}%**" if pct > 0 else f"{pct:g}%"
+        lines.append(f"| {tp(lang, key)} | {before} | {after} | {mark} |")
+    if any(v < 0 for v in saved.values()):
+        lines.append("")
+        lines.append(tp(lang, "cmp_worse"))
     return "\n".join(lines)

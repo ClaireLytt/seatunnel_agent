@@ -249,6 +249,27 @@ def what_if(base: CostCard, sql: str, stats: dict[str, TableStats],
             "scan_saved_pct": saved_pct}
 
 
+def compare(base: CostCard, rewrite: CostCard) -> dict[str, Any]:
+    """Delta card between the original SQL and a rewritten version.
+
+    Positive ``saved_pct`` means the rewrite is cheaper on that axis.
+    """
+    def pct(before: float, after: float) -> float:
+        return round(100 * (1 - after / before), 1) if before else 0.0
+
+    return {
+        "base": base.to_dict(),
+        "rewrite": rewrite.to_dict(),
+        "saved_pct": {
+            "scan": pct(base.scan_bytes, rewrite.scan_bytes),
+            "shuffle": pct(base.shuffle_bytes, rewrite.shuffle_bytes),
+            "memory": pct(base.memory_peak_bytes,
+                          rewrite.memory_peak_bytes),
+            "core_seconds": pct(base.core_seconds, rewrite.core_seconds),
+        },
+    }
+
+
 def parse_assumptions(specs: list[str],
                       stats: dict[str, TableStats]) -> list[tuple[str, str, int]]:
     """"table:col[:N]" specs -> what_if assumption triples.

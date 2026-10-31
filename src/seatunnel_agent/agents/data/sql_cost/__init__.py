@@ -13,20 +13,23 @@ from .estimator import (
     CostCard,
     ScanEstimate,
     TableStats,
+    compare,
     estimate,
     parse_assumptions,
     parse_stats,
     what_if,
 )
-from .report import render_markdown, render_what_if
+from .report import render_compare, render_markdown, render_what_if
 
 __all__ = [
     "CostCard",
     "ScanEstimate",
     "TableStats",
+    "compare",
     "estimate",
     "parse_assumptions",
     "parse_stats",
+    "render_compare",
     "render_markdown",
     "render_what_if",
     "what_if",
