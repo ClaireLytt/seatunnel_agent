@@ -27,6 +27,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent capacityforecast -f storage.csv --quota 2000
   seatunnel-agent configdiff    --left dev.conf --right prod.conf
   seatunnel-agent alertstorm    -f alerts.json [--fail-on-high]
+  seatunnel-agent metricattr    -b base.csv -c cur.csv --dims channel --metric gmv
 """
 
 from __future__ import annotations
@@ -371,6 +372,50 @@ def register(cli) -> None:
     cli.add_command(capacityforecast)
     cli.add_command(configdiff)
     cli.add_command(alertstorm)
+    cli.add_command(metricattr)
+
+
+@click.command("metricattr")
+@click.option("--baseline", "-b", "base_path",
+              type=click.Path(exists=True, dir_okay=False), required=True,
+              help="基线结果集文件（CSV/JSONL）")
+@click.option("--current", "-c", "cur_path",
+              type=click.Path(exists=True, dir_okay=False), required=True,
+              help="当前结果集文件（CSV/JSONL）")
+@click.option("--dims", "-d", required=True, help="维度列（逗号分隔）")
+@click.option("--metric", "-m", required=True, help="指标列")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草归因回复（需配置 API key）")
+@report_options
+def metricattr(base_path, cur_path, dims, metric, use_llm,
+               lang, fmt, output) -> None:
+    """指标异动归因 — 双结果集 × 维度 → 逐值贡献分解。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.metric_attribution import (
+        attribute_change,
+        render_markdown,
+    )
+
+    try:
+        result = attribute_change(
+            Path(base_path).read_text(encoding="utf-8", errors="replace"),
+            Path(cur_path).read_text(encoding="utf-8", errors="replace"),
+            dims, metric)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.metric_attribution.advisor_llm import (
+            attribution_note,
+        )
+        from seatunnel_agent.agents.data.metric_attribution.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, attribution_note(result, lang=lang),
+            "attribution_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
 
 
 @click.command("alertstorm")

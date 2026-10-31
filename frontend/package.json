@@ -73,6 +73,7 @@
     "capacity_forecast",
     "config_diff",
     "alert_storm",
+    "metric_attribution",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
