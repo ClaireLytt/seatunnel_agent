@@ -182,6 +182,48 @@ def diagnose(run: RunMetrics,
     return diag
 
 
+def diff_runs(a: RunMetrics, b: RunMetrics) -> dict[str, Any]:
+    """A/B delta between two runs of the same query (A = fast, B = slow).
+
+    Top-level counters come back with before/after/ratio; stages are
+    joined by name, each with the task max/median and spill movement,
+    worst task-max growth first.  Stages present in only one run are
+    listed separately — a changed stage count is itself a finding.
+    """
+    def ratio(before: float, after: float) -> float:
+        return round(after / before, 2) if before else 0.0
+
+    totals = {}
+    for key in ("duration_s", "scan_bytes", "shuffle_bytes", "gc_s",
+                "queue_s"):
+        before = float(getattr(a, key))
+        after = float(getattr(b, key))
+        totals[key] = {"a": before, "b": after, "ratio": ratio(before, after)}
+
+    a_stages = {s.stage: s for s in a.stages}
+    b_stages = {s.stage: s for s in b.stages}
+    stages = []
+    for name in a_stages.keys() & b_stages.keys():
+        sa, sb = a_stages[name], b_stages[name]
+        stages.append({
+            "stage": name,
+            "task_max_s": {"a": sa.task_max_s, "b": sb.task_max_s,
+                           "ratio": ratio(sa.task_max_s, sb.task_max_s)},
+            "task_median_s": {"a": sa.task_median_s, "b": sb.task_median_s,
+                              "ratio": ratio(sa.task_median_s,
+                                             sb.task_median_s)},
+            "spill_bytes": {"a": sa.spill_bytes, "b": sb.spill_bytes},
+        })
+    stages.sort(key=lambda s: -s["task_max_s"]["ratio"])
+    return {
+        "a": a.name, "b": b.name,
+        "totals": totals,
+        "stages": stages,
+        "only_a": sorted(a_stages.keys() - b_stages.keys()),
+        "only_b": sorted(b_stages.keys() - a_stages.keys()),
+    }
+
+
 def detect_trend(entries: list[dict[str, Any]], n: int) -> dict[str, Any] | None:
     """Creeping slowdown over the last *n* ledger entries.
 

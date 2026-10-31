@@ -15,10 +15,11 @@ from .diagnoser import (
     StageMetrics,
     detect_trend,
     diagnose,
+    diff_runs,
     parse_baseline,
     parse_metrics,
 )
-from .report import render_markdown
+from .report import render_diff, render_markdown
 
 __all__ = [
     "Cause",
@@ -27,7 +28,9 @@ __all__ = [
     "StageMetrics",
     "detect_trend",
     "diagnose",
+    "diff_runs",
     "parse_baseline",
     "parse_metrics",
+    "render_diff",
     "render_markdown",
 ]

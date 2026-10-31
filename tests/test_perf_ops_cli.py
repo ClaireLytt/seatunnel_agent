@@ -359,6 +359,34 @@ def test_slowquery_trend_gate(tmp_path):
     assert res.exit_code == 2
 
 
+def test_slowquery_ab_diff(tmp_path):
+    runner = CliRunner()
+    a = tmp_path / "a.json"
+    b = tmp_path / "b.json"
+    a.write_text(json.dumps({
+        "name": "fast", "duration_s": 100, "scan_bytes": 1000,
+        "stages": [{"stage": "s1", "task_max_s": 10, "task_median_s": 8},
+                   {"stage": "s2", "task_max_s": 5, "task_median_s": 4}],
+    }), encoding="utf-8")
+    b.write_text(json.dumps({
+        "name": "slow", "duration_s": 300, "scan_bytes": 1000,
+        "stages": [{"stage": "s1", "task_max_s": 90, "task_median_s": 9},
+                   {"stage": "s3", "task_max_s": 7, "task_median_s": 6}],
+    }), encoding="utf-8")
+    res = runner.invoke(slowquery, ["--diff", str(a), str(b), "-F", "json"])
+    assert res.exit_code == 0
+    delta = json.loads(res.output)
+    assert delta["totals"]["duration_s"]["ratio"] == 3.0
+    assert delta["stages"][0]["stage"] == "s1"
+    assert delta["stages"][0]["task_max_s"]["ratio"] == 9.0
+    assert delta["only_a"] == ["s2"] and delta["only_b"] == ["s3"]
+    # markdown renders; mixing --diff with other inputs is a usage error
+    res = runner.invoke(slowquery, ["--diff", str(a), str(b), "--lang", "en"])
+    assert res.exit_code == 0 and "A/B diff" in res.output
+    res = runner.invoke(slowquery, ["--diff", str(a), str(b), "-f", str(a)])
+    assert res.exit_code == 2
+
+
 def test_dagconflict_place():
     runner = CliRunner()
     demo = EX / "dagconflict_demo" / "scenario.json"

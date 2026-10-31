@@ -38,6 +38,18 @@ SLOWQ_I18N: dict[str, dict[str, str]] = {
                       "runs rose every time: {from_s} -> {to_s} "
                       "(+{growth_pct}%). Each step passed the per-run "
                       "gate; the trend did not."),
+        "diff_title": "Run A/B diff — `{a}` vs `{b}`",
+        "diff_col_metric": "metric",
+        "diff_col_ratio": "B / A",
+        "diff_col_spill": "spill (A -> B)",
+        "diff_duration_s": "duration",
+        "diff_scan_bytes": "scan",
+        "diff_shuffle_bytes": "shuffle",
+        "diff_gc_s": "GC time",
+        "diff_queue_s": "queue time",
+        "diff_stages": "Stages (worst task-max growth first)",
+        "diff_only_a": "Stages only in A:",
+        "diff_only_b": "Stages only in B:",
     },
     "zh": {
         "rpt_title": "慢查询根因",
@@ -61,6 +73,18 @@ SLOWQ_I18N: dict[str, dict[str, str]] = {
         "rpt_trend": ("**慢化趋势** — 台账最近 {runs} 次运行逐次上涨：{from_s} "
                       "-> {to_s}（+{growth_pct}%）。每一步都没触发单次回归"
                       "闸门，但趋势在涨。"),
+        "diff_title": "A/B 运行对比 — `{a}` vs `{b}`",
+        "diff_col_metric": "指标",
+        "diff_col_ratio": "B / A",
+        "diff_col_spill": "溢写（A -> B）",
+        "diff_duration_s": "耗时",
+        "diff_scan_bytes": "扫描",
+        "diff_shuffle_bytes": "shuffle",
+        "diff_gc_s": "GC 时间",
+        "diff_queue_s": "排队时间",
+        "diff_stages": "各 stage（按 task max 涨幅排序）",
+        "diff_only_a": "仅 A 有的 stage：",
+        "diff_only_b": "仅 B 有的 stage：",
     },
 }
 

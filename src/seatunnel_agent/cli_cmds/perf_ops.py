@@ -263,6 +263,10 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
 @click.option("--promote-under", "promote_under", type=float, default=1.5,
               show_default=True,
               help="晋升阈值：回归倍数达到该值的 run 不进基线")
+@click.option("--diff", "diff_paths", nargs=2,
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="A/B 对比：两份指标 JSON（A=快跑 B=慢跑），按 stage "
+                   "对齐输出差值表；与其他输入互斥")
 @click.option("--trend", "trend_n", type=int, default=0,
               help="慢化趋势：台账（含本次）最近 N 次 duration 逐次上涨时"
                    "在报告点名（需配合 --history）")
@@ -270,7 +274,7 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
               default=False, help="CI gate：检出慢化趋势时 exit 1")
 @report_options
 def slowquery(path, text, directory, baseline_path, history_path, use_llm,
-              fail_regression, promote, promote_under, trend_n,
+              fail_regression, promote, promote_under, diff_paths, trend_n,
               fail_on_trend, lang, fmt, output) -> None:
     """慢查询根因 — 指标 × 基线 → 排序根因与处方；--history 记台账。"""
     from seatunnel_agent.agents.data.slow_query import (
@@ -280,6 +284,20 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
         render_markdown,
     )
 
+    if diff_paths:
+        if path or text or directory or use_llm or promote or trend_n:
+            raise click.UsageError("--diff 与其他输入/动作互斥")
+        from seatunnel_agent.agents.data.slow_query import (
+            diff_runs,
+            render_diff,
+        )
+
+        runs = [parse_metrics(Path(p).read_text(encoding="utf-8",
+                                                errors="replace"))
+                for p in diff_paths]
+        delta = diff_runs(runs[0], runs[1])
+        _emit(delta, render_diff(delta, lang=lang), fmt, output)
+        return
     baseline = (Path(baseline_path).read_text(encoding="utf-8",
                                               errors="replace")
                 if baseline_path else "")
