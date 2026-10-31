@@ -86,6 +86,7 @@
     "ddl_evolve",
     "dq_rulegen",
     "seatunnel_gen",
+    "sla_board",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

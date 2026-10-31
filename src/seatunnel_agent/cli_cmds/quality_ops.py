@@ -387,6 +387,7 @@ def register(cli) -> None:
     cli.add_command(ddlevolve)
     cli.add_command(dqrulegen)
     cli.add_command(seatunnelgen)
+    cli.add_command(slaboard)
 
 
 @click.command("rollbackplan")
@@ -1839,3 +1840,81 @@ def seatunnelgen(path, text, source, sink, job_mode, parallelism,
             payload, markdown, job_note(draft, lang=lang),
             "job_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
+@click.command("slaboard")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="完成记录 CSV（带表头）或 JSONL 文件")
+@click.option("--text", type=str, default=None, help="内联完成记录")
+@click.option("--target", type=click.FloatRange(0.5, 1.0), default=0.95,
+              show_default=True, help="达成率目标")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None, help="运行台账：破线数/达成率追加到该 jsonl")
+@click.option("--trend", "trend_n", type=click.IntRange(min=2), default=None,
+              help="恶化趋势：台账（含本次）最近 N 次 misses 逐次上涨时"
+                   "在报告点名（需配合 --history）")
+@click.option("--fail-on-trend", "fail_on_trend", is_flag=True,
+              default=False, help="CI gate：检出恶化趋势时 exit 1")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草 SLA 通报（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def slaboard(path, text, target, history_path, trend_n, fail_on_trend,
+             use_llm, fail_high, lang, fmt, output) -> None:
+    """SLA 达成看板 — 完成记录 → 达成率/破线分级；--history 记台账。"""
+    import json as _json
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+    from seatunnel_agent.agents.data.sla_board import (
+        build_board,
+        render_markdown,
+    )
+
+    require_with((trend_n or fail_on_trend) and not history_path,
+                 "--trend / --fail-on-trend", "--history")
+    require_with(fail_on_trend and not trend_n, "--fail-on-trend",
+                 "--trend N")
+    try:
+        headers, rows = parse_rows(_read(path, text, "完成记录"))
+        board = build_board(headers, rows, target=target)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(board, lang=lang)
+    payload = board.to_dict()
+    trend = None
+    if trend_n:
+        from .check_runner import rising_trend
+
+        ledger = (Path(history_path).read_text(encoding="utf-8",
+                                               errors="replace")
+                  if Path(history_path).is_file() else "")
+        entries = [_json.loads(ln) for ln in ledger.splitlines()
+                   if ln.strip()]
+        entries.append({"misses": float(board.misses_total)})
+        trend = rising_trend(entries, "misses", trend_n)
+        if trend:
+            payload["trend"] = trend
+            markdown += (f"\n\n**misses rising** — "
+                         f"{trend['from_v']:g} -> {trend['to_v']:g} "
+                         f"over {trend['records']} runs "
+                         f"(+{trend['growth_pct']}%)")
+    if use_llm:
+        from seatunnel_agent.agents.data.sla_board.advisor_llm import (
+            sla_note,
+        )
+        from seatunnel_agent.agents.data.sla_board.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, sla_note(board, lang=lang),
+            "sla_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if history_path:
+        _track_history(history_path, {
+            "runs": board.runs_total,
+            "misses": board.misses_total,
+            "overall_rate": round(board.overall_rate, 4)}, "misses")
+    if fail_on_trend and trend:
+        fail_check(fmt, "misses 持续上涨 / misses rising: "
+                   f"{trend['from_v']:g} -> {trend['to_v']:g}")
+    if fail_high:
+        fail_on_high(board.findings, fmt, label=lambda f: f.task)
