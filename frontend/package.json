@@ -76,6 +76,7 @@
     "metric_attribution",
     "schema_align",
     "rollback_plan",
+    "contract_gen",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

@@ -377,6 +377,7 @@ def register(cli) -> None:
     cli.add_command(metricattr)
     cli.add_command(schemaalign)
     cli.add_command(rollbackplan)
+    cli.add_command(contractgen)
 
 
 @click.command("rollbackplan")
@@ -1394,3 +1395,50 @@ def datadict(path, text, sql_path, min_cov, use_llm,
                / len(result.tables)) if result.tables else 0.0
         if avg < min_cov:
             fail_check(f"COVERAGE {avg:.0f}% < {min_cov:g}%", fmt)
+@click.command("contractgen")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="CREATE TABLE DDL 文件")
+@click.option("--text", type=str, default=None, help="内联 DDL")
+@click.option("--tables", "-t", type=str, default="",
+              help="限定表（逗号分隔,默认全部）")
+@click.option("--no-types", "no_types", is_flag=True, default=False,
+              help="不固定列类型")
+@click.option("--threshold", type=click.FloatRange(0.0, 1.0), default=0.8,
+              show_default=True,
+              help="注释覆盖率达标线:达标即 require_comments")
+@click.option("--strict", is_flag=True, default=False,
+              help="allow_extra_columns: false（结构冻结）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 给出收紧建议（需配置 API key）")
+@report_options
+def contractgen(path, text, tables, no_types, threshold, strict, dialect,
+                use_llm, lang, fmt, output) -> None:
+    """契约草稿生成 — DDL → 契约体检可消费的 contract YAML。"""
+    from seatunnel_agent.agents.data.contract_gen import (
+        generate_contract,
+        render_markdown,
+    )
+
+    wanted = [t.strip() for t in tables.split(",") if t.strip()]
+    try:
+        draft = generate_contract(_read(path, text, "DDL"), dialect=dialect,
+                                  with_types=not no_types,
+                                  comment_threshold=threshold,
+                                  allow_extra=not strict,
+                                  tables=wanted or None)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(draft, lang=lang)
+    payload = draft.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.contract_gen.advisor_llm import (
+            tighten_note,
+        )
+        from seatunnel_agent.agents.data.contract_gen.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, tighten_note(draft, lang=lang),
+            "tighten_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
