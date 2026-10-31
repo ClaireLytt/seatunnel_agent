@@ -67,6 +67,7 @@
     "rt_offline_diff",
     "task_failure",
     "schedule_advisor",
+    "suite_overview",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
