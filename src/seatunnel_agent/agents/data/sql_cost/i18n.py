@@ -59,6 +59,8 @@ SQLCOST_I18N: dict[str, dict[str, str]] = {
         "cal_duration": "duration",
         "cal_scan_bytes": "scan",
         "cal_shuffle_bytes": "shuffle",
+        "par_what_if": ("At parallelism **{par}** (vs suggested "
+                        "{auto}): wall clock roughly **{lo} ~ {hi}**."),
         "cal_in_band": "The run landed inside the stated 0.5x-2x band.",
         "cal_off_band": ("> The run fell outside the stated band "
                          "({lo} ~ {hi}) — apply the duration ratio as a "
@@ -113,6 +115,8 @@ SQLCOST_I18N: dict[str, dict[str, str]] = {
         "cal_duration": "耗时",
         "cal_scan_bytes": "扫描",
         "cal_shuffle_bytes": "shuffle",
+        "par_what_if": ("按并行度 **{par}**（建议值 {auto}）：预计耗时约 "
+                        "**{lo} ~ {hi}**。"),
         "cal_in_band": "实跑落在声明的 0.5x–2x 区间内。",
         "cal_off_band": ("> 实跑超出声明区间（{lo} ~ {hi}）— 该负载后续估算"
                          "可按耗时倍率折算。"),

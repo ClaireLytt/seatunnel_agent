@@ -455,6 +455,27 @@ def test_sqlcost_calibrate(tmp_path):
     assert res.exit_code == 2
 
 
+def test_sqlcost_parallelism_what_if():
+    runner = CliRunner()
+    stats = str(EX / "sqlcost_demo" / "stats.json")
+    q = str(EX / "sqlcost_demo" / "query.sql")
+    res = runner.invoke(sqlcost, ["--sql-file", q, "-f", stats,
+                                  "--parallelism", "64", "-F", "json"])
+    assert res.exit_code == 0
+    body = json.loads(res.output)
+    wi = body["parallelism_what_if"]
+    assert wi["parallelism"] == 64
+    # doubling cores halves the band relative to 32
+    res32 = runner.invoke(sqlcost, ["--sql-file", q, "-f", stats,
+                                    "--parallelism", "32", "-F", "json"])
+    wi32 = json.loads(res32.output)["parallelism_what_if"]
+    assert abs(wi32["wall_seconds"][1] - 2 * wi["wall_seconds"][1]) < 0.5
+    # parallelism < 1 rejected by click
+    res = runner.invoke(sqlcost, ["--sql-file", q, "-f", stats,
+                                  "--parallelism", "0"])
+    assert res.exit_code == 2
+
+
 def test_slowquery_trend_gate(tmp_path):
     runner = CliRunner()
     ledger = tmp_path / "ledger.jsonl"

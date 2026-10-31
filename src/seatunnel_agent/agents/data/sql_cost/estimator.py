@@ -249,6 +249,14 @@ def what_if(base: CostCard, sql: str, stats: dict[str, TableStats],
             "scan_saved_pct": saved_pct}
 
 
+def wall_band(card: CostCard, parallelism: int) -> tuple[float, float]:
+    """The 0.5x-2x wall-clock band under an explicit parallelism."""
+    if parallelism < 1:
+        raise ValueError("parallelism must be >= 1")
+    base = card.core_seconds / parallelism
+    return (base * UNCERTAINTY[0], base * UNCERTAINTY[1])
+
+
 def estimate_batch(items: list[tuple[str, str]],
                    stats: dict[str, TableStats]) -> dict[str, Any]:
     """Estimate a (name, sql) workload against one inventory.

@@ -224,11 +224,14 @@ def index_adv(directory, text, ddl_path, dialect, fail_on_audit, stats_path,
               type=click.Path(exists=True, dir_okay=False), default=None,
               help="校准：实跑指标 JSON（slowquery 同款），对比预估 vs 实跑"
                    "并给出折算倍率")
+@click.option("--parallelism", "parallelism", type=click.IntRange(min=1),
+              default=None,
+              help="并行度 what-if：用指定并行度替代自动建议重算耗时区间")
 @report_options
 def sqlcost(sql_path, directory, stats_path, fail_over_total_scan_gb,
             assume_partitions, fail_over_scan_gb, fail_over_shuffle_gb,
-            compare_sql_path, fail_if_worse, calibrate_path, lang, fmt,
-            output) -> None:
+            compare_sql_path, fail_if_worse, calibrate_path, parallelism,
+            lang, fmt, output) -> None:
     """资源消耗预测 — SQL × 表统计 → 代价卡；可按预算挡 CI。"""
     from seatunnel_agent.agents.data.sql_cost import (
         calibrate,
@@ -275,6 +278,18 @@ def sqlcost(sql_path, directory, stats_path, fail_over_total_scan_gb,
     card = estimate(sql, stats)
     markdown = render_markdown(card, lang=lang)
     payload = card.to_dict()
+    if parallelism:
+        from seatunnel_agent.agents.data.sql_cost.estimator import wall_band
+        from seatunnel_agent.agents.data.sql_cost.i18n import tp as _sc_tp
+        from seatunnel_agent.common.utils import fmt_secs
+
+        lo, hi = wall_band(card, parallelism)
+        payload["parallelism_what_if"] = {
+            "parallelism": parallelism,
+            "wall_seconds": [round(lo, 1), round(hi, 1)]}
+        markdown += "\n\n" + _sc_tp(lang, "par_what_if").format(
+            par=parallelism, auto=card.parallelism,
+            lo=fmt_secs(lo), hi=fmt_secs(hi))
     if compare_sql_path:
         rewrite_card = estimate(
             Path(compare_sql_path).read_text(encoding="utf-8",
