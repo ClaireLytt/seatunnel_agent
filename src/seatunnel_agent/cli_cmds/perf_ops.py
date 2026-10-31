@@ -484,9 +484,13 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
               default=False,
               help="CI gate：声明起点劣于最优起点时 exit 1"
                    "（需配合 --place）")
+@click.option("--fail-on-deadline-miss", "fail_on_deadline", is_flag=True,
+              default=False,
+              help="CI gate：任一声明了 deadline 的 DAG 超期时 exit 1")
 @report_options
 def dagconflict(path, text, fail_on_conflict, history_path, place_dag,
-                fail_if_misplaced, lang, fmt, output) -> None:
+                fail_if_misplaced, fail_on_deadline, lang, fmt,
+                output) -> None:
     """并发冲突检测 — 多 DAG 场景 → 超容窗/写写冲突/错峰建议。"""
     from seatunnel_agent.agents.data.dag_conflict import (
         parse_scenario,
@@ -521,6 +525,11 @@ def dagconflict(path, text, fail_on_conflict, history_path, place_dag,
         fail_check(
             f"CONFLICT windows={len(result.windows)} "
             f"write_conflicts={len(result.write_conflicts)}", fmt)
+    if fail_on_deadline and result.deadline_misses:
+        msg = "\n".join(
+            f"DEADLINE {m['dag']} finish {m['finish']:g} > "
+            f"{m['deadline']:g}" for m in result.deadline_misses)
+        fail_check(msg, fmt)
     if fail_if_misplaced:
         best = payload["placement"]["best"]
         declared = payload["placement"]["declared"]

@@ -44,6 +44,7 @@ class Scenario:
     cap_memory_gb: float
     starts: dict[str, float]                    # dag → start offset
     dag_tasks: dict[str, list[dict[str, Any]]]  # raw task declarations
+    deadlines: dict[str, float] = field(default_factory=dict)
 
 
 def parse_scenario(text: str) -> Scenario:
@@ -71,6 +72,8 @@ def parse_scenario(text: str) -> Scenario:
             raise ValueError(f"dag {name} needs a 'tasks' list")
         scenario.starts[name] = float(dag.get("start") or 0)
         scenario.dag_tasks[name] = tasks
+        if dag.get("deadline") is not None:
+            scenario.deadlines[name] = float(dag["deadline"])
     return scenario
 
 
@@ -136,6 +139,7 @@ class ConflictReport:
     windows: list[Window] = field(default_factory=list)
     write_conflicts: list[dict[str, Any]] = field(default_factory=list)
     suggestion: dict[str, Any] = field(default_factory=dict)
+    deadline_misses: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {"cap_slots": self.cap_slots,
@@ -144,7 +148,8 @@ class ConflictReport:
                 "peak_memory_gb": round(self.peak_memory_gb, 1),
                 "windows": [w.to_dict() for w in self.windows],
                 "write_conflicts": list(self.write_conflicts),
-                "suggestion": dict(self.suggestion)}
+                "suggestion": dict(self.suggestion),
+                "deadline_misses": list(self.deadline_misses)}
 
 
 def _sweep(runs: list[TaskRun], cap_slots: int,
@@ -231,6 +236,14 @@ def simulate(scenario: Scenario) -> ConflictReport:
     report.windows, report.peak_slots, report.peak_memory_gb = _sweep(
         runs, scenario.cap_slots, scenario.cap_memory_gb)
     report.write_conflicts = _write_conflicts(runs)
+    finishes: dict[str, float] = {}
+    for r in runs:
+        finishes[r.dag] = max(finishes.get(r.dag, 0.0), r.finish)
+    for dag, deadline in sorted(scenario.deadlines.items()):
+        finish = finishes.get(dag, 0.0)
+        if finish > deadline:
+            report.deadline_misses.append(
+                {"dag": dag, "deadline": deadline, "finish": finish})
 
     if report.windows:
         worst = max(report.windows,
@@ -258,6 +271,13 @@ def simulate(scenario: Scenario) -> ConflictReport:
                 "peak_slots_before": report.peak_slots,
                 "peak_slots_after": after_peak,
                 "windows_after": len(after_windows)}
+            if victim in scenario.deadlines:
+                shifted_finish = max(r.finish for r in shifted
+                                     if r.dag == victim)
+                if shifted_finish > scenario.deadlines[victim]:
+                    report.suggestion["breaks_deadline"] = {
+                        "deadline": scenario.deadlines[victim],
+                        "finish": shifted_finish}
     return report
 
 

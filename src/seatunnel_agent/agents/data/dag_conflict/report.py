@@ -59,10 +59,24 @@ def render_markdown(report: ConflictReport, lang: str = "zh") -> str:
              ""]
     if report.suggestion:
         s = report.suggestion
-        lines.append(tp(lang, "rpt_suggestion").format(
+        line = tp(lang, "rpt_suggestion").format(
             dag=s["dag"], delay=f"{s['delay']:g}",
             before=s["peak_slots_before"], after=s["peak_slots_after"],
-            windows_after=s["windows_after"]))
+            windows_after=s["windows_after"])
+        if s.get("breaks_deadline"):
+            bd = s["breaks_deadline"]
+            line += tp(lang, "rpt_suggestion_breaks").format(
+                dag=s["dag"], finish=f"{bd['finish']:g}",
+                deadline=f"{bd['deadline']:g}")
+        lines.append(line)
+        lines.append("")
+    if report.deadline_misses:
+        lines.append(f"### {tp(lang, 'rpt_deadlines')}")
+        for m in report.deadline_misses:
+            lines.append("- " + tp(lang, "rpt_deadline_row").format(
+                dag=m["dag"], finish=f"{m['finish']:g}",
+                deadline=f"{m['deadline']:g}",
+                late=f"{m['finish'] - m['deadline']:g}"))
         lines.append("")
     if report.windows:
         lines.append(f"### {tp(lang, 'rpt_windows')}")

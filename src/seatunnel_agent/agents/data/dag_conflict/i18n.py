@@ -40,6 +40,13 @@ DAGCONFLICT_I18N: dict[str, dict[str, str]] = {
         "plc_col_peak": "peak slots",
         "plc_candidates": "Candidate offsets (boundaries of the other "
                           "DAGs' runs)",
+        "rpt_deadlines": "Deadline misses",
+        "rpt_deadline_row": "`{dag}` finishes at {finish} — deadline "
+                            "{deadline} (late by {late})",
+        "rpt_suggestion_breaks": (" **Caution**: this delay pushes "
+                                  "`{dag}` past its deadline "
+                                  "({finish} > {deadline}) — stagger a "
+                                  "different DAG or raise capacity."),
     },
     "zh": {
         "rpt_title": "多 DAG 并发冲突",
@@ -69,6 +76,12 @@ DAGCONFLICT_I18N: dict[str, dict[str, str]] = {
         "plc_col_writes": "写写冲突",
         "plc_col_peak": "峰值槽",
         "plc_candidates": "候选起点（其他 DAG 运行区间的边界）",
+        "rpt_deadlines": "超期（deadline）",
+        "rpt_deadline_row": "`{dag}` 于 {finish} 完成 — deadline {deadline}"
+                            "（迟 {late}）",
+        "rpt_suggestion_breaks": (" **注意**：该顺延会把 `{dag}` 推过 "
+                                  "deadline（{finish} > {deadline}）— "
+                                  "改错峰其他 DAG 或加容量。"),
     },
 }
 

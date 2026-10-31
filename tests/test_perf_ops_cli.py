@@ -383,6 +383,33 @@ def test_slowquery_trend_gate(tmp_path):
     assert res.exit_code == 2
 
 
+def test_dagconflict_deadline_gate(tmp_path):
+    runner = CliRunner()
+    demo = EX / "dagconflict_demo" / "scenario.json"
+    scenario = json.loads(demo.read_text(encoding="utf-8"))
+    for dag in scenario["dags"]:
+        if dag["name"] == "etl_sales":
+            dag["deadline"] = 30  # etl_sales finishes at 35 -> late
+        else:
+            dag["deadline"] = 500  # comfortably met
+    tight = tmp_path / "tight.json"
+    tight.write_text(json.dumps(scenario), encoding="utf-8")
+    res = runner.invoke(dagconflict, ["-f", str(tight), "-F", "json"])
+    body, _ = json.JSONDecoder().raw_decode(res.output)
+    misses = body["deadline_misses"]
+    assert len(misses) == 1 and misses[0]["dag"] == "etl_sales"
+    # markdown names the late DAG; the gate trips
+    res = runner.invoke(dagconflict, ["-f", str(tight), "--lang", "en"])
+    assert res.exit_code == 0 and "Deadline misses" in res.output
+    res = runner.invoke(dagconflict, ["-f", str(tight),
+                                      "--fail-on-deadline-miss"])
+    assert res.exit_code == 1 and "DEADLINE etl_sales" in res.output
+    # no deadlines declared -> nothing reported, gate passes
+    res = runner.invoke(dagconflict, ["-f", str(demo),
+                                      "--fail-on-deadline-miss"])
+    assert res.exit_code == 0
+
+
 def test_sqlcost_batch_dir(tmp_path):
     runner = CliRunner()
     stats = str(EX / "sqlcost_demo" / "stats.json")
