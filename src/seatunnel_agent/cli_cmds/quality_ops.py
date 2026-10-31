@@ -8,6 +8,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent dupcheck      -f rows.csv [--pk id --biz-key "user,ts"]
   seatunnel-agent datavolatility -f series.csv [--fail-on-high]
   seatunnel-agent qualitytrace  -f pipeline.sql --table dws.t [--column c]
+  seatunnel-agent datarepair    -f rows.csv --table dwd.t [--pk id]
 """
 
 from __future__ import annotations
@@ -248,9 +249,50 @@ def qualitytrace(path, text, table, column, symptom, dialect, use_llm,
     _emit(payload, markdown, fmt, output)
 
 
+@click.command("datarepair")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="CSV（带表头）或 JSONL 数据文件")
+@click.option("--text", type=str, default=None, help="内联数据行")
+@click.option("--table", "-t", default="<table>", show_default=True,
+              help="修复 SQL 里的目标表名")
+@click.option("--pk", type=str, default="",
+              help="主键列（逗号分隔），开启主键去重动作")
+@click.option("--biz-key", "biz_key", type=str, default="",
+              help="业务键列（逗号分隔），开启业务键去重动作")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草修复变更说明（需配置 API key）")
+@report_options
+def datarepair(path, text, table, pk, biz_key, use_llm,
+               lang, fmt, output) -> None:
+    """一致性修复 — 数据行 → 修复 SQL 模板清单。"""
+    from seatunnel_agent.agents.data.data_repair import (
+        plan_repairs,
+        render_markdown,
+    )
+
+    try:
+        plan = plan_repairs(_read(path, text, "数据行"), table=table,
+                            pk=pk or None, biz_key=biz_key or None)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(plan, lang=lang)
+    payload = plan.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.data_repair.advisor_llm import (
+            repair_note,
+        )
+        from seatunnel_agent.agents.data.data_repair.i18n import tp
+
+        note = repair_note(plan, lang=lang)
+        payload["repair_note"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
+
+
 def register(cli) -> None:
     cli.add_command(sampleprofile)
     cli.add_command(distanomaly)
     cli.add_command(dupcheck)
     cli.add_command(datavolatility)
     cli.add_command(qualitytrace)
+    cli.add_command(datarepair)

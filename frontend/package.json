@@ -53,6 +53,7 @@
     "dup_check",
     "data_volatility",
     "quality_trace",
+    "data_repair",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
