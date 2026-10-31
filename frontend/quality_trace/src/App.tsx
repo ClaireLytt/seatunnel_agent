@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
+import { useHandoffReceive } from '@shared/handoff'
 import { useRunner } from '@shared/useRunner'
 import { runTrace, type TraceResponse } from '@/api'
 
@@ -27,6 +28,16 @@ export default function App() {
     (q: string, tbl: string, col: string, sym: string, lang: string, useLlm: boolean) =>
       runTrace(q, tbl, col, sym, lang, useLlm),
   )
+
+  useHandoffReceive('qualitytrace', (payload) => {
+    try {
+      const got = JSON.parse(payload) as { column?: string; symptom?: string }
+      if (got.column) setColumn(got.column)
+      if (got.symptom) setSymptom(got.symptom)
+    } catch {
+      setSymptom(payload)
+    }
+  })
 
   const run = () => {
     if (!sql.trim() || !table.trim()) {

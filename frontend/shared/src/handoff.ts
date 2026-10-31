@@ -9,6 +9,7 @@ export const HANDOFF = {
   backfillsql: 'seatunnel.handoff.backfillsql',
   dagopt: 'seatunnel.handoff.dagopt',
   indexadvisor: 'seatunnel.handoff.indexadvisor',
+  qualitytrace: 'seatunnel.handoff.qualitytrace',
   sqlcost: 'seatunnel.handoff.sqlcost',
 } as const
 

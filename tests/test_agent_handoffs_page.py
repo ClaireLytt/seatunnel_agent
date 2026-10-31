@@ -240,3 +240,53 @@ def test_perf_chain_sqlperf_to_indexadvisor_to_sqlcost(perf_chain_url):
         page.wait_for_url("**/sqlcost/")
         expect(page.locator("textarea").first).to_have_value(the_sql)
         browser.close()
+
+
+# ── /datavolatility → /qualitytrace ──────────────────────────────────
+
+from seatunnel_agent.agents.data.data_volatility.manifest import (
+    MANIFEST as VOLATILITY_MF,
+)
+from seatunnel_agent.agents.data.quality_trace.manifest import (
+    MANIFEST as QUALITYTRACE_MF,
+)
+
+volatility_pair_url = make_page_url(
+    VOLATILITY_MF,
+    "seatunnel_agent.agents.data.data_volatility.api:router",
+    "/datavolatility", chdir="root",
+    env={"DATAVOLATILITY_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "datavolatility_demo"),
+         "QUALITYTRACE_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "qualitytrace_demo")},
+    extra_mounts=[("/qualitytrace", QUALITYTRACE_MF)],
+    extra_routers=[
+        "seatunnel_agent.agents.data.quality_trace.api:router"],
+    name="volatility_pair_url")
+
+
+@pytest.mark.uitest
+def test_volatility_to_qualitytrace_handoff(volatility_pair_url):
+    """Analyze on /datavolatility, trace button lands the top finding's
+    metric and symptom in /qualitytrace's inputs."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(volatility_pair_url, wait_until="networkidle")
+        page.get_by_role("button", name="Analyze", exact=True).click()
+        btn = page.get_by_role("button",
+                               name="Trace the top finding upstream")
+        expect(btn).to_be_visible()
+        btn.click()
+        page.wait_for_url("**/qualitytrace/**")
+        expect(page.get_by_role(
+            "heading", name="Quality Trace", exact=True).first
+        ).to_be_visible()
+        # the demo's top finding is VA001 on order_cnt
+        expect(page.get_by_placeholder("e.g. gmv", exact=True)).to_have_value(
+            "order_cnt")
+        sym = page.get_by_placeholder("e.g. gmv doubled since 10-05")
+        expect(sym).to_have_value("VA001 order_cnt 2026-10-07")
+        browser.close()

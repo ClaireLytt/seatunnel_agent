@@ -3,8 +3,15 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
+import { sendHandoff } from '@shared/handoff'
 import { useRunner } from '@shared/useRunner'
 import { runAnalyze, type AnalyzeResponse } from '@/api'
+
+interface VolFinding {
+  code: string
+  metric: string
+  detail: Record<string, unknown>
+}
 
 const DEMO_SERIES = `date,metric,value
 2026-10-01,order_cnt,1020
@@ -46,6 +53,20 @@ export default function App() {
   }
 
   const result = runner.result as AnalyzeResponse | null
+  const findings = (result?.result as { findings?: VolFinding[] } | undefined)?.findings
+  const topFinding = findings && findings.length > 0 ? findings[0] : null
+
+  const trace = () => {
+    if (!topFinding) return
+    const date = (topFinding.detail as { date?: string }).date ?? ''
+    sendHandoff(
+      'qualitytrace',
+      JSON.stringify({
+        column: topFinding.metric,
+        symptom: `${topFinding.code} ${topFinding.metric} ${date}`.trim(),
+      }),
+    )
+  }
 
   return (
     <div className="mx-auto max-w-[1280px] px-4 py-8">
@@ -94,6 +115,14 @@ export default function App() {
               </div>
             )}
             {result?.report && <ReportView markdown={result.report} />}
+            {topFinding && (
+              <button
+                onClick={trace}
+                className="mt-4 rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm font-semibold text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+              >
+                {t('trace_btn')}
+              </button>
+            )}
             {!result?.report && !runner.error && (
               <p className="text-sm text-muted">{t('report_ph')}</p>
             )}
