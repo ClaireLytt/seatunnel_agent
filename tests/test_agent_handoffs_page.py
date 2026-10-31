@@ -187,3 +187,55 @@ def test_indexadvisor_hands_off_workload_to_sqlcost(cost_pair_url):
         page.wait_for_url("**/sqlcost/")
         expect(page.locator("textarea").first).to_have_value(workload)
         browser.close()
+
+
+from seatunnel_agent.agents.data.sql_perf.manifest import (
+    MANIFEST as SQLPERF_MF,
+)
+
+perf_chain_url = make_page_url(
+    SQLCOST_MF,
+    "seatunnel_agent.agents.data.sql_cost.api:router",
+    "/sqlcost", chdir="root",
+    env={"SQLPERF_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "sqlperf_demo"),
+         "INDEXADVISOR_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "indexadvisor_demo"),
+         "SQLCOST_API_ALLOWED_DIRS":
+             str(ROOT / "examples" / "sqlcost_demo")},
+    extra_mounts=[("/sqlperf", SQLPERF_MF),
+                  ("/indexadvisor", INDEXADV_MF)],
+    extra_routers=["seatunnel_agent.agents.data.sql_perf.api:router",
+                   "seatunnel_agent.agents.data.index_advisor.api:router"],
+    name="perf_chain_url")
+
+
+@pytest.mark.uitest
+def test_perf_chain_sqlperf_to_indexadvisor_to_sqlcost(perf_chain_url):
+    """/sqlperf (plan + SQL) -> index advice auto-runs on /indexadvisor
+    -> SQL prefilled on /sqlcost."""
+    from playwright.sync_api import expect, sync_playwright
+
+    the_sql = "SELECT amount FROM ods.orders WHERE dt = '2024-05-01'"
+    base = perf_chain_url.rsplit("/sqlcost", 1)[0]
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(f"{base}/sqlperf/", wait_until="networkidle")
+        page.get_by_text("LLM rewrite of the SQL", exact=False).click()
+        page.locator("textarea").nth(1).fill(the_sql)
+        page.get_by_role("button", name="Analyze file", exact=True).click()
+        handoff = page.get_by_role(
+            "button", name="Recommend indexes for this SQL")
+        expect(handoff).to_be_visible()
+        handoff.click()
+        page.wait_for_url("**/indexadvisor/")
+        # the advice auto-ran off the handed SQL
+        expect(page.get_by_role(
+            "heading", name="Index / Partition Recommendation",
+            exact=False)).to_be_visible(timeout=15000)
+        page.get_by_role(
+            "button", name="Verify the saving on the cost page").click()
+        page.wait_for_url("**/sqlcost/")
+        expect(page.locator("textarea").first).to_have_value(the_sql)
+        browser.close()

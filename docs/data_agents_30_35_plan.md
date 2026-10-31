@@ -111,3 +111,6 @@ slots/memory）± 各 DAG 启动时刻。
 8. [x] what-if web/API parity: assume_partitions on the sqlcost API and
    an optional what-if input on /sqlcost; spec parsing sunk into
    estimator.parse_assumptions shared by CLI and API.
+9. [x] three-page perf chain: /sqlperf "recommend indexes for this SQL"
+   hands the pasted SQL to /indexadvisor (auto-runs) which already hands
+   to /sqlcost - plan analysis -> advice -> cost verification.

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
@@ -13,6 +13,18 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
+
+  useEffect(() => {
+    const handed = sessionStorage.getItem('seatunnel.handoff.indexadvisor')
+    if (!handed) return
+    sessionStorage.removeItem('seatunnel.handoff.indexadvisor')
+    setText(handed)
+    setBusy(true)
+    runRecommend(null, handed, '', i18n.language)
+      .then((res) => setReport(res.report ?? ''))
+      .catch((e) => setError(String(e)))
+      .finally(() => setBusy(false))
+  }, [i18n.language])
 
   const toSqlcost = () => {
     sessionStorage.setItem('seatunnel.handoff.sqlcost', text)

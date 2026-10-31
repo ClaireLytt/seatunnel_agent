@@ -15,6 +15,11 @@ export default function App() {
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
 
+  const toIndexAdvisor = () => {
+    sessionStorage.setItem('seatunnel.handoff.indexadvisor', sql)
+    window.location.href = '/indexadvisor/'
+  }
+
   const run = async (useText: boolean) => {
     const src = useText ? text : file
     if (!src.trim()) {
@@ -149,6 +154,14 @@ export default function App() {
               <div className="mb-3 font-mono text-sm" style={{ color: 'var(--accent)' }}>
                 {error}
               </div>
+            )}
+            {report && sql.trim() && (
+              <button
+                onClick={toIndexAdvisor}
+                className="mb-4 w-full rounded border-[1.5px] border-ink px-4 py-2 font-mono text-sm font-semibold text-ink transition hover:-translate-x-px hover:-translate-y-px hover:shadow-hard"
+              >
+                {t('to_indexadvisor')}
+              </button>
             )}
             {report && <ReportView markdown={report} />}
             {!report && !error && <p className="text-sm text-muted">{t('report_ph')}</p>}

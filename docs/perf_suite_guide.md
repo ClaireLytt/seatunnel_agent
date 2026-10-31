@@ -58,6 +58,9 @@ sql_perf 读**引擎计划**、slow_query 读**运行指标** — 四个视角�
 - 新表上线：`/indexadvisor` 按历史查询定分区分桶（粘贴负载时报告上方
   有「到成本页验证」按钮，一键把 SQL 递到 `/sqlcost`）→ 预估大查询的
   量级 → 上线后用 `/sqlperf` 验证裁剪真的生效。
+- 三页连走：`/sqlperf` 贴了原 SQL 时报告上方有「用这条 SQL 推荐索引」，
+  递到 `/indexadvisor` 自动出建议，再一键到 `/sqlcost` 验证省比——
+  计划分析 → 索引建议 → 成本验证全程零复制。
 
 示例输入在 `examples/`：`sqlperf_demo`、`indexadvisor_demo`、
 `sqlcost_demo`、`slowquery_demo`、`dagconflict_demo`、
