@@ -10,6 +10,7 @@ from click.testing import CliRunner
 from seatunnel_agent.cli_cmds.perf_ops import (
     dagconflict,
     index_adv,
+    perf_report,
     slowquery,
     sqlcost,
     sqlperf,
@@ -355,6 +356,59 @@ def test_sqlcost_fail_if_worse_gate():
     # without --compare-sql-file it is a usage error
     res = runner.invoke(sqlcost, ["--sql-file", full, "-f", stats,
                                   "--fail-if-worse"])
+    assert res.exit_code == 2
+
+
+def test_perf_report_one_shot(tmp_path):
+    runner = CliRunner()
+    root = tmp_path / "inputs"
+    (root / "queries").mkdir(parents=True)
+    (root / "workload").mkdir()
+    # plan + before, metrics + baseline, queries + stats, scenario, workload
+    (root / "plan.txt").write_text(
+        (EX / "sqlperf_demo" / "plan.txt").read_text("utf-8"), "utf-8")
+    (root / "plan_before.txt").write_text(
+        (EX / "sqlperf_demo" / "plan.txt").read_text("utf-8"), "utf-8")
+    (root / "metrics.json").write_text(
+        (EX / "slowquery_demo" / "metrics.json").read_text("utf-8"), "utf-8")
+    (root / "baseline.jsonl").write_text(
+        (EX / "slowquery_demo" / "baseline.jsonl").read_text("utf-8"),
+        "utf-8")
+    (root / "queries" / "q.sql").write_text(
+        (EX / "sqlcost_demo" / "query.sql").read_text("utf-8"), "utf-8")
+    (root / "stats.json").write_text(
+        (EX / "sqlcost_demo" / "stats.json").read_text("utf-8"), "utf-8")
+    (root / "scenario.json").write_text(
+        (EX / "dagconflict_demo" / "scenario.json").read_text("utf-8"),
+        "utf-8")
+    (root / "workload" / "queries.sql").write_text(
+        (EX / "indexadvisor_demo" / "queries.sql").read_text("utf-8"),
+        "utf-8")
+    res = runner.invoke(perf_report, ["-d", str(root), "-F", "json"])
+    assert res.exit_code == 0
+    body = json.loads(res.output)
+    assert set(body["sections"]) == {"plan", "slow_query", "cost", "dag",
+                                     "index"}
+    assert body["skipped"] == [] and body["failed"] == []
+    res = runner.invoke(perf_report, ["-d", str(root), "--lang", "en"])
+    assert res.exit_code == 0
+    assert "Performance Health Report" in res.output
+    # partial directory: missing inputs are named, present ones still run
+    partial = tmp_path / "partial"
+    partial.mkdir()
+    (partial / "plan.txt").write_text(
+        (EX / "sqlperf_demo" / "plan.txt").read_text("utf-8"), "utf-8")
+    (partial / "metrics.json").write_text("{broken", "utf-8")
+    res = runner.invoke(perf_report, ["-d", str(partial), "-F", "json"])
+    assert res.exit_code == 0
+    body = json.loads(res.output)
+    assert "plan" in body["sections"]
+    assert any("slow_query" in f for f in body["failed"])
+    assert "cost" in body["skipped"]
+    # nothing recognized -> usage error
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    res = runner.invoke(perf_report, ["-d", str(empty)])
     assert res.exit_code == 2
 
 
