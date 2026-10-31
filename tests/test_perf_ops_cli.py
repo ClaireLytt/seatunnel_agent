@@ -364,6 +364,32 @@ def test_dagconflict_place():
     assert res.exit_code == 0 and "Admission check" in res.output
 
 
+def test_dagconflict_misplaced_gate(tmp_path):
+    runner = CliRunner()
+    demo = EX / "dagconflict_demo" / "scenario.json"
+    # demo declares a conflicting offset -> gate trips
+    res = runner.invoke(dagconflict, ["-f", str(demo), "--place",
+                                      "etl_users", "--fail-if-misplaced"])
+    assert res.exit_code == 1 and "MISPLACED etl_users" in res.output
+    # move the dag to the best offset -> gate passes
+    scenario = json.loads(demo.read_text(encoding="utf-8"))
+    best = json.loads(runner.invoke(
+        dagconflict, ["-f", str(demo), "--place", "etl_users",
+                      "-F", "json"]).output)["placement"]["best"]
+    for dag in scenario["dags"]:
+        if dag["name"] == "etl_users":
+            dag["start"] = best["offset"]
+    moved = tmp_path / "moved.json"
+    moved.write_text(json.dumps(scenario), encoding="utf-8")
+    res = runner.invoke(dagconflict, ["-f", str(moved), "--place",
+                                      "etl_users", "--fail-if-misplaced"])
+    assert res.exit_code == 0
+    # without --place it is a usage error
+    res = runner.invoke(dagconflict, ["-f", str(demo),
+                                      "--fail-if-misplaced"])
+    assert res.exit_code == 2
+
+
 def test_sqlcost_compare_rewrite():
     runner = CliRunner()
     res = runner.invoke(sqlcost, [

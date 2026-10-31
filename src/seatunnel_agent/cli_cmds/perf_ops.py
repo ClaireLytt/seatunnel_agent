@@ -378,9 +378,13 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
 @click.option("--place", "place_dag", type=str, default=None,
               help="准入检查：对该 DAG 扫描候选起点，"
                    "选冲突最少、峰值最低的错峰位")
+@click.option("--fail-if-misplaced", "fail_if_misplaced", is_flag=True,
+              default=False,
+              help="CI gate：声明起点劣于最优起点时 exit 1"
+                   "（需配合 --place）")
 @report_options
 def dagconflict(path, text, fail_on_conflict, history_path, place_dag,
-                lang, fmt, output) -> None:
+                fail_if_misplaced, lang, fmt, output) -> None:
     """并发冲突检测 — 多 DAG 场景 → 超容窗/写写冲突/错峰建议。"""
     from seatunnel_agent.agents.data.dag_conflict import (
         parse_scenario,
@@ -390,6 +394,8 @@ def dagconflict(path, text, fail_on_conflict, history_path, place_dag,
         simulate,
     )
 
+    if fail_if_misplaced and not place_dag:
+        raise click.UsageError("--fail-if-misplaced 需配合 --place")
     scenario = parse_scenario(_read(path, text, "场景 JSON"))
     result = simulate(scenario)
     payload = result.to_dict()
@@ -413,6 +419,19 @@ def dagconflict(path, text, fail_on_conflict, history_path, place_dag,
         fail_check(
             f"CONFLICT windows={len(result.windows)} "
             f"write_conflicts={len(result.write_conflicts)}", fmt)
+    if fail_if_misplaced:
+        best = payload["placement"]["best"]
+        declared = payload["placement"]["declared"]
+        if ((declared["windows"] + declared["write_conflicts"],
+             declared["peak_slots"])
+                > (best["windows"] + best["write_conflicts"],
+                   best["peak_slots"])):
+            fail_check(
+                f"MISPLACED {place_dag} offset {declared['offset']:g} "
+                f"({declared['windows']}w/{declared['write_conflicts']}c/"
+                f"{declared['peak_slots']}p) vs best {best['offset']:g} "
+                f"({best['windows']}w/{best['write_conflicts']}c/"
+                f"{best['peak_slots']}p)", fmt)
 
 
 def register(cli) -> None:
