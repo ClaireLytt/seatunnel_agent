@@ -720,23 +720,56 @@ def scheduleadvisor(path, text, use_llm, fail_breach,
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="失败任务导出文件（CSV 或 JSON 列表）")
 @click.option("--text", type=str, default=None, help="内联导出")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="失败台账：总数与各归因计数追加到该 jsonl 并打印漂移")
+@click.option("--trend", "trend_n", type=click.IntRange(min=2), default=None,
+              help="恶化趋势：台账（含本次）最近 N 次失败总数逐次上涨时"
+                   "在报告点名（需配合 --history）")
+@click.option("--fail-on-trend", "fail_on_trend", is_flag=True,
+              default=False, help="CI gate：检出恶化趋势时 exit 1")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草失败通报（需配置 API key）")
 @report_options
-def taskfailure(path, text, use_llm, lang, fmt, output) -> None:
-    """任务失败归因 — 失败导出 → 根因聚类 + 重试判定。"""
+def taskfailure(path, text, history_path, trend_n, fail_on_trend, use_llm,
+                lang, fmt, output) -> None:
+    """任务失败归因 — 失败导出 → 根因聚类 + 重试判定；--history 记台账。"""
+    import json as _json
+    from pathlib import Path
+
     from seatunnel_agent.agents.data.task_failure import (
         classify_failures,
         parse_failures,
         render_markdown,
     )
 
+    require_with((trend_n or fail_on_trend) and not history_path,
+                 "--trend / --fail-on-trend", "--history")
+    require_with(fail_on_trend and not trend_n, "--fail-on-trend",
+                 "--trend N")
     try:
         result = classify_failures(parse_failures(_read(path, text, "导出")))
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
     markdown = render_markdown(result, lang=lang)
     payload = result.to_dict()
+    trend = None
+    if trend_n:
+        from .check_runner import rising_trend
+
+        ledger = (Path(history_path).read_text(encoding="utf-8",
+                                               errors="replace")
+                  if Path(history_path).is_file() else "")
+        entries = [_json.loads(ln) for ln in ledger.splitlines()
+                   if ln.strip()]
+        entries.append({"total": result.total})
+        trend = rising_trend(entries, "total", trend_n)
+        if trend:
+            payload["trend"] = trend
+            markdown += (f"\n\n**failures rising** — "
+                         f"{trend['from_v']:g} -> {trend['to_v']:g} "
+                         f"over {trend['records']} run(s) "
+                         f"(+{trend['growth_pct']}%)")
     if use_llm:
         from seatunnel_agent.agents.data.task_failure.advisor_llm import (
             failure_note,
@@ -747,6 +780,15 @@ def taskfailure(path, text, use_llm, lang, fmt, output) -> None:
             payload, markdown, failure_note(result, lang=lang),
             "failure_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
+    if history_path:
+        _track_history(history_path, {
+            "total": result.total,
+            **{f"cause_{c}": n for c, n in result.causes.items()}},
+            worse_key="total")
+    if fail_on_trend and trend:
+        fail_check(f"TREND failures {trend['from_v']:g} -> "
+                   f"{trend['to_v']:g} over {trend['records']} run(s)",
+                   fmt)
 
 
 @click.command("rtoffline")
@@ -1102,25 +1144,61 @@ def grantreview(path, text, vocab_path, use_llm, fail_reject,
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="状态快照 JSON 文件")
 @click.option("--text", type=str, default=None, help="内联快照 JSON")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="运行台账：连接数/执行线程/高危数追加到该 jsonl")
+@click.option("--trend", "trend_n", type=click.IntRange(min=2), default=None,
+              help="爬升趋势：台账（含本次）最近 N 次 threads_connected "
+                   "逐次上涨时在报告点名（需配合 --history）")
+@click.option("--fail-on-trend", "fail_on_trend", is_flag=True,
+              default=False, help="CI gate：检出爬升趋势时 exit 1")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草事故通报（需配置 API key）")
 @click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
               help="CI gate：存在 high 级发现时 exit 1")
 @report_options
-def dbdiag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
-    """数据库运行诊断 — 快照 → 发现 + 处方。"""
+def dbdiag(path, text, history_path, trend_n, fail_on_trend, use_llm,
+           fail_high, lang, fmt, output) -> None:
+    """数据库运行诊断 — 快照 → 发现 + 处方；--history 记台账。"""
+    import json as _json
+    from pathlib import Path
+
     from seatunnel_agent.agents.data.db_diag import (
         diagnose_snapshot,
         parse_snapshot,
         render_markdown,
     )
 
+    require_with((trend_n or fail_on_trend) and not history_path,
+                 "--trend / --fail-on-trend", "--history")
+    require_with(fail_on_trend and not trend_n, "--fail-on-trend",
+                 "--trend N")
     try:
-        diag = diagnose_snapshot(parse_snapshot(_read(path, text, "快照")))
+        snap = parse_snapshot(_read(path, text, "快照"))
+        diag = diagnose_snapshot(snap)
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
     markdown = render_markdown(diag, lang=lang)
     payload = diag.to_dict()
+    status = snap.get("status") or {}
+    connected = float(status.get("threads_connected") or 0)
+    trend = None
+    if trend_n:
+        from .check_runner import rising_trend
+
+        ledger = (Path(history_path).read_text(encoding="utf-8",
+                                               errors="replace")
+                  if Path(history_path).is_file() else "")
+        entries = [_json.loads(ln) for ln in ledger.splitlines()
+                   if ln.strip()]
+        entries.append({"threads_connected": connected})
+        trend = rising_trend(entries, "threads_connected", trend_n)
+        if trend:
+            payload["trend"] = trend
+            markdown += (f"\n\n**threads_connected rising** — "
+                         f"{trend['from_v']:g} -> {trend['to_v']:g} "
+                         f"over {trend['records']} snapshots "
+                         f"(+{trend['growth_pct']}%)")
     if use_llm:
         from seatunnel_agent.agents.data.db_diag.advisor_llm import (
             incident_note,
@@ -1131,6 +1209,17 @@ def dbdiag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
             payload, markdown, incident_note(diag, lang=lang),
             "incident_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
+    if history_path:
+        _track_history(history_path, {
+            "threads_connected": connected,
+            "threads_running": float(status.get("threads_running") or 0),
+            "high_findings": sum(1 for f in diag.findings
+                                 if f.severity == "high")},
+            worse_key="high_findings")
+    if fail_on_trend and trend:
+        fail_check(f"TREND threads_connected {trend['from_v']:g} -> "
+                   f"{trend['to_v']:g} over {trend['records']} "
+                   f"snapshots", fmt)
     if fail_high:
         fail_on_high(diag.findings, fmt)
 

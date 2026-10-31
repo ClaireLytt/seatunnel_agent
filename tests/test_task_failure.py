@@ -177,3 +177,38 @@ def test_mcp_tool_markdown():
     assert "Task Failure Attribution" in out and "transient" in out
     assert "must not be empty" in task_failure("  ")
     assert "bad input" in task_failure('[{"error": "x"}]')
+
+
+# ── history ledger + trend ───────────────────────────────────────────
+
+def test_cli_history_and_trend(tmp_path):
+    import json as _json
+
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    ledger = tmp_path / "fail.jsonl"
+    ledger.write_text(
+        _json.dumps({"total": 3}) + "\n"
+        + _json.dumps({"total": 5}) + "\n", encoding="utf-8")
+    res = CliRunner().invoke(cli, [
+        "taskfailure", "-f", str(DEMO), "--history", str(ledger),
+        "--trend", "3", "--lang", "zh"])
+    assert res.exit_code == 0, res.output
+    assert "failures rising" in res.output
+    lines = [_json.loads(x) for x in
+             ledger.read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert lines[-1]["total"] == 7
+    assert lines[-1]["cause_dependency_missing"] == 3
+    ledger2 = tmp_path / "fail2.jsonl"
+    ledger2.write_text(
+        _json.dumps({"total": 3}) + "\n"
+        + _json.dumps({"total": 5}) + "\n", encoding="utf-8")
+    gate = CliRunner().invoke(cli, [
+        "taskfailure", "-f", str(DEMO), "--history", str(ledger2),
+        "--trend", "3", "--fail-on-trend"])
+    assert gate.exit_code == 1
+    missing = CliRunner().invoke(cli, ["taskfailure", "-f", str(DEMO),
+                                       "--trend", "3"])
+    assert missing.exit_code == 2

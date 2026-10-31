@@ -196,3 +196,41 @@ def test_mcp_tool_markdown():
     assert "Database Runtime Diagnosis" in out and "DB004" in out
     assert "must not be empty" in db_diag("  ")
     assert "bad input" in db_diag("not json")
+
+
+# ── history ledger + trend ───────────────────────────────────────────
+
+def test_cli_history_and_trend(tmp_path):
+    import json as _json
+
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    ledger = tmp_path / "db.jsonl"
+    ledger.write_text(
+        _json.dumps({"threads_connected": 300}) + "\n"
+        + _json.dumps({"threads_connected": 400}) + "\n",
+        encoding="utf-8")
+    res = CliRunner().invoke(cli, [
+        "dbdiag", "-f", str(DEMO), "--history", str(ledger),
+        "--trend", "3", "--lang", "zh"])
+    assert res.exit_code == 0, res.output
+    assert "threads_connected rising" in res.output
+    lines = [_json.loads(x) for x in
+             ledger.read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert lines[-1]["threads_connected"] == 480.0
+    assert lines[-1]["high_findings"] == 4
+    # the gate fires on the same ledger shape
+    ledger2 = tmp_path / "db2.jsonl"
+    ledger2.write_text(
+        _json.dumps({"threads_connected": 300}) + "\n"
+        + _json.dumps({"threads_connected": 400}) + "\n",
+        encoding="utf-8")
+    gate = CliRunner().invoke(cli, [
+        "dbdiag", "-f", str(DEMO), "--history", str(ledger2),
+        "--trend", "3", "--fail-on-trend"])
+    assert gate.exit_code == 1
+    missing = CliRunner().invoke(cli, ["dbdiag", "-f", str(DEMO),
+                                       "--trend", "3"])
+    assert missing.exit_code == 2
