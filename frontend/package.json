@@ -56,6 +56,7 @@
     "data_repair",
     "asset_search",
     "data_dict",
+    "asset_value",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

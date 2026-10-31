@@ -1,0 +1,9 @@
+table,size_gb,access_cnt_30d,last_access,downstream_cnt
+dws.orders_daily,120,860,2026-10-30,9
+dwd.orders,900,420,2026-10-30,6
+dim.users,15,510,2026-10-29,12
+ods.orders_raw,1400,35,2026-10-30,1
+tmp.backfill_201902,2300,0,2026-02-11,0
+dws.user_retention_weekly,40,22,2026-10-12,2
+bak.orders_v1,1800,1,2026-05-02,0
+ads.board_kpi,8,300,2026-10-30,0

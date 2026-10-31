@@ -11,6 +11,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent datarepair    -f rows.csv --table dwd.t [--pk id]
   seatunnel-agent assetsearch   -f catalog.json --query "按日的订单金额"
   seatunnel-agent datadict      -f catalog.json [--sql-file workload.sql]
+  seatunnel-agent assetvalue    -f inventory.csv
 """
 
 from __future__ import annotations
@@ -337,6 +338,40 @@ def register(cli) -> None:
     cli.add_command(datarepair)
     cli.add_command(assetsearch)
     cli.add_command(datadict)
+    cli.add_command(assetvalue)
+
+
+@click.command("assetvalue")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="资产清单：CSV 或 JSON 文件")
+@click.option("--text", type=str, default=None, help="内联清单行")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草评估通报（需配置 API key）")
+@report_options
+def assetvalue(path, text, use_llm, lang, fmt, output) -> None:
+    """资产价值评估 — 清单 → 分层 + 价值×成本象限。"""
+    from seatunnel_agent.agents.data.asset_value import (
+        parse_inventory,
+        render_markdown,
+        value_assets,
+    )
+
+    try:
+        result = value_assets(parse_inventory(_read(path, text, "资产清单")))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.asset_value.advisor_llm import (
+            grading_note,
+        )
+        from seatunnel_agent.agents.data.asset_value.i18n import tp
+
+        note = grading_note(result, lang=lang)
+        payload["grading_note"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
 
 
 @click.command("datadict")
