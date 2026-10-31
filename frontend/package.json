@@ -65,6 +65,7 @@
     "rt_latency",
     "cdc_diag",
     "rt_offline_diff",
+    "task_failure",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

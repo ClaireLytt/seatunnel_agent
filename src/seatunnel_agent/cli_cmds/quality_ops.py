@@ -20,6 +20,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent rtlatency     -f events.csv [--sla-ms 60000]
   seatunnel-agent cdcdiag       -f sync.json [--fail-on-high]
   seatunnel-agent rtoffline     --realtime rt.csv --offline off.csv -k dt
+  seatunnel-agent taskfailure   -f failures.json
 """
 
 from __future__ import annotations
@@ -357,6 +358,40 @@ def register(cli) -> None:
     cli.add_command(rtlatency)
     cli.add_command(cdcdiag)
     cli.add_command(rtoffline)
+    cli.add_command(taskfailure)
+
+
+@click.command("taskfailure")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="失败任务导出文件（CSV 或 JSON 列表）")
+@click.option("--text", type=str, default=None, help="内联导出")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草失败通报（需配置 API key）")
+@report_options
+def taskfailure(path, text, use_llm, lang, fmt, output) -> None:
+    """任务失败归因 — 失败导出 → 根因聚类 + 重试判定。"""
+    from seatunnel_agent.agents.data.task_failure import (
+        classify_failures,
+        parse_failures,
+        render_markdown,
+    )
+
+    try:
+        result = classify_failures(parse_failures(_read(path, text, "导出")))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.task_failure.advisor_llm import (
+            failure_note,
+        )
+        from seatunnel_agent.agents.data.task_failure.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, failure_note(result, lang=lang),
+            "failure_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
 
 
 @click.command("rtoffline")
