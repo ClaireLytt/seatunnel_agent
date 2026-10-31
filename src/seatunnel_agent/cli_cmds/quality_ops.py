@@ -25,6 +25,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent layercheck    -f pipeline.sql [--fail-on-high]
   seatunnel-agent partitionhealth -f partitions.csv [--fail-on-high]
   seatunnel-agent capacityforecast -f storage.csv --quota 2000
+  seatunnel-agent configdiff    --left dev.conf --right prod.conf
 """
 
 from __future__ import annotations
@@ -367,6 +368,51 @@ def register(cli) -> None:
     cli.add_command(layercheck)
     cli.add_command(partitionhealth)
     cli.add_command(capacityforecast)
+    cli.add_command(configdiff)
+
+
+@click.command("configdiff")
+@click.option("--left", "-l", "left_path",
+              type=click.Path(exists=True, dir_okay=False), required=True,
+              help="左侧配置文件（如 dev）")
+@click.option("--right", "right_path",
+              type=click.Path(exists=True, dir_okay=False), required=True,
+              help="右侧配置文件（如 prod）")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草发布评审意见（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级差异时 exit 1")
+@report_options
+def configdiff(left_path, right_path, use_llm, fail_high,
+               lang, fmt, output) -> None:
+    """配置漂移对比 — 双配置 → 分级语义差异。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.config_diff import (
+        diff_configs,
+        render_markdown,
+    )
+
+    try:
+        result = diff_configs(
+            Path(left_path).read_text(encoding="utf-8", errors="replace"),
+            Path(right_path).read_text(encoding="utf-8", errors="replace"))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.config_diff.advisor_llm import (
+            drift_note,
+        )
+        from seatunnel_agent.agents.data.config_diff.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, drift_note(result, lang=lang),
+            "drift_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(result.entries, fmt, label=lambda e: e.key)
 
 
 @click.command("capacityforecast")

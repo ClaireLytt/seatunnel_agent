@@ -71,6 +71,7 @@
     "layer_check",
     "partition_health",
     "capacity_forecast",
+    "config_diff",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
