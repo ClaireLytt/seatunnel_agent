@@ -1,0 +1,18 @@
+{
+  "source": {
+    "binlog_file": "mysql-bin.000123",
+    "position": 456789,
+    "retention_hours": 24
+  },
+  "consumer": {
+    "binlog_file": "mysql-bin.000120",
+    "position": 99999,
+    "last_event_ts": "2026-10-30 22:00:00",
+    "now": "2026-10-31 12:00:00"
+  },
+  "errors": [
+    "ERROR 1062: Duplicate entry '42' for key 'PRIMARY'",
+    "ALTER TABLE orders ADD COLUMN coupon_id BIGINT applied upstream",
+    "Connection reset by peer while reading binlog"
+  ]
+}

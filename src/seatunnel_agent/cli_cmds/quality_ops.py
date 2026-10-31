@@ -18,6 +18,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent kafkalag      -f snapshot.json [--fail-on-high]
   seatunnel-agent flinkdiag     -f job.json [--fail-on-high]
   seatunnel-agent rtlatency     -f events.csv [--sla-ms 60000]
+  seatunnel-agent cdcdiag       -f sync.json [--fail-on-high]
 """
 
 from __future__ import annotations
@@ -351,6 +352,46 @@ def register(cli) -> None:
     cli.add_command(kafkalag)
     cli.add_command(flinkdiag)
     cli.add_command(rtlatency)
+    cli.add_command(cdcdiag)
+
+
+@click.command("cdcdiag")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="同步快照 JSON 文件")
+@click.option("--text", type=str, default=None, help="内联快照 JSON")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草事故通报（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def cdcdiag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
+    """CDC 同步异常诊断 — 快照 → binlog/断点/丢数风险发现。"""
+    from seatunnel_agent.agents.data.cdc_diag import (
+        diagnose_cdc,
+        parse_cdc_snapshot,
+        render_markdown,
+    )
+
+    try:
+        diag = diagnose_cdc(parse_cdc_snapshot(_read(path, text, "快照")))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(diag, lang=lang)
+    payload = diag.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.cdc_diag.advisor_llm import (
+            incident_note,
+        )
+        from seatunnel_agent.agents.data.cdc_diag.i18n import tp
+
+        note = incident_note(diag, lang=lang)
+        payload["incident_note"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        worst = [f for f in diag.findings if f.severity == "high"]
+        if worst:
+            fail_check("HIGH " + ", ".join(f.code for f in worst), fmt)
 
 
 @click.command("rtlatency")
