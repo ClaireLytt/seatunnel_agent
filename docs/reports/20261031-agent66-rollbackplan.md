@@ -27,10 +27,10 @@ All checks passed!   (ruff)
 ## Gate
 
 ```
-[PASS] AI署名检查
-[PASS] 工作区注册检查
-[PASS] 报告落盘检查
-[PASS] 报告验证输出检查
-[PASS] floor 检查
-[PASS] 前端锁文件检查
+[PASS] AI 署名: 无 AI 署名(范围 origin/fresh..HEAD)
+[PASS] 工作区: 工作区干净
+[PASS] 报告落盘: 代码改动已附带落盘报告
+[PASS] 报告含验证输出: 报告含 check_workflow 输出
+[PASS] floor: 无作弊变绿改动(范围 origin/fresh..HEAD)
+[PASS] 前端锁文件: workspace 与锁文件同步(范围 origin/fresh..HEAD)
 ```
