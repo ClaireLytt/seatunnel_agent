@@ -106,14 +106,9 @@ def _split(text: str) -> list[str]:
 
 
 def _alias_map(stmt: Any) -> dict[str, str]:
-    from sqlglot import exp
+    from seatunnel_agent.common.utils import sql_alias_map
 
-    out: dict[str, str] = {}
-    for t in stmt.find_all(exp.Table):
-        name = ".".join(p for p in (t.db, t.name) if p).lower()
-        out[(t.alias_or_name or t.name).lower()] = name
-        out.setdefault(t.name.lower(), name)
-    return out
+    return sql_alias_map(stmt, include_bare=True)
 
 
 def _resolve(col: Any, aliases: dict[str, str]) -> tuple[str, str] | None:

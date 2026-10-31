@@ -51,6 +51,7 @@ class ScanInfo:
     columns: int
     partition_filters: str | None = None  # None: not stated in the plan
     pushed_filters: str | None = None
+    filter_above: bool = False  # a Filter node sits above this scan
 
     def to_dict(self) -> dict[str, Any]:
         return {"table": self.table, "columns": self.columns,
@@ -77,10 +78,9 @@ class PlanReport:
     findings: list[PerfFinding] = field(default_factory=list)
 
     def counts(self) -> dict[str, int]:
-        out = dict.fromkeys(SEVERITIES, 0)
-        for f in self.findings:
-            out[f.severity] += 1
-        return out
+        from seatunnel_agent.common.severity import severity_counts
+
+        return severity_counts(self.findings, keys=SEVERITIES)
 
     def to_dict(self) -> dict[str, Any]:
         return {"joins": dict(self.joins), "exchanges": self.exchanges,
@@ -116,8 +116,8 @@ def parse_plan(text: str) -> PlanReport:
         pushed_m = _PUSHED_FILTERS_RE.search(line)
         if pushed_m:
             scan.pushed_filters = pushed_m.group("val").strip()
-        if (scan.pushed_filters == "" and filter_above):
-            scan.pushed_filters = ""  # keep explicit empty for the rule
+        scan.filter_above = filter_above
+        filter_above = False  # consumed by this scan
         report.scans.append(scan)
     if not report.joins and not report.scans and not report.exchanges:
         raise ValueError("no plan operators recognized — paste the "
@@ -136,7 +136,7 @@ def analyze(text: str) -> PlanReport:
     for scan in report.scans:
         if scan.partition_filters == "":
             add(PerfFinding("PF002", "high", scan.table))
-        if scan.pushed_filters == "":
+        if scan.pushed_filters == "" and scan.filter_above:
             add(PerfFinding("PF003", "medium", scan.table))
         if scan.columns >= 20:
             add(PerfFinding("PF006", "info",

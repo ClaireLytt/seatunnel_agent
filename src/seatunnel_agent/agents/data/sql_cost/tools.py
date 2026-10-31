@@ -27,8 +27,6 @@ def sql_cost(sql: str, stats: str, lang: str = "") -> str:
         return "表统计清单不能为空 / stats inventory must not be empty"
     try:
         card = estimate(sql, parse_stats(stats))
-    except ValueError as exc:
-        return f"输入有误 / bad input: {exc}"
-    except Exception as exc:  # malformed JSON
+    except Exception as exc:  # bad values or malformed JSON
         return f"输入有误 / bad input: {exc}"
     return render_markdown(card, lang=normalize_lang(lang))

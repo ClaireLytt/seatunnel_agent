@@ -29,13 +29,9 @@ _SYSTEM_EN = (
 
 def action_plan(result: DagOptimizeResult, lang: str = "zh") -> str:
     """One LLM call → the prioritized optimisation to-do list."""
-    from seatunnel_agent.common.config import load_settings
-    from seatunnel_agent.common.llm import LLMClient
+    from seatunnel_agent.common.llm import one_shot
 
-    client = LLMClient(load_settings(), agent="dag_optimize")
     data = result.to_dict()
     data.pop("optimized", None)  # long and derivable — not needed
     payload = json.dumps(data, ensure_ascii=False)
-    system = _SYSTEM_ZH if lang == "zh" else _SYSTEM_EN
-    resp = client.chat(system, [{"role": "user", "content": payload}])
-    return resp.reply_text.strip()
+    return one_shot("dag_optimize", _SYSTEM_ZH, _SYSTEM_EN, payload, lang)

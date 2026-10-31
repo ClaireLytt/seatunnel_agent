@@ -130,20 +130,19 @@ def diagnose(run: RunMetrics,
     add = diag.causes.append
 
     worst_skew = 0.0
-    worst_stage = ""
+    worst_st: StageMetrics | None = None
     for st in run.stages:
         if st.task_median_s > 0:
             ratio = st.task_max_s / st.task_median_s
             if ratio > worst_skew:
-                worst_skew, worst_stage = ratio, st.stage
-    if worst_skew >= SKEW_RATIO:
+                worst_skew, worst_st = ratio, st
+    if worst_st is not None and worst_skew >= SKEW_RATIO:
         # the straggler holds the stage: its excess over the median is
         # the share of the run it wasted
-        excess = min(
-            max(wst.task_max_s - wst.task_median_s for wst in run.stages
-                if wst.stage == worst_stage) / run.duration_s, 1.0)
+        excess = min((worst_st.task_max_s - worst_st.task_median_s)
+                     / run.duration_s, 1.0)
         add(Cause("SQ001", excess,
-                  f"stage {worst_stage}: max/median = {worst_skew:.1f}x",
+                  f"stage {worst_st.stage}: max/median = {worst_skew:.1f}x",
                   "data_skew"))
 
     durations = [float(e["duration_s"]) for e in (baseline or [])

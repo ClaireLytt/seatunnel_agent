@@ -30,11 +30,7 @@ _SYSTEM_EN = (
 
 def incident_note(diag: Diagnosis, lang: str = "zh") -> str:
     """One LLM call → a paste-ready slow-query note for this diagnosis."""
-    from seatunnel_agent.common.config import load_settings
-    from seatunnel_agent.common.llm import LLMClient
+    from seatunnel_agent.common.llm import one_shot
 
-    client = LLMClient(load_settings(), agent="slow_query")
     payload = json.dumps(diag.to_dict(), ensure_ascii=False)
-    system = _SYSTEM_ZH if lang == "zh" else _SYSTEM_EN
-    resp = client.chat(system, [{"role": "user", "content": payload}])
-    return resp.reply_text.strip()
+    return one_shot("slow_query", _SYSTEM_ZH, _SYSTEM_EN, payload, lang)

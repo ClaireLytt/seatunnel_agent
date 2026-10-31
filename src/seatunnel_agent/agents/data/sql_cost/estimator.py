@@ -134,11 +134,10 @@ def _tables_and_filters(sql: str) -> tuple[dict[str, str], str, int,
     import sqlglot
     from sqlglot import exp
 
+    from seatunnel_agent.common.utils import sql_alias_map
+
     stmt = sqlglot.parse_one(sql)
-    aliases: dict[str, str] = {}
-    for t in stmt.find_all(exp.Table):
-        name = ".".join(p for p in (t.db, t.name) if p).lower()
-        aliases[(t.alias_or_name or t.name).lower()] = name
+    aliases = sql_alias_map(stmt)
     joins = len(list(stmt.find_all(exp.Join)))
     has_agg = bool(stmt.find(exp.Group)
                    or stmt.find(exp.Distinct)
@@ -172,8 +171,6 @@ def estimate(sql: str, stats: dict[str, TableStats]) -> CostCard:
         raise ValueError("no tables referenced in the SQL")
 
     card = CostCard(joins=joins, aggregates=has_agg)
-    sides: list[float] = []   # per-table scanned bytes (for join model)
-    max_rows = 0.0
     for alias, table in sorted(set(aliases.items())):
         st = stats.get(table)
         if st is None:
@@ -195,10 +192,10 @@ def estimate(sql: str, stats: dict[str, TableStats]) -> CostCard:
             card.scans.append(ScanEstimate(
                 table=table, bytes=scan_bytes, rows=scan_rows,
                 pruned=pruned, col_ratio=col_ratio))
-            sides.append(scan_bytes)
-            max_rows = max(max_rows, scan_rows)
 
-    card.scan_bytes = sum(s.bytes for s in card.scans)
+    sides = [s.bytes for s in card.scans]  # per-table bytes (join model)
+    max_rows = max((s.rows for s in card.scans), default=0.0)
+    card.scan_bytes = sum(sides)
     # join shuffle: each join exchanges both sides unless the smaller
     # one broadcasts; aggregation exchanges its input once
     if joins and len(sides) >= 2:
@@ -222,3 +219,31 @@ def estimate(sql: str, stats: dict[str, TableStats]) -> CostCard:
     base = card.core_seconds / card.parallelism
     card.wall_seconds = (base * UNCERTAINTY[0], base * UNCERTAINTY[1])
     return card
+
+
+def what_if(base: CostCard, sql: str, stats: dict[str, TableStats],
+            assumptions: list[tuple[str, str, int]]) -> dict[str, Any]:
+    """Re-estimate under assumed partitionings and report the scan delta.
+
+    ``assumptions`` is (table, partition_col, partitions) triples; an
+    unknown table or a partition count < 2 raises ValueError rather
+    than guessing.
+    """
+    import dataclasses
+
+    tweaked = dict(stats)
+    for table, col, n in assumptions:
+        if table not in tweaked:
+            raise ValueError(f"table not in the stats inventory: {table!r}")
+        if n < 2:
+            raise ValueError(f"{table}:{col}: partition count unknown, "
+                             "state it explicitly (table:col:N)")
+        tweaked[table] = dataclasses.replace(
+            tweaked[table], partition_col=col, partitions=n)
+    after = estimate(sql, tweaked)
+    saved_pct = (round(100 * (1 - after.scan_bytes / base.scan_bytes), 1)
+                 if base.scan_bytes else 0.0)
+    return {"assumed": [f"{t}:{c}:{n}" for t, c, n in assumptions],
+            "base_scan_bytes": round(base.scan_bytes),
+            "scan_bytes": round(after.scan_bytes),
+            "scan_saved_pct": saved_pct}

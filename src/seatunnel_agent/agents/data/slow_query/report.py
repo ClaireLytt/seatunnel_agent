@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from seatunnel_agent.common.utils import normalize_lang
+from seatunnel_agent.common.utils import fmt_secs, normalize_lang
 
 from .diagnoser import Diagnosis
 from .i18n import tp
@@ -10,22 +10,14 @@ from .i18n import tp
 __all__ = ["render_markdown"]
 
 
-def _secs(s: float) -> str:
-    if s < 90:
-        return f"{s:.0f}s"
-    if s < 5400:
-        return f"{s / 60:.1f}min"
-    return f"{s / 3600:.1f}h"
-
-
 def render_markdown(diag: Diagnosis, lang: str = "zh") -> str:
     lang = normalize_lang(lang)
     head = tp(lang, "rpt_run").format(name=diag.name,
-                                      dur=_secs(diag.duration_s))
+                                      dur=fmt_secs(diag.duration_s))
     if diag.regression:
         head += tp(lang, "rpt_regression").format(
             reg=f"{diag.regression:g}",
-            base=_secs(diag.baseline_median_s))
+            base=fmt_secs(diag.baseline_median_s))
     lines = [f"## {tp(lang, 'rpt_title')}", "", head, ""]
     if diag.causes:
         lines.append(f"### {tp(lang, 'rpt_causes')}")

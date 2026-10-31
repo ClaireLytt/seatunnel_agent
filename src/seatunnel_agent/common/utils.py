@@ -136,3 +136,38 @@ def cjk_font_family() -> str | None:
         if cand in names:
             return cand
     return None
+
+
+def fmt_bytes(num: float) -> str:
+    """Humanize a byte count ("1.5 GB")."""
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if num < 1024 or unit == "TB":
+            return f"{num:.1f} {unit}" if unit != "B" else f"{num:.0f} B"
+        num /= 1024
+    return f"{num:.1f} TB"
+
+
+def fmt_secs(s: float) -> str:
+    """Humanize a duration in seconds ("45s" / "2.5min" / "1.5h")."""
+    if s < 90:
+        return f"{s:.0f}s"
+    if s < 5400:
+        return f"{s / 60:.1f}min"
+    return f"{s / 3600:.1f}h"
+
+
+def sql_alias_map(stmt, include_bare: bool = False) -> dict:
+    """alias -> qualified table name (lowercase) for a sqlglot statement.
+
+    With ``include_bare`` the bare table name also resolves to itself,
+    so unaliased references in multi-statement workloads still match.
+    """
+    from sqlglot import exp
+
+    out: dict[str, str] = {}
+    for t in stmt.find_all(exp.Table):
+        name = ".".join(p for p in (t.db, t.name) if p).lower()
+        out[(t.alias_or_name or t.name).lower()] = name
+        if include_bare:
+            out.setdefault(t.name.lower(), name)
+    return out

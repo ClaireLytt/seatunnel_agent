@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from seatunnel_agent.common.api_guard import (
     add_health,
     ms_since,
-    read_whitelisted_file,
+    resolve_file_or_text,
 )
 from seatunnel_agent.common.utils import normalize_lang
 
@@ -48,10 +48,7 @@ class AnalyzeResponse(BaseModel):
 @router.post("/analyze", response_model=AnalyzeResponse)
 def run_analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     start = time.time()
-    if not (req.file or "").strip() and not (req.text or "").strip():
-        raise HTTPException(status_code=400, detail="Provide 'file' or 'text'")
-    text = (read_whitelisted_file(req.file or "", _ENV)
-            if (req.file or "").strip() else req.text or "")
+    text = resolve_file_or_text(req.file, req.text, _ENV)
     try:
         result = analyze(text)
     except Exception as exc:  # bad input

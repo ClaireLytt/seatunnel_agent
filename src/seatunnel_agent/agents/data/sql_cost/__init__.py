@@ -15,8 +15,9 @@ from .estimator import (
     TableStats,
     estimate,
     parse_stats,
+    what_if,
 )
-from .report import render_markdown
+from .report import render_markdown, render_what_if
 
 __all__ = [
     "CostCard",
@@ -25,4 +26,6 @@ __all__ = [
     "estimate",
     "parse_stats",
     "render_markdown",
+    "render_what_if",
+    "what_if",
 ]

@@ -20,6 +20,7 @@ No scheduler connection — declarations in, timeline verdicts out.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
 from dataclasses import dataclass, field
@@ -149,15 +150,29 @@ class ConflictReport:
 def _sweep(runs: list[TaskRun], cap_slots: int,
            cap_mem: float) -> tuple[list[Window], int, float]:
     """Event sweep → maximal over-capacity windows + global peaks."""
-    points = sorted({r.start for r in runs} | {r.finish for r in runs})
+    # start/finish deltas per time point: one pass instead of rebuilding
+    # the active set at every event
+    events: dict[float, tuple[list[TaskRun], list[TaskRun]]] = {}
+    for r in runs:
+        events.setdefault(r.start, ([], []))[0].append(r)
+        events.setdefault(r.finish, ([], []))[1].append(r)
+    points = sorted(events)
     windows: list[Window] = []
     peak_slots, peak_mem = 0, 0.0
     current: Window | None = None
+    active: list[TaskRun] = []
+    slots, mem = 0, 0.0
     for i in range(len(points) - 1):
         t0, t1 = points[i], points[i + 1]
-        active = [r for r in runs if r.start <= t0 < r.finish]
-        slots = sum(r.slots for r in active)
-        mem = sum(r.memory_gb for r in active)
+        started, finished = events[t0]
+        for r in finished:
+            active.remove(r)
+            slots -= r.slots
+            mem -= r.memory_gb
+        for r in started:
+            active.append(r)
+            slots += r.slots
+            mem += r.memory_gb
         peak_slots = max(peak_slots, slots)
         peak_mem = max(peak_mem, mem)
         over = slots > cap_slots or (cap_mem and mem > cap_mem)
@@ -180,10 +195,16 @@ def _sweep(runs: list[TaskRun], cap_slots: int,
     return windows, peak_slots, peak_mem
 
 
-def simulate(scenario: Scenario) -> ConflictReport:
+def _runs(scenario: Scenario) -> list[TaskRun]:
+    """Schedule every DAG of the scenario onto one shared timeline."""
     runs: list[TaskRun] = []
     for name, tasks in scenario.dag_tasks.items():
         runs.extend(_schedule_dag(name, tasks, scenario.starts[name]))
+    return runs
+
+
+def simulate(scenario: Scenario) -> ConflictReport:
+    runs = _runs(scenario)
     report = ConflictReport(cap_slots=scenario.cap_slots,
                             cap_memory_gb=scenario.cap_memory_gb)
     report.windows, report.peak_slots, report.peak_memory_gb = _sweep(
@@ -219,26 +240,16 @@ def simulate(scenario: Scenario) -> ConflictReport:
                 key=lambda kv: (kv[1], -scenario.starts[kv[0]], kv[0])
             )[0][0]
             delay = math.ceil(worst.end - scenario.starts[victim])
-            shifted = Scenario(
-                cap_slots=scenario.cap_slots,
-                cap_memory_gb=scenario.cap_memory_gb,
-                starts={**scenario.starts,
-                        victim: scenario.starts[victim] + delay},
-                dag_tasks=scenario.dag_tasks)
-            after = simulate_peaks_only(shifted)
+            # per-DAG schedules are offset-invariant: shift the victim's
+            # computed runs instead of rescheduling the whole scenario
+            shifted = [dataclasses.replace(r, start=r.start + delay,
+                                           finish=r.finish + delay)
+                       if r.dag == victim else r for r in runs]
+            after_windows, after_peak, _ = _sweep(
+                shifted, scenario.cap_slots, scenario.cap_memory_gb)
             report.suggestion = {
                 "dag": victim, "delay": delay,
                 "peak_slots_before": report.peak_slots,
-                "peak_slots_after": after[0],
-                "windows_after": after[1]}
+                "peak_slots_after": after_peak,
+                "windows_after": len(after_windows)}
     return report
-
-
-def simulate_peaks_only(scenario: Scenario) -> tuple[int, int]:
-    """(peak slots, over-capacity window count) for a shifted scenario."""
-    runs: list[TaskRun] = []
-    for name, tasks in scenario.dag_tasks.items():
-        runs.extend(_schedule_dag(name, tasks, scenario.starts[name]))
-    windows, peak_slots, _ = _sweep(runs, scenario.cap_slots,
-                                    scenario.cap_memory_gb)
-    return peak_slots, len(windows)

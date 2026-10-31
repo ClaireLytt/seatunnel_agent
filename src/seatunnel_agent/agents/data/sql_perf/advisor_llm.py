@@ -33,13 +33,10 @@ def rewrite_sql(report: PlanReport, sql: str, lang: str = "zh") -> str:
     """One LLM call → the optimized-SQL draft for the flagged findings."""
     import json
 
-    from seatunnel_agent.common.config import load_settings
-    from seatunnel_agent.common.llm import LLMClient
+    from seatunnel_agent.common.llm import one_shot
+    from seatunnel_agent.common.utils import truncate
 
-    client = LLMClient(load_settings(), agent="sql_perf")
     payload = (f"findings:\n"
                f"{json.dumps([f.to_dict() for f in report.findings], ensure_ascii=False)}\n\n"
-               f"original SQL:\n```sql\n{sql[:_MAX_CHARS]}\n```")
-    system = _SYSTEM_ZH if lang == "zh" else _SYSTEM_EN
-    resp = client.chat(system, [{"role": "user", "content": payload}])
-    return resp.reply_text.strip()
+               f"original SQL:\n```sql\n{truncate(sql, _MAX_CHARS)}\n```")
+    return one_shot("sql_perf", _SYSTEM_ZH, _SYSTEM_EN, payload, lang)

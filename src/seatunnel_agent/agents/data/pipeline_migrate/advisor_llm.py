@@ -32,18 +32,14 @@ _SYSTEM_EN = (
 
 def rewrite_advice(job: JobAssessment, script: str, lang: str = "zh") -> str:
     """One LLM call → markdown rewrite guidance for a single risky job."""
-    from seatunnel_agent.common.config import load_settings
-    from seatunnel_agent.common.llm import LLMClient
+    from seatunnel_agent.common.llm import one_shot
 
-    client = LLMClient(load_settings(), agent="pipeline_migrate")
     risks = ", ".join(job.risks) or "-"
     prompt = (f"job: {job.job}\n"
               f"target engine: {job.target}\n"
               f"risk codes: {risks}\n"
               f"script:\n```\n{script[:_MAX_SCRIPT_CHARS]}\n```")
-    system = _SYSTEM_ZH if lang == "zh" else _SYSTEM_EN
-    resp = client.chat(system, [{"role": "user", "content": prompt}])
-    return resp.reply_text.strip()
+    return one_shot("pipeline_migrate", _SYSTEM_ZH, _SYSTEM_EN, prompt, lang)
 
 
 def advice_for_jobs(jobs: list[JobAssessment],

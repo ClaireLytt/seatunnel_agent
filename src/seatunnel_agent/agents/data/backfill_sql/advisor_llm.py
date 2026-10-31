@@ -32,15 +32,12 @@ def fill_source(spec: dict[str, Any], ddl: str, lang: str = "zh") -> str:
     """One LLM call → the filled source SELECT (or raise on bad input)."""
     import json
 
-    from seatunnel_agent.common.config import load_settings
-    from seatunnel_agent.common.llm import LLMClient
+    from seatunnel_agent.common.llm import one_shot
 
-    client = LLMClient(load_settings(), agent="backfill_sql")
     prompt = (f"spec:\n{json.dumps(spec, ensure_ascii=False)}\n\n"
               f"upstream DDL:\n```sql\n{ddl[:_MAX_DDL_CHARS]}\n```")
-    system = _SYSTEM_ZH if lang == "zh" else _SYSTEM_EN
-    resp = client.chat(system, [{"role": "user", "content": prompt}])
-    return resp.reply_text.strip().strip("`").strip().rstrip(";")
+    reply = one_shot("backfill_sql", _SYSTEM_ZH, _SYSTEM_EN, prompt, lang)
+    return reply.strip("`").strip().rstrip(";")
 
 
 def fill_specs(specs: list[dict[str, Any]], ddl: str,

@@ -28,11 +28,7 @@ _SYSTEM_EN = (
 
 def incident_note(plan: RerunPlan, lang: str = "zh") -> str:
     """One LLM call → a paste-ready incident note for this plan."""
-    from seatunnel_agent.common.config import load_settings
-    from seatunnel_agent.common.llm import LLMClient
+    from seatunnel_agent.common.llm import one_shot
 
-    client = LLMClient(load_settings(), agent="rerun_plan")
     payload = json.dumps(plan.to_dict(), ensure_ascii=False)
-    system = _SYSTEM_ZH if lang == "zh" else _SYSTEM_EN
-    resp = client.chat(system, [{"role": "user", "content": payload}])
-    return resp.reply_text.strip()
+    return one_shot("rerun_plan", _SYSTEM_ZH, _SYSTEM_EN, payload, lang)

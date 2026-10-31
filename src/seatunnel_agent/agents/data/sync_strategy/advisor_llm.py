@@ -29,14 +29,10 @@ _SYSTEM_EN = (
 
 def rollout_narrative(report: StrategyReport, lang: str = "zh") -> str:
     """One LLM call → the rollout narrative for this fleet."""
-    from seatunnel_agent.common.config import load_settings
-    from seatunnel_agent.common.llm import LLMClient
+    from seatunnel_agent.common.llm import one_shot
 
-    client = LLMClient(load_settings(), agent="sync_strategy")
     data = report.to_dict()
     for rec in data["recommendations"]:
         rec.pop("config", None)  # configs are long and not needed here
     payload = json.dumps(data, ensure_ascii=False)
-    system = _SYSTEM_ZH if lang == "zh" else _SYSTEM_EN
-    resp = client.chat(system, [{"role": "user", "content": payload}])
-    return resp.reply_text.strip()
+    return one_shot("sync_strategy", _SYSTEM_ZH, _SYSTEM_EN, payload, lang)

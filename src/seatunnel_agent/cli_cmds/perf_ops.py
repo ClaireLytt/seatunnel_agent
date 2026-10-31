@@ -19,9 +19,9 @@ from pathlib import Path
 import click
 
 from .check_runner import emit_payload as _emit
-from .check_runner import fail_check
+from .check_runner import fail_check, report_options, severity_gate
+from .check_runner import read_input as _read
 from .check_runner import track_history as _track_history
-from .pipeline_ops import _read
 
 
 @click.command("sqlperf")
@@ -35,12 +35,7 @@ from .pipeline_ops import _read
 @click.option("--fail-on-severity", "fail_severity",
               type=click.Choice(["high", "medium"]), default=None,
               help="CI gate：出现该级别及以上的发现时 exit 1")
-@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
-              show_default=True, help="Report language")
-@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
-              default="markdown", help="Report format")
-@click.option("--output", "-o", type=click.Path(), default=None,
-              help="Save report to file")
+@report_options
 def sqlperf(path, text, sql_path, use_llm, fail_severity, lang, fmt,
             output) -> None:
     """执行计划分析 — EXPLAIN 文本 → join/shuffle/裁剪/下推发现与处方。"""
@@ -62,13 +57,15 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, lang, fmt,
         markdown += f"\n\n### {tp(lang, 'rpt_rewrite')}\n{rewrite}\n"
     _emit(payload, markdown, fmt, output)
     if fail_severity:
-        levels = (["high"] if fail_severity == "high"
-                  else ["high", "medium"])
-        hits = [f for f in result.findings if f.severity in levels]
-        if hits:
-            fail_check("\n".join(
-                f"FINDING {f.code} [{f.severity}] {f.detail}"
-                for f in hits), fmt)
+        from .check_runner import SEVERITY_RANK
+
+        hits = [f for f in result.findings
+                if SEVERITY_RANK[f.severity] >= SEVERITY_RANK[fail_severity]]
+        msg = "\n".join(f"FINDING {f.code} [{f.severity}] {f.detail}"
+                         for f in hits)
+        problem = severity_gate(result.findings, fail_severity, msg)
+        if problem:
+            fail_check(problem, fmt)
 
 
 @click.command("index-adv")
@@ -80,12 +77,7 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, lang, fmt,
               default=None, help="建表 DDL 文件（可选）")
 @click.option("--dialect", default="hive", show_default=True,
               help="SQL 方言")
-@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
-              show_default=True, help="Report language")
-@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
-              default="markdown", help="Report format")
-@click.option("--output", "-o", type=click.Path(), default=None,
-              help="Save report to file")
+@report_options
 def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
     """索引分区推荐 — 查询频次 → 分区/分桶/组合索引与 DDL 片段。"""
     from seatunnel_agent.agents.data.index_advisor import (
@@ -124,21 +116,16 @@ def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
               help="CI gate：预估扫描超过该 GB 数时 exit 1")
 @click.option("--fail-over-shuffle-gb", type=float, default=0.0,
               help="CI gate：预估 shuffle 超过该 GB 数时 exit 1")
-@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
-              show_default=True, help="Report language")
-@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
-              default="markdown", help="Report format")
-@click.option("--output", "-o", type=click.Path(), default=None,
-              help="Save report to file")
+@report_options
 def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
             fail_over_shuffle_gb, lang, fmt, output) -> None:
     """资源消耗预测 — SQL × 表统计 → 代价卡；可按预算挡 CI。"""
-    import dataclasses
-
     from seatunnel_agent.agents.data.sql_cost import (
         estimate,
         parse_stats,
         render_markdown,
+        render_what_if,
+        what_if,
     )
 
     sql = Path(sql_path).read_text(encoding="utf-8", errors="replace")
@@ -148,34 +135,22 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
     markdown = render_markdown(card, lang=lang)
     payload = card.to_dict()
     if assume_partitions:
-        whatif = dict(stats)
+        assumptions: list[tuple[str, str, int]] = []
         for spec in assume_partitions:
             parts = spec.split(":")
             if len(parts) not in (2, 3):
                 raise click.UsageError(
                     f"--assume-partition 需为 表:列[:分区数]，得到 {spec!r}")
             table, col = parts[0].strip().lower(), parts[1].strip().lower()
-            if table not in whatif:
-                raise click.UsageError(f"统计清单里没有表 {table!r}")
-            n = int(parts[2]) if len(parts) == 3 else whatif[table].partitions
-            if n < 2:
-                raise click.UsageError(
-                    f"{spec!r}：分区数未知，请用 表:列:分区数 显式给出")
-            whatif[table] = dataclasses.replace(
-                whatif[table], partition_col=col, partitions=n)
-        after = estimate(sql, whatif)
-        saved_pct = (round(100 * (1 - after.scan_bytes / card.scan_bytes), 1)
-                     if card.scan_bytes else 0.0)
-        payload["what_if"] = {"assumed": list(assume_partitions),
-                              "scan_bytes": round(after.scan_bytes),
-                              "scan_saved_pct": saved_pct}
-        markdown += ("\n\n### what-if\n"
-                     + "\n".join(f"- `{s}`" for s in assume_partitions)
-                     + f"\n\n扫描 {card.scan_bytes / (1 << 30):.2f} GB → "
-                       f"{after.scan_bytes / (1 << 30):.2f} GB"
-                       f"（省 {saved_pct:g}%）\n"
-                     + ("" if saved_pct > 0 else
-                        "\n> 没省：SQL 未对该列做等值过滤，分区裁剪不生效。\n"))
+            known = stats.get(table)
+            n = (int(parts[2]) if len(parts) == 3
+                 else known.partitions if known else 0)
+            assumptions.append((table, col, n))
+        try:
+            payload["what_if"] = what_if(card, sql, stats, assumptions)
+        except ValueError as exc:
+            raise click.UsageError(str(exc)) from exc
+        markdown += "\n\n" + render_what_if(payload["what_if"], lang=lang)
     _emit(payload, markdown, fmt, output)
     problems: list[str] = []
     scan_gb = card.scan_bytes / (1 << 30)
@@ -202,12 +177,7 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
               help="慢查询台账：主因/占比/回归倍数追加到该 jsonl")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草慢查询通报（需配置 API key）")
-@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
-              show_default=True, help="Report language")
-@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
-              default="markdown", help="Report format")
-@click.option("--output", "-o", type=click.Path(), default=None,
-              help="Save report to file")
+@report_options
 def slowquery(path, text, baseline_path, history_path, use_llm, lang, fmt,
               output) -> None:
     """慢查询根因 — 指标 × 基线 → 排序根因与处方；--history 记台账。"""
@@ -253,12 +223,7 @@ def slowquery(path, text, baseline_path, history_path, use_llm, lang, fmt,
 @click.option("--history", "history_path", type=click.Path(dir_okay=False),
               default=None,
               help="容量台账：峰值 slots/内存与冲突数追加到该 jsonl")
-@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
-              show_default=True, help="Report language")
-@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
-              default="markdown", help="Report format")
-@click.option("--output", "-o", type=click.Path(), default=None,
-              help="Save report to file")
+@report_options
 def dagconflict(path, text, fail_on_conflict, history_path, lang, fmt,
                 output) -> None:
     """并发冲突检测 — 多 DAG 场景 → 超容窗/写写冲突/错峰建议。"""

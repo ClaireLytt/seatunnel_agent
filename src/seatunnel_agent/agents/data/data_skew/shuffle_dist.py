@@ -18,7 +18,6 @@ full per-task vector).
 from __future__ import annotations
 
 import json
-import statistics
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -78,7 +77,9 @@ def shuffle_distribution(path: str | Path) -> list[ShuffleDist]:
     names: dict[int, str] = {}
     for raw in _iter_eventlog_lines(Path(path)):
         raw = raw.strip()
-        if not raw:
+        # cheap prefilter: skip the ~90% of events we never read
+        if ('"SparkListenerTaskEnd"' not in raw
+                and '"SparkListenerStage' not in raw):
             continue
         try:
             ev = json.loads(raw)
@@ -96,9 +97,8 @@ def shuffle_distribution(path: str | Path) -> list[ShuffleDist]:
             sr = metrics.get("Shuffle Read Metrics") or {}
             read = (float(sr.get("Remote Bytes Read") or 0)
                     + float(sr.get("Local Bytes Read") or 0))
-            per_stage.setdefault(sid, []).append(
-                (int(info.get("Index") or len(per_stage.get(sid, []))),
-                 read))
+            reads = per_stage.setdefault(sid, [])
+            reads.append((int(info.get("Index") or len(reads)), read))
         elif kind in ("SparkListenerStageCompleted",
                       "SparkListenerStageSubmitted"):
             si = ev.get("Stage Info") or {}
@@ -108,16 +108,16 @@ def shuffle_distribution(path: str | Path) -> list[ShuffleDist]:
 
     dists: list[ShuffleDist] = []
     for sid, reads in per_stage.items():
-        values = [b for _, b in reads]
-        if not values or max(values) <= 0:
+        ordered = sorted(b for _, b in reads)
+        if not ordered or ordered[-1] <= 0:
             continue
-        ordered = sorted(values)
-        p99 = ordered[min(len(ordered) - 1,
-                          int(len(ordered) * 0.99))]
+        n = len(ordered)
+        p99 = ordered[min(n - 1, int(n * 0.99))]
+        p50 = (ordered[n // 2] if n % 2
+               else (ordered[n // 2 - 1] + ordered[n // 2]) / 2)
         dist = ShuffleDist(
-            stage_id=sid, name=names.get(sid, ""), tasks=len(values),
-            p50=float(statistics.median(values)), p99=float(p99),
-            max=float(max(values)),
+            stage_id=sid, name=names.get(sid, ""), tasks=n,
+            p50=float(p50), p99=float(p99), max=float(ordered[-1]),
             hot=sorted(reads, key=lambda ib: -ib[1])[:HOT_TOP_N])
         dists.append(dist)
     rank = {"confirmed": 0, "suspect": 1, "ok": 2}

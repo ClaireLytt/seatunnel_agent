@@ -18,33 +18,12 @@ import click
 
 from ..common.cli_common import console
 from .check_runner import emit_payload as _emit
-from .check_runner import fail_check
+from .check_runner import fail_check, read_input, report_options
 from .check_runner import track_history as _track_history
 
-
-def _read(path: str | None, text: str | None, what: str) -> str:
-    if path:
-        return Path(path).read_text(encoding="utf-8", errors="replace")
-    if text:
-        return text
-    raise click.UsageError(f"提供 --file 或 --text（{what}）")
-
-
-_COMMON = [
-    click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
-                 show_default=True, help="Report language"),
-    click.option("--format", "-F", "fmt",
-                 type=click.Choice(["markdown", "json"]),
-                 default="markdown", help="Report format"),
-    click.option("--output", "-o", type=click.Path(), default=None,
-                 help="Save report to file"),
-]
-
-
-def _common(fn):
-    for deco in reversed(_COMMON):
-        fn = deco(fn)
-    return fn
+# shared seam lives in check_runner; local names kept for the commands below
+_read = read_input
+_common = report_options
 
 
 @click.command("dagopt")

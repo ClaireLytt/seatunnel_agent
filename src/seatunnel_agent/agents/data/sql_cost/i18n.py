@@ -26,6 +26,10 @@ SQLCOST_I18N: dict[str, dict[str, str]] = {
         "asm_lines": ("per-core throughput 100 MB/s · broadcast threshold "
                       "10 MB · GROUP BY shrink x10 · shuffle partitions "
                       "200 · memory headroom x3 · uncertainty 0.5x–2x"),
+        "wi_title": "What-if",
+        "wi_scan": "scan {before} -> {after} (saves {pct}%)",
+        "wi_no_save": ("> No saving: the SQL has no equality filter on "
+                       "that column, so partition pruning never kicks in."),
         "rpt_disclaimer": ("> Order-of-magnitude estimate from the declared "
                            "stats — validate against a real run before "
                            "capacity decisions. No database connection."),
@@ -49,6 +53,9 @@ SQLCOST_I18N: dict[str, dict[str, str]] = {
         "asm_lines": ("单核吞吐 100 MB/s · 广播阈值 10 MB · GROUP BY 收缩 "
                       "x10 · shuffle 分区 200 · 内存安全系数 x3 · "
                       "不确定区间 0.5x–2x"),
+        "wi_title": "What-if",
+        "wi_scan": "扫描 {before} → {after}（省 {pct}%）",
+        "wi_no_save": "> 没省：SQL 未对该列做等值过滤，分区裁剪不生效。",
         "rpt_disclaimer": ("> 基于声明统计的量级估算 — 容量决策前请用真实"
                            "运行校准。不连数据库。"),
     },

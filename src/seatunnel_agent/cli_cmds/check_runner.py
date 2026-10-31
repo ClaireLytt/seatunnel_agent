@@ -21,7 +21,33 @@ import click
 
 from ..common.cli_common import console
 
-SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3}
+SEVERITY_RANK = {"info": 1, "low": 1, "medium": 2, "high": 3}
+
+_REPORT_OPTIONS = [
+    click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+                 show_default=True, help="Report language"),
+    click.option("--format", "-F", "fmt",
+                 type=click.Choice(["markdown", "json"]),
+                 default="markdown", help="Report format"),
+    click.option("--output", "-o", type=click.Path(), default=None,
+                 help="Save report to file"),
+]
+
+
+def report_options(fn):
+    """The --lang/--format/--output trio every report command takes."""
+    for deco in reversed(_REPORT_OPTIONS):
+        fn = deco(fn)
+    return fn
+
+
+def read_input(path: str | None, text: str | None, what: str) -> str:
+    """Resolve the --file/--text pair every analyze command takes."""
+    if path:
+        return Path(path).read_text(encoding="utf-8", errors="replace")
+    if text:
+        return text
+    raise click.UsageError(f"提供 --file 或 --text（{what}）")
 
 
 @dataclass(frozen=True)
