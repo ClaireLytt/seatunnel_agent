@@ -78,6 +78,7 @@
     "rollback_plan",
     "contract_gen",
     "sql_diff",
+    "model_review",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

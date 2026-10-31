@@ -379,6 +379,7 @@ def register(cli) -> None:
     cli.add_command(rollbackplan)
     cli.add_command(contractgen)
     cli.add_command(sqldiff)
+    cli.add_command(modelreview)
 
 
 @click.command("rollbackplan")
@@ -1488,3 +1489,43 @@ def sqldiff(old_path, new_path, dialect, use_llm, fail_breaking,
         if broken:
             fail_check(fmt, "存在破坏级差异 / breaking differences: "
                        + ", ".join(f"{f.target}:{f.kind}" for f in broken))
+@click.command("modelreview")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="CREATE TABLE DDL 文件")
+@click.option("--text", type=str, default=None, help="内联 DDL")
+@click.option("--wide-limit", "wide_limit", type=click.IntRange(min=1),
+              default=50, show_default=True, help="宽表阈值（列数）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 给出改造建议（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def modelreview(path, text, wide_limit, dialect, use_llm, fail_high,
+                lang, fmt, output) -> None:
+    """建模体检 — 数仓 DDL → 星型结构分级发现。"""
+    from seatunnel_agent.agents.data.model_review import (
+        render_markdown,
+        review_model,
+    )
+
+    try:
+        report = review_model(_read(path, text, "DDL"), dialect=dialect,
+                              wide_limit=wide_limit)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(report, lang=lang)
+    payload = report.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.model_review.advisor_llm import (
+            modeling_note,
+        )
+        from seatunnel_agent.agents.data.model_review.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, modeling_note(report, lang=lang),
+            "modeling_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(report.findings, fmt)
