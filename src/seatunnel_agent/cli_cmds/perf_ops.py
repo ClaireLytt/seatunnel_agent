@@ -149,10 +149,14 @@ def index_adv(directory, text, ddl_path, dialect, lang, fmt, output) -> None:
 @click.option("--compare-sql-file", "compare_sql_path",
               type=click.Path(exists=True, dir_okay=False), default=None,
               help="改写后的 SQL 文件：同清单各估一次，输出省比表")
+@click.option("--fail-if-worse", "fail_if_worse", is_flag=True,
+              default=False,
+              help="CI gate：改写在任一维度反而更贵时 exit 1"
+                   "（需配合 --compare-sql-file）")
 @report_options
 def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
-            fail_over_shuffle_gb, compare_sql_path, lang, fmt,
-            output) -> None:
+            fail_over_shuffle_gb, compare_sql_path, fail_if_worse, lang,
+            fmt, output) -> None:
     """资源消耗预测 — SQL × 表统计 → 代价卡；可按预算挡 CI。"""
     from seatunnel_agent.agents.data.sql_cost import (
         compare,
@@ -165,6 +169,8 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
         what_if,
     )
 
+    if fail_if_worse and not compare_sql_path:
+        raise click.UsageError("--fail-if-worse 需配合 --compare-sql-file")
     sql = Path(sql_path).read_text(encoding="utf-8", errors="replace")
     stats = parse_stats(Path(stats_path).read_text(encoding="utf-8",
                                                    errors="replace"))
@@ -186,6 +192,12 @@ def sqlcost(sql_path, stats_path, assume_partitions, fail_over_scan_gb,
         markdown += "\n\n" + render_what_if(payload["what_if"], lang=lang)
     _emit(payload, markdown, fmt, output)
     problems: list[str] = []
+    if fail_if_worse:
+        worse = {axis: pct for axis, pct in
+                 payload["compare"]["saved_pct"].items() if pct < 0}
+        if worse:
+            problems.extend(f"WORSE {axis} {-pct:g}% more expensive"
+                            for axis, pct in sorted(worse.items()))
     scan_gb = card.scan_bytes / (1 << 30)
     shuffle_gb = card.shuffle_bytes / (1 << 30)
     if fail_over_scan_gb and scan_gb > fail_over_scan_gb:

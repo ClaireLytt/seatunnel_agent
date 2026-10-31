@@ -270,6 +270,27 @@ def test_index_adv_layout_audit():
     assert "IA001" not in res.output and "IA004" not in res.output
 
 
+def test_sqlcost_fail_if_worse_gate():
+    runner = CliRunner()
+    stats = str(EX / "sqlcost_demo" / "stats.json")
+    full = str(EX / "sqlcost_demo" / "query_full_scan.sql")
+    pruned = str(EX / "sqlcost_demo" / "query_rewritten.sql")
+    # rewrite saves on every axis -> pass
+    res = runner.invoke(sqlcost, ["--sql-file", full, "-f", stats,
+                                  "--compare-sql-file", pruned,
+                                  "--fail-if-worse"])
+    assert res.exit_code == 0
+    # reversed direction is worse -> gate trips and names the axes
+    res = runner.invoke(sqlcost, ["--sql-file", pruned, "-f", stats,
+                                  "--compare-sql-file", full,
+                                  "--fail-if-worse"])
+    assert res.exit_code == 1 and "WORSE scan" in res.output
+    # without --compare-sql-file it is a usage error
+    res = runner.invoke(sqlcost, ["--sql-file", full, "-f", stats,
+                                  "--fail-if-worse"])
+    assert res.exit_code == 2
+
+
 def test_slowquery_trend_gate(tmp_path):
     runner = CliRunner()
     ledger = tmp_path / "ledger.jsonl"
