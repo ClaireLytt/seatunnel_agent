@@ -136,7 +136,22 @@ def append_jsonl(path_str: str, entry: dict[str, Any]) -> dict[str, Any]:
 def track_history(history_path: str, entry: dict[str, Any],
                   worse_key: str) -> None:
     """Append *entry* (plus a ts) to the jsonl; print the drift vs the
-    previous record — yellow when *worse_key* grew, dim otherwise."""
+    previous record — yellow when *worse_key* grew, dim otherwise.
+
+    Entries are NUMERIC-ONLY: the drift line renders every value with
+    ':g', so a stray string crashes at print time with an opaque
+    "Unknown format code 'g'" (it has, twice). Refuse it loudly here,
+    naming the offending key, before anything lands in the ledger."""
+    bad = [k for k, v in entry.items()
+           if not isinstance(v, (int, float)) or isinstance(v, bool)]
+    if bad:
+        raise ValueError(
+            "track_history entries must be numeric-only (the drift line "
+            f"formats with ':g'); non-numeric key(s): {', '.join(bad)} — "
+            "drop them or encode them as numbers")
+    if worse_key not in entry:
+        raise ValueError(f"worse_key '{worse_key}' is not in the entry "
+                         f"(keys: {', '.join(entry)})")
     path = Path(history_path)
     previous = None
     if path.is_file():
