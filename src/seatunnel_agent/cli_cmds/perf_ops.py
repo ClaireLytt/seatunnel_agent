@@ -42,9 +42,13 @@ from .check_runner import track_history as _track_history
 @click.option("--fail-on-new", "fail_on_new", is_flag=True, default=False,
               help="CI gate：对比中优化后计划引入新发现时 exit 1"
                    "（需配合 --before）")
+@click.option("--stats-template", "stats_template_path",
+              type=click.Path(dir_okay=False), default=None,
+              help="从扫描明细生成 sqlcost 统计清单骨架 JSON 写到该文件"
+                   "（表名/列数已填，行数/字节/分区待补）")
 @report_options
 def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
-            fail_on_new, lang, fmt, output) -> None:
+            fail_on_new, stats_template_path, lang, fmt, output) -> None:
     """执行计划分析 — EXPLAIN 文本 → join/shuffle/裁剪/下推发现与处方。"""
     from seatunnel_agent.agents.data.sql_perf import analyze, render_markdown
 
@@ -72,6 +76,19 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
                                              errors="replace"), lang=lang)
         payload["rewrite"] = rewrite
         markdown += f"\n\n### {tp(lang, 'rpt_rewrite')}\n{rewrite}\n"
+    if stats_template_path:
+        if not result.scans:
+            raise click.UsageError("计划里没有扫描节点，生成不了统计清单骨架")
+        template = {"tables": [
+            {"table": s.table, "rows": 0, "bytes": 0, "partitions": 0,
+             "partition_col": "", "columns": s.columns}
+            for s in result.scans]}
+        Path(stats_template_path).write_text(
+            json.dumps(template, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8")
+        click.echo(f"stats template: {len(result.scans)} table(s) -> "
+                   f"{stats_template_path}（补上 rows/bytes/partitions "
+                   f"即可直接喂给 sqlcost）", err=True)
     _emit(payload, markdown, fmt, output)
     if fail_on_new and payload.get("diff", {}).get("introduced"):
         introduced = payload["diff"]["introduced"]

@@ -250,6 +250,23 @@ def test_slowquery_promote_baseline(tmp_path):
     assert res.exit_code == 2
 
 
+def test_sqlperf_stats_template(tmp_path):
+    runner = CliRunner()
+    out = tmp_path / "stats.json"
+    res = runner.invoke(sqlperf, ["-f", str(EX / "sqlperf_demo" / "plan.txt"),
+                                  "--stats-template", str(out)])
+    assert res.exit_code == 0
+    tables = json.loads(out.read_text(encoding="utf-8"))["tables"]
+    assert {t["table"] for t in tables} == {"ods.orders", "ods.users"}
+    assert all(t["rows"] == 0 and t["columns"] > 0 for t in tables)
+    # the filled-in skeleton is sqlcost-parseable as-is
+    from seatunnel_agent.agents.data.sql_cost import parse_stats
+    for t in tables:
+        t.update(rows=1000, bytes=1 << 20, partitions=10)
+    stats = parse_stats(json.dumps({"tables": tables}))
+    assert "ods.orders" in stats
+
+
 def test_index_adv_layout_audit():
     runner = CliRunner()
     res = runner.invoke(index_adv, [
