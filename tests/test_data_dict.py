@@ -144,7 +144,7 @@ def test_cli_datadict_runs():
 
     demo = ROOT / "examples" / "datadict_demo"
     res = CliRunner().invoke(cli, [
-        "datadict", "-f", str(demo / "catalog.json"),
+        "dictgen", "-f", str(demo / "catalog.json"),
         "--sql-file", str(demo / "workload.sql"), "--lang", "zh"])
     assert res.exit_code == 0, res.output
     assert "数据字典" in res.output and "gmv" in res.output
@@ -158,10 +158,10 @@ def test_cli_min_coverage_gate(tmp_path):
     ddl = tmp_path / "t.sql"
     ddl.write_text(DDL_NO_COMMENTS, encoding="utf-8")
     res = CliRunner().invoke(cli, [
-        "datadict", "-f", str(ddl), "--min-coverage", "80"])
+        "dictgen", "-f", str(ddl), "--min-coverage", "80"])
     assert res.exit_code == 1
     ok = CliRunner().invoke(cli, [
-        "datadict", "-f", str(ddl), "--min-coverage", "10"])
+        "dictgen", "-f", str(ddl), "--min-coverage", "10"])
     assert ok.exit_code == 0, ok.output
 
 

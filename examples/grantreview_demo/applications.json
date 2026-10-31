@@ -1,0 +1,33 @@
+[
+  {
+    "applicant": "zhang3",
+    "role": "analyst",
+    "purpose": "月度经营分析看板，需要城市维度的订单金额",
+    "tables": [
+      {"table": "dws.orders_daily", "columns": ["order_date", "gmv", "order_cnt"]},
+      {"table": "dim.users", "columns": ["user_id", "city"]}
+    ],
+    "duration_days": 30,
+    "write": false
+  },
+  {
+    "applicant": "li4",
+    "role": "analyst",
+    "purpose": "排查",
+    "tables": [
+      {"table": "dwd.users", "columns": ["*"]}
+    ],
+    "duration_days": 0,
+    "write": true
+  },
+  {
+    "applicant": "wang5",
+    "role": "ops",
+    "purpose": "客服回访需要联系方式核对订单",
+    "tables": [
+      {"table": "dwd.users", "columns": ["user_id", "phone", "id_card"]}
+    ],
+    "duration_days": 120,
+    "write": false
+  }
+]

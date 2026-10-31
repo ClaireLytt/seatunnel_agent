@@ -10,10 +10,11 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent qualitytrace  -f pipeline.sql --table dws.t [--column c]
   seatunnel-agent datarepair    -f rows.csv --table dwd.t [--pk id]
   seatunnel-agent assetsearch   -f catalog.json --query "按日的订单金额"
-  seatunnel-agent datadict      -f catalog.json [--sql-file workload.sql]
+  seatunnel-agent dictgen       -f catalog.json [--sql-file workload.sql]
   seatunnel-agent assetvalue    -f inventory.csv
   seatunnel-agent storagecost   -f inventory.csv [--partitions parts.csv]
   seatunnel-agent dbdiag        -f snapshot.json [--fail-on-high]
+  seatunnel-agent grantreview   -f applications.json [--fail-on-reject]
 """
 
 from __future__ import annotations
@@ -343,6 +344,47 @@ def register(cli) -> None:
     cli.add_command(assetvalue)
     cli.add_command(storagecost)
     cli.add_command(dbdiag)
+    cli.add_command(grantreview)
+
+
+@click.command("grantreview")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="申请单 JSON 文件（单份或列表）")
+@click.option("--text", type=str, default=None, help="内联申请单 JSON")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草逐份回复（需配置 API key）")
+@click.option("--fail-on-reject", "fail_reject", is_flag=True, default=False,
+              help="CI gate：存在拒绝结论时 exit 1")
+@report_options
+def grantreview(path, text, use_llm, fail_reject, lang, fmt, output) -> None:
+    """权限申请审核 — 申请单 → 风险分 + 批准/降级/拒绝。"""
+    from seatunnel_agent.agents.data.grant_review import (
+        parse_applications,
+        render_markdown,
+        review_grants,
+    )
+
+    try:
+        result = review_grants(parse_applications(_read(path, text, "申请单")))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.grant_review.advisor_llm import (
+            review_note,
+        )
+        from seatunnel_agent.agents.data.grant_review.i18n import tp
+
+        note = review_note(result, lang=lang)
+        payload["replies"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
+    if fail_reject:
+        rejected = [r.applicant for r in result.reviews
+                    if r.decision == "reject"]
+        if rejected:
+            fail_check("REJECT " + ", ".join(rejected), fmt)
 
 
 @click.command("dbdiag")
@@ -461,7 +503,7 @@ def assetvalue(path, text, use_llm, lang, fmt, output) -> None:
     _emit(payload, markdown, fmt, output)
 
 
-@click.command("datadict")
+@click.command("dictgen")
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="资产目录：JSON 清单或建表 DDL 文件")
 @click.option("--text", type=str, default=None, help="内联目录")

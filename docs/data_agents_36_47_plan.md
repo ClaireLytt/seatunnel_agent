@@ -84,18 +84,18 @@ advisor_llm 模式、`frontend/shared` 的 useRunner/handoff、extra_routers
 
 ## 实施顺序与里程碑
 
-1. [ ] 41 sample_profile（profiler 是 36/40 的地基）
-2. [ ] 36 dist_anomaly（复用 41 profiler）
-3. [ ] 37 dup_check
-4. [ ] 39 data_volatility
-5. [ ] 38 quality_trace（复用 data_lineage）
-6. [ ] 40 data_repair（消费 36/37 发现，套件一收口）
-7. [ ] 42 asset_search
-8. [ ] 43 data_dict
-9. [ ] 44 asset_value（清单解析器）
-10. [ ] 45 storage_cost（复用 44 解析）
-11. [ ] 46 db_diag
-12. [ ] 47 grant_review（套件二收口）
+1. [x] 41 sample_profile（profiler 是 36/40 的地基）
+2. [x] 36 dist_anomaly（复用 41 profiler）
+3. [x] 37 dup_check
+4. [x] 39 data_volatility
+5. [x] 38 quality_trace（复用 data_lineage）
+6. [x] 40 data_repair（消费 36/37 发现，套件一收口）
+7. [x] 42 asset_search
+8. [x] 43 data_dict
+9. [x] 44 asset_value（清单解析器）
+10. [x] 45 storage_cost（复用 44 解析）
+11. [x] 46 db_diag
+12. [x] 47 grant_review（套件二收口）
 
 每个 agent 独立提交：后端（core/report/i18n/api[make_text_router]/tools/
 manifest/cli）+ 测试 + 示例 + 前端页（useRunner）+ 页面回归 + 报告落盘；
