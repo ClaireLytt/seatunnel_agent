@@ -79,15 +79,21 @@ seatunnel-agent sqlperf -f plan.txt                  # 加 --llm --sql-file q.sq
 seatunnel-agent sqlperf -f plan.txt --fail-on-severity high  # 有 high 发现就 exit 1
 seatunnel-agent sqlperf -f new_plan.txt --before old_plan.txt \
   --fail-on-new                                      # 优化前后对比;引入新发现则 exit 1
+seatunnel-agent sqlperf -f plan.txt --stats-template stats.json \
+                                                     # 从扫描明细生成 sqlcost 清单骨架
 seatunnel-agent index-adv -d workload/ --ddl ddl.sql \
   --fail-on-audit                                    # 带 --ddl 自动附现状审计(分区列无人过滤/
                                                      # 最热 join key 未分桶);有发现则 exit 1
+seatunnel-agent index-adv -d workload/ --stats stats.json \
+                                                     # 分区建议 ROI:整个负载省多少扫描,按省量排序
 seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
   --fail-over-scan-gb 50 --fail-over-shuffle-gb 20   # 超预算 exit 1，可做 CI 闸门
 seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
   --assume-partition ods.users:user_id:10            # what-if:按建议分区重估,直接看省多少
 seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
   --compare-sql-file q_rewritten.sql --fail-if-worse # 改写省比表;任一维度变贵则 exit 1
+seatunnel-agent sqlcost -d queries/ -f stats.json \
+  --fail-over-total-scan-gb 500                      # 批量:最贵查询榜+合计行;合计超预算 exit 1
 seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
   --history slow_ledger.jsonl --llm                  # 台账 + LLM 通报草稿（可选）
 seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
@@ -95,6 +101,7 @@ seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
 seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
   --promote-baseline                                 # 回归 <1.5x 时本次 run 滚入基线
 seatunnel-agent slowquery -d runs/ --baseline runs.jsonl  # 批量:全目录按回归排序
+seatunnel-agent slowquery --diff fast.json slow.json # A/B 对比:按 stage 对齐的差值表
 seatunnel-agent slowquery -f metrics.json --history ledger.jsonl \
   --trend 5 --fail-on-trend                          # 台账最近5次逐次上涨(慢化趋势)则 exit 1
 seatunnel-agent skew-runtime eventlog.jsonl --shuffle-dist \
@@ -105,6 +112,9 @@ seatunnel-agent dagconflict -f scenario.json \
 seatunnel-agent dagconflict -f scenario.json --place etl_users \
   --fail-if-misplaced                                # 准入检查:扫描候选起点选最优错峰位;
                                                      # 声明起点劣于最优则 exit 1
+seatunnel-agent dagconflict -f scenario.json \
+  --fail-on-deadline-miss                            # DAG 可声明 deadline;超期 exit 1,
+                                                     # 错峰建议若推过 deadline 会明说
 ```
 
 预算闸门的可复制 workflow 在
