@@ -127,6 +127,87 @@ def shuffle_distribution(path: str | Path) -> list[ShuffleDist]:
     return dists
 
 
+MAX_SALT = 64
+
+
+def _salted_ok(p50: float, p99: float, factor: int) -> tuple[float, float,
+                                                             bool]:
+    """(new_p99, new_ratio, healthy?) after an N-way key salt.
+
+    Model: the fat-tail tasks split N ways while the median task is
+    unchanged — an upper bound on the remaining tail, since the split
+    shares land on otherwise median-sized tasks.
+    """
+    new_p99 = max(p99 / factor, p50)
+    ratio = new_p99 / p50 if p50 > 0 else float("inf")
+    healthy = not (ratio >= SHUF_RATIO_SUSPECT
+                   and new_p99 >= SHUF_MAX_SUSPECT)
+    return new_p99, ratio, healthy
+
+
+def salt_what_if(dists: list[ShuffleDist],
+                 factor: int = 0) -> list[dict[str, Any]]:
+    """Re-estimate the flagged stages under an N-way salt.
+
+    ``factor`` >= 2 evaluates that salt; 0 searches the minimal factor
+    (2..MAX_SALT) that brings each stage back under the suspect
+    thresholds.  Healthy stages are skipped.
+    """
+    if factor and factor < 2:
+        raise ValueError("salt factor must be >= 2 (0 = find minimal)")
+    rows: list[dict[str, Any]] = []
+    for d in dists:
+        if d.verdict() == "ok":
+            continue
+        if factor:
+            n = factor
+            new_p99, ratio, healthy = _salted_ok(d.p50, d.p99, n)
+        else:
+            n, new_p99, ratio, healthy = 0, d.p99, d.ratio, False
+            for cand in range(2, MAX_SALT + 1):
+                new_p99, ratio, healthy = _salted_ok(d.p50, d.p99, cand)
+                if healthy:
+                    n = cand
+                    break
+        rows.append({
+            "stage_id": d.stage_id, "name": d.name, "factor": n,
+            "p99_before": d.p99, "p99_after": round(new_p99),
+            "ratio_before": (0.0 if d.ratio == float("inf")
+                             else round(d.ratio, 2)),
+            "ratio_after": (0.0 if ratio == float("inf")
+                            else round(ratio, 2)),
+            "healthy": healthy,
+        })
+    return rows
+
+
+def render_salt_what_if(rows: list[dict[str, Any]], lang: str) -> str:
+    """Markdown section appended under the shuffle-dist table."""
+    from .i18n import dsk
+
+    lines = [f"### {dsk(lang, 'sw_title')}"]
+    if not rows:
+        lines.append(dsk(lang, "sw_none"))
+        return "\n".join(lines)
+    lines.append(f"| {dsk(lang, 'sd_col_stage')} "
+                 f"| {dsk(lang, 'sw_col_factor')} "
+                 f"| p99 | p99/p50 "
+                 f"| {dsk(lang, 'sw_col_after')} |")
+    lines.append("|---|---|---|---|---|")
+    for r in rows:
+        factor = (f"x{r['factor']}" if r["factor"]
+                  else dsk(lang, "sw_not_enough"))
+        ok = dsk(lang, "sw_ok") if r["healthy"] else dsk(lang, "sw_still")
+        lines.append(
+            f"| {r['stage_id']} {_stage_name(r['name'])} | {factor} "
+            f"| {_fmt_bytes(r['p99_before'])} -> "
+            f"{_fmt_bytes(r['p99_after'])} "
+            f"| {r['ratio_before']:g}x -> {r['ratio_after']:g}x | {ok} |")
+    lines.append("")
+    lines.append(dsk(lang, "sw_hint"))
+    return "\n".join(lines)
+
+
 def render_shuffle_dist(dists: list[ShuffleDist], lang: str) -> str:
     """Markdown section appended under the runtime diagnosis."""
     from .i18n import dsk

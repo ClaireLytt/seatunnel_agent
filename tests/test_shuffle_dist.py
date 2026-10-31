@@ -61,3 +61,45 @@ def test_all_even_renders_ok(tmp_path):
     dists = shuffle_distribution(log)
     assert all(d.verdict() == "ok" for d in dists)
     assert "均匀" in render_shuffle_dist(dists, "zh")
+
+
+def test_salt_what_if_minimal_and_fixed():
+    from seatunnel_agent.agents.data.data_skew.shuffle_dist import (
+        render_salt_what_if,
+        salt_what_if,
+    )
+
+    dists = shuffle_distribution(DEMO)
+    # auto mode finds the minimal healthy factor for the fat stage
+    rows = salt_what_if(dists, 0)
+    assert len(rows) == 1 and rows[0]["stage_id"] == 3
+    auto = rows[0]
+    assert auto["healthy"] and auto["factor"] >= 2
+    assert auto["ratio_after"] < auto["ratio_before"]
+    # one step below the minimal factor must still be skewed
+    if auto["factor"] > 2:
+        under = salt_what_if(dists, auto["factor"] - 1)[0]
+        assert not under["healthy"]
+    # a too-small explicit factor raises
+    with pytest.raises(ValueError):
+        salt_what_if(dists, 1)
+    zh = render_salt_what_if(rows, "zh")
+    en = render_salt_what_if(rows, "en")
+    assert "加盐 what-if" in zh and f"x{auto['factor']}" in zh
+    assert "Salt what-if" in en and "healthy" in en
+    # nothing flagged -> nothing to salt
+    assert "无需加盐" in render_salt_what_if([], "zh")
+
+
+def test_skew_runtime_cli_salt_flag():
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli_cmds.skew import skew_runtime
+
+    runner = CliRunner()
+    res = runner.invoke(skew_runtime, [str(DEMO), "--shuffle-dist",
+                                       "--what-if-salt", "0"])
+    assert res.exit_code == 0 and "what-if" in res.output
+    # --what-if-salt without --shuffle-dist is a usage error
+    res = runner.invoke(skew_runtime, [str(DEMO), "--what-if-salt", "4"])
+    assert res.exit_code == 2
