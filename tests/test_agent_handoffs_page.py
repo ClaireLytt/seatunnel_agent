@@ -223,7 +223,8 @@ def test_perf_chain_sqlperf_to_indexadvisor_to_sqlcost(perf_chain_url):
         page = browser.new_page()
         page.goto(f"{base}/sqlperf/", wait_until="networkidle")
         page.get_by_text("LLM rewrite of the SQL", exact=False).click()
-        page.locator("textarea").nth(1).fill(the_sql)
+        page.get_by_placeholder("the original SQL behind this plan",
+                                exact=False).fill(the_sql)
         page.get_by_role("button", name="Analyze file", exact=True).click()
         handoff = page.get_by_role(
             "button", name="Recommend indexes for this SQL")

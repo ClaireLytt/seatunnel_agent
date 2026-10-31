@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
+import { sendHandoff } from '@shared/handoff'
 import { ApiError, runAssess } from '@/api'
 
 export default function App() {
@@ -15,10 +16,7 @@ export default function App() {
   const [dagJson, setDagJson] = useState('')
   const [llm, setLlm] = useState(false)
 
-  const toDagopt = () => {
-    sessionStorage.setItem('seatunnel.handoff.dagopt', dagJson)
-    window.location.href = '/dagopt/'
-  }
+  const toDagopt = () => sendHandoff('dagopt', dagJson)
 
   const run = async (useText: boolean) => {
     const src = useText ? text : dir

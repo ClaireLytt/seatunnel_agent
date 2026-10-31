@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
+import { sendHandoff } from '@shared/handoff'
 import { ApiError, runScan } from '@/api'
 
 export default function App() {
@@ -18,8 +19,7 @@ export default function App() {
 
   const toBackfill = () => {
     if (!scanned) return
-    sessionStorage.setItem('seatunnel.handoff.backfill', JSON.stringify(scanned))
-    window.location.href = '/backfill/'
+    sendHandoff('backfill', JSON.stringify(scanned))
   }
 
   const run = async (useText: boolean) => {

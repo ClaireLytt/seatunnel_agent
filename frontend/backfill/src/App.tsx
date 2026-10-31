@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
+import { sendHandoff, useHandoffReceive } from '@shared/handoff'
 import { ApiError, runPlan } from '@/api'
 
 export default function App() {
@@ -17,15 +18,9 @@ export default function App() {
   const [report, setReport] = useState('')
   const [planJson, setPlanJson] = useState('')
 
-  const toBackfillSql = () => {
-    sessionStorage.setItem('seatunnel.handoff.backfillsql', planJson)
-    window.location.href = '/backfillsql/'
-  }
+  const toBackfillSql = () => sendHandoff('backfillsql', planJson)
 
-  useEffect(() => {
-    const handed = sessionStorage.getItem('seatunnel.handoff.backfill')
-    if (!handed) return
-    sessionStorage.removeItem('seatunnel.handoff.backfill')
+  useHandoffReceive('backfill', (handed) => {
     let inv: { file: string; rules: string; text: string }
     try {
       inv = JSON.parse(handed)
@@ -44,8 +39,7 @@ export default function App() {
       })
       .catch((e) => setError(String(e)))
       .finally(() => setBusy(false))
-    // the key is cleared above, so re-runs (language switch) are no-ops
-  }, [i18n.language])
+  })
 
   const run = async (useText: boolean) => {
     const src = useText ? text : file

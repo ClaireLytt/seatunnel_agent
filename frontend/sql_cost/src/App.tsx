@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
+import { useHandoffReceive } from '@shared/handoff'
 import { ApiError, runEstimate } from '@/api'
 
 export default function App() {
@@ -16,12 +17,7 @@ export default function App() {
   const [compareSql, setCompareSql] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    const handed = sessionStorage.getItem('seatunnel.handoff.sqlcost')
-    if (!handed) return
-    sessionStorage.removeItem('seatunnel.handoff.sqlcost')
-    setSql(handed)
-  }, [])
+  useHandoffReceive('sqlcost', setSql)
 
   const [error, setError] = useState('')
   const [report, setReport] = useState('')

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
+import { sendHandoff } from '@shared/handoff'
 import { ApiError, runAnalyze } from '@/api'
 
 export default function App() {
@@ -16,10 +17,7 @@ export default function App() {
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
 
-  const toIndexAdvisor = () => {
-    sessionStorage.setItem('seatunnel.handoff.indexadvisor', sql)
-    window.location.href = '/indexadvisor/'
-  }
+  const toIndexAdvisor = () => sendHandoff('indexadvisor', sql)
 
   const run = async (useText: boolean) => {
     const src = useText ? text : file

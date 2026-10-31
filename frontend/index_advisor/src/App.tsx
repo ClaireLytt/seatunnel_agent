@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
+import { sendHandoff, useHandoffReceive } from '@shared/handoff'
 import { ApiError, runRecommend } from '@/api'
 
 export default function App() {
@@ -14,22 +15,16 @@ export default function App() {
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
 
-  useEffect(() => {
-    const handed = sessionStorage.getItem('seatunnel.handoff.indexadvisor')
-    if (!handed) return
-    sessionStorage.removeItem('seatunnel.handoff.indexadvisor')
+  useHandoffReceive('indexadvisor', (handed) => {
     setText(handed)
     setBusy(true)
     runRecommend(null, handed, '', i18n.language)
       .then((res) => setReport(res.report ?? ''))
       .catch((e) => setError(String(e)))
       .finally(() => setBusy(false))
-  }, [i18n.language])
+  })
 
-  const toSqlcost = () => {
-    sessionStorage.setItem('seatunnel.handoff.sqlcost', text)
-    window.location.href = '/sqlcost/'
-  }
+  const toSqlcost = () => sendHandoff('sqlcost', text)
 
   const run = async (useText: boolean) => {
     const src = useText ? text : dir

@@ -43,7 +43,8 @@ def test_sqlperf_rewrite_without_key_surfaces_503(nokey_url):
         page = browser.new_page()
         page.goto(nokey_url, wait_until="networkidle")
         page.get_by_text("LLM rewrite of the SQL", exact=False).click()
-        page.locator("textarea").nth(1).fill("SELECT * FROM ods.orders")
+        page.get_by_placeholder("the original SQL behind this plan",
+                                exact=False).fill("SELECT * FROM ods.orders")
         page.get_by_text("Draft the optimized SQL", exact=False).click()
         page.get_by_role("button", name="Analyze file", exact=True).click()
         expect(page.get_by_text("API_KEY is not set",

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@shared/components/card'
 import { PageHeader } from '@shared/components/PageHeader'
 import { ReportView } from '@shared/components/ReportView'
+import { useHandoffReceive } from '@shared/handoff'
 import { ApiError, runAnalyze } from '@/api'
 
 export default function App() {
@@ -16,18 +17,14 @@ export default function App() {
   const [error, setError] = useState('')
   const [report, setReport] = useState('')
 
-  useEffect(() => {
-    const handed = sessionStorage.getItem('seatunnel.handoff.dagopt')
-    if (!handed) return
-    sessionStorage.removeItem('seatunnel.handoff.dagopt')
+  useHandoffReceive('dagopt', (handed) => {
     setText(handed)
     setBusy(true)
     runAnalyze(null, handed, i18n.language)
       .then((res) => setReport(res.report ?? ''))
       .catch((e) => setError(String(e)))
       .finally(() => setBusy(false))
-    // the key is cleared above, so re-runs (language switch) are no-ops
-  }, [i18n.language])
+  })
 
   const run = async (useText: boolean) => {
     const src = useText ? text : file
