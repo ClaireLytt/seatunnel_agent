@@ -22,6 +22,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent rtoffline     --realtime rt.csv --offline off.csv -k dt
   seatunnel-agent taskfailure   -f failures.json
   seatunnel-agent scheduleadvisor -f plan.json [--fail-on-breach]
+  seatunnel-agent layercheck    -f pipeline.sql [--fail-on-high]
 """
 
 from __future__ import annotations
@@ -361,6 +362,56 @@ def register(cli) -> None:
     cli.add_command(rtoffline)
     cli.add_command(taskfailure)
     cli.add_command(scheduleadvisor)
+    cli.add_command(layercheck)
+
+
+@click.command("layercheck")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="流水线 SQL 脚本文件")
+@click.option("--text", type=str, default=None, help="内联 SQL 脚本")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--layers", "layers_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="自定义分层表 JSON 文件（{前缀: 层级}，替换内置）")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草整改通报（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级违规时 exit 1")
+@report_options
+def layercheck(path, text, dialect, layers_path, use_llm, fail_high,
+               lang, fmt, output) -> None:
+    """数仓分层体检 — SQL 血缘 → 分层违规 + 处方。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.layer_check import (
+        parse_layer_map,
+        render_markdown,
+        run_layer_check,
+    )
+
+    try:
+        layers = (parse_layer_map(Path(layers_path).read_text(
+            encoding="utf-8", errors="replace")) if layers_path else None)
+        result = run_layer_check(_read(path, text, "SQL 脚本"),
+                                 dialect=dialect, layers=layers)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.layer_check.advisor_llm import (
+            layering_note,
+        )
+        from seatunnel_agent.agents.data.layer_check.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, layering_note(result, lang=lang),
+            "layering_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(result.findings, fmt,
+                     label=lambda f: f"{f.code}:{f.detail.get('dst', '?')}")
 
 
 @click.command("scheduleadvisor")

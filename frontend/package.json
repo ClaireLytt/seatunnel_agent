@@ -68,6 +68,7 @@
     "task_failure",
     "schedule_advisor",
     "suite_overview",
+    "layer_check",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
