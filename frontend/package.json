@@ -58,6 +58,7 @@
     "data_dict",
     "asset_value",
     "storage_cost",
+    "db_diag",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

@@ -13,6 +13,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent datadict      -f catalog.json [--sql-file workload.sql]
   seatunnel-agent assetvalue    -f inventory.csv
   seatunnel-agent storagecost   -f inventory.csv [--partitions parts.csv]
+  seatunnel-agent dbdiag        -f snapshot.json [--fail-on-high]
 """
 
 from __future__ import annotations
@@ -341,6 +342,46 @@ def register(cli) -> None:
     cli.add_command(datadict)
     cli.add_command(assetvalue)
     cli.add_command(storagecost)
+    cli.add_command(dbdiag)
+
+
+@click.command("dbdiag")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="状态快照 JSON 文件")
+@click.option("--text", type=str, default=None, help="内联快照 JSON")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草事故通报（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def dbdiag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
+    """数据库运行诊断 — 快照 → 发现 + 处方。"""
+    from seatunnel_agent.agents.data.db_diag import (
+        diagnose_snapshot,
+        parse_snapshot,
+        render_markdown,
+    )
+
+    try:
+        diag = diagnose_snapshot(parse_snapshot(_read(path, text, "快照")))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(diag, lang=lang)
+    payload = diag.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.db_diag.advisor_llm import (
+            incident_note,
+        )
+        from seatunnel_agent.agents.data.db_diag.i18n import tp
+
+        note = incident_note(diag, lang=lang)
+        payload["incident_note"] = note
+        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        worst = [f for f in diag.findings if f.severity == "high"]
+        if worst:
+            fail_check("HIGH " + ", ".join(f.code for f in worst), fmt)
 
 
 @click.command("storagecost")
