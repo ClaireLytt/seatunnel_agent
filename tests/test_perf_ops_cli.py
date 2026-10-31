@@ -99,3 +99,29 @@ def test_slowquery_llm_note_wiring(monkeypatch):
         "--llm", "-F", "json"])
     assert res.exit_code == 0
     assert json.loads(res.output)["incident_note"] == "NOTE-CLI"
+
+
+def test_sqlperf_severity_gate():
+    runner = CliRunner()
+    args = ["-f", str(EX / "sqlperf_demo" / "plan.txt")]
+    # the demo plan has high findings (PF002) -> high gate trips
+    res = runner.invoke(sqlperf, [*args, "--fail-on-severity", "high"])
+    assert res.exit_code == 1 and "FINDING PF002" in res.output
+    # a clean plan passes
+    res = runner.invoke(sqlperf, [
+        "--text", "FileScan parquet db.t[id] PartitionFilters: [dt=1], "
+                  "PushedFilters: [IsNotNull(id)]",
+        "--fail-on-severity", "high"])
+    assert res.exit_code == 0
+
+
+def test_dagconflict_gate_and_ledger(tmp_path):
+    runner = CliRunner()
+    hist = tmp_path / "capacity.jsonl"
+    args = ["-f", str(EX / "dagconflict_demo" / "scenario.json"),
+            "--history", str(hist)]
+    # the demo scenario has conflicts -> gate trips, ledger still written
+    res = runner.invoke(dagconflict, [*args, "--fail-on-conflict"])
+    assert res.exit_code == 1 and "CONFLICT windows=" in res.output
+    entry = json.loads(hist.read_text("utf-8").splitlines()[0])
+    assert entry["peak_slots"] > 0 and entry["write_conflicts"] >= 0

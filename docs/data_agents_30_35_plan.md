@@ -97,3 +97,6 @@ slots/memory）± 各 DAG 启动时刻。
 3. [x] slow_query: opt-in LLM incident note (diagnosis -> paste-ready
    ops-channel draft), web checkbox / API llm / CLI --llm, stubbed in
    tests, nokey-503 page regression.
+4. [x] gate family completed: sqlperf --fail-on-severity (block plans
+   with high findings) and dagconflict --fail-on-conflict + --history
+   capacity ledger.

@@ -68,12 +68,14 @@ sql_perf 读**引擎计划**、slow_query 读**运行指标** — 四个视角�
 
 ```bash
 seatunnel-agent sqlperf -f plan.txt                  # 加 --llm --sql-file q.sql 出改写草案
+seatunnel-agent sqlperf -f plan.txt --fail-on-severity high  # 有 high 发现就 exit 1
 seatunnel-agent index-adv -d workload/ --ddl ddl.sql
 seatunnel-agent sqlcost --sql-file q.sql -f stats.json \
   --fail-over-scan-gb 50 --fail-over-shuffle-gb 20   # 超预算 exit 1，可做 CI 闸门
 seatunnel-agent slowquery -f metrics.json --baseline runs.jsonl \
   --history slow_ledger.jsonl --llm                  # 台账 + LLM 通报草稿（可选）
-seatunnel-agent dagconflict -f scenario.json
+seatunnel-agent dagconflict -f scenario.json \
+  --fail-on-conflict --history capacity.jsonl        # 有冲突 exit 1;峰值记台账
 ```
 
 预算闸门的可复制 workflow 在

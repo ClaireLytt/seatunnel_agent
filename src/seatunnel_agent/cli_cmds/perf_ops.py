@@ -32,13 +32,17 @@ from .pipeline_ops import _read
               default=None, help="原 SQL 文件（配合 --llm 出改写草案）")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="按发现请求 LLM 改写 SQL（需配置 API key 与 --sql-file）")
+@click.option("--fail-on-severity", "fail_severity",
+              type=click.Choice(["high", "medium"]), default=None,
+              help="CI gate：出现该级别及以上的发现时 exit 1")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
               default="markdown", help="Report format")
 @click.option("--output", "-o", type=click.Path(), default=None,
               help="Save report to file")
-def sqlperf(path, text, sql_path, use_llm, lang, fmt, output) -> None:
+def sqlperf(path, text, sql_path, use_llm, fail_severity, lang, fmt,
+            output) -> None:
     """执行计划分析 — EXPLAIN 文本 → join/shuffle/裁剪/下推发现与处方。"""
     from seatunnel_agent.agents.data.sql_perf import analyze, render_markdown
 
@@ -57,6 +61,14 @@ def sqlperf(path, text, sql_path, use_llm, lang, fmt, output) -> None:
         payload["rewrite"] = rewrite
         markdown += f"\n\n### {tp(lang, 'rpt_rewrite')}\n{rewrite}\n"
     _emit(payload, markdown, fmt, output)
+    if fail_severity:
+        levels = (["high"] if fail_severity == "high"
+                  else ["high", "medium"])
+        hits = [f for f in result.findings if f.severity in levels]
+        if hits:
+            fail_check("\n".join(
+                f"FINDING {f.code} [{f.severity}] {f.detail}"
+                for f in hits), fmt)
 
 
 @click.command("index-adv")
@@ -199,13 +211,20 @@ def slowquery(path, text, baseline_path, history_path, use_llm, lang, fmt,
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="场景 JSON 文件")
 @click.option("--text", type=str, default=None, help="内联场景 JSON")
+@click.option("--fail-on-conflict", "fail_on_conflict", is_flag=True,
+              default=False,
+              help="CI gate：存在超容窗或写写冲突时 exit 1")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="容量台账：峰值 slots/内存与冲突数追加到该 jsonl")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
               default="markdown", help="Report format")
 @click.option("--output", "-o", type=click.Path(), default=None,
               help="Save report to file")
-def dagconflict(path, text, lang, fmt, output) -> None:
+def dagconflict(path, text, fail_on_conflict, history_path, lang, fmt,
+                output) -> None:
     """并发冲突检测 — 多 DAG 场景 → 超容窗/写写冲突/错峰建议。"""
     from seatunnel_agent.agents.data.dag_conflict import (
         parse_scenario,
@@ -215,6 +234,17 @@ def dagconflict(path, text, lang, fmt, output) -> None:
 
     result = simulate(parse_scenario(_read(path, text, "场景 JSON")))
     _emit(result.to_dict(), render_markdown(result, lang=lang), fmt, output)
+    if history_path:
+        _track_history(history_path, {
+            "peak_slots": result.peak_slots,
+            "peak_memory_gb": round(result.peak_memory_gb, 1),
+            "windows": len(result.windows),
+            "write_conflicts": len(result.write_conflicts),
+        }, worse_key="peak_slots")
+    if fail_on_conflict and (result.windows or result.write_conflicts):
+        fail_check(
+            f"CONFLICT windows={len(result.windows)} "
+            f"write_conflicts={len(result.write_conflicts)}", fmt)
 
 
 def register(cli) -> None:
