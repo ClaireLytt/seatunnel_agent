@@ -91,6 +91,7 @@
     "field_usage",
     "offboard_plan",
     "retention_policy",
+    "cost_allocation",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

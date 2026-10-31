@@ -392,6 +392,7 @@ def register(cli) -> None:
     cli.add_command(fieldusage)
     cli.add_command(offboardplan)
     cli.add_command(retention)
+    cli.add_command(costalloc)
 
 
 @click.command("rollbackplan")
@@ -2095,3 +2096,45 @@ def retention(path, text, active_days, use_llm, fail_high,
     _emit(payload, markdown, fmt, output)
     if fail_high:
         fail_on_high(report.findings, fmt, label=lambda f: f.table)
+@click.command("costalloc")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="用量清单 CSV（带表头）或 JSONL 文件")
+@click.option("--text", type=str, default=None, help="内联用量清单")
+@click.option("--storage-price", "storage_price", type=float, default=0.02,
+              show_default=True, help="每 GB 存储单价")
+@click.option("--compute-price", "compute_price", type=float, default=0.5,
+              show_default=True, help="每计算小时单价")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草账单通报（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def costalloc(path, text, storage_price, compute_price, use_llm,
+              fail_high, lang, fmt, output) -> None:
+    """成本分摊 — 用量清单 + 单价 → 逐归属方账单。"""
+    from seatunnel_agent.agents.data.cost_allocation import (
+        allocate_costs,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+
+    try:
+        headers, rows = parse_rows(_read(path, text, "用量清单"))
+        bill = allocate_costs(headers, rows, storage_price=storage_price,
+                              compute_price=compute_price)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(bill, lang=lang)
+    payload = bill.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.cost_allocation.advisor_llm import (
+            billing_note,
+        )
+        from seatunnel_agent.agents.data.cost_allocation.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, billing_note(bill, lang=lang),
+            "billing_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(bill.findings, fmt, label=lambda f: f.owner)

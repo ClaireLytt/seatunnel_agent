@@ -1,0 +1,9 @@
+owner,item,storage_gb,compute_hours
+trade,dwd.orders,850,120
+trade,dws.orders_daily,120,60
+trade,ads.gmv_report,15,30
+growth,ods.click_log,2400,40
+growth,dws.user_profile,300,25
+,tmp.old_backup,2000,0
+,tmp.export_2025,450,2
+risk,dwd.risk_events,180,80
