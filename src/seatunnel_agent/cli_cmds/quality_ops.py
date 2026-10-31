@@ -390,6 +390,7 @@ def register(cli) -> None:
     cli.add_command(slaboard)
     cli.add_command(daggen)
     cli.add_command(fieldusage)
+    cli.add_command(offboardplan)
 
 
 @click.command("rollbackplan")
@@ -2011,3 +2012,45 @@ def fieldusage(ddl_path, queries_path, dialect, use_llm, fail_unused,
         if dead:
             fail_check(fmt, "存在无人读的表 / unread tables: "
                        + ", ".join(dead))
+@click.command("offboardplan")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="流水线 SQL 脚本文件")
+@click.option("--text", type=str, default=None, help="内联 SQL 脚本")
+@click.option("--table", "-t", required=True, help="要下线的表")
+@click.option("--grace-days", "grace_days", type=click.IntRange(min=0),
+              default=30, show_default=True, help="公示期（天）")
+@click.option("--archive-db", "archive_db", default="archive",
+              show_default=True, help="归档库名")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草下线通告（需配置 API key）")
+@click.option("--fail-on-blocked", "fail_blocked", is_flag=True,
+              default=False, help="CI gate：仍有下游在读时 exit 1")
+@report_options
+def offboardplan(path, text, table, grace_days, archive_db, use_llm,
+                 fail_blocked, lang, fmt, output) -> None:
+    """下线方案 — 血缘 × 表 → 四阶段下线步骤。"""
+    from seatunnel_agent.agents.data.offboard_plan import (
+        plan_offboard,
+        render_markdown,
+    )
+
+    try:
+        plan = plan_offboard(_read(path, text, "SQL 脚本"), table,
+                             grace_days=grace_days, archive_db=archive_db)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(plan, lang=lang)
+    payload = plan.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.offboard_plan.advisor_llm import (
+            retirement_note,
+        )
+        from seatunnel_agent.agents.data.offboard_plan.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, retirement_note(plan, lang=lang),
+            "retirement_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_blocked and plan.blocked:
+        fail_check(fmt, "下游仍在读 / downstream still reads: "
+                   + ", ".join(sorted(plan.downstream)))

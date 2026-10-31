@@ -89,6 +89,7 @@
     "sla_board",
     "dag_gen",
     "field_usage",
+    "offboard_plan",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
