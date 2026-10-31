@@ -378,6 +378,7 @@ def register(cli) -> None:
     cli.add_command(schemaalign)
     cli.add_command(rollbackplan)
     cli.add_command(contractgen)
+    cli.add_command(sqldiff)
 
 
 @click.command("rollbackplan")
@@ -1442,3 +1443,48 @@ def contractgen(path, text, tables, no_types, threshold, strict, dialect,
             payload, markdown, tighten_note(draft, lang=lang),
             "tighten_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
+@click.command("sqldiff")
+@click.option("--old", "old_path", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="旧版 SQL 文件")
+@click.option("--new", "new_path", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="新版 SQL 文件")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草变更评审（需配置 API key）")
+@click.option("--fail-on-breaking", "fail_breaking", is_flag=True,
+              default=False, help="CI gate：存在破坏级差异时 exit 1")
+@report_options
+def sqldiff(old_path, new_path, dialect, use_llm, fail_breaking,
+            lang, fmt, output) -> None:
+    """SQL 语义对比 — 两版取数 SQL → 分级语义差异。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.sql_diff import (
+        diff_sql,
+        render_markdown,
+    )
+
+    try:
+        report = diff_sql(Path(old_path).read_text(encoding="utf-8"),
+                          Path(new_path).read_text(encoding="utf-8"),
+                          dialect=dialect)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(report, lang=lang)
+    payload = report.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.sql_diff.advisor_llm import (
+            change_note,
+        )
+        from seatunnel_agent.agents.data.sql_diff.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, change_note(report, lang=lang),
+            "change_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_breaking:
+        broken = [f for f in report.findings if f.severity == "breaking"]
+        if broken:
+            fail_check(fmt, "存在破坏级差异 / breaking differences: "
+                       + ", ".join(f"{f.target}:{f.kind}" for f in broken))
