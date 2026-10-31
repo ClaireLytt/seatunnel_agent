@@ -92,6 +92,7 @@
     "offboard_plan",
     "retention_policy",
     "cost_allocation",
+    "topic_schema",
     "sync_strategy",
     "sql_review",
     "sql_testgen",

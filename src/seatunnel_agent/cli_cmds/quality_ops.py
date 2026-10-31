@@ -393,6 +393,7 @@ def register(cli) -> None:
     cli.add_command(offboardplan)
     cli.add_command(retention)
     cli.add_command(costalloc)
+    cli.add_command(topicschema)
 
 
 @click.command("rollbackplan")
@@ -2138,3 +2139,48 @@ def costalloc(path, text, storage_price, compute_price, use_llm,
     _emit(payload, markdown, fmt, output)
     if fail_high:
         fail_on_high(bill.findings, fmt, label=lambda f: f.owner)
+@click.command("topicschema")
+@click.option("--old", "old_path", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="旧版 Schema JSON 文件（Avro 或 JSON Schema）")
+@click.option("--new", "new_path", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="新版 Schema JSON 文件")
+@click.option("--mode", type=click.Choice(["backward", "forward", "full"]),
+              default="backward", show_default=True, help="兼容模式")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草发布通报（需配置 API key）")
+@click.option("--fail-on-breaking", "fail_breaking", is_flag=True,
+              default=False, help="CI gate：存在 breaking 变更时 exit 1")
+@report_options
+def topicschema(old_path, new_path, mode, use_llm, fail_breaking,
+                lang, fmt, output) -> None:
+    """消息 Schema 对比 — 两版 Avro/JSON Schema → 兼容结论。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.topic_schema import (
+        diff_topic_schemas,
+        render_markdown,
+    )
+
+    try:
+        report = diff_topic_schemas(
+            Path(old_path).read_text(encoding="utf-8"),
+            Path(new_path).read_text(encoding="utf-8"), mode=mode)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(report, lang=lang)
+    payload = report.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.topic_schema.advisor_llm import (
+            rollout_note,
+        )
+        from seatunnel_agent.agents.data.topic_schema.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, rollout_note(report, lang=lang),
+            "rollout_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_breaking and not report.compatible:
+        broken = [f.fld for f in report.findings
+                  if f.severity == "breaking"]
+        fail_check(fmt, "存在破坏兼容的变更 / breaking changes: "
+                   + ", ".join(broken))
