@@ -87,6 +87,11 @@ def test_salt_what_if_minimal_and_fixed():
     en = render_salt_what_if(rows, "en")
     assert "加盐 what-if" in zh and f"x{auto['factor']}" in zh
     assert "Salt what-if" in en and "healthy" in en
+    # a healthy factor brings the ready-to-adapt salted-join skeleton
+    n = auto["factor"]
+    for text in (zh, en):
+        assert "LATERAL VIEW explode" in text
+        assert f"sequence(0, {n - 1})" in text and f"{n}))" in text
     # nothing flagged -> nothing to salt
     assert "无需加盐" in render_salt_what_if([], "zh")
 

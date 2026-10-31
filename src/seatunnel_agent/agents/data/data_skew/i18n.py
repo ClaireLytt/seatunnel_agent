@@ -292,6 +292,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
                    "median is unchanged. Salting adds a shuffle+union on "
                    "the other join side — apply the smallest factor that "
                    "reads healthy.",
+        "sw_sql_title": "Salted-join skeleton (adapt the table/key names)",
         "rt_upload_btn": "Analyze event log file",
         "rt_url": "History Server URL",
         "rt_app": "Application ID",
@@ -647,6 +648,7 @@ DSK_I18N: dict[str, dict[str, str]] = {
         "sw_hint": "> 上界模型：长尾任务按 N 路打散，中位任务不变。加盐会给 "
                    "join 另一侧带来 shuffle+union 开销 — 用能恢复健康的最小"
                    "盐值。",
+        "sw_sql_title": "加盐 join 骨架（按实际表名/键名调整）",
         "rt_upload_btn": "分析 event log 文件",
         "rt_url": "History Server 地址",
         "rt_app": "Application ID",

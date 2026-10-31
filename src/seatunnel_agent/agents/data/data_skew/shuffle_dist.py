@@ -205,7 +205,31 @@ def render_salt_what_if(rows: list[dict[str, Any]], lang: str) -> str:
             f"| {r['ratio_before']:g}x -> {r['ratio_after']:g}x | {ok} |")
     lines.append("")
     lines.append(dsk(lang, "sw_hint"))
+    factors = [r["factor"] for r in rows if r["healthy"] and r["factor"]]
+    if factors:
+        lines.append("")
+        lines.append(f"**{dsk(lang, 'sw_sql_title')}**")
+        lines.append("```sql")
+        lines.append(salt_sql_template(max(factors)))
+        lines.append("```")
     return "\n".join(lines)
+
+
+def salt_sql_template(factor: int) -> str:
+    """Ready-to-adapt Spark SQL skeleton for an N-way salted join."""
+    n = max(2, int(factor))
+    return (f"-- skewed (large) side: scatter each hot key {n} ways\n"
+            f"SELECT *, concat(join_key, '#',\n"
+            f"                 pmod(abs(hash(some_unique_col)), {n}))\n"
+            f"         AS salted_key\n"
+            f"FROM   big_table;\n"
+            f"\n"
+            f"-- other (small) side: explode every key into {n} copies\n"
+            f"SELECT t.*, concat(t.join_key, '#', s.salt) AS salted_key\n"
+            f"FROM   small_table t\n"
+            f"LATERAL VIEW explode(sequence(0, {n - 1})) s AS salt;\n"
+            f"\n"
+            f"-- then join on salted_key instead of join_key")
 
 
 def render_shuffle_dist(dists: list[ShuffleDist], lang: str) -> str:
