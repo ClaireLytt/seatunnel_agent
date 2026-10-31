@@ -7,7 +7,18 @@ from seatunnel_agent.common.utils import md_table, normalize_lang
 from .advisor import WorkloadAdvice
 from .i18n import tp
 
-__all__ = ["render_audit", "render_markdown"]
+__all__ = ["render_audit", "render_cold_columns", "render_markdown"]
+
+
+def render_cold_columns(cold: dict[str, list[str]], lang: str = "zh") -> str:
+    """Markdown section for advisor.cold_columns (call only if non-empty)."""
+    lang = normalize_lang(lang)
+    lines = [f"### {tp(lang, 'cold_title')}"]
+    for table, cols in sorted(cold.items()):
+        lines.append(f"- `{table}`: " + ", ".join(f"`{c}`" for c in cols))
+    lines.append("")
+    lines.append(tp(lang, "cold_hint"))
+    return "\n".join(lines)
 
 
 def render_audit(findings: list[dict], lang: str = "zh") -> str:

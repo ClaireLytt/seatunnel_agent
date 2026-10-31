@@ -144,8 +144,10 @@ def index_adv(directory, text, ddl_path, dialect, fail_on_audit, stats_path,
     from seatunnel_agent.agents.data.index_advisor import (
         analyze_workload,
         audit,
+        cold_columns,
         recommend,
         render_audit,
+        render_cold_columns,
         render_markdown,
     )
     from seatunnel_agent.common.utils import collect_sql_files
@@ -178,6 +180,10 @@ def index_adv(directory, text, ddl_path, dialect, fail_on_audit, stats_path,
         findings = audit(advice, ddl)
         payload["audit"] = findings
         markdown += "\n\n" + render_audit(findings, lang=lang)
+        cold = cold_columns(advice, ddl, workload)
+        if cold:
+            payload["cold_columns"] = cold
+            markdown += "\n\n" + render_cold_columns(cold, lang=lang)
     if stats is not None:
         from seatunnel_agent.agents.data.index_advisor.roi import (
             partition_roi,

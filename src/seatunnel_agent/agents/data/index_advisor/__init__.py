@@ -14,11 +14,12 @@ from .advisor import (
     WorkloadAdvice,
     analyze_workload,
     audit,
+    cold_columns,
     parse_ddl_layout,
     parse_ddl_types,
     recommend,
 )
-from .report import render_audit, render_markdown
+from .report import render_audit, render_cold_columns, render_markdown
 
 __all__ = [
     "ColumnStats",
@@ -26,9 +27,11 @@ __all__ = [
     "WorkloadAdvice",
     "analyze_workload",
     "audit",
+    "cold_columns",
     "parse_ddl_layout",
     "parse_ddl_types",
     "recommend",
     "render_audit",
+    "render_cold_columns",
     "render_markdown",
 ]

@@ -20,8 +20,8 @@ from seatunnel_agent.common.api_guard import (
 )
 from seatunnel_agent.common.utils import collect_sql_files, normalize_lang
 
-from .advisor import analyze_workload, audit, recommend
-from .report import render_audit, render_markdown
+from .advisor import analyze_workload, audit, cold_columns, recommend
+from .report import render_audit, render_cold_columns, render_markdown
 
 router = APIRouter(prefix="/api/indexadvisor", tags=["index_advisor"])
 
@@ -70,6 +70,11 @@ def run_recommend(req: RecommendRequest) -> RecommendResponse:
         payload["audit"] = findings
         if report is not None:
             report += "\n\n" + render_audit(findings, lang=lang)
+        cold = cold_columns(advice, req.ddl, text)
+        if cold:
+            payload["cold_columns"] = cold
+            if report is not None:
+                report += "\n\n" + render_cold_columns(cold, lang=lang)
     return RecommendResponse(result=payload, report=report,
                              elapsed_ms=ms_since(start))
 

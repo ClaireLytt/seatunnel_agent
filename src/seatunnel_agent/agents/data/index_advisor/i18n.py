@@ -42,6 +42,10 @@ INDEX_I18N: dict[str, dict[str, str]] = {
         "roi_col_stmts": "statements estimated",
         "roi_skipped": "Not priced (missing from the inventory or "
                        "partition count < 2):",
+        "cold_title": "Cold columns (declared in the DDL, never "
+                      "referenced by the workload)",
+        "cold_hint": "> Pruning or archiving candidates — verify against "
+                     "consumers outside this workload before dropping.",
     },
     "zh": {
         "rpt_title": "索引 / 分区推荐",
@@ -73,6 +77,8 @@ INDEX_I18N: dict[str, dict[str, str]] = {
         "roi_col_saved": "整个负载省的扫描",
         "roi_col_stmts": "估算语句数",
         "roi_skipped": "未定价（清单缺失或分区数 < 2）：",
+        "cold_title": "冷列（DDL 声明但负载从未引用）",
+        "cold_hint": "> 裁剪/归档候选 — 下线前请核对本负载之外的消费方。",
     },
 }
 

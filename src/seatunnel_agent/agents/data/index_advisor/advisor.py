@@ -127,6 +127,50 @@ def parse_ddl_layout(ddl_text: str) -> dict[str, dict[str, str | None]]:
     return out
 
 
+def cold_columns(advice: WorkloadAdvice, ddl_text: str,
+                 workload: str) -> dict[str, list[str]]:
+    """DDL-declared columns the workload never references, per table.
+
+    "Referenced" means appearing anywhere in a parsed statement —
+    projections included, not just the filter/join/group hits the
+    advisor counts — so a cold column really is safe to consider for
+    pruning.  Tables absent from the workload, statements that do not
+    parse, and star-selects over a table disqualify it rather than
+    guess.
+    """
+    import sqlglot
+    from sqlglot import exp
+
+    types = parse_ddl_types(ddl_text)
+    if not types:
+        return {}
+    referenced: dict[str, set[str]] = {}
+    starred: set[str] = set()
+    for raw in _split(workload):
+        try:
+            stmt = sqlglot.parse_one(raw)
+        except Exception:
+            continue
+        aliases = _alias_map(stmt)
+        if stmt.find(exp.Star):
+            starred.update(aliases.values())
+        for col in stmt.find_all(exp.Column):
+            resolved = _resolve(col, aliases)
+            if resolved:
+                table, name = resolved
+                referenced.setdefault(table, set()).add(name)
+    out: dict[str, list[str]] = {}
+    for t in advice.tables:
+        declared = types.get(t.table)
+        if not declared or t.table in starred:
+            continue
+        seen = referenced.get(t.table, set())
+        cold = sorted(c for c in declared if c not in seen)
+        if cold:
+            out[t.table] = cold
+    return out
+
+
 def audit(advice: WorkloadAdvice, ddl_text: str) -> list[dict[str, str]]:
     """Existing layout vs workload — mismatch findings per table.
 

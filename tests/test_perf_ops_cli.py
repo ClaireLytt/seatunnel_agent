@@ -330,6 +330,38 @@ def test_index_adv_partition_roi():
     assert "INTO 32 BUCKETS" in res.output
 
 
+def test_index_adv_cold_columns(tmp_path):
+    runner = CliRunner()
+    ddl = tmp_path / "ddl.sql"
+    ddl.write_text(
+        "CREATE TABLE ods.orders (\n"
+        "  order_id BIGINT,\n  user_id BIGINT,\n  amount DOUBLE,\n"
+        "  internal_flag STRING,\n  legacy_note STRING,\n  dt STRING\n"
+        ") STORED AS PARQUET;\n", encoding="utf-8")
+    workload = ("SELECT o.order_id, o.amount FROM ods.orders o "
+                "WHERE o.dt = '2024-05-01' AND o.user_id = 42")
+    res = runner.invoke(index_adv, ["--text", workload, "--ddl", str(ddl),
+                                    "-F", "json"])
+    assert res.exit_code == 0
+    cold = json.loads(res.output)["cold_columns"]
+    assert cold["ods.orders"] == ["internal_flag", "legacy_note"]
+    # projected-only columns are referenced, never cold
+    assert "order_id" not in cold["ods.orders"]
+    # a star-select disqualifies the table instead of guessing
+    res = runner.invoke(index_adv, [
+        "--text", workload + "; SELECT * FROM ods.orders",
+        "--ddl", str(ddl), "-F", "json"])
+    assert "cold_columns" not in json.loads(res.output)
+    # the demo workload references every declared column -> no section
+    res = runner.invoke(index_adv, [
+        "-d", str(EX / "indexadvisor_demo"),
+        "--ddl", str(EX / "indexadvisor_demo" / "ddl.sql"), "-F", "json"])
+    assert "cold_columns" not in json.loads(res.output)
+    res = runner.invoke(index_adv, ["--text", workload, "--ddl", str(ddl),
+                                    "--lang", "en"])
+    assert "Cold columns" in res.output
+
+
 def test_index_adv_fail_on_audit_gate():
     runner = CliRunner()
     res = runner.invoke(index_adv, [
