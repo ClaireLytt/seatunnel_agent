@@ -26,6 +26,7 @@ perf_ops.py (shared _read/_emit/fail_check):
   seatunnel-agent partitionhealth -f partitions.csv [--fail-on-high]
   seatunnel-agent capacityforecast -f storage.csv --quota 2000
   seatunnel-agent configdiff    --left dev.conf --right prod.conf
+  seatunnel-agent alertstorm    -f alerts.json [--fail-on-high]
 """
 
 from __future__ import annotations
@@ -369,6 +370,44 @@ def register(cli) -> None:
     cli.add_command(partitionhealth)
     cli.add_command(capacityforecast)
     cli.add_command(configdiff)
+    cli.add_command(alertstorm)
+
+
+@click.command("alertstorm")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="告警导出文件（CSV 或 JSON 列表）")
+@click.option("--text", type=str, default=None, help="内联导出")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草交接摘要（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：检出风暴窗口时 exit 1")
+@report_options
+def alertstorm(path, text, use_llm, fail_high, lang, fmt, output) -> None:
+    """告警风暴聚合 — 导出 → 聚类 + 风暴/横跳/抑制建议。"""
+    from seatunnel_agent.agents.data.alert_storm import (
+        analyze_alerts,
+        parse_alerts,
+        render_markdown,
+    )
+
+    try:
+        result = analyze_alerts(parse_alerts(_read(path, text, "导出")))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(result, lang=lang)
+    payload = result.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.alert_storm.advisor_llm import (
+            digest_note,
+        )
+        from seatunnel_agent.agents.data.alert_storm.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, digest_note(result, lang=lang),
+            "digest_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(result.findings, fmt)
 
 
 @click.command("configdiff")

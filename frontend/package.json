@@ -72,6 +72,7 @@
     "partition_health",
     "capacity_forecast",
     "config_diff",
+    "alert_storm",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
