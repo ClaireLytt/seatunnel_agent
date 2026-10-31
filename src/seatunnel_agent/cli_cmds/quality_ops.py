@@ -389,6 +389,7 @@ def register(cli) -> None:
     cli.add_command(seatunnelgen)
     cli.add_command(slaboard)
     cli.add_command(daggen)
+    cli.add_command(fieldusage)
 
 
 @click.command("rollbackplan")
@@ -1963,3 +1964,50 @@ def daggen(path, text, dag_id, schedule, dialect, py_out, use_llm,
             payload, markdown, schedule_note(draft, lang=lang),
             "schedule_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
+@click.command("fieldusage")
+@click.option("--ddl", "ddl_path", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="CREATE TABLE DDL 文件")
+@click.option("--queries", "-q", "queries_path",
+              type=click.Path(exists=True, dir_okay=False), required=True,
+              help="查询负载 SQL 文件")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 给出处置建议（需配置 API key）")
+@click.option("--fail-on-unused", "fail_unused", is_flag=True,
+              default=False, help="CI gate：存在从未被读的表时 exit 1")
+@report_options
+def fieldusage(ddl_path, queries_path, dialect, use_llm, fail_unused,
+               lang, fmt, output) -> None:
+    """字段使用率盘点 — DDL + 查询负载 → 列级引用计数。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.field_usage import (
+        analyze_usage,
+        render_markdown,
+    )
+
+    try:
+        report = analyze_usage(
+            Path(ddl_path).read_text(encoding="utf-8"),
+            Path(queries_path).read_text(encoding="utf-8"),
+            dialect=dialect)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(report, lang=lang)
+    payload = report.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.field_usage.advisor_llm import (
+            usage_note,
+        )
+        from seatunnel_agent.agents.data.field_usage.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, usage_note(report, lang=lang),
+            "usage_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_unused:
+        dead = [f.table for f in report.findings if f.code == "FU001"]
+        if dead:
+            fail_check(fmt, "存在无人读的表 / unread tables: "
+                       + ", ".join(dead))
