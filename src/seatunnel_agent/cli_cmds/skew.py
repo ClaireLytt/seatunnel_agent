@@ -636,6 +636,10 @@ def skew_splitkey(
               help="对被标记 stage 按 N 路加盐重算 p99/倾斜比"
                    "（N>=2；0 = 自动找恢复健康的最小盐值；"
                    "需配合 --shuffle-dist）")
+@click.option("--dist-history", "dist_history_path",
+              type=click.Path(dir_okay=False), default=None,
+              help="分布台账：最差 p99/p50 倾斜比与被标记 stage 数追加到"
+                   "该 jsonl（需配合 --shuffle-dist）")
 def skew_runtime(
     eventlog: str | None,
     history_url: str | None,
@@ -646,6 +650,7 @@ def skew_runtime(
     fail_flag: bool,
     shuffle_dist_flag: bool,
     salt_factor: int | None,
+    dist_history_path: str | None,
 ) -> None:
     """运行时倾斜诊断 — 从任务级指标定位拖尾 stage/vertex。
 
@@ -686,6 +691,8 @@ def skew_runtime(
     from seatunnel_agent.cli_cmds.check_runner import require_with
     require_with(salt_factor is not None and not shuffle_dist_flag,
                  "--what-if-salt", "--shuffle-dist")
+    require_with(dist_history_path and not shuffle_dist_flag,
+                 "--dist-history", "--shuffle-dist")
     fat_tails = 0
     if shuffle_dist_flag:
         if not eventlog:
@@ -700,6 +707,17 @@ def skew_runtime(
         dists = shuffle_distribution(eventlog)
         md += "\n\n" + render_shuffle_dist(dists, lang)
         fat_tails = sum(1 for d in dists if d.verdict() == "confirmed")
+        if dist_history_path:
+            from seatunnel_agent.cli_cmds.check_runner import track_history
+
+            flagged = [d for d in dists if d.verdict() != "ok"]
+            worst = max((d.ratio for d in flagged
+                         if d.ratio != float("inf")), default=0.0)
+            track_history(dist_history_path, {
+                "worst_ratio": round(worst, 2),
+                "flagged_stages": len(flagged),
+                "confirmed": fat_tails,
+            }, worse_key="worst_ratio")
         if salt_factor is not None:
             try:
                 rows = salt_what_if(dists, salt_factor)

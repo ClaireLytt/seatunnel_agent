@@ -110,6 +110,26 @@ def test_skew_runtime_cli_salt_flag():
     assert res.exit_code == 2
 
 
+def test_skew_runtime_dist_history(tmp_path):
+    import json
+
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli_cmds.skew import skew_runtime
+
+    runner = CliRunner()
+    ledger = tmp_path / "dist.jsonl"
+    res = runner.invoke(skew_runtime, [str(DEMO), "--shuffle-dist",
+                                       "--dist-history", str(ledger)])
+    assert res.exit_code == 0
+    entry = json.loads(ledger.read_text(encoding="utf-8").splitlines()[0])
+    assert entry["worst_ratio"] >= 38 and entry["confirmed"] == 1
+    # --dist-history without --shuffle-dist is a usage error
+    res = runner.invoke(skew_runtime, [str(DEMO), "--dist-history",
+                                       str(ledger)])
+    assert res.exit_code == 2
+
+
 def test_skew_runtime_fail_names_fat_tails():
     """With --shuffle-dist the --fail message counts the confirmed fat
     tails alongside the straggler stages."""
