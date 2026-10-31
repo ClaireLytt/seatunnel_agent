@@ -98,6 +98,35 @@ def render_compare(cmp: dict, lang: str = "zh") -> str:
     return "\n".join(lines)
 
 
+def render_calibration(cal: dict, lang: str = "zh") -> str:
+    """Markdown for estimator.calibrate output."""
+    from seatunnel_agent.common.utils import md_table
+
+    lang = normalize_lang(lang)
+    rows = []
+    dur = cal["duration"]
+    rows.append([tp(lang, "cal_duration"),
+                 fmt_secs(dur["estimated"]), fmt_secs(dur["actual"]),
+                 f"{dur['ratio']:g}x"])
+    for key in ("scan_bytes", "shuffle_bytes"):
+        if key in cal:
+            rows.append([tp(lang, "cal_" + key),
+                         fmt_bytes(cal[key]["estimated"]),
+                         fmt_bytes(cal[key]["actual"]),
+                         f"{cal[key]['ratio']:g}x"])
+    lines = [f"### {tp(lang, 'cal_title')}"]
+    lines.extend(md_table(
+        [tp(lang, "cal_col_axis"), tp(lang, "cal_col_est"),
+         tp(lang, "cal_col_act"), tp(lang, "cal_col_ratio")], rows))
+    lines.append("")
+    if dur["in_band"]:
+        lines.append(tp(lang, "cal_in_band"))
+    else:
+        lines.append(tp(lang, "cal_off_band").format(
+            lo=fmt_secs(dur["band"][0]), hi=fmt_secs(dur["band"][1])))
+    return "\n".join(lines)
+
+
 def render_batch(batch: dict, lang: str = "zh") -> str:
     """Markdown for a workload ranking (estimator.estimate_batch)."""
     from seatunnel_agent.common.utils import md_table

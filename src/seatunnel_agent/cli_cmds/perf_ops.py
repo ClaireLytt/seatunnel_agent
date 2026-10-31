@@ -202,18 +202,25 @@ def index_adv(directory, text, ddl_path, dialect, fail_on_audit, stats_path,
               default=False,
               help="CI gate：改写在任一维度反而更贵时 exit 1"
                    "（需配合 --compare-sql-file）")
+@click.option("--calibrate", "calibrate_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="校准：实跑指标 JSON（slowquery 同款），对比预估 vs 实跑"
+                   "并给出折算倍率")
 @report_options
 def sqlcost(sql_path, directory, stats_path, fail_over_total_scan_gb,
             assume_partitions, fail_over_scan_gb, fail_over_shuffle_gb,
-            compare_sql_path, fail_if_worse, lang, fmt, output) -> None:
+            compare_sql_path, fail_if_worse, calibrate_path, lang, fmt,
+            output) -> None:
     """资源消耗预测 — SQL × 表统计 → 代价卡；可按预算挡 CI。"""
     from seatunnel_agent.agents.data.sql_cost import (
+        calibrate,
         compare,
         estimate,
         estimate_batch,
         parse_assumptions,
         parse_stats,
         render_batch,
+        render_calibration,
         render_compare,
         render_markdown,
         render_what_if,
@@ -227,9 +234,10 @@ def sqlcost(sql_path, directory, stats_path, fail_over_total_scan_gb,
     stats = parse_stats(Path(stats_path).read_text(encoding="utf-8",
                                                    errors="replace"))
     if directory:
-        if assume_partitions or compare_sql_path:
-            raise click.UsageError(
-                "--dir 批量模式不支持 --assume-partition / --compare-sql-file")
+        if assume_partitions or compare_sql_path or calibrate_path:
+            raise click.UsageError("--dir 批量模式不支持 "
+                                   "--assume-partition / --compare-sql-file"
+                                   " / --calibrate")
         from seatunnel_agent.common.utils import collect_sql_files
 
         batch = estimate_batch(
@@ -262,6 +270,15 @@ def sqlcost(sql_path, directory, stats_path, fail_over_total_scan_gb,
         except ValueError as exc:
             raise click.UsageError(str(exc)) from exc
         markdown += "\n\n" + render_what_if(payload["what_if"], lang=lang)
+    if calibrate_path:
+        try:
+            actual = json.loads(Path(calibrate_path).read_text(
+                encoding="utf-8", errors="replace"))
+            payload["calibration"] = calibrate(card, actual)
+        except (ValueError, TypeError) as exc:
+            raise click.UsageError(f"--calibrate: {exc}") from exc
+        markdown += "\n\n" + render_calibration(payload["calibration"],
+                                                lang=lang)
     _emit(payload, markdown, fmt, output)
     problems: list[str] = []
     if fail_if_worse:

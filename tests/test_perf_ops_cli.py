@@ -351,6 +351,29 @@ def test_sqlcost_fail_if_worse_gate():
     assert res.exit_code == 2
 
 
+def test_sqlcost_calibrate(tmp_path):
+    runner = CliRunner()
+    stats = str(EX / "sqlcost_demo" / "stats.json")
+    q = str(EX / "sqlcost_demo" / "query.sql")
+    actual = tmp_path / "m.json"
+    actual.write_text('{"duration_s": 600, "scan_bytes": 1000000000}',
+                      encoding="utf-8")
+    res = runner.invoke(sqlcost, ["--sql-file", q, "-f", stats,
+                                  "--calibrate", str(actual), "-F", "json"])
+    assert res.exit_code == 0
+    cal = json.loads(res.output)["calibration"]
+    assert cal["duration"]["actual"] == 600 and cal["duration"]["ratio"] > 0
+    assert cal["scan_bytes"]["actual"] == 1000000000
+    res = runner.invoke(sqlcost, ["--sql-file", q, "-f", stats,
+                                  "--calibrate", str(actual), "--lang", "en"])
+    assert res.exit_code == 0 and "Calibration" in res.output
+    # metrics without duration_s are a usage error, not a guess
+    actual.write_text('{"scan_bytes": 5}', encoding="utf-8")
+    res = runner.invoke(sqlcost, ["--sql-file", q, "-f", stats,
+                                  "--calibrate", str(actual)])
+    assert res.exit_code == 2
+
+
 def test_slowquery_trend_gate(tmp_path):
     runner = CliRunner()
     ledger = tmp_path / "ledger.jsonl"

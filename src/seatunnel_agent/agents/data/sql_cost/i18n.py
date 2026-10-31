@@ -51,6 +51,18 @@ SQLCOST_I18N: dict[str, dict[str, str]] = {
         "bat_col_core": "core-seconds",
         "bat_total": "total ({n})",
         "bat_skipped": "Not estimated (unparseable):",
+        "cal_title": "Calibration (estimate vs the real run)",
+        "cal_col_axis": "axis",
+        "cal_col_est": "estimated",
+        "cal_col_act": "actual",
+        "cal_col_ratio": "actual / estimated",
+        "cal_duration": "duration",
+        "cal_scan_bytes": "scan",
+        "cal_shuffle_bytes": "shuffle",
+        "cal_in_band": "The run landed inside the stated 0.5x-2x band.",
+        "cal_off_band": ("> The run fell outside the stated band "
+                         "({lo} ~ {hi}) — apply the duration ratio as a "
+                         "correction factor for this workload."),
     },
     "zh": {
         "rpt_title": "SQL 代价卡",
@@ -93,6 +105,17 @@ SQLCOST_I18N: dict[str, dict[str, str]] = {
         "bat_col_core": "核·秒",
         "bat_total": "合计（{n}）",
         "bat_skipped": "未估算（无法解析）：",
+        "cal_title": "校准（预估 vs 实跑）",
+        "cal_col_axis": "维度",
+        "cal_col_est": "预估",
+        "cal_col_act": "实跑",
+        "cal_col_ratio": "实跑 / 预估",
+        "cal_duration": "耗时",
+        "cal_scan_bytes": "扫描",
+        "cal_shuffle_bytes": "shuffle",
+        "cal_in_band": "实跑落在声明的 0.5x–2x 区间内。",
+        "cal_off_band": ("> 实跑超出声明区间（{lo} ~ {hi}）— 该负载后续估算"
+                         "可按耗时倍率折算。"),
     },
 }
 

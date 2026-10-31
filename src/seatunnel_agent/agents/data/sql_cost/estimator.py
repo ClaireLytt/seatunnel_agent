@@ -277,6 +277,38 @@ def estimate_batch(items: list[tuple[str, str]],
     }
 
 
+def calibrate(card: CostCard, actual: dict[str, Any]) -> dict[str, Any]:
+    """Estimate vs a real run (slow_query-style metrics JSON).
+
+    ``actual`` carries duration_s and optionally scan_bytes /
+    shuffle_bytes.  Each axis returns estimated, actual and the
+    actual/estimated ratio (the correction factor to apply to future
+    estimates on this workload); duration also says whether the run
+    landed inside the stated 0.5x-2x wall-clock band.
+    """
+    duration = float(actual.get("duration_s") or 0)
+    if duration <= 0:
+        raise ValueError("actual metrics need 'duration_s'")
+
+    def axis(est: float, act: float) -> dict[str, float]:
+        return {"estimated": round(est), "actual": round(act),
+                "ratio": round(act / est, 2) if est else 0.0}
+
+    out: dict[str, Any] = {
+        "duration": {
+            **axis((card.wall_seconds[0] + card.wall_seconds[1]) / 2,
+                   duration),
+            "band": [round(w, 1) for w in card.wall_seconds],
+            "in_band": card.wall_seconds[0] <= duration
+            <= card.wall_seconds[1],
+        },
+    }
+    for key in ("scan_bytes", "shuffle_bytes"):
+        if actual.get(key):
+            out[key] = axis(getattr(card, key), float(actual[key]))
+    return out
+
+
 def compare(base: CostCard, rewrite: CostCard) -> dict[str, Any]:
     """Delta card between the original SQL and a rewritten version.
 
