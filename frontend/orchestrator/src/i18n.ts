@@ -37,6 +37,15 @@ const resources = {
       exPiiText:
         "Any sensitive columns in this DDL? CREATE TABLE u (phone STRING COMMENT 'mobile phone', " +
         "id_card STRING COMMENT 'national id')",
+      exRealtime: 'Try: realtime health check',
+      exRealtimeText:
+        'Run a realtime health check: first diagnose the Kafka lag with ' +
+        '{"group":"g-orders","topics":[{"topic":"orders","partitions":[' +
+        '{"partition":0,"log_end_offset":1500000,"committed_offset":600000,' +
+        '"consume_rate":300,"produce_rate":900}]}]} , then the Flink job with ' +
+        '{"job":"sync-orders","operators":[{"name":"join-enrich",' +
+        '"backpressure":0.86,"watermark_lag_ms":420000}],"restarts":2} , ' +
+        'and summarize the causal chain between them.',
     },
   },
   zh: {
@@ -72,6 +81,15 @@ const resources = {
       exPiiText:
         "这段 DDL 里有敏感字段吗?CREATE TABLE u (phone STRING COMMENT '手机号', " +
         "id_card STRING COMMENT '身份证')",
+      exRealtime: '示例:实时体检',
+      exRealtimeText:
+        '做一次实时链路体检:先用这份快照诊断 Kafka 积压 ' +
+        '{"group":"g-orders","topics":[{"topic":"orders","partitions":[' +
+        '{"partition":0,"log_end_offset":1500000,"committed_offset":600000,' +
+        '"consume_rate":300,"produce_rate":900}]}]} ,再用这份快照诊断 ' +
+        'Flink 作业 {"job":"sync-orders","operators":[{"name":"join-enrich",' +
+        '"backpressure":0.86,"watermark_lag_ms":420000}],"restarts":2} ,' +
+        '最后总结两者之间的因果链。',
     },
   },
 }

@@ -60,6 +60,11 @@ def test_orchestrator_page_smoke(page_url):
         page.get_by_role("button", name="Try: SQL review").click()
         assert "Review this SQL" in page.locator("textarea").input_value()
 
+        page.get_by_role("button",
+                         name="Try: realtime health check").click()
+        filled = page.locator("textarea").input_value()
+        assert "g-orders" in filled and "sync-orders" in filled
+
         assert not console_errors, f"console errors: {console_errors}"
         browser.close()
 
