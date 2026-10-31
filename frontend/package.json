@@ -51,6 +51,7 @@
     "sample_profile",
     "dist_anomaly",
     "dup_check",
+    "data_volatility",
     "sync_strategy",
     "sql_review",
     "sql_testgen",
