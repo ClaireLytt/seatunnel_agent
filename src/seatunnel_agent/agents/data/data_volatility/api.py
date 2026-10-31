@@ -20,6 +20,9 @@ class AnalyzeRequest(BaseModel):
     series_file: str | None = Field(
         None, description="CSV/JSONL series file: date,metric,value rows")
     series_text: str = Field("", description="Inline series rows")
+    period: int = Field(
+        7, ge=1, description="Points per period for the "
+                             "period-over-period (同比) comparison")
     llm: bool = Field(
         False, description="Also draft a volatility note via the "
                            "configured LLM (needs an API key)")
@@ -30,7 +33,7 @@ class AnalyzeRequest(BaseModel):
 def _core(req: AnalyzeRequest, resolve):
     raw = resolve(req.series_file, req.series_text,
                   "'series_file' or 'series_text'")
-    return analyze_series(parse_series(raw))
+    return analyze_series(parse_series(raw), period=req.period)
 
 
 def _llm(req: AnalyzeRequest, result, lang: str):

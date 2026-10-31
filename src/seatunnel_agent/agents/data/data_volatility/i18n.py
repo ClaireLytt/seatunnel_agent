@@ -27,6 +27,10 @@ VOL_I18N: dict[str, dict[str, str]] = {
         "VA004": "flatline — stuck at {value:g} for the last {points} "
                  "points (since {since})",
         "VA005": "date gaps — missing from {gaps}",
+        "VA006": "period-over-period change — {value:g} on {date} vs "
+                 "previous point {prev:g} ({change_pct:+g}%)",
+        "VA007": "vs {period} point(s) earlier — {value:g} on {date} vs "
+                 "{base:g} ({change_pct:+g}%)",
         "rpt_prescription": "> Next step for a confirmed anomaly: trace "
                             "the polluting upstream with the "
                             "quality-trace agent "
@@ -34,7 +38,7 @@ VOL_I18N: dict[str, dict[str, str]] = {
         "rpt_disclaimer": "> Deterministic rules over the submitted "
                           "series; spikes use a {window}-point rolling "
                           "median + MAD (K={k}), graded +50/100% for "
-                          "surges and -30/60% for drops, level shifts "
+                          "surges and -30/60% for drops, level/DoD/PoP shifts "
                           "±30/60%. No database connection.",
         "rpt_llm_note": "Volatility note (LLM — review before sending)",
     },
@@ -59,11 +63,15 @@ VOL_I18N: dict[str, dict[str, str]] = {
         "VA004": "走平 — 最近 {points} 个点冻结在 {value:g}"
                  "（自 {since}）",
         "VA005": "日期断档 — 缺失自 {gaps}",
+        "VA006": "环比突变 — {date} 为 {value:g}，上一点 {prev:g}"
+                 "（{change_pct:+g}%）",
+        "VA007": "同比突变 — {date} 为 {value:g}，{period} 点前为 "
+                 "{base:g}（{change_pct:+g}%）",
         "rpt_prescription": "> 确认异常后的下一步：用质量根因追踪沿血缘"
                             "找污染上游（`seatunnel-agent qualitytrace`）。",
         "rpt_disclaimer": "> 对提交序列的确定性规则；突增/突降用 {window} "
                           "点滚动中位数 + MAD（K={k}），突增分级 "
-                          "+50/100%、突降分级 -30/60%，水平位移 "
+                          "+50/100%、突降分级 -30/60%，水平位移与环比/同比 "
                           "±30/60%。不连数据库。",
         "rpt_llm_note": "波动通报草稿（LLM — 发送前请复核）",
     },

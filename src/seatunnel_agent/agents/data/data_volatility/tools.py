@@ -9,12 +9,13 @@ from __future__ import annotations
 from seatunnel_agent.common.utils import normalize_lang
 
 
-def data_volatility(series: str, lang: str = "") -> str:
+def data_volatility(series: str, period: int = 7, lang: str = "") -> str:
     """数据波动分析（确定性）：粘贴指标时间序列（CSV 表头 date,metric,
     value 或同字段 JSONL，多指标共用一份），按严重度输出波动发现 —
     突增/突降（7 点滚动中位数 + MAD，附日期与幅度）、水平位移（近期 vs
-    此前中位数 ±30/60%）、走平（历史在动、近期冻结）、日期断档。处方
-    指向质量根因追踪。不连数据库。"""
+    此前中位数 ±30/60%）、最新点的环比与同比突变（同比按 period 个点，
+    默认 7，±30/60%）、走平（历史在动、近期冻结）、日期断档。处方指向
+    质量根因追踪。不连数据库。"""
     from seatunnel_agent.agents.data.data_volatility import (
         analyze_series,
         parse_series,
@@ -24,7 +25,7 @@ def data_volatility(series: str, lang: str = "") -> str:
     if not (series or "").strip():
         return "序列不能为空 / series must not be empty"
     try:
-        result = analyze_series(parse_series(series))
+        result = analyze_series(parse_series(series), period=period)
     except ValueError as exc:
         return f"输入有误 / bad input: {exc}"
     except Exception as exc:  # malformed CSV/JSON

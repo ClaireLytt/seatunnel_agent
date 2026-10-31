@@ -26,8 +26,14 @@ from __future__ import annotations
 
 import click
 
+from .check_runner import (
+    append_llm_note,
+    fail_check,
+    fail_on_high,
+    report_options,
+    require_with,
+)
 from .check_runner import emit_payload as _emit
-from .check_runner import fail_check, report_options, require_with
 from .check_runner import read_input as _read
 
 
@@ -67,16 +73,13 @@ def sampleprofile(path, text, max_rows, use_llm, fail_high,
         )
         from seatunnel_agent.agents.data.sample_profile.i18n import tp
 
-        note = review_note(result, lang=lang)
-        payload["review_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, review_note(result, lang=lang),
+            "review_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_high:
-        worst = [f for f in result.findings if f.severity == "high"]
-        if worst:
-            fail_check(
-                "HIGH " + ", ".join(f"{f.code}:{f.column}" for f in worst),
-                fmt)
+        fail_on_high(result.findings, fmt,
+                     label=lambda f: f"{f.code}:{f.column}")
 
 
 @click.command("distanomaly")
@@ -121,16 +124,13 @@ def distanomaly(baseline_path, current_path, max_rows, use_llm, fail_high,
         )
         from seatunnel_agent.agents.data.dist_anomaly.i18n import tp
 
-        note = drift_note(result, lang=lang)
-        payload["drift_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, drift_note(result, lang=lang),
+            "drift_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_high:
-        worst = [f for f in result.findings if f.severity == "high"]
-        if worst:
-            fail_check(
-                "HIGH " + ", ".join(f"{f.code}:{f.column}" for f in worst),
-                fmt)
+        fail_on_high(result.findings, fmt,
+                     label=lambda f: f"{f.code}:{f.column}")
 
 
 @click.command("dupcheck")
@@ -167,9 +167,9 @@ def dupcheck(path, text, pk, biz_key, use_llm, fail_dup,
         )
         from seatunnel_agent.agents.data.dup_check.i18n import tp
 
-        note = dedup_note(result, lang=lang)
-        payload["dedup_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, dedup_note(result, lang=lang),
+            "dedup_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_dup:
         extra = result.row_dup_rows + result.pk_dup_rows + result.biz_dup_rows
@@ -181,12 +181,15 @@ def dupcheck(path, text, pk, biz_key, use_llm, fail_dup,
 @click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="序列文件：date,metric,value 的 CSV/JSONL")
 @click.option("--text", type=str, default=None, help="内联序列行")
+@click.option("--period", type=click.IntRange(min=1), default=7,
+              show_default=True, help="同比对比的周期点数")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草波动通报（需配置 API key）")
 @click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
               help="CI gate：存在 high 级波动时 exit 1")
 @report_options
-def datavolatility(path, text, use_llm, fail_high, lang, fmt, output) -> None:
+def datavolatility(path, text, period, use_llm, fail_high,
+                   lang, fmt, output) -> None:
     """数据波动分析 — 时间序列 → 突增/突降/位移/走平/断档。"""
     from seatunnel_agent.agents.data.data_volatility import (
         analyze_series,
@@ -195,7 +198,8 @@ def datavolatility(path, text, use_llm, fail_high, lang, fmt, output) -> None:
     )
 
     try:
-        result = analyze_series(parse_series(_read(path, text, "序列行")))
+        result = analyze_series(parse_series(_read(path, text, "序列行")),
+                                 period=period)
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
     markdown = render_markdown(result, lang=lang)
@@ -206,16 +210,13 @@ def datavolatility(path, text, use_llm, fail_high, lang, fmt, output) -> None:
         )
         from seatunnel_agent.agents.data.data_volatility.i18n import tp
 
-        note = volatility_note(result, lang=lang)
-        payload["volatility_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, volatility_note(result, lang=lang),
+            "volatility_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_high:
-        worst = [f for f in result.findings if f.severity == "high"]
-        if worst:
-            fail_check(
-                "HIGH " + ", ".join(f"{f.code}:{f.metric}" for f in worst),
-                fmt)
+        fail_on_high(result.findings, fmt,
+                     label=lambda f: f"{f.code}:{f.metric}")
 
 
 @click.command("qualitytrace")
@@ -254,9 +255,9 @@ def qualitytrace(path, text, table, column, symptom, dialect, use_llm,
         )
         from seatunnel_agent.agents.data.quality_trace.i18n import tp
 
-        note = trace_note(result, lang=lang)
-        payload["trace_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, trace_note(result, lang=lang),
+            "trace_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
 
 
@@ -294,9 +295,9 @@ def datarepair(path, text, table, pk, biz_key, use_llm,
         )
         from seatunnel_agent.agents.data.data_repair.i18n import tp
 
-        note = repair_note(plan, lang=lang)
-        payload["repair_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, repair_note(plan, lang=lang),
+            "repair_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
 
 
@@ -331,9 +332,9 @@ def assetsearch(path, text, query, limit, use_llm, lang, fmt, output) -> None:
         )
         from seatunnel_agent.agents.data.asset_search.i18n import tp
 
-        note = recommend_note(result, lang=lang)
-        payload["recommendation"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, recommend_note(result, lang=lang),
+            "recommendation", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
 
 
@@ -397,9 +398,9 @@ def rtoffline(rt_path, off_path, keys, tolerance_pct, use_llm, fail_diff,
         )
         from seatunnel_agent.agents.data.rt_offline_diff.i18n import tp
 
-        note = recon_note(result, lang=lang)
-        payload["recon_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, recon_note(result, lang=lang),
+            "recon_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_diff:
         issues = (len(result.missing_in_rt) + len(result.missing_in_off)
@@ -437,14 +438,12 @@ def cdcdiag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
         )
         from seatunnel_agent.agents.data.cdc_diag.i18n import tp
 
-        note = incident_note(diag, lang=lang)
-        payload["incident_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, incident_note(diag, lang=lang),
+            "incident_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_high:
-        worst = [f for f in diag.findings if f.severity == "high"]
-        if worst:
-            fail_check("HIGH " + ", ".join(f.code for f in worst), fmt)
+        fail_on_high(diag.findings, fmt)
 
 
 @click.command("rtlatency")
@@ -481,9 +480,9 @@ def rtlatency(path, text, sla_ms, fail_breach, use_llm,
         )
         from seatunnel_agent.agents.data.rt_latency.i18n import tp
 
-        note = latency_note(result, lang=lang)
-        payload["latency_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, latency_note(result, lang=lang),
+            "latency_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_breach and result.breaches:
         fail_check(f"SLA {result.breaches} breach(es) over "
@@ -519,14 +518,12 @@ def flinkdiag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
         )
         from seatunnel_agent.agents.data.flink_diag.i18n import tp
 
-        note = ops_note(diag, lang=lang)
-        payload["ops_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, ops_note(diag, lang=lang),
+            "ops_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_high:
-        worst = [f for f in diag.findings if f.severity == "high"]
-        if worst:
-            fail_check("HIGH " + ", ".join(f.code for f in worst), fmt)
+        fail_on_high(diag.findings, fmt)
 
 
 @click.command("kafkalag")
@@ -559,14 +556,12 @@ def kafkalag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
         )
         from seatunnel_agent.agents.data.kafka_lag.i18n import tp
 
-        note = ops_note(result, lang=lang)
-        payload["ops_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, ops_note(result, lang=lang),
+            "ops_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_high:
-        worst = [f for f in result.findings if f.severity == "high"]
-        if worst:
-            fail_check("HIGH " + ", ".join(f.code for f in worst), fmt)
+        fail_on_high(result.findings, fmt)
 
 
 @click.command("grantreview")
@@ -598,9 +593,9 @@ def grantreview(path, text, use_llm, fail_reject, lang, fmt, output) -> None:
         )
         from seatunnel_agent.agents.data.grant_review.i18n import tp
 
-        note = review_note(result, lang=lang)
-        payload["replies"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, review_note(result, lang=lang),
+            "replies", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_reject:
         rejected = [r.applicant for r in result.reviews
@@ -638,14 +633,12 @@ def dbdiag(path, text, use_llm, fail_high, lang, fmt, output) -> None:
         )
         from seatunnel_agent.agents.data.db_diag.i18n import tp
 
-        note = incident_note(diag, lang=lang)
-        payload["incident_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, incident_note(diag, lang=lang),
+            "incident_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if fail_high:
-        worst = [f for f in diag.findings if f.severity == "high"]
-        if worst:
-            fail_check("HIGH " + ", ".join(f.code for f in worst), fmt)
+        fail_on_high(diag.findings, fmt)
 
 
 @click.command("storagecost")
@@ -686,9 +679,9 @@ def storagecost(path, text, parts_path, retention, use_llm,
         )
         from seatunnel_agent.agents.data.storage_cost.i18n import tp
 
-        note = governance_note(result, lang=lang)
-        payload["governance_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, governance_note(result, lang=lang),
+            "governance_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
 
 
@@ -719,9 +712,9 @@ def assetvalue(path, text, use_llm, lang, fmt, output) -> None:
         )
         from seatunnel_agent.agents.data.asset_value.i18n import tp
 
-        note = grading_note(result, lang=lang)
-        payload["grading_note"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, grading_note(result, lang=lang),
+            "grading_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
 
 
@@ -761,9 +754,9 @@ def datadict(path, text, sql_path, min_cov, use_llm,
         )
         from seatunnel_agent.agents.data.data_dict.i18n import tp
 
-        note = describe_columns(result, lang=lang)
-        payload["descriptions"] = note
-        markdown += f"\n\n### {tp(lang, 'rpt_llm_note')}\n{note}\n"
+        markdown = append_llm_note(
+            payload, markdown, describe_columns(result, lang=lang),
+            "descriptions", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
     if min_cov:
         avg = (sum(t.comment_coverage for t in result.tables)

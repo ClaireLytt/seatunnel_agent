@@ -169,3 +169,14 @@ def test_mcp_tool_markdown():
     assert "Consistency Repair Plan" in out and "ROW_NUMBER" in out
     assert "must not be empty" in data_repair("  ")
     assert "bad input" in data_repair(EVENTS_CSV, pk="nope")
+
+
+def test_null_backfill_offers_three_strategies():
+    csv = "id,v\n1,\n2,\n3,x\n4,\n"
+    plan = plan_repairs(csv, table="t")
+    backfill = next(a for a in plan.actions if a.kind == "null_backfill")
+    assert backfill.rationale["strategies"] == [
+        "default", "forward_fill", "upstream_rerun"]
+    assert "COALESCE(v, <default_value>)" in backfill.sql
+    assert "LAST_VALUE" in backfill.sql
+    assert "upstream re-run" in backfill.sql

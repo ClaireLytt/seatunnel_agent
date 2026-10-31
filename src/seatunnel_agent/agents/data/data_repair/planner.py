@@ -96,11 +96,23 @@ def plan_repairs(text: str, table: str = "<table>", pk: str | None = None,
         if f.code == "SP002":           # high nulls -> backfill choices
             actions.append(RepairAction(
                 "null_backfill", "mid", col,
-                {"null_pct": f.detail["null_pct"]},
-                f"-- choose ONE strategy: a default, a derived value, or "
-                f"an upstream re-run\n"
+                {"null_pct": f.detail["null_pct"],
+                 "strategies": ["default", "forward_fill",
+                                "upstream_rerun"]},
+                f"-- choose ONE strategy:\n"
+                f"-- (1) default value\n"
                 f"UPDATE {table} SET {col} = COALESCE({col}, "
-                f"<default_value>)\nWHERE {col} IS NULL;"))
+                f"<default_value>)\nWHERE {col} IS NULL;\n"
+                f"-- (2) forward fill from the previous row "
+                f"(needs an order column)\n"
+                f"INSERT OVERWRITE TABLE {table}\n"
+                f"SELECT /* other columns, */ COALESCE({col}, LAST_VALUE("
+                f"{col}, TRUE)\n"
+                f"  OVER (ORDER BY <order_col> ROWS BETWEEN UNBOUNDED "
+                f"PRECEDING AND CURRENT ROW)) AS {col}\n"
+                f"FROM {table};\n"
+                f"-- (3) upstream re-run: backfill the source partition, "
+                f"then re-run this table's job"))
         elif f.code == "SP006":         # whitespace / case drift
             variants = f.detail.get("variants", {})
             actions.append(RepairAction(

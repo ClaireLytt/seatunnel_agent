@@ -208,3 +208,40 @@ def test_mcp_tool_markdown():
     assert "Data Volatility" in out and "VA003" in out
     assert "must not be empty" in data_volatility("  ")
     assert "bad input" in data_volatility("date,metric,value\nx,a,zzz")
+
+
+def test_dod_and_pop_changes_on_latest_point():
+    # steady series, then the latest point jumps 40% - not enough for a
+    # spike (needs 50%) but a VA006 DoD change; with period=3 the same
+    # point also fires VA007 vs three points earlier
+    rows = ["date,metric,value"] + [
+        f"2026-10-{d:02d},m,100" for d in range(1, 8)] + [
+        "2026-10-08,m,140"]
+    series = parse_series("\n".join(rows))
+    result = analyze_series(series, period=3)
+    codes = {f.code for f in result.findings}
+    assert "VA006" in codes and "VA007" in codes
+    dod = next(f for f in result.findings if f.code == "VA006")
+    assert dod.detail["change_pct"] == 40.0
+
+
+def test_spiked_point_not_double_reported_as_dod():
+    rows = ["date,metric,value"] + [
+        f"2026-10-{d:02d},m,100" for d in range(1, 8)] + [
+        "2026-10-08,m,300"]
+    codes = {f.code for f in
+             analyze_series(parse_series("\n".join(rows))).findings}
+    assert "VA001" in codes and "VA006" not in codes
+
+
+def test_cli_period_option():
+    from click.testing import CliRunner
+
+    from seatunnel_agent.cli import cli
+
+    rows = "date,metric,value\n" + "\n".join(
+        f"2026-10-{d:02d},m,100" for d in range(1, 8)) + "\n2026-10-08,m,140"
+    res = CliRunner().invoke(cli, ["datavolatility", "--text", rows,
+                                   "--period", "3", "--lang", "zh"])
+    assert res.exit_code == 0, res.output
+    assert "VA006" in res.output and "VA007" in res.output

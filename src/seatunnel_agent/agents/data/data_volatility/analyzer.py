@@ -97,18 +97,19 @@ def _grade(rel: float, thresholds: tuple[float, float]) -> str | None:
     return None
 
 
-def analyze_series(series: dict[str, list[tuple[str, float]]]) -> VolResult:
+def analyze_series(series: dict[str, list[tuple[str, float]]],
+                   period: int = 7) -> VolResult:
     findings: list[VolFinding] = []
     for metric, pts in sorted(series.items()):
-        findings.extend(_analyze_metric(metric, pts))
+        findings.extend(_analyze_metric(metric, pts, period=period))
     order = {"high": 0, "mid": 1, "low": 2}
     findings.sort(key=lambda f: (order[f.severity], f.code, f.metric))
     return VolResult(metrics={m: len(p) for m, p in sorted(series.items())},
                      findings=findings)
 
 
-def _analyze_metric(metric: str,
-                    pts: list[tuple[str, float]]) -> list[VolFinding]:
+def _analyze_metric(metric: str, pts: list[tuple[str, float]],
+                    period: int = 7) -> list[VolFinding]:
     out: list[VolFinding] = []
     values = [v for _, v in pts]
     # VA001/VA002 point spikes and dips against the rolling window;
@@ -157,6 +158,29 @@ def _analyze_metric(metric: str,
             out.append(VolFinding("VA004", "mid", metric, {
                 "value": tail[0], "points": _RECENT,
                 "since": pts[-_RECENT][0]}))
+    # VA006 环比 / VA007 同比 on the latest point; a point already
+    # reported as a spike is not re-reported
+    spike_dates = {f.detail.get("date") for f in out
+                   if f.code in ("VA001", "VA002")}
+    if pts and pts[-1][0] not in spike_dates:
+        last_date, last = pts[-1]
+        if len(values) >= 2 and values[-2] != 0:
+            rel = (last - values[-2]) / abs(values[-2])
+            sev = _grade(abs(rel), _SHIFT)
+            if sev:
+                out.append(VolFinding("VA006", sev, metric, {
+                    "date": last_date, "value": last, "prev": values[-2],
+                    "change_pct": round(100 * rel, 1)}))
+        if len(values) > period and values[-1 - period] != 0:
+            base = values[-1 - period]
+            rel = (last - base) / abs(base)
+            sev = _grade(abs(rel), _SHIFT)
+            if sev:
+                out.append(VolFinding("VA007", sev, metric, {
+                    "date": last_date, "value": last, "base": base,
+                    "period": period,
+                    "change_pct": round(100 * rel, 1)}))
+
     # VA005 date gaps (ISO dates only; other labels are skipped quietly)
     gaps = _date_gaps([d for d, _ in pts])
     if gaps:

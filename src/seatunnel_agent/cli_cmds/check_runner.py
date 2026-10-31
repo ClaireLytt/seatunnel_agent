@@ -169,6 +169,23 @@ def fail_check(msg: str, fmt: str) -> None:
     sys.exit(1)
 
 
+def fail_on_high(findings: Iterable[Any], fmt: str,
+                 label=lambda f: f.code) -> None:
+    """The CI gate every snapshot-diagnosis command repeats: exit 1 when
+    any finding is high severity, naming the offenders."""
+    worst = [f for f in findings if getattr(f, "severity", "") == "high"]
+    if worst:
+        fail_check("HIGH " + ", ".join(label(f) for f in worst), fmt)
+
+
+def append_llm_note(payload: dict[str, Any], markdown: str, note: str,
+                    key: str, heading: str) -> str:
+    """The opt-in LLM tail every quality command repeats: stash the note
+    in the payload and append its section; returns the new markdown."""
+    payload[key] = note
+    return markdown + f"\n\n### {heading}\n{note}\n"
+
+
 def severity_gate(findings: Iterable[Any], fail_on: str, msg: str) -> str | None:
     """Standard rank gate: fail when any finding reaches ``fail_on``."""
     worst = max((SEVERITY_RANK[f.severity] for f in findings), default=0)
