@@ -12,19 +12,18 @@ __all__ = ["render_audit", "render_markdown"]
 
 def render_audit(findings: list[dict], lang: str = "zh") -> str:
     """Markdown section for advisor.audit findings."""
+    from seatunnel_agent.common.utils import md_table
+
     lang = normalize_lang(lang)
     lines = [f"### {tp(lang, 'audit_title')}"]
     if not findings:
         lines.append(tp(lang, "audit_ok"))
         return "\n".join(lines)
-    lines.append(f"| {tp(lang, 'audit_col_code')} "
-                 f"| {tp(lang, 'audit_col_table')} "
-                 f"| {tp(lang, 'audit_col_detail')} "
-                 f"| {tp(lang, 'audit_col_meaning')} |")
-    lines.append("|---|---|---|---|")
-    for f in findings:
-        lines.append(f"| {f['code']} | `{f['table']}` | `{f['detail']}` "
-                     f"| {tp(lang, f['code'])} |")
+    lines.extend(md_table(
+        [tp(lang, "audit_col_code"), tp(lang, "audit_col_table"),
+         tp(lang, "audit_col_detail"), tp(lang, "audit_col_meaning")],
+        [[f["code"], f"`{f['table']}`", f"`{f['detail']}`",
+          tp(lang, f["code"])] for f in findings]))
     return "\n".join(lines)
 
 

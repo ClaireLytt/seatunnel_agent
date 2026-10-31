@@ -7,7 +7,8 @@ from seatunnel_agent.common.utils import fmt_bytes, fmt_secs, normalize_lang
 from .estimator import CostCard
 from .i18n import tp
 
-__all__ = ["render_compare", "render_markdown", "render_what_if"]
+__all__ = ["render_batch", "render_compare", "render_markdown",
+           "render_what_if"]
 
 
 def render_markdown(card: CostCard, lang: str = "zh") -> str:
@@ -82,15 +83,41 @@ def render_compare(cmp: dict, lang: str = "zh") -> str:
         ("cmp_core", f"{base['core_seconds']:,.0f}",
          f"{rewrite['core_seconds']:,.0f}", saved["core_seconds"]),
     ]
-    lines = [f"### {tp(lang, 'cmp_title')}",
-             f"| {tp(lang, 'cmp_col_axis')} | {tp(lang, 'cmp_col_base')} "
-             f"| {tp(lang, 'cmp_col_rewrite')} "
-             f"| {tp(lang, 'cmp_col_saved')} |",
-             "|---|---|---|---|"]
-    for key, before, after, pct in rows:
-        mark = f"**{pct:g}%**" if pct > 0 else f"{pct:g}%"
-        lines.append(f"| {tp(lang, key)} | {before} | {after} | {mark} |")
+    from seatunnel_agent.common.utils import md_table
+
+    lines = [f"### {tp(lang, 'cmp_title')}"]
+    lines.extend(md_table(
+        [tp(lang, "cmp_col_axis"), tp(lang, "cmp_col_base"),
+         tp(lang, "cmp_col_rewrite"), tp(lang, "cmp_col_saved")],
+        [[tp(lang, key), before, after,
+          f"**{pct:g}%**" if pct > 0 else f"{pct:g}%"]
+         for key, before, after, pct in rows]))
     if any(v < 0 for v in saved.values()):
         lines.append("")
         lines.append(tp(lang, "cmp_worse"))
+    return "\n".join(lines)
+
+
+def render_batch(batch: dict, lang: str = "zh") -> str:
+    """Markdown for a workload ranking (estimator.estimate_batch)."""
+    from seatunnel_agent.common.utils import md_table
+
+    lang = normalize_lang(lang)
+    rows = [[q["name"], fmt_bytes(q["scan_bytes"]),
+             fmt_bytes(q["shuffle_bytes"]), f"{q['core_seconds']:,.0f}"]
+            for q in batch["queries"]]
+    totals = batch["totals"]
+    rows.append([
+        "**" + tp(lang, "bat_total").format(n=len(batch["queries"])) + "**",
+        f"**{fmt_bytes(totals['scan_bytes'])}**",
+        f"**{fmt_bytes(totals['shuffle_bytes'])}**",
+        f"**{totals['core_seconds']:,.0f}**"])
+    lines = [f"### {tp(lang, 'bat_title')}"]
+    lines.extend(md_table(
+        [tp(lang, "bat_col_query"), tp(lang, "bat_col_scan"),
+         tp(lang, "bat_col_shuffle"), tp(lang, "bat_col_core")], rows))
+    if batch["skipped"]:
+        lines.append("")
+        lines.append(tp(lang, "bat_skipped") + " "
+                     + ", ".join(f"`{s}`" for s in batch["skipped"]))
     return "\n".join(lines)

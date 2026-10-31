@@ -34,13 +34,14 @@ _DATE_NAME_RE = re.compile(
     r"(^|_)(dt|date|day|ds|pt|hour|month)($|_)|_(at|time)$", re.IGNORECASE)
 _DATE_TYPE_RE = re.compile(r"date|timestamp", re.IGNORECASE)
 _CREATE_COL_RE = re.compile(r"^\s*`?(\w+)`?\s+(\w+)", re.MULTILINE)
+# one source of truth for matching a CREATE TABLE head — both the
+# column-type parser and the layout parser segment the DDL with it
+_CREATE_HEAD = r"create\s+table\s+(?:if\s+not\s+exists\s+)?`?([\w.]+)`?"
+_CREATE_HEAD_RE = re.compile(_CREATE_HEAD, re.IGNORECASE)
 _CREATE_TABLE_RE = re.compile(
-    r"create\s+table\s+(?:if\s+not\s+exists\s+)?`?([\w.]+)`?\s*\((.*?)\)\s*"
+    _CREATE_HEAD + r"\s*\((.*?)\)\s*"
     r"(?:engine|partitioned|stored|comment|with|distributed|;|$)",
     re.IGNORECASE | re.DOTALL)
-_CREATE_HEAD_RE = re.compile(
-    r"create\s+table\s+(?:if\s+not\s+exists\s+)?`?([\w.]+)`?",
-    re.IGNORECASE)
 _PARTITIONED_RE = re.compile(r"partitioned\s+by\s*\(\s*`?(\w+)`?",
                              re.IGNORECASE)
 _CLUSTERED_RE = re.compile(r"clustered\s+by\s*\(\s*`?(\w+)`?",

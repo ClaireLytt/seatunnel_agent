@@ -685,6 +685,7 @@ def skew_runtime(
         default_history(), stages, label, lang, source="cli")
     if salt_factor is not None and not shuffle_dist_flag:
         raise click.UsageError("--what-if-salt 需配合 --shuffle-dist")
+    fat_tails = 0
     if shuffle_dist_flag:
         if not eventlog:
             raise click.UsageError("--shuffle-dist 仅支持 EVENTLOG 模式")
@@ -704,8 +705,6 @@ def skew_runtime(
             except ValueError as exc:
                 raise click.UsageError(str(exc)) from exc
             md += "\n\n" + render_salt_what_if(rows, lang)
-    else:
-        fat_tails = 0
     console.print(md)
     if output:
         _save_report(output, md)

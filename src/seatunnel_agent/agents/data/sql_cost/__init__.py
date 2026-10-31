@@ -15,11 +15,17 @@ from .estimator import (
     TableStats,
     compare,
     estimate,
+    estimate_batch,
     parse_assumptions,
     parse_stats,
     what_if,
 )
-from .report import render_compare, render_markdown, render_what_if
+from .report import (
+    render_batch,
+    render_compare,
+    render_markdown,
+    render_what_if,
+)
 
 __all__ = [
     "CostCard",
@@ -27,8 +33,10 @@ __all__ = [
     "TableStats",
     "compare",
     "estimate",
+    "estimate_batch",
     "parse_assumptions",
     "parse_stats",
+    "render_batch",
     "render_compare",
     "render_markdown",
     "render_what_if",

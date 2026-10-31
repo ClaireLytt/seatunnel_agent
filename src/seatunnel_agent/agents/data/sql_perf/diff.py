@@ -75,11 +75,9 @@ def render_diff(diff: dict[str, Any], lang: str = "zh") -> str:
                      for f in items)
         lines.append("")
     if diff["scan_changes"]:
+        from seatunnel_agent.common.utils import md_table
+
         lines.append(f"**{tp(lang, 'diff_scans')}**")
-        lines.append(f"| {tp(lang, 'rpt_col_table')} "
-                     f"| {tp(lang, 'diff_col_before')} "
-                     f"| {tp(lang, 'diff_col_after')} |")
-        lines.append("|---|---|---|")
 
         def cell(s: dict[str, Any]) -> str:
             part = s["partition_filters"]
@@ -93,9 +91,11 @@ def render_diff(diff: dict[str, Any], lang: str = "zh") -> str:
             return (f"{tp(lang, 'rpt_col_part')}: {mark(part)} · "
                     f"{tp(lang, 'rpt_col_pushed')}: {mark(pushed)} · "
                     f"{s['columns']} {tp(lang, 'diff_cols')}")
-        for row in diff["scan_changes"]:
-            lines.append(f"| `{row['table']}` | {cell(row['before'])} "
-                         f"| {cell(row['after'])} |")
+        lines.extend(md_table(
+            [tp(lang, "rpt_col_table"), tp(lang, "diff_col_before"),
+             tp(lang, "diff_col_after")],
+            [[f"`{row['table']}`", cell(row["before"]), cell(row["after"])]
+             for row in diff["scan_changes"]]))
         lines.append("")
     if not (diff["resolved"] or diff["introduced"] or diff["remaining"]
             or diff["scan_changes"]):

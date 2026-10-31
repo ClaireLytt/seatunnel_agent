@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from seatunnel_agent.common.utils import normalize_lang
+from seatunnel_agent.common.utils import md_table, normalize_lang
 
 from .conflictor import ConflictReport
 from .i18n import tp
@@ -24,24 +24,21 @@ def render_place(placement: dict, lang: str = "zh") -> str:
                  declared_windows=declared["windows"],
                  declared_writes=declared["write_conflicts"],
                  declared_peak=declared["peak_slots"])]
-    key = (declared["windows"] + declared["write_conflicts"],
-           declared["peak_slots"])
-    best_key = (best["windows"] + best["write_conflicts"],
-                best["peak_slots"])
-    if key == best_key:
+    if placement["declared_is_best"]:
         lines.append("")
         lines.append(tp(lang, "plc_keep"))
     lines.append("")
     lines.append(f"**{tp(lang, 'plc_candidates')}**")
-    lines.append(f"| {tp(lang, 'plc_col_offset')} "
-                 f"| {tp(lang, 'plc_col_windows')} "
-                 f"| {tp(lang, 'plc_col_writes')} "
-                 f"| {tp(lang, 'plc_col_peak')} |")
-    lines.append("|---|---|---|---|")
-    for c in placement["candidates"]:
-        mark = "**" if c is best else ""
-        lines.append(f"| {mark}{c['offset']:g}{mark} | {c['windows']} "
-                     f"| {c['write_conflicts']} | {c['peak_slots']} |")
+
+    def cell(c: dict, value: str) -> str:
+        return f"**{value}**" if c is best else value
+
+    lines.extend(md_table(
+        [tp(lang, "plc_col_offset"), tp(lang, "plc_col_windows"),
+         tp(lang, "plc_col_writes"), tp(lang, "plc_col_peak")],
+        [[cell(c, f"{c['offset']:g}"), str(c["windows"]),
+          str(c["write_conflicts"]), str(c["peak_slots"])]
+         for c in placement["candidates"]]))
     return "\n".join(lines)
 
 

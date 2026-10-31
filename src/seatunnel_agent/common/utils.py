@@ -156,6 +156,19 @@ def fmt_secs(s: float) -> str:
     return f"{s / 3600:.1f}h"
 
 
+def md_table(headers: list[str], rows: list[list[str]]) -> list[str]:
+    """Markdown table lines from pre-formatted cells.
+
+    Returns the header, separator and row lines so callers can extend
+    the surrounding report; cells are used verbatim (format/bold them
+    before passing).
+    """
+    lines = ["| " + " | ".join(headers) + " |",
+             "|" + "---|" * len(headers)]
+    lines.extend("| " + " | ".join(row) + " |" for row in rows)
+    return lines
+
+
 def sql_alias_map(stmt, include_bare: bool = False) -> dict:
     """alias -> qualified table name (lowercase) for a sqlglot statement.
 

@@ -19,31 +19,33 @@ def render_diff(diff: dict, lang: str = "zh") -> str:
         return (fmt_bytes(value) if key.endswith("bytes")
                 else fmt_secs(value))
 
+    from seatunnel_agent.common.utils import md_table
+
     lines = [f"## {tp(lang, 'diff_title').format(a=diff['a'], b=diff['b'])}",
-             "",
-             f"| {tp(lang, 'diff_col_metric')} | A | B "
-             f"| {tp(lang, 'diff_col_ratio')} |",
-             "|---|---|---|---|"]
-    for key, row in t.items():
-        mark = "**" if row["ratio"] >= 2 else ""
-        lines.append(f"| {tp(lang, 'diff_' + key)} "
-                     f"| {fmt(key, row['a'])} | {fmt(key, row['b'])} "
-                     f"| {mark}{row['ratio']:g}x{mark} |")
+             ""]
+
+    def ratio_cell(ratio: float) -> str:
+        return f"**{ratio:g}x**" if ratio >= 2 else f"{ratio:g}x"
+
+    lines.extend(md_table(
+        [tp(lang, "diff_col_metric"), "A", "B", tp(lang, "diff_col_ratio")],
+        [[tp(lang, "diff_" + key), fmt(key, row["a"]), fmt(key, row["b"]),
+          ratio_cell(row["ratio"])] for key, row in t.items()]))
     if diff["stages"]:
         lines.append("")
         lines.append(f"### {tp(lang, 'diff_stages')}")
-        lines.append(f"| stage | task max (A -> B) | task median (A -> B) "
-                     f"| {tp(lang, 'diff_col_spill')} |")
-        lines.append("|---|---|---|---|")
-        for s in diff["stages"]:
-            mx, md, sp = s["task_max_s"], s["task_median_s"], s["spill_bytes"]
-            lines.append(
-                f"| {s['stage']} "
-                f"| {fmt_secs(mx['a'])} -> {fmt_secs(mx['b'])} "
-                f"({mx['ratio']:g}x) "
-                f"| {fmt_secs(md['a'])} -> {fmt_secs(md['b'])} "
-                f"({md['ratio']:g}x) "
-                f"| {fmt_bytes(sp['a'])} -> {fmt_bytes(sp['b'])} |")
+
+        def move(pair: dict, fmt_one) -> str:
+            return (f"{fmt_one(pair['a'])} -> {fmt_one(pair['b'])}"
+                    + (f" ({pair['ratio']:g}x)" if "ratio" in pair else ""))
+
+        lines.extend(md_table(
+            ["stage", "task max (A -> B)", "task median (A -> B)",
+             tp(lang, "diff_col_spill")],
+            [[s["stage"], move(s["task_max_s"], fmt_secs),
+              move(s["task_median_s"], fmt_secs),
+              move(s["spill_bytes"], fmt_bytes)]
+             for s in diff["stages"]]))
     for key, names in (("diff_only_a", diff["only_a"]),
                        ("diff_only_b", diff["only_b"])):
         if names:

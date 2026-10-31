@@ -60,8 +60,7 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
     if before_path:
         from seatunnel_agent.agents.data.sql_perf.diff import diff_plans, render_diff
 
-        before = analyze(Path(before_path).read_text(encoding="utf-8",
-                                                     errors="replace"))
+        before = analyze(_read(before_path, None, "优化前 EXPLAIN 输出"))
         delta = diff_plans(before, result)
         payload["diff"] = delta
         markdown += "\n\n" + render_diff(delta, lang=lang)
@@ -211,8 +210,10 @@ def sqlcost(sql_path, directory, stats_path, fail_over_total_scan_gb,
     from seatunnel_agent.agents.data.sql_cost import (
         compare,
         estimate,
+        estimate_batch,
         parse_assumptions,
         parse_stats,
+        render_batch,
         render_compare,
         render_markdown,
         render_what_if,
@@ -231,41 +232,17 @@ def sqlcost(sql_path, directory, stats_path, fail_over_total_scan_gb,
                 "--dir 批量模式不支持 --assume-partition / --compare-sql-file")
         from seatunnel_agent.common.utils import collect_sql_files
 
-        cards = []
-        skipped = []
-        for p in collect_sql_files(directory):
-            try:
-                cards.append((Path(p).name, estimate(
-                    Path(p).read_text(encoding="utf-8", errors="replace"),
-                    stats)))
-            except ValueError as exc:
-                skipped.append(f"{Path(p).name}: {exc}")
-        if not cards:
+        batch = estimate_batch(
+            [(Path(p).name,
+              Path(p).read_text(encoding="utf-8", errors="replace"))
+             for p in collect_sql_files(directory)], stats)
+        if not batch["queries"]:
             raise click.UsageError("目录里没有可估算的 *.sql 文件")
-        cards.sort(key=lambda nc: (-nc[1].core_seconds, nc[0]))
-        total_scan = sum(c.scan_bytes for _, c in cards)
-        total_shuffle = sum(c.shuffle_bytes for _, c in cards)
-        total_core = sum(c.core_seconds for _, c in cards)
-        gb = 1 << 30
-        rows = ["| query | scan_gb | shuffle_gb | core_s |",
-                "| --- | --- | --- | --- |"]
-        rows += [f"| {name} | {c.scan_bytes / gb:.1f} "
-                 f"| {c.shuffle_bytes / gb:.1f} | {c.core_seconds:,.0f} |"
-                 for name, c in cards]
-        rows.append(f"| **total ({len(cards)})** | "
-                    f"**{total_scan / gb:.1f}** | "
-                    f"**{total_shuffle / gb:.1f}** | "
-                    f"**{total_core:,.0f}** |")
-        _emit({"queries": [{"name": name, **c.to_dict()}
-                           for name, c in cards],
-               "totals": {"scan_bytes": round(total_scan),
-                          "shuffle_bytes": round(total_shuffle),
-                          "core_seconds": round(total_core, 1)},
-               "skipped": skipped},
-              "\n".join(rows), fmt, output)
+        _emit(batch, render_batch(batch, lang=lang), fmt, output)
+        total_scan_gb = batch["totals"]["scan_bytes"] / (1 << 30)
         if (fail_over_total_scan_gb
-                and total_scan / gb > fail_over_total_scan_gb):
-            fail_check(f"BUDGET total scan {total_scan / gb:.1f} GB > "
+                and total_scan_gb > fail_over_total_scan_gb):
+            fail_check(f"BUDGET total scan {total_scan_gb:.1f} GB > "
                        f"{fail_over_total_scan_gb:g} GB", fmt)
         return
     sql = Path(sql_path).read_text(encoding="utf-8", errors="replace")
@@ -334,7 +311,7 @@ def sqlcost(sql_path, directory, stats_path, fail_over_total_scan_gb,
               type=click.Path(exists=True, dir_okay=False), default=None,
               help="A/B 对比：两份指标 JSON（A=快跑 B=慢跑），按 stage "
                    "对齐输出差值表；与其他输入互斥")
-@click.option("--trend", "trend_n", type=int, default=0,
+@click.option("--trend", "trend_n", type=click.IntRange(min=2), default=None,
               help="慢化趋势：台账（含本次）最近 N 次 duration 逐次上涨时"
                    "在报告点名（需配合 --history）")
 @click.option("--fail-on-trend", "fail_on_trend", is_flag=True,
@@ -359,8 +336,7 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
             render_diff,
         )
 
-        runs = [parse_metrics(Path(p).read_text(encoding="utf-8",
-                                                errors="replace"))
+        runs = [parse_metrics(_read(p, None, "执行指标"))
                 for p in diff_paths]
         delta = diff_runs(runs[0], runs[1])
         _emit(delta, render_diff(delta, lang=lang), fmt, output)
@@ -417,10 +393,7 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
                   if Path(history_path).is_file() else "")
         entries = parse_baseline(ledger)
         entries.append({"duration_s": diag.duration_s})
-        try:
-            trend = detect_trend(entries, trend_n)
-        except ValueError as exc:
-            raise click.UsageError(str(exc)) from exc
+        trend = detect_trend(entries, trend_n)
         if trend:
             payload["trend"] = trend
             markdown += "\n\n" + _sq_tp(lang, "rpt_trend").format(
@@ -448,14 +421,12 @@ def slowquery(path, text, directory, baseline_path, history_path, use_llm,
             click.echo(f"promote: skipped — regression {diag.regression:g}x "
                        f">= {promote_under:g}x", err=True)
         else:
-            from datetime import datetime, timezone
-            entry = {"ts": datetime.now(timezone.utc).isoformat(
-                         timespec="seconds"),
-                     "name": run.name, "duration_s": run.duration_s,
-                     "scan_bytes": run.scan_bytes,
-                     "shuffle_bytes": run.shuffle_bytes}
-            with Path(baseline_path).open("a", encoding="utf-8") as fh:
-                fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            from .check_runner import append_jsonl
+
+            append_jsonl(baseline_path, {
+                "name": run.name, "duration_s": run.duration_s,
+                "scan_bytes": run.scan_bytes,
+                "shuffle_bytes": run.shuffle_bytes})
             click.echo(f"promote: appended to {baseline_path}", err=True)
     if fail_regression and diag.regression >= fail_regression:
         fail_check(f"REGRESSION {diag.regression:g}x >= "
@@ -533,10 +504,7 @@ def dagconflict(path, text, fail_on_conflict, history_path, place_dag,
     if fail_if_misplaced:
         best = payload["placement"]["best"]
         declared = payload["placement"]["declared"]
-        if ((declared["windows"] + declared["write_conflicts"],
-             declared["peak_slots"])
-                > (best["windows"] + best["write_conflicts"],
-                   best["peak_slots"])):
+        if not payload["placement"]["declared_is_best"]:
             fail_check(
                 f"MISPLACED {place_dag} offset {declared['offset']:g} "
                 f"({declared['windows']}w/{declared['write_conflicts']}c/"

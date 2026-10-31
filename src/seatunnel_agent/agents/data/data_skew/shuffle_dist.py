@@ -183,26 +183,23 @@ def salt_what_if(dists: list[ShuffleDist],
 
 def render_salt_what_if(rows: list[dict[str, Any]], lang: str) -> str:
     """Markdown section appended under the shuffle-dist table."""
+    from seatunnel_agent.common.utils import md_table
+
     from .i18n import dsk
 
     lines = [f"### {dsk(lang, 'sw_title')}"]
     if not rows:
         lines.append(dsk(lang, "sw_none"))
         return "\n".join(lines)
-    lines.append(f"| {dsk(lang, 'sd_col_stage')} "
-                 f"| {dsk(lang, 'sw_col_factor')} "
-                 f"| p99 | p99/p50 "
-                 f"| {dsk(lang, 'sw_col_after')} |")
-    lines.append("|---|---|---|---|---|")
-    for r in rows:
-        factor = (f"x{r['factor']}" if r["factor"]
-                  else dsk(lang, "sw_not_enough"))
-        ok = dsk(lang, "sw_ok") if r["healthy"] else dsk(lang, "sw_still")
-        lines.append(
-            f"| {r['stage_id']} {_stage_name(r['name'])} | {factor} "
-            f"| {_fmt_bytes(r['p99_before'])} -> "
-            f"{_fmt_bytes(r['p99_after'])} "
-            f"| {r['ratio_before']:g}x -> {r['ratio_after']:g}x | {ok} |")
+    lines.extend(md_table(
+        [dsk(lang, "sd_col_stage"), dsk(lang, "sw_col_factor"), "p99",
+         "p99/p50", dsk(lang, "sw_col_after")],
+        [[f"{r['stage_id']} {_stage_name(r['name'])}",
+          f"x{r['factor']}" if r["factor"] else dsk(lang, "sw_not_enough"),
+          f"{_fmt_bytes(r['p99_before'])} -> {_fmt_bytes(r['p99_after'])}",
+          f"{r['ratio_before']:g}x -> {r['ratio_after']:g}x",
+          dsk(lang, "sw_ok") if r["healthy"] else dsk(lang, "sw_still")]
+         for r in rows]))
     lines.append("")
     lines.append(dsk(lang, "sw_hint"))
     factors = [r["factor"] for r in rows if r["healthy"] and r["factor"]]

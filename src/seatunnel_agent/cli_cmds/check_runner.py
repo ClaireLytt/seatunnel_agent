@@ -114,12 +114,23 @@ def emit_payload(payload: dict[str, Any], markdown: str, fmt: str,
     save_output(text_out, output)
 
 
+def append_jsonl(path_str: str, entry: dict[str, Any]) -> dict[str, Any]:
+    """Append *entry* with a UTC ts to a jsonl file; return the row."""
+    from datetime import datetime, timezone
+
+    path = Path(path_str)
+    entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             **entry}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    return entry
+
+
 def track_history(history_path: str, entry: dict[str, Any],
                   worse_key: str) -> None:
     """Append *entry* (plus a ts) to the jsonl; print the drift vs the
     previous record — yellow when *worse_key* grew, dim otherwise."""
-    from datetime import datetime, timezone
-
     path = Path(history_path)
     previous = None
     if path.is_file():
@@ -127,11 +138,7 @@ def track_history(history_path: str, entry: dict[str, Any],
                  path.read_text(encoding="utf-8").splitlines() if ln.strip()]
         if lines:
             previous = json.loads(lines[-1])
-    entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-             **entry}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    entry = append_jsonl(history_path, entry)
     if previous is None:
         console.print(f"[dim]history: 首次记录 → {path}[/dim]")
         return

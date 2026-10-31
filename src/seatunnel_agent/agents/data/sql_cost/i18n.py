@@ -44,6 +44,13 @@ SQLCOST_I18N: dict[str, dict[str, str]] = {
         "cmp_core": "core-seconds",
         "cmp_worse": "> The rewrite is MORE expensive on the axes marked "
                      "negative — re-check it before shipping.",
+        "bat_title": "Workload cost ranking (most expensive first)",
+        "bat_col_query": "query",
+        "bat_col_scan": "scan",
+        "bat_col_shuffle": "shuffle",
+        "bat_col_core": "core-seconds",
+        "bat_total": "total ({n})",
+        "bat_skipped": "Not estimated (unparseable):",
     },
     "zh": {
         "rpt_title": "SQL 代价卡",
@@ -79,6 +86,13 @@ SQLCOST_I18N: dict[str, dict[str, str]] = {
         "cmp_memory": "任务内存峰值",
         "cmp_core": "核·秒",
         "cmp_worse": "> 标负号的维度改写反而更贵 — 上线前再核对一遍。",
+        "bat_title": "负载代价排行（最贵在前）",
+        "bat_col_query": "查询",
+        "bat_col_scan": "扫描",
+        "bat_col_shuffle": "shuffle",
+        "bat_col_core": "核·秒",
+        "bat_total": "合计（{n}）",
+        "bat_skipped": "未估算（无法解析）：",
     },
 }
 

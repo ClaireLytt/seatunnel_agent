@@ -314,10 +314,13 @@ def place(scenario: Scenario, dag_name: str) -> dict[str, Any]:
         candidates.append({"offset": off, "windows": len(windows),
                            "write_conflicts": len(writes),
                            "peak_slots": peak_slots})
-    best = min(candidates,
-               key=lambda c: (c["windows"] + c["write_conflicts"],
-                              c["peak_slots"], c["offset"]))
+    def rank(c: dict[str, Any]) -> tuple[int, int]:
+        """Placement ordering: fewest conflicts, then lowest peak."""
+        return (c["windows"] + c["write_conflicts"], c["peak_slots"])
+
+    best = min(candidates, key=lambda c: (*rank(c), c["offset"]))
     declared = next(c for c in candidates
                     if c["offset"] == scenario.starts[dag_name])
     return {"dag": dag_name, "best": best, "declared": declared,
+            "declared_is_best": rank(declared) == rank(best),
             "candidates": candidates}

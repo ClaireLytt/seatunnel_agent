@@ -249,6 +249,34 @@ def what_if(base: CostCard, sql: str, stats: dict[str, TableStats],
             "scan_saved_pct": saved_pct}
 
 
+def estimate_batch(items: list[tuple[str, str]],
+                   stats: dict[str, TableStats]) -> dict[str, Any]:
+    """Estimate a (name, sql) workload against one inventory.
+
+    Returns the per-query cards sorted most-expensive first (by
+    core-seconds), the totals, and the items the estimator could not
+    parse — named, never guessed at.
+    """
+    cards: list[tuple[str, CostCard]] = []
+    skipped: list[str] = []
+    for name, sql in items:
+        try:
+            cards.append((name, estimate(sql, stats)))
+        except ValueError as exc:
+            skipped.append(f"{name}: {exc}")
+    cards.sort(key=lambda nc: (-nc[1].core_seconds, nc[0]))
+    return {
+        "queries": [{"name": name, **card.to_dict()}
+                    for name, card in cards],
+        "totals": {
+            "scan_bytes": round(sum(c.scan_bytes for _, c in cards)),
+            "shuffle_bytes": round(sum(c.shuffle_bytes for _, c in cards)),
+            "core_seconds": round(sum(c.core_seconds for _, c in cards), 1),
+        },
+        "skipped": skipped,
+    }
+
+
 def compare(base: CostCard, rewrite: CostCard) -> dict[str, Any]:
     """Delta card between the original SQL and a rewritten version.
 
