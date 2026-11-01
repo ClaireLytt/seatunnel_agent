@@ -80,6 +80,68 @@ def test_mysql_spellings():
                        "COMMENT 'x';")
 
 
+def test_postgres_spellings():
+    old = "CREATE TABLE t (a INT, c INT)"
+    new = "CREATE TABLE t (a BIGINT, c INT, d INT COMMENT 'x')"
+    plan = build_migration(old, new, dialect="postgres")
+    text = "\n".join(s.sql for s in plan.steps)
+    assert "ALTER TABLE t ALTER COLUMN a TYPE BIGINT;" in text
+    assert "ALTER TABLE t ADD COLUMN d INT;" in text          # no inline cmt
+    # rename collapses only on a pure 1-removed/1-added diff
+    rn = build_migration("CREATE TABLE t (nm VARCHAR(10), c INT)",
+                         "CREATE TABLE t (nm2 VARCHAR(10), c INT)",
+                         dialect="postgres")
+    assert any(s.sql == "ALTER TABLE t RENAME COLUMN nm TO nm2;"
+               for s in rn.steps)
+
+
+def test_oracle_and_sqlserver_spellings():
+    # oracle: sqlglot renders VARCHAR as VARCHAR2 and the widening is
+    # ungraded there (VARCHAR2 misses the varchar-widening rule), so the
+    # MODIFY arrives commented — the spelling is what we pin
+    ora = "\n".join(s.sql for s in build_migration(
+        "CREATE TABLE t (a VARCHAR(10))",
+        "CREATE TABLE t (a VARCHAR(20), d INT)",
+        dialect="oracle").steps)
+    assert "ALTER TABLE t MODIFY (a VARCHAR2(20));" in ora
+    assert "ALTER TABLE t ADD (d INT);" in ora
+    ts = "\n".join(s.sql for s in build_migration(
+        "CREATE TABLE t (a INT)",
+        "CREATE TABLE t (a BIGINT, d INT)",
+        dialect="sqlserver").steps)
+    assert "ALTER TABLE t ALTER COLUMN a BIGINT;" in ts
+    assert "ALTER TABLE t ADD d INTEGER;" in ts   # tsql prints INTEGER
+    rn = build_migration("CREATE TABLE t (nm VARCHAR(10), c INT)",
+                         "CREATE TABLE t (nm2 VARCHAR(10), c INT)",
+                         dialect="sqlserver")
+    assert any(s.sql == "EXEC sp_rename 't.nm', 'nm2', 'COLUMN';"
+               for s in rn.steps)
+
+
+def test_spark_maxcompute_follow_hive_and_doris_modify():
+    old = "CREATE TABLE t (a INT)"
+    new = "CREATE TABLE t (a BIGINT, b STRING COMMENT 'x')"
+    for d in ("spark", "maxcompute"):
+        text = "\n".join(s.sql for s in
+                          build_migration(old, new, dialect=d).steps)
+        assert "ADD COLUMNS (b STRING COMMENT 'x');" in text
+        assert "CHANGE COLUMN a a BIGINT;" in text
+    doris = "\n".join(s.sql for s in
+                       build_migration(old, new, dialect="doris").steps)
+    assert "ALTER TABLE t MODIFY COLUMN a BIGINT;" in doris
+    assert "ADD COLUMN b STRING COMMENT 'x';" in doris
+
+
+def test_comment_change_per_family():
+    old = "CREATE TABLE t (a INT COMMENT 'old')"
+    new = "CREATE TABLE t (a INT COMMENT 'new')"
+    pg = "\n".join(s.sql for s in
+                    build_migration(old, new, dialect="postgres").steps)
+    assert "COMMENT ON COLUMN t.a IS 'new';" in pg
+    ts_plan = build_migration(old, new, dialect="sqlserver")
+    assert any("sp_addextendedproperty" in s.sql for s in ts_plan.steps)
+
+
 def test_rename_becomes_change_column():
     old = "CREATE TABLE t (user_nm STRING COMMENT 'n', x INT)"
     new = "CREATE TABLE t (user_name STRING COMMENT 'n', x INT)"
@@ -93,7 +155,7 @@ def test_identical_and_bad_inputs():
     ddl = "CREATE TABLE t (a INT)"
     assert build_migration(ddl, ddl).steps == []
     with pytest.raises(ValueError, match="dialect"):
-        build_migration(ddl, ddl, dialect="oracle")
+        build_migration(ddl, ddl, dialect="sybase")
     with pytest.raises(ValueError, match="no CREATE TABLE"):
         build_migration("SELECT 1", "SELECT 2")
 

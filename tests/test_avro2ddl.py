@@ -87,10 +87,53 @@ def test_table_override_and_bad_inputs():
     with pytest.raises(ValueError, match="neither an Avro"):
         convert_schema(json.dumps({"x": 1}))
     with pytest.raises(ValueError, match="dialect"):
-        convert_schema(_schema(), dialect="oracle")
+        convert_schema(_schema(), dialect="sybase")
     with pytest.raises(ValueError, match="no fields"):
         convert_schema(json.dumps({"type": "record", "name": "E",
                                    "fields": []}))
+
+
+def test_mysql_postgres_mappings():
+    my = {c.name: c for c in
+          convert_schema(_schema(), dialect="mysql").columns}
+    assert my["note"].ddl_type == "TEXT"
+    assert my["created"].ddl_type == "DATETIME(3)"
+    assert my["tags"].ddl_type == "JSON"
+    pg = convert_schema(_schema(), dialect="postgres")
+    by = {c.name: c for c in pg.columns}
+    assert by["tags"].ddl_type == "JSONB"
+    assert by["amount"].ddl_type == "DECIMAL(16,2)"
+    # comments leave the body and arrive as COMMENT ON lines
+    assert "COMMENT ON COLUMN shop.Order.id IS '订单ID';" in pg.ddl_text
+    assert "COMMENT '" not in pg.ddl_text
+    assert ");" in pg.ddl_text and "STORED AS ORC" not in pg.ddl_text
+
+
+def test_oracle_sqlserver_mappings():
+    ora = convert_schema(_schema(), dialect="oracle")
+    by = {c.name: c for c in ora.columns}
+    assert by["id"].ddl_type == "NUMBER(19)"
+    assert by["amount"].ddl_type == "NUMBER(16,2)"
+    assert by["note"].ddl_type == "VARCHAR2(4000)"
+    assert by["tags"].ddl_type == "CLOB"
+    assert "COMMENT ON COLUMN shop.Order.id IS '订单ID';" in ora.ddl_text
+    ts = convert_schema(_schema(), dialect="sqlserver")
+    by = {c.name: c for c in ts.columns}
+    assert by["id"].ddl_type == "BIGINT"
+    assert by["note"].ddl_type == "NVARCHAR(MAX)"
+    assert by["created"].ddl_type == "DATETIME2"
+    assert by["tags"].ddl_type == "NVARCHAR(MAX)"
+    assert "COMMENT" not in ts.ddl_text        # tsql drops comments
+
+
+def test_spark_maxcompute_follow_hive():
+    for d in ("spark", "maxcompute"):
+        draft = convert_schema(_schema(), dialect=d)
+        by = {c.name: c for c in draft.columns}
+        assert by["tags"].ddl_type == "ARRAY<STRING>"
+        assert by["created"].ddl_type == "TIMESTAMP"
+        assert "STORED AS ORC" not in draft.ddl_text
+        assert "COMMENT '订单ID'" in draft.ddl_text
 
 
 # ------------------------------------------------------------------ report

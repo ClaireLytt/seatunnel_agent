@@ -358,7 +358,10 @@ def sqldiff(old_path, new_path, dialect, use_llm, fail_breaking,
               required=True, help="旧版 DDL 快照文件")
 @click.option("--new", "new_path", type=click.Path(exists=True, dir_okay=False),
               required=True, help="新版 DDL 快照文件")
-@click.option("--dialect", type=click.Choice(["hive", "mysql"]),
+@click.option("--dialect",
+              type=click.Choice(["hive", "spark", "maxcompute",
+                                 "mysql", "postgres", "oracle",
+                                 "sqlserver", "doris"]),
               default="hive", show_default=True, help="目标方言")
 @click.option("--script-out", "script_out", type=click.Path(dir_okay=False),
               default=None, help="把迁移脚本另存到该文件")
@@ -637,7 +640,10 @@ def incidentreview(path, text, use_llm, fail_high,
 @click.option("--text", type=str, default=None, help="内联 Schema JSON")
 @click.option("--table", "-t", default="",
               help="目标表名（默认取 record 的 namespace.name）")
-@click.option("--dialect", type=click.Choice(["hive", "doris"]),
+@click.option("--dialect",
+              type=click.Choice(["hive", "spark", "maxcompute",
+                                 "mysql", "postgres", "oracle",
+                                 "sqlserver", "doris"]),
               default="hive", show_default=True, help="目标方言")
 @click.option("--ddl-out", "ddl_out", type=click.Path(dir_okay=False),
               default=None, help="把建表语句另存到该文件")

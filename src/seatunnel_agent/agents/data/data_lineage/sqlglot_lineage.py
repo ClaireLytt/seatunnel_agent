@@ -27,6 +27,10 @@ _SQLGLOT_DIALECTS = {
     "mysql": "mysql",
     "postgresql": "postgres",
     "postgres": "postgres",
+    "oracle": "oracle",
+    "sqlserver": "tsql",
+    "mssql": "tsql",
+    "tsql": "tsql",
     "clickhouse": "clickhouse",
     "doris": "doris",
     "starrocks": "starrocks",
@@ -34,7 +38,8 @@ _SQLGLOT_DIALECTS = {
 }
 
 SQL_DIALECTS = ("hive", "spark", "flink", "maxcompute", "mysql",
-                "postgresql", "clickhouse", "doris", "starrocks", "sqlite")
+                "postgresql", "oracle", "sqlserver", "clickhouse",
+                "doris", "starrocks", "sqlite")
 
 
 def resolve_sqlglot_dialect(dialect: str | None) -> str:
