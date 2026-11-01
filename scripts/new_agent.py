@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import re
-import shutil
 from pathlib import Path
 
 _CONFIGS = ("eslint.config.js", "postcss.config.js", "tailwind.config.ts",
@@ -56,7 +55,8 @@ def scaffold_frontend(repo: Path, name: str, route: str, page_title: str,
         created.append(str(out.relative_to(repo)))
 
     for cfg in _CONFIGS:
-        shutil.copy(src / cfg, dst / cfg)
+        (dst / cfg).write_text((src / cfg).read_text(encoding="utf-8"),
+                               encoding="utf-8", newline="\n")
         created.append(str((dst / cfg).relative_to(repo)))
     _port("index.html", (src / "index.html").read_text(encoding="utf-8"))
     _port("package.json", (src / "package.json").read_text(encoding="utf-8"))
