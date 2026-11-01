@@ -397,6 +397,7 @@ def register(cli) -> None:
     cli.add_command(csvdoctor)
     cli.add_command(partitionplan)
     cli.add_command(incidentreview)
+    cli.add_command(coveragemap)
 
 
 @click.command("rollbackplan")
@@ -2315,3 +2316,53 @@ def incidentreview(path, text, use_llm, fail_high,
     _emit(payload, markdown, fmt, output)
     if fail_high:
         fail_on_high(review.findings, fmt, label=lambda f: f.code)
+@click.command("coveragemap")
+@click.option("--ddl", "ddl_path", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="CREATE TABLE DDL 文件")
+@click.option("--rules", "rules_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="DQC 规则 YAML 文件（与 --contract 至少给一个）")
+@click.option("--contract", "contract_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="契约 YAML 文件（与 --rules 至少给一个）")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草补洞计划（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：热层存在裸奔表时 exit 1")
+@report_options
+def coveragemap(ddl_path, rules_path, contract_path, dialect, use_llm,
+                fail_high, lang, fmt, output) -> None:
+    """质量覆盖地图 — DDL × 闸工件 → 裸奔表点名。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.coverage_map import (
+        map_coverage,
+        render_markdown,
+    )
+
+    try:
+        cmap = map_coverage(
+            Path(ddl_path).read_text(encoding="utf-8"),
+            rules_text=(Path(rules_path).read_text(encoding="utf-8")
+                        if rules_path else ""),
+            contract_text=(Path(contract_path).read_text(encoding="utf-8")
+                           if contract_path else ""),
+            dialect=dialect)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(cmap, lang=lang)
+    payload = cmap.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.coverage_map.advisor_llm import (
+            coverage_note,
+        )
+        from seatunnel_agent.agents.data.coverage_map.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, coverage_note(cmap, lang=lang),
+            "coverage_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(cmap.findings, fmt, label=lambda f: f.table)

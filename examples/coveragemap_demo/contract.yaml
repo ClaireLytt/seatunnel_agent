@@ -1,0 +1,8 @@
+tables:
+  - name: dim.users
+    columns:
+      - name: user_id
+        type: bigint
+      - name: user_name
+        type: string
+    require_comments: true
