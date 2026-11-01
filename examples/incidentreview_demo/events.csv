@@ -1,0 +1,7 @@
+time,kind,text
+02:00,impact,dws.orders_daily 产出延迟 下游报表空白
+02:25,alert,监控触发 任务超时告警
+02:50,action,值班上线 开始排查 yarn 队列
+03:40,comm,同步事故群 预计一小时内恢复
+03:45,action,定位到上游 dwd.orders 分区缺失 触发补数
+04:30,recovery,补数完成 报表恢复

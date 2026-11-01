@@ -396,6 +396,7 @@ def register(cli) -> None:
     cli.add_command(topicschema)
     cli.add_command(csvdoctor)
     cli.add_command(partitionplan)
+    cli.add_command(incidentreview)
 
 
 @click.command("rollbackplan")
@@ -2277,3 +2278,40 @@ def partitionplan(path, text, queries_path, dialect, use_llm, fail_medium,
         bad = [f.code for f in plan.findings if f.severity == "medium"]
         if bad:
             fail_check(fmt, "选型存在风险 / plan risks: " + ", ".join(bad))
+@click.command("incidentreview")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="事故事件日志 CSV（带表头）或 JSONL 文件")
+@click.option("--text", type=str, default=None, help="内联事件日志")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草复盘文档（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def incidentreview(path, text, use_llm, fail_high,
+                   lang, fmt, output) -> None:
+    """事故复盘 — 事件日志 → 时间线与用时指标。"""
+    from seatunnel_agent.agents.data.incident_review import (
+        render_markdown,
+        review_incident,
+    )
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+
+    try:
+        headers, rows = parse_rows(_read(path, text, "事件日志"))
+        review = review_incident(headers, rows)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(review, lang=lang)
+    payload = review.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.incident_review.advisor_llm import (
+            postmortem_note,
+        )
+        from seatunnel_agent.agents.data.incident_review.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, postmortem_note(review, lang=lang),
+            "postmortem_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(review.findings, fmt, label=lambda f: f.code)
