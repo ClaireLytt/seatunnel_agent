@@ -1,0 +1,19 @@
+{
+  "type": "record",
+  "name": "Order",
+  "namespace": "shop",
+  "fields": [
+    {"name": "id", "type": "long", "doc": "订单ID"},
+    {"name": "amount",
+     "type": {"type": "bytes", "logicalType": "decimal",
+              "precision": 16, "scale": 2}},
+    {"name": "status",
+     "type": {"type": "enum", "name": "Status",
+              "symbols": ["paid", "refund"]}},
+    {"name": "note", "type": ["null", "string"], "default": null},
+    {"name": "tags", "type": {"type": "array", "items": "string"}},
+    {"name": "created",
+     "type": {"type": "long", "logicalType": "timestamp-millis"}},
+    {"name": "mixed", "type": ["int", "string"]}
+  ]
+}

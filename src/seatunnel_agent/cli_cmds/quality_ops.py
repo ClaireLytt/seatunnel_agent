@@ -399,6 +399,7 @@ def register(cli) -> None:
     cli.add_command(incidentreview)
     cli.add_command(coveragemap)
     cli.add_command(watermarkplan)
+    cli.add_command(avro2ddl)
 
 
 @click.command("rollbackplan")
@@ -2404,3 +2405,45 @@ def watermarkplan(path, text, use_llm, fail_high,
     _emit(payload, markdown, fmt, output)
     if fail_high:
         fail_on_high(plan.findings, fmt, label=lambda f: f.code)
+@click.command("avro2ddl")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="Schema JSON 文件（Avro record 或 JSON Schema）")
+@click.option("--text", type=str, default=None, help="内联 Schema JSON")
+@click.option("--table", "-t", default="",
+              help="目标表名（默认取 record 的 namespace.name）")
+@click.option("--dialect", type=click.Choice(["hive", "doris"]),
+              default="hive", show_default=True, help="目标方言")
+@click.option("--ddl-out", "ddl_out", type=click.Path(dir_okay=False),
+              default=None, help="把建表语句另存到该文件")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 做落地评审（需配置 API key）")
+@report_options
+def avro2ddl(path, text, table, dialect, ddl_out, use_llm,
+             lang, fmt, output) -> None:
+    """消息 Schema 建表 — Avro/JSON Schema → CREATE TABLE。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.avro2ddl import (
+        convert_schema,
+        render_markdown,
+    )
+
+    try:
+        draft = convert_schema(_read(path, text, "Schema"), table=table,
+                               dialect=dialect)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if ddl_out:
+        Path(ddl_out).write_text(draft.ddl_text + "\n", encoding="utf-8")
+    markdown = render_markdown(draft, lang=lang)
+    payload = draft.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.avro2ddl.advisor_llm import (
+            landing_note,
+        )
+        from seatunnel_agent.agents.data.avro2ddl.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, landing_note(draft, lang=lang),
+            "landing_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)

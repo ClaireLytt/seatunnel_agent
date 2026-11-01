@@ -93,6 +93,7 @@
     "retention_policy",
     "cost_allocation",
     "topic_schema",
+    "avro2ddl",
     "watermark_plan",
     "coverage_map",
     "incident_review",
