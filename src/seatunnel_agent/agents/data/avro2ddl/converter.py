@@ -175,10 +175,12 @@ def convert_schema(schema_text: str, table: str = "",
             name = str(f.get("name") or "")
             if not name:
                 raise ValueError("every Avro field needs a name")
-            ddl, note, nullable = _avro_type(f.get("type"), dialect)
+            avro_type = f.get("type")
+            ddl, note, nullable = _avro_type(avro_type, dialect)
             columns.append(ColumnDraft(
-                name=name, source_type=json.dumps(f.get("type"))
-                if not isinstance(f.get("type"), str) else f["type"],
+                name=name,
+                source_type=(avro_type if isinstance(avro_type, str)
+                             else json.dumps(avro_type)),
                 ddl_type=ddl, nullable=nullable,
                 comment=str(f.get("doc") or ""), note=note))
     elif isinstance(doc.get("properties"), dict):

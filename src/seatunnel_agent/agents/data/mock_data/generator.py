@@ -137,9 +137,10 @@ def _emit(plan: ColumnPlan, values: list[str], rng: random.Random,
     if plan.strategy.startswith("fake_"):
         return _fake(plan.strategy[5:], rng)
     if plan.strategy == "sequence":
-        seq_state[plan.name] = seq_state.get(
-            plan.name, int(plan.detail.split()[-1])) + 1
-        return str(seq_state[plan.name] - 1)
+        start = int(plan.detail.split()[-1])
+        value = seq_state.get(plan.name, start)
+        seq_state[plan.name] = value + 1
+        return str(value)
     if plan.strategy == "enum":
         return rng.choice(values)
     if plan.strategy == "int_range":

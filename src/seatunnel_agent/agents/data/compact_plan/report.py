@@ -49,8 +49,7 @@ def render_markdown(plan: CompactPlan, lang: str = "zh") -> str:
         lines += ["", f"### {tp(lang, 'rpt_findings')}"]
         rows = [[SEVERITY_MARK[f.severity], f.code, f"`{f.table}`",
                  tp(lang, f.code).format(detail=f.detail or "-",
-                                         value=f.value if f.code == "CP002"
-                                         else f.value)]
+                                         value=f.value)]
                 for f in plan.findings]
         lines += md_table([tp(lang, "col_sev"), tp(lang, "col_code"),
                            tp(lang, "col_table"), tp(lang, "col_issue")],

@@ -141,8 +141,8 @@ def audit_timezones(headers: list[str],
         raw = [str(r[h]) for r in rows if r.get(h) not in (None, "")]
         if not raw:
             continue
-        parsed = [(v, _parse_value(v)) for v in raw]
-        hits = [(v, p) for v, p in parsed if p is not None]
+        hits = [p for p in (_parse_value(v) for v in raw)
+                if p is not None]
         timeish_name = bool(_TIME_NAME.search(h))
         if not hits or (not timeish_name
                         and len(hits) / len(raw) < _PARSE_SHARE):
@@ -150,7 +150,7 @@ def audit_timezones(headers: list[str],
 
         col = ColumnAudit(name=h, values=len(hits))
         hours: list[int] = []
-        for _, (kind, dt) in hits:
+        for kind, dt in hits:
             col.kinds[kind] = col.kinds.get(kind, 0) + 1
             if kind == "iso":
                 label = _offset_label(dt)
