@@ -26,6 +26,7 @@ CM_I18N: dict[str, dict[str, str]] = {
         "CM002": "the {detail} artifact names a table absent from the "
                  "DDL — a dead gate guarding nothing",
         "rpt_clean": "Every table carries at least one gate.",
+        "rpt_cmds": "Gap-closing commands (one per unguarded table)",
         "rpt_disclaimer": "> Mapped from the pasted artifacts only — "
                           "gates configured elsewhere are invisible "
                           "here. Fix the hot-layer (dwd/dws/ads) holes "
@@ -53,6 +54,7 @@ CM_I18N: dict[str, dict[str, str]] = {
         "CM001": "既无 DQC 检查也无契约 — 这张表在裸奔",
         "CM002": "{detail} 工件声明的表不在 DDL 里 — 守着空城的死闸",
         "rpt_clean": "每张表至少有一道闸。",
+        "rpt_cmds": "补洞命令（每张裸奔表一条）",
         "rpt_disclaimer": "> 只按粘贴的工件作图 — 配在别处的闸在这里"
                           "不可见。先补热层（dwd/dws/ads）的洞:那是消费"
                           "方直接挨刀的地方。缺的闸用 dq_rulegen 和 "

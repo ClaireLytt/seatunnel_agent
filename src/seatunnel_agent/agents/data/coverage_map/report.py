@@ -44,5 +44,13 @@ def render_markdown(cmap: CoverageMap, lang: str = "zh") -> str:
         lines += md_table([tp(lang, "col_sev"), tp(lang, "col_code"),
                            tp(lang, "col_table"), tp(lang, "col_issue")],
                           rows)
+    unguarded = [f.table for f in cmap.findings if f.code == "CM001"]
+    if unguarded:
+        lines += ["", f"### {tp(lang, 'rpt_cmds')}", "```bash"]
+        for table in unguarded:
+            lines.append(
+                f"seatunnel-agent dqrulegen -f <sample.csv> -t {table}"
+                f"  # + contractgen -f <ddl.sql> -t {table}")
+        lines.append("```")
     lines += ["", tp(lang, "rpt_disclaimer")]
     return "\n".join(lines)

@@ -91,6 +91,14 @@ def test_report_both_langs_and_clean():
     assert "at least one gate" in out
 
 
+def test_gap_closing_commands_listed():
+    # E2: every unguarded table gets a ready dq_rulegen command line
+    en = render_markdown(_demo_map(), lang="en")
+    assert "Gap-closing commands" in en
+    assert "dqrulegen -f <sample.csv> -t dws.orders_daily" in en
+    assert "dqrulegen -f <sample.csv> -t tmp.scratch" in en
+
+
 # --------------------------------------------------------------------- CLI
 
 def test_cli_markdown_json_and_gate():
