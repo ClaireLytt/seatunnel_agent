@@ -93,6 +93,7 @@
     "retention_policy",
     "cost_allocation",
     "topic_schema",
+    "compact_plan",
     "timezone_audit",
     "avro2ddl",
     "watermark_plan",

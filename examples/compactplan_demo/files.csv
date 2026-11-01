@@ -1,0 +1,8 @@
+table,partition,file_count,total_mb
+ods.click_log,dt=2026-10-28,1450,2900
+ods.click_log,dt=2026-10-29,1280,2560
+ods.click_log,dt=2026-10-30,960,1920
+dwd.orders,dt=2026-10-29,48,96
+dwd.orders,dt=2026-10-30,52,110
+dws.orders_daily,dt=2026-10-30,8,420
+dim.users,dt=2026-10-30,4,18

@@ -401,6 +401,7 @@ def register(cli) -> None:
     cli.add_command(watermarkplan)
     cli.add_command(avro2ddl)
     cli.add_command(timezoneaudit)
+    cli.add_command(compactplan)
 
 
 @click.command("rollbackplan")
@@ -2485,3 +2486,45 @@ def timezoneaudit(path, text, use_llm, fail_high,
     _emit(payload, markdown, fmt, output)
     if fail_high:
         fail_on_high(audit.findings, fmt, label=lambda f: f.column)
+@click.command("compactplan")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="文件清单 CSV（带表头）或 JSONL 文件")
+@click.option("--text", type=str, default=None, help="内联文件清单")
+@click.option("--small-mb", "small_mb", type=float, default=32.0,
+              show_default=True, help="均值低于该值记小文件")
+@click.option("--target-mb", "target_mb", type=float, default=256.0,
+              show_default=True, help="合并后的目标文件大小")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 做执行评审（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现时 exit 1")
+@report_options
+def compactplan(path, text, small_mb, target_mb, use_llm, fail_high,
+                lang, fmt, output) -> None:
+    """小文件治理 — 文件清单 → 合并候选与模板。"""
+    from seatunnel_agent.agents.data.compact_plan import (
+        plan_compaction,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+
+    try:
+        headers, rows = parse_rows(_read(path, text, "文件清单"))
+        plan = plan_compaction(headers, rows, small_mb=small_mb,
+                               target_mb=target_mb)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(plan, lang=lang)
+    payload = plan.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.compact_plan.advisor_llm import (
+            compaction_note,
+        )
+        from seatunnel_agent.agents.data.compact_plan.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, compaction_note(plan, lang=lang),
+            "compaction_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(plan.findings, fmt, label=lambda f: f.table)
