@@ -400,6 +400,7 @@ def register(cli) -> None:
     cli.add_command(coveragemap)
     cli.add_command(watermarkplan)
     cli.add_command(avro2ddl)
+    cli.add_command(timezoneaudit)
 
 
 @click.command("rollbackplan")
@@ -2447,3 +2448,40 @@ def avro2ddl(path, text, table, dialect, ddl_out, use_llm,
             payload, markdown, landing_note(draft, lang=lang),
             "landing_note", tp(lang, "rpt_llm_note"))
     _emit(payload, markdown, fmt, output)
+@click.command("timezoneaudit")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="数据行 CSV（带表头）或 JSONL 文件")
+@click.option("--text", type=str, default=None, help="内联数据行")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草归一方案（需配置 API key）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级发现（混时区/混单位）时 exit 1")
+@report_options
+def timezoneaudit(path, text, use_llm, fail_high,
+                  lang, fmt, output) -> None:
+    """时间戳体检 — 数据行 → 时区/单位/哨兵发现。"""
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+    from seatunnel_agent.agents.data.timezone_audit import (
+        audit_timezones,
+        render_markdown,
+    )
+
+    try:
+        headers, rows = parse_rows(_read(path, text, "数据行"))
+        audit = audit_timezones(headers, rows)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(audit, lang=lang)
+    payload = audit.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.timezone_audit.advisor_llm import (
+            normalization_note,
+        )
+        from seatunnel_agent.agents.data.timezone_audit.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, normalization_note(audit, lang=lang),
+            "normalization_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(audit.findings, fmt, label=lambda f: f.column)
