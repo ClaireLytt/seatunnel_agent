@@ -93,6 +93,7 @@
     "retention_policy",
     "cost_allocation",
     "topic_schema",
+    "watermark_plan",
     "coverage_map",
     "incident_review",
     "partition_plan",
