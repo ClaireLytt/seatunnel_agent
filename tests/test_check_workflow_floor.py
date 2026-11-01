@@ -117,6 +117,39 @@ def test_assert_glyph_swap_is_an_update() -> None:
     assert _findings(diff2) == []
 
 
+def test_assert_removal_with_report_waiver_passes() -> None:
+    # a behavior change may legitimately invert an assertion; the removal
+    # passes only when the batch report registers the exact line
+    diff = (_diff("tests/test_a.py",
+                  removed=['    assert not is_known("oracle")'])
+            + "\n"
+            + _diff("docs/reports/20261031-x.md",
+                    added=['floor-waiver: tests/test_a.py: '
+                           'assert not is_known("oracle")']))
+    assert _findings(diff) == []
+
+
+def test_waiver_must_match_exactly_and_live_in_reports() -> None:
+    # a waiver for another line excuses nothing
+    diff = (_diff("tests/test_a.py",
+                  removed=['    assert not is_known("oracle")'])
+            + "\n"
+            + _diff("docs/reports/20261031-x.md",
+                    added=['floor-waiver: tests/test_a.py: '
+                           'assert not is_known("sybase")']))
+    hits = _findings(diff)
+    assert hits and "删断言" in hits[0]
+    # a waiver outside docs/reports/ excuses nothing
+    diff2 = (_diff("tests/test_a.py",
+                   removed=['    assert not is_known("oracle")'])
+             + "\n"
+             + _diff("README.md",
+                     added=['floor-waiver: tests/test_a.py: '
+                            'assert not is_known("oracle")']))
+    hits2 = _findings(diff2)
+    assert hits2 and "删断言" in hits2[0]
+
+
 def test_assert_ascii_expectation_still_protected() -> None:
     # the glyph rule must not excuse a changed ASCII expectation
     diff = _diff(

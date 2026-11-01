@@ -27,6 +27,13 @@ npx prettier --check frontend/change_impact/src/App.tsx frontend/data_lineage/sr
 (gate 输出占位,提交后回填)
 ```
 
+## floor 豁免登记
+
+oracle 由非法方言变为合法方言,两条反向断言随行为更新(同文件已补正向断言与新的非法样例 sybase):
+
+floor-waiver: tests/test_sql_review.py: assert not is_known_dialect("oracle")
+floor-waiver: tests/test_mcp_toolbox.py: assert "unknown dialect" in tools["sql_review"]("SELECT 1", dialect="oracle")
+
 ## 前后差异
 
 - sql_review:10 方言 → 11(oracle 原先静默回退 hive,现按 oracle 解析);test_sql_review 314 → 316 条。
