@@ -1,0 +1,352 @@
+"""Deterministic index / partition / bucketing advisor.
+
+Input: a query workload (a directory of ``*.sql`` or pasted
+multi-statement text) and optionally the tables' DDL.  Each statement
+is parsed with sqlglot; per table-column the advisor counts how often
+it appears as
+
+* an equality filter (``col = literal`` / ``col IN (...)``),
+* a range filter (``>`` ``<`` ``BETWEEN``),
+* a join key (``a.col = b.col``), or
+* a GROUP BY key,
+
+then recommends per table:
+
+* **partition column** — the most-filtered equality column whose name
+  or DDL type looks date-like (``dt``, ``*_date``, date/timestamp);
+* **bucketing column** — the hottest join key (``CLUSTERED BY``);
+* **composite index** (MySQL/Doris-style) — equality columns by
+  frequency, the hottest range column last.
+
+Every recommendation carries the number of statements it serves and a
+ready-to-adapt DDL fragment.  Statements sqlglot cannot parse are
+skipped and reported — never guessed at.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
+from typing import Any
+
+_DATE_NAME_RE = re.compile(
+    r"(^|_)(dt|date|day|ds|pt|hour|month)($|_)|_(at|time)$", re.IGNORECASE)
+_DATE_TYPE_RE = re.compile(r"date|timestamp", re.IGNORECASE)
+_CREATE_COL_RE = re.compile(r"^\s*`?(\w+)`?\s+(\w+)", re.MULTILINE)
+# one source of truth for matching a CREATE TABLE head — both the
+# column-type parser and the layout parser segment the DDL with it
+_CREATE_HEAD = r"create\s+table\s+(?:if\s+not\s+exists\s+)?`?([\w.]+)`?"
+_CREATE_HEAD_RE = re.compile(_CREATE_HEAD, re.IGNORECASE)
+_CREATE_TABLE_RE = re.compile(
+    _CREATE_HEAD + r"\s*\((.*?)\)\s*"
+    r"(?:engine|partitioned|stored|comment|with|distributed|;|$)",
+    re.IGNORECASE | re.DOTALL)
+_PARTITIONED_RE = re.compile(r"partitioned\s+by\s*\(\s*`?(\w+)`?",
+                             re.IGNORECASE)
+_CLUSTERED_RE = re.compile(r"clustered\s+by\s*\(\s*`?(\w+)`?",
+                           re.IGNORECASE)
+
+
+@dataclass
+class ColumnStats:
+    eq: int = 0
+    range: int = 0
+    join: int = 0
+    group: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.eq + self.range + self.join + self.group
+
+    def to_dict(self) -> dict[str, int]:
+        return {"eq": self.eq, "range": self.range, "join": self.join,
+                "group": self.group}
+
+
+@dataclass
+class TableAdvice:
+    table: str
+    statements: int                 # statements touching this table
+    columns: dict[str, ColumnStats] = field(default_factory=dict)
+    partition_col: str | None = None
+    bucket_col: str | None = None
+    index_cols: list[str] = field(default_factory=list)
+    ddl: list[str] = field(default_factory=list)  # ready-to-adapt fragments
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"table": self.table, "statements": self.statements,
+                "columns": {c: s.to_dict() for c, s in self.columns.items()},
+                "partition_col": self.partition_col,
+                "bucket_col": self.bucket_col,
+                "index_cols": list(self.index_cols),
+                "ddl": list(self.ddl)}
+
+
+@dataclass
+class WorkloadAdvice:
+    tables: list[TableAdvice] = field(default_factory=list)
+    statements: int = 0
+    skipped: list[str] = field(default_factory=list)  # unparseable heads
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"tables": [t.to_dict() for t in self.tables],
+                "statements": self.statements,
+                "skipped": list(self.skipped)}
+
+
+def parse_ddl_types(ddl_text: str) -> dict[str, dict[str, str]]:
+    """CREATE TABLE text → {table: {column: type}} (regex, best-effort)."""
+    out: dict[str, dict[str, str]] = {}
+    for m in _CREATE_TABLE_RE.finditer(ddl_text or ""):
+        cols = {c.lower(): t.lower()
+                for c, t in _CREATE_COL_RE.findall(m.group(2))}
+        out[m.group(1).lower()] = cols
+    return out
+
+
+def parse_ddl_layout(ddl_text: str) -> dict[str, dict[str, str | None]]:
+    """CREATE TABLE text → {table: {partition_col, bucket_col}}.
+
+    Reads the existing ``PARTITIONED BY`` / ``CLUSTERED BY`` clauses
+    (first column each, regex best-effort) so the audit can compare
+    what the tables have against what the workload wants.
+    """
+    out: dict[str, dict[str, str | None]] = {}
+    heads = list(_CREATE_HEAD_RE.finditer(ddl_text or ""))
+    for i, head in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(ddl_text)
+        segment = ddl_text[head.start():end]
+        part = _PARTITIONED_RE.search(segment)
+        bucket = _CLUSTERED_RE.search(segment)
+        out[head.group(1).lower()] = {
+            "partition_col": part.group(1).lower() if part else None,
+            "bucket_col": bucket.group(1).lower() if bucket else None,
+        }
+    return out
+
+
+def cold_columns(advice: WorkloadAdvice, ddl_text: str,
+                 workload: str) -> dict[str, list[str]]:
+    """DDL-declared columns the workload never references, per table.
+
+    "Referenced" means appearing anywhere in a parsed statement —
+    projections included, not just the filter/join/group hits the
+    advisor counts — so a cold column really is safe to consider for
+    pruning.  Tables absent from the workload, statements that do not
+    parse, and star-selects over a table disqualify it rather than
+    guess.
+    """
+    import sqlglot
+    from sqlglot import exp
+
+    types = parse_ddl_types(ddl_text)
+    if not types:
+        return {}
+    referenced: dict[str, set[str]] = {}
+    starred: set[str] = set()
+    for raw in _split(workload):
+        try:
+            stmt = sqlglot.parse_one(raw)
+        except Exception:
+            continue
+        aliases = _alias_map(stmt)
+        if stmt.find(exp.Star):
+            starred.update(aliases.values())
+        for col in stmt.find_all(exp.Column):
+            resolved = _resolve(col, aliases)
+            if resolved:
+                table, name = resolved
+                referenced.setdefault(table, set()).add(name)
+    out: dict[str, list[str]] = {}
+    for t in advice.tables:
+        declared = types.get(t.table)
+        if not declared or t.table in starred:
+            continue
+        seen = referenced.get(t.table, set())
+        cold = sorted(c for c in declared if c not in seen)
+        if cold:
+            out[t.table] = cold
+    return out
+
+
+def audit(advice: WorkloadAdvice, ddl_text: str) -> list[dict[str, str]]:
+    """Existing layout vs workload — mismatch findings per table.
+
+    IA001  the declared partition column is never equality-filtered
+    IA002  recommended partition column differs from the declared one
+    IA003  the hottest join key is not the bucketing column
+    IA004  the declared bucketing column has no join hits
+    Run after :func:`recommend` (uses its picks); tables absent from
+    the DDL are skipped, never guessed.
+    """
+    layout = parse_ddl_layout(ddl_text)
+    findings: list[dict[str, str]] = []
+
+    def add(code: str, table: str, detail: str) -> None:
+        findings.append({"code": code, "table": table, "detail": detail})
+
+    for t in advice.tables:
+        have = layout.get(t.table)
+        if have is None:
+            continue
+        part, bucket = have["partition_col"], have["bucket_col"]
+        if part:
+            stats = t.columns.get(part)
+            if not (stats and stats.eq):
+                add("IA001", t.table, part)
+        if t.partition_col and t.partition_col != part:
+            add("IA002", t.table,
+                f"{part or '-'} -> {t.partition_col}")
+        if t.bucket_col and t.bucket_col != bucket:
+            add("IA003", t.table,
+                f"{bucket or '-'} -> {t.bucket_col}")
+        if bucket:
+            stats = t.columns.get(bucket)
+            if not (stats and stats.join):
+                add("IA004", t.table, bucket)
+    return findings
+
+
+def _split(text: str) -> list[str]:
+    from seatunnel_agent.agents.data.sql_review.linter import (
+        split_statements,
+    )
+
+    return [stmt for _, stmt in split_statements(text) if stmt.strip()]
+
+
+def _alias_map(stmt: Any) -> dict[str, str]:
+    from seatunnel_agent.common.utils import sql_alias_map
+
+    return sql_alias_map(stmt, include_bare=True)
+
+
+def _resolve(col: Any, aliases: dict[str, str]) -> tuple[str, str] | None:
+    table_ref = (col.table or "").lower()
+    name = col.name.lower()
+    if table_ref:
+        table = aliases.get(table_ref)
+        return (table, name) if table else None
+    if len(set(aliases.values())) == 1:
+        return next(iter(set(aliases.values()))), name
+    return None  # ambiguous bare column in a multi-table statement
+
+
+def analyze_workload(sql_text: str,
+                     dialect: str = "hive") -> WorkloadAdvice:
+    import sqlglot
+    from sqlglot import exp
+
+    statements = _split(sql_text)
+    if not statements:
+        raise ValueError("no SQL statements found")
+    advice = WorkloadAdvice(statements=len(statements))
+    stats: dict[str, dict[str, ColumnStats]] = defaultdict(
+        lambda: defaultdict(ColumnStats))
+    touched: Counter[str] = Counter()
+
+    for raw in statements:
+        try:
+            stmt = sqlglot.parse_one(raw, read=dialect)
+        except Exception:
+            advice.skipped.append(raw.strip().splitlines()[0][:60])
+            continue
+        aliases = _alias_map(stmt)
+        for table in set(aliases.values()):
+            touched[table] += 1
+
+        def bump(col: Any, kind: str) -> None:
+            resolved = _resolve(col, aliases)
+            if resolved is None:
+                return
+            table, name = resolved
+            setattr(stats[table][name], kind,
+                    getattr(stats[table][name], kind) + 1)
+
+        for eq in stmt.find_all(exp.EQ):
+            left, right = eq.left, eq.right
+            if isinstance(left, exp.Column) and isinstance(right, exp.Column):
+                bump(left, "join")
+                bump(right, "join")
+            elif isinstance(left, exp.Column):
+                bump(left, "eq")
+            elif isinstance(right, exp.Column):
+                bump(right, "eq")
+        for in_ in stmt.find_all(exp.In):
+            if isinstance(in_.this, exp.Column):
+                bump(in_.this, "eq")
+        for node in stmt.find_all(exp.GT, exp.GTE, exp.LT, exp.LTE):
+            if isinstance(node.this, exp.Column):
+                bump(node.this, "range")
+        for between in stmt.find_all(exp.Between):
+            if isinstance(between.this, exp.Column):
+                bump(between.this, "range")
+        group = stmt.find(exp.Group)
+        if group:
+            for col in group.find_all(exp.Column):
+                bump(col, "group")
+
+    for table in sorted(stats):
+        advice.tables.append(TableAdvice(
+            table=table, statements=touched.get(table, 0),
+            columns=dict(sorted(stats[table].items(),
+                                key=lambda kv: -kv[1].total))))
+    if not advice.tables and not advice.skipped:
+        raise ValueError("no table references recognized in the workload")
+    return advice
+
+
+def _bucket_count(table_bytes: float | None) -> int:
+    """Bucket count sized to the table: ~256MB per bucket, a power of
+    two clamped to [4, 512]; 32 when the size is unknown."""
+    if not table_bytes or table_bytes <= 0:
+        return 32
+    raw = max(table_bytes / (256 * 1024 * 1024), 1.0)
+    return min(512, max(4, 2 ** round(math.log2(raw))))
+
+
+def recommend(advice: WorkloadAdvice, ddl_text: str = "",
+              table_bytes: dict[str, float] | None = None) -> WorkloadAdvice:
+    """Attach partition / bucket / index picks and DDL fragments.
+
+    ``table_bytes`` (from a stats inventory) sizes the bucket count;
+    without it the conventional 32 is kept.
+    """
+    types = parse_ddl_types(ddl_text)
+    for t in advice.tables:
+        cols = t.columns
+        table_types = types.get(t.table, {})
+
+        def date_like(name: str) -> bool:
+            return bool(_DATE_NAME_RE.search(name)
+                        or _DATE_TYPE_RE.search(table_types.get(name, "")))
+
+        partition_cands = sorted(
+            (name for name, s in cols.items() if s.eq and date_like(name)),
+            key=lambda n: (-cols[n].eq, -cols[n].total, n))
+        if partition_cands:
+            t.partition_col = partition_cands[0]
+            t.ddl.append(f"PARTITIONED BY ({t.partition_col})")
+        join_cands = sorted(
+            (name for name, s in cols.items() if s.join),
+            key=lambda n: (-cols[n].join, -cols[n].total, n))
+        if join_cands:
+            t.bucket_col = join_cands[0]
+            buckets = _bucket_count((table_bytes or {}).get(t.table))
+            t.ddl.append(f"CLUSTERED BY ({t.bucket_col}) "
+                         f"INTO {buckets} BUCKETS")
+        eq_cols = sorted((name for name, s in cols.items()
+                          if s.eq and name != t.partition_col),
+                         key=lambda n: (-cols[n].eq, n))
+        range_cols = sorted((name for name, s in cols.items() if s.range),
+                            key=lambda n: (-cols[n].range, n))
+        index = eq_cols[:2] + [c for c in range_cols[:1]
+                               if c not in eq_cols[:2]]
+        if index:
+            t.index_cols = index
+            short = t.table.rsplit(".", 1)[-1]
+            t.ddl.append(f"CREATE INDEX idx_{short}_{'_'.join(index)} "
+                         f"ON {t.table} ({', '.join(index)})")
+    return advice

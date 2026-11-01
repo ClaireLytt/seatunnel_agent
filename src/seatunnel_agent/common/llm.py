@@ -523,3 +523,15 @@ class LLMClient:
         return [{"role": role,
                  "content": content if isinstance(content, (str, list))
                  else str(content)}]
+
+
+def one_shot(agent: str, system_zh: str, system_en: str,
+             user_payload: str, lang: str = "zh") -> str:
+    """The advisor_llm call shape shared by every agent's opt-in layer:
+    one bounded chat call, language-picked system prompt, stripped reply."""
+    from .config import load_settings
+
+    client = LLMClient(load_settings(), agent=agent)
+    system = system_zh if lang == "zh" else system_en
+    resp = client.chat(system, [{"role": "user", "content": user_payload}])
+    return resp.reply_text.strip()

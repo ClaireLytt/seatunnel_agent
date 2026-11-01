@@ -1,0 +1,19 @@
+{
+  "variables": {"max_connections": 500},
+  "status": {
+    "threads_connected": 480,
+    "threads_running": 96,
+    "qps": 1250,
+    "cpu_pct": 88
+  },
+  "lock_waits": [
+    {"blocking": "trx 7001", "waiting": "trx 7002", "table": "orders", "seconds": 42},
+    {"blocking": "trx 7001", "waiting": "trx 7003", "table": "orders", "seconds": 18},
+    {"blocking": "trx 7010", "waiting": "trx 7011", "table": "users", "seconds": 2}
+  ],
+  "deadlocks": 1,
+  "slow_queries": [
+    {"sql": "SELECT * FROM orders o JOIN order_items i ON o.id=i.order_id WHERE o.status='paid'", "duration_s": 12.5, "rows_examined": 8200000},
+    {"sql": "SELECT COUNT(*) FROM click_log WHERE dt='2026-10-30'", "duration_s": 3.2, "rows_examined": 410000000}
+  ]
+}

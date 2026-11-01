@@ -269,6 +269,30 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         # --- runtime diagnosis (Spark task metrics) ---
         "rt_accordion": "Runtime diagnosis (Spark event log / History Server)",
+        "sd_title": "Shuffle-read distribution (p99 tail, event-log only)",
+        "sd_all_ok": "No fat-tailed shuffle distribution — per-task reads "
+                     "are even.",
+        "sd_col_stage": "stage",
+        "sd_col_tasks": "tasks",
+        "sd_col_verdict": "verdict",
+        "sd_col_hot": "hottest tasks",
+        "sd_confirmed": "CONFIRMED",
+        "sd_suspect": "suspect",
+        "sd_hint": "> A fat p99 with a modest max/median means several hot "
+                   "partitions, not one straggler — repartition on a "
+                   "higher-cardinality key or salt the heavy hitters.",
+        "sw_title": "Salt what-if (flagged stages)",
+        "sw_none": "No flagged stage — nothing to salt.",
+        "sw_col_factor": "salt",
+        "sw_col_after": "after salting",
+        "sw_ok": "healthy",
+        "sw_still": "STILL SKEWED",
+        "sw_not_enough": "no factor suffices",
+        "sw_hint": "> Upper-bound model: the tail tasks split N ways, the "
+                   "median is unchanged. Salting adds a shuffle+union on "
+                   "the other join side — apply the smallest factor that "
+                   "reads healthy.",
+        "sw_sql_title": "Salted-join skeleton (adapt the table/key names)",
         "rt_upload_btn": "Analyze event log file",
         "rt_url": "History Server URL",
         "rt_app": "Application ID",
@@ -604,6 +628,27 @@ DSK_I18N: dict[str, dict[str, str]] = {
         ),
         # --- runtime diagnosis (Spark task metrics) ---
         "rt_accordion": "运行时诊断（Spark event log / History Server）",
+        "sd_title": "Shuffle 读分布（p99 长尾，仅 event log 模式）",
+        "sd_all_ok": "shuffle 分布无长尾 — 各任务读取均匀。",
+        "sd_col_stage": "stage",
+        "sd_col_tasks": "任务数",
+        "sd_col_verdict": "判定",
+        "sd_col_hot": "最热任务",
+        "sd_confirmed": "确认",
+        "sd_suspect": "疑似",
+        "sd_hint": "> p99 肥而 max/median 不夸张 = 多个热点分区而非单一拖尾 — "
+                   "换更高基数的分区键或对热点加盐。",
+        "sw_title": "加盐 what-if（仅被标记的 stage）",
+        "sw_none": "没有被标记的 stage — 无需加盐。",
+        "sw_col_factor": "盐值",
+        "sw_col_after": "加盐后",
+        "sw_ok": "恢复健康",
+        "sw_still": "仍倾斜",
+        "sw_not_enough": "任何盐值都不够",
+        "sw_hint": "> 上界模型：长尾任务按 N 路打散，中位任务不变。加盐会给 "
+                   "join 另一侧带来 shuffle+union 开销 — 用能恢复健康的最小"
+                   "盐值。",
+        "sw_sql_title": "加盐 join 骨架（按实际表名/键名调整）",
         "rt_upload_btn": "分析 event log 文件",
         "rt_url": "History Server 地址",
         "rt_app": "Application ID",

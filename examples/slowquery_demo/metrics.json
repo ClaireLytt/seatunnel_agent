@@ -1,0 +1,14 @@
+{
+  "name": "dws_sales_daily",
+  "duration_s": 1800,
+  "scan_bytes": 850000000000,
+  "shuffle_bytes": 120000000000,
+  "gc_s": 90,
+  "queue_s": 120,
+  "stages": [
+    {"stage": "scan+filter", "task_max_s": 95, "task_median_s": 80,
+     "input_bytes": 850000000000, "tasks": 400},
+    {"stage": "join+agg", "task_max_s": 1250, "task_median_s": 110,
+     "spill_bytes": 32212254720, "tasks": 200}
+  ]
+}

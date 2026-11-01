@@ -15,6 +15,8 @@ const SQL_DIALECTS = [
   'maxcompute',
   'mysql',
   'postgresql',
+  'oracle',
+  'sqlserver',
   'clickhouse',
   'doris',
   'starrocks',

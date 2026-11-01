@@ -1,0 +1,11 @@
+{
+  "table": "dws.sales",
+  "partition_col": "dt",
+  "date_format": "yyyy-MM-dd",
+  "start": "2024-05-01",
+  "end": "2024-05-03",
+  "mode": "overwrite",
+  "dialect": "hive",
+  "source_table": "ods.orders",
+  "source": "SELECT order_id, user_id, amount, '{date}' AS dt FROM ods.orders WHERE dt = '{date}'"
+}

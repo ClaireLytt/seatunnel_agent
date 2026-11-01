@@ -1,0 +1,41 @@
+# Copy to .github/workflows/sqlcost-budget.yml in your SQL repo.
+# On every PR that touches queries: estimate each changed query against
+# the table-stats inventory and fail the check when the estimated scan
+# or shuffle crosses the budget - heavy queries are blocked before they
+# ever reach the cluster.
+name: SQL Cost Budget Gate
+
+on:
+  pull_request:
+    paths:
+      - "queries/**/*.sql"
+
+jobs:
+  sqlcost-budget:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install estimator
+        run: pip install git+https://github.com/ClaireLytt/seatunnel_agent.git
+
+      # stats/tables.json is your table-stats inventory (rows / bytes /
+      # partitions / partition_col / columns per table); refresh it from
+      # the metastore on whatever cadence suits you.
+      - name: Budget-check the changed queries
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          changed=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'queries/**/*.sql')
+          [ -z "$changed" ] && exit 0
+          for q in $changed; do
+            [ -f "$q" ] || continue  # skip deleted files
+            echo "== $q"
+            seatunnel-agent sqlcost --sql-file "$q" -f stats/tables.json \
+              --fail-over-scan-gb 50 --fail-over-shuffle-gb 20 --lang zh
+          done

@@ -530,7 +530,7 @@ def review_stats(recent: int | None) -> None:
 @click.option("--dir", "-d", "directory", type=click.Path(exists=True, file_okay=False),
               default=None, help="SQL 目录（递归扫描 *.sql）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--write", "-w", "do_write", is_flag=True,
               help="将格式化结果写回文件（解析失败的文件绝不写）")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",

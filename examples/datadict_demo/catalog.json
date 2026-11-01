@@ -1,0 +1,51 @@
+[
+  {
+    "table": "dws.orders_daily",
+    "comment": "订单日汇总：按日×用户聚合的订单量与金额",
+    "columns": [
+      {"name": "order_date", "comment": "订单日期"},
+      {"name": "user_id", "comment": "用户ID"},
+      {"name": "order_cnt", "comment": "订单量"},
+      {"name": "gmv", "comment": "成交金额"}
+    ]
+  },
+  {
+    "table": "dwd.orders",
+    "comment": "订单明细：一单一行",
+    "columns": [
+      {"name": "order_id", "comment": "订单号"},
+      {"name": "user_id", "comment": "用户ID"},
+      {"name": "amount", "comment": "订单金额"},
+      {"name": "channel", "comment": "下单渠道"},
+      {"name": "order_date", "comment": "下单日期"}
+    ]
+  },
+  {
+    "table": "dim.users",
+    "comment": "用户维表",
+    "columns": [
+      {"name": "user_id", "comment": "用户ID"},
+      {"name": "city", "comment": "常住城市"},
+      {"name": "register_date", "comment": "注册日期"}
+    ]
+  },
+  {
+    "table": "dws.user_retention_weekly",
+    "comment": "用户周留存",
+    "columns": [
+      {"name": "cohort_week", "comment": "注册周"},
+      {"name": "week_n", "comment": "第N周"},
+      {"name": "retention_rate", "comment": "留存率"}
+    ]
+  },
+  {
+    "table": "ods.pay_log",
+    "comment": "支付流水原始日志",
+    "columns": [
+      {"name": "pay_id", "comment": "支付单号"},
+      {"name": "order_id", "comment": "订单号"},
+      {"name": "pay_amount", "comment": "支付金额"},
+      {"name": "pay_time", "comment": "支付时间"}
+    ]
+  }
+]

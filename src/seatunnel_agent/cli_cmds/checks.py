@@ -17,7 +17,7 @@ from ..common.cli_common import _handle_error, console
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="扫描单个 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--rules", "rules_path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="自定义规则 YAML（追加到内置规则）")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
@@ -400,13 +400,169 @@ def slatrace(
             sys.exit(1)
 
 
+@click.command()
+@click.option("--file", "-f", "events_file", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="表更新事件清单（JSON 或 CSV）")
+@click.option("--rules", "-r", "rules_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="新鲜度规则 JSON（表名通配 → interval/max_age）")
+@click.option("--now", default=None,
+              help="评估时刻（ISO 格式，默认取清单里最晚的更新时间）")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on", type=click.Choice(["stalled", "stale", "late"]),
+              default=None, help="CI gate: exit 1 when verdicts at/above this severity exist")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="健康趋势：各判定数量追加到该 jsonl，并打印与上次的对比")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def freshness(
+    events_file: str,
+    rules_file: str | None,
+    now: str | None,
+    lang: str,
+    fail_on: str | None,
+    history_path: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """数据新鲜度监控 — 更新事件清单 → 按表判定迟到、断更、过期数据。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.data_freshness import (
+        SEVERITY,
+        parse_events,
+        parse_rules,
+        render_markdown,
+        scan,
+        scan_to_dict,
+    )
+
+    text = Path(events_file).read_text(encoding="utf-8", errors="replace")
+    rules_text = (Path(rules_file).read_text(encoding="utf-8", errors="replace")
+                  if rules_file else "")
+    try:
+        result = scan(parse_events(text), parse_rules(rules_text),
+                      now=(now or "").strip() or None)
+    except ValueError as exc:
+        raise click.UsageError(str(exc))
+
+    from .check_runner import emit_payload, fail_check, track_history
+
+    emit_payload(scan_to_dict(result), render_markdown(result, lang),
+                 fmt, output)
+
+    if history_path:
+        counts = scan_to_dict(result)["counts"]
+        bad = sum(v for k, v in counts.items() if k not in ("ok", "unknown"))
+        track_history(history_path, {
+            "tables": len(result.tables), "bad": bad,
+            **{k: counts.get(k, 0)
+               for k in ("late", "stalled", "stale", "ok")},
+        }, worse_key="bad")
+
+    if fail_on:
+        gate = SEVERITY.index(fail_on)
+        hits = [t for t in result.tables
+                if t.verdict != "unknown"
+                and SEVERITY.index(t.verdict) <= gate]
+        if hits:
+            fail_check(f"存在 {fail_on} 及以上级别的新鲜度问题，检查未通过。",
+                       fmt)
+
+
+@click.command()
+@click.option("--file", "-f", "events_file", type=click.Path(exists=True, dir_okay=False),
+              required=True, help="表更新事件清单（JSON 或 CSV）")
+@click.option("--rules", "-r", "rules_file", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="新鲜度规则 JSON（表名通配 → interval/max_age）")
+@click.option("--sql-dir", type=click.Path(exists=True, file_okay=False),
+              default=None, help="血缘 SQL 目录（递归 *.sql，用于级联重跑）")
+@click.option("--now", default=None,
+              help="评估时刻（ISO 格式，默认取清单里最晚的更新时间）")
+@click.option("--since", default=None, help="只规划此时刻之后的分区")
+@click.option("--cmd", default="", help="命令模板，支持 {table} 与 {date} 占位")
+@click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+              show_default=True, help="Report language")
+@click.option("--fail-on-missing", is_flag=True,
+              help="CI gate: 存在缺失分区时 exit 1")
+@click.option("--history", "history_path", type=click.Path(dir_okay=False),
+              default=None,
+              help="补数台账：本次计划的规模指标追加到该 jsonl，并与上次对比")
+@click.option("--format", "-F", "fmt", type=click.Choice(["markdown", "json"]),
+              default="markdown", help="Report format (json for machines/CI)")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Save report to file")
+def backfill(
+    events_file: str,
+    rules_file: str | None,
+    sql_dir: str | None,
+    now: str | None,
+    since: str | None,
+    cmd: str,
+    lang: str,
+    fail_on_missing: bool,
+    history_path: str | None,
+    fmt: str,
+    output: str | None,
+) -> None:
+    """分区补数计划 — 缺失分区 × 血缘级联 → 拓扑有序的补数/重跑清单。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.backfill import (
+        plan,
+        plan_to_dict,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.data_freshness import (
+        parse_events,
+        parse_rules,
+    )
+
+    text = Path(events_file).read_text(encoding="utf-8", errors="replace")
+    rules_text = (Path(rules_file).read_text(encoding="utf-8", errors="replace")
+                  if rules_file else "")
+    graph = None
+    lineage_warnings: list[str] = []
+    if sql_dir:
+        from seatunnel_agent.agents.data.data_lineage.loaders import (
+            from_sql_dir,
+        )
+
+        graph, lineage_warnings = from_sql_dir(sql_dir)
+    try:
+        result = plan(parse_events(text), parse_rules(rules_text),
+                      graph=graph, now=(now or "").strip() or None,
+                      since=(since or "").strip() or None)
+    except ValueError as exc:
+        raise click.UsageError(str(exc))
+    result.warnings.extend(lineage_warnings)
+
+    from .check_runner import emit_payload, fail_check, track_history
+
+    emit_payload(plan_to_dict(result),
+                 render_markdown(result, lang, cmd_template=cmd),
+                 fmt, output)
+
+    if history_path:
+        track_history(history_path, {
+            "tables": len(result.tables),
+            "slots": result.total_slots,
+            "batches": result.batches,
+            "skipped": len(result.skipped),
+        }, worse_key="slots")
+
+    if fail_on_missing and result.total_slots:
+        fail_check("存在缺失分区，检查未通过。", fmt)
+
+
 @click.command(name="schemadiff")
 @click.option("--old", "old_path", type=click.Path(exists=True), required=True,
               help="旧版 DDL：文件或目录（递归 *.sql）")
 @click.option("--new", "new_path", type=click.Path(exists=True), required=True,
               help="新版 DDL：文件或目录（递归 *.sql）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["breaking", "risk", "info"]),
@@ -468,7 +624,7 @@ def schemadiff(
 @click.option("--rows", "-n", type=click.IntRange(1, 100), default=5,
               show_default=True, help="每表生成行数")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--out", "out_dir", type=click.Path(file_okay=False), default=None,
               help="写出 CSV + create_tables.sql + inserts.sql 的目录")
 @click.option("--validate/--no-validate", "do_validate", default=True,
@@ -622,7 +778,7 @@ def conflint(
 @click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False),
               default=None, help="可选：合并 SeaTunnel 配置目录的 source→sink 血缘")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["error", "warn"]),
@@ -680,7 +836,7 @@ def dagcheck(
 @click.option("--sql-dir", "-d", type=click.Path(exists=True, file_okay=False),
               required=True, help="SQL 目录（递归扫描 *.sql）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["high", "medium"]),
@@ -1090,7 +1246,7 @@ def ciinspect(
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="分析单个 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--exempt", "exempt_path", type=click.Path(exists=True, dir_okay=False),
@@ -1173,7 +1329,7 @@ def hygiene(
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="检查单个 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
@@ -1236,7 +1392,7 @@ def metaquality(
 @click.option("--diff", "diff_mode", is_flag=True, default=False,
               help="反向漂移：列出现状超出契约的新表/新列（契约没跟上的部分）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
@@ -1369,7 +1525,7 @@ def contract(
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="扫描单个 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["high", "medium"]),
@@ -1422,7 +1578,7 @@ def grants(
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="扫描单个迁移脚本")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["high", "medium"]),
@@ -1545,6 +1701,8 @@ def register(cli) -> None:
     cli.add_command(loginspect)
     cli.add_command(pipedoctor)
     cli.add_command(slatrace)
+    cli.add_command(freshness)
+    cli.add_command(backfill)
     cli.add_command(schemadiff)
     cli.add_command(testgen)
     cli.add_command(conflint)

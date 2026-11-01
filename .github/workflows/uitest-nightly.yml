@@ -53,6 +53,23 @@ jobs:
           pip install -e ".[all,uitest,sqlreview]"
           python -m playwright install --with-deps chromium
 
+      # The full suite smokes the React agent pages; an unbuilt dist is
+      # served as the "not built" hint page, which never stamps
+      # body[data-st-lang], so set_language times out and every React
+      # case errors (GOV2-7 / PD2-4 / SLT2-3 since #152 landed them in
+      # the suite). Build every workspace so the pages are real.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build React frontends
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build --workspaces --if-present
+
       # history.jsonl accumulates one line per run; caching it across
       # nights is what turns single runs into a flaky trend
       - name: Restore verdict history

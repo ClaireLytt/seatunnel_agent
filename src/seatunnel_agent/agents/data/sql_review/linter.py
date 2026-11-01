@@ -33,7 +33,8 @@ from .sqlparse_util import (  # noqa: F401 — re-exported for external users
 
 DIALECTS = (
     "hive", "spark", "flink", "maxcompute",
-    "mysql", "postgresql", "sqlserver", "clickhouse", "doris", "sqlite",
+    "mysql", "postgresql", "oracle", "sqlserver", "clickhouse", "doris",
+    "sqlite",
 )
 
 _DIALECT_ALIASES = {
@@ -53,7 +54,7 @@ _DIALECT_ALIASES = {
 EXECUTOR_DS_TYPES: dict[str, str | None] = {
     "hive": "hive", "spark": "sparksql", "flink": "flinksql",
     "maxcompute": None, "mysql": "mysql", "postgresql": "postgresql",
-    "sqlserver": "sqlserver", "clickhouse": "clickhouse",
+    "oracle": None, "sqlserver": "sqlserver", "clickhouse": "clickhouse",
     "doris": "doris", "sqlite": "sqlite",
 }
 

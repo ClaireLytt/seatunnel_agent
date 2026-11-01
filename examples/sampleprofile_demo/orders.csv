@@ -1,0 +1,11 @@
+order_id,user_id,amount,status,created_at,email,note
+1001,u001,129.90,paid,2026-10-01,alice@example.com,
+1002,u002,59.00,paid,2026-10-01,bob@example.com,
+1003,u003,"1,299.00",paid,2026-10-02,carol@example.com,
+1004,u004,23.50,PAID,2026-10-02,dave@example,
+1005,u005,88.00,paid,10/03/2026,erin@example.com,
+1006,u006,15.00,paid ,2026-10-03,frank@example.com,
+1007,u007,,paid,2026-10-04,grace@example.com,
+1008,u008,310.75,refund,2026-10-04,heidi@example.com,
+1009,u009,42.00,paid,2026-10-05,ivan@example.com,
+1010,u010,77.25,paid,2026-10-05,judy@example.com,

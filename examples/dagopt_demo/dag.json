@@ -1,0 +1,11 @@
+{
+  "tasks": [
+    {"name": "extract_orders", "duration": 10},
+    {"name": "extract_users", "duration": 8},
+    {"name": "clean_orders", "deps": ["extract_orders"], "duration": 5},
+    {"name": "clean_users", "deps": ["extract_users"], "duration": 4},
+    {"name": "join_wide", "deps": ["clean_orders", "clean_users", "extract_orders"], "duration": 12},
+    {"name": "agg_daily", "deps": ["join_wide"], "duration": 6},
+    {"name": "report", "deps": ["agg_daily"], "duration": 2}
+  ]
+}

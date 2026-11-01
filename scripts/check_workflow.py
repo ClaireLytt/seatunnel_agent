@@ -6,7 +6,8 @@
 3. 未推送 commit 若改动了 src/ 或 tests/,docs/reports/ 中必须同批提交了新报告。
 4. 禁作弊变绿(floor,只看 diff 新增/删除,存量不管;收紧静默、放水报警):
    - 新增压制注释(# noqa / # type: ignore / @ts-ignore / @ts-nocheck / eslint-disable)
-   - 测试放水(新增 skip/xfail、删测试文件、存活测试文件中删 assert)
+   - 测试放水(新增 skip/xfail、删测试文件、存活测试文件中删 assert;
+     行为变更的合法删除须在同批报告登记 floor-waiver 行)
    - pyproject [tool.mypy] files 白名单缩水
    - 未完成桩子(raise NotImplementedError、单行空 except: pass、src/ 新增 TODO)
 
@@ -145,6 +146,16 @@ def floor_findings(
             findings.append(f"[未完成桩子] {file}: {text.strip()[:80]}")
         if file.startswith("src/") and RE_TODO.search(text):
             findings.append(f"[TODO顶实现] {file}: {text.strip()[:80]}")
+    # 行为变更导致断言极性/字面量合法翻转时,必须在同批 docs/reports/
+    # 报告里逐字登记 "floor-waiver: <file>: <assert 原文>" 才放行 —
+    # 报警留痕,审阅者在报告里一眼看到哪些断言被删及理由。
+    waivers: set[tuple[str, str]] = set()
+    for file, text in added:
+        if file.startswith("docs/reports/") and file.endswith(".md"):
+            line = text.strip()
+            if line.startswith("floor-waiver: ") and ": assert" in line[14:]:
+                target, _, assert_text = line[14:].partition(": ")
+                waivers.add((target.strip(), assert_text.strip()))
     for file, text in removed:
         if not _in_floor_scope(file):
             continue
@@ -153,6 +164,7 @@ def floor_findings(
             and file not in deleted_tests
             and text.lstrip().startswith("assert ")
             and not _assert_updated(file, text, added)
+            and (file, text.strip()) not in waivers
         ):
             findings.append(f"[删断言] {file}: {text.strip()[:80]}")
         if file == "pyproject.toml" and RE_MYPY_FILE.match(text):
@@ -296,7 +308,10 @@ def check_report_has_workflow_output(rng: str | None) -> tuple[bool, str]:
         if "check_workflow" not in text or not re.search(r"\[(?:PASS|FAIL)\]", text):
             missing.append(f)
     if missing:
-        return False, "报告未粘贴 check_workflow 输出([PASS]/[FAIL] 行): " + ", ".join(missing)
+        return False, ("报告未粘贴 check_workflow 输出([PASS]/[FAIL] 行): "
+                       + ", ".join(missing)
+                       + " — 把本次运行打印的全部 [PASS]/[FAIL] 行原样粘进"
+                         "报告的 Gate 代码块再提交(自拟标签不算)")
     if reports:
         return True, "报告含 check_workflow 输出"
     return True, "本批无新报告,不检查输出"

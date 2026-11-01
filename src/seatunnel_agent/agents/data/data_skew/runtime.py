@@ -129,7 +129,7 @@ def _open_maybe_gz(path: Path):
     return open(path, encoding="utf-8", errors="replace")
 
 
-def _iter_eventlog_lines(path: Path):
+def iter_eventlog_lines(path: Path):
     """Yield event-log lines from a file, a .gz file, or a Spark rolling
     event-log directory (its ``events_*`` parts, in order)."""
     if path.is_dir():
@@ -157,7 +157,7 @@ def parse_eventlog(path: str | Path) -> tuple[list[StageSkew], str]:
     exec_desc: dict[str, str] = {}
     app_name = ""
     try:
-        for raw in _iter_eventlog_lines(p):
+        for raw in iter_eventlog_lines(p):
             raw = raw.strip()
             if not raw:
                 continue
@@ -376,7 +376,7 @@ def _fmt_ms(ms: float) -> str:
     return f"{ms:.0f}ms"
 
 
-def _fmt_bytes(b: float) -> str:
+def fmt_eventlog_bytes(b: float) -> str:
     if b >= 1 << 30:
         return f"{b / (1 << 30):.1f}GB"
     if b >= 1 << 20:
@@ -392,7 +392,7 @@ def _fmt_ratio(r: float) -> str:
     return f"{r:.1f}x"
 
 
-def _stage_name(name: str, limit: int = 46) -> str:
+def stage_name(name: str, limit: int = 46) -> str:
     name = (name or "").replace("|", "\\|").replace("\n", " ").strip()
     return name if len(name) <= limit else name[:limit - 1] + "…"
 
@@ -419,10 +419,10 @@ def render_runtime_section(stages: list[StageSkew], lang: str,
     parts += [header, "|---|---|---|---|---|---|---|"]
     for s in shown:
         parts.append(
-            f"| {s.stage_id} `{_stage_name(s.name)}` | {s.tasks} | "
+            f"| {s.stage_id} `{stage_name(s.name)}` | {s.tasks} | "
             f"{_fmt_ms(s.dur_p50)} → {_fmt_ms(s.dur_max)} | "
             f"{_fmt_ratio(s.dur_ratio)} | "
-            f"{_fmt_bytes(s.shuf_p50)} → {_fmt_bytes(s.shuf_max)} | "
+            f"{fmt_eventlog_bytes(s.shuf_p50)} → {fmt_eventlog_bytes(s.shuf_max)} | "
             f"{_fmt_ratio(s.shuf_ratio)} | "
             f"{dsk(lang, 'rt_verdict_' + s.verdict())} |")
     if len(stages) > len(shown):
@@ -433,7 +433,7 @@ def render_runtime_section(stages: list[StageSkew], lang: str,
     # skewed stages that carry a SQL mapping (event-log path only)
     sql_lines = [
         dsk(lang, "rt_sql_map").format(
-            sid=s.stage_id, sql=_stage_name(s.sql_desc, 100))
+            sid=s.stage_id, sql=stage_name(s.sql_desc, 100))
         for s in shown
         if s.verdict() != "ok" and s.sql_desc
     ]

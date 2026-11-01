@@ -72,10 +72,23 @@ def test_line_of():
     ("ClickHouse", "clickhouse"),
     ("doris", "doris"),
     ("sqlite", "sqlite"),
-    ("oracle", "hive"),
+    ("Oracle", "oracle"),
+    ("sybase", "hive"),
 ])
 def test_normalize_dialect(raw, expected):
     assert normalize_dialect(raw) == expected
+
+
+def test_oracle_dialect_known_and_syntax_checked():
+    from seatunnel_agent.agents.data.sql_review.ast_check import (
+        check_syntax,
+    )
+
+    assert is_known_dialect("oracle")
+    assert check_syntax("SELECT a FROM t WHERE ROWNUM <= 5",
+                        "oracle") == []
+    bad = check_syntax("SELECT FROM WHERE", "oracle")
+    assert bad and bad[0].category == "syntax"
 
 
 # ---------------------------------------------------------------------------
@@ -682,7 +695,8 @@ def test_is_known_dialect():
     assert is_known_dialect(" Spark SQL ")
     assert is_known_dialect("mysql")
     assert is_known_dialect("Postgres")
-    assert not is_known_dialect("oracle")
+    assert is_known_dialect("oracle")
+    assert not is_known_dialect("sybase")
     assert not is_known_dialect("")
 
 

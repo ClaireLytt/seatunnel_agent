@@ -1,0 +1,14 @@
+[
+  {"ts": "2026-10-31 02:10:00", "source": "scheduler", "title": "task dwd_orders failed: FileNotFoundException partition dt=2026-10-30", "level": "error"},
+  {"ts": "2026-10-31 02:10:30", "source": "scheduler", "title": "task dws_orders_daily failed: FileNotFoundException partition dt=2026-10-30", "level": "error"},
+  {"ts": "2026-10-31 02:11:00", "source": "scheduler", "title": "task ads_board_kpi failed: FileNotFoundException partition dt=2026-10-30", "level": "error"},
+  {"ts": "2026-10-31 02:11:30", "source": "dqc", "title": "null_rate over 5% on dwd.orders dt=2026-10-30", "level": "warn"},
+  {"ts": "2026-10-31 02:12:00", "source": "scheduler", "title": "task rpt_mail failed: FileNotFoundException partition dt=2026-10-30", "level": "error"},
+  {"ts": "2026-10-31 02:12:30", "source": "scheduler", "title": "task dwd_pay failed: FileNotFoundException partition dt=2026-10-30", "level": "error"},
+  {"ts": "2026-10-31 03:00:00", "source": "kafka", "title": "consumer lag over 100000 on group g-orders", "level": "warn"},
+  {"ts": "2026-10-31 03:10:00", "source": "kafka", "title": "consumer lag over 120000 on group g-orders", "level": "warn"},
+  {"ts": "2026-10-31 03:20:00", "source": "kafka", "title": "consumer lag over 150000 on group g-orders", "level": "warn"},
+  {"ts": "2026-10-31 03:30:00", "source": "kafka", "title": "consumer lag over 180000 on group g-orders", "level": "warn"},
+  {"ts": "2026-10-31 03:40:00", "source": "kafka", "title": "consumer lag over 200000 on group g-orders", "level": "error"},
+  {"ts": "2026-10-31 05:00:00", "source": "dqc", "title": "freshness breach on ads.board_kpi", "level": "warn"}
+]

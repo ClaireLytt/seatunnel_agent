@@ -52,8 +52,11 @@ def skew(
     import json as _json
     from pathlib import Path
 
-    from seatunnel_agent.agents.data.data_skew.history import default_history
-    from seatunnel_agent.agents.data.data_skew.report import Severity, render_report
+    from seatunnel_agent.agents.data.data_skew import (
+        Severity,
+        default_history,
+        render_report,
+    )
 
     from ..common.utils import collect_sql_files
 
@@ -88,7 +91,7 @@ def skew(
     results = []  # (label, SkewReport, markdown)
     for label, text in sources:
         if use_llm:
-            from seatunnel_agent.agents.data.data_skew.agent import DataSkewAgent
+            from seatunnel_agent.agents.data.data_skew import DataSkewAgent
 
             from ..common.config import load_settings
             try:
@@ -99,7 +102,7 @@ def skew(
             res = agent.analyze(text, use_llm=True)
             rep, md = res.report, res.markdown
         else:
-            from seatunnel_agent.agents.data.data_skew.agent import static_skew_report
+            from seatunnel_agent.agents.data.data_skew import static_skew_report
             rep = static_skew_report(text, dialect, lang)
             md = render_report(rep, lang)
         history.log(text, rep, mode="llm" if use_llm else "static", source="cli")
@@ -151,7 +154,7 @@ def skew_stats(recent: int) -> None:
     """数据倾斜分析历史与统计 (logs/data_skew.jsonl)。"""
     from collections import Counter
 
-    from seatunnel_agent.agents.data.data_skew.history import default_history
+    from seatunnel_agent.agents.data.data_skew import default_history
 
     records = default_history().recent(recent)
     if not records:
@@ -187,7 +190,7 @@ def skew_stats(recent: int) -> None:
     h = default_history()
     tables = h.splitkey_tables()
     if tables:
-        from seatunnel_agent.agents.data.data_skew.drift import drift_for
+        from seatunnel_agent.agents.data.data_skew import drift_for
 
         console.print("\n[bold]分片键巡检（每表最近趋势）[/bold]")
         v_marks = {"good": "✅", "suspect": "⚠️", "bad": "⛔",
@@ -240,14 +243,14 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
     带 TABLE 看单表;不带则巡检所有有历史的表。告警默认去重:同一漂移
     未进一步恶化不重发,恶化升级重发,恢复发一条恢复通知。
     """
-    from seatunnel_agent.agents.data.data_skew.drift import (
+    from seatunnel_agent.agents.data.data_skew import (
+        default_history,
         drift_for,
         drift_item_dict,
         notify_decision,
         render_drift,
     )
-    from seatunnel_agent.agents.data.data_skew.history import default_history
-    from seatunnel_agent.agents.data.data_skew.i18n import dsk as _dsk
+    from seatunnel_agent.agents.data.data_skew import dsk as _dsk
 
     as_json = out_format == "json"
     history = default_history()
@@ -294,7 +297,7 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
     if output:
         _save_report(output, "\n\n".join(report_lines) + "\n")
     if webhook_url and alert_lines:
-        from seatunnel_agent.agents.data.data_skew.notify import post_webhook
+        from seatunnel_agent.agents.data.data_skew import post_webhook
         payload: dict = {"source": "seatunnel-agent", "kind": "skew_drift",
                          "tables": alert_tables,
                          "text": "\n\n".join(alert_lines)}
@@ -322,7 +325,7 @@ def skew_drift(table: str | None, lang: str, webhook_url: str | None,
 def skew_bench(corpus: str | None, lang: str, out_format: str,
                gate_flag: bool) -> None:
     """静态倾斜检测器基准 — 标注语料上的 precision/recall/F1(离线)。"""
-    from seatunnel_agent.agents.data.data_skew.bench import (
+    from seatunnel_agent.agents.data.data_skew import (
         DEFAULT_CORPUS,
         load_corpus,
         render_bench,
@@ -395,13 +398,12 @@ def skew_splitkey(
     import re as _re
     from pathlib import Path
 
-    from seatunnel_agent.agents.data.data_skew.history import default_history
-    from seatunnel_agent.agents.data.data_skew.i18n import dsk as _dsk
-    from seatunnel_agent.agents.data.data_skew.probe import effective_sample_pct
-    from seatunnel_agent.agents.data.data_skew.splitkey import (
+    from seatunnel_agent.agents.data.data_skew import (
         SplitKeyError,
         apply_split_key,
         batch_counts,
+        default_history,
+        effective_sample_pct,
         pick_best_key,
         render_splitkey_batch,
         render_splitkey_multi,
@@ -411,6 +413,7 @@ def skew_splitkey(
         sink_key_section,
         splitkey_metrics,
     )
+    from seatunnel_agent.agents.data.data_skew import dsk as _dsk
     from seatunnel_agent.agents.data.text2sql.executor.base import (
         DatabaseConfig,
         config_from_env,
@@ -447,7 +450,7 @@ def skew_splitkey(
         if not webhook_url or not (counts.get("bad") or counts.get("errors")
                                    or drift_lines):
             return
-        from seatunnel_agent.agents.data.data_skew.notify import post_webhook
+        from seatunnel_agent.agents.data.data_skew import post_webhook
         payload: dict = {
             "source": "seatunnel-agent", "kind": "splitkey_patrol",
             "counts": counts, "text": md_text}
@@ -483,7 +486,7 @@ def skew_splitkey(
             _save_report(output, md)
         # drift tail (directory mode): only the drifted tables, one line each;
         # the webhook repeats a drift only when it worsened (suppression)
-        from seatunnel_agent.agents.data.data_skew.drift import (
+        from seatunnel_agent.agents.data.data_skew import (
             drift_for,
             notify_decision,
             render_drift,
@@ -556,7 +559,7 @@ def skew_splitkey(
         _save_report(output, md)
     # drift tail: the measurement just logged vs the table's baseline;
     # the webhook repeats a drift only when it worsened (suppression)
-    from seatunnel_agent.agents.data.data_skew.drift import (
+    from seatunnel_agent.agents.data.data_skew import (
         drift_for,
         notify_decision,
         render_drift,
@@ -629,6 +632,17 @@ def skew_splitkey(
               help="Save report to file")
 @click.option("--fail", "fail_flag", is_flag=True,
               help="存在确认倾斜的 stage 时退出码 1（CI 门禁）")
+@click.option("--shuffle-dist", "shuffle_dist_flag", is_flag=True,
+              help="追加 shuffle 读分布分析（p99 长尾与热点任务，"
+                   "仅 EVENTLOG 模式）")
+@click.option("--what-if-salt", "salt_factor", type=int, default=None,
+              help="对被标记 stage 按 N 路加盐重算 p99/倾斜比"
+                   "（N>=2；0 = 自动找恢复健康的最小盐值；"
+                   "需配合 --shuffle-dist）")
+@click.option("--dist-history", "dist_history_path",
+              type=click.Path(dir_okay=False), default=None,
+              help="分布台账：最差 p99/p50 倾斜比与被标记 stage 数追加到"
+                   "该 jsonl（需配合 --shuffle-dist）")
 def skew_runtime(
     eventlog: str | None,
     history_url: str | None,
@@ -637,6 +651,9 @@ def skew_runtime(
     lang: str,
     output: str | None,
     fail_flag: bool,
+    shuffle_dist_flag: bool,
+    salt_factor: int | None,
+    dist_history_path: str | None,
 ) -> None:
     """运行时倾斜诊断 — 从任务级指标定位拖尾 stage/vertex。
 
@@ -644,15 +661,15 @@ def skew_runtime(
     或 --history + --app 走 Spark History Server REST（在线），
     或 --flink + --app 走 Flink REST（SeaTunnel on Flink）。"""
 
-    from seatunnel_agent.agents.data.data_skew.history import default_history
-    from seatunnel_agent.agents.data.data_skew.i18n import dsk as _dsk
-    from seatunnel_agent.agents.data.data_skew.runtime import (
+    from seatunnel_agent.agents.data.data_skew import (
         RuntimeSkewError,
         analyze_flink,
         analyze_history_server,
+        default_history,
         diagnose_and_log,
         parse_eventlog,
     )
+    from seatunnel_agent.agents.data.data_skew import dsk as _dsk
 
     sources = [bool(eventlog), bool(history_url), bool(flink_url)]
     if sum(sources) != 1:
@@ -674,11 +691,52 @@ def skew_runtime(
 
     md, confirmed, _ = diagnose_and_log(
         default_history(), stages, label, lang, source="cli")
+    from seatunnel_agent.cli_cmds.check_runner import require_with
+    require_with(salt_factor is not None and not shuffle_dist_flag,
+                 "--what-if-salt", "--shuffle-dist")
+    require_with(dist_history_path and not shuffle_dist_flag,
+                 "--dist-history", "--shuffle-dist")
+    fat_tails = 0
+    if shuffle_dist_flag:
+        if not eventlog:
+            raise click.UsageError("--shuffle-dist 仅支持 EVENTLOG 模式")
+        from seatunnel_agent.agents.data.data_skew import (
+            render_salt_what_if,
+            render_shuffle_dist,
+            salt_what_if,
+            shuffle_distribution,
+        )
+
+        dists = shuffle_distribution(eventlog)
+        md += "\n\n" + render_shuffle_dist(dists, lang)
+        fat_tails = sum(1 for d in dists if d.verdict() == "confirmed")
+        if dist_history_path:
+            from seatunnel_agent.cli_cmds.check_runner import track_history
+
+            flagged = [d for d in dists if d.verdict() != "ok"]
+            worst = max((d.ratio for d in flagged
+                         if d.ratio != float("inf")), default=0.0)
+            track_history(dist_history_path, {
+                "worst_ratio": round(worst, 2),
+                "flagged_stages": len(flagged),
+                "confirmed": fat_tails,
+            }, worse_key="worst_ratio")
+        if salt_factor is not None:
+            try:
+                rows = salt_what_if(dists, salt_factor)
+            except ValueError as exc:
+                raise click.UsageError(str(exc)) from exc
+            md += "\n\n" + render_salt_what_if(rows, lang)
     console.print(md)
     if output:
         _save_report(output, md)
-    if fail_flag and confirmed:
-        console.print(f"\n[red]{confirmed} 个 stage 确认倾斜，检查未通过。[/red]")
+    if fail_flag and (confirmed or fat_tails):
+        parts = []
+        if confirmed:
+            parts.append(f"{confirmed} 个 stage 确认倾斜")
+        if fat_tails:
+            parts.append(f"{fat_tails} 个 stage 确认 shuffle 长尾")
+        console.print(f"\n[red]{'，'.join(parts)}，检查未通过。[/red]")
         sys.exit(1)
 
 
@@ -689,7 +747,7 @@ def skew_runtime(
               show_default=True, help="Default report language")
 def skew_mcp(dialect: str, lang: str) -> None:
     """以 MCP server（stdio）暴露数据倾斜静态分析，供 Claude Desktop 等 MCP 客户端调用。"""
-    from seatunnel_agent.agents.data.data_skew.mcp_server import create_mcp_server
+    from seatunnel_agent.agents.data.data_skew import create_mcp_server
 
     try:
         server = create_mcp_server(default_dialect=dialect, default_lang=lang)

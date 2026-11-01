@@ -1,0 +1,11 @@
+{
+  "type": "record",
+  "name": "Order",
+  "namespace": "shop.events",
+  "fields": [
+    {"name": "id", "type": "long"},
+    {"name": "amount", "type": "double"},
+    {"name": "status", "type": "string"},
+    {"name": "tag", "type": ["null", "string"], "default": null}
+  ]
+}

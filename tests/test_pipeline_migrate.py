@@ -1,0 +1,200 @@
+"""Deterministic core tests for the migration assessor agent."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from seatunnel_agent.agents.data.pipeline_migrate import (
+    assess_dir,
+    assess_text,
+    render_markdown,
+)
+from seatunnel_agent.agents.data.pipeline_migrate.tools import pipeline_migrate
+
+DEMO_DIR = (Path(__file__).resolve().parents[1] / "examples"
+            / "pipemigrate_demo")
+
+
+def _by_job():
+    report = assess_dir(DEMO_DIR)
+    return report, {j.job: j for j in report.jobs}
+
+
+def test_demo_targets():
+    _, by = _by_job()
+    assert by["sync_orders.sh"].target == "seatunnel"
+    assert by["sync_orders.sh"].reasons == ["plain_sync"]
+    assert by["build_sales.hql"].target == "spark_sql"
+    assert by["stream_clicks.py"].target == "flink"
+    assert by["run_all.sh"].target == "scheduler"
+    assert by["run_all.sh"].reasons == ["orchestration_only"]
+
+
+def test_demo_risks_and_metrics():
+    _, by = _by_job()
+    sales = by["build_sales.hql"]
+    assert sales.statements == 2
+    assert sales.joins == 1
+    assert "dynamic_sql" in sales.risks  # ${hiveconf:dt}
+    assert "shell_logic" in by["run_all.sh"].risks
+
+
+def test_jobs_sorted_easiest_first_and_counts():
+    report, _ = _by_job()
+    scores = [j.score for j in report.jobs]
+    assert scores == sorted(scores)
+    counts = report.counts()
+    assert counts == {"seatunnel": 2, "spark_sql": 2, "flink": 1,
+                      "scheduler": 1}
+    assert sum(report.effort_counts().values()) == 6
+
+
+def test_datax_job_assessed_with_stub():
+    _, by = _by_job()
+    job = by["datax_items.json"]
+    assert job.kind == "datax"
+    assert job.target == "seatunnel"
+    assert job.reasons == ["plain_sync"]
+    assert 'url = "jdbc:mysql://db:3306/shop"' in job.stub
+    assert 'query = "SELECT * FROM items"' in job.stub
+    assert 'path = "/warehouse/ods/items"' in job.stub
+    # a non-DataX json file in the tree is ignored, not assessed
+    from seatunnel_agent.agents.data.pipeline_migrate import assess_text
+    assert assess_text("x.json", '{"reader": 1}').jobs[0].stub == ""
+
+
+def test_table_deps_and_migration_order():
+    report, by = _by_job()
+    assert by["load_users.sql"].produces == ["ods.users"]
+    assert "staging.users_raw" in by["load_users.sql"].consumes
+    # build_sales reads ods.users which load_users produces
+    assert "ods.users" in by["build_sales.hql"].consumes
+    assert "dws.sales" in by["build_sales.hql"].produces
+    # producer migrates in an earlier wave than its consumer
+    wave_of = {j: i for i, wave in enumerate(report.migration_order)
+               for j in wave}
+    assert wave_of["load_users.sql"] < wave_of["build_sales.hql"]
+    # the shared table names the producer and its consumers
+    shared = {s["table"]: s for s in report.shared_tables}
+    assert shared["ods.users"]["producer"] == "load_users.sql"
+    assert shared["ods.users"]["consumers"] == ["build_sales.hql"]
+
+
+def test_llm_rewrite_advice_wiring(monkeypatch):
+    """advice_for_jobs picks the riskiest jobs; the API appends the
+    section — the LLM call itself is stubbed out."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from seatunnel_agent.agents.data.pipeline_migrate import (
+        advisor_llm,
+    )
+    from seatunnel_agent.agents.data.pipeline_migrate import (
+        api as pm_api,
+    )
+
+    calls: list[str] = []
+
+    def fake_advice(job, script, lang="zh"):
+        calls.append(job.job)
+        assert script  # the real script text reached the adviser
+        return f"advice-for-{job.job}"
+
+    monkeypatch.setattr(advisor_llm, "rewrite_advice", fake_advice)
+
+    app = FastAPI()
+    app.include_router(pm_api.router)
+    client = TestClient(app)
+    monkeypatch.setenv("PIPEMIGRATE_API_ALLOWED_DIRS", str(DEMO_DIR))
+    res = client.post("/api/pipemigrate/assess",
+                      json={"dir": str(DEMO_DIR), "llm": True,
+                            "report": True, "lang": "zh"})
+    assert res.status_code == 200
+    body = res.json()
+    advice = body["result"]["llm_advice"]
+    assert 0 < len(advice) <= 3
+    # riskiest-first: every advised job really has risks
+    by = {j["job"]: j for j in body["result"]["jobs"]}
+    assert all(by[a["job"]]["risks"] for a in advice)
+    assert "LLM 改写建议" in body["report"]
+    assert f"advice-for-{advice[0]['job']}" in body["report"]
+    # default llm=False path untouched
+    res = client.post("/api/pipemigrate/assess",
+                      json={"dir": str(DEMO_DIR)})
+    assert "llm_advice" not in res.json()["result"]
+
+
+def test_migration_dag_feeds_the_dag_optimizer():
+    import json as _json
+
+    from seatunnel_agent.agents.data.dag_optimize import optimize, parse_dag
+
+    report, by = _by_job()
+    dag = report.migration_dag
+    tasks = {t["name"]: t for t in dag["tasks"]}
+    assert tasks["build_sales.hql"]["deps"] == ["load_users.sql"]
+    assert tasks["build_sales.hql"]["duration"] == by["build_sales.hql"].score
+    # round-trips straight into the DAG optimizer: migration makespan
+    result = optimize(parse_dag(_json.dumps(dag)))
+    assert result.tasks == len(report.jobs)
+    assert result.makespans["1"] > result.makespans["4"]
+    md = render_markdown(report, lang="zh")
+    assert "迁移 DAG" in md
+
+
+def test_seatunnel_stub_from_sqoop_args():
+    _, by = _by_job()
+    stub = by["sync_orders.sh"].stub
+    assert 'url = "jdbc:mysql://db/shop"' in stub
+    assert 'query = "SELECT * FROM orders"' in stub
+    assert 'path = "/warehouse/ods/orders"' in stub
+    assert 'job.mode = "BATCH"' in stub
+    # non-seatunnel targets carry no stub
+    assert by["build_sales.hql"].stub == ""
+    from seatunnel_agent.agents.data.pipeline_migrate import render_markdown
+    report, _ = _by_job()
+    assert "```hocon" in render_markdown(report, lang="en")
+
+
+def test_single_script_text():
+    report = assess_text("legacy.sql",
+                         "SELECT a FROM t1, t2 WHERE t1.id = t2.id(+);")
+    job = report.jobs[0]
+    assert job.kind == "sql"
+    assert "oracle_join" in job.risks
+    assert job.target == "spark_sql"
+
+
+def test_effort_scales_with_complexity():
+    small = assess_text("s.sql", "INSERT INTO t SELECT * FROM s;").jobs[0]
+    big_sql = "\n".join(
+        f"INSERT OVERWRITE TABLE t{i} SELECT * FROM a{i} "
+        f"JOIN b{i} ON a{i}.k = b{i}.k;" for i in range(10))
+    big = assess_text("b.sql", big_sql).jobs[0]
+    assert small.effort == "S"
+    assert big.effort == "L"
+    assert big.score > small.score
+
+
+def test_bad_inputs(tmp_path):
+    with pytest.raises(ValueError, match="not a directory"):
+        assess_dir(DEMO_DIR / "nope")
+    with pytest.raises(ValueError, match="empty script"):
+        assess_text("x.sql", "  ")
+    (tmp_path / "readme.txt").write_text("not a script", encoding="utf-8")
+    with pytest.raises(ValueError, match="no scripts"):
+        assess_dir(tmp_path)
+
+
+def test_report_zh_en_and_tool():
+    report, _ = _by_job()
+    zh = render_markdown(report, lang="zh")
+    en = render_markdown(report, lang="en")
+    assert "Pipeline 迁移评估" in zh and "目标引擎" in zh
+    assert "Pipeline Migration Assessment" in en and "SeaTunnel" in en
+    md = pipeline_migrate(scripts_dir=str(DEMO_DIR), lang="en")
+    assert "easiest first" in md
+    assert "provide scripts_dir" in pipeline_migrate()
+    assert "not a directory" in pipeline_migrate(scripts_dir="no/such/dir")

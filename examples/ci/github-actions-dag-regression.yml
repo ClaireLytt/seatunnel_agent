@@ -1,0 +1,37 @@
+# Copy to .github/workflows/dag-regression.yml in your scheduler repo.
+# On every PR that touches the DAG definition: run the change review
+# against the PR base and fail the check when the critical path grows
+# beyond the tolerance or the change introduces redundant serial edges.
+name: DAG Regression Gate
+
+on:
+  pull_request:
+    paths:
+      - "dags/**"
+
+jobs:
+  dag-regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install analyzer
+        run: pip install git+https://github.com/ClaireLytt/seatunnel_agent.git
+
+      # Adjust dags/daily.json to your DAG export (JSON tasks/edges,
+      # Graphviz DOT from `airflow dags show`, or `a -> b` lines).
+      - name: Snapshot the baseline DAG
+        run: git show origin/${{ github.base_ref }}:dags/daily.json > base.json
+
+      - name: Change review + regression gate
+        run: |
+          seatunnel-agent dagopt -f dags/daily.json \
+            --base base.json \
+            --fail-on-regression --tolerance 0 \
+            --lang zh

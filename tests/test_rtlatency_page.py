@@ -1,0 +1,76 @@
+"""Browser tests for the React /rtlatency page.
+
+Serves the built dist + API router in-process, modeled on
+tests/test_sampleprofile_page.py. Deselected by default:
+
+    pytest -m uitest tests/test_rtlatency_page.py
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from tests.conftest import make_page_url
+
+pytestmark = pytest.mark.uitest
+
+from seatunnel_agent.agents.data.rt_latency.manifest import MANIFEST
+
+ROOT = Path(__file__).resolve().parents[1]
+DEMO = ROOT / "examples" / "rtlatency_demo"
+
+page_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.rt_latency.api:router",
+    "/rtlatency", chdir="root",
+    env={"RTLATENCY_API_ALLOWED_DIRS": str(DEMO)})
+
+
+@pytest.mark.uitest
+def test_rtlatency_page_run_flow(page_url):
+    """Prefilled events → Analyze → hop table + outlier."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        console_errors: list[str] = []
+        page.on("console", lambda m: console_errors.append(m.text)
+                if m.type == "error" else None)
+        page.goto(page_url, wait_until="networkidle")
+
+        expect(page.get_by_role(
+            "heading", name="RT Latency", exact=True).first).to_be_visible()
+        page.get_by_role("button", name="Analyze", exact=True).click()
+
+        expect(page.get_by_text("ingest→process",
+                                exact=False).first).to_be_visible()
+        expect(page.get_by_text("e008", exact=False).first).to_be_visible()
+
+        assert not console_errors, f"console errors: {console_errors}"
+        browser.close()
+
+
+nokey_url = make_page_url(
+    MANIFEST, "seatunnel_agent.agents.data.rt_latency.api:router",
+    "/rtlatency", chdir="root", neutralize_llm=True,
+    env={"RTLATENCY_API_ALLOWED_DIRS": str(DEMO)},
+    name="nokey_url")
+
+
+@pytest.mark.uitest
+def test_rtlatency_note_without_key_surfaces_503(nokey_url):
+    """LLM note checked without a key -> inline 503, no crash."""
+    from playwright.sync_api import expect, sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(nokey_url, wait_until="networkidle")
+        page.get_by_text("LLM latency note", exact=False).click()
+        page.get_by_role("button", name="Analyze", exact=True).click()
+        expect(page.get_by_text("API_KEY is not set",
+                                exact=False)).to_be_visible(timeout=15000)
+        expect(page.locator("body")).not_to_contain_text("Traceback")
+        browser.close()

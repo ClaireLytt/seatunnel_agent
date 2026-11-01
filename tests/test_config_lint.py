@@ -278,3 +278,16 @@ def test_api_lint_requires_input(api_client):
     r = api_client.post("/api/conflint/lint", json={})
     assert r.status_code == 400
     assert api_client.get("/api/conflint/health").json()["status"] == "ok"
+def test_quoted_dotted_key_matches_documented_param():
+    # regression: pyhocon keeps quotes on dotted quoted keys
+    # ('"bootstrap.servers"'); the linter must still match them
+    from seatunnel_agent.agents.data.config_lint import lint_text
+
+    result = lint_text(
+        'env { parallelism = 1\n  job.mode = "BATCH" }\n'
+        'source { Kafka { "bootstrap.servers" = "localhost:9092"\n'
+        '  topic = "t"\n  plugin_output = "t" } }\n'
+        'sink { Console { plugin_input = "t" } }')
+    kinds = {(f.kind, f.param) for f in result.findings}
+    assert ("missing_required", "bootstrap.servers") not in kinds
+    assert ("unknown_param", '"bootstrap.servers"') not in kinds

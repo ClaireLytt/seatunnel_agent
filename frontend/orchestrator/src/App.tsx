@@ -178,6 +178,7 @@ export default function App() {
               ['exReview', 'exReviewText'],
               ['exChain', 'exChainText'],
               ['exPii', 'exPiiText'],
+              ['exRealtime', 'exRealtimeText'],
             ] as const
           ).map(([label, textKey]) => (
             <button

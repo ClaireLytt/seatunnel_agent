@@ -193,6 +193,7 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
                   dummy_llm_key: bool = False,
                   chdir: str | None = None,
                   extra_mounts: list[tuple[str, Any]] | None = None,
+                  extra_routers: list[str] | None = None,
                   post_setup: Callable[..., None] | None = None,
                   name: str = "page_url"):
     """Build the in-process uvicorn ``page_url`` fixture for a React page.
@@ -208,7 +209,9 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
     ``chdir`` is "tmp" or "root" (repo root), or None to stay put.
     ``extra_mounts`` mounts additional built dists ``(mount_path,
     manifest)`` on the same server (skipped when not built, matching the
-    historical inline behavior). ``post_setup(monkeypatch, tmp_path)``
+    historical inline behavior); ``extra_routers`` includes their API
+    routers (same "module:attr" form) so a mounted extra page is fully
+    functional — the pair enables cross-page handoff tests. ``post_setup(monkeypatch, tmp_path)``
     runs after env handling and before the app is assembled — the hook
     for module-level store/agent stubbing and data seeding. ``name``
     names the fixture (for a second server fixture in the same file)."""
@@ -260,6 +263,10 @@ def make_page_url(manifest, router_ref: str, mount: str, *,
 
         app = FastAPI()
         app.include_router(router)
+        for extra_ref in (extra_routers or []):
+            extra_mod, extra_attr = extra_ref.split(":")
+            app.include_router(
+                getattr(importlib.import_module(extra_mod), extra_attr))
         app.mount(mount, StaticFiles(directory=dist, html=True))
         for extra_mount, extra_manifest in (extra_mounts or []):
             extra_dist = root / frontend_dist(extra_manifest)
@@ -307,3 +314,82 @@ def _no_llm_usage_log(monkeypatch):
     monkeypatch.setenv("PROMPT_LAB_LOG", "0")
     monkeypatch.setenv("LLM_EVAL_LOG", "0")
     monkeypatch.setenv("ORCH_CHAT_LOG", "0")
+
+
+def standard_page_tests(manifest, router_ref: str, mount: str, *,
+                        env_var: str, demo_dir, heading: str,
+                        run_button: str, expect_texts: list[str],
+                        llm_label: str):
+    """The two standard browser tests every single-page agent ships.
+
+    42 page-test files were byte-for-byte copies of the same Playwright
+    boilerplate differing only in a handful of facts; this factory is
+    the deep module behind that interface.  It returns
+    ``(page_url, nokey_url, test_run_flow, test_nokey_503)`` for the
+    caller to bind as module globals:
+
+        globals().update(standard_page_tests(MANIFEST, ROUTER, "/x",
+            env_var="X_API_ALLOWED_DIRS", demo_dir=DEMO, heading="X",
+            run_button="Run", expect_texts=["a", "b"],
+            llm_label="LLM note"))
+
+    *test_run_flow* opens the prefilled page, clicks *run_button* and
+    expects every entry of *expect_texts*, asserting zero console
+    errors.  *test_nokey_503* checks the *llm_label* checkbox without a
+    key and expects the inline "API_KEY is not set" 503.  Pages needing
+    different assertions (multi-page handoffs, stateful flows) keep
+    hand-written tests instead.
+    """
+    page_url = make_page_url(manifest, router_ref, mount, chdir="root",
+                             env={env_var: str(demo_dir)})
+    nokey_url = make_page_url(manifest, router_ref, mount, chdir="root",
+                              neutralize_llm=True,
+                              env={env_var: str(demo_dir)},
+                              name="nokey_url")
+
+    @pytest.mark.uitest
+    def test_run_flow(page_url):
+        from playwright.sync_api import expect, sync_playwright
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            console_errors: list[str] = []
+            page.on("console", lambda m: console_errors.append(m.text)
+                    if m.type == "error" else None)
+            page.goto(page_url, wait_until="networkidle")
+
+            expect(page.get_by_role(
+                "heading", name=heading, exact=True).first).to_be_visible()
+            page.get_by_role("button", name=run_button,
+                             exact=True).click()
+            for text in expect_texts:
+                expect(page.get_by_text(text,
+                                        exact=False).first).to_be_visible()
+
+            assert not console_errors, f"console errors: {console_errors}"
+            browser.close()
+
+    @pytest.mark.uitest
+    def test_nokey_503(nokey_url):
+        from playwright.sync_api import expect, sync_playwright
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.goto(nokey_url, wait_until="networkidle")
+            page.get_by_text(llm_label, exact=False).click()
+            page.get_by_role("button", name=run_button,
+                             exact=True).click()
+            expect(page.get_by_text(
+                "API_KEY is not set",
+                exact=False)).to_be_visible(timeout=15000)
+            expect(page.locator("body")).not_to_contain_text("Traceback")
+            browser.close()
+
+    slug = manifest.name
+    test_run_flow.__name__ = f"test_{slug}_page_run_flow"
+    test_nokey_503.__name__ = f"test_{slug}_note_without_key_surfaces_503"
+    return {"page_url": page_url, "nokey_url": nokey_url,
+            test_run_flow.__name__: test_run_flow,
+            test_nokey_503.__name__: test_nokey_503}

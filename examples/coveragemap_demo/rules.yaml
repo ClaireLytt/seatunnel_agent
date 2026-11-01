@@ -1,0 +1,16 @@
+version: 1
+rules:
+  - table: dwd.orders
+    checks:
+      - type: row_count
+        min: 1
+        max_change_pct: 50
+      - type: null_rate
+        column: amount
+        max_pct: 5
+      - type: unique
+        columns: [order_id]
+  - table: ods.legacy_gone
+    checks:
+      - type: row_count
+        min: 1

@@ -1,0 +1,13 @@
+table,partition,size_gb,last_access
+dwd.orders,dt=2026-10-29,12.5,2026-10-30
+dwd.orders,dt=2026-10-01,12.1,2026-10-28
+dwd.orders,dt=2026-08-15,11.8,2026-10-05
+dwd.orders,dt=2026-04-10,11.2,2026-05-01
+dwd.orders,dt=2026-01-05,10.9,
+dwd.orders,dt=2025-11-20,10.4,
+ods.click_log,dt=2026-10-30,80.0,2026-10-30
+ods.click_log,dt=2026-07-01,78.5,
+ods.click_log,dt=2026-03-15,75.0,
+ods.click_log,dt=2025-12-01,70.2,
+dim.users,dt=2026-10-30,2.1,2026-10-30
+dim.users,dt=2026-10-29,2.1,2026-10-29

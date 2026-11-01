@@ -1,0 +1,9 @@
+[
+  {"task": "dwd_orders", "dag": "daily_core", "error": "FileNotFoundException: partition dt=2026-10-30 of ods.orders_raw does not exist", "retries": 3, "final_status": "failed"},
+  {"task": "dws_orders_daily", "dag": "daily_core", "error": "FileNotFoundException: partition dt=2026-10-30 of ods.orders_raw does not exist", "retries": 3, "final_status": "failed"},
+  {"task": "ads_board_kpi", "dag": "daily_core", "error": "upstream task dws_orders_daily not finished, dependency wait timed out", "retries": 1, "final_status": "failed"},
+  {"task": "dwd_click_log", "dag": "daily_log", "error": "Container killed by YARN for exceeding memory limits. 8.2 GB of 8 GB physical memory used", "retries": 2, "final_status": "failed"},
+  {"task": "dim_users_sync", "dag": "daily_core", "error": "Connection reset by peer while reading from mysql", "retries": 1, "final_status": "success"},
+  {"task": "dwd_pay_events", "dag": "daily_pay", "error": "java.lang.NumberFormatException: cannot cast '1,299.00' to DOUBLE at column amount", "retries": 2, "final_status": "failed"},
+  {"task": "rpt_weekly_mail", "dag": "weekly", "error": "NameError: name 'dt_str' is not defined, Traceback (most recent call last)", "retries": 0, "final_status": "failed"}
+]

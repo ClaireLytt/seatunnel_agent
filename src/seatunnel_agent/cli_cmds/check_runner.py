@@ -21,7 +21,39 @@ import click
 
 from ..common.cli_common import console
 
-SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3}
+SEVERITY_RANK = {"info": 1, "low": 1, "medium": 2, "high": 3}
+
+_REPORT_OPTIONS = [
+    click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
+                 show_default=True, help="Report language"),
+    click.option("--format", "-F", "fmt",
+                 type=click.Choice(["markdown", "json"]),
+                 default="markdown", help="Report format"),
+    click.option("--output", "-o", type=click.Path(), default=None,
+                 help="Save report to file"),
+]
+
+
+def report_options(fn):
+    """The --lang/--format/--output trio every report command takes."""
+    for deco in reversed(_REPORT_OPTIONS):
+        fn = deco(fn)
+    return fn
+
+
+def require_with(flag_set: Any, flag: str, dep: str) -> None:
+    """Fail with the standard message when *flag* is used without *dep*."""
+    if flag_set:
+        raise click.UsageError(f"{flag} 需配合 {dep}")
+
+
+def read_input(path: str | None, text: str | None, what: str) -> str:
+    """Resolve the --file/--text pair every analyze command takes."""
+    if path:
+        return Path(path).read_text(encoding="utf-8", errors="replace")
+    if text:
+        return text
+    raise click.UsageError(f"提供 --file 或 --text（{what}）")
 
 
 @dataclass(frozen=True)
@@ -75,6 +107,74 @@ def emit_report(spec: CheckSpec, report: Any, lang: str, fmt: str,
     save_output(text_out, output)
 
 
+def emit_payload(payload: dict[str, Any], markdown: str, fmt: str,
+                 output: str | None) -> None:
+    """Spec-less twin of :func:`emit_report` for commands that already
+    hold the payload dict and rendered markdown."""
+    if fmt == "json":
+        text_out = json.dumps(payload, ensure_ascii=False, indent=2)
+        print(text_out)
+    else:
+        text_out = markdown
+        console.print(text_out, markup=False)
+    save_output(text_out, output)
+
+
+def append_jsonl(path_str: str, entry: dict[str, Any]) -> dict[str, Any]:
+    """Append *entry* with a UTC ts to a jsonl file; return the row."""
+    from datetime import datetime, timezone
+
+    path = Path(path_str)
+    entry = {"ts": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+             **entry}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    return entry
+
+
+def track_history(history_path: str, entry: dict[str, Any],
+                  worse_key: str) -> None:
+    """Append *entry* (plus a ts) to the jsonl; print the drift vs the
+    previous record — yellow when *worse_key* grew, dim otherwise.
+
+    Entries are NUMERIC-ONLY: the drift line renders every value with
+    ':g', so a stray string crashes at print time with an opaque
+    "Unknown format code 'g'" (it has, twice). Refuse it loudly here,
+    naming the offending key, before anything lands in the ledger."""
+    bad = [k for k, v in entry.items()
+           if not isinstance(v, (int, float)) or isinstance(v, bool)]
+    if bad:
+        raise ValueError(
+            "track_history entries must be numeric-only (the drift line "
+            f"formats with ':g'); non-numeric key(s): {', '.join(bad)} — "
+            "drop them or encode them as numbers")
+    if worse_key not in entry:
+        raise ValueError(f"worse_key '{worse_key}' is not in the entry "
+                         f"(keys: {', '.join(entry)})")
+    path = Path(history_path)
+    previous = None
+    if path.is_file():
+        lines = [ln for ln in
+                 path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        if lines:
+            previous = json.loads(lines[-1])
+    entry = append_jsonl(history_path, entry)
+    if previous is None:
+        console.print(f"[dim]history: 首次记录 → {path}[/dim]")
+        return
+    deltas = [f"{k} {previous.get(k, 0):g} → {v:g}"
+              for k, v in entry.items()
+              if k != "ts" and v != previous.get(k, 0)]
+    if deltas:
+        worse = entry[worse_key] > previous.get(worse_key, 0)
+        tone = "yellow" if worse else "dim"
+        console.print(f"[{tone}]history({previous.get('ts', '?')} → 本次): "
+                      + " · ".join(deltas) + f"[/{tone}]")
+    else:
+        console.print("[dim]history: 与上次记录持平[/dim]")
+
+
 def fail_check(msg: str, fmt: str) -> None:
     """Report a failed gate and exit 1 (stderr keeps json stdout clean)."""
     if fmt == "json":
@@ -82,6 +182,43 @@ def fail_check(msg: str, fmt: str) -> None:
     else:
         console.print(f"\n[red]{msg}[/red]")
     sys.exit(1)
+
+
+def rising_trend(entries: list[dict[str, Any]], key: str,
+                 n: int) -> dict[str, Any] | None:
+    """Strictly-rising trend of ``entries[*][key]`` over the last *n*
+    records — the pattern a single-run gate misses because each step
+    stays under its threshold.  ``None`` when the ledger is shorter
+    than ``n`` or any step held or improved."""
+    if n < 2:
+        raise ValueError("trend window must be >= 2 records")
+    values = [float(e[key]) for e in entries
+              if isinstance(e.get(key), (int, float))]
+    if len(values) < n:
+        return None
+    window = values[-n:]
+    if any(b <= a for a, b in zip(window, window[1:])):
+        return None
+    return {"records": n, "from_v": window[0], "to_v": window[-1],
+            "growth_pct": round(100 * (window[-1] / window[0] - 1), 1)
+            if window[0] else None}
+
+
+def fail_on_high(findings: Iterable[Any], fmt: str,
+                 label=lambda f: f.code) -> None:
+    """The CI gate every snapshot-diagnosis command repeats: exit 1 when
+    any finding is high severity, naming the offenders."""
+    worst = [f for f in findings if getattr(f, "severity", "") == "high"]
+    if worst:
+        fail_check("HIGH " + ", ".join(label(f) for f in worst), fmt)
+
+
+def append_llm_note(payload: dict[str, Any], markdown: str, note: str,
+                    key: str, heading: str) -> str:
+    """The opt-in LLM tail every quality command repeats: stash the note
+    in the payload and append its section; returns the new markdown."""
+    payload[key] = note
+    return markdown + f"\n\n### {heading}\n{note}\n"
 
 
 def severity_gate(findings: Iterable[Any], fail_on: str, msg: str) -> str | None:

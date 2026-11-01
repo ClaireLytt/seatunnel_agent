@@ -270,7 +270,7 @@ def build_tool_functions(
         tools[tm.name] = _with_default_lang(resolve(tm.ref))
 
     # data-skew tools (already factored for MCP) — history source stays 'mcp'
-    from seatunnel_agent.agents.data.data_skew.mcp_server import (
+    from seatunnel_agent.agents.data.data_skew import (
         build_tool_functions as _skew_tools,
     )
     tools.update(_skew_tools(default_lang=default_lang, include_db=include_db))
@@ -431,7 +431,7 @@ def build_tool_functions(
         """在已保存连接上执行**只读**查询（仅允许单条 SELECT/WITH；多语句、
         写操作一律拒绝），返回 Markdown 结果表。max_rows 上限 500，且在
         支持 LIMIT 的引擎上注入引擎侧 LIMIT（大表不做全量计算）。"""
-        from seatunnel_agent.agents.data.data_skew.consistency import (
+        from seatunnel_agent.agents.data.data_skew import (
             extract_single_select,
         )
 
@@ -533,10 +533,10 @@ def build_tool_functions(
         窗口分区键，在已保存连接上并行探查真实键值分布（只读 GROUP BY 探针，
         支持 TABLESAMPLE 采样），返回确认/疑似判定、热点值、引擎参数与按实测
         值生成的改写模板。先用 skew_check 做静态扫描，再用本工具实测确认。"""
-        from seatunnel_agent.agents.data.data_skew.detector import normalize_dialect
-        from seatunnel_agent.agents.data.data_skew.probe import (
+        from seatunnel_agent.agents.data.data_skew import (
             effective_sample_pct,
             extract_probe_targets,
+            normalize_dialect,
             render_probe_section,
             run_probes,
         )
@@ -555,7 +555,7 @@ def build_tool_functions(
         except Exception as exc:
             _invalidate(connection)
             return f"探查失败 / probing failed: {exc}"
-        from seatunnel_agent.agents.data.data_skew.history import default_history
+        from seatunnel_agent.agents.data.data_skew import default_history
         default_history().log_verify(
             sql, targets=len(targets),
             confirmed=sum(1 for r in results if r.verdict == "confirmed"),
@@ -570,10 +570,10 @@ def build_tool_functions(
         实测作业配置里 JDBC/CDC source 的 partition_column 分布（NDV/NULL/
         top-1），实测候选列给出推荐，并附 sink 端分布键（sharding_key/
         partition_by/primary_keys）的热点体检。多 source 配置逐一体检。"""
-        from seatunnel_agent.agents.data.data_skew.history import default_history
-        from seatunnel_agent.agents.data.data_skew.probe import effective_sample_pct
-        from seatunnel_agent.agents.data.data_skew.splitkey import (
+        from seatunnel_agent.agents.data.data_skew import (
             SplitKeyError,
+            default_history,
+            effective_sample_pct,
             render_splitkey_multi,
             run_split_key_multi,
             sink_key_section,
@@ -592,7 +592,7 @@ def build_tool_functions(
             results, total = _db(connection, run_split_key_multi, executor,
                                  conf, ds_type=ds, sample_pct=pct)
         except SplitKeyError as exc:
-            from seatunnel_agent.agents.data.data_skew.i18n import dsk
+            from seatunnel_agent.agents.data.data_skew import dsk
             return dsk(lg, exc.key).format(err=exc.arg)
         except Exception as exc:
             _invalidate(connection)
@@ -620,7 +620,7 @@ def build_tool_functions(
         """一致性实测：在同一连接上运行两版 SQL（各自仅允许单条 SELECT/WITH）
         并比对——行数一致性、小结果集逐行多重集比对、大结果集逐列聚合指纹。
         用于验证改写/迁移后的 SQL 与原 SQL 结果等价。"""
-        from seatunnel_agent.agents.data.data_skew.consistency import (
+        from seatunnel_agent.agents.data.data_skew import (
             check_consistency,
             render_consistency_section,
         )
@@ -804,7 +804,7 @@ def _register_resources(server, functions: dict[str, Callable[..., str]]) -> Non
 
     def skew_rule_catalog() -> str:
         """数据倾斜静态规则目录（DS001–DS013）。"""
-        from seatunnel_agent.agents.data.data_skew.detector import RULE_TEXTS
+        from seatunnel_agent.agents.data.data_skew import RULE_TEXTS
 
         lines = ["# Data Skew rules", ""]
         for key in sorted(RULE_TEXTS):
@@ -823,7 +823,7 @@ def _register_resources(server, functions: dict[str, Callable[..., str]]) -> Non
 
     def dialect_catalog() -> str:
         """各工具支持的方言清单。"""
-        from seatunnel_agent.agents.data.data_skew.detector import DIALECTS as skew_d
+        from seatunnel_agent.agents.data.data_skew import DIALECTS as skew_d
         from seatunnel_agent.agents.data.sql_review.linter import DIALECTS as review_d
         from seatunnel_agent.agents.data.sql_transpile import DIALECTS as transpile_d
 

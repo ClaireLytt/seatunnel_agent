@@ -5,6 +5,7 @@ import sys
 
 import click
 
+from ..agents.data.data_lineage.sqlglot_lineage import SQL_DIALECTS
 from ..common.cli_common import (
     _ensure_utf8_stdio,
     _handle_error,
@@ -29,9 +30,7 @@ from ..common.cli_common import (
               help="治理体检：环依赖 / 孤立表 / 无下游可下线表")
 @click.option("--sql-dir", type=click.Path(exists=True, file_okay=False), default=None,
               help="从目录下的 *.sql 文件构建血缘图（递归）")
-@click.option("--sql-dialect", type=click.Choice(
-                  ["hive", "spark", "flink", "maxcompute", "mysql",
-                   "postgresql", "clickhouse", "doris", "starrocks", "sqlite"]),
+@click.option("--sql-dialect", type=click.Choice(list(SQL_DIALECTS)),
               default="hive", show_default=True,
               help="解析 --sql-dir 脚本用的 SQL 方言（影响字段级血缘的 AST 解析）")
 @click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False), default=None,
@@ -435,9 +434,7 @@ def impact_stats(recent: int) -> None:
 @click.command(name="lineage-mcp")
 @click.option("--sql-dir", type=click.Path(exists=True, file_okay=False), default=None,
               help="从目录下的 *.sql 文件构建血缘图（递归）")
-@click.option("--sql-dialect", type=click.Choice(
-                  ["hive", "spark", "flink", "maxcompute", "mysql",
-                   "postgresql", "clickhouse", "doris", "starrocks", "sqlite"]),
+@click.option("--sql-dialect", type=click.Choice(list(SQL_DIALECTS)),
               default="hive", show_default=True,
               help="解析 --sql-dir 脚本用的 SQL 方言（影响字段级血缘的 AST 解析）")
 @click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False), default=None,

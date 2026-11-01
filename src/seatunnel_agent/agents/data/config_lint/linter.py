@@ -136,7 +136,10 @@ def _lint_connector(result: LintResult, section: str, name: str,
 
     present: dict[str, Any] = {}
     if hasattr(params, "items"):
-        present = {str(k): v for k, v in params.items()}
+        # pyhocon keeps the quotes on dotted quoted keys
+        # ('"bootstrap.servers"') — strip them so documented dotted
+        # params match instead of double-reporting missing + unknown
+        present = {str(k).strip('"'): v for k, v in params.items()}
     documented = {p.name: p for p in doc.required_params + doc.optional_params}
 
     for p in doc.required_params:

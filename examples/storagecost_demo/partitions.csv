@@ -1,0 +1,6 @@
+table,partition,size_gb
+ods.click_log,dt=2024-09-01,18
+ods.click_log,dt=2024-10-01,20
+ods.click_log,dt=2026-10-30,25
+dwd.orders,dt=2025-01-15,30
+dwd.orders,dt=2026-10-30,35

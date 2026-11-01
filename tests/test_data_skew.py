@@ -2148,7 +2148,7 @@ def test_cli_skew_splitkey_recovery_card(monkeypatch, tmp_path):
     from the splitkey patrol itself (webhook included)."""
     from click.testing import CliRunner
 
-    from seatunnel_agent.agents.data.data_skew import notify
+    import seatunnel_agent.agents.data.data_skew as dskew
     from seatunnel_agent.agents.data.data_skew.history import default_history
     from seatunnel_agent.agents.data.text2sql.executor import base as exec_base
     from seatunnel_agent.cli import cli
@@ -2167,7 +2167,7 @@ def test_cli_skew_splitkey_recovery_card(monkeypatch, tmp_path):
         h.log_splitkey("orders", "region", "bad", top1_pct=80.0)
     h.log_drift("orders", "drift", ["top1_pct"], deltas={"top1_pct": 20.0})
     posted: list[dict] = []
-    monkeypatch.setattr(notify, "post_webhook",
+    monkeypatch.setattr(dskew, "post_webhook",
                         lambda url, payload: (posted.append(payload)
                                               or (True, "200")))
     conf_file = tmp_path / "job.conf"
@@ -2625,6 +2625,7 @@ def test_runtime_flink_fake_fetch():
 def test_cli_skew_runtime_flink(monkeypatch, tmp_path):
     from click.testing import CliRunner
 
+    import seatunnel_agent.agents.data.data_skew as dskew
     from seatunnel_agent.agents.data.data_skew import runtime as rt
     from seatunnel_agent.agents.data.data_skew.history import default_history
     from seatunnel_agent.cli import cli
@@ -2632,7 +2633,7 @@ def test_cli_skew_runtime_flink(monkeypatch, tmp_path):
     monkeypatch.setenv("SEATUNNEL_SKEW_HISTORY_PATH",
                        str(tmp_path / "hist.jsonl"))
     monkeypatch.setattr(
-        rt, "analyze_flink",
+        dskew, "analyze_flink",
         lambda url, job: ([rt.StageSkew(stage_id=0, name="Source: orders",
                                         tasks=4, dur_p50=2_000,
                                         dur_max=65_000)],
@@ -2856,7 +2857,7 @@ def test_run_split_key_batch_and_render(tmp_path):
 def test_cli_skew_splitkey_dir_patrol(monkeypatch, tmp_path):
     from click.testing import CliRunner
 
-    from seatunnel_agent.agents.data.data_skew import notify
+    import seatunnel_agent.agents.data.data_skew as dskew
     from seatunnel_agent.agents.data.data_skew.history import default_history
     from seatunnel_agent.agents.data.text2sql.executor import base as exec_base
     from seatunnel_agent.cli import cli
@@ -2869,7 +2870,7 @@ def test_cli_skew_splitkey_dir_patrol(monkeypatch, tmp_path):
         lambda ds: exec_base.DatabaseConfig(
             ds_type="sqlite", host="", port=0, database=str(db)))
     posted: list[tuple[str, dict]] = []
-    monkeypatch.setattr(notify, "post_webhook",
+    monkeypatch.setattr(dskew, "post_webhook",
                         lambda url, payload: (posted.append((url, payload))
                                               or (True, "200")))
     d = _patrol_dir(tmp_path)
@@ -3335,7 +3336,7 @@ def test_cli_skew_drift_empty_history(tmp_path, monkeypatch):
 def test_cli_skew_drift_webhook(tmp_path, monkeypatch):
     from click.testing import CliRunner
 
-    from seatunnel_agent.agents.data.data_skew import notify
+    import seatunnel_agent.agents.data.data_skew as dskew
     from seatunnel_agent.cli import cli
 
     _seed_drift_history(tmp_path, monkeypatch, [
@@ -3348,7 +3349,7 @@ def test_cli_skew_drift_webhook(tmp_path, monkeypatch):
         posted["payload"] = payload
         return True, "200"
 
-    monkeypatch.setattr(notify, "post_webhook", fake_post)
+    monkeypatch.setattr(dskew, "post_webhook", fake_post)
     res = CliRunner().invoke(
         cli, ["skew-drift", "--webhook", "http://hook.example/x"])
     assert res.exit_code == 0, res.output
@@ -3467,14 +3468,14 @@ def test_cli_skew_drift_webhook_suppression(tmp_path, monkeypatch):
     bypasses; recovery posts a recovery card."""
     from click.testing import CliRunner
 
-    from seatunnel_agent.agents.data.data_skew import notify
+    import seatunnel_agent.agents.data.data_skew as dskew
     from seatunnel_agent.cli import cli
 
     h = _seed_drift_history(tmp_path, monkeypatch, [
         {"top1_pct": 10.0}, {"top1_pct": 14.0}, {"top1_pct": 28.0},
     ])
     posted: list[dict] = []
-    monkeypatch.setattr(notify, "post_webhook",
+    monkeypatch.setattr(dskew, "post_webhook",
                         lambda url, payload: (posted.append(payload)
                                               or (True, "200")))
     runner = CliRunner()
