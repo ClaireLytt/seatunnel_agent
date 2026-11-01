@@ -30,6 +30,24 @@ AD_I18N: dict[str, dict[str, str]] = {
                           "seatunnel_gen turns the table into the sync "
                           "job.",
         "rpt_llm_note": "Landing review (LLM — review before DDL)",
+        "ob_title": "Topic Onboarding Kit",
+        "ob_scope": "table `{table}` · **{dialect}** · {source} → "
+                    "{sink} · **{columns}** column(s), **{lossy}** "
+                    "lossy",
+        "ob_ddl": "1. CREATE TABLE (avro2ddl, parses clean)",
+        "ob_conf": "2. SeaTunnel job (seatunnel_gen, linted — fill the "
+                   "<...> placeholders)",
+        "ob_contract": "3. Contract (contract_gen, contract_check "
+                       "loads it)",
+        "ob_rules": "4. DQC rules (dq_rulegen, from the sample)",
+        "ob_no_sample": "> No sample rows given — pass one (CSV with "
+                        "header / JSONL) and dq_rulegen drafts the "
+                        "quality gates too.",
+        "ob_warnings": "Warnings",
+        "ob_disclaimer": "> One schema in, the landing kit out — every "
+                         "piece comes from its own generator with its "
+                         "round-trip guard. Review the placeholders "
+                         "and lossy rows before shipping.",
     },
     "zh": {
         "rpt_title": "消息 Schema 建表",
@@ -51,6 +69,21 @@ AD_I18N: dict[str, dict[str, str]] = {
                           "Schema,本页把一版落成表,seatunnel_gen 再把表"
                           "变成同步作业。",
         "rpt_llm_note": "落地评审（LLM — 落 DDL 前请复核）",
+        "ob_title": "Topic 接入套件",
+        "ob_scope": "表 `{table}` · **{dialect}** · {source} → {sink} "
+                    "· **{columns}** 列、**{lossy}** 处有损",
+        "ob_ddl": "1. CREATE TABLE（avro2ddl,解析零错误）",
+        "ob_conf": "2. SeaTunnel 作业（seatunnel_gen,已过 lint — 补全 "
+                   "<...> 占位符）",
+        "ob_contract": "3. 契约（contract_gen,contract_check 可直接"
+                       "加载）",
+        "ob_rules": "4. DQC 规则（dq_rulegen,按样例生成）",
+        "ob_no_sample": "> 未提供样例数据 — 附一份（CSV 带表头 / "
+                        "JSONL）即可同时生成 dq_rulegen 质量闸。",
+        "ob_warnings": "警告",
+        "ob_disclaimer": "> 一份 Schema 进,落地套件出 — 每件产物都由"
+                         "原生成器产出并各自回检。占位符与有损行上线前"
+                         "请人工复核。",
     },
 }
 

@@ -28,3 +28,27 @@ def avro2ddl(schema: str, table: str = "", dialect: str = "hive",
     except ValueError as exc:
         return f"输入有误 / bad input: {exc}"
     return render_markdown(draft, lang=normalize_lang(lang))
+
+
+def topic_onboard(schema: str, table: str = "", dialect: str = "hive",
+                  source: str = "kafka", sink: str = "hive",
+                  sample: str = "", lang: str = "") -> str:
+    """Topic 接入三连（确定性）：粘贴 Avro record / JSON Schema,一次产出
+    落地套件——avro2ddl 的 CREATE TABLE、seatunnel_gen 的同步作业 HOCON
+    （已 lint,占位符点名）、contract_gen 的契约 YAML;再附样例数据（CSV
+    带表头/JSONL）则同时生成 dq_rulegen 的 rules.yaml。每件产物由原生成
+    器产出并各自回检。不连注册中心与数据库。"""
+    from seatunnel_agent.agents.data.avro2ddl import (
+        onboard_topic,
+        render_onboard,
+    )
+
+    if not (schema or "").strip():
+        return "Schema 不能为空 / the schema must not be empty"
+    try:
+        bundle = onboard_topic(schema, table=table, dialect=dialect,
+                               source=source, sink=sink,
+                               sample_text=sample)
+    except ValueError as exc:
+        return f"输入有误 / bad input: {exc}"
+    return render_onboard(bundle, lang=normalize_lang(lang))

@@ -41,5 +41,27 @@ MANIFEST = AgentManifest(
                       "json schema", "类型映射", "doris", "hive 表",
                       "接入"),
         ),
+        ToolManifest(
+            name="topic_onboard",
+            ref="seatunnel_agent.agents.data.avro2ddl.tools:"
+                "topic_onboard",
+            desc_zh="Topic 接入三连（Schema → DDL + SeaTunnel 作业 + "
+                    "契约 [+ DQC 规则]）",
+            desc_en="Topic onboarding kit (schema → DDL + SeaTunnel "
+                    "job + contract [+ DQC rules])",
+            router_en="Onboard a topic end to end in one shot: paste "
+                      "the Avro record or JSON Schema and get the full "
+                      "landing kit — the CREATE TABLE (avro2ddl), the "
+                      "linted SeaTunnel ingestion job HOCON with named "
+                      "placeholders (seatunnel_gen), the schema frozen "
+                      "as a contract YAML (contract_gen), and, when a "
+                      "data sample (CSV with header / JSONL) is also "
+                      "pasted, the DQC rules.yaml (dq_rulegen). Each "
+                      "piece is produced by its own generator with its "
+                      "round-trip guard. No registry or database "
+                      "connection.",
+            keywords=("接入三连", "onboard", "一条龙", "套件",
+                      "topic 接入", "新 topic", "落地套件"),
+        ),
     ),
 )

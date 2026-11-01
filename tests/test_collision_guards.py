@@ -54,6 +54,13 @@ PINS: list[tuple[str, str]] = [
     # partition_health vs partition_plan (neighbouring domains)
     ("这张表的分区帮我体检一下有没有断档和倾斜", "partition_health"),
     ("新表还没分区,按样例和查询帮我选分区键", "partition_plan"),
+    # topic_onboard chains its three neighbours — their signature asks
+    # must keep routing to the originals
+    ("这份 avro record 帮我落成 hive 建表语句", "avro2ddl"),
+    ("照这张表的 DDL 生成 kafka 到 hive 的 seatunnel 配置",
+     "seatunnel_gen"),
+    ("按这份样例数据帮我生成 DQC 规则 yaml", "dq_rulegen"),
+    ("新 topic 接入三连,一次出建表、作业和契约", "topic_onboard"),
 ]
 
 

@@ -687,6 +687,64 @@ def avro2ddl(path, text, table, dialect, ddl_out, use_llm,
     _emit(payload, markdown, fmt, output)
 
 
+@click.command("topiconboard")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="Schema JSON 文件（Avro record 或 JSON Schema）")
+@click.option("--text", type=str, default=None, help="内联 Schema JSON")
+@click.option("--table", "-t", default="",
+              help="目标表名（默认取 record 的 namespace.name）")
+@click.option("--dialect",
+              type=click.Choice(["hive", "spark", "maxcompute",
+                                 "mysql", "postgres", "oracle",
+                                 "sqlserver", "doris"]),
+              default="hive", show_default=True, help="目标方言")
+@click.option("--source", default="kafka", show_default=True,
+              help="SeaTunnel source 连接器")
+@click.option("--sink", default="hive", show_default=True,
+              help="SeaTunnel sink 连接器")
+@click.option("--sample", "sample_path",
+              type=click.Path(exists=True, dir_okay=False), default=None,
+              help="样例数据文件（CSV 带表头 / JSONL,给则同时生成 DQC 规则）")
+@click.option("--out-dir", "out_dir", type=click.Path(file_okay=False),
+              default=None,
+              help="把套件落盘到该目录（ddl.sql / job.conf / "
+                   "contract.yaml / rules.yaml）")
+@report_options
+def topiconboard(path, text, table, dialect, source, sink, sample_path,
+                 out_dir, lang, fmt, output) -> None:
+    """Topic 接入三连 — Schema → DDL + SeaTunnel 作业 + 契约 [+ DQC 规则]。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.avro2ddl import (
+        onboard_topic,
+        render_onboard,
+    )
+
+    sample_text = ""
+    if sample_path:
+        sample_text = Path(sample_path).read_text(encoding="utf-8")
+    try:
+        bundle = onboard_topic(_read(path, text, "Schema"), table=table,
+                               dialect=dialect, source=source, sink=sink,
+                               sample_text=sample_text)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if out_dir:
+        target = Path(out_dir)
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "ddl.sql").write_text(bundle.ddl_text + "\n",
+                                        encoding="utf-8")
+        (target / "job.conf").write_text(bundle.hocon_text,
+                                         encoding="utf-8")
+        (target / "contract.yaml").write_text(bundle.contract_yaml,
+                                              encoding="utf-8")
+        if bundle.rules_yaml:
+            (target / "rules.yaml").write_text(bundle.rules_yaml,
+                                               encoding="utf-8")
+    _emit(bundle.to_dict(), render_onboard(bundle, lang=lang), fmt,
+          output)
+
+
 def register(cli) -> None:
     cli.add_command(taskfailure)
     cli.add_command(scheduleadvisor)
@@ -702,3 +760,4 @@ def register(cli) -> None:
     cli.add_command(partitionplan)
     cli.add_command(incidentreview)
     cli.add_command(avro2ddl)
+    cli.add_command(topiconboard)

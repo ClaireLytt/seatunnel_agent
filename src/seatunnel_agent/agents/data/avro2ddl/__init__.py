@@ -11,10 +11,14 @@ into the sync job.  No registry or database connection.
 """
 
 from .converter import DdlDraft, convert_schema
+from .onboard import OnboardBundle, onboard_topic, render_onboard
 from .report import render_markdown
 
 __all__ = [
     "DdlDraft",
+    "OnboardBundle",
     "convert_schema",
+    "onboard_topic",
     "render_markdown",
+    "render_onboard",
 ]
