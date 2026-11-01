@@ -17,7 +17,7 @@ from ..common.cli_common import _handle_error, console
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="扫描单个 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--rules", "rules_path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="自定义规则 YAML（追加到内置规则）")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
@@ -562,7 +562,7 @@ def backfill(
 @click.option("--new", "new_path", type=click.Path(exists=True), required=True,
               help="新版 DDL：文件或目录（递归 *.sql）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["breaking", "risk", "info"]),
@@ -624,7 +624,7 @@ def schemadiff(
 @click.option("--rows", "-n", type=click.IntRange(1, 100), default=5,
               show_default=True, help="每表生成行数")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--out", "out_dir", type=click.Path(file_okay=False), default=None,
               help="写出 CSV + create_tables.sql + inserts.sql 的目录")
 @click.option("--validate/--no-validate", "do_validate", default=True,
@@ -778,7 +778,7 @@ def conflint(
 @click.option("--seatunnel-dir", type=click.Path(exists=True, file_okay=False),
               default=None, help="可选：合并 SeaTunnel 配置目录的 source→sink 血缘")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["error", "warn"]),
@@ -836,7 +836,7 @@ def dagcheck(
 @click.option("--sql-dir", "-d", type=click.Path(exists=True, file_okay=False),
               required=True, help="SQL 目录（递归扫描 *.sql）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["high", "medium"]),
@@ -1246,7 +1246,7 @@ def ciinspect(
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="分析单个 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--exempt", "exempt_path", type=click.Path(exists=True, dir_okay=False),
@@ -1329,7 +1329,7 @@ def hygiene(
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="检查单个 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
@@ -1392,7 +1392,7 @@ def metaquality(
 @click.option("--diff", "diff_mode", is_flag=True, default=False,
               help="反向漂移：列出现状超出契约的新表/新列（契约没跟上的部分）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["high", "medium", "low"]),
@@ -1525,7 +1525,7 @@ def contract(
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="扫描单个 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["high", "medium"]),
@@ -1578,7 +1578,7 @@ def grants(
 @click.option("--file", "-f", "sql_file", type=click.Path(exists=True, dir_okay=False),
               default=None, help="扫描单个迁移脚本")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言 (hive/spark/mysql/...)")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--lang", type=click.Choice(["zh", "en"]), default="zh",
               show_default=True, help="Report language")
 @click.option("--fail-on", type=click.Choice(["high", "medium"]),

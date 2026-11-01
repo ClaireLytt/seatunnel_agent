@@ -128,7 +128,7 @@ def sqlperf(path, text, sql_path, use_llm, fail_severity, before_path,
 @click.option("--ddl", "ddl_path", type=click.Path(exists=True, dir_okay=False),
               default=None, help="建表 DDL 文件（可选）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--fail-on-audit", "fail_on_audit", is_flag=True,
               default=False,
               help="CI gate：现状审计有发现（IA001–IA004）时 exit 1"

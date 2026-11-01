@@ -104,7 +104,7 @@ def capacityforecast(path, text, quota, window, use_llm, fail_high,
               default=None, help="流水线 SQL 脚本文件")
 @click.option("--text", type=str, default=None, help="内联 SQL 脚本")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--layers", "layers_path",
               type=click.Path(exists=True, dir_okay=False), default=None,
               help="自定义分层表 JSON 文件（{前缀: 层级}，替换内置）")
@@ -421,7 +421,7 @@ def datadict(path, text, sql_path, min_cov, use_llm,
 @click.option("--strict", is_flag=True, default=False,
               help="allow_extra_columns: false（结构冻结）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 给出收紧建议（需配置 API key）")
 @report_options
@@ -463,7 +463,7 @@ def contractgen(path, text, tables, no_types, threshold, strict, dialect,
 @click.option("--wide-limit", "wide_limit", type=click.IntRange(min=1),
               default=50, show_default=True, help="宽表阈值（列数）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 给出改造建议（需配置 API key）")
 @click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
@@ -505,7 +505,7 @@ def modelreview(path, text, wide_limit, dialect, use_llm, fail_high,
 @click.option("--fanout", type=click.IntRange(min=2), default=3,
               show_default=True, help="源表直读目标数达到该值记 DP003")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草收敛方案（需配置 API key）")
 @click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
@@ -588,7 +588,7 @@ def maskpreview(path, text, preview_rows, use_llm, fail_high,
               type=click.Path(exists=True, dir_okay=False), required=True,
               help="查询负载 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 给出处置建议（需配置 API key）")
 @click.option("--fail-on-unused", "fail_unused", is_flag=True,
@@ -770,7 +770,7 @@ def costalloc(path, text, storage_price, compute_price, use_llm,
               type=click.Path(exists=True, dir_okay=False), default=None,
               help="契约 YAML 文件（与 --rules 至少给一个）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草补洞计划（需配置 API key）")
 @click.option("--fail-on-high", "fail_high", is_flag=True, default=False,

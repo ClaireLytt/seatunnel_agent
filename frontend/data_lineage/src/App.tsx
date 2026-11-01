@@ -10,7 +10,17 @@ import { ReportView } from '@shared/components/ReportView'
 import { ToolsPanel } from '@/components/ToolsPanel'
 import { fieldCls, labelCls, smallBtnCls } from '@/ui'
 
-const SQL_DIALECTS = ['hive', 'spark', 'mysql', 'postgresql', 'clickhouse', 'doris', 'starrocks']
+const SQL_DIALECTS = [
+  'hive',
+  'spark',
+  'mysql',
+  'postgresql',
+  'oracle',
+  'sqlserver',
+  'clickhouse',
+  'doris',
+  'starrocks',
+]
 
 export default function App() {
   const { t, i18n } = useTranslation()

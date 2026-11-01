@@ -210,7 +210,7 @@ def datavolatility(path, text, period, use_llm, fail_high,
 @click.option("--column", "-c", default="", help="出问题的列（可选）")
 @click.option("--symptom", default="", help="一句话症状（可选）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草追踪通报（需配置 API key）")
 @report_options

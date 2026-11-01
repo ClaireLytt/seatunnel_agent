@@ -33,7 +33,7 @@ from .check_runner import track_history as _track_history
 @click.option("--snapshot", type=str, default="",
               help="快照表名（mode=snapshot 时）")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草事故进展通报（需配置 API key）")
 @report_options
@@ -312,7 +312,7 @@ def taskfailure(path, text, history_path, trend_n, fail_on_trend, use_llm,
 @click.option("--new", "new_path", type=click.Path(exists=True, dir_okay=False),
               required=True, help="新版 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草变更评审（需配置 API key）")
 @click.option("--fail-on-breaking", "fail_breaking", is_flag=True,
@@ -459,7 +459,7 @@ def seatunnelgen(path, text, source, sink, job_mode, parallelism,
 @click.option("--schedule", default="0 2 * * *", show_default=True,
               help="cron 调度表达式")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--engine", default="airflow", show_default=True,
               type=click.Choice(["airflow", "dolphinscheduler",
                                  "azkaban"]),
@@ -557,7 +557,7 @@ def topicschema(old_path, new_path, mode, use_llm, fail_breaking,
               type=click.Path(exists=True, dir_okay=False), required=True,
               help="将要打在这张表上的查询 SQL 文件")
 @click.option("--dialect", default="hive", show_default=True,
-              help="SQL 方言")
+              help="SQL 方言 (hive/spark/mysql/postgresql/oracle/sqlserver/doris/...)")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 做选型评审（需配置 API key）")
 @click.option("--fail-on-medium", "fail_medium", is_flag=True,

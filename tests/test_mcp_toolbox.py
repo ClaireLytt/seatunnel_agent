@@ -46,7 +46,7 @@ def test_sql_review_static(tools):
     out = tools["sql_review"]("SELECT * FROM ods.t WHERE substr(dt,1,7)='2024-06'")
     assert "SELECT *" in out
     assert "不能为空" in tools["sql_review"]("  ")
-    assert "unknown dialect" in tools["sql_review"]("SELECT 1", dialect="oracle")
+    assert "unknown dialect" in tools["sql_review"]("SELECT 1", dialect="sybase")
 
 
 def test_sql_review_with_ddl_schema_check(tools):

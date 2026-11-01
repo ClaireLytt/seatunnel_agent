@@ -20,6 +20,7 @@ SQLGLOT_DIALECTS: dict[str, str | None] = {
     "maxcompute": "hive",   # MaxCompute SQL is hive-compatible
     "mysql": "mysql",
     "postgresql": "postgres",
+    "oracle": "oracle",
     "sqlserver": "tsql",
     "clickhouse": "clickhouse",
     "doris": "doris",
