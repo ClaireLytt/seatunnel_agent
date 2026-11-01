@@ -395,6 +395,7 @@ def register(cli) -> None:
     cli.add_command(costalloc)
     cli.add_command(topicschema)
     cli.add_command(csvdoctor)
+    cli.add_command(partitionplan)
 
 
 @click.command("rollbackplan")
@@ -2226,3 +2227,53 @@ def csvdoctor(path, text, csv_out, use_llm, fail_high,
     _emit(payload, markdown, fmt, output)
     if fail_high:
         fail_on_high(report.findings, fmt, label=lambda f: f.code)
+@click.command("partitionplan")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="数据样例 CSV（带表头）或 JSONL 文件")
+@click.option("--text", type=str, default=None, help="内联样例行")
+@click.option("--queries", "-q", "queries_path",
+              type=click.Path(exists=True, dir_okay=False), required=True,
+              help="将要打在这张表上的查询 SQL 文件")
+@click.option("--dialect", default="hive", show_default=True,
+              help="SQL 方言")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 做选型评审（需配置 API key）")
+@click.option("--fail-on-medium", "fail_medium", is_flag=True,
+              default=False,
+              help="CI gate：存在 medium 级发现（无合格键/热列不适配）时 exit 1")
+@report_options
+def partitionplan(path, text, queries_path, dialect, use_llm, fail_medium,
+                  lang, fmt, output) -> None:
+    """分区键选型 — 样例 + 负载 → 候选排名与 DDL 子句。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.partition_plan import (
+        plan_partitions,
+        render_markdown,
+    )
+    from seatunnel_agent.agents.data.sample_profile import parse_rows
+
+    try:
+        headers, rows = parse_rows(_read(path, text, "样例行"))
+        plan = plan_partitions(
+            headers, rows,
+            Path(queries_path).read_text(encoding="utf-8"),
+            dialect=dialect)
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    markdown = render_markdown(plan, lang=lang)
+    payload = plan.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.partition_plan.advisor_llm import (
+            plan_note,
+        )
+        from seatunnel_agent.agents.data.partition_plan.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, plan_note(plan, lang=lang),
+            "plan_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_medium:
+        bad = [f.code for f in plan.findings if f.severity == "medium"]
+        if bad:
+            fail_check(fmt, "选型存在风险 / plan risks: " + ", ".join(bad))

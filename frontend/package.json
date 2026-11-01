@@ -93,6 +93,7 @@
     "retention_policy",
     "cost_allocation",
     "topic_schema",
+    "partition_plan",
     "csv_doctor",
     "sync_strategy",
     "sql_review",

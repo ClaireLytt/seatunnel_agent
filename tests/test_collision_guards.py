@@ -51,6 +51,9 @@ PINS: list[tuple[str, str]] = [
     ("两份数据行帮我审计一下 join 的匹配率和爆炸系数", "join_audit"),
     ("表写坏了,沿血缘帮我编排回滚和下游重跑", "rollback_plan"),
     ("这张表要退役了,沿血缘出一个 offboard 下线方案", "offboard_plan"),
+    # partition_health vs partition_plan (neighbouring domains)
+    ("这张表的分区帮我体检一下有没有断档和倾斜", "partition_health"),
+    ("新表还没分区,按样例和查询帮我选分区键", "partition_plan"),
 ]
 
 
