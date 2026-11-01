@@ -29,10 +29,14 @@ def _detail(f: KafkaFinding, lang: str) -> str:
 
 def render_markdown(result: LagResult, lang: str = "zh") -> str:
     lang = normalize_lang(lang)
-    lines = [f"## {tp(lang, 'rpt_title')}", "",
-             tp(lang, "rpt_scope").format(group=result.group or "?",
-                                          parts=len(result.partitions),
-                                          total=result.total_lag), ""]
+    scope = tp(lang, "rpt_scope").format(group=result.group or "?",
+                                         parts=len(result.partitions),
+                                         total=result.total_lag)
+    if result.never_count:
+        scope += tp(lang, "rpt_group_never").format(n=result.never_count)
+    elif result.group_eta_min is not None:
+        scope += tp(lang, "rpt_group_eta").format(eta=result.group_eta_min)
+    lines = [f"## {tp(lang, 'rpt_title')}", "", scope, ""]
     if result.findings:
         lines.append(f"### {tp(lang, 'rpt_findings')}")
         rows = [[f.code, tp(lang, "sev_" + f.severity), _detail(f, lang),

@@ -9,6 +9,10 @@ KL_I18N: dict[str, dict[str, str]] = {
         "rpt_title": "Kafka Consumer-Lag Diagnosis",
         "rpt_scope": "group `{group}` · **{parts}** partition(s) · total "
                      "lag **{total}**",
+        "rpt_group_eta": " · group catches up in ~**{eta:g} min** "
+                         "(slowest partition decides)",
+        "rpt_group_never": " · **{n}** partition(s) never catch up at "
+                           "current rates",
         "rpt_findings": "Findings (worst first)",
         "col_code": "code",
         "col_sev": "severity",
@@ -58,6 +62,8 @@ KL_I18N: dict[str, dict[str, str]] = {
         "rpt_title": "Kafka 消费积压诊断",
         "rpt_scope": "消费组 `{group}` · **{parts}** 个分区 · 总积压 "
                      "**{total}**",
+        "rpt_group_eta": " · 全组约 **{eta:g} 分钟**追平（最慢分区决定）",
+        "rpt_group_never": " · **{n}** 个分区按当前速率永远追不平",
         "rpt_findings": "发现（严重在前）",
         "col_code": "编码",
         "col_sev": "级别",

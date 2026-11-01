@@ -282,3 +282,52 @@ def test_cli_fail_on_trend_gate(tmp_path):
     missing = CliRunner().invoke(cli, [
         "kafkalag", "-f", str(DEMO), "--trend", "3"])
     assert missing.exit_code == 2
+def test_group_eta_is_slowest_partition():
+    from seatunnel_agent.agents.data.kafka_lag import (
+        PartitionLag,
+        analyze_lag,
+        render_markdown,
+    )
+
+    parts = [
+        PartitionLag("t", 0, 10_000, 4_000,
+                     consume_rate=600, produce_rate=100),   # 0.2 min
+        PartitionLag("t", 1, 50_000, 20_000,
+                     consume_rate=600, produce_rate=100),   # 1.0 min
+    ]
+    result = analyze_lag("g", parts)
+    assert result.group_eta_min == 1.0 and result.never_count == 0
+    en = render_markdown(result, lang="en")
+    assert "group catches up in ~" in en and "1 min" in en
+
+
+def test_group_eta_never_when_any_partition_falls_behind():
+    from seatunnel_agent.agents.data.kafka_lag import (
+        PartitionLag,
+        analyze_lag,
+        render_markdown,
+    )
+
+    parts = [
+        PartitionLag("t", 0, 10_000, 4_000,
+                     consume_rate=600, produce_rate=100),
+        PartitionLag("t", 1, 50_000, 20_000,
+                     consume_rate=100, produce_rate=600),   # behind
+    ]
+    result = analyze_lag("g", parts)
+    assert result.group_eta_min is None and result.never_count == 1
+    zh = render_markdown(result, lang="zh")
+    assert "永远追不平" in zh
+
+
+def test_group_eta_absent_without_rates():
+    from seatunnel_agent.agents.data.kafka_lag import (
+        PartitionLag,
+        analyze_lag,
+        render_markdown,
+    )
+
+    result = analyze_lag("g", [PartitionLag("t", 0, 10, 5)])
+    assert result.group_eta_min is None and result.never_count == 0
+    en = render_markdown(result, lang="en")
+    assert "catches up" not in en and "never" not in en

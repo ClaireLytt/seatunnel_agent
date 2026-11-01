@@ -72,9 +72,16 @@ class LagResult:
     total_lag: int
     partitions: list[PartitionLag]
     findings: list[KafkaFinding]
+    # group-level catch-up: the slowest partition decides when the whole
+    # group is caught up; None when no partition carries rates. A single
+    # falling-behind partition (never_count > 0) means "never".
+    group_eta_min: float | None = None
+    never_count: int = 0
 
     def to_dict(self) -> dict:
         return {"group": self.group, "total_lag": self.total_lag,
+                "group_eta_min": self.group_eta_min,
+                "never_count": self.never_count,
                 "partitions": [p.to_dict() for p in self.partitions],
                 "findings": [f.to_dict() for f in self.findings]}
 
@@ -185,6 +192,7 @@ def analyze_lag(group: str, parts: list[PartitionLag]) -> LagResult:
 
     # KL003 falling behind / catch-up ETA; KL004 stalled
     behind: list[dict] = []
+    etas: list[float] = []
     for p in parts:
         if p.consume_rate is None:
             continue
@@ -201,6 +209,7 @@ def analyze_lag(group: str, parts: list[PartitionLag]) -> LagResult:
                            "produce_rate": p.produce_rate})
         else:
             eta_min = p.lag / net / 60.0
+            etas.append(eta_min)
             sev = _grade(eta_min, _ETA_MIN)
             if sev:
                 findings.append(KafkaFinding("KL005", sev, {
@@ -215,4 +224,7 @@ def analyze_lag(group: str, parts: list[PartitionLag]) -> LagResult:
     findings.sort(key=lambda f: (order[f.severity], f.code))
     parts_sorted = sorted(parts, key=lambda p: -p.lag)
     return LagResult(group=group, total_lag=total,
-                     partitions=parts_sorted, findings=findings)
+                     partitions=parts_sorted, findings=findings,
+                     group_eta_min=(round(max(etas), 1) if etas
+                                    and not behind else None),
+                     never_count=len(behind))
