@@ -64,6 +64,43 @@ def test_bad_inputs():
         generate_dag("   ")
 
 
+def test_dolphinscheduler_engine_round_trips():
+    import json
+
+    draft = _demo_draft(engine="dolphinscheduler")
+    doc = json.loads(draft.python_text)
+    assert doc["name"] == "demo_daily"
+    assert doc["schedule"]["crontab"] == "0 2 * * *"
+    names = {t["name"]: t for t in doc["taskDefinitionList"]}
+    assert set(names) == {"dws_orders_daily", "ads_order_counts",
+                          "ads_final_report"}
+    assert names["dws_orders_daily"]["taskParams"]["rawScript"] == (
+        "echo <RUN dws.orders_daily>")
+    assert "dim.users" in names["dws_orders_daily"]["description"]
+    codes = {t["name"]: t["code"] for t in doc["taskDefinitionList"]}
+    rel = {(r["preTaskCode"], r["postTaskCode"])
+           for r in doc["taskRelationList"]}
+    assert (codes["dws_orders_daily"], codes["ads_final_report"]) in rel
+    assert (0, codes["dws_orders_daily"]) in rel      # root relation
+
+
+def test_azkaban_engine_round_trips():
+    import yaml
+
+    draft = _demo_draft(engine="azkaban")
+    doc = yaml.safe_load(draft.python_text)
+    assert doc["config"]["schedule"] == "0 2 * * *"
+    nodes = {n["name"]: n for n in doc["nodes"]}
+    assert nodes["ads_final_report"]["type"] == "command"
+    assert set(nodes["ads_final_report"]["dependsOn"]) == {
+        "ads_order_counts", "dws_orders_daily"}
+    assert nodes["dws_orders_daily"]["config"]["command"] == (
+        "echo <RUN dws.orders_daily>")
+    assert "dependsOn" not in nodes["dws_orders_daily"]
+    with pytest.raises(ValueError, match="engine"):
+        _demo_draft(engine="oozie")
+
+
 # ------------------------------------------------------------------ report
 
 def test_report_both_langs():
@@ -72,6 +109,11 @@ def test_report_both_langs():
     en = render_markdown(draft, lang="en")
     assert "DAG 草稿" in zh and "```python" in zh
     assert "Airflow DAG Draft" in en and "ads_final_report" in en
+    ds = render_markdown(_demo_draft(engine="dolphinscheduler"),
+                         lang="en")
+    assert "DolphinScheduler Definition Draft" in ds and "```json" in ds
+    az = render_markdown(_demo_draft(engine="azkaban"), lang="zh")
+    assert "Azkaban Flow 草稿" in az and "```yaml" in az
 
 
 # --------------------------------------------------------------------- CLI
@@ -89,6 +131,12 @@ def test_cli_markdown_json_and_py_out(tmp_path):
                                      "--format", "json"])
     assert res.exit_code == 0 and '"tasks_total": 3' in res.output
     ast.parse(out.read_text(encoding="utf-8"))
+    flow = tmp_path / "demo.flow"
+    res = runner.invoke(cli, args + ["--engine", "azkaban",
+                                     "--py-out", str(flow)])
+    assert res.exit_code == 0, res.output
+    assert "Azkaban Flow 草稿" in res.output
+    assert "dependsOn:" in flow.read_text(encoding="utf-8")
 
 
 def test_cli_bad_input():
@@ -132,6 +180,11 @@ def test_api_generate_and_health():
     body = resp.json()
     assert body["result"]["tasks_total"] == 3
     assert "Airflow DAG Draft" in body["report"]
+    resp = client.post("/api/daggen/generate", json={
+        "sql_text": DEMO.read_text(encoding="utf-8"),
+        "engine": "dolphinscheduler", "lang": "en", "report": True})
+    assert resp.status_code == 200
+    assert "DolphinScheduler Definition Draft" in resp.json()["report"]
 
 
 def test_api_bad_input_400():

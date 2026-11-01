@@ -7,6 +7,13 @@ from seatunnel_agent.common.utils import make_lookup
 DG_I18N: dict[str, dict[str, str]] = {
     "en": {
         "rpt_title": "Airflow DAG Draft",
+        "rpt_title_dolphinscheduler": "DolphinScheduler Definition Draft",
+        "rpt_title_azkaban": "Azkaban Flow Draft",
+        "rpt_file_dolphinscheduler": "process definition JSON (parses "
+                                     "clean — replace the <RUN> "
+                                     "placeholders)",
+        "rpt_file_azkaban": ".flow YAML (parses clean — replace the "
+                            "<RUN> placeholders)",
         "rpt_scope": "dag `{dag_id}` · **{tasks}** task(s), **{edges}** "
                      "edge(s) · schedule `{schedule}` · "
                      "**{externals}** external upstream table(s)",
@@ -27,6 +34,12 @@ DG_I18N: dict[str, dict[str, str]] = {
     },
     "zh": {
         "rpt_title": "Airflow DAG 草稿",
+        "rpt_title_dolphinscheduler": "DolphinScheduler 工作流定义草稿",
+        "rpt_title_azkaban": "Azkaban Flow 草稿",
+        "rpt_file_dolphinscheduler": "工作流定义 JSON（可解析零错误 — "
+                                     "替换 <RUN> 占位符后导入）",
+        "rpt_file_azkaban": ".flow YAML（可解析零错误 — 替换 <RUN> "
+                            "占位符后部署）",
         "rpt_scope": "dag `{dag_id}` · **{tasks}** 个任务、**{edges}** 条"
                      "依赖 · 调度 `{schedule}` · 脚本外上游表 "
                      "**{externals}** 张",

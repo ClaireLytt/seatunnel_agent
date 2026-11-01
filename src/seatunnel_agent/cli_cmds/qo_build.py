@@ -460,14 +460,19 @@ def seatunnelgen(path, text, source, sink, job_mode, parallelism,
               help="cron 调度表达式")
 @click.option("--dialect", default="hive", show_default=True,
               help="SQL 方言")
+@click.option("--engine", default="airflow", show_default=True,
+              type=click.Choice(["airflow", "dolphinscheduler",
+                                 "azkaban"]),
+              help="调度引擎（airflow=dag.py / dolphinscheduler=定义 "
+                   "JSON / azkaban=.flow YAML）")
 @click.option("--py-out", "py_out", type=click.Path(dir_okay=False),
-              default=None, help="把 dag.py 另存到该文件")
+              default=None, help="把生成的调度文件另存到该文件")
 @click.option("--llm", "use_llm", is_flag=True, default=False,
               help="额外请求 LLM 起草部署前评审（需配置 API key）")
 @report_options
-def daggen(path, text, dag_id, schedule, dialect, py_out, use_llm,
-           lang, fmt, output) -> None:
-    """调度文件生成 — 流水线 SQL → 可 import 的 Airflow dag.py。"""
+def daggen(path, text, dag_id, schedule, dialect, engine, py_out,
+           use_llm, lang, fmt, output) -> None:
+    """调度文件生成 — 流水线 SQL → Airflow/DolphinScheduler/Azkaban。"""
     from pathlib import Path
 
     from seatunnel_agent.agents.data.dag_gen import (
@@ -477,7 +482,8 @@ def daggen(path, text, dag_id, schedule, dialect, py_out, use_llm,
 
     try:
         draft = generate_dag(_read(path, text, "SQL 脚本"), dag_id=dag_id,
-                             schedule=schedule, dialect=dialect)
+                             schedule=schedule, dialect=dialect,
+                             engine=engine)
     except ValueError as exc:
         raise click.UsageError(str(exc)) from exc
     if py_out:

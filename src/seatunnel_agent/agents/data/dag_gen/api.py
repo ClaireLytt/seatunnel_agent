@@ -24,6 +24,8 @@ class GenerateRequest(BaseModel):
                                                 "(identifier)")
     schedule: str = Field("0 2 * * *", description="Cron schedule")
     dialect: str = Field("hive", description="SQL dialect for the parser")
+    engine: str = Field("airflow", description="Scheduler engine: "
+                        "'airflow', 'dolphinscheduler' or 'azkaban'")
     llm: bool = Field(
         False, description="Also draft a pre-deploy review via the "
                            "configured LLM (needs an API key)")
@@ -34,7 +36,7 @@ class GenerateRequest(BaseModel):
 def _core(req: GenerateRequest, resolve):
     raw = resolve(req.sql_file, req.sql_text, "'sql_file' or 'sql_text'")
     return generate_dag(raw, dag_id=req.dag_id, schedule=req.schedule,
-                        dialect=req.dialect)
+                        dialect=req.dialect, engine=req.engine)
 
 
 def _llm(req: GenerateRequest, result, lang: str):
