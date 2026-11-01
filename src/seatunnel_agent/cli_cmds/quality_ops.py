@@ -394,6 +394,7 @@ def register(cli) -> None:
     cli.add_command(retention)
     cli.add_command(costalloc)
     cli.add_command(topicschema)
+    cli.add_command(csvdoctor)
 
 
 @click.command("rollbackplan")
@@ -2184,3 +2185,44 @@ def topicschema(old_path, new_path, mode, use_llm, fail_breaking,
                   if f.severity == "breaking"]
         fail_check(fmt, "存在破坏兼容的变更 / breaking changes: "
                    + ", ".join(broken))
+@click.command("csvdoctor")
+@click.option("--file", "-f", "path", type=click.Path(exists=True, dir_okay=False),
+              default=None, help="坏 CSV 文件")
+@click.option("--text", type=str, default=None, help="内联 CSV 原文")
+@click.option("--csv-out", "csv_out", type=click.Path(dir_okay=False),
+              default=None, help="把修复后的 CSV 另存到该文件")
+@click.option("--llm", "use_llm", is_flag=True, default=False,
+              help="额外请求 LLM 起草事故说明（需配置 API key,只发诊断元数据）")
+@click.option("--fail-on-high", "fail_high", is_flag=True, default=False,
+              help="CI gate：存在 high 级诊断（列数漂移超阈/字节丢失）时 exit 1")
+@report_options
+def csvdoctor(path, text, csv_out, use_llm, fail_high,
+              lang, fmt, output) -> None:
+    """CSV 急救 — 坏文件 → 诊断 + 修复版 CSV。"""
+    from pathlib import Path
+
+    from seatunnel_agent.agents.data.csv_doctor import (
+        diagnose_csv,
+        render_markdown,
+    )
+
+    try:
+        report = diagnose_csv(_read(path, text, "CSV 原文"))
+    except ValueError as exc:
+        raise click.UsageError(str(exc)) from exc
+    if csv_out:
+        Path(csv_out).write_text(report.fixed_csv, encoding="utf-8")
+    markdown = render_markdown(report, lang=lang)
+    payload = report.to_dict()
+    if use_llm:
+        from seatunnel_agent.agents.data.csv_doctor.advisor_llm import (
+            incident_note,
+        )
+        from seatunnel_agent.agents.data.csv_doctor.i18n import tp
+
+        markdown = append_llm_note(
+            payload, markdown, incident_note(report, lang=lang),
+            "incident_note", tp(lang, "rpt_llm_note"))
+    _emit(payload, markdown, fmt, output)
+    if fail_high:
+        fail_on_high(report.findings, fmt, label=lambda f: f.code)
