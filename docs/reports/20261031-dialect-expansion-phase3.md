@@ -24,7 +24,12 @@ npx prettier --check frontend/change_impact/src/App.tsx frontend/data_lineage/sr
 ```
 
 ```
-(gate 输出占位,提交后回填)
+[PASS] AI 署名: 无 AI 署名(范围 origin/fresh..HEAD)
+[PASS] 工作区: 工作区干净
+[PASS] 报告落盘: 代码改动已附带落盘报告
+[PASS] 报告含验证输出: 报告含 check_workflow 输出
+[PASS] floor: 无作弊变绿改动(范围 origin/fresh..HEAD)
+[PASS] 前端锁文件: workspace 与锁文件同步(范围 origin/fresh..HEAD)
 ```
 
 ## floor 豁免登记
